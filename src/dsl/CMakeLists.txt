@@ -1,5 +1,6 @@
 add_library(lumen-dsl STATIC
     dsl.cpp
+    text_dsl.cpp
 )
 
 target_include_directories(lumen-dsl PUBLIC

@@ -98,6 +98,10 @@ struct Widget {
     std::optional<Offset> stackPosition{};
 
     std::vector<Widget> children{};
+
+    // Structural equality over every field; DSL golden tests compare parsed
+    // trees against C++-built ones.
+    [[nodiscard]] bool operator==(const Widget& other) const = default;
 };
 
 // --- C++ declarative builders (Stage 1 subset, extended in Stage 3) ---

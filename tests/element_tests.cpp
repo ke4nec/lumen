@@ -158,9 +158,15 @@ TEST_CASE("widget_type_helpers", "[element]") {
 }
 
 TEST_CASE("module_stage_names", "[element]") {
+    // The renderer label must reflect what is actually compiled in: the
+    // stage-5 Skia adapter only exists in LUMEN_ENABLE_SKIA builds.
+#ifdef LUMEN_HAS_SKIA_BACKEND
+    CHECK(std::string(lumen::render::rendererStageName()) == "stage5");
+#else
     CHECK(std::string(lumen::render::rendererStageName()) == "stage2");
+#endif
     CHECK(std::string(lumen::platform::platformStageName()) == "stage2");
-    CHECK(std::string(lumen::dsl::dslStageName()) == "stage3");
+    CHECK(std::string(lumen::dsl::dslStageName()) == "stage4");
 }
 
 TEST_CASE("platform_event_defaults", "[element]") {

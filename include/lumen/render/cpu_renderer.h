@@ -21,7 +21,8 @@ class CpuRenderer final : public Renderer {
     // Framebuffer of the last beginFrame(); present() consumes it directly.
     [[nodiscard]] const PixelBuffer& pixels() const { return buffer_; }
 
-    // Uploads an image for drawImage(); ids are stable and opaque.
+    // Uploads an image for drawImage(); ids are stable and opaque. Buffers
+    // use straight (non-premultiplied) RGBA, matching SkiaRenderer.
     ImageId registerImage(PixelBuffer image);
 
     void beginFrame(core::Size viewport) override;

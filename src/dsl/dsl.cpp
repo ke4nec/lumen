@@ -63,7 +63,7 @@ core::Widget text_field(BindRef bound, std::string hint) {
 }
 
 const char* dslStageName() {
-    return "stage3";
+    return "stage4";
 }
 
 }  // namespace lumen::dsl

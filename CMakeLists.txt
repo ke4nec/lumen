@@ -10,6 +10,13 @@ option(LUMEN_BUILD_TESTS "Build Lumen tests" ON)
 option(LUMEN_BUILD_EXAMPLES "Build Lumen examples" ON)
 option(LUMEN_ENABLE_SKIA "Enable Skia renderer backend" OFF)
 
+if(MSVC AND LUMEN_ENABLE_SKIA)
+  # The pinned prebuilt skia.lib is built against the static CRT; the whole
+  # tree (and in-tree deps) must match. Its Release flavor only links into
+  # Release configurations — build `--config Release` when Skia is on.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 if(MSVC)
   add_compile_options(/utf-8 /W4)
 else()
@@ -30,5 +37,5 @@ if(LUMEN_BUILD_EXAMPLES)
 endif()
 
 if(LUMEN_ENABLE_SKIA)
-  message(STATUS "LUMEN_ENABLE_SKIA=ON requested, but Skia adapter lands in Stage 5 (placeholder).")
+  message(STATUS "Lumen: Skia backend enabled (backend consistency tests run).")
 endif()

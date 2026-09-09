@@ -3,7 +3,7 @@
 C++20 自绘 GUI 框架（Flutter 式声明式 UI），详见
 [`docs/lumen-gui-framework-plan.md`](docs/lumen-gui-framework-plan.md)。
 
-当前进度：阶段 0（工程骨架）+ 阶段 1（核心树和布局）+ 阶段 2（CPU 渲染与 SDL3 平台层）+ 阶段 3（交互与 C++ DSL）。
+当前进度：阶段 0–5（工程骨架、核心树和布局、CPU 渲染与 SDL3 平台层、交互与 C++ DSL、文本 DSL、Skia 适配）。
 
 ## 结构
 
@@ -35,6 +35,29 @@ Windows 可用 VS 自带的 CMake/Ninja，例如：
 ./build/examples/counter/lumen-counter
 # 无窗口模式：打印稳定 frame hash（点击/输入/缩放各一帧）
 ./build/examples/counter/lumen-counter --headless
+# 文本 DSL（.lumen）加载 UI（与 C++ DSL 构建同一棵树）
+./build/examples/counter/lumen-counter --dsl counter.lumen
 ```
 
-Skia 预留选项（阶段 5 实现）：`-DLUMEN_ENABLE_SKIA=ON`，默认 `OFF`。
+## 文本 DSL（阶段 4）
+
+`.lumen` 文件由手写 lexer + 递归下降 parser 解析为与 C++ builder 相同的
+Widget 树（见 `examples/counter/counter.lumen`）。支持节点嵌套、数值/字符串/
+`#RRGGBB[AA]` 颜色/布尔属性、对齐枚举、`bind`/`onClick`/`placeholder`；
+错误信息包含文件名、行号、列号与期望 token。
+
+## Skia 后端（阶段 5，可选）
+
+```sh
+cmake -S . -B build-skia -DLUMEN_ENABLE_SKIA=ON
+cmake --build build-skia --config Release   # 预编译 skia.lib 为 Release/MT
+ctest --test-dir build-skia -C Release      # 含 CPU/Skia 一致性 smoke 测试
+./build-skia/examples/counter/Release/lumen-counter --renderer skia
+```
+
+Windows 下自动拉取固定版本的预编译 Skia（aseprite/skia `m124-08a5439a6b`，
+静态 Release CRT）；其他平台用 `-DLUMEN_SKIA_ROOT=<skia 安装目录>`。默认
+`OFF`，CPU-only 构建不引入 Skia 依赖。
+
+> 备注：当前开发环境暂未提供 Linux toolchain/Skia 安装，Linux 构建与 Skia
+> 路径尚未在本仓库验证，待 Linux 环境就绪后补充验证。

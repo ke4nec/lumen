@@ -1,0 +1,11 @@
+// Counter UI (plan §6.2). Loaded by `lumen-counter --dsl`; the integration
+// test asserts it matches the C++ builder tree field for field.
+page Counter {
+  Container(key: "root", color: #18181B) {
+    Column(padding: 24, spacing: 12) {
+      Text("Count: ", bind: counter, key: "count-text")
+      Button("Increment", onClick: increment, key: "increment-button")
+      TextField(bind: name, placeholder: "Name", key: "name-field")
+    }
+  }
+}

@@ -28,3 +28,46 @@ if(LUMEN_BUILD_TESTS)
   )
   FetchContent_MakeAvailable(catch2)
 endif()
+
+# Optional Skia backend (plan 阶段5): default OFF so CPU-only builds stay
+# fast and dependency-free. On Windows a pinned prebuilt archive is fetched
+# automatically; other platforms require LUMEN_SKIA_ROOT pointing at a Skia
+# install with include/ and out/Release-x64/skia.lib.
+if(LUMEN_ENABLE_SKIA)
+  if(NOT DEFINED LUMEN_SKIA_ROOT)
+    if(WIN32)
+      set(LUMEN_SKIA_URL "https://github.com/aseprite/skia/releases/download/m124-08a5439a6b/Skia-Windows-Release-x64.zip"
+          CACHE STRING "Pinned prebuilt Skia archive")
+      FetchContent_Declare(
+        skia_prebuilt
+        URL ${LUMEN_SKIA_URL}
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      )
+      FetchContent_MakeAvailable(skia_prebuilt)
+      set(LUMEN_SKIA_ROOT "${skia_prebuilt_SOURCE_DIR}" CACHE INTERNAL
+          "Extracted prebuilt Skia root")
+    else()
+      message(FATAL_ERROR
+        "LUMEN_ENABLE_SKIA requires LUMEN_SKIA_ROOT=<skia install> on this "
+        "platform (Windows fetches the pinned prebuilt archive itself).")
+    endif()
+  endif()
+  if(WIN32)
+    # The prebuilt skia.lib bundles freetype code that references plain zlib
+    # symbols; the package's zlib.lib only exports Chrome-prefixed names
+    # (Cr_z_*). A small pinned zlib fills the plain symbols.
+    set(LUMEN_ZLIB_GIT_TAG "v1.3.1" CACHE STRING "Pinned zlib tag")
+    FetchContent_Declare(
+      zlib
+      GIT_REPOSITORY https://github.com/madler/zlib.git
+      GIT_TAG ${LUMEN_ZLIB_GIT_TAG}
+      GIT_SHALLOW TRUE
+    )
+    # zlib's minimum CMake is below 3.15: force CMP0091 so the static CRT set
+    # above applies to zlibstatic instead of a conflicting default /MD.
+    set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
+    FetchContent_MakeAvailable(zlib)
+    unset(CMAKE_POLICY_DEFAULT_CMP0091)
+  endif()
+  message(STATUS "Lumen Skia backend: ${LUMEN_SKIA_ROOT}")
+endif()

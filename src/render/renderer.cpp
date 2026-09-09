@@ -23,7 +23,13 @@ std::uint64_t frameHash(const PixelBuffer& buffer) {
 }
 
 const char* rendererStageName() {
+    // Honest capability label: stage 5 (Skia adapter) only exists when the
+    // build actually compiles skia_renderer.cpp into this library.
+#ifdef LUMEN_HAS_SKIA_BACKEND
+    return "stage5";
+#else
     return "stage2";
+#endif
 }
 
 }  // namespace lumen::render

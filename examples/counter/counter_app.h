@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -26,13 +27,11 @@ namespace lumen::examples {
 
 class CounterApp {
   public:
-    CounterApp() : element_(buildUi()) {
-        state_.set("counter", "0");
-        state_.set("name", "");
-        handlers_["increment"] = [this] {
-            state_.set("counter", std::to_string(counterValue() + 1));
-        };
-        syncSubscriptions(core::collectBindKeys(element_.widget()));
+    CounterApp() : CounterApp(buildUi()) {}
+
+    // Root from the text DSL (`--dsl counter.lumen`, plan §7).
+    explicit CounterApp(core::Widget root) {
+        initialize(std::move(root));
     }
 
     CounterApp(const CounterApp&) = delete;
@@ -40,8 +39,9 @@ class CounterApp {
     CounterApp(CounterApp&&) = delete;
     CounterApp& operator=(CounterApp&&) = delete;
 
-    // The declarative UI (plan §6.1 example shape).
-    [[nodiscard]] core::Widget buildUi() const {
+    // The declarative UI (plan §6.1 example shape). Static so the DSL golden
+    // test can compare it against the parsed `.lumen` document.
+    [[nodiscard]] static core::Widget buildUi() {
         using namespace dsl;
         core::Widget page = container(
             column({core::withKey(text("Count: ", bind("counter")),
@@ -63,37 +63,51 @@ class CounterApp {
         view_ = size;
         dirty_ = true;
     }
-    void setDeviceScale(float scale) { renderer_.setDeviceScale(scale); }
+    void setDeviceScale(float scale) { cpuRenderer_.setDeviceScale(scale); }
+
+    // Overrides the paint target (plan §7: CPU/Skia switch). Null restores
+    // the internal CPU renderer. The external renderer must outlive use.
+    void setRenderer(render::Renderer* renderer) {
+        externalRenderer_ = renderer;
+    }
 
     // Reconcile + relayout when state or view changed (plan §5.2 steps 2-3).
+    // The template (C++ builders or parsed `.lumen`) is copied, binds are
+    // resolved against the store, and the Element tree reconciles onto it.
     void rebuildIfDirty() {
         if (!dirty_) {
             return;
         }
-        core::Widget next = buildUi();
+        core::Widget next = uiTemplate_;
         core::applyBinds(next, state_);
-        element_.update(std::move(next));
+        element_->update(std::move(next));
         // Keep subscriptions in lockstep with the tree: newly bound keys get
         // observers, keys dropped by the rebuild are cleaned up (plan §9).
-        syncSubscriptions(core::collectBindKeys(element_.widget()));
-        root_ = layout::LayoutEngine::layout(element_.widget(),
-                                              core::Constraints::tight(view_));
+        syncSubscriptions(core::collectBindKeys(element_->widget()));
+        root_ = layout::LayoutEngine::layout(element_->widget(),
+                                             core::Constraints::tight(view_));
         dirty_ = false;
     }
 
-    // Paint + post-frame bookkeeping; returns the frame hash (plan §9).
+    // Paint + post-frame bookkeeping; returns the frame hash (plan §9). The
+    // hash is only meaningful for the internal CPU renderer; an external
+    // (Skia) renderer yields 0.
     std::uint64_t renderFrame() {
         rebuildIfDirty();
-        renderer_.beginFrame(view_);
+        render::Renderer& renderer = activeRenderer();
+        renderer.beginFrame(view_);
         render::PaintOptions options;
         options.focusedKey = focus_.focusedKey();
         options.focusedIdentity = focus_.focusedIdentity();
         options.pressedKey = controller_.pressedKey();
         options.pressedIdentity = controller_.pressedIdentity();
         options.caretCodePoints = controller_.caretCodePoints();
-        render::paintScene(renderer_, root_, options);
-        element_.clearDirtyTree();
-        return render::frameHash(renderer_.pixels());
+        render::paintScene(renderer, root_, options);
+        element_->clearDirtyTree();
+        if (externalRenderer_ == nullptr) {
+            return render::frameHash(cpuRenderer_.pixels());
+        }
+        return 0;
     }
 
     // Pointer in logical (root) coordinates; rebuilds first so hits land on
@@ -123,11 +137,31 @@ class CounterApp {
     [[nodiscard]] bool wantsTextInput() const {
         return controller_.wantsTextInput();
     }
+    // Framebuffer of the internal CPU renderer; the windowed loop presents
+    // from here unless an external (Skia) renderer is active.
     [[nodiscard]] const render::PixelBuffer& pixels() const {
-        return renderer_.pixels();
+        return cpuRenderer_.pixels();
     }
 
   private:
+    // Stores the root template and wires state/handlers/subscriptions. Both
+    // constructors funnel through here.
+    void initialize(core::Widget root) {
+        uiTemplate_ = std::move(root);
+        element_.emplace(uiTemplate_);
+        state_.set("counter", "0");
+        state_.set("name", "");
+        handlers_["increment"] = [this] {
+            state_.set("counter", std::to_string(counterValue() + 1));
+        };
+        syncSubscriptions(core::collectBindKeys(uiTemplate_));
+    }
+
+    [[nodiscard]] render::Renderer& activeRenderer() {
+        return externalRenderer_ != nullptr ? *externalRenderer_
+                                            : cpuRenderer_;
+    }
+
     // Diffs the subscribed bind keys against `keys`: subscribes new ones and
     // unsubscribes keys the latest tree no longer references.
     void syncSubscriptions(const std::set<std::string>& keys) {
@@ -152,10 +186,12 @@ class CounterApp {
     std::map<std::string, core::StateStore::ObserverId> subscriptions_{};
     core::FocusManager focus_{};
     core::InteractionController controller_{state_, handlers_, focus_};
-    core::Element element_;
+    core::Widget uiTemplate_{};
+    std::optional<core::Element> element_{};
     core::RenderNode root_{};
     core::Size view_{800.0F, 600.0F};
-    render::CpuRenderer renderer_{1.0F};
+    render::CpuRenderer cpuRenderer_{1.0F};
+    render::Renderer* externalRenderer_{nullptr};
     bool dirty_{true};
 };
 
