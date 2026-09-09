@@ -123,3 +123,37 @@ TEST_CASE("counter_frame_paints_content_pixels", "[counter]") {
                       static_cast<int>(button->size.height);
     CHECK(litPixels > total * 3 / 4);
 }
+
+TEST_CASE("counter_focused_rect_tracks_text_field", "[counter]") {
+    CounterApp app;
+    app.setView(Size{800.0F, 600.0F});
+    app.renderFrame();
+    CHECK(app.focusedTextRect().size.width == 0.0F);
+    CHECK_FALSE(app.wantsTextInput());
+
+    app.pointerDown(centerOf(app, "name-field"));
+    app.pointerUp(centerOf(app, "name-field"));
+    app.renderFrame();
+    REQUIRE(app.wantsTextInput());
+    const auto rect = app.focusedTextRect();
+    const auto* field =
+        lumen::core::findNodeByKey(app.root(), "name-field");
+    REQUIRE(field != nullptr);
+    CHECK(rect.size.width == 1.0F);
+    CHECK(rect.size.height == field->size.height);
+    CHECK(rect.origin.x == lumen::core::absoluteOffset(app.root(),
+                                                       "name-field")
+                               .x + 8.0F);
+    // Empty text: caret sits after the 8px left padding.
+    CHECK(app.focusedCaretOffset() == 8);
+
+    app.textInput("hi");
+    app.renderFrame();
+    // 2 code points at 0.6em (14px font): 8 + 2*8.4 = 24 (truncated).
+    CHECK(app.focusedCaretOffset() == 24);
+
+    // IME preedit never touches the document.
+    app.textEditing("ni");
+    CHECK(app.state().get("name") == "hi");
+    CHECK(app.controller().composition() == "ni");
+}

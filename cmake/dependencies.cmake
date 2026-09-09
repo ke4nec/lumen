@@ -30,9 +30,10 @@ if(LUMEN_BUILD_TESTS)
 endif()
 
 # Optional Skia backend (plan 阶段5): default OFF so CPU-only builds stay
-# fast and dependency-free. On Windows a pinned prebuilt archive is fetched
-# automatically; other platforms require LUMEN_SKIA_ROOT pointing at a Skia
-# install with include/ and out/Release-x64/skia.lib.
+# fast and dependency-free. On Windows/Linux a pinned prebuilt archive is
+# fetched automatically; other platforms require LUMEN_SKIA_ROOT pointing at
+# a Skia install with include/ and out/Release-x64/libskia.a (Linux) or
+# skia.lib (Windows).
 if(LUMEN_ENABLE_SKIA)
   if(NOT DEFINED LUMEN_SKIA_ROOT)
     if(WIN32)
@@ -46,10 +47,24 @@ if(LUMEN_ENABLE_SKIA)
       FetchContent_MakeAvailable(skia_prebuilt)
       set(LUMEN_SKIA_ROOT "${skia_prebuilt_SOURCE_DIR}" CACHE INTERNAL
           "Extracted prebuilt Skia root")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      # 35MB Release-only archive (m124-08a5439a6b, clang-12, official build).
+      # Links into both Debug and Release Lumen builds on Linux (no CRT
+      # mismatch like Windows); CI builds Debug+Release against it.
+      set(LUMEN_SKIA_URL "https://github.com/aseprite/skia/releases/download/m124-08a5439a6b/Skia-Linux-Release-x64.zip"
+          CACHE STRING "Pinned prebuilt Skia archive")
+      FetchContent_Declare(
+        skia_prebuilt
+        URL ${LUMEN_SKIA_URL}
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      )
+      FetchContent_MakeAvailable(skia_prebuilt)
+      set(LUMEN_SKIA_ROOT "${skia_prebuilt_SOURCE_DIR}" CACHE INTERNAL
+          "Extracted prebuilt Skia root")
     else()
       message(FATAL_ERROR
         "LUMEN_ENABLE_SKIA requires LUMEN_SKIA_ROOT=<skia install> on this "
-        "platform (Windows fetches the pinned prebuilt archive itself).")
+        "platform (Windows/Linux fetch the pinned prebuilt archive itself).")
     endif()
   endif()
   if(WIN32)

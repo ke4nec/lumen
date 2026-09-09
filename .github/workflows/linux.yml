@@ -1,0 +1,67 @@
+name: linux
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Single source of truth for Linux system dependencies (SDL3 window/input,
+# Skia FontConfig, Xvfb smoke); shared by the cpu and skia jobs below.
+env:
+  LUMEN_LINUX_DEPS: >-
+    cmake ninja-build pkg-config
+    libx11-dev libxext-dev libxrandr-dev libxcursor-dev
+    libxfixes-dev libxi-dev libxss-dev libwayland-dev
+    libxkbcommon-dev libdrm-dev libgbm-dev
+    libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev
+    libdbus-1-dev libibus-1.0-dev libdecor-0-dev
+    libasound2-dev libpulse-dev libaudio-dev libjack-dev
+    libsndio-dev libsamplerate0-dev liburing-dev
+    wayland-protocols libfontconfig1-dev libfreetype6-dev
+    xvfb
+
+jobs:
+  cpu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $LUMEN_LINUX_DEPS
+      - name: Configure (CPU-only)
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=ON
+      - name: Build
+        run: cmake --build build --config Debug
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -C Debug
+      - name: Headless counter smoke
+        run: ./build/examples/counter/lumen-counter --headless
+      - name: Windowed smoke (Xvfb)
+        run: xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter || test $? -eq 124
+
+  skia:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $LUMEN_LINUX_DEPS
+      - name: Configure (Skia)
+        run: >
+          cmake -S . -B build-skia -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_ENABLE_SKIA=ON
+      - name: Build
+        run: cmake --build build-skia --config Release
+      - name: Test (incl. CPU/Skia consistency)
+        run: ctest --test-dir build-skia --output-on-failure -C Release
+      - name: Windowed Skia smoke (Xvfb)
+        run: xvfb-run -a timeout 5 ./build-skia/examples/counter/lumen-counter --renderer skia || test $? -eq 124

@@ -1,6 +1,7 @@
 #include "lumen/platform/sdl3_window.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <deque>
 #include <utility>
@@ -127,14 +128,35 @@ class Sdl3Window final : public PlatformWindow {
         }
     }
 
+    void setTextInputArea(const core::Rect& area, int cursor) override {
+        // SDL expects window (logical) coordinates; Lumen layout already
+        // works in that space, so only float->int rounding is needed. The
+        // candidate window follows the TextField caret on IBus/Fcitx/Wayland.
+        const SDL_Rect rect{
+            static_cast<int>(std::lround(area.left())),
+            static_cast<int>(std::lround(area.top())),
+            static_cast<int>(std::lround(static_cast<double>(area.size.width))),
+            static_cast<int>(
+                std::lround(static_cast<double>(area.size.height)))};
+        if (!SDL_SetTextInputArea(window_, &rect, cursor)) {
+            std::fprintf(stderr, "SDL_SetTextInputArea failed: %s\n",
+                         SDL_GetError());
+        }
+    }
+
   private:
     // Converts the native queue into Lumen events; unmapped events are
     // dropped. Window size events re-query the drawable size (plan §2).
+    // Linux notes: X11/Wayland window-manager close arrives as
+    // WINDOW_CLOSE_REQUESTED (not QUIT); fractional-scale Wayland sessions
+    // report DISPLAY scale changes; touchscreens report FINGER events;
+    // IBus/Fcitx composition arrives as TEXT_EDITING before TEXT_INPUT.
     void drainEvents() {
         SDL_Event sdlEvent{};
         while (SDL_PollEvent(&sdlEvent)) {
             switch (sdlEvent.type) {
                 case SDL_EVENT_QUIT:
+                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                     pending_.push_back(Event{EventType::Quit});
                     break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -146,8 +168,8 @@ class Sdl3Window final : public PlatformWindow {
                     // SDL3 reports mouse coordinates in window (logical)
                     // coordinates already — no DPI scaling needed here.
                     event.type = sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN
-                                     ? EventType::PointerDown
-                                     : EventType::PointerUp;
+                                      ? EventType::PointerDown
+                                      : EventType::PointerUp;
                     event.position =
                         core::Offset{sdlEvent.button.x, sdlEvent.button.y};
                     pending_.push_back(std::move(event));
@@ -161,12 +183,64 @@ class Sdl3Window final : public PlatformWindow {
                     pending_.push_back(std::move(event));
                     break;
                 }
+                case SDL_EVENT_FINGER_DOWN:
+                case SDL_EVENT_FINGER_UP:
+                case SDL_EVENT_FINGER_MOTION:
+                case SDL_EVENT_FINGER_CANCELED: {
+                    // Touch coordinates are normalized 0..1 over the window;
+                    // scale by the logical size so touch matches mouse space.
+                    // SDL also emulates mouse events from touch, but handling
+                    // FINGER directly keeps Linux touchscreens working even
+                    // when mouse emulation is disabled. CANCELED maps to
+                    // PointerUp so a cancelled touch never leaves a stuck
+                    // pressed/armed button state.
+                    const core::Size logical = logicalSize();
+                    const bool isDown = sdlEvent.type == SDL_EVENT_FINGER_DOWN;
+                    const bool isCancel =
+                        sdlEvent.type == SDL_EVENT_FINGER_CANCELED;
+                    if (isDown) {
+                        if (activeFinger_) {
+                            break;
+                        }
+                        activeTouchId_ = sdlEvent.tfinger.touchID;
+                        activeFingerId_ = sdlEvent.tfinger.fingerID;
+                        activeFinger_ = true;
+                    } else if (!activeFinger_ ||
+                               sdlEvent.tfinger.touchID != activeTouchId_ ||
+                               sdlEvent.tfinger.fingerID != activeFingerId_) {
+                        break;
+                    }
+                    Event event;
+                    if (sdlEvent.type == SDL_EVENT_FINGER_DOWN) {
+                        event.type = EventType::PointerDown;
+                    } else if (sdlEvent.type == SDL_EVENT_FINGER_UP ||
+                               sdlEvent.type == SDL_EVENT_FINGER_CANCELED) {
+                        event.type = EventType::PointerUp;
+                    } else {
+                        event.type = EventType::PointerMove;
+                    }
+                    if (isCancel) {
+                        // Cancel must release without firing: deliver the up
+                        // outside the root so pointerUp clears the armed
+                        // click target instead of matching it.
+                        event.position = core::Offset{-1.0F, -1.0F};
+                    } else {
+                        event.position = core::Offset{
+                            sdlEvent.tfinger.x * logical.width,
+                            sdlEvent.tfinger.y * logical.height};
+                    }
+                    pending_.push_back(std::move(event));
+                    if (isCancel || sdlEvent.type == SDL_EVENT_FINGER_UP) {
+                        activeFinger_ = false;
+                    }
+                    break;
+                }
                 case SDL_EVENT_KEY_DOWN:
                 case SDL_EVENT_KEY_UP: {
                     Event event;
                     event.type = sdlEvent.type == SDL_EVENT_KEY_DOWN
-                                     ? EventType::KeyDown
-                                     : EventType::KeyUp;
+                                      ? EventType::KeyDown
+                                      : EventType::KeyUp;
                     event.keyCode =
                         static_cast<int>(mapSdlKey(sdlEvent.key.key));
                     pending_.push_back(std::move(event));
@@ -175,12 +249,29 @@ class Sdl3Window final : public PlatformWindow {
                 case SDL_EVENT_TEXT_INPUT: {
                     Event event;
                     event.type = EventType::TextInput;
-                    event.text = sdlEvent.text.text;
+                    if (sdlEvent.text.text != nullptr) {
+                        event.text = sdlEvent.text.text;
+                    }
+                    pending_.push_back(std::move(event));
+                    break;
+                }
+                case SDL_EVENT_TEXT_EDITING: {
+                    // IME preedit (e.g. Pinyin composition): exposed but never
+                    // committed here; the app keeps it for future preedit UI.
+                    Event event;
+                    event.type = EventType::TextEditing;
+                    if (sdlEvent.edit.text != nullptr) {
+                        event.text = sdlEvent.edit.text;
+                    }
+                    event.editCursor = sdlEvent.edit.start;
+                    event.editLength = sdlEvent.edit.length;
                     pending_.push_back(std::move(event));
                     break;
                 }
                 case SDL_EVENT_WINDOW_RESIZED:
-                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
+                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+                case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED: {
                     Event event;
                     event.type = EventType::Resize;
                     event.pixelSize = drawableSize();
@@ -205,11 +296,17 @@ class Sdl3Window final : public PlatformWindow {
     int textureWidth_{0};
     int textureHeight_{0};
     std::deque<Event> pending_{};
+    SDL_TouchID activeTouchId_{0};
+    SDL_FingerID activeFingerId_{0};
+    bool activeFinger_{false};
 };
 
 }  // namespace
 
 std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
+    // We translate the primary finger ourselves. Disable SDL's synthetic
+    // mouse events so one touch cannot produce duplicate pointer events.
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return nullptr;

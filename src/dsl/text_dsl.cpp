@@ -530,9 +530,6 @@ class Parser {
     return true;
 }
 
-[[nodiscard]] std::optional<DslError> convertNode(const AstNode& ast,
-                                                  Widget& out);
-
 class Converter {
   public:
     explicit Converter(std::string file) : file_(std::move(file)) {}

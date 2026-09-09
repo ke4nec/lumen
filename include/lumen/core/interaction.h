@@ -62,6 +62,7 @@ class InteractionController {
     void pointerDown(const RenderNode& root, Offset position);
     void pointerUp(const RenderNode& root, Offset position);
     void textInput(const std::string& text);
+    void setComposition(const std::string& text);
     void keyDown(Key key);
 
     // Button key currently held down ("" when none) — pressed visuals.
@@ -71,6 +72,11 @@ class InteractionController {
     }
     // Caret position (code points) inside the focused TextField.
     [[nodiscard]] std::size_t caretCodePoints() const { return caret_; }
+    // In-progress IME composition (TEXT_EDITING); never committed to the
+    // StateStore. Kept so future preedit UI can render it (plan §10).
+    [[nodiscard]] const std::string& composition() const {
+        return composition_;
+    }
     // True while a bound TextField is focused; drives platform text input.
     [[nodiscard]] bool wantsTextInput() const { return !focusedBind_.empty(); }
     [[nodiscard]] const FocusManager& focus() const { return focus_; }
@@ -86,6 +92,7 @@ class InteractionController {
     std::string armedKey_{};
     std::string armedIdentity_{};
     std::string focusedBind_{};
+    std::string composition_{};
     std::size_t caret_{0};
 };
 

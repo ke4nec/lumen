@@ -6,6 +6,7 @@ set(LUMEN_TEST_SOURCES
     interaction_tests.cpp
     counter_integration_tests.cpp
     dsl_tests.cpp
+    platform_smoke_tests.cpp
 )
 
 if(LUMEN_ENABLE_SKIA)

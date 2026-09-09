@@ -9,6 +9,8 @@
 #include "include/core/SkTypeface.h"
 #ifdef _WIN32
 #include "include/ports/SkTypeface_win.h"
+#elif defined(__linux__)
+#include "include/ports/SkFontMgr_fontconfig.h"
 #endif
 #include "include/core/SkColor.h"
 #include "include/core/SkImage.h"
@@ -25,6 +27,42 @@ namespace {
 
 [[nodiscard]] SkColor toSkColor(core::Color color) {
     return SkColorSetARGB(color.a, color.r, color.g, color.b);
+}
+
+SkUnichar decodeUtf8(const char* bytes, std::size_t length) {
+    if (length == 0) {
+        return 0;
+    }
+    const auto byte = [&](std::size_t i) {
+        return static_cast<unsigned char>(bytes[i]);
+    };
+    const unsigned char first = byte(0);
+    if (first < 0x80) {
+        return first;
+    }
+    if (first >= 0xC2 && first <= 0xDF && length >= 2) {
+        return ((first & 0x1F) << 6) | (byte(1) & 0x3F);
+    }
+    if (first >= 0xE0 && first <= 0xEF && length >= 3) {
+        return ((first & 0x0F) << 12) | ((byte(1) & 0x3F) << 6) |
+               (byte(2) & 0x3F);
+    }
+    if (first >= 0xF0 && first <= 0xF4 && length >= 4) {
+        return ((first & 0x07) << 18) | ((byte(1) & 0x3F) << 12) |
+               ((byte(2) & 0x3F) << 6) | (byte(3) & 0x3F);
+    }
+    return 0xFFFD;
+}
+
+std::size_t utf8SequenceLength(const char* bytes, std::size_t length) {
+    if (length == 0) {
+        return 0;
+    }
+    const unsigned char first = static_cast<unsigned char>(bytes[0]);
+    const std::size_t expected = first < 0x80 ? 1 : first < 0xE0 ? 2
+                                    : first < 0xF0              ? 3
+                                                                 : 4;
+    return std::min(expected, length);
 }
 
 }  // namespace
@@ -160,16 +198,39 @@ void SkiaRenderer::drawText(TextRun run, core::TextStyle style) {
     const SkFontStyle fontStyle =
         style.bold ? SkFontStyle::Bold() : SkFontStyle::Normal();
     sk_sp<SkTypeface> typeface;
+    sk_sp<SkFontMgr> fontManager;
 #ifdef _WIN32
     if (const sk_sp<SkFontMgr> fontManager = SkFontMgr_New_GDI()) {
         typeface = fontManager->matchFamilyStyle(nullptr, fontStyle);
     }
+#elif defined(__linux__)
+    // FontConfig enumerates system fonts (DejaVu/Noto/CJK) so CJK text
+    // resolves on Linux desktops; nullptr falls back to Skia's default.
+    if ((fontManager = SkFontMgr_New_FontConfig(nullptr))) {
+        typeface = fontManager->matchFamilyStyle(nullptr, fontStyle);
+    }
 #endif
-    SkFont font(typeface, fontSize * scale);
-    impl_->canvas->drawSimpleText(
-        run.text.data(), run.text.size(), SkTextEncoding::kUTF8,
-        run.origin.x * scale, (run.origin.y + fontSize) * scale, font,
-        impl_->paint);
+    float x = run.origin.x * scale;
+    const float baseline = (run.origin.y + fontSize) * scale;
+    for (std::size_t offset = 0; offset < run.text.size();) {
+        const std::size_t length =
+            utf8SequenceLength(run.text.data() + offset, run.text.size() - offset);
+        const SkUnichar codePoint = decodeUtf8(run.text.data() + offset, length);
+        sk_sp<SkTypeface> glyphTypeface = typeface;
+#if defined(__linux__) || defined(_WIN32)
+        if (fontManager && (!glyphTypeface || glyphTypeface->unicharToGlyph(codePoint) == 0)) {
+            glyphTypeface = fontManager->matchFamilyStyleCharacter(
+                nullptr, fontStyle, nullptr, 0, codePoint);
+        }
+#endif
+        SkFont font(glyphTypeface, fontSize * scale);
+        impl_->canvas->drawSimpleText(run.text.data() + offset, length,
+                                      SkTextEncoding::kUTF8, x, baseline, font,
+                                      impl_->paint);
+        x += font.measureText(run.text.data() + offset, length,
+                              SkTextEncoding::kUTF8);
+        offset += length;
+    }
 }
 
 void SkiaRenderer::drawImage(ImageId id, core::Rect destination) {
@@ -203,8 +264,8 @@ void SkiaRenderer::endFrame() {
         static_cast<std::size_t>(info.width()) *
             static_cast<std::size_t>(info.height()) * 4,
         0);
-    // Native color type is RGBA_8888 on Windows builds, so readPixels copies
-    // straight into the RGBA snapshot.
+    // The raster surface is created as RGBA_8888, so readPixels copies
+    // straight into the RGBA snapshot on all platforms.
     impl_->surface->readPixels(
         info, snapshot_.rgba.data(), static_cast<std::size_t>(info.width()) * 4,
         0, 0);

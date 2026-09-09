@@ -65,6 +65,7 @@ void InteractionController::pointerDown(const RenderNode& root,
     if (target == nullptr) {
         focus_.clearFocus();
         focusedBind_.clear();
+        composition_.clear();
         caret_ = 0;
         return;
     }
@@ -101,10 +102,12 @@ void InteractionController::pointerDown(const RenderNode& root,
         focus_.setFocus(field->key.empty() ? field->bind : field->key,
                         field->identity);
         focusedBind_ = field->bind;
+        composition_.clear();
         caret_ = utf8Length(store_.get(focusedBind_));
     } else {
         focus_.clearFocus();
         focusedBind_.clear();
+        composition_.clear();
         caret_ = 0;
     }
 }
@@ -149,9 +152,22 @@ void InteractionController::textInput(const std::string& text) {
     if (focusedBind_.empty() || text.empty()) {
         return;
     }
+    composition_.clear();
     const std::string value = store_.get(focusedBind_);
     store_.set(focusedBind_, utf8Insert(value, caret_, text));
     caret_ += utf8Length(text);
+}
+
+void InteractionController::setComposition(const std::string& text) {
+    // Composition previews the IME string without touching the document;
+    // committing still arrives as textInput(). Clearing focus drops it.
+    // Ignore preedit while unfocused so composition_ never lingers without
+    // a focused field (mirrors textInput()'s focusedBind_ guard).
+    if (focusedBind_.empty()) {
+        composition_.clear();
+        return;
+    }
+    composition_ = text;
 }
 
 void InteractionController::keyDown(Key key) {
@@ -183,6 +199,7 @@ void InteractionController::keyDown(Key key) {
         case Key::Escape:
             focus_.clearFocus();
             focusedBind_.clear();
+            composition_.clear();
             caret_ = 0;
             return;
         case Key::None:

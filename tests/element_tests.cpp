@@ -175,4 +175,6 @@ TEST_CASE("platform_event_defaults", "[element]") {
     CHECK(event.position == Offset{0.0F, 0.0F});
     CHECK(event.keyCode == 0);
     CHECK(event.text.empty());
+    CHECK(event.editCursor == 0);
+    CHECK(event.editLength == 0);
 }

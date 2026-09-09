@@ -369,3 +369,41 @@ TEST_CASE("utf8_helpers_survive_truncated_sequences", "[utf8]") {
     CHECK(utf8Length(twoByteLead) == 1);
     CHECK(utf8EraseAfter(fourByteLead, 0).empty());
 }
+
+TEST_CASE("composition_previews_without_committing", "[interaction]") {
+    StateStore store;
+    store.set("name", "ab");
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+
+    Widget ui = makeContainer(withKey(
+        makeTextField("", "Name", {}, {}, 0.0F, "field", std::nullopt,
+                      std::nullopt, "name"),
+        "field"));
+    const RenderNode root = layoutOf(ui);
+    controller.pointerDown(root, centerOf(root, "field"));
+    REQUIRE(controller.wantsTextInput());
+
+    // IME preedit (SDL_EVENT_TEXT_EDITING): visible to the controller but
+    // never written to the document.
+    controller.setComposition("ni");
+    CHECK(controller.composition() == "ni");
+    CHECK(store.get("name") == "ab");
+
+    // Committing (SDL_EVENT_TEXT_INPUT) clears the preview and inserts.
+    controller.textInput("ni");
+    CHECK(controller.composition().empty());
+    CHECK(store.get("name") == "abni");
+
+    // Moving focus drops any stale composition.
+    controller.setComposition("hao");
+    controller.pointerDown(root, Offset{250.0F, 150.0F});
+    CHECK(controller.composition().empty());
+    CHECK_FALSE(controller.wantsTextInput());
+
+    // Preedit while unfocused is ignored, never lingering without a field.
+    controller.setComposition("stale");
+    CHECK(controller.composition().empty());
+    CHECK(store.get("name") == "abni");
+}

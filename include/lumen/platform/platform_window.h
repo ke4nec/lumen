@@ -22,6 +22,7 @@ enum class EventType {
     KeyDown,
     KeyUp,
     TextInput,
+    TextEditing,
     Resize,
     FocusGained,
     FocusLost,
@@ -32,8 +33,14 @@ struct Event {
     // Pointer position in logical coordinates (PointerDown/Up/Move).
     core::Offset position{};
     // lumen::core::Key value (KeyDown/KeyUp); UTF-8 text (TextInput).
+    // TextEditing carries the in-progress IME composition string; it must
+    // not be committed to the document (plan §10 leaves full IME out of
+    // scope, but Linux IBus/Fcitx needs the event to be visible).
     int keyCode{0};
     std::string text{};
+    // IME composition cursor/selection (TextEditing, may be -1 when unset).
+    int editCursor{0};
+    int editLength{0};
     // New drawable size in physical pixels (Resize).
     core::Size pixelSize{};
 };
@@ -49,6 +56,11 @@ class PlatformWindow {
     // stub implementations stay trivial; the SDL3 backend maps it to
     // SDL_StartTextInput/SDL_StopTextInput.
     virtual void setTextInputEnabled(bool /*enabled*/) {}
+    // Hints the IME candidate-window anchor (logical coordinates) and the
+    // caret offset relative to `area.origin.x`. Linux IBus/Fcitx/Wayland
+    // needs this via SDL_SetTextInputArea; default no-op for stubs.
+    virtual void setTextInputArea(const core::Rect& /*area*/,
+                                  int /*cursor*/) {}
 };
 
 // Stage identifier for the platform module contract (Stage 2: SDL3 backend).

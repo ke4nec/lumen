@@ -22,6 +22,26 @@ cmake --build build --config Debug
 ctest --test-dir build --output-on-failure -C Debug
 ```
 
+Linux（Ubuntu 24.04/26.04）先安装系统依赖（SDL3 窗口/输入、Skia
+FontConfig、Xvfb 冒烟）：
+
+```sh
+sudo apt-get update
+sudo apt-get install -y cmake ninja-build pkg-config \
+  libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+  libxfixes-dev libxi-dev libxss-dev libwayland-dev \
+  libxkbcommon-dev libdrm-dev libgbm-dev \
+  libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev \
+  libdbus-1-dev libibus-1.0-dev libdecor-0-dev \
+  libasound2-dev libpulse-dev libaudio-dev libjack-dev \
+  libsndio-dev libsamplerate0-dev liburing-dev \
+  wayland-protocols libfontconfig1-dev libfreetype6-dev xvfb
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
+cmake --build build --config Debug
+ctest --test-dir build --output-on-failure -C Debug
+```
+
 Windows 可用 VS 自带的 CMake/Ninja，例如：
 
 ```powershell
@@ -50,14 +70,23 @@ Widget 树（见 `examples/counter/counter.lumen`）。支持节点嵌套、数�
 
 ```sh
 cmake -S . -B build-skia -DLUMEN_ENABLE_SKIA=ON
-cmake --build build-skia --config Release   # 预编译 skia.lib 为 Release/MT
+cmake --build build-skia --config Release   # 预编译包为 Release（Windows: skia.lib/MT，Linux: libskia.a）
 ctest --test-dir build-skia -C Release      # 含 CPU/Skia 一致性 smoke 测试
-./build-skia/examples/counter/Release/lumen-counter --renderer skia
+./build-skia/examples/counter/lumen-counter --renderer skia
+# Windows 多一层 Release/：./build-skia/examples/counter/Release/lumen-counter --renderer skia
 ```
 
-Windows 下自动拉取固定版本的预编译 Skia（aseprite/skia `m124-08a5439a6b`，
-静态 Release CRT）；其他平台用 `-DLUMEN_SKIA_ROOT=<skia 安装目录>`。默认
-`OFF`，CPU-only 构建不引入 Skia 依赖。
+Windows/Linux 下自动拉取固定版本的预编译 Skia（aseprite/skia
+`m124-08a5439a6b`：`Skia-Windows-Release-x64.zip` /
+`Skia-Linux-Release-x64.zip`）；其他平台用
+`-DLUMEN_SKIA_ROOT=<skia 安装目录>`。默认 `OFF`，CPU-only 构建不引入
+Skia 依赖。
 
-> 备注：当前开发环境暂未提供 Linux toolchain/Skia 安装，Linux 构建与 Skia
-> 路径尚未在本仓库验证，待 Linux 环境就绪后补充验证。
+Linux 上 Skia 文字经 FontConfig 解析系统字体（DejaVu/Noto/CJK），需已
+安装 `libfontconfig1-dev`；X11/Wayland 中文输入（IBus/Fcitx）候选框跟随
+聚焦的 TextField（`SDL_SetTextInputArea`），触摸屏经 Finger 事件映射为
+Pointer，窗口缩放（含 Wayland 分数缩放）统一转为 Resize。
+
+> Linux CPU-only 与 Skia 构建均已在 Ubuntu 26.04 验证：
+> `ctest` 全量通过（含 CPU/Skia 一致性）与 Xvfb 窗口冒烟通过，见
+> `.github/workflows/linux.yml`。

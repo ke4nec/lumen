@@ -163,6 +163,9 @@ int runWindowed(CounterApp& app, const std::string& rendererName) {
                 case lumen::platform::EventType::TextInput:
                     app.textInput(event.text);
                     break;
+                case lumen::platform::EventType::TextEditing:
+                    app.textEditing(event.text);
+                    break;
                 case lumen::platform::EventType::KeyDown:
                     app.keyDown(static_cast<Key>(event.keyCode));
                     break;
@@ -172,6 +175,14 @@ int runWindowed(CounterApp& app, const std::string& rendererName) {
         }
         window->setTextInputEnabled(app.wantsTextInput());
         app.renderFrame();
+        if (app.wantsTextInput()) {
+            // Keep the IME candidate window anchored to the focused field
+            // (queried after renderFrame so the rect tracks the fresh
+            // layout). Required on Linux (IBus/Fcitx under X11/Wayland);
+            // harmless elsewhere.
+            window->setTextInputArea(app.focusedTextRect(),
+                                     0);
+        }
 #ifdef LUMEN_HAVE_SKIA
         window->present(skia.has_value() ? skia->pixels() : app.pixels());
 #else

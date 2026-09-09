@@ -18,6 +18,7 @@
 #include "lumen/core/element.h"
 #include "lumen/core/interaction.h"
 #include "lumen/core/state.h"
+#include "lumen/core/utf8.h"
 #include "lumen/dsl/dsl.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
@@ -124,6 +125,10 @@ class CounterApp {
 
     void textInput(const std::string& text) { controller_.textInput(text); }
 
+    void textEditing(const std::string& text) {
+        controller_.setComposition(text);
+    }
+
     void keyDown(core::Key key) { controller_.keyDown(key); }
 
     [[nodiscard]] int counterValue() const {
@@ -137,6 +142,39 @@ class CounterApp {
     [[nodiscard]] bool wantsTextInput() const {
         return controller_.wantsTextInput();
     }
+    // Logical rect at the caret for IME candidate positioning
+    // (SDL_SetTextInputArea). Empty rect when nothing is focused. Mirrors
+    // the painter's text origin/caret metric so the candidate window tracks
+    // the caret on Linux IBus/Fcitx/Wayland. Query after renderFrame() (as
+    // main.cpp does) so the rect tracks the fresh layout.
+    [[nodiscard]] core::Rect focusedTextRect() const {
+        core::Offset origin{};
+        const core::RenderNode* found = findFocusedField(origin);
+        if (found == nullptr) {
+            return core::Rect{};
+        }
+        const float x = origin.x + static_cast<float>(focusedCaretOffset());
+        return core::Rect{core::Offset{x, origin.y},
+                          core::Size{1.0F, found->size.height}};
+    }
+    // Kept for PlatformWindow implementations that support a separate cursor
+    // offset. The caret is already encoded in focusedTextRect().
+    [[nodiscard]] int focusedCaretOffset() const {
+        core::Offset ignored{};
+        const core::RenderNode* found = findFocusedField(ignored);
+        if (found == nullptr) {
+            return 0;
+        }
+        const float fontSize = found->textStyle.fontSize > 0.0F
+                                   ? found->textStyle.fontSize
+                                   : 14.0F;
+        const std::size_t caret = controller_.caretCodePoints();
+        const std::size_t clamped =
+            std::min(caret, core::utf8Length(found->text));
+        // 8px left padding (see painter) + 0.6em per code point.
+        return static_cast<int>(8.0F + static_cast<float>(clamped) * fontSize *
+                                0.6F);
+    }
     // Framebuffer of the internal CPU renderer; the windowed loop presents
     // from here unless an external (Skia) renderer is active.
     [[nodiscard]] const render::PixelBuffer& pixels() const {
@@ -144,6 +182,46 @@ class CounterApp {
     }
 
   private:
+    // Depth-first search by stable identity; `origin` accumulates the
+    // root-relative offset of the match.
+    static const core::RenderNode* findByIdentity(const core::RenderNode& node,
+                                                 const std::string& identity,
+                                                 core::Offset& origin) {
+        if (node.identity == identity) {
+            return &node;
+        }
+        for (const auto& child : node.children) {
+            core::Offset childOrigin = origin + child.offset;
+            if (const core::RenderNode* found =
+                    findByIdentity(child, identity, childOrigin)) {
+                origin = childOrigin;
+                return found;
+            }
+        }
+        return nullptr;
+    }
+
+    // Shared focused-field lookup: stable identity first, key fallback.
+    // `origin` receives the root-relative offset of the match.
+    [[nodiscard]] const core::RenderNode* findFocusedField(
+        core::Offset& origin) const {
+        const std::string& identity = focus_.focusedIdentity();
+        const std::string& key = focus_.focusedKey();
+        origin = core::Offset{};
+        const core::RenderNode* found = nullptr;
+        if (!identity.empty()) {
+            found = findByIdentity(root_, identity, origin);
+        }
+        if (found == nullptr && !key.empty()) {
+            if (const core::RenderNode* byKey =
+                    core::findNodeByKey(root_, key)) {
+                found = byKey;
+                origin = core::absoluteOffset(root_, key);
+            }
+        }
+        return found;
+    }
+
     // Stores the root template and wires state/handlers/subscriptions. Both
     // constructors funnel through here.
     void initialize(core::Widget root) {
