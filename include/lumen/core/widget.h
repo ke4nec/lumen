@@ -86,6 +86,13 @@ struct Widget {
     TextStyle textStyle{};
     std::string placeholder{};
 
+    // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
+    // handler in the app's HandlerRegistry. `bindPrefix` preserves the
+    // literal part of a bound Text ("Count: " + value) across rebuilds.
+    std::string bind{};
+    std::string bindPrefix{};
+    std::string onClick{};
+
     // Explicit position inside a Stack parent. When set, it overrides
     // stackAlignment for this child.
     std::optional<Offset> stackPosition{};
@@ -214,7 +221,8 @@ inline Widget makeButton(std::string label, TextStyle style = {},
                          EdgeInsets margin = {}, float flex = 0.0F,
                          std::string key = {},
                          std::optional<float> width = std::nullopt,
-                         std::optional<float> height = std::nullopt) {
+                         std::optional<float> height = std::nullopt,
+                         std::string onClick = {}) {
     Widget widget;
     widget.type = WidgetType::Button;
     widget.text = std::move(label);
@@ -224,6 +232,7 @@ inline Widget makeButton(std::string label, TextStyle style = {},
     widget.key = std::move(key);
     widget.width = width;
     widget.height = height;
+    widget.onClick = std::move(onClick);
     return widget;
 }
 
@@ -232,7 +241,8 @@ inline Widget makeTextField(std::string value = {},
                             EdgeInsets margin = {}, float flex = 0.0F,
                             std::string key = {},
                             std::optional<float> width = std::nullopt,
-                            std::optional<float> height = std::nullopt) {
+                            std::optional<float> height = std::nullopt,
+                            std::string bind = {}) {
     Widget widget;
     widget.type = WidgetType::TextField;
     widget.text = std::move(value);
@@ -243,6 +253,7 @@ inline Widget makeTextField(std::string value = {},
     widget.key = std::move(key);
     widget.width = width;
     widget.height = height;
+    widget.bind = std::move(bind);
     return widget;
 }
 
@@ -255,6 +266,24 @@ inline Widget withFlex(Widget child, float flex) {
 // Sets an explicit offset for a Stack child.
 inline Widget withStackPosition(Widget child, Offset position) {
     child.stackPosition = position;
+    return child;
+}
+
+// Attaches a HandlerRegistry event name; bubbles from the hit target upward.
+inline Widget withOnClick(Widget child, std::string handler) {
+    child.onClick = std::move(handler);
+    return child;
+}
+
+// Attaches a StateStore key to any widget.
+inline Widget withBind(Widget child, std::string key) {
+    child.bind = std::move(key);
+    return child;
+}
+
+// Attaches an identity key; used for reuse, focus tracking and press state.
+inline Widget withKey(Widget child, std::string key) {
+    child.key = std::move(key);
     return child;
 }
 

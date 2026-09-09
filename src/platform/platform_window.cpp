@@ -3,7 +3,7 @@
 namespace lumen::platform {
 
 const char* platformStageName() {
-    return "stage1";
+    return "stage2";
 }
 
 }  // namespace lumen::platform

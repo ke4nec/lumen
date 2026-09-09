@@ -9,11 +9,12 @@
 namespace lumen::core {
 
 // Runtime instance of a Widget. Owns parent/child links and the dirty flag
-// used by invalidate. State subscriptions arrive in Stage 3; Stage 1 only
-// tracks structure reuse (type + key) and dirtiness.
+// used by invalidate. State subscriptions live in StateStore at the app
+// layer (plan §7); Element tracks structure reuse (type + key) and
+// dirtiness.
 //
 // UI-thread ownership: Element trees are confined to the UI thread. Callers
-// must clear the dirty flag after build/layout/paint (see clearDirty()).
+// must clear the dirty flag after build/layout/paint (see clearDirtyTree()).
 class Element {
   public:
     explicit Element(Widget widget, Element* parent = nullptr);
@@ -30,6 +31,9 @@ class Element {
 
     void markDirty();
     void clearDirty();
+    // Clears the dirty flag for this whole subtree; apps call it once the
+    // rebuilt tree has been laid out and painted.
+    void clearDirtyTree();
     [[nodiscard]] bool isDirty() const;
 
     [[nodiscard]] const Widget& widget() const;

@@ -4,6 +4,8 @@
 #include <cassert>
 #include <numeric>
 
+#include "lumen/core/utf8.h"
+
 namespace lumen::layout {
 namespace {
 
@@ -19,28 +21,6 @@ float clampFloat(float value, float low, float high) {
     return std::clamp(value, low, high);
 }
 
-// Counts Unicode code points so CJK/emoji text does not measure by UTF-8
-// bytes.
-std::size_t utf8Length(const std::string& text) {
-    std::size_t count = 0;
-    for (std::size_t i = 0; i < text.size();) {
-        const auto byte = static_cast<unsigned char>(text[i]);
-        std::size_t advance = 1;
-        if ((byte & 0x80U) == 0U) {
-            advance = 1;
-        } else if ((byte & 0xE0U) == 0xC0U) {
-            advance = 2;
-        } else if ((byte & 0xF0U) == 0xE0U) {
-            advance = 3;
-        } else if ((byte & 0xF8U) == 0xF0U) {
-            advance = 4;
-        }
-        i += advance;
-        ++count;
-    }
-    return count;
-}
-
 Size measureTextIntrinsic(const Widget& widget) {
     const float fontSize =
         widget.textStyle.fontSize > 0.0F ? widget.textStyle.fontSize : 14.0F;
@@ -48,7 +28,7 @@ Size measureTextIntrinsic(const Widget& widget) {
     const std::string& content =
         widget.text.empty() && !widget.placeholder.empty() ? widget.placeholder
                                                            : widget.text;
-    const auto glyphs = static_cast<float>(utf8Length(content));
+    const auto glyphs = static_cast<float>(core::utf8Length(content));
     return Size{glyphs * fontSize * 0.6F, lineHeight};
 }
 
@@ -81,6 +61,14 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size) {
     node.key = widget.key;
     node.offset = offset;
     node.size = size;
+    node.padding = widget.padding;
+    node.color = widget.color;
+    node.radius = widget.radius;
+    node.text = widget.text;
+    node.textStyle = widget.textStyle;
+    node.placeholder = widget.placeholder;
+    node.bind = widget.bind;
+    node.onClick = widget.onClick;
     return node;
 }
 
@@ -664,9 +652,22 @@ RenderNode layoutStack(const Widget& widget,
 
 }  // namespace
 
+void assignIdentities(core::RenderNode& node, const std::string& parentPath,
+                      std::size_t index) {
+    const std::string segment = node.key.empty()
+                                    ? "i:" + std::to_string(index)
+                                    : "k:" + node.key;
+    node.identity = parentPath + "/" + segment;
+    for (std::size_t i = 0; i < node.children.size(); ++i) {
+        assignIdentities(node.children[i], node.identity, i);
+    }
+}
+
 core::RenderNode LayoutEngine::layout(const core::Widget& widget,
-                                      const core::Constraints& constraints) {
-    return layoutSingle(widget, constraints);
+                                       const core::Constraints& constraints) {
+    core::RenderNode result = layoutSingle(widget, constraints);
+    assignIdentities(result, {}, 0);
+    return result;
 }
 
 }  // namespace lumen::layout

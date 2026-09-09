@@ -158,9 +158,9 @@ TEST_CASE("widget_type_helpers", "[element]") {
 }
 
 TEST_CASE("module_stage_names", "[element]") {
-    CHECK(std::string(lumen::render::rendererStageName()) == "stage1");
-    CHECK(std::string(lumen::platform::platformStageName()) == "stage1");
-    CHECK(std::string(lumen::dsl::dslStageName()) == "stage1");
+    CHECK(std::string(lumen::render::rendererStageName()) == "stage2");
+    CHECK(std::string(lumen::platform::platformStageName()) == "stage2");
+    CHECK(std::string(lumen::dsl::dslStageName()) == "stage3");
 }
 
 TEST_CASE("platform_event_defaults", "[element]") {

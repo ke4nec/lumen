@@ -1,5 +1,7 @@
 add_library(lumen-render STATIC
     renderer.cpp
+    cpu_renderer.cpp
+    painter.cpp
 )
 
 target_include_directories(lumen-render PUBLIC

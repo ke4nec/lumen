@@ -18,6 +18,13 @@ struct Offset {
     float x{0.0F};
     float y{0.0F};
 
+    friend Offset operator+(const Offset& a, const Offset& b) {
+        return Offset{a.x + b.x, a.y + b.y};
+    }
+    friend Offset operator-(const Offset& a, const Offset& b) {
+        return Offset{a.x - b.x, a.y - b.y};
+    }
+
     bool operator==(const Offset& other) const = default;
 };
 

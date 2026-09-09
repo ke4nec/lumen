@@ -30,6 +30,13 @@ void Element::clearDirty() {
     dirty_ = false;
 }
 
+void Element::clearDirtyTree() {
+    dirty_ = false;
+    for (auto& child : children_) {
+        child->clearDirtyTree();
+    }
+}
+
 bool Element::isDirty() const {
     return dirty_;
 }

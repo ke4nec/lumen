@@ -2,6 +2,9 @@ add_library(lumen-core STATIC
     widget.cpp
     element.cpp
     render_node.cpp
+    utf8.cpp
+    state.cpp
+    interaction.cpp
 )
 
 target_include_directories(lumen-core PUBLIC

@@ -37,7 +37,11 @@ class Renderer {
     virtual void endFrame() = 0;
 };
 
-// Stage identifier for the renderer module contract (Stage 1 baseline).
+// Stable 64-bit FNV-1a hash over the framebuffer bytes and dimensions; used
+// by headless integration tests (plan §9: 无窗口模式生成稳定 frame hash).
+[[nodiscard]] std::uint64_t frameHash(const PixelBuffer& buffer);
+
+// Stage identifier for the renderer module contract (Stage 2: CpuRenderer).
 [[nodiscard]] const char* rendererStageName();
 
 }  // namespace lumen::render

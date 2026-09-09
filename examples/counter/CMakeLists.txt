@@ -1,7 +1,14 @@
 add_executable(lumen-counter main.cpp)
 
 target_compile_features(lumen-counter PRIVATE cxx_std_20)
-target_link_libraries(lumen-counter PRIVATE SDL3::SDL3)
+target_link_libraries(lumen-counter PRIVATE
+    lumen-core
+    lumen-layout
+    lumen-render
+    lumen-platform
+    lumen-dsl
+    SDL3::SDL3
+)
 
 if(WIN32)
   # SDL3 builds as a shared library; keep the DLL next to the sample so it
