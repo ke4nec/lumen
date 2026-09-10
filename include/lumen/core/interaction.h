@@ -178,6 +178,7 @@ class InteractionController {
     text::TextSelection selection_{};
     bool composingActive_{false};
     text::TextSelection composing_{};
+    text::TextSelection selectionBeforeComposition_{};
     std::string composition_{};
 
     // Gesture state: press anchor and current pointer while held.

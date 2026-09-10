@@ -80,7 +80,8 @@ class ResourceManager {
         std::uint64_t staleCompletions{0};
     };
 
-    explicit ResourceManager(Config config = {});
+    ResourceManager();
+    explicit ResourceManager(Config config);
     ~ResourceManager();
 
     ResourceManager(const ResourceManager&) = delete;

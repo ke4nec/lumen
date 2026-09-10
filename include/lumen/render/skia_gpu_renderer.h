@@ -14,7 +14,7 @@ namespace lumen::render {
 // FBO 0 包装出的 SkSurface；endFrame flush 后交换。纹理、裁剪、透明度、
 // 文字与 surface resize 全部支持；Graphite 留待后续版本。
 //
-// 创建/设备初始化失败、上下文丢失时工厂返回 nullptr 或 isAlive() 变为
+// 创建/设备初始化失败、上下文丢失时工厂返回 nullptr 或 skiaGpuRendererAlive() 变为
 // false，应用保持状态切回 CPU 后端（UI 树与状态不丢失，plan §2.1）。
 
 struct SkiaGpuRendererDesc {
@@ -42,7 +42,8 @@ struct SkiaGpuRendererDesc {
 // Ganesh，随即销毁）。供应用在创建正式窗口前决定窗口标志。
 [[nodiscard]] bool probeSkiaGpuAvailable(std::string* diagnostics = nullptr);
 
-// 运行中上下文健康查询（device lost 检测的轻量入口）。
+// 最近一次 resetSurface/submit/endFrame 后的状态，所有致命错误均返回
+// false；具体原因见 stats().fallbackReason。非 Skia GPU 实例返回 false。
 [[nodiscard]] bool skiaGpuRendererAlive(const Renderer& renderer);
 
 }  // namespace lumen::render

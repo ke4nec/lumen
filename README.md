@@ -132,8 +132,15 @@ cmake --build build-gpu --config Release
 `--renderer gpu` 先无副作用探测（隐藏窗口上完整初始化 GL + Ganesh），
 成功则以 OpenGL 窗口 + `SkiaGpuRenderer` 运行；探测或初始化失败打印原因
 并自动回退 CPU，应用状态与 UI 树不丢失。纹理、裁剪、透明度、文字、
-surface resize 均已支持；上下文丢失（`gl-context-lost`）经
-`skiaGpuRendererAlive()` 暴露。Graphite 留待后续版本。
+surface resize 均已支持。surface 重建、上下文或交换失败会使
+`skiaGpuRendererAlive()` 返回 false；counter 随即释放 GPU 资源、重建 CPU
+窗口并通过软件 surface 呈现，保留应用状态、焦点与逻辑窗口大小。
+重建会取消旧输入法会话的预编辑并恢复原选区，已提交文本不丢失。
+软件窗口更新失败会报告错误并退出。Graphite 留待后续版本。
+
+软件回退需要原生窗口 framebuffer（Windows/X11 支持）。固定版本 SDL
+的 Wayland 驱动不提供该能力；Wayland 桌面需要 XWayland，并以
+`SDL_VIDEODRIVER=x11` 运行示例，否则回退会明确报错退出。
 
 ### 帧调度与异步资源（7D）
 
@@ -154,6 +161,7 @@ unload 以命令增量进入帧提交，GPU 设备重建后同 ImageId 重新上
 
 ```sh
 ./lumen-counter --diagnostics            # 后端/能力/DPI + 周期帧统计
+./lumen-counter --renderer gpu --diagnostics --frames 1  # 呈现一帧后正常退出
 lumen-scene-bench --frames 300 --json    # 1080p 固定场景基准报告
 ```
 
@@ -171,7 +179,11 @@ GPU 等待耗时、空闲轮询数。基准输出各阶段 p50/p95 耗时、堆�
 
 - CI（`.github/workflows/`）：Windows/Linux × {CPU-only, Skia 光栅,
   Skia GPU}；Linux GPU 经 Mesa llvmpipe 软件适配器作为强制门槛，硬件
-  GPU 为增强 smoke；Windows runner 无硬件 GL 时验证回退路径。
+  GPU 为增强 smoke；Windows/Linux 的 `counter_gpu_fallback` 测试使用 SDL
+  dummy 驱动强制探测失败，验证 CPU 呈现成功及正常退出。
+  Linux 安装 Xvfb 后还会运行 `counter_gpu_runtime_fallback` 和
+  `counter_software_present_failure`，分别注入持续 GL 交换失败和软件
+  窗口更新失败，验证回退成功及错误退出。
 - **GPU 初始化失败/回退 CPU**：查 `--diagnostics` 的
   `[diag] gpu probe failed (...)` 原因（GL 库加载、上下文创建、Ganesh
   初始化、字体管理器）；确认显卡驱动与 OpenGL ≥ 3.0。

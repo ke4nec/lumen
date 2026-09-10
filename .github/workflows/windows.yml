@@ -43,8 +43,8 @@ jobs:
       - name: Test (Release, incl. CPU/Skia consistency)
         run: ctest --test-dir build-skia --output-on-failure -C Release --timeout 120
 
-  # 增强 smoke：runner 无硬件 GL 时 GPU 探测必须干净失败并回退 CPU
-  #（gpu 测试自带该路径断言）；有 GPU 的自托管 runner 上走真实提交。
+  # counter_gpu_fallback 用 dummy 驱动强制探测失败，验证示例回退 CPU、
+  # 成功呈现一帧并退出；GPU 可用时，其他 smoke 额外验证真实提交。
   skia-gpu:
     runs-on: windows-2025
     steps:
@@ -58,5 +58,5 @@ jobs:
           -DLUMEN_ENABLE_GPU=ON
       - name: Build (Release)
         run: cmake --build build-gpu --config Release
-      - name: Test (GPU or verified fallback)
+      - name: Test (includes forced CPU fallback and presentation)
         run: ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180

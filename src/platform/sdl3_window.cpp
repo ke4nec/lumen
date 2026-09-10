@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <limits>
+#include <optional>
 #include <utility>
 
 #include <SDL3/SDL.h>
@@ -12,6 +14,30 @@
 
 namespace lumen::platform {
 namespace {
+
+SDL_Surface* softwareWindowSurface(SDL_Window* window) {
+    // SDL can otherwise implement even a window surface using GL textures.
+    // The hint is consulted on the first surface creation in a video session.
+    const char* hint = SDL_GetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION);
+    const std::optional<std::string> previous =
+        hint != nullptr ? std::optional<std::string>{hint} : std::nullopt;
+    SDL_SetHintWithPriority(SDL_HINT_FRAMEBUFFER_ACCELERATION, "0",
+                            SDL_HINT_OVERRIDE);
+    SDL_Surface* surface = SDL_GetWindowSurface(window);
+    if (previous.has_value()) {
+        SDL_SetHintWithPriority(SDL_HINT_FRAMEBUFFER_ACCELERATION,
+                                previous->c_str(), SDL_HINT_OVERRIDE);
+    } else {
+        SDL_ResetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION);
+    }
+    // An existing accelerated framebuffer in this video session cannot be
+    // converted by changing the hint. Reject it instead of claiming fallback.
+    if (SDL_GetRenderer(window) != nullptr) {
+        SDL_SetError("Software presentation requires a native window surface");
+        return nullptr;
+    }
+    return surface;
+}
 
 core::Key mapSdlKey(SDL_Keycode key) {
     switch (key) {
@@ -45,8 +71,10 @@ core::Key mapSdlKey(SDL_Keycode key) {
 
 class Sdl3Window final : public PlatformWindow {
   public:
-    explicit Sdl3Window(SDL_Window* window, SDL_Renderer* renderer)
-        : window_(window), renderer_(renderer) {}
+    explicit Sdl3Window(SDL_Window* window, SDL_Renderer* renderer,
+                        bool softwarePresentation)
+        : window_(window), renderer_(renderer),
+          softwarePresentation_(softwarePresentation) {}
 
     ~Sdl3Window() override {
         if (texture_ != nullptr) {
@@ -89,15 +117,42 @@ class Sdl3Window final : public PlatformWindow {
     }
 
     PresentResult present(const render::PixelBuffer& buffer) override {
-        if (renderer_ == nullptr) {
+        if (renderer_ == nullptr && !softwarePresentation_) {
             // OpenGL 窗口没有 SDL 呈现器；GPU 适配负责交换。
             return PresentResult::Rejected;
         }
         if (buffer.width <= 0 || buffer.height <= 0 ||
+            buffer.width > std::numeric_limits<int>::max() / 4 ||
             buffer.rgba.size() !=
                 static_cast<std::size_t>(buffer.width) *
                     static_cast<std::size_t>(buffer.height) * 4) {
             return PresentResult::Rejected;
+        }
+        if (softwarePresentation_) {
+            // Resize invalidates SDL's surface. Reacquire it each frame and
+            // propagate the native update result (SDL_RenderPresent discards
+            // backend failures in the pinned SDL version).
+            SDL_Surface* destination = softwareWindowSurface(window_);
+            if (destination == nullptr) {
+                std::fprintf(stderr, "SDL_GetWindowSurface failed: %s\n",
+                             SDL_GetError());
+                return PresentResult::Rejected;
+            }
+            const std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> source(
+                SDL_CreateSurfaceFrom(buffer.width, buffer.height,
+                    SDL_PIXELFORMAT_RGBA32,
+                    const_cast<std::uint8_t*>(buffer.rgba.data()), buffer.width * 4),
+                SDL_DestroySurface);
+            if (source == nullptr ||
+                !SDL_SetSurfaceBlendMode(source.get(), SDL_BLENDMODE_NONE) ||
+                !SDL_BlitSurfaceScaled(source.get(), nullptr, destination, nullptr,
+                                       SDL_SCALEMODE_NEAREST) ||
+                !SDL_UpdateWindowSurface(window_)) {
+                std::fprintf(stderr, "SDL software present failed: %s\n",
+                             SDL_GetError());
+                return PresentResult::Rejected;
+            }
+            return PresentResult::Ok;
         }
         if (texture_ == nullptr || textureWidth_ != buffer.width ||
             textureHeight_ != buffer.height) {
@@ -121,9 +176,12 @@ class Sdl3Window final : public PlatformWindow {
                          SDL_GetError());
             return PresentResult::Rejected;
         }
-        SDL_RenderClear(renderer_);
-        SDL_RenderTexture(renderer_, texture_, nullptr, nullptr);
-        SDL_RenderPresent(renderer_);
+        if (!SDL_RenderClear(renderer_) ||
+            !SDL_RenderTexture(renderer_, texture_, nullptr, nullptr) ||
+            !SDL_RenderPresent(renderer_)) {
+            std::fprintf(stderr, "SDL present failed: %s\n", SDL_GetError());
+            return PresentResult::Rejected;
+        }
         return PresentResult::Ok;
     }
 
@@ -148,6 +206,8 @@ class Sdl3Window final : public PlatformWindow {
     void setVSyncEnabled(bool enabled) override {
         if (renderer_ != nullptr) {
             SDL_SetRenderVSync(renderer_, enabled ? 1 : 0);
+        } else if (softwarePresentation_) {
+            SDL_SetWindowSurfaceVSync(window_, enabled ? 1 : 0);
         }
     }
 
@@ -337,6 +397,7 @@ class Sdl3Window final : public PlatformWindow {
 
     SDL_Window* window_{nullptr};
     SDL_Renderer* renderer_{nullptr};
+    bool softwarePresentation_{false};
     SDL_Texture* texture_{nullptr};
     int textureWidth_{0};
     int textureHeight_{0};
@@ -349,6 +410,10 @@ class Sdl3Window final : public PlatformWindow {
 }  // namespace
 
 std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
+    if (desc.opengl && desc.softwarePresentation) {
+        std::fprintf(stderr, "OpenGL and software presentation are exclusive\n");
+        return nullptr;
+    }
     // We translate the primary finger ourselves. Disable SDL's synthetic
     // mouse events so one touch cannot produce duplicate pointer events.
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
@@ -373,7 +438,15 @@ std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
         return nullptr;
     }
     SDL_Renderer* renderer = nullptr;
-    if (!desc.opengl) {
+    if (desc.softwarePresentation) {
+        if (softwareWindowSurface(window) == nullptr) {
+            std::fprintf(stderr, "SDL software surface creation failed: %s\n",
+                         SDL_GetError());
+            SDL_DestroyWindow(window);
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+            return nullptr;
+        }
+    } else if (!desc.opengl) {
         renderer = SDL_CreateRenderer(window, nullptr);
         if (renderer == nullptr) {
             std::fprintf(stderr, "SDL_CreateRenderer failed: %s\n",
@@ -383,7 +456,8 @@ std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
             return nullptr;
         }
     }
-    return std::make_unique<Sdl3Window>(window, renderer);
+    return std::make_unique<Sdl3Window>(window, renderer,
+                                       desc.softwarePresentation);
 }
 
 }  // namespace lumen::platform

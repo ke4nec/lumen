@@ -31,12 +31,6 @@ target_compile_features(lumen-render PUBLIC cxx_std_20)
 # stb_image 头文件（ResourceManager 解码用，仅实现侧可见）。
 target_include_directories(lumen-render PRIVATE ${stb_SOURCE_DIR})
 
-# GPU 适配需要 SDL3（GL 上下文与窗口交换）与系统 OpenGL（WGL/GLX）。
-if(LUMEN_ENABLE_GPU)
-    find_package(OpenGL REQUIRED)
-    target_link_libraries(lumen-render PRIVATE SDL3::SDL3 OpenGL::GL)
-endif()
-
 find_package(Threads REQUIRED)
 target_link_libraries(lumen-render PRIVATE Threads::Threads)
 
@@ -113,4 +107,11 @@ if(LUMEN_ENABLE_SKIA)
     else()
         target_link_libraries(lumen-render PRIVATE ${LUMEN_SKIA_LIBRARY})
     endif()
+endif()
+
+# Static Skia references WGL/GLX. Keep OpenGL after its archives so linkers
+# using --as-needed retain the GL libraries until those references resolve.
+if(LUMEN_ENABLE_GPU)
+    find_package(OpenGL REQUIRED)
+    target_link_libraries(lumen-render PRIVATE SDL3::SDL3 OpenGL::GL)
 endif()

@@ -590,6 +590,41 @@ TEST_CASE("ime_composition_flow_through_controller", "[text][interaction]") {
     CHECK(controller.composition().empty());
 }
 
+TEST_CASE("ime_cancel_restores_selection_after_preedit_updates",
+          "[text][interaction]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    store.set("f", "abcd");
+    Widget ui = makeContainer(
+        withKey(makeTextField("abcd", {}, {}, {}, 0.0F, "field"), "field"));
+    ui.children[0].bind = "f";
+    const RenderNode root = layoutOf(ui);
+    controller.pointerDown(root, centerOf(root, "field"));
+    controller.keyDown(Key::End);
+    controller.keyDown(Key::Left, kModifierShift);
+    controller.keyDown(Key::Left, kModifierShift);
+    REQUIRE(controller.selectionStart() == 2);
+    REQUIRE(controller.selectionEnd() == 4);
+    controller.setComposition("ni");
+    controller.setComposition("nihao");
+    SECTION("explicit cancellation") { controller.cancelComposition(); }
+    SECTION("native cancellation event") { controller.setComposition(""); }
+    SECTION("escape") { controller.keyDown(Key::Escape); }
+    CHECK_FALSE(controller.composingActive());
+    CHECK(controller.composition().empty());
+    CHECK(store.get("f") == "abcd");
+    CHECK(controller.selectionStart() == 2);
+    CHECK(controller.selectionEnd() == 4);
+    CHECK(controller.caretGraphemes() == 2);
+    controller.cancelComposition();
+    CHECK(controller.selectionStart() == 2);
+    CHECK(controller.selectionEnd() == 4);
+    controller.textInput("!");
+    CHECK(store.get("f") == "ab!");
+}
+
 // --- DSL 冻结属性 ---
 
 TEST_CASE("dsl_parses_frozen_text_attributes", "[text][dsl]") {

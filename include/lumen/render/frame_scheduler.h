@@ -57,7 +57,8 @@ class FrameScheduler {
     };
 
     // clock 为空时使用 RealtimeClock。
-    explicit FrameScheduler(Config config = {}, FrameClock* clock = nullptr);
+    FrameScheduler();
+    explicit FrameScheduler(Config config, FrameClock* clock = nullptr);
 
     FrameScheduler(const FrameScheduler&) = delete;
     FrameScheduler& operator=(const FrameScheduler&) = delete;

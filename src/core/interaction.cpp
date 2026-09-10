@@ -333,6 +333,10 @@ void InteractionController::textInput(const std::string& text) {
 }
 
 void InteractionController::setComposition(const std::string& preedit) {
+    if (preedit.empty()) {
+        cancelComposition();
+        return;
+    }
     // Composition previews the IME string without touching the document;
     // committing still arrives as textInput(). Ignore preedit while unfocused
     // so composition_ never lingers without a focused field.
@@ -342,6 +346,9 @@ void InteractionController::setComposition(const std::string& preedit) {
     }
     if (focusedReadOnly_) {
         return;
+    }
+    if (!composingActive_) {
+        selectionBeforeComposition_ = selection_;
     }
     const text::TextEditingValue next = buildValue().compose(preedit);
     composition_ = preedit;
@@ -366,12 +373,14 @@ void InteractionController::commitComposition(const std::string& text) {
 }
 
 void InteractionController::cancelComposition() {
-    if (focusedBind_.empty()) {
-        composition_.clear();
-        return;
+    if (composingActive_ && !focusedBind_.empty()) {
+        // buildValue() reconstructs the editing value for each event, so its
+        // internal saved selection does not survive a preedit update.
+        commitValue(text::TextEditingValue{store_.get(focusedBind_),
+                                           selectionBeforeComposition_});
     }
-    const text::TextEditingValue next = buildValue().cancelComposition();
-    commitValue(next);
+    composingActive_ = false;
+    composing_ = {};
     composition_.clear();
 }
 

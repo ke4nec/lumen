@@ -12,6 +12,8 @@ namespace {
 constexpr std::uint64_t kImageIdBase = 0x4000000000000000ULL;
 }
 
+ResourceManager::ResourceManager() : ResourceManager(Config{}) {}
+
 ResourceManager::ResourceManager(Config config) : config_(config) {
     if (config_.workerCount == 0) {
         config_.workerCount = 1;

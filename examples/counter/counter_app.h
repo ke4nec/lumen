@@ -299,6 +299,8 @@ class CounterApp {
         controller_.setComposition(text);
     }
 
+    void cancelComposition() { controller_.cancelComposition(); }
+
     void keyDown(core::Key key) {
         rebuildIfDirty();
         controller_.keyDown(root_, key);

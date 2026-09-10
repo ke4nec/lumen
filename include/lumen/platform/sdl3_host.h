@@ -49,7 +49,7 @@ class Sdl3ApplicationHost final : public ApplicationHost {
 
     struct WindowEntry {
         std::unique_ptr<PlatformWindow> window{};
-        std::unique_ptr<Sdl3TextInputSession> textInput{};
+        std::unique_ptr<TextInputSession> textInput{};
     };
 
     [[nodiscard]] WindowEntry* find(core::WindowId id);

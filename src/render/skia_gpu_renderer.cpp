@@ -103,6 +103,7 @@ class SkiaGpuRenderer final : public Renderer {
             fail(diagnostics, std::string("SDL_GL_LoadLibrary: ") + SDL_GetError());
             return;
         }
+        glLibraryLoaded_ = true;
         glContext_ = SDL_GL_CreateContext(window_);
         if (glContext_ == nullptr) {
             fail(diagnostics, std::string("SDL_GL_CreateContext: ") + SDL_GetError());
@@ -139,11 +140,18 @@ class SkiaGpuRenderer final : public Renderer {
     ~SkiaGpuRenderer() override {
         // GPU 对象只能在属主线程销毁（plan §3.3）；本类自创建起即归 UI
         // 线程所有。先释放 GPU 资源再拆上下文。
+        if (grContext_ != nullptr &&
+            !SDL_GL_MakeCurrent(window_, glContext_)) {
+            grContext_->abandonContext();
+        }
         images_.clear();
         surface_.reset();
         grContext_.reset();
         if (glContext_ != nullptr) {
             SDL_GL_DestroyContext(glContext_);
+        }
+        if (glLibraryLoaded_) {
+            SDL_GL_UnloadLibrary();
         }
     }
 
@@ -153,7 +161,7 @@ class SkiaGpuRenderer final : public Renderer {
     [[nodiscard]] bool isAlive() const { return alive_; }
 
     void setVSync(bool enabled) {
-        if (alive_) {
+        if (makeCurrent()) {
             SDL_GL_SetSwapInterval(enabled ? 1 : 0);
         }
     }
@@ -167,7 +175,7 @@ class SkiaGpuRenderer final : public Renderer {
     }
 
     void resetSurface(const RenderSurfaceDesc& desc) override {
-        if (!alive_) {
+        if (!makeCurrent()) {
             return;
         }
         // 尺寸/DPI/设备重建：丢弃旧 surface，下一帧按新尺寸重建。
@@ -201,9 +209,8 @@ class SkiaGpuRenderer final : public Renderer {
             replayCommand(canvas, command);
         }
         const auto flushStart = std::chrono::steady_clock::now();
-        grContext_->flushAndSubmit();
-        if (allowSwap_) {
-            SDL_GL_SwapWindow(window_);
+        if (!presentFrame()) {
+            return;
         }
         const auto end = std::chrono::steady_clock::now();
 
@@ -265,10 +272,7 @@ class SkiaGpuRenderer final : public Renderer {
         if (!alive_ || surface_ == nullptr) {
             return;
         }
-        grContext_->flushAndSubmit();
-        if (allowSwap_) {
-            SDL_GL_SwapWindow(window_);
-        }
+        (void)presentFrame();
     }
 
   private:
@@ -279,25 +283,61 @@ class SkiaGpuRenderer final : public Renderer {
 
     void fail(std::string* diagnostics, std::string message) {
         alive_ = false;
-        if (diagnostics != nullptr) {
-            *diagnostics = std::move(message);
+        stats_.fullFrameFallback = true;
+        stats_.fallbackReason = message;
+        if (grContext_ != nullptr) {
+            // Lost contexts must not receive GL calls during resource teardown.
+            grContext_->abandonContext();
         }
-        std::fprintf(stderr, "lumen skia-gpu: %s\n",
-                     diagnostics != nullptr ? diagnostics->c_str()
-                                            : "initialization failed");
+        if (diagnostics != nullptr) {
+            *diagnostics = message;
+        }
+        std::fprintf(stderr, "lumen skia-gpu: %s\n", message.c_str());
+    }
+
+    [[nodiscard]] bool makeCurrent() {
+        if (!alive_) {
+            return false;
+        }
+        if (!SDL_GL_MakeCurrent(window_, glContext_)) {
+            fail(nullptr, "gl-context-lost");
+            return false;
+        }
+        if (grContext_->abandoned()) {
+            fail(nullptr, "gpu-device-lost");
+            return false;
+        }
+        return true;
+    }
+
+    [[nodiscard]] bool presentFrame() {
+        if (!makeCurrent()) {
+            return false;
+        }
+        grContext_->flushAndSubmit();
+        if (grContext_->abandoned()) {
+            fail(nullptr, "gpu-device-lost");
+            return false;
+        }
+        if (allowSwap_ && !SDL_GL_SwapWindow(window_)) {
+            fail(nullptr, std::string("gl-swap-failed: ") + SDL_GetError());
+            return false;
+        }
+        return true;
     }
 
     [[nodiscard]] bool ensureSurface(int width, int height) {
-        if (!alive_) {
+        // Check even when reusing a surface: device loss need not coincide
+        // with a resize, and another renderer may have changed the context.
+        if (!makeCurrent()) {
             return false;
         }
         if (surface_ != nullptr && width_ == width && height_ == height) {
             return true;
         }
-        if (!SDL_GL_MakeCurrent(window_, glContext_)) {
-            // 上下文丢失：应用据 skiaGpuRendererAlive() 回退 CPU。
-            alive_ = false;
-            stats_.fallbackReason = "gl-context-lost";
+        if (width > grContext_->maxRenderTargetSize() ||
+            height > grContext_->maxRenderTargetSize()) {
+            fail(nullptr, "surface-size-exceeds-device-limit");
             return false;
         }
         GrGLFramebufferInfo framebuffer{};
@@ -309,8 +349,7 @@ class SkiaGpuRenderer final : public Renderer {
             grContext_.get(), target, kBottomLeft_GrSurfaceOrigin,
             kRGBA_8888_SkColorType, nullptr, nullptr);
         if (surface_ == nullptr) {
-            alive_ = false;
-            stats_.fallbackReason = "wrap-backend-rendertarget-failed";
+            fail(nullptr, "wrap-backend-rendertarget-failed");
             return false;
         }
         width_ = width;
@@ -483,13 +522,17 @@ class SkiaGpuRenderer final : public Renderer {
     float deviceScale_{1.0F};
     bool allowSwap_{true};
     bool alive_{false};
+    bool glLibraryLoaded_{false};
 };
 
 }  // namespace
 
 std::unique_ptr<Renderer> createSkiaGpuRenderer(const SkiaGpuRendererDesc& desc,
                                                 std::string* diagnostics) {
-    if (desc.sdlWindow == nullptr ||
+    if (diagnostics != nullptr) {
+        diagnostics->clear();
+    }
+    if (desc.sdlWindow == nullptr || desc.windowSystem == nullptr ||
         std::string(desc.windowSystem) != "sdl3") {
         if (diagnostics != nullptr) {
             *diagnostics = "unsupported native surface (expected sdl3 window)";
@@ -510,6 +553,12 @@ std::unique_ptr<Renderer> createSkiaGpuRenderer(const SkiaGpuRendererDesc& desc,
     surface.deviceScale = desc.deviceScale;
     surface.vsync = desc.vsync;
     renderer->resetSurface(surface);
+    if (!renderer->isAlive()) {
+        if (diagnostics != nullptr) {
+            *diagnostics = renderer->stats().fallbackReason;
+        }
+        return nullptr;
+    }
     return renderer;
 }
 
@@ -532,8 +581,12 @@ bool probeSkiaGpuAvailable(std::string* diagnostics) {
     }
     bool available = false;
     {
-        SkiaGpuRenderer probe(window, core::Color{}, diagnostics);
-        available = probe.isAlive();
+        SkiaGpuRendererDesc desc;
+        desc.sdlWindow = window;
+        desc.widthPixels = 64;
+        desc.heightPixels = 64;
+        desc.allowSwap = false;
+        available = createSkiaGpuRenderer(desc, diagnostics) != nullptr;
     }
     SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -541,8 +594,8 @@ bool probeSkiaGpuAvailable(std::string* diagnostics) {
 }
 
 bool skiaGpuRendererAlive(const Renderer& renderer) {
-    return renderer.capabilities().gpu &&
-           renderer.stats().fallbackReason != "gl-context-lost";
+    const auto* gpu = dynamic_cast<const SkiaGpuRenderer*>(&renderer);
+    return gpu != nullptr && gpu->isAlive();
 }
 
 }  // namespace lumen::render

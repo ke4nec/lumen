@@ -10,6 +10,7 @@
 // fallback events (阶段7E).
 
 #include <algorithm>
+#include <charconv>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -25,6 +26,7 @@
 #include "lumen/dsl/text_dsl.h"
 #include "lumen/platform/sdl3_window.h"
 #include "lumen/render/frame_scheduler.h"
+#include "renderer_fallback.h"
 
 #ifdef LUMEN_HAVE_SKIA
 #include "lumen/render/skia_renderer.h"
@@ -44,6 +46,8 @@ struct Options {
     bool headless{false};
     bool watch{false};
     bool diagnostics{false};
+    // Windowed smoke/measurement: present this many frames, then exit.
+    std::uint64_t maxFrames{0};
     std::optional<std::string> dslPath{};
     std::string renderer{"cpu"};
 };
@@ -56,6 +60,20 @@ Options parseOptions(int argc, char** argv) {
             options.headless = true;
         } else if (flag == "--diagnostics") {
             options.diagnostics = true;
+        } else if (flag == "--frames") {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "--frames requires a positive integer\n");
+                std::exit(2);
+            }
+            const std::string value = argv[++i];
+            const auto result = std::from_chars(
+                value.data(), value.data() + value.size(), options.maxFrames);
+            if (result.ec != std::errc{} ||
+                result.ptr != value.data() + value.size() ||
+                options.maxFrames == 0) {
+                std::fprintf(stderr, "--frames requires a positive integer\n");
+                std::exit(2);
+            }
         } else if (flag == "--watch") {
             options.watch = true;
             options.dslPath = "counter.lumen";
@@ -234,14 +252,23 @@ int runWindowed(CounterApp& app, const std::string& rendererName,
 #ifdef LUMEN_HAVE_GPU
     desc.opengl = wantGpu && probeGpu;
 #endif
+    desc.softwarePresentation = wantGpu && !desc.opengl;
     auto window = lumen::platform::createSdl3Window(desc);
+#ifdef LUMEN_HAVE_GPU
+    if (window == nullptr && desc.opengl) {
+        std::printf("[diag] gpu window creation failed — falling back to cpu\n");
+        desc.opengl = false;
+        desc.softwarePresentation = true;
+        window = lumen::platform::createSdl3Window(desc);
+    }
+#endif
     if (window == nullptr) {
         return 1;
     }
 
     std::unique_ptr<lumen::render::Renderer> gpuRenderer;
 #ifdef LUMEN_HAVE_GPU
-    if (wantGpu && probeGpu) {
+    if (desc.opengl) {
         const auto surface = window->nativeSurface();
         lumen::render::SkiaGpuRendererDesc gpuDesc;
         gpuDesc.sdlWindow = surface.nativeWindow;
@@ -259,10 +286,8 @@ int runWindowed(CounterApp& app, const std::string& rendererName,
             // 探测通过但正式窗口初始化失败：换普通窗口 + CPU。
             std::printf("[diag] gpu init failed (%s) — falling back to cpu\n",
                         gpuDiagnostics.c_str());
-            window.reset();
-            desc.opengl = false;
-            window = lumen::platform::createSdl3Window(desc);
-            if (window == nullptr) {
+            if (!lumen::examples::recreateCpuWindow(app, gpuRenderer, window,
+                                                    desc)) {
                 return 1;
             }
         }
@@ -401,7 +426,26 @@ int runWindowed(CounterApp& app, const std::string& rendererName,
         window->setTextInputEnabled(app.wantsTextInput());
 
         if (scheduler.shouldSubmitFrame()) {
-            app.renderFrame();
+            app.renderFrame(options.maxFrames != 0);
+#ifdef LUMEN_HAVE_GPU
+            if (gpuActive &&
+                !lumen::render::skiaGpuRendererAlive(*gpuRenderer)) {
+                std::printf("[diag] gpu failed (%s) — falling back to cpu\n",
+                            gpuRenderer->stats().fallbackReason.c_str());
+                if (!lumen::examples::recreateCpuWindow(app, gpuRenderer,
+                                                        window, desc)) {
+                    return 1;
+                }
+                gpuActive = false;
+                scheduler.setWindowVisible(window->isVisible());
+                // The failed GPU submission produced no frame. Repaint and
+                // present through CPU before counting this turn as submitted.
+                app.renderFrame(true);
+                if (options.diagnostics) {
+                    printStartupDiagnostics(app.capabilities(), *window);
+                }
+            }
+#endif
             if (app.wantsTextInput()) {
                 // Keep the IME candidate window anchored to the focused
                 // field. Required on Linux (IBus/Fcitx); harmless elsewhere.
@@ -409,14 +453,25 @@ int runWindowed(CounterApp& app, const std::string& rendererName,
             }
             if (!gpuActive) {
 #ifdef LUMEN_HAVE_SKIA
-                window->present(skia.has_value() ? skia->pixels()
-                                                 : app.pixels());
+                const auto result = window->present(
+                    skia.has_value() ? skia->pixels() : app.pixels());
 #else
-                window->present(app.pixels());
+                const auto result = window->present(app.pixels());
 #endif
+                if (result != lumen::platform::PresentResult::Ok) {
+                    std::fprintf(stderr, "CPU present failed\n");
+                    return 1;
+                }
             }
             // GPU 路径的交换已在 submit/endFrame 完成。
             scheduler.markFrameSubmitted();
+            if (options.maxFrames != 0) {
+                if (scheduler.submittedFrames() >= options.maxFrames) {
+                    running = false;
+                } else {
+                    scheduler.requestFrame(lumen::render::FrameReason::Explicit);
+                }
+            }
 
             if (options.diagnostics &&
                 SDL_GetTicks() - lastDiagPrint >= 2000) {
@@ -427,6 +482,9 @@ int runWindowed(CounterApp& app, const std::string& rendererName,
             }
         }
 
+        if (!running) {
+            break;
+        }
         // 空闲等待：有 deadline 就等到 deadline，否则最多等一个热重载
         // 轮询周期；任何输入事件立刻唤醒。
         const auto waitMs = scheduler.msUntilNextFrame();

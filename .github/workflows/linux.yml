@@ -110,5 +110,7 @@ jobs:
         run: xvfb-run -a ctest --test-dir build-gpu --output-on-failure -C Release --timeout 120
       - name: Windowed GPU smoke (Xvfb + llvmpipe)
         run: >
-          xvfb-run -a timeout 5 ./build-gpu/examples/counter/lumen-counter
-          --renderer gpu --diagnostics || test $? -eq 124
+          xvfb-run -a cmake
+          -DCOUNTER=${{ github.workspace }}/build-gpu/examples/counter/lumen-counter
+          -DEXPECTED_BACKEND=skia-gpu
+          -P tests/counter_gpu_smoke.cmake

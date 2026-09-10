@@ -8,6 +8,7 @@ set(LUMEN_TEST_SOURCES
     resource_manager_tests.cpp
     interaction_tests.cpp
     counter_integration_tests.cpp
+    counter_fallback_tests.cpp
     dsl_tests.cpp
     damage_tests.cpp
     tween_tests.cpp
@@ -50,13 +51,9 @@ target_link_libraries(lumen-tests PRIVATE
     lumen-accessibility
     lumen-platform
     lumen-dsl
+    SDL3::SDL3
     Catch2::Catch2WithMain
 )
-
-# GPU smoke 直接调用 SDL 建隐藏 GL 窗口。
-if(LUMEN_ENABLE_GPU)
-    target_link_libraries(lumen-tests PRIVATE SDL3::SDL3)
-endif()
 
 target_compile_features(lumen-tests PRIVATE cxx_std_20)
 
@@ -87,3 +84,13 @@ include(Catch)
 # Tests run next to the binary so copied assets (counter.lumen, SDL3.dll)
 # resolve by name.
 catch_discover_tests(lumen-tests WORKING_DIRECTORY $<TARGET_FILE_DIR:lumen-tests>)
+
+if(LUMEN_ENABLE_GPU AND LUMEN_BUILD_EXAMPLES AND
+   CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_library(lumen-gpu-present-failure SHARED gpu_present_failure.cpp)
+    target_link_libraries(lumen-gpu-present-failure PRIVATE SDL3::SDL3)
+    add_library(lumen-software-present-failure SHARED gpu_present_failure.cpp)
+    target_compile_definitions(lumen-software-present-failure PRIVATE
+        LUMEN_TEST_FAIL_SOFTWARE_PRESENT=1)
+    target_link_libraries(lumen-software-present-failure PRIVATE SDL3::SDL3)
+endif()

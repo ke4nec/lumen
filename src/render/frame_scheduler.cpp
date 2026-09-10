@@ -18,6 +18,8 @@ std::uint64_t RealtimeClock::nowMs() const {
             .count());
 }
 
+FrameScheduler::FrameScheduler() : FrameScheduler(Config{}) {}
+
 FrameScheduler::FrameScheduler(Config config, FrameClock* clock)
     : config_(config), clock_(clock) {
     lastSubmitMs_ = now();

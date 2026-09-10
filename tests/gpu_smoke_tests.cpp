@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_message.hpp>
 
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -38,6 +39,14 @@ Widget sampleScene() {
     return page;
 }
 
+// Keep SDL alive until after the renderer and its window are destroyed, even
+// when a REQUIRE aborts a test. CTest runs GPU tests in separate processes.
+struct VideoSession {
+    ~VideoSession() { SDL_QuitSubSystem(SDL_INIT_VIDEO); }
+};
+
+using TestWindow = std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)>;
+
 }  // namespace
 
 TEST_CASE("gpu_probe_reports_availability_with_diagnostics", "[gpu]") {
@@ -55,17 +64,18 @@ TEST_CASE("gpu_renderer_submits_frame_or_reports_fallback", "[gpu]") {
     std::string diagnostics;
     if (!lumen::render::probeSkiaGpuAvailable(&diagnostics)) {
         INFO("skipping: no GPU (" << diagnostics << ")");
-        SUCCEED("gpu unavailable — fallback path covered by cpu tests");
-        return;
+        SKIP("GPU unavailable; counter_gpu_fallback exercises CPU fallback");
     }
 
     REQUIRE(SDL_Init(SDL_INIT_VIDEO));
-    SDL_Window* window = SDL_CreateWindow(
-        "lumen-gpu-test", 128, 96, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow(
+        "lumen-gpu-test", 128, 96, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN),
+        SDL_DestroyWindow);
     REQUIRE(window != nullptr);
 
     lumen::render::SkiaGpuRendererDesc desc;
-    desc.sdlWindow = window;
+    desc.sdlWindow = window.get();
     desc.widthPixels = 128;
     desc.heightPixels = 96;
     // 隐藏窗口：交换在部分驱动上会阻塞，提交止步于 flush（desc 语义）。
@@ -89,10 +99,24 @@ TEST_CASE("gpu_renderer_submits_frame_or_reports_fallback", "[gpu]") {
     CHECK(stats.commandCount > 0);
     CHECK(lumen::render::skiaGpuRendererAlive(*renderer));
 
+    // Reusing the same surface must still restore the renderer's GL context.
+    const auto context = SDL_GL_GetCurrentContext();
+    REQUIRE(SDL_GL_MakeCurrent(nullptr, nullptr));
+    info.damage = lumen::core::Rect::fromXYWH(0, 0, 64, 48);
+    info.preservePrevious = true;
+    renderer->submit(recordScene(LayoutEngine::layout(
+                         sampleScene(), Constraints::tight(info.viewport))), info);
+    CHECK(SDL_GL_GetCurrentContext() == context);
+    CHECK(renderer->stats().framesSubmitted == 2);
+    CHECK(renderer->stats().fullFrameFallback);
+    CHECK(lumen::render::skiaGpuRendererAlive(*renderer));
+
     // resize → resetSurface → 再提交一帧（FrameInfo 视口与 surface 尺寸
     // 保持一致：包装的 FBO 尺寸必须匹配窗口实际后备缓冲）。
     lumen::render::RenderSurfaceDesc surface;
-    surface.nativeWindow = window;
+    REQUIRE(SDL_SetWindowSize(window.get(), 256, 192));
+    REQUIRE(SDL_SyncWindow(window.get()));
+    surface.nativeWindow = window.get();
     surface.windowSystem = "sdl3";
     surface.widthPixels = 256;
     surface.heightPixels = 192;
@@ -102,12 +126,71 @@ TEST_CASE("gpu_renderer_submits_frame_or_reports_fallback", "[gpu]") {
     renderer->submit(recordScene(LayoutEngine::layout(
                          sampleScene(), Constraints::tight(Size{256.0F, 192.0F}))),
                      resized);
-    CHECK(renderer->stats().framesSubmitted == 2);
+    CHECK(renderer->stats().framesSubmitted == 3);
     CHECK(lumen::render::skiaGpuRendererAlive(*renderer));
+}
 
-    // 销毁顺序：先释放渲染器（GL 上下文与 GPU 资源），再销毁窗口与
-    // 视频子系统——存活上下文上销毁窗口会阻塞部分驱动。
-    renderer.reset();
-    SDL_DestroyWindow(window);
-    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+TEST_CASE("gpu_factory_rejects_failed_surface_and_allows_retry", "[gpu]") {
+    std::string diagnostics;
+    if (!lumen::render::probeSkiaGpuAvailable(&diagnostics)) {
+        SKIP("GPU unavailable: " << diagnostics);
+    }
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow(
+        "lumen-gpu-init-failure", 128, 96, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN),
+        SDL_DestroyWindow);
+    REQUIRE(window != nullptr);
+    lumen::render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    // Exceed every device's render-target limit without allocating a large
+    // window or depending on a particular driver's out-of-memory behavior.
+    desc.widthPixels = std::numeric_limits<int>::max();
+    desc.heightPixels = 96;
+    desc.allowSwap = false;
+    auto renderer = lumen::render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer == nullptr);
+    CHECK(diagnostics == "surface-size-exceeds-device-limit");
+
+    desc.widthPixels = 128;
+    renderer = lumen::render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer != nullptr);
+    CHECK(diagnostics.empty());
+    CHECK(lumen::render::skiaGpuRendererAlive(*renderer));
+}
+
+TEST_CASE("gpu_surface_failure_marks_renderer_dead_and_stops_submissions", "[gpu]") {
+    std::string diagnostics;
+    if (!lumen::render::probeSkiaGpuAvailable(&diagnostics)) {
+        SKIP("GPU unavailable: " << diagnostics);
+    }
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow(
+        "lumen-gpu-runtime-failure", 128, 96, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN),
+        SDL_DestroyWindow);
+    REQUIRE(window != nullptr);
+    lumen::render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    desc.widthPixels = 128;
+    desc.heightPixels = 96;
+    desc.allowSwap = false;
+    auto renderer = lumen::render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer != nullptr);
+    FrameInfo info;
+    info.viewport = Size{128.0F, 96.0F};
+    const auto commands = recordScene(LayoutEngine::layout(
+        sampleScene(), Constraints::tight(info.viewport)));
+    renderer->submit(commands, info);
+    REQUIRE(renderer->stats().framesSubmitted == 1);
+
+    lumen::render::RenderSurfaceDesc surface;
+    surface.widthPixels = std::numeric_limits<int>::max();
+    surface.heightPixels = 96;
+    renderer->resetSurface(surface);
+    CHECK_FALSE(lumen::render::skiaGpuRendererAlive(*renderer));
+    CHECK(renderer->stats().fallbackReason == "surface-size-exceeds-device-limit");
+    renderer->submit(commands, info);
+    CHECK(renderer->stats().framesSubmitted == 1);
+    CHECK_FALSE(lumen::render::skiaGpuRendererAlive(*renderer));
 }
