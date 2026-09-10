@@ -1,5 +1,6 @@
 set(LUMEN_RENDER_SOURCES
     renderer.cpp
+    render_commands.cpp
     cpu_renderer.cpp
     placeholder_font.cpp
     painter.cpp

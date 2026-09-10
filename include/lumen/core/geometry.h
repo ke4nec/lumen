@@ -41,14 +41,37 @@ struct Rect {
     float right() const { return origin.x + size.width; }
     float bottom() const { return origin.y + size.height; }
 
-    // Half-open containment: [left, right) x [top, bottom).
-    // Used by hit testing in Stage 3; edge pixels belong to one node only.
-    bool contains(Offset point) const {
-        return point.x >= left() && point.x < right() && point.y >= top() &&
-               point.y < bottom();
-    }
+        // Half-open containment: [left, right) x [top, bottom).
+        // Used by hit testing in Stage 3; edge pixels belong to one node only.
+        bool contains(Offset point) const {
+            return point.x >= left() && point.x < right() && point.y >= top() &&
+                   point.y < bottom();
+        }
 
-    bool operator==(const Rect& other) const = default;
+        // True when the two half-open areas overlap (v0.2 阶段7B: 命令与
+        // damage 的相交测试)。
+        [[nodiscard]] bool intersects(const Rect& other) const {
+            return left() < other.right() && other.left() < right() &&
+                   top() < other.bottom() && other.top() < bottom();
+        }
+
+        // Smallest rect covering both areas; empty inputs are ignored so the
+        // union with an empty rect stays empty.
+        [[nodiscard]] Rect uniteWith(const Rect& other) const {
+            if (size.width <= 0.0F || size.height <= 0.0F) {
+                return other;
+            }
+            if (other.size.width <= 0.0F || other.size.height <= 0.0F) {
+                return *this;
+            }
+            const float x0 = std::min(left(), other.left());
+            const float y0 = std::min(top(), other.top());
+            const float x1 = std::max(right(), other.right());
+            const float y1 = std::max(bottom(), other.bottom());
+            return Rect{Offset{x0, y0}, Size{x1 - x0, y1 - y0}};
+        }
+
+        bool operator==(const Rect& other) const = default;
 };
 
 struct EdgeInsets {

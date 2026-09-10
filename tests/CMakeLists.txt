@@ -3,6 +3,7 @@ set(LUMEN_TEST_SOURCES
     layout_tests.cpp
     element_tests.cpp
     render_tests.cpp
+    render_command_tests.cpp
     interaction_tests.cpp
     counter_integration_tests.cpp
     dsl_tests.cpp

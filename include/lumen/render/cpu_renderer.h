@@ -2,6 +2,7 @@
 
 #include <map>
 
+#include "lumen/render/render_commands.h"
 #include "lumen/render/renderer.h"
 
 namespace lumen::render {
@@ -48,6 +49,13 @@ class CpuRenderer final : public Renderer {
     void drawText(TextRun run, core::TextStyle style) override;
     void drawImage(ImageId id, core::Rect destination) override;
     void endFrame() override;
+
+    // --- v0.2 命令路径（阶段7B）---
+    // 原生 submit：damage + preserve 请求走 Preserve 帧模式并按命令
+    // bounds 裁剪掉 damage 外的绘制命令；无上一帧时退回全帧并记录原因。
+    [[nodiscard]] RendererCapabilities capabilities() const override;
+    void submit(const RenderCommandList& commands,
+                const FrameInfo& info) override;
 
   private:
     struct ClipRects {

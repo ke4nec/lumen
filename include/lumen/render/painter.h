@@ -4,6 +4,7 @@
 #include <string>
 
 #include "lumen/core/render_node.h"
+#include "lumen/render/render_commands.h"
 #include "lumen/render/renderer.h"
 
 namespace lumen::render {
@@ -29,5 +30,11 @@ struct PaintOptions {
 // defaults so the CPU backend alone yields a presentable UI.
 void paintScene(Renderer& renderer, const core::RenderNode& root,
                 const PaintOptions& options = {});
+
+// v0.2 阶段7B: 同一个 walker 只录制命令（plan §3.1: Painter 只负责把
+// RenderNode 转换为命令）。命令带 damage 裁剪所需的节点 bounds；文本
+// 命令的 bounds 是其所在裁剪区（文本本身被裁剪到该区域）。
+[[nodiscard]] RenderCommandList recordScene(const core::RenderNode& root,
+                                            const PaintOptions& options = {});
 
 }  // namespace lumen::render

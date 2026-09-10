@@ -100,13 +100,15 @@ constexpr float kViewportWidth = 1920.0F;
 constexpr float kViewportHeight = 1080.0F;
 
 struct BenchScene {
+    // One card mutates per frame (frame % total): realistic partial damage.
     static Widget card(int index, int frame) {
+        const bool active = index == frame % (kGridColumns * kGridRows);
         char key[32];
         std::snprintf(key, sizeof(key), "card-%d", index);
         char label[48];
-        std::snprintf(label, sizeof(label), "Card %d v%d", index, frame);
+        std::snprintf(label, sizeof(label), "Card %d v%d", index, active ? frame : 0);
         char value[48];
-        std::snprintf(value, sizeof(value), "%d items", index * 7 + frame % 13);
+        std::snprintf(value, sizeof(value), "%d items", index * 7 + (active ? frame % 13 : 0));
 
         Widget text;
         text.type = WidgetType::Text;
@@ -296,20 +298,20 @@ class BenchApp {
             const auto bounds = lumen::core::damageBounds(damage,
                                                           Size{kViewportWidth, kViewportHeight});
             const bool partial = damageValid && bounds.has_value();
+            // v0.2 阶段7B 命令路径：录制一帧命令并按 damage 提交。
+            lumen::render::RenderCommandList commands =
+                lumen::render::recordScene(fresh, {});
+            lumen::render::FrameInfo info;
+            info.viewport = Size{kViewportWidth, kViewportHeight};
+            info.frameIndex = static_cast<std::uint64_t>(frame);
             if (partial) {
-                renderer_.beginFrame(Size{kViewportWidth, kViewportHeight},
-                                     lumen::render::CpuRenderer::FrameMode::Preserve,
-                                     *bounds);
-                renderer_.save();
-                renderer_.clipRect(*bounds);
-                lumen::render::paintScene(renderer_, fresh, {});
-                renderer_.restore();
+                info.damage = bounds;
+                info.preservePrevious = true;
                 result.partial = true;
-            } else {
-                renderer_.beginFrame(Size{kViewportWidth, kViewportHeight});
-                lumen::render::paintScene(renderer_, fresh, {});
             }
-            renderer_.endFrame();
+            renderer_.submit(commands, info);
+            commandCount_ = renderer_.stats().commandCount;
+            culledCount_ = renderer_.stats().culledCommands;
             paint_ = AllocSnapshot{}.elapsedSince(start);
         }
         element_.clearDirtyTree();
@@ -323,12 +325,14 @@ class BenchApp {
     [[nodiscard]] const PhaseSample& reconcileSample() const { return reconcile_; }
     [[nodiscard]] const PhaseSample& layoutSample() const { return layout_; }
     [[nodiscard]] const PhaseSample& paintSample() const { return paint_; }
+    [[nodiscard]] std::uint64_t commandCount() const { return commandCount_; }
+    [[nodiscard]] std::uint64_t culledCount() const { return culledCount_; }
 
   private:
     void paintFull(const RenderNode& root) {
-        renderer_.beginFrame(Size{kViewportWidth, kViewportHeight});
-        lumen::render::paintScene(renderer_, root, {});
-        renderer_.endFrame();
+        lumen::render::FrameInfo info;
+        info.viewport = Size{kViewportWidth, kViewportHeight};
+        renderer_.submit(lumen::render::recordScene(root, {}), info);
     }
 
     static std::size_t countNodes(const RenderNode& node) {
@@ -346,48 +350,11 @@ class BenchApp {
     PhaseSample reconcile_{};
     PhaseSample layout_{};
     PhaseSample paint_{};
+    std::uint64_t commandCount_{0};
+    std::uint64_t culledCount_{0};
 };
 
 // --- Report -----------------------------------------------------------------------
-
-// Counts paint operations flowing into the renderer so the report shows the
-// per-frame draw-call load (stage 7B replaces this with the recorded command
-// count).
-class CountingRenderer final : public lumen::render::Renderer {
-  public:
-    explicit CountingRenderer(lumen::render::Renderer& target) : target_(target) {}
-    void beginFrame(Size viewport) override { target_.beginFrame(viewport); }
-    void save() override {
-        ++saves_;
-        target_.save();
-    }
-    void restore() override { target_.restore(); }
-    void clipRect(lumen::core::Rect rect) override {
-        ++clips_;
-        target_.clipRect(rect);
-    }
-    void drawRect(lumen::core::Rect rect, Color color,
-                  CornerRadius radius) override {
-        ++drawCalls_;
-        target_.drawRect(rect, color, radius);
-    }
-    void drawText(lumen::render::TextRun run, lumen::core::TextStyle style) override {
-        ++drawCalls_;
-        target_.drawText(std::move(run), style);
-    }
-    void drawImage(lumen::render::ImageId id, lumen::core::Rect destination) override {
-        ++drawCalls_;
-        target_.drawImage(id, destination);
-    }
-    void endFrame() override { target_.endFrame(); }
-    [[nodiscard]] std::size_t drawCalls() const { return drawCalls_; }
-
-  private:
-    lumen::render::Renderer& target_;
-    std::size_t saves_{0};
-    std::size_t clips_{0};
-    std::size_t drawCalls_{0};
-};
 
 struct Options {
     int warmupFrames{30};
@@ -417,12 +384,14 @@ Options parseOptions(int argc, char** argv) {
 const char* kPhaseNames[] = {"reconcile", "layout", "paint"};
 
 void reportText(const Options& options, const std::map<std::string, PhaseStats>& phases,
-                std::uint64_t finalHash, std::size_t nodeCount, std::size_t drawCalls,
+                std::uint64_t finalHash, std::size_t nodeCount,
+                std::uint64_t commandCount, std::uint64_t culledCount,
                 int partialFrames) {
-    std::printf("lumen-scene-bench (v0.2 stage 7A CPU baseline)\n");
-    std::printf("viewport: %.0fx%.0f  cards: %dx%d  nodes: %zu  draw-calls/frame: %zu\n",
+    std::printf("lumen-scene-bench (v0.2 stage 7A CPU baseline, 7B command path)\n");
+    std::printf("viewport: %.0fx%.0f  cards: %dx%d  nodes: %zu  commands/frame: %llu  culled/partial-frame: %llu\n",
                 kViewportWidth, kViewportHeight, kGridColumns, kGridRows, nodeCount,
-                drawCalls);
+                static_cast<unsigned long long>(commandCount),
+                static_cast<unsigned long long>(culledCount));
     std::printf("warmup: %d  frames: %d  partial-repaint frames: %d\n",
                 options.warmupFrames, options.measuredFrames, partialFrames);
     for (const auto& [name, stats] : phases) {
@@ -435,7 +404,8 @@ void reportText(const Options& options, const std::map<std::string, PhaseStats>&
 }
 
 void reportJson(const Options& options, const std::map<std::string, PhaseStats>& phases,
-                std::uint64_t finalHash, std::size_t nodeCount, std::size_t drawCalls,
+                std::uint64_t finalHash, std::size_t nodeCount,
+                std::uint64_t commandCount, std::uint64_t culledCount,
                 int partialFrames) {
     std::printf("{\n");
     std::printf("  \"benchmark\": \"lumen-scene-bench\",\n");
@@ -443,7 +413,10 @@ void reportJson(const Options& options, const std::map<std::string, PhaseStats>&
     std::printf("  \"viewport\": [%.0f, %.0f],\n", kViewportWidth, kViewportHeight);
     std::printf("  \"cards\": [%d, %d],\n", kGridColumns, kGridRows);
     std::printf("  \"nodes\": %zu,\n", nodeCount);
-    std::printf("  \"draw_calls\": %zu,\n", drawCalls);
+    std::printf("  \"commands_per_frame\": %llu,\n",
+                static_cast<unsigned long long>(commandCount));
+    std::printf("  \"culled_commands\": %llu,\n",
+                static_cast<unsigned long long>(culledCount));
     std::printf("  \"warmup_frames\": %d,\n", options.warmupFrames);
     std::printf("  \"measured_frames\": %d,\n", options.measuredFrames);
     std::printf("  \"partial_repaint_frames\": %d,\n", partialFrames);
@@ -497,25 +470,12 @@ int main(int argc, char** argv) {
     phases["layout"] = summarize(layoutSamples);
     phases["paint"] = summarize(paintSamples);
 
-    // Draw calls per frame: replay one full frame through the counting
-    // decorator (same scene as frame 0; outside the timed region above).
-    std::size_t drawCalls = 0;
-    {
-        Element probe(BenchScene::root(0));
-        const RenderNode fresh = lumen::layout::LayoutEngine::layout(
-            probe.widget(), Constraints::tight(Size{kViewportWidth, kViewportHeight}));
-        lumen::render::CpuRenderer renderer{1.0F};
-        CountingRenderer counter{renderer};
-        renderer.beginFrame(Size{kViewportWidth, kViewportHeight});
-        lumen::render::paintScene(counter, fresh, {});
-        renderer.endFrame();
-        drawCalls = counter.drawCalls();
-    }
-
     if (options.json) {
-        reportJson(options, phases, finalHash, nodeCount, drawCalls, partialFrames);
+        reportJson(options, phases, finalHash, nodeCount, app.commandCount(),
+                   app.culledCount(), partialFrames);
     } else {
-        reportText(options, phases, finalHash, nodeCount, drawCalls, partialFrames);
+        reportText(options, phases, finalHash, nodeCount, app.commandCount(),
+                   app.culledCount(), partialFrames);
     }
     return 0;
 }

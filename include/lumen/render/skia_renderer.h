@@ -55,6 +55,9 @@ class SkiaRenderer final : public Renderer {
     void drawImage(ImageId id, core::Rect destination) override;
     void endFrame() override;
 
+    // v0.2 阶段7B: 报告光栅后端能力；submit 走 Renderer 默认适配器。
+    [[nodiscard]] RendererCapabilities capabilities() const override;
+
   private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

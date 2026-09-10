@@ -1,8 +1,10 @@
 #include "lumen/render/cpu_renderer.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 #include "placeholder_font.h"
 
@@ -357,6 +359,98 @@ void CpuRenderer::endFrame() {
     // Snapshot for the next Preserve frame (draw cache, plan 阶段6).
     previous_ = buffer_;
     hasPrevious_ = true;
+}
+
+RendererCapabilities CpuRenderer::capabilities() const {
+    RendererCapabilities caps;
+    caps.backendName = "cpu";
+    // Preserve 帧模式支持 damage 范围的局部提交（plan §3.1）。
+    caps.partialSubmit = true;
+    return caps;
+}
+
+void CpuRenderer::submit(const RenderCommandList& commands,
+                         const FrameInfo& info) {
+    const auto start = std::chrono::steady_clock::now();
+    if (info.deviceScale > 0.0F) {
+        setDeviceScale(info.deviceScale);
+    }
+
+    const bool wantsPartial = info.damage.has_value() && info.preservePrevious;
+    bool partial = false;
+    std::string fallbackReason{};
+    if (wantsPartial) {
+        if (hasPrevious_) {
+            partial = true;
+        } else {
+            // 无法证明上一帧覆盖当前 viewport（首帧/DPI 变化后），按
+            // plan §2.3 退回全帧绘制并记录原因。
+            fallbackReason = "no-previous-frame";
+        }
+    }
+
+    const RenderCommandList* effective = &commands;
+    RenderCommandList culled{};
+    if (partial) {
+        culled = cullCommandsOutside(commands, *info.damage);
+        effective = &culled;
+        beginFrame(info.viewport, FrameMode::Preserve, *info.damage);
+        save();
+        clipRect(*info.damage);
+    } else {
+        beginFrame(info.viewport);
+    }
+
+    std::uint64_t uploads = 0;
+    for (const auto& command : effective->commands()) {
+        switch (command.type) {
+            case CommandType::Save:
+                save();
+                break;
+            case CommandType::Restore:
+                restore();
+                break;
+            case CommandType::ClipRect:
+                clipRect(command.rect);
+                break;
+            case CommandType::DrawRect:
+                drawRect(command.rect, command.color, command.radius);
+                break;
+            case CommandType::DrawText:
+                drawText(command.textRun, command.textStyle);
+                break;
+            case CommandType::DrawImage:
+                drawImage(command.image, command.rect);
+                break;
+            case CommandType::UploadImage:
+                // 资源管理器分配的显式 id；覆盖同 id 旧数据（设备重建
+                // 后的重新上传走同一命令，plan §3.3）。
+                if (validPixelBuffer(command.pixels)) {
+                    images_.erase(command.image);
+                    images_.emplace(command.image, command.pixels);
+                    ++uploads;
+                }
+                break;
+            case CommandType::UnloadImage:
+                unregisterImage(command.image);
+                break;
+        }
+    }
+    if (partial) {
+        restore();
+    }
+    endFrame();
+
+    stats_.framesSubmitted += 1;
+    stats_.submitMs =
+        std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start)
+            .count();
+    stats_.commandCount = commands.size();
+    stats_.culledCommands = commands.size() - effective->size();
+    stats_.fullFrameFallback = wantsPartial && !partial;
+    stats_.fallbackReason = std::move(fallbackReason);
+    stats_.uploads += uploads;
 }
 
 void CpuRenderer::unregisterImage(ImageId id) { images_.erase(id); }

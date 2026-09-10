@@ -101,6 +101,15 @@ void SkiaRenderer::unregisterImage(ImageId id) { impl_->images.erase(id); }
 
 void SkiaRenderer::clearImages() { impl_->images.clear(); }
 
+RendererCapabilities SkiaRenderer::capabilities() const {
+    // 光栅后端：无 GPU surface，不做 Preserve 局部提交；命令路径经由
+    // Renderer 默认适配器回放（阶段7B）。
+    RendererCapabilities caps;
+    caps.backendName = "skia-raster";
+    caps.partialSubmit = false;
+    return caps;
+}
+
 ImageId SkiaRenderer::registerImage(PixelBuffer image) {
     if (image.width <= 0 || image.height <= 0 ||
         image.rgba.size() !=

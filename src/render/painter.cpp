@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 #include "lumen/core/utf8.h"
 
@@ -44,28 +46,86 @@ float textAdvance(const std::string& text, float fontSize) {
     return static_cast<float>(core::utf8Length(text)) * fontSize * 0.6F;
 }
 
-void paintTextAt(Renderer& renderer, const std::string& text,
-                 const TextStyle& style, Offset origin) {
+// v0.2 阶段7B: 命令录制 sink。与 Renderer 暴露同一组即时调用，另维护
+// 当前裁剪栈——文本命令的影响区域就是它的裁剪区（文本无法画出该区域），
+// 供 damage 裁剪判断。
+class CommandRecorder {
+  public:
+    explicit CommandRecorder(RenderCommandList& list) : list_(list) {}
+
+    void save() {
+        list_.save();
+        clipStack_.push_back(currentClip_);
+    }
+    void restore() {
+        list_.restore();
+        if (!clipStack_.empty()) {
+            currentClip_ = clipStack_.back();
+            clipStack_.pop_back();
+        }
+    }
+    void clipRect(Rect rect) {
+        list_.clipRect(rect);
+        currentClip_ = intersectClip(currentClip_, rect);
+    }
+    void drawRect(Rect rect, Color color, CornerRadius radius = {}) {
+        list_.drawRect(rect, color, radius);
+    }
+    void drawText(TextRun run, TextStyle style) {
+        list_.drawText(std::move(run), style, currentClip_);
+    }
+    void drawImage(ImageId id, Rect destination) {
+        list_.drawImage(id, destination);
+    }
+
+  private:
+    static std::optional<Rect> intersectClip(const std::optional<Rect>& clip,
+                                             Rect rect) {
+        if (!clip.has_value()) {
+            return rect;
+        }
+        const float x0 = std::max(clip->left(), rect.left());
+        const float y0 = std::max(clip->top(), rect.top());
+        const float x1 = std::min(clip->right(), rect.right());
+        const float y1 = std::min(clip->bottom(), rect.bottom());
+        if (x1 <= x0 || y1 <= y0) {
+            // Degenerate clip: the command can never paint; keep an empty
+            // bounds so damage culling may drop it anywhere.
+            return Rect{Offset{x0, y0}, Size{0.0F, 0.0F}};
+        }
+        return Rect{Offset{x0, y0}, Size{x1 - x0, y1 - y0}};
+    }
+
+    RenderCommandList& list_;
+    std::optional<Rect> currentClip_{};
+    std::vector<std::optional<Rect>> clipStack_{};
+};
+
+template <typename Sink>
+void paintTextAt(Sink& sink, const std::string& text, const TextStyle& style,
+                 Offset origin) {
     if (text.empty()) {
         return;
     }
-    renderer.drawText(TextRun{text, origin}, style);
+    sink.drawText(TextRun{text, origin}, style);
 }
 
 // Clips leaf content to the node rect so overflowing text (long field
 // content, narrow overrides) cannot bleed over neighbors.
+template <typename Sink>
 struct ScopedClip {
-    Renderer& renderer;
-    ScopedClip(Renderer& r, Rect rect) : renderer(r) {
-        renderer.save();
-        renderer.clipRect(rect);
+    Sink& sink;
+    ScopedClip(Sink& s, Rect rect) : sink(s) {
+        sink.save();
+        sink.clipRect(rect);
     }
-    ~ScopedClip() { renderer.restore(); }
+    ~ScopedClip() { sink.restore(); }
     ScopedClip(const ScopedClip&) = delete;
     ScopedClip& operator=(const ScopedClip&) = delete;
 };
 
-void paintNode(Renderer& renderer, const RenderNode& node, Offset absolute,
+template <typename Sink>
+void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                const PaintOptions& options) {
     const Offset origin = absolute + node.offset;
     const Rect rect{origin, node.size};
@@ -76,21 +136,21 @@ void paintNode(Renderer& renderer, const RenderNode& node, Offset absolute,
         case WidgetType::Column:
         case WidgetType::Stack:
             if (node.color.a > 0) {
-                renderer.drawRect(rect, node.color, node.radius);
+                sink.drawRect(rect, node.color, node.radius);
             }
             break;
         case WidgetType::Button: {
             const bool pressed =
                 !options.pressedIdentity.empty() &&
                 options.pressedIdentity == node.identity;
-            renderer.drawRect(rect, pressed ? kButtonPressed : kButtonBackground,
-                              CornerRadius::all(6.0F));
+            sink.drawRect(rect, pressed ? kButtonPressed : kButtonBackground,
+                          CornerRadius::all(6.0F));
             const TextStyle style = contentStyle(node.textStyle, kButtonLabel);
             const float fontSize =
                 style.fontSize > 0.0F ? style.fontSize : 14.0F;
             const float lineHeight = fontSize * 1.2F;
-            const ScopedClip clip{renderer, rect};
-            paintTextAt(renderer, node.text, style,
+            const ScopedClip<Sink> clip{sink, rect};
+            paintTextAt(sink, node.text, style,
                         Offset{origin.x + (node.size.width -
                                            textAdvance(node.text, fontSize)) *
                                               0.5F,
@@ -102,9 +162,9 @@ void paintNode(Renderer& renderer, const RenderNode& node, Offset absolute,
             const bool focused =
                 !options.focusedIdentity.empty() &&
                 options.focusedIdentity == node.identity;
-            renderer.drawRect(rect,
-                              focused ? kFieldFocused : kFieldBackground,
-                              CornerRadius::all(4.0F));
+            sink.drawRect(rect,
+                          focused ? kFieldFocused : kFieldBackground,
+                          CornerRadius::all(4.0F));
             const TextStyle style = contentStyle(node.textStyle, kContentText);
             const float fontSize =
                 style.fontSize > 0.0F ? style.fontSize : 14.0F;
@@ -112,13 +172,13 @@ void paintNode(Renderer& renderer, const RenderNode& node, Offset absolute,
             const Offset textOrigin{
                 origin.x + 8.0F,
                 origin.y + (node.size.height - lineHeight) * 0.5F};
-            const ScopedClip clip{renderer, rect};
+            const ScopedClip<Sink> clip{sink, rect};
             if (!node.text.empty()) {
-                paintTextAt(renderer, node.text, style, textOrigin);
+                paintTextAt(sink, node.text, style, textOrigin);
             } else if (!node.placeholder.empty()) {
                 TextStyle placeholderStyle = style;
                 placeholderStyle.color = kPlaceholderText;
-                paintTextAt(renderer, node.placeholder, placeholderStyle,
+                paintTextAt(sink, node.placeholder, placeholderStyle,
                             textOrigin);
             }
             if (focused) {
@@ -139,15 +199,15 @@ void paintNode(Renderer& renderer, const RenderNode& node, Offset absolute,
                 }
                 caretColor.a = static_cast<std::uint8_t>(
                     std::lround(caretColor.a * alpha));
-                renderer.drawRect(Rect{Offset{caretX, textOrigin.y},
-                                       Size{caretWidth, lineHeight}},
-                                  caretColor);
+                sink.drawRect(Rect{Offset{caretX, textOrigin.y},
+                                   Size{caretWidth, lineHeight}},
+                              caretColor);
             }
             break;
         }
         case WidgetType::Text: {
-            const ScopedClip clip{renderer, rect};
-            paintTextAt(renderer, node.text,
+            const ScopedClip<Sink> clip{sink, rect};
+            paintTextAt(sink, node.text,
                         contentStyle(node.textStyle, kContentText),
                         origin + Offset{node.padding.left, node.padding.top});
             break;
@@ -155,7 +215,7 @@ void paintNode(Renderer& renderer, const RenderNode& node, Offset absolute,
     }
 
     for (const auto& child : node.children) {
-        paintNode(renderer, child, origin, options);
+        paintNode(sink, child, origin, options);
     }
 }
 
@@ -164,6 +224,14 @@ void paintNode(Renderer& renderer, const RenderNode& node, Offset absolute,
 void paintScene(Renderer& renderer, const core::RenderNode& root,
                 const PaintOptions& options) {
     paintNode(renderer, root, Offset{}, options);
+}
+
+RenderCommandList recordScene(const core::RenderNode& root,
+                              const PaintOptions& options) {
+    RenderCommandList list;
+    CommandRecorder recorder{list};
+    paintNode(recorder, root, Offset{}, options);
+    return list;
 }
 
 }  // namespace lumen::render
