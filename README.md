@@ -5,22 +5,31 @@ C++20 自绘 GUI 框架（Flutter 式声明式 UI），详见
 v0.2 计划
 [`docs/lumen-gui-framework-plan-v0.2.md`](docs/lumen-gui-framework-plan-v0.2.md)
 与 v0.3 计划
-[`docs/lumen-gui-framework-plan-v0.3.md`](docs/lumen-gui-framework-plan-v0.3.md)。
+[`docs/lumen-gui-framework-plan-v0.3.md`](docs/lumen-gui-framework-plan-v0.3.md)，
+以及视觉系统设计
+[`docs/lumen-visual-system-design.md`](docs/lumen-visual-system-design.md)。
 
-当前进度：阶段 0–6 + v0.2 阶段 7A–7E（命令管线、Skia GPU 后端与 CPU
-回退、帧调度、异步资源、基准与 CI 矩阵）。
+当前进度：阶段 0–6 + v0.2 阶段 7A–7E + v0.3 阶段 8A–8E（跨平台宿主契约、
+文本/IME/编辑模型、语义树与无障碍契约、滚动/表单/弹窗/导航组件、macOS
+桌面与移动 host 接缝、CI 矩阵与支持矩阵）。平台能力详见
+[`docs/support-matrix.md`](docs/support-matrix.md)。
 
 ## 结构
 
-- `include/lumen/`：`core`、`layout`、`render`、`platform`、`dsl` 公共头文件。
+- `include/lumen/`：`core`、`layout`、`render`、`text`、`accessibility`、
+  `widgets`、`platform`、`dsl` 公共头文件。
 - `src/`：与公共模块一一对应的实现（`render` 含 CPU 光栅器、命令管线、
-  帧调度器、资源管理器、painter 与可选 Skia 光栅/GPU 适配，`platform` 含 SDL3 后端）。
+  帧调度器、资源管理器、painter 与可选 Skia 光栅/GPU 适配，`platform` 含
+  SDL3 后端与 SDL-free 移动 host 接缝）。
 - `tests/`：Catch2 单测与无窗口集成测试（几何、布局、Element、渲染像素、
-  命令回放/序列化、调度、资源、交互、counter frame hash）。
+  命令回放/序列化、调度、资源、交互、文本/图串、语义树、平台宿主、
+  移动接缝、counter/settings frame hash）。
 - `benchmarks/`：固定 1080p 场景基准（阶段耗时 p50/p95、堆分配、命令数、frame hash）。
-- `examples/counter/`：可交互 counter 示例（窗口模式 + `--headless`）。
+- `examples/counter/`：最小回归示例（窗口模式 + `--headless`）。
+- `examples/settings/`：v0.3 应用基础组件示例（滚动列表、表单校验、弹窗、
+  导航、主题、无障碍标签；窗口模式 + `--headless`）。
 - `cmake/`：FetchContent 依赖声明（SDL3、Catch2、stb，均已 pin 版本）。
-- `docs/`：架构与分阶段计划。
+- `docs/`：架构、分阶段计划与支持矩阵。
 
 ## 构建
 
@@ -35,10 +44,12 @@ ctest --test-dir build --output-on-failure -C Debug
 | 开关 | 默认 | 说明 |
 | --- | --- | --- |
 | `LUMEN_BUILD_TESTS` | ON | Catch2 单测与集成测试 |
-| `LUMEN_BUILD_EXAMPLES` | ON | counter 示例 |
+| `LUMEN_BUILD_EXAMPLES` | ON | counter / settings 示例 |
 | `LUMEN_BUILD_BENCHMARKS` | OFF | `lumen-scene-bench` 固定场景基准 |
 | `LUMEN_ENABLE_SKIA` | OFF | Skia 光栅后端（预编译包自动拉取） |
 | `LUMEN_ENABLE_GPU` | OFF | Skia Ganesh GPU 后端（需 `LUMEN_ENABLE_SKIA`） |
+| `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` | OFF | 平台原生无障碍桥（UIA/AT-SPI/NSAccessibility；语义树与 Recording 桥始终可用） |
+| `LUMEN_BUILD_MOBILE_CORE` | OFF | v0.3 移动核心：SDL-free 配置（跳过 SDL 与桌面示例），Android NDK / iOS Xcode 交叉编译用 |
 
 Linux（Ubuntu 24.04/26.04）先安装系统依赖（SDL3 窗口/输入、Skia
 FontConfig、Xvfb 冒烟）：
@@ -66,7 +77,7 @@ Windows 可用 VS 自带的 CMake/Ninja，例如：
 & "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
 ```
 
-示例运行（`build/examples/counter/`，Windows 多一层 `Debug/`）：
+示例运行（`build/examples/{counter,settings}/`，Windows 多一层 `Debug/`）：
 
 ```sh
 # 窗口模式：Button 点击计数、TextField 输入、窗口缩放自适应
@@ -75,7 +86,81 @@ Windows 可用 VS 自带的 CMake/Ninja，例如：
 ./build/examples/counter/lumen-counter --headless
 # 文本 DSL（.lumen）加载 UI（与 C++ DSL 构建同一棵树）
 ./build/examples/counter/lumen-counter --dsl counter.lumen
+# v0.3 settings：滚动列表、表单校验、弹窗、导航、主题、无障碍标签
+./build/examples/settings/lumen-settings
+./build/examples/settings/lumen-settings --headless
 ```
+
+macOS 构建与 Linux 相同（SDL3 经 FetchContent 编译，Xcode CLT 的
+clang + CMake 即可，无需额外系统依赖）；CI 见
+`.github/workflows/macos.yml`。
+
+## v0.3 应用基础（阶段 8A–8E）
+
+### 跨平台宿主契约（8A）
+
+`ApplicationHost` 拆分初始化/事件泵/生命周期、窗口管理（稳定
+`WindowId` + `WindowMetrics`：逻辑/drawable 尺寸、安全区、deviceScale、
+可见性）与平台服务（`Clipboard`、`TextInputSession`、能力查询）。
+`HostEvent` 为归一化事件值类型（时间戳、`WindowId`、修饰键、逻辑/物理
+键、指针设备与 pointer id、滚轮增量、取消与关闭请求、surface
+detach/attach）。`FakeApplicationHost` 提供确定性 headless 测试（fake
+clock/clipboard/text-input、可注入事件源、多窗口）；`Sdl3ApplicationHost`
+为 Windows/Linux/macOS 桌面实现。`WindowId` 关联帧提交、surface 重建与
+资源完成事件。
+
+### 文本、IME 与编辑（8B）
+
+`lumen-text`：grapheme cluster 分段（组合标记/ZWJ emoji/旗帜/肤色/变体
+选择符/Hangul）、严格 UTF-8 校验、`FontManager` 回退链（latin/cjk/emoji
+确定性占位实现）、`TextLayout`（换行/ellipsis/maxLines/baseline/字形
+位置/命中测试/RTL 视觉逆序/布局缓存）。`TextEditingValue` 状态机以
+grapheme 索引承载 text/selection/composing。TextField 支持 Shift 选区、
+Ctrl/Gui+A/C/X/V、双击选词、拖动扩选、点击定位、IME preedit
+commit/cancel、密码/只读/多行属性与剪贴板。布局与绘制共用同一份
+TextLayout，光标/选区/宽度不跨后端漂移。
+
+### 语义树与无障碍（8C）
+
+`lumen-accessibility`：`SemanticsTree`（role/label/value/bounds/flags/
+actions，节点 id 复用 RenderNode 稳定 identity）、identity diff（重建时
+保留辅助技术焦点）、action 分发（activate/setValue/focus/scroll/dismiss
+与键盘路径共用）。`AccessibilityBridge` 契约 + headless Recording 桥；
+平台原生桥（UIA/AT-SPI/NSAccessibility）为可选编译目标。高对比/减少动
+画/字体缩放经只读能力查询进入 `Theme::fromSettings` 与
+`FrameScheduler::setReduceAnimation`。
+
+### 应用组件与 settings 示例（8D）
+
+`ScrollView`/`ListView`（滚动视口：内容主轴不限、clip、`ScrollController`
+统一滚轮/拖动/键盘/语义入口，确定性无惯性）、`Checkbox`/`Switch`（bind
+状态自动切换）、`FocusScope`（Tab 域内循环）、`lumen-widgets` 的
+`Theme` token、`FormController` 校验、`NavigatorController`
+（push/pop/handleBack 统一 Escape/返回/关闭规则）与 `makeDialog`
+（modal barrier + FocusScope + 语义 dismiss）。`examples/settings/`
+组合以上全部能力；320px 窄窗口、连续 resize、局部重绘与全帧像素一致
+（测试断言）。
+
+### macOS 与移动 host 接缝（8E）
+
+macOS 走与 Windows/Linux 相同的 SDL3 桌面契约（CPU/Skia 光栅；GPU 可选
+非门槛）。`MobileHostSeam`（`lumen-mobile-host`，SDL-free）提供
+Android/iOS host 复用的确定性状态机：surface attach/detach/resize
+（metrics 先行）、pause/resume（surface 未重连时挂起）、内存告警 →
+Suspended、触摸归一化（pointer id + 归一化坐标 → 逻辑坐标）、返回键 →
+统一关闭请求。交叉编译用 `-DLUMEN_BUILD_MOBILE_CORE=ON`（跳过 SDL 与
+桌面示例）；CI 在 Linux/macOS 各有一个 mobile-core 门槛 job（编译 +
+headless 全测）。
+
+### 支持矩阵与故障排查
+
+平台/后端/能力矩阵与已知限制见 [`docs/support-matrix.md`](docs/support-matrix.md)。
+GPU 回退、黑屏与 Skia 链接问题的排查沿用 v0.2 段落；新增：
+
+- **剪贴板不可用**（无桌面会话）：`Clipboard::setText` 返回 false，应用
+  状态不受影响；`--diagnostics` 输出能力。
+- **无障碍桥未编入**：`createPlatformAccessibilityBridge` 返回 nullptr 并
+  给出原因；语义树与键盘导航照常（headless 全量验证）。
 
 ## 文本 DSL（阶段 4）
 
@@ -169,13 +254,15 @@ lumen-scene-bench --frames 300 --json    # 1080p 固定场景基准报告
 GPU 等待耗时、空闲轮询数。基准输出各阶段 p50/p95 耗时、堆分配量、命令数
 与 frame hash（同一机器同配置下 hash 必须可重复），CI 归档为 CPU 基线。
 
-### 支持矩阵与故障排查
+### 支持矩阵与故障排查（v0.2）
 
-| 后端 | Windows | Linux |
-| --- | --- | --- |
-| CPU 光栅（默认） | ✅ | ✅ |
-| Skia 光栅 | ✅（仅 Release，静态 CRT） | ✅ |
-| Skia GPU（Ganesh+GL） | ✅（WGL，探测失败自动回退） | ✅（GLX/EGL） |
+桌面后端矩阵与平台能力总表见 [`docs/support-matrix.md`](docs/support-matrix.md)。
+
+| 后端 | Windows | Linux | macOS |
+| --- | --- | --- | --- |
+| CPU 光栅（默认） | ✅ | ✅ | ✅ |
+| Skia 光栅 | ✅（仅 Release，静态 CRT） | ✅ | ✅（`LUMEN_SKIA_ROOT`） |
+| Skia GPU（Ganesh+GL） | ✅（WGL，探测失败自动回退） | ✅（GLX/EGL） | 可选（非门槛） |
 
 - CI（`.github/workflows/`）：Windows/Linux × {CPU-only, Skia 光栅,
   Skia GPU}；Linux GPU 经 Mesa llvmpipe 软件适配器作为强制门槛，硬件

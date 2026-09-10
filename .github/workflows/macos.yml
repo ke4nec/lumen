@@ -1,0 +1,50 @@
+name: macos
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# v0.3 阶段8E：macOS 桌面支持（plan §2.1）。CPU-only 与 Skia 光栅为门槛；
+# macOS GPU 不作为 v0.3 强制门槛（失败回退 CPU）。SDL3 桌面契约
+#（窗口/resize/DPI/文本输入/剪贴板）与 Linux 共用同一实现。
+
+jobs:
+  cpu:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (CPU-only)
+        run: >
+          cmake -S . -B build
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=ON
+      - name: Build (Debug)
+        run: cmake --build build --config Debug
+      - name: Test (Debug)
+        run: ctest --test-dir build --output-on-failure -C Debug --timeout 120
+      - name: Headless counter smoke
+        run: ./build/examples/counter/Debug/lumen-counter --headless
+      # v0.3 阶段8D/8E：settings 示例与无桌面会话冒烟（dummy 驱动）。
+      - name: Headless settings smoke
+        run: ./build/examples/settings/Debug/lumen-settings --headless
+      - name: Dummy-driver smoke (no window server dependency)
+        run: >
+          SDL_VIDEODRIVER=dummy timeout 10
+          ./build/examples/counter/Debug/lumen-counter || test $? -eq 124
+
+  # 移动核心门槛（与 linux.yml 相同）：iOS host 使用的 SDL-free 目标集
+  # 可编译且全部 headless 测试通过。
+  mobile-core:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (SDL-free mobile core)
+        run: >
+          cmake -S . -B build-mobile
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_MOBILE_CORE=ON
+      - name: Build (Debug)
+        run: cmake --build build-mobile --config Debug
+      - name: Test (headless)
+        run: ctest --test-dir build-mobile --output-on-failure -C Debug --timeout 120

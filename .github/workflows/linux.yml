@@ -42,8 +42,13 @@ jobs:
         run: ctest --test-dir build --output-on-failure -C Debug
       - name: Headless counter smoke
         run: ./build/examples/counter/lumen-counter --headless
+      # v0.3 阶段8D：settings 示例（滚动/表单/弹窗/导航）headless 冒烟。
+      - name: Headless settings smoke
+        run: ./build/examples/settings/lumen-settings --headless
       - name: Windowed smoke (Xvfb)
         run: xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter || test $? -eq 124
+      - name: Windowed settings smoke (Xvfb)
+        run: xvfb-run -a timeout 5 ./build/examples/settings/lumen-settings || test $? -eq 124
       # v0.2 阶段7A/7E：固定场景基准，报告归档为 CPU 基线；两次运行的
       # frame hash 必须一致（可重复性门槛）。
       - name: Benchmark (repeatability gate + report)
@@ -114,3 +119,24 @@ jobs:
           -DCOUNTER=${{ github.workspace }}/build-gpu/examples/counter/lumen-counter
           -DEXPECTED_BACKEND=skia-gpu
           -P tests/counter_gpu_smoke.cmake
+
+  # v0.3 阶段8E：移动核心门槛 —— SDL-free 配置（Android/iOS host 使用的
+  # 目标集）必须可编译并通过全部 headless 测试，不依赖桌面会话。
+  mobile-core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+      - name: Configure (SDL-free mobile core)
+        run: >
+          cmake -S . -B build-mobile -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_MOBILE_CORE=ON
+      - name: Build
+        run: cmake --build build-mobile --config Debug
+      - name: Test (headless, no desktop session)
+        run: ctest --test-dir build-mobile --output-on-failure -C Debug

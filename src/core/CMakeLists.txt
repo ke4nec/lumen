@@ -8,6 +8,7 @@ add_library(lumen-core STATIC
     scroll.cpp
     damage.cpp
     tween.cpp
+    windowing.cpp
 )
 
 target_include_directories(lumen-core PUBLIC

@@ -25,6 +25,9 @@ jobs:
         run: ctest --test-dir build --output-on-failure -C Debug --timeout 120
       - name: Headless counter smoke
         run: ./build/examples/counter/Debug/lumen-counter.exe --headless
+      # v0.3 阶段8D：settings 示例（滚动/表单/弹窗/导航）headless 冒烟。
+      - name: Headless settings smoke
+        run: ./build/examples/settings/Debug/lumen-settings.exe --headless
 
   skia-raster:
     runs-on: windows-2025

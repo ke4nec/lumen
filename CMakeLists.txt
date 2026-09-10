@@ -16,9 +16,21 @@ option(LUMEN_ENABLE_GPU "Enable the Skia Ganesh GPU backend" OFF)
 # NSAccessibility），默认关闭；语义树与 Recording 桥始终可用。
 option(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE
        "Enable platform accessibility bridges" OFF)
+# v0.3 阶段8E: 移动核心。交叉编译（Android NDK / iOS Xcode）时打开：跳过
+# SDL 桌面依赖与示例，构建 core/layout/render(CPU)/text/accessibility/
+# widgets + mobile-host（SDL-free 接缝）静态库；不依赖桌面会话。
+option(LUMEN_BUILD_MOBILE_CORE "Configure the SDL-free mobile core" OFF)
 
 if(LUMEN_ENABLE_GPU AND NOT LUMEN_ENABLE_SKIA)
   message(FATAL_ERROR "LUMEN_ENABLE_GPU=ON requires LUMEN_ENABLE_SKIA=ON.")
+endif()
+
+if(LUMEN_BUILD_MOBILE_CORE AND LUMEN_ENABLE_SKIA)
+  message(FATAL_ERROR "LUMEN_BUILD_MOBILE_CORE cannot combine with Skia.")
+endif()
+if(LUMEN_BUILD_MOBILE_CORE)
+  # 桌面示例/SDL 平台层不进入移动核心配置。
+  set(LUMEN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 endif()
 
 if(MSVC AND LUMEN_ENABLE_SKIA)
@@ -58,4 +70,7 @@ if(LUMEN_ENABLE_SKIA)
 endif()
 if(LUMEN_ENABLE_GPU)
   message(STATUS "Lumen: Skia Ganesh GPU backend enabled (7C).")
+endif()
+if(LUMEN_BUILD_MOBILE_CORE)
+  message(STATUS "Lumen: mobile core (SDL-free host seam) configured (8E).")
 endif()

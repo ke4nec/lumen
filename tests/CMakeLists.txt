@@ -17,7 +17,15 @@ set(LUMEN_TEST_SOURCES
     text_tests.cpp
     semantics_tests.cpp
     settings_integration_tests.cpp
+    mobile_host_tests.cpp
 )
+
+# 移动核心配置（8E）：无 SDL/桌面平台层，跳过桌面平台与 SDL 依赖测试。
+if(LUMEN_BUILD_MOBILE_CORE)
+  list(REMOVE_ITEM LUMEN_TEST_SOURCES
+      platform_smoke_tests.cpp platform_host_tests.cpp
+      counter_fallback_tests.cpp)
+endif()
 
 if(LUMEN_ENABLE_SKIA)
     list(APPEND LUMEN_TEST_SOURCES skia_smoke_tests.cpp)
@@ -54,9 +62,13 @@ target_link_libraries(lumen-tests PRIVATE
     lumen-widgets
     lumen-platform
     lumen-dsl
-    SDL3::SDL3
+    lumen-mobile-host
     Catch2::Catch2WithMain
 )
+
+if(NOT LUMEN_BUILD_MOBILE_CORE)
+  target_link_libraries(lumen-tests PRIVATE SDL3::SDL3)
+endif()
 
 target_compile_features(lumen-tests PRIVATE cxx_std_20)
 
@@ -70,7 +82,7 @@ add_custom_command(
             $<TARGET_FILE_DIR:lumen-tests>
 )
 
-if(WIN32)
+if(WIN32 AND NOT LUMEN_BUILD_MOBILE_CORE)
   # SDL3 builds as a shared library; keep the DLL next to the test binary so
   # catch_discover_tests (which runs the executable at build time) succeeds.
   add_custom_command(

@@ -4,20 +4,24 @@ include(FetchContent)
 set(LUMEN_SDL3_GIT_TAG "release-3.2.10" CACHE STRING "Pinned SDL3 tag")
 set(LUMEN_CATCH2_GIT_TAG "v3.8.1" CACHE STRING "Pinned Catch2 tag")
 
-# SDL3 backs lumen-platform, so it is needed for every build configuration.
-set(SDL_SHARED ON CACHE BOOL "" FORCE)
-set(SDL_STATIC OFF CACHE BOOL "" FORCE)
-set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
-set(SDL_TESTS OFF CACHE BOOL "" FORCE)
-set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-  sdl3
-  GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-  GIT_TAG ${LUMEN_SDL3_GIT_TAG}
-  GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(sdl3)
+# SDL3 backs lumen-platform, so it is needed for every desktop build
+# configuration. The v0.3 mobile core (LUMEN_BUILD_MOBILE_CORE) is SDL-free:
+# Android/iOS hosts link lumen-mobile-host instead.
+if(NOT LUMEN_BUILD_MOBILE_CORE)
+  set(SDL_SHARED ON CACHE BOOL "" FORCE)
+  set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+  set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+  set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+  set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    sdl3
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+    GIT_TAG ${LUMEN_SDL3_GIT_TAG}
+    GIT_SHALLOW TRUE
+  )
+  FetchContent_MakeAvailable(sdl3)
+endif()
 
 # stb_image backs ResourceManager decoding (v0.2 阶段7D, plan §3.3). stb has
 # no release tags; pin the master commit instead (see AGENTS.md pinning rule).
