@@ -8,7 +8,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(LUMEN_BUILD_TESTS "Build Lumen tests" ON)
 option(LUMEN_BUILD_EXAMPLES "Build Lumen examples" ON)
+option(LUMEN_BUILD_BENCHMARKS "Build Lumen benchmarks" OFF)
 option(LUMEN_ENABLE_SKIA "Enable Skia renderer backend" OFF)
+# v0.2 阶段7C: Skia Ganesh GPU 后端，默认关闭；需要 LUMEN_ENABLE_SKIA。
+option(LUMEN_ENABLE_GPU "Enable the Skia Ganesh GPU backend" OFF)
+
+if(LUMEN_ENABLE_GPU AND NOT LUMEN_ENABLE_SKIA)
+  message(FATAL_ERROR "LUMEN_ENABLE_GPU=ON requires LUMEN_ENABLE_SKIA=ON.")
+endif()
 
 if(MSVC AND LUMEN_ENABLE_SKIA)
   # The pinned prebuilt skia.lib is built against the static CRT; the whole
@@ -36,6 +43,13 @@ if(LUMEN_BUILD_EXAMPLES)
   add_subdirectory(examples/counter)
 endif()
 
+if(LUMEN_BUILD_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()
+
 if(LUMEN_ENABLE_SKIA)
   message(STATUS "Lumen: Skia backend enabled (backend consistency tests run).")
+endif()
+if(LUMEN_ENABLE_GPU)
+  message(STATUS "Lumen: Skia Ganesh GPU backend enabled (7C).")
 endif()
