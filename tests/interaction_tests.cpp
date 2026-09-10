@@ -407,3 +407,69 @@ TEST_CASE("composition_previews_without_committing", "[interaction]") {
     CHECK(controller.composition().empty());
     CHECK(store.get("name") == "abni");
 }
+
+// --- Basic gestures (plan 阶段6): tap vs drag discrimination. ---
+
+TEST_CASE("gesture_small_jitter_still_clicks", "[interaction]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    int clicks = 0;
+    handlers["doIt"] = [&clicks] { ++clicks; };
+    Widget ui = withKey(
+        makeContainer(makeButton("OK", {}, {}, 0.0F, "btn", std::nullopt,
+                                 std::nullopt, "doIt")),
+        "root");
+    const RenderNode root = layoutOf(ui);
+    const Offset inside = centerOf(root, "btn");
+
+    controller.pointerDown(root, inside);
+    // Under the 4px slop: still a tap.
+    controller.pointerMove(root, inside + Offset{2.0F, 1.0F});
+    CHECK_FALSE(controller.isDragging());
+    controller.pointerUp(root, inside + Offset{2.0F, 1.0F});
+    CHECK(clicks == 1);
+}
+
+TEST_CASE("gesture_drag_cancels_click_and_reports_delta", "[interaction]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    int clicks = 0;
+    handlers["doIt"] = [&clicks] { ++clicks; };
+    Widget ui = withKey(
+        makeContainer(makeButton("OK", {}, {}, 0.0F, "btn", std::nullopt,
+                                 std::nullopt, "doIt")),
+        "root");
+    const RenderNode root = layoutOf(ui);
+    const Offset inside = centerOf(root, "btn");
+
+    controller.pointerDown(root, inside);
+    CHECK_FALSE(controller.isDragging());
+    controller.pointerMove(root, inside + Offset{12.0F, -3.0F});
+    CHECK(controller.isDragging());
+    CHECK(controller.dragDelta() == Offset{12.0F, -3.0F});
+    // Release over the same button: a drag release is not a click.
+    controller.pointerUp(root, inside + Offset{12.0F, -3.0F});
+    CHECK(clicks == 0);
+    CHECK_FALSE(controller.isDragging());
+
+    // A fresh press without movement clicks again.
+    controller.pointerDown(root, inside);
+    controller.pointerUp(root, inside);
+    CHECK(clicks == 1);
+}
+
+TEST_CASE("gesture_move_without_press_is_ignored", "[interaction]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    const RenderNode root = layoutOf(
+        withKey(makeContainer(makeText("x")), "root"));
+    controller.pointerMove(root, Offset{50.0F, 50.0F});
+    CHECK_FALSE(controller.isDragging());
+    CHECK(controller.dragDelta() == Offset{0.0F, 0.0F});
+}

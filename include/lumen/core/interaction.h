@@ -54,12 +54,17 @@ class FocusManager {
 // pointer down/up with press tracking and click bubbling, focus selection,
 // UTF-8-aware text editing through the StateStore. All mutations flow into
 // the store; the app rebuilds on subscription callbacks.
+//
+// Basic gestures (plan 阶段6): moves fed through pointerMove distinguish a
+// tap (down/up with less than kDragSlopPx displacement — still a click) from
+// a drag (beyond the slop; the click is cancelled).
 class InteractionController {
   public:
     InteractionController(StateStore& store, const HandlerRegistry& handlers,
                           FocusManager& focus);
 
     void pointerDown(const RenderNode& root, Offset position);
+    void pointerMove(const RenderNode& root, Offset position);
     void pointerUp(const RenderNode& root, Offset position);
     void textInput(const std::string& text);
     void setComposition(const std::string& text);
@@ -69,6 +74,13 @@ class InteractionController {
     [[nodiscard]] const std::string& pressedKey() const { return pressedKey_; }
     [[nodiscard]] const std::string& pressedIdentity() const {
         return pressedIdentity_;
+    }
+    // True while the pressed pointer moved beyond the drag slop; a drag
+    // release never fires a click.
+    [[nodiscard]] bool isDragging() const { return dragging_; }
+    // Drag displacement from the press anchor to the latest move.
+    [[nodiscard]] Offset dragDelta() const {
+        return dragCurrent_ - dragAnchor_;
     }
     // Caret position (code points) inside the focused TextField.
     [[nodiscard]] std::size_t caretCodePoints() const { return caret_; }
@@ -94,6 +106,11 @@ class InteractionController {
     std::string focusedBind_{};
     std::string composition_{};
     std::size_t caret_{0};
+    // Gesture state: press anchor and current pointer while held.
+    bool pressActive_{false};
+    bool dragging_{false};
+    Offset dragAnchor_{};
+    Offset dragCurrent_{};
 };
 
 }  // namespace lumen::core

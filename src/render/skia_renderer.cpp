@@ -74,6 +74,8 @@ struct SkiaRenderer::Impl {
     SkCanvas* canvas{nullptr};
     std::map<ImageId, sk_sp<SkImage>> images{};
     ImageId nextImageId{1};
+    // Snapshot of the previous frame for Preserve mode (plan 阶段6).
+    sk_sp<SkImage> lastFrame{};
     // Paint reused across draws within a frame (single-threaded UI loop).
     SkPaint paint{};
 };
@@ -87,10 +89,17 @@ SkiaRenderer::SkiaRenderer(float deviceScale, core::Color clear)
 SkiaRenderer::~SkiaRenderer() = default;
 
 void SkiaRenderer::setDeviceScale(float scale) {
-    if (scale > 0.0F) {
+    if (scale > 0.0F && scale != impl_->deviceScale) {
         impl_->deviceScale = scale;
+        // Pixel dimensions change with the scale; the preserved snapshot is
+        // stale until the next full frame.
+        impl_->lastFrame.reset();
     }
 }
+
+void SkiaRenderer::unregisterImage(ImageId id) { impl_->images.erase(id); }
+
+void SkiaRenderer::clearImages() { impl_->images.clear(); }
 
 ImageId SkiaRenderer::registerImage(PixelBuffer image) {
     if (image.width <= 0 || image.height <= 0 ||
@@ -112,6 +121,15 @@ ImageId SkiaRenderer::registerImage(PixelBuffer image) {
 }
 
 void SkiaRenderer::beginFrame(core::Size viewport) {
+    beginFrame(viewport, FrameMode::Clear);
+}
+
+void SkiaRenderer::beginFrame(core::Size viewport, FrameMode mode) {
+    beginFrame(viewport, mode, core::Rect{});
+}
+
+void SkiaRenderer::beginFrame(core::Size viewport, FrameMode mode,
+                              core::Rect damage) {
     const int width =
         std::max(1, static_cast<int>(std::lround(
                         static_cast<double>(viewport.width) * impl_->deviceScale)));
@@ -122,8 +140,36 @@ void SkiaRenderer::beginFrame(core::Size viewport) {
         SkImageInfo::Make(width, height, kRGBA_8888_SkColorType,
                           kPremul_SkAlphaType));
     impl_->canvas = impl_->surface ? impl_->surface->getCanvas() : nullptr;
-    if (impl_->canvas != nullptr) {
-        impl_->canvas->clear(toSkColor(impl_->clearColor));
+    if (impl_->canvas == nullptr) {
+        return;
+    }
+    const bool canPreserve = mode == FrameMode::Preserve && impl_->lastFrame &&
+                             impl_->lastFrame->width() == width &&
+                             impl_->lastFrame->height() == height;
+    const bool scoped = damage.size.width > 0.0F && damage.size.height > 0.0F;
+    if (canPreserve && !scoped) {
+        // Pure Preserve: replay the previous frame; the caller scopes the
+        // repaint with clipRect.
+        impl_->canvas->drawImage(impl_->lastFrame, 0.0F, 0.0F,
+                                 SkSamplingOptions(SkFilterMode::kNearest,
+                                                   SkMipmapMode::kNone));
+        return;
+    }
+    impl_->canvas->clear(toSkColor(impl_->clearColor));
+    if (canPreserve) {
+        // Damage-scoped Preserve: replay the previous frame everywhere
+        // OUTSIDE the damage rect (mirrors CpuRenderer's band copy).
+        impl_->canvas->save();
+        const SkRect skDamage = SkRect::MakeXYWH(
+            damage.left() * impl_->deviceScale,
+            damage.top() * impl_->deviceScale,
+            damage.size.width * impl_->deviceScale,
+            damage.size.height * impl_->deviceScale);
+        impl_->canvas->clipRect(skDamage, SkClipOp::kDifference, false);
+        impl_->canvas->drawImage(impl_->lastFrame, 0.0F, 0.0F,
+                                 SkSamplingOptions(SkFilterMode::kNearest,
+                                                   SkMipmapMode::kNone));
+        impl_->canvas->restore();
     }
 }
 
@@ -147,7 +193,8 @@ void SkiaRenderer::clipRect(core::Rect rect) {
         rect.left() * impl_->deviceScale, rect.top() * impl_->deviceScale,
         rect.size.width * impl_->deviceScale,
         rect.size.height * impl_->deviceScale);
-    impl_->canvas->clipRect(skRect, SkClipOp::kIntersect, true);
+    // Hard edges match CpuRenderer clipping (exact partial-vs-full parity).
+    impl_->canvas->clipRect(skRect, SkClipOp::kIntersect, false);
 }
 
 void SkiaRenderer::drawRect(core::Rect rect, core::Color color,
@@ -257,6 +304,8 @@ void SkiaRenderer::endFrame() {
     if (impl_->surface == nullptr) {
         return;
     }
+    // Snapshot for Preserve frames (draw cache, plan 阶段6).
+    impl_->lastFrame = impl_->surface->makeImageSnapshot();
     const SkImageInfo info = impl_->surface->imageInfo();
     snapshot_.width = info.width();
     snapshot_.height = info.height();

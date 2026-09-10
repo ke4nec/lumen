@@ -13,6 +13,14 @@ namespace lumen::render {
 // app derives from PlatformWindow drawable/logical sizes.
 class CpuRenderer final : public Renderer {
   public:
+    // Preserve keeps the previous frame's pixels outside the region the
+    // caller repaints (plan 阶段6: 脏矩形) — combine with clipRect(damage).
+    // The optional damage rect (3-arg beginFrame) also erases the damaged
+    // region to the clear color first, so transparent backgrounds inside it
+    // match a full repaint exactly; an empty/default rect keeps the whole
+    // previous frame (pure Preserve).
+    enum class FrameMode { Clear, Preserve };
+
     explicit CpuRenderer(float deviceScale = 1.0F,
                          core::Color clear = core::Color::fromRGBA(24, 24, 27));
 
@@ -24,8 +32,14 @@ class CpuRenderer final : public Renderer {
     // Uploads an image for drawImage(); ids are stable and opaque. Buffers
     // use straight (non-premultiplied) RGBA, matching SkiaRenderer.
     ImageId registerImage(PixelBuffer image);
+    // Frees a registered image; drawing a freed id is a no-op (resource
+    // lifecycle, plan 阶段6).
+    void unregisterImage(ImageId id);
+    void clearImages();
 
     void beginFrame(core::Size viewport) override;
+    void beginFrame(core::Size viewport, FrameMode mode);
+    void beginFrame(core::Size viewport, FrameMode mode, core::Rect damage);
     void save() override;
     void restore() override;
     void clipRect(core::Rect rect) override;
@@ -51,6 +65,8 @@ class CpuRenderer final : public Renderer {
     float deviceScale_;
     core::Color clearColor_;
     PixelBuffer buffer_{};
+    PixelBuffer previous_{};
+    bool hasPrevious_{false};
     std::vector<ClipRects> clip_{};
     std::map<ImageId, PixelBuffer> images_{};
     ImageId nextImageId_{1};

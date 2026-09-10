@@ -293,3 +293,39 @@ TEST_CASE("dsl_columns_count_code_points_not_bytes", "[dsl]") {
     CHECK(parsed.error->pos.line == 2);
     CHECK(parsed.error->pos.column == 14);
 }
+
+// --- Parse cache (plan 阶段6: DSL 编译缓存). ---
+
+TEST_CASE("dsl_cache_hits_on_identical_content", "[dsl]") {
+    DslCache cache;
+    const DslParseResult first = cache.parse(kCounterSource, "a.l");
+    const DslParseResult second = cache.parse(kCounterSource, "b.l");
+    REQUIRE(first.ok());
+    REQUIRE(second.ok());
+    CHECK(first.root == second.root);
+    CHECK(cache.stats().misses == 1);
+    CHECK(cache.stats().hits == 1);
+
+    (void)cache.parse(kCounterSource);
+    CHECK(cache.stats().hits == 2);
+}
+
+TEST_CASE("dsl_cache_misses_on_changed_content_and_skips_errors", "[dsl]") {
+    DslCache cache;
+    REQUIRE(cache.parse("page P { Text(\"a\") }").ok());
+    // Errors are never cached: fixing the document reparses immediately.
+    REQUIRE_FALSE(cache.parse("page P { Txt(\"x\") }").ok());
+    const auto statsAfterError = cache.stats();
+    CHECK(statsAfterError.misses == 2);
+    CHECK(statsAfterError.hits == 0);
+    REQUIRE_FALSE(cache.parse("page P { Txt(\"x\") }").ok());
+    CHECK(cache.stats().misses == 3);
+
+    REQUIRE(cache.parse("page P { Text(\"b\") }").ok());
+    CHECK(cache.stats().misses == 4);
+
+    cache.clear();
+    REQUIRE(cache.parse("page P { Text(\"b\") }").ok());
+    CHECK(cache.stats().misses == 5);
+    CHECK(cache.stats().hits == 0);
+}

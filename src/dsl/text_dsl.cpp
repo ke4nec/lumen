@@ -972,4 +972,39 @@ DslParseResult parseLumenFile(const std::string& path) {
     return parseLumen(buffer.str(), path);
 }
 
+namespace {
+
+[[nodiscard]] std::uint64_t contentHash(const std::string& source) {
+    constexpr std::uint64_t kFnvOffsetBasis = 14695981039346656037ULL;
+    constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+    std::uint64_t hash = kFnvOffsetBasis;
+    for (const char byte : source) {
+        hash ^= static_cast<unsigned char>(byte);
+        hash *= kFnvPrime;
+    }
+    return hash;
+}
+
+}  // namespace
+
+DslParseResult DslCache::parse(const std::string& source,
+                               std::string filename) {
+    const std::uint64_t key = contentHash(source);
+    const auto cached = entries_.find(key);
+    if (cached != entries_.end()) {
+        ++stats_.hits;
+        return DslParseResult{cached->second, std::nullopt};
+    }
+    ++stats_.misses;
+    DslParseResult parsed = parseLumen(source, std::move(filename));
+    if (parsed.ok()) {
+        entries_.emplace(key, parsed.root);
+    }
+    return parsed;
+}
+
+void DslCache::clear() {
+    entries_.clear();
+}
+
 }  // namespace lumen::dsl

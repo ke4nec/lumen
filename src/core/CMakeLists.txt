@@ -5,6 +5,8 @@ add_library(lumen-core STATIC
     utf8.cpp
     state.cpp
     interaction.cpp
+    damage.cpp
+    tween.cpp
 )
 
 target_include_directories(lumen-core PUBLIC

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 
@@ -54,5 +56,28 @@ struct DslParseResult {
 // Reads and parses a file; I/O failure yields error pos 1:1 with message
 // "cannot read file".
 [[nodiscard]] DslParseResult parseLumenFile(const std::string& path);
+
+// Content-hash keyed parse cache (plan 阶段6: DSL 编译缓存). Hot reload
+// re-reads the file every poll but only re-parses when the bytes changed;
+// hits return a copy of the cached Widget tree. Parse errors are not
+// cached, so a fixed document parses again immediately.
+class DslCache {
+  public:
+    struct Stats {
+        std::size_t hits{0};
+        std::size_t misses{0};
+    };
+
+    // Equivalent to parseLumen(source, filename), memoized by source hash.
+    [[nodiscard]] DslParseResult parse(const std::string& source,
+                                       std::string filename = "<memory>");
+
+    [[nodiscard]] const Stats& stats() const { return stats_; }
+    void clear();
+
+  private:
+    std::map<std::uint64_t, core::Widget> entries_{};
+    Stats stats_{};
+};
 
 }  // namespace lumen::dsl

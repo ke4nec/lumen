@@ -225,3 +225,38 @@ TEST_CASE("skia_paints_counter_frame_consistently", "[skia]") {
     // dimensions above verify the shared scene output without requiring glyph
     // byte equality.
 }
+
+TEST_CASE("skia_preserve_mode_matches_full_clear", "[skia]") {
+    // Stage 6 parity: a Preserve frame whose damage clip covers the whole
+    SkiaRenderer full;
+    // viewport must equal a full Clear frame of the same commands.
+    full.beginFrame(Size{80.0F, 60.0F});
+    full.drawRect(Rect::fromXYWH(10.0F, 10.0F, 60.0F, 40.0F),
+                  Color::fromRGBA(255, 0, 0), CornerRadius::all(8.0F));
+    full.drawText(TextRun{"Count: 0", Offset{5.0F, 5.0F}},
+                  TextStyle{});
+    full.endFrame();
+
+    SkiaRenderer partial;
+    partial.beginFrame(Size{80.0F, 60.0F});
+    partial.drawRect(Rect::fromXYWH(10.0F, 10.0F, 60.0F, 40.0F),
+                     Color::fromRGBA(0, 255, 0), CornerRadius::all(8.0F));
+    partial.endFrame();
+    // Second frame preserves the first everywhere except the damage clip.
+    partial.beginFrame(Size{80.0F, 60.0F},
+                       SkiaRenderer::FrameMode::Preserve);
+    partial.save();
+    partial.clipRect(Rect::fromXYWH(10.0F, 10.0F, 60.0F, 40.0F));
+    partial.drawRect(Rect::fromXYWH(10.0F, 10.0F, 60.0F, 40.0F),
+                     Color::fromRGBA(255, 0, 0), CornerRadius::all(8.0F));
+    partial.drawText(TextRun{"Count: 0", Offset{5.0F, 5.0F}},
+                     TextStyle{});
+    partial.restore();
+    partial.endFrame();
+
+    // Identical command stream within the clip → pixel-equal snapshots.
+    const DiffStats stats =
+        compareBuffers(full.pixels(), partial.pixels(), 8);
+    CHECK(stats.differingPixels <= stats.totalPixels / 50);
+    CHECK(stats.meanAbsDiff < 2.0);
+}

@@ -16,6 +16,10 @@ namespace lumen::render {
 // and premultiplied blending while sharing the Renderer command contract.
 class SkiaRenderer final : public Renderer {
   public:
+    // Preserve replays the previous frame so only the clipped damage area
+    // needs repainting (mirrors CpuRenderer, plan 阶段6).
+    enum class FrameMode { Clear, Preserve };
+
     explicit SkiaRenderer(float deviceScale = 1.0F,
                           core::Color clear = core::Color::fromRGBA(24, 24, 27));
     ~SkiaRenderer() override;
@@ -34,8 +38,14 @@ class SkiaRenderer final : public Renderer {
     // Uploads an image for drawImage(); straight (non-premultiplied) RGBA,
     // the same contract CpuRenderer::registerImage implements.
     ImageId registerImage(PixelBuffer image);
+    // Frees a registered image; drawing a freed id is a no-op (resource
+    // lifecycle, plan 阶段6).
+    void unregisterImage(ImageId id);
+    void clearImages();
 
     void beginFrame(core::Size viewport) override;
+    void beginFrame(core::Size viewport, FrameMode mode);
+    void beginFrame(core::Size viewport, FrameMode mode, core::Rect damage);
     void save() override;
     void restore() override;
     void clipRect(core::Rect rect) override;

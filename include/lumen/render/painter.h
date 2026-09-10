@@ -19,6 +19,9 @@ struct PaintOptions {
     std::string pressedIdentity{};
     // Caret position (code points) inside the focused TextField.
     std::size_t caretCodePoints{0};
+    // Caret opacity 0..1 for the blink animation (plan 阶段6); 1 renders a
+    // solid caret and keeps headless frame hashes deterministic.
+    float caretAlpha{1.0F};
 };
 
 // Walks the render tree, accumulates absolute offsets and programs the

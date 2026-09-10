@@ -322,3 +322,87 @@ TEST_CASE("painter_shows_focus_for_keyless_bound_field", "[render]") {
         lumen::render::PaintOptions{"", focus.focusedIdentity(), "", "", 0});
     CHECK(lumen::render::frameHash(renderer.pixels()) != before);
 }
+
+// --- Stage 6: preserve-mode partial redraw and image lifecycle. ---
+
+TEST_CASE("cpu_preserve_mode_keeps_pixels_outside_damage", "[render]") {
+    CpuRenderer renderer;
+    renderer.beginFrame(Size{100.0F, 80.0F});
+    renderer.drawRect(Rect::fromXYWH(0.0F, 0.0F, 100.0F, 80.0F),
+                      Color::fromRGBA(0, 0, 255));
+    renderer.endFrame();
+
+    // Partial frame: repaint only the left half in red.
+    renderer.beginFrame(Size{100.0F, 80.0F},
+                        CpuRenderer::FrameMode::Preserve);
+    renderer.save();
+    renderer.clipRect(Rect::fromXYWH(0.0F, 0.0F, 50.0F, 80.0F));
+    renderer.drawRect(Rect::fromXYWH(0.0F, 0.0F, 100.0F, 80.0F),
+                      Color::fromRGBA(255, 0, 0));
+    renderer.restore();
+    renderer.endFrame();
+
+    CHECK(pixelAt(renderer.pixels(), 25, 40) == Color::fromRGBA(255, 0, 0));
+    // Outside the damaged clip: the previous frame survives untouched.
+    CHECK(pixelAt(renderer.pixels(), 75, 40) == Color::fromRGBA(0, 0, 255));
+}
+
+TEST_CASE("cpu_preserve_falls_back_to_clear_on_first_frame", "[render]") {
+    CpuRenderer renderer;
+    // No previous frame exists yet: Preserve degrades to a full clear.
+    renderer.beginFrame(Size{20.0F, 10.0F},
+                        CpuRenderer::FrameMode::Preserve);
+    CHECK(isClearColor(renderer.pixels(), 5, 5));
+}
+
+TEST_CASE("cpu_image_lifecycle_unregister_and_clear", "[render]") {
+    CpuRenderer renderer;
+    PixelBuffer image;
+    image.width = 1;
+    image.height = 1;
+    image.rgba = {0, 255, 0, 255};
+    const auto id = renderer.registerImage(std::move(image));
+    renderer.beginFrame(Size{10.0F, 10.0F});
+    renderer.drawImage(id, Rect::fromXYWH(0.0F, 0.0F, 10.0F, 10.0F));
+    renderer.endFrame();
+    CHECK(pixelAt(renderer.pixels(), 5, 5) == Color::fromRGBA(0, 255, 0));
+
+    // Freed images draw nothing; ids are never recycled.
+    renderer.unregisterImage(id);
+    renderer.beginFrame(Size{10.0F, 10.0F});
+    renderer.drawImage(id, Rect::fromXYWH(0.0F, 0.0F, 10.0F, 10.0F));
+    renderer.endFrame();
+    CHECK(isClearColor(renderer.pixels(), 5, 5));
+
+    const auto second = renderer.registerImage([&] {
+        PixelBuffer green;
+        green.width = 1;
+        green.height = 1;
+        green.rgba = {0, 255, 0, 255};
+        return green;
+    }());
+    CHECK(second != id);
+    renderer.clearImages();
+    renderer.beginFrame(Size{10.0F, 10.0F});
+    renderer.drawImage(second, Rect::fromXYWH(0.0F, 0.0F, 10.0F, 10.0F));
+    renderer.endFrame();
+    CHECK(isClearColor(renderer.pixels(), 5, 5));
+}
+
+TEST_CASE("cpu_preserve_erases_inside_damage_to_clear_color", "[render]") {
+    CpuRenderer renderer;
+    renderer.beginFrame(Size{100.0F, 80.0F});
+    renderer.drawRect(Rect::fromXYWH(0.0F, 0.0F, 100.0F, 80.0F),
+                      Color::fromRGBA(0, 0, 255));
+    renderer.endFrame();
+
+    // Damage-scoped Preserve with NO repaint at all: inside the damage rect
+    // the frame shows the clear color (like a full repaint), outside it the
+    // previous frame survives — ghosts cannot linger either way.
+    renderer.beginFrame(Size{100.0F, 80.0F},
+                        CpuRenderer::FrameMode::Preserve,
+                        Rect::fromXYWH(10.0F, 10.0F, 30.0F, 20.0F));
+    renderer.endFrame();
+    CHECK(isClearColor(renderer.pixels(), 25, 20));
+    CHECK(pixelAt(renderer.pixels(), 75, 40) == Color::fromRGBA(0, 0, 255));
+}

@@ -3,7 +3,7 @@
 C++20 自绘 GUI 框架（Flutter 式声明式 UI），详见
 [`docs/lumen-gui-framework-plan.md`](docs/lumen-gui-framework-plan.md)。
 
-当前进度：阶段 0–5（工程骨架、核心树和布局、CPU 渲染与 SDL3 平台层、交互与 C++ DSL、文本 DSL、Skia 适配）。
+当前进度：阶段 0–6（工程骨架、核心树和布局、CPU 渲染与 SDL3 平台层、交互与 C++ DSL、文本 DSL、Skia 适配、框架完善）。
 
 ## 结构
 
@@ -90,3 +90,19 @@ Pointer，窗口缩放（含 Wayland 分数缩放）统一转为 Resize。
 > Linux CPU-only 与 Skia 构建均已在 Ubuntu 26.04 验证：
 > `ctest` 全量通过（含 CPU/Skia 一致性）与 Xvfb 窗口冒烟通过，见
 > `.github/workflows/linux.yml`。
+
+## 框架完善（阶段 6）
+
+- **脏矩形与绘制缓存**：重建帧与上一帧按 identity 对齐求差（`core/damage.h`），
+  CPU/Skia 后端支持 `FrameMode::Preserve` 局部重绘；无变化帧直接复用缓存哈希。
+  局部与全量重绘像素级一致（测试断言）。
+- **图片资源生命周期**：`registerImage`/`unregisterImage`/`clearImages`，
+  id 不复用，释放后绘制为 no-op。
+- **基础动画**：`core/tween.h`（Linear/EaseIn/EaseOut/EaseInOut，端点钳制）；
+  counter 窗口模式以光标闪烁接入（`app.tick` 驱动，headless 保持确定性）。
+- **基础手势**：`pointerMove` + 4px slop 区分 tap/drag，拖动释放不触发点击。
+- **DSL 编译缓存与热重载**：`DslCache` 按内容哈希去重；`lumen-counter --watch`
+  监视 `.lumen` 文件 mtime，变更后重新解析并热替换 UI（状态保留，错误时保持旧
+  UI）。
+- **Impler 后端**：暂不实现——无公开可用的上游库；Renderer 契约的双后端一致性
+  （CPU/Skia smoke）即是未来接入点。

@@ -8,16 +8,20 @@
 // App-layer responsibilities per plan §6.1: state keys, event handlers and
 // the frame loop live here, not inside the framework.
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
+#include "lumen/core/damage.h"
 #include "lumen/core/element.h"
 #include "lumen/core/interaction.h"
 #include "lumen/core/state.h"
+#include "lumen/core/tween.h"
 #include "lumen/core/utf8.h"
 #include "lumen/dsl/dsl.h"
 #include "lumen/layout/layout.h"
@@ -63,18 +67,34 @@ class CounterApp {
         }
         view_ = size;
         dirty_ = true;
+        // Constraint change invalidates localized damage; full repaint.
+        fullRepaintPending_ = true;
     }
-    void setDeviceScale(float scale) { cpuRenderer_.setDeviceScale(scale); }
+    void setDeviceScale(float scale) {
+        cpuRenderer_.setDeviceScale(scale);
+        // A pure DPI change alters pixel dimensions; the cache and the
+        // preserved previous frame are both stale until a full repaint.
+        fullRepaintPending_ = true;
+    }
 
     // Overrides the paint target (plan §7: CPU/Skia switch). Null restores
     // the internal CPU renderer. The external renderer must outlive use.
     void setRenderer(render::Renderer* renderer) {
+        if (externalRenderer_ == renderer) {
+            return;
+        }
         externalRenderer_ = renderer;
+        // The two backends do not share framebuffer contents. Invalidate the
+        // paint cache whenever the target changes so returning to CPU cannot
+        // present pixels produced before the external renderer was used.
+        framePainted_ = false;
+        fullRepaintPending_ = true;
     }
 
     // Reconcile + relayout when state or view changed (plan §5.2 steps 2-3).
     // The template (C++ builders or parsed `.lumen`) is copied, binds are
     // resolved against the store, and the Element tree reconciles onto it.
+    // The layout diff becomes this frame's dirty rects (plan 阶段6).
     void rebuildIfDirty() {
         if (!dirty_) {
             return;
@@ -85,30 +105,156 @@ class CounterApp {
         // Keep subscriptions in lockstep with the tree: newly bound keys get
         // observers, keys dropped by the rebuild are cleaned up (plan §9).
         syncSubscriptions(core::collectBindKeys(element_->widget()));
-        root_ = layout::LayoutEngine::layout(element_->widget(),
-                                             core::Constraints::tight(view_));
+        core::RenderNode fresh = layout::LayoutEngine::layout(
+            element_->widget(), core::Constraints::tight(view_));
+        // Accumulate damage across rebuilds that share one paint: the screen
+        // still shows the last PAINTED tree, so dropping earlier rects here
+        // would leave stale pixels. renderFrame clears after painting and
+        // re-arms validity (the fresh paint makes screen and tree agree).
+        // treeDamageValid_ is sticky-false only between rebuilds that have
+        // not been painted yet — never across paints.
+        if (hasPreviousRoot_) {
+            treeDamageValid_ = treeDamageValid_ &&
+                core::collectDamage(previousRoot_, fresh, pendingDamage_);
+        } else {
+            treeDamageValid_ = false;
+            pendingDamage_.clear();
+        }
+        root_ = fresh;
+        previousRoot_ = std::move(fresh);
+        hasPreviousRoot_ = true;
+        rebuiltThisFrame_ = true;
         dirty_ = false;
     }
 
-    // Paint + post-frame bookkeeping; returns the frame hash (plan §9). The
-    // hash is only meaningful for the internal CPU renderer; an external
-    // (Skia) renderer yields 0.
-    std::uint64_t renderFrame() {
+    // Paint + post-frame bookkeeping; returns the frame hash (plan §9).
+    //
+    // Damage-aware painting (plan 阶段6: 脏矩形/绘制缓存):
+    //  - a frame with no tree, option, or animation change is skipped and
+    //    the previous hash returned (paint cache);
+    //  - otherwise the internal CPU renderer repaints only the damaged
+    //    region on top of the preserved previous frame; the result is
+    //    pixel-identical to a full repaint (asserted by tests);
+    //  - `forceFullRepaint` bypasses both optimizations.
+    // External (Skia) renderers always clear-paint the full frame; the hash
+    // is only meaningful for the internal CPU renderer and yields 0 there.
+    std::uint64_t renderFrame(bool forceFullRepaint = false) {
         rebuildIfDirty();
-        render::Renderer& renderer = activeRenderer();
-        renderer.beginFrame(view_);
         render::PaintOptions options;
         options.focusedKey = focus_.focusedKey();
         options.focusedIdentity = focus_.focusedIdentity();
         options.pressedKey = controller_.pressedKey();
         options.pressedIdentity = controller_.pressedIdentity();
         options.caretCodePoints = controller_.caretCodePoints();
-        render::paintScene(renderer, root_, options);
+        options.caretAlpha = caretAlpha_;
+
+        const bool optionsChanged =
+            options.focusedIdentity != lastFocusedIdentity_ ||
+            options.pressedIdentity != lastPressedIdentity_ ||
+            options.caretCodePoints != lastCaret_ ||
+            caretAlpha_ != lastCaretAlpha_;
+        const bool needPaint = forceFullRepaint || fullRepaintPending_ ||
+                               !framePainted_ || rebuiltThisFrame_ ||
+                               optionsChanged;
+        if (!needPaint) {
+            // Paint cache hit: nothing observable changed since last frame.
+            rebuiltThisFrame_ = false;
+            return lastFrameHash_;
+        }
+
+        std::vector<core::Rect> damage = pendingDamage_;
+        if (optionsChanged) {
+            // Focus/press/caret/blink changes only repaint the affected
+            // nodes; identities locate them in the current tree.
+            if (options.focusedIdentity != lastFocusedIdentity_ ||
+                options.caretCodePoints != lastCaret_ ||
+                caretAlpha_ != lastCaretAlpha_) {
+                addNodeRect(damage, options.focusedIdentity,
+                            options.focusedKey);
+                addNodeRect(damage, lastFocusedIdentity_, "");
+            }
+            if (options.pressedIdentity != lastPressedIdentity_) {
+                addNodeRect(damage, options.pressedIdentity,
+                            options.pressedKey);
+                addNodeRect(damage, lastPressedIdentity_, "");
+            }
+        }
+
+        render::Renderer& renderer = activeRenderer();
+        const auto bounds = core::damageBounds(damage, view_);
+        const bool partial = !forceFullRepaint && !fullRepaintPending_ &&
+                             externalRenderer_ == nullptr && framePainted_ &&
+                             treeDamageValid_ && bounds.has_value();
+        if (partial) {
+            // Erase the damaged region to the clear color, keep the previous
+            // frame outside it, and repaint only within it — transparent
+            // backgrounds therefore also match a full repaint exactly.
+            cpuRenderer_.beginFrame(view_,
+                                    render::CpuRenderer::FrameMode::Preserve,
+                                    *bounds);
+            cpuRenderer_.save();
+            cpuRenderer_.clipRect(*bounds);
+            render::paintScene(cpuRenderer_, root_, options);
+            cpuRenderer_.restore();
+            ++partialRepaintCount_;
+        } else {
+            renderer.beginFrame(view_);
+            render::paintScene(renderer, root_, options);
+        }
+        // endFrame finalizes the backend's output (CPU: previous-frame
+        // snapshot for Preserve; Skia: the readable pixel snapshot).
+        renderer.endFrame();
         element_->clearDirtyTree();
+
+        // Bookkeeping for the next frame's cache/damage decisions.
+        lastFocusedIdentity_ = options.focusedIdentity;
+        lastPressedIdentity_ = options.pressedIdentity;
+        lastCaret_ = options.caretCodePoints;
+        lastCaretAlpha_ = caretAlpha_;
+        framePainted_ = true;
+        fullRepaintPending_ = false;
+        rebuiltThisFrame_ = false;
+        pendingDamage_.clear();
+        // The fresh paint makes screen and tree agree again: damage
+        // tracking re-arms even after a full-repaint fallback.
+        treeDamageValid_ = true;
         if (externalRenderer_ == nullptr) {
-            return render::frameHash(cpuRenderer_.pixels());
+            lastFrameHash_ = render::frameHash(cpuRenderer_.pixels());
+            return lastFrameHash_;
         }
         return 0;
+    }
+
+    // Advances time-driven state: the caret blink tween (plan 阶段6).
+    // Apps own the clock; tests pass fixed timestamps so animation is
+    // deterministic. Unfocused frames keep alpha 1.0 (stable hashes).
+    void tick(std::uint64_t nowMs) {
+        if (!controller_.wantsTextInput()) {
+            blinkAnchored_ = false;
+            caretAlpha_ = 1.0F;
+            return;
+        }
+        if (!blinkAnchored_ || nowMs < blinkAnchorMs_) {
+            // Anchor (or re-anchor on non-monotonic timestamps) at the
+            // phase start so unsigned subtraction cannot wrap.
+            blinkAnchored_ = true;
+            blinkAnchorMs_ = nowMs;
+        }
+        constexpr double kHalfPeriodMs = 530.0;
+        const double phase = std::fmod(
+            static_cast<double>(nowMs - blinkAnchorMs_), kHalfPeriodMs * 2.0);
+        const core::Tween down{1.0, 0.0, kHalfPeriodMs, core::Easing::EaseInOut};
+        const core::Tween up{0.0, 1.0, kHalfPeriodMs, core::Easing::EaseInOut};
+        caretAlpha_ = static_cast<float>(
+            phase < kHalfPeriodMs ? down.sample(phase)
+                                  : up.sample(phase - kHalfPeriodMs));
+    }
+
+    // Hot reload entry (plan 阶段6): swap the UI template, keep all state;
+    // the rebuild diffs the trees so only changed nodes repaint.
+    void swapRoot(core::Widget root) {
+        uiTemplate_ = std::move(root);
+        dirty_ = true;
     }
 
     // Pointer in logical (root) coordinates; rebuilds first so hits land on
@@ -116,6 +262,11 @@ class CounterApp {
     void pointerDown(core::Offset position) {
         rebuildIfDirty();
         controller_.pointerDown(root_, position);
+    }
+
+    void pointerMove(core::Offset position) {
+        rebuildIfDirty();
+        controller_.pointerMove(root_, position);
     }
 
     void pointerUp(core::Offset position) {
@@ -138,6 +289,12 @@ class CounterApp {
     [[nodiscard]] const core::RenderNode& root() const { return root_; }
     [[nodiscard]] const core::InteractionController& controller() const {
         return controller_;
+    }
+    // Stage-6 introspection: how many frames took the damage-scoped partial
+    // repaint path. Tests assert on it so the optimization cannot silently
+    // degrade into full repaints (which would still look correct).
+    [[nodiscard]] std::uint32_t partialRepaintCount() const {
+        return partialRepaintCount_;
     }
     [[nodiscard]] bool wantsTextInput() const {
         return controller_.wantsTextInput();
@@ -240,6 +397,26 @@ class CounterApp {
                                             : cpuRenderer_;
     }
 
+    // Appends the current-tree rect of a node located by identity (key
+    // fallback) to the damage list; missing nodes contribute nothing.
+    void addNodeRect(std::vector<core::Rect>& damage,
+                     const std::string& identity, const std::string& key) {
+        const core::RenderNode* node = nullptr;
+        core::Offset origin{};
+        if (!identity.empty()) {
+            node = findByIdentity(root_, identity, origin);
+        }
+        if (node == nullptr && !key.empty()) {
+            node = core::findNodeByKey(root_, key);
+            if (node != nullptr) {
+                origin = core::absoluteOffset(root_, key);
+            }
+        }
+        if (node != nullptr) {
+            damage.push_back(core::Rect{origin, node->size});
+        }
+    }
+
     // Diffs the subscribed bind keys against `keys`: subscribes new ones and
     // unsubscribes keys the latest tree no longer references.
     void syncSubscriptions(const std::set<std::string>& keys) {
@@ -267,6 +444,26 @@ class CounterApp {
     core::Widget uiTemplate_{};
     std::optional<core::Element> element_{};
     core::RenderNode root_{};
+    // Damage/paint-cache bookkeeping (plan 阶段6).
+    core::RenderNode previousRoot_{};
+    bool hasPreviousRoot_{false};
+    std::vector<core::Rect> pendingDamage_{};
+    // Starts "true" vacuously (screen and tree agree before any frame);
+    // the first rebuild (no previous root) sets it false, and every paint
+    // re-arms it — so false is sticky only until the next full paint.
+    bool treeDamageValid_{true};
+    bool rebuiltThisFrame_{false};
+    bool framePainted_{false};
+    bool fullRepaintPending_{false};
+    std::string lastFocusedIdentity_{};
+    std::string lastPressedIdentity_{};
+    std::size_t lastCaret_{0};
+    float caretAlpha_{1.0F};
+    float lastCaretAlpha_{1.0F};
+    bool blinkAnchored_{false};
+    std::uint64_t blinkAnchorMs_{0};
+    std::uint64_t lastFrameHash_{0};
+    std::uint32_t partialRepaintCount_{0};
     core::Size view_{800.0F, 600.0F};
     render::CpuRenderer cpuRenderer_{1.0F};
     render::Renderer* externalRenderer_{nullptr};

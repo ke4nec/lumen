@@ -1,11 +1,16 @@
 #include "lumen/core/interaction.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 #include "lumen/core/utf8.h"
 
 namespace lumen::core {
+
+// Pointer displacement (Manhattan distance) beyond which a press becomes a
+// drag instead of a tap. 4 logical px matches common touch slop.
+constexpr float kDragSlopPx = 4.0F;
 
 const RenderNode* hitTestChain(const RenderNode& node, Offset position,
                                std::vector<const RenderNode*>& chain) {
@@ -60,6 +65,11 @@ void InteractionController::pointerDown(const RenderNode& root,
     armedOnClick_.clear();
     armedKey_.clear();
     armedIdentity_.clear();
+    // Gesture anchor: every press can become a drag, clickable or not.
+    pressActive_ = true;
+    dragging_ = false;
+    dragAnchor_ = position;
+    dragCurrent_ = position;
     std::vector<const RenderNode*> chain;
     const RenderNode* target = hitTestChain(root, position, chain);
     if (target == nullptr) {
@@ -112,17 +122,34 @@ void InteractionController::pointerDown(const RenderNode& root,
     }
 }
 
+void InteractionController::pointerMove(const RenderNode& /*root*/,
+                                        Offset position) {
+    if (!pressActive_) {
+        return;
+    }
+    dragCurrent_ = position;
+    const Offset delta = dragCurrent_ - dragAnchor_;
+    if (!dragging_ && std::abs(delta.x) + std::abs(delta.y) > kDragSlopPx) {
+        dragging_ = true;
+    }
+}
+
 void InteractionController::pointerUp(const RenderNode& root,
                                       Offset position) {
     const std::string armedOnClick = std::move(armedOnClick_);
     const std::string armedKey = std::move(armedKey_);
     const std::string armedIdentity = std::move(armedIdentity_);
+    const bool wasDragging = dragging_;
     pressedKey_.clear();
     pressedIdentity_.clear();
     armedOnClick_.clear();
     armedKey_.clear();
     armedIdentity_.clear();
-    if (armedOnClick.empty()) {
+    pressActive_ = false;
+    dragging_ = false;
+    if (armedOnClick.empty() || wasDragging) {
+        // No click target, or the press turned into a drag: a drag release
+        // never fires a click (basic gesture discrimination).
         return;
     }
     std::vector<const RenderNode*> chain;

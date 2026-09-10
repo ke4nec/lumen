@@ -6,6 +6,8 @@ set(LUMEN_TEST_SOURCES
     interaction_tests.cpp
     counter_integration_tests.cpp
     dsl_tests.cpp
+    damage_tests.cpp
+    tween_tests.cpp
     platform_smoke_tests.cpp
 )
 

@@ -38,8 +38,11 @@ bool validPixelBuffer(const PixelBuffer& buffer) {
 }  // namespace
 
 void CpuRenderer::setDeviceScale(float scale) {
-    if (scale > 0.0F) {
+    if (scale > 0.0F && scale != deviceScale_) {
         deviceScale_ = scale;
+        // Pixel dimensions change with the scale; the preserved previous
+        // frame is stale until the next full frame.
+        hasPrevious_ = false;
     }
 }
 
@@ -58,17 +61,60 @@ int CpuRenderer::toPixel(float logical) const {
 }
 
 void CpuRenderer::beginFrame(core::Size viewport) {
+    beginFrame(viewport, FrameMode::Clear);
+}
+
+void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode) {
+    beginFrame(viewport, mode, core::Rect{});
+}
+
+void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
+                             core::Rect damage) {
     buffer_.width = std::max(1, toPixel(viewport.width));
     buffer_.height = std::max(1, toPixel(viewport.height));
-    buffer_.rgba.assign(
+    const std::size_t bytes =
         static_cast<std::size_t>(buffer_.width) *
-            static_cast<std::size_t>(buffer_.height) * 4,
-        0);
-    for (std::size_t i = 0; i + 3 < buffer_.rgba.size(); i += 4) {
-        buffer_.rgba[i] = clearColor_.r;
-        buffer_.rgba[i + 1] = clearColor_.g;
-        buffer_.rgba[i + 2] = clearColor_.b;
-        buffer_.rgba[i + 3] = clearColor_.a;
+        static_cast<std::size_t>(buffer_.height) * 4;
+    const bool canPreserve =
+        mode == FrameMode::Preserve && hasPrevious_ &&
+        previous_.width == buffer_.width && previous_.height == buffer_.height;
+    if (canPreserve && damage.size.width <= 0.0F &&
+        damage.size.height <= 0.0F) {
+        // Pure Preserve: start from the previous frame so untouched pixels
+        // survive; the caller scopes the repaint with clipRect.
+        buffer_.rgba = previous_.rgba;
+    } else {
+        buffer_.rgba.assign(bytes, 0);
+        for (std::size_t i = 0; i + 3 < buffer_.rgba.size(); i += 4) {
+            buffer_.rgba[i] = clearColor_.r;
+            buffer_.rgba[i + 1] = clearColor_.g;
+            buffer_.rgba[i + 2] = clearColor_.b;
+            buffer_.rgba[i + 3] = clearColor_.a;
+        }
+        if (canPreserve) {
+            // Damage-scoped Preserve: keep the previous frame everywhere
+            // OUTSIDE the damage rect; inside it the clear color shows until
+            // the caller repaints, matching a full repaint exactly even over
+            // transparent backgrounds.
+            const int dx0 = std::clamp(toPixel(damage.left()), 0, buffer_.width);
+            const int dy0 = std::clamp(toPixel(damage.top()), 0, buffer_.height);
+            const int dx1 = std::clamp(toPixel(damage.right()), 0, buffer_.width);
+            const int dy1 = std::clamp(toPixel(damage.bottom()), 0, buffer_.height);
+            const auto copyBand = [&](int y0, int y1, int x0, int x1) {
+                for (int y = y0; y < y1; ++y) {
+                    const std::size_t dst =
+                        static_cast<std::size_t>(y) * buffer_.width * 4;
+                    const std::size_t src =
+                        static_cast<std::size_t>(y) * previous_.width * 4;
+                    std::copy_n(previous_.rgba.begin() + src + x0 * 4,
+                                (x1 - x0) * 4, buffer_.rgba.begin() + dst + x0 * 4);
+                }
+            };
+            copyBand(0, dy0, 0, buffer_.width);                 // above
+            copyBand(dy1, buffer_.height, 0, buffer_.width);    // below
+            copyBand(dy0, dy1, 0, dx0);                         // left
+            copyBand(dy0, dy1, dx1, buffer_.width);             // right
+        }
     }
     clip_.clear();
     clip_.push_back(ClipRects{0, 0, buffer_.width, buffer_.height});
@@ -307,5 +353,14 @@ void CpuRenderer::drawImage(ImageId id, core::Rect destination) {
     }
 }
 
-void CpuRenderer::endFrame() {}
+void CpuRenderer::endFrame() {
+    // Snapshot for the next Preserve frame (draw cache, plan 阶段6).
+    previous_ = buffer_;
+    hasPrevious_ = true;
+}
+
+void CpuRenderer::unregisterImage(ImageId id) { images_.erase(id); }
+
+void CpuRenderer::clearImages() { images_.clear(); }
+
 }  // namespace lumen::render

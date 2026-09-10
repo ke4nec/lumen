@@ -1,6 +1,8 @@
 #include "lumen/render/painter.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 
 #include "lumen/core/utf8.h"
 
@@ -128,9 +130,18 @@ void paintNode(Renderer& renderer, const RenderNode& node, Offset absolute,
                                 fontSize) +
                     0.5F;
                 const float caretWidth = std::max(1.5F, fontSize * 0.08F);
+                // Blink fades the caret via alpha (plan 阶段6); the scaled
+                // color keeps geometry identical to the solid caret.
+                Color caretColor = kCaret;
+                const float alpha = std::clamp(options.caretAlpha, 0.0F, 1.0F);
+                if (alpha <= 0.0F) {
+                    break;
+                }
+                caretColor.a = static_cast<std::uint8_t>(
+                    std::lround(caretColor.a * alpha));
                 renderer.drawRect(Rect{Offset{caretX, textOrigin.y},
                                        Size{caretWidth, lineHeight}},
-                                  kCaret);
+                                  caretColor);
             }
             break;
         }

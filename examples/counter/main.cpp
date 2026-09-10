@@ -1,12 +1,16 @@
 // Counter sample (plan §7): interactive UI over the C++ declarative DSL or a
 // `.lumen` document, rendered with the CPU backend (default) or the optional
 // Skia backend. `--headless` runs the same pipeline without a window and
-// prints stable frame hashes (plan §9).
+// prints stable frame hashes (plan §9). `--watch` (implies `--dsl`) reloads
+// the document when its mtime changes (hot reload, plan 阶段6).
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 
 #include <SDL3/SDL.h>
@@ -28,6 +32,7 @@ using lumen::examples::CounterApp;
 
 struct Options {
     bool headless{false};
+    bool watch{false};
     std::optional<std::string> dslPath{};
     std::string renderer{"cpu"};
 };
@@ -38,6 +43,9 @@ Options parseOptions(int argc, char** argv) {
         const std::string flag = argv[i];
         if (flag == "--headless") {
             options.headless = true;
+        } else if (flag == "--watch") {
+            options.watch = true;
+            options.dslPath = "counter.lumen";
         } else if (flag == "--dsl") {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 options.dslPath = argv[++i];
@@ -98,9 +106,65 @@ int runHeadless(CounterApp& app) {
     return 0;
 }
 
-int runWindowed(CounterApp& app, const std::string& rendererName) {
+// Hot reload support (plan 阶段6): polls the document's mtime and swaps the
+// UI template on change; re-parses only when the bytes differ (DslCache).
+class HotReloader {
+  public:
+    explicit HotReloader(std::string path) : path_(std::move(path)) {
+        refreshStamp();
+    }
+
+    // Returns true when the app root was swapped this poll.
+    bool poll(CounterApp& app) {
+        if (!refreshStamp()) {
+            return false;
+        }
+        const lumen::dsl::DslParseResult parsed =
+            cache_.parse(readFile(), path_);
+        if (!parsed.ok()) {
+            std::fprintf(stderr, "dsl error (kept previous UI): %s\n",
+                         parsed.error->format().c_str());
+            return false;
+        }
+        app.swapRoot(parsed.root);
+        return true;
+    }
+
+    [[nodiscard]] const lumen::dsl::DslCache& cache() const { return cache_; }
+
+  private:
+    [[nodiscard]] std::string readFile() const {
+        std::ifstream file(path_, std::ios::binary);
+        if (!file) {
+            return {};
+        }
+        std::ostringstream buffer;
+        buffer << file.rdbuf();
+        return buffer.str();
+    }
+
+    bool refreshStamp() {
+        std::error_code error;
+        const auto stamp = std::filesystem::last_write_time(path_, error);
+        if (error) {
+            return false;
+        }
+        if (stamp == stamp_) {
+            return false;
+        }
+        stamp_ = stamp;
+        return true;
+    }
+
+    std::string path_;
+    std::filesystem::file_time_type stamp_{};
+    lumen::dsl::DslCache cache_{};
+};
+
+int runWindowed(CounterApp& app, const std::string& rendererName,
+                const Options& options) {
     lumen::platform::Sdl3WindowDesc desc;
-    desc.title = "Lumen Counter - Stage 4/5";
+    desc.title = "Lumen Counter - Stage 6";
     desc.width = 800;
     desc.height = 600;
     auto window = lumen::platform::createSdl3Window(desc);
@@ -140,6 +204,12 @@ int runWindowed(CounterApp& app, const std::string& rendererName) {
     };
     applyScale();
     app.setView(window->logicalSize());
+    std::optional<HotReloader> reloader;
+    if (options.watch && options.dslPath.has_value()) {
+        reloader.emplace(*options.dslPath);
+        std::printf("watching %s for changes\n", options.dslPath->c_str());
+    }
+    Uint64 lastWatchPoll = SDL_GetTicks();
     bool running = true;
     while (running) {
         for (auto event = window->pollEvent();
@@ -157,6 +227,10 @@ int runWindowed(CounterApp& app, const std::string& rendererName) {
                 case lumen::platform::EventType::PointerDown:
                     app.pointerDown(event.position);
                     break;
+                case lumen::platform::EventType::PointerMove:
+                    // Feeds tap/drag gesture discrimination (plan 阶段6).
+                    app.pointerMove(event.position);
+                    break;
                 case lumen::platform::EventType::PointerUp:
                     app.pointerUp(event.position);
                     break;
@@ -173,6 +247,15 @@ int runWindowed(CounterApp& app, const std::string& rendererName) {
                     break;
             }
         }
+        if (reloader.has_value() &&
+            SDL_GetTicks() - lastWatchPoll >= 250) {
+            lastWatchPoll = SDL_GetTicks();
+            if (reloader->poll(app)) {
+                std::printf("ui reloaded\n");
+            }
+        }
+        // Time-driven state (caret blink) rides the frame loop.
+        app.tick(SDL_GetTicks());
         window->setTextInputEnabled(app.wantsTextInput());
         app.renderFrame();
         if (app.wantsTextInput()) {
@@ -202,5 +285,5 @@ int main(int argc, char** argv) {
     if (options.headless) {
         return runHeadless(app);
     }
-    return runWindowed(app, options.renderer);
+    return runWindowed(app, options.renderer, options);
 }

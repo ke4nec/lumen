@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "counter_app.h"
+#include "lumen/dsl/text_dsl.h"
 
 using lumen::core::Offset;
 using lumen::core::Size;
@@ -156,4 +157,160 @@ TEST_CASE("counter_focused_rect_tracks_text_field", "[counter]") {
     app.textEditing("ni");
     CHECK(app.state().get("name") == "hi");
     CHECK(app.controller().composition() == "ni");
+}
+
+// --- Stage 6: dirty-rect repaint, paint cache, hot reload. ---
+
+TEST_CASE("counter_partial_repaint_matches_full_repaint", "[counter]") {
+    CounterApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    // Click Increment: the rebuild damages only the count label.
+    app.pointerDown(centerOf(app, "increment-button"));
+    app.pointerUp(centerOf(app, "increment-button"));
+    const auto partialCountBefore = app.partialRepaintCount();
+    const std::uint64_t partial = app.renderFrame();
+    // The damage path must actually run; otherwise this test would compare
+    // two full repaints and verify nothing.
+    CHECK(app.partialRepaintCount() == partialCountBefore + 1);
+
+    // A forced full repaint of the identical tree must be pixel-equal.
+    const std::uint64_t full = app.renderFrame(true);
+    CHECK(partial == full);
+}
+
+TEST_CASE("counter_skips_repaint_when_nothing_changed", "[counter]") {
+    CounterApp app;
+    app.setView(Size{800.0F, 600.0F});
+    const auto first = app.renderFrame();
+    // No state/option/animation change: the cached frame hash comes back.
+    CHECK(app.renderFrame() == first);
+    // ...and remains equal to a forced full repaint of the same tree.
+    CHECK(app.renderFrame(true) == first);
+}
+
+TEST_CASE("counter_caret_blink_ticks_change_only_the_field", "[counter]") {
+    CounterApp app;
+    app.setView(Size{320.0F, 180.0F});
+    (void)app.renderFrame();
+    app.pointerDown(centerOf(app, "name-field"));
+    app.pointerUp(centerOf(app, "name-field"));
+    (void)app.renderFrame();
+
+    // Blink at full phase start (alpha ~1) then at the dark end (alpha ~0):
+    // frames differ, and each equals its own forced full repaint.
+    app.tick(0);
+    const auto visible = app.renderFrame();
+    CHECK(visible == app.renderFrame(true));
+    app.tick(530);
+    const auto dark = app.renderFrame();
+    CHECK(dark == app.renderFrame(true));
+    CHECK(dark != visible);
+}
+
+TEST_CASE("counter_drag_on_button_does_not_increment", "[counter]") {
+    CounterApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+    const Offset at = centerOf(app, "increment-button");
+    app.pointerDown(at);
+    app.pointerMove(at + Offset{40.0F, 0.0F});
+    app.pointerUp(at + Offset{40.0F, 0.0F});
+    CHECK(app.counterValue() == 0);
+}
+
+TEST_CASE("counter_hot_reload_keeps_state_and_resyncs_binds", "[counter]") {
+    const std::string v1 =
+        "page P {\n"
+        "  Container(key: \"root\") {\n"
+        "    Column(padding: 8) {\n"
+        "      Text(\"Count: \", bind: counter, key: \"count-text\")\n"
+        "      Button(\"Go\", onClick: increment, key: \"increment-button\")\n"
+        "      TextField(bind: name, placeholder: \"Name\", key: \"name-field\")\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+    const std::string v2 =
+        "page P {\n"
+        "  Container(key: \"root\") {\n"
+        "    Column(padding: 8) {\n"
+        "      Text(\"Total: \", bind: counter, key: \"count-text\")\n"
+        "      Button(\"Go\", onClick: increment, key: \"increment-button\")\n"
+        "      TextField(bind: name, placeholder: \"Name\", key: \"name-field\")\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+    const auto parsed1 = lumen::dsl::parseLumen(v1);
+    const auto parsed2 = lumen::dsl::parseLumen(v2);
+    REQUIRE(parsed1.ok());
+    REQUIRE(parsed2.ok());
+
+    CounterApp app(parsed1.root);
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+    app.pointerDown(centerOf(app, "increment-button"));
+    app.pointerUp(centerOf(app, "increment-button"));
+    REQUIRE(app.counterValue() == 1);
+
+    // Hot swap: new template, state preserved, binds re-resolved.
+    app.swapRoot(parsed2.root);
+    const auto hashAfter = app.renderFrame();
+    CHECK(hashAfter != 0);
+    const lumen::core::RenderNode* label =
+        lumen::core::findNodeByKey(app.root(), "count-text");
+    REQUIRE(label != nullptr);
+    CHECK(label->text == "Total: 1");
+    CHECK(app.counterValue() == 1);
+
+    // Interaction still works after the swap (subscriptions resynced).
+    app.pointerDown(centerOf(app, "name-field"));
+    app.pointerUp(centerOf(app, "name-field"));
+    app.textInput("hi");
+    CHECK(app.state().get("name") == "hi");
+}
+
+TEST_CASE("counter_damage_accumulates_across_rebuilds_before_paint", "[counter]") {
+    CounterApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    // Two state changes with no paint in between: the increment changes the
+    // label, the typed text changes the field. Both rects must repaint.
+    app.pointerDown(centerOf(app, "increment-button"));
+    app.pointerUp(centerOf(app, "increment-button"));  // counter -> 1, dirty
+    app.pointerDown(centerOf(app, "name-field"));      // rebuild #1 (label)
+    app.textInput("Hi");                               // name -> "Hi", dirty
+    const auto accumulatedBefore = app.partialRepaintCount();
+    const std::uint64_t partial = app.renderFrame();   // rebuild #2 (field)
+
+    // The damage path must run despite two rebuilds sharing one paint.
+    CHECK(app.partialRepaintCount() == accumulatedBefore + 1);
+    CHECK(app.counterValue() == 1);
+    CHECK(app.state().get("name") == "Hi");
+    const std::uint64_t full = app.renderFrame(true);
+    CHECK(partial == full);
+}
+
+TEST_CASE("counter_renderer_switch_invalidates_cpu_cache", "[counter]") {
+    CounterApp app;
+    app.setView(Size{800.0F, 600.0F});
+    const auto initial = app.renderFrame();
+
+    // Render an updated tree through a separate backend. The internal CPU
+    // framebuffer is not touched while the external renderer is active.
+    lumen::render::CpuRenderer external;
+    app.setRenderer(&external);
+    app.pointerDown(centerOf(app, "increment-button"));
+    app.pointerUp(centerOf(app, "increment-button"));
+    CHECK(app.renderFrame() == 0);
+    REQUIRE(app.counterValue() == 1);
+
+    // Returning to CPU must repaint the changed tree instead of returning
+    // the old cached frame from before the backend switch.
+    app.setRenderer(nullptr);
+    const auto restored = app.renderFrame();
+    const auto forced = app.renderFrame(true);
+    CHECK(restored == forced);
+    CHECK(restored != initial);
 }

@@ -34,8 +34,21 @@ struct RenderNode {
 
     std::vector<RenderNode> children{};
 
+    // Field-wise equality (all fields including children); damage tracking
+    // compares single nodes without children via sameNode() in damage.cpp.
+    [[nodiscard]] bool operator==(const RenderNode& other) const = default;
+
     [[nodiscard]] Rect rect() const { return Rect{offset, size}; }
 };
+
+// True when every field except `children` matches; sibling of operator==
+// used to decide whether a subtree needs repainting.
+[[nodiscard]] bool sameNode(const RenderNode& a, const RenderNode& b);
+
+// Depth-first lookup by identity path (layout assigns these); the preferred
+// way to relocate a node across rebuilds for damage and gesture tracking.
+[[nodiscard]] const RenderNode* findNodeByIdentity(const RenderNode& root,
+                                                   const std::string& identity);
 
 // Depth-first lookup by key; returns nullptr when absent.
 [[nodiscard]] const RenderNode* findNodeByKey(const RenderNode& root,
