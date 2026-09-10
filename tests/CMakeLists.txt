@@ -12,6 +12,7 @@ set(LUMEN_TEST_SOURCES
     damage_tests.cpp
     tween_tests.cpp
     platform_smoke_tests.cpp
+    platform_host_tests.cpp
 )
 
 if(LUMEN_ENABLE_SKIA)

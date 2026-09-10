@@ -1,0 +1,573 @@
+#include "lumen/platform/sdl3_host.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <utility>
+
+#include <SDL3/SDL.h>
+
+#include "lumen/platform/sdl3_window.h"
+
+namespace lumen::platform {
+namespace {
+
+// SDL 滚轮单位（行/刻度）到逻辑像素的换算；wheel 事件语义按逻辑像素
+// 定义（plan §3.1 滚轮/触摸增量）。
+constexpr float kWheelUnitPx = 40.0F;
+
+core::Key mapSdlKey(SDL_Keycode key) {
+    switch (key) {
+        case SDLK_BACKSPACE:
+            return core::Key::Backspace;
+        case SDLK_TAB:
+            return core::Key::Tab;
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+            return core::Key::Enter;
+        case SDLK_ESCAPE:
+            return core::Key::Escape;
+        case SDLK_LEFT:
+            return core::Key::Left;
+        case SDLK_RIGHT:
+            return core::Key::Right;
+        case SDLK_UP:
+            return core::Key::Up;
+        case SDLK_DOWN:
+            return core::Key::Down;
+        case SDLK_HOME:
+            return core::Key::Home;
+        case SDLK_END:
+            return core::Key::End;
+        case SDLK_DELETE:
+            return core::Key::Delete;
+        case SDLK_PAGEUP:
+            return core::Key::PageUp;
+        case SDLK_PAGEDOWN:
+            return core::Key::PageDown;
+        default:
+            return core::Key::None;
+    }
+}
+
+core::KeyModifiers mapSdlModifiers(SDL_Keymod mod) {
+    std::uint32_t modifiers = core::kModifierNone;
+    if ((mod & SDL_KMOD_SHIFT) != 0) {
+        modifiers |= core::kModifierShift;
+    }
+    if ((mod & SDL_KMOD_CTRL) != 0) {
+        modifiers |= core::kModifierCtrl;
+    }
+    if ((mod & SDL_KMOD_ALT) != 0) {
+        modifiers |= core::kModifierAlt;
+    }
+    if ((mod & SDL_KMOD_GUI) != 0) {
+        modifiers |= core::kModifierGui;
+    }
+    return modifiers;
+}
+
+// 无修饰时可打印字符（Ctrl/Command 快捷键判定用）；SDL 逻辑键码在
+// ASCII 范围内直接对应字符。
+char mapKeyChar(SDL_Keycode key, core::KeyModifiers modifiers) {
+    if ((modifiers & (core::kModifierCtrl | core::kModifierAlt |
+                      core::kModifierGui)) == 0 &&
+        key >= 0x20 && key < 0x7F) {
+        return static_cast<char>(key);
+    }
+    return 0;
+}
+
+core::PointerButton mapMouseButton(std::uint8_t button) {
+    switch (button) {
+        case SDL_BUTTON_LEFT:
+            return core::PointerButton::Primary;
+        case SDL_BUTTON_RIGHT:
+            return core::PointerButton::Secondary;
+        case SDL_BUTTON_MIDDLE:
+            return core::PointerButton::Middle;
+        default:
+            return core::PointerButton::None;
+    }
+}
+
+}  // namespace
+
+// --- Clipboard（SDL3 实现；失败时应用侧安全降级） ---
+class Sdl3ApplicationHost::Sdl3Clipboard final : public Clipboard {
+  public:
+    [[nodiscard]] bool hasText() const override {
+        return SDL_HasClipboardText();
+    }
+    [[nodiscard]] std::string text() const override {
+        char* value = SDL_GetClipboardText();
+        if (value == nullptr) {
+            return {};
+        }
+        std::string result = value;
+        SDL_free(value);
+        return result;
+    }
+    bool setText(const std::string& value) override {
+        return SDL_SetClipboardText(value.c_str());
+    }
+    void clear() override { (void)SDL_SetClipboardText(""); }
+};
+
+// --- TextInputSession（包装既有 PlatformWindow 文本输入接口） ---
+class Sdl3ApplicationHost::Sdl3TextInputSession final : public TextInputSession {
+  public:
+    explicit Sdl3TextInputSession(PlatformWindow* window)
+        : window_(window) {}
+
+    void start() override {
+        if (window_ != nullptr) {
+            window_->setTextInputEnabled(true);
+            active_ = true;
+        }
+    }
+    void stop() override {
+        if (window_ != nullptr) {
+            window_->setTextInputEnabled(false);
+        }
+        active_ = false;
+    }
+    [[nodiscard]] bool active() const override { return active_; }
+    void setEditingState(const TextInputEditingState& state) override {
+        if (window_ == nullptr) {
+            return;
+        }
+        // 候选词锚点（caretRect）经 SDL_SetTextInputArea 传给 IME；
+        // Linux IBus/Fcitx/Wayland 依赖它跟踪光标。
+        window_->setTextInputArea(state.caretRect, 0);
+    }
+
+  private:
+    PlatformWindow* window_{nullptr};
+    bool active_{false};
+};
+
+Sdl3ApplicationHost::Sdl3ApplicationHost() = default;
+
+Sdl3ApplicationHost::~Sdl3ApplicationHost() { shutdown(); }
+
+bool Sdl3ApplicationHost::initialize() {
+    if (initialized_) {
+        return true;
+    }
+    // 与既有 createSdl3Window 的 SDL_Init 共存（SDL_Init 幂等计数）。
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+        return false;
+    }
+    // 触摸自翻译：禁用 SDL 的合成鼠标事件，一次触摸不产生重复指针事件。
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    initialized_ = true;
+    capabilities_.clipboard = true;
+    capabilities_.textInput = true;
+    capabilities_.ime = true;
+    capabilities_.keyboard = true;
+    capabilities_.mouse = true;
+    capabilities_.multiWindow = true;
+    capabilities_.adapterName = "sdl3";
+    refreshLifecycle();
+    return true;
+}
+
+void Sdl3ApplicationHost::shutdown() {
+    if (!initialized_) {
+        return;
+    }
+    lifecycle_ = core::AppLifecycle::Terminating;
+    windows_.clear();
+    clipboard_.reset();
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    initialized_ = false;
+}
+
+core::AppLifecycle Sdl3ApplicationHost::lifecycle() const {
+    return lifecycle_;
+}
+
+std::size_t Sdl3ApplicationHost::translateEvent(
+    void* raw, std::vector<core::HostEvent>& out) {
+    const SDL_Event& sdlEvent = *static_cast<const SDL_Event*>(raw);
+    const std::uint64_t timestamp = SDL_GetTicks();
+    const auto push = [&](core::HostEvent event) {
+        event.timestampMs = timestamp;
+        out.push_back(std::move(event));
+    };
+    const auto windowIdOf = [&](SDL_WindowID id) {
+        return core::WindowId{static_cast<std::uint64_t>(id)};
+    };
+
+    switch (sdlEvent.type) {
+        case SDL_EVENT_QUIT: {
+            core::HostEvent event;
+            event.type = core::HostEventType::Quit;
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP: {
+            if (windows_.count(sdlEvent.button.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = sdlEvent.type == SDL_EVENT_MOUSE_BUTTON_DOWN
+                             ? core::HostEventType::PointerDown
+                             : core::HostEventType::PointerUp;
+            event.window = windowIdOf(sdlEvent.button.windowID);
+            event.position =
+                core::Offset{sdlEvent.button.x, sdlEvent.button.y};
+            event.device = core::PointerDevice::Mouse;
+            event.button = mapMouseButton(sdlEvent.button.button);
+            event.pointerId = 0;
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_MOUSE_MOTION: {
+            if (windows_.count(sdlEvent.motion.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::PointerMove;
+            event.window = windowIdOf(sdlEvent.motion.windowID);
+            event.position =
+                core::Offset{sdlEvent.motion.x, sdlEvent.motion.y};
+            event.device = core::PointerDevice::Mouse;
+            event.pointerId = 0;
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_MOUSE_WHEEL: {
+            if (windows_.count(sdlEvent.wheel.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::Wheel;
+            event.window = windowIdOf(sdlEvent.wheel.windowID);
+            // wheel 事件坐标可能无效（PS/2 鼠标）；用 NAN 表示“位置未知”，
+            // 交互层只在需要命中测试时使用。
+            event.position = core::Offset{std::isnan(sdlEvent.wheel.mouse_x)
+                                              ? 0.0F
+                                              : sdlEvent.wheel.mouse_x,
+                                          std::isnan(sdlEvent.wheel.mouse_y)
+                                              ? 0.0F
+                                              : sdlEvent.wheel.mouse_y};
+            event.scrollDelta = core::Offset{sdlEvent.wheel.x * kWheelUnitPx,
+                                             sdlEvent.wheel.y * kWheelUnitPx};
+            event.device = core::PointerDevice::Mouse;
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_FINGER_DOWN:
+        case SDL_EVENT_FINGER_UP:
+        case SDL_EVENT_FINGER_MOTION:
+        case SDL_EVENT_FINGER_CANCELED: {
+            if (windows_.count(sdlEvent.tfinger.windowID) == 0) {
+                break;
+            }
+            const auto it = windows_.find(sdlEvent.tfinger.windowID);
+            if (it == windows_.end()) {
+                break;
+            }
+            const core::Size logical = it->second.window->logicalSize();
+            core::HostEvent event;
+            event.window = windowIdOf(sdlEvent.tfinger.windowID);
+            event.device = core::PointerDevice::Touch;
+            event.pointerId = static_cast<std::uint32_t>(
+                sdlEvent.tfinger.fingerID & 0xFFFFFFFFU);
+            if (sdlEvent.type == SDL_EVENT_FINGER_CANCELED) {
+                event.type = core::HostEventType::PointerCancel;
+            } else {
+                event.type = sdlEvent.type == SDL_EVENT_FINGER_DOWN
+                                 ? core::HostEventType::PointerDown
+                                 : (sdlEvent.type == SDL_EVENT_FINGER_UP
+                                        ? core::HostEventType::PointerUp
+                                        : core::HostEventType::PointerMove);
+            }
+            // 触摸坐标是窗口归一化 0..1；换算到逻辑坐标。
+            event.position =
+                core::Offset{sdlEvent.tfinger.x * logical.width,
+                             sdlEvent.tfinger.y * logical.height};
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_KEY_DOWN:
+        case SDL_EVENT_KEY_UP: {
+            if (windows_.count(sdlEvent.key.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = sdlEvent.type == SDL_EVENT_KEY_DOWN
+                             ? core::HostEventType::KeyDown
+                             : core::HostEventType::KeyUp;
+            event.window = windowIdOf(sdlEvent.key.windowID);
+            event.keyCode = mapSdlKey(sdlEvent.key.key);
+            event.scanCode = static_cast<int>(sdlEvent.key.scancode);
+            event.modifiers = mapSdlModifiers(sdlEvent.key.mod);
+            event.keyChar = mapKeyChar(sdlEvent.key.key, event.modifiers);
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_TEXT_INPUT: {
+            if (windows_.count(sdlEvent.text.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::TextInput;
+            event.window = windowIdOf(sdlEvent.text.windowID);
+            if (sdlEvent.text.text != nullptr) {
+                event.text = sdlEvent.text.text;
+            }
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_TEXT_EDITING: {
+            if (windows_.count(sdlEvent.edit.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::TextEditing;
+            event.window = windowIdOf(sdlEvent.edit.windowID);
+            if (sdlEvent.edit.text != nullptr) {
+                event.text = sdlEvent.edit.text;
+            }
+            event.editCursor = sdlEvent.edit.start;
+            event.editLength = sdlEvent.edit.length;
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
+            const auto it = windows_.find(sdlEvent.window.windowID);
+            if (it == windows_.end()) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::Resize;
+            event.window = windowIdOf(sdlEvent.window.windowID);
+            event.pixelSize = it->second.window->drawableSize();
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+        case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED: {
+            const auto it = windows_.find(sdlEvent.window.windowID);
+            if (it == windows_.end()) {
+                break;
+            }
+            // DPI 变化单独成事件：metrics 查询即时反映新 drawable 尺寸，
+            // 必须先于下一帧 surface 重建处理（plan §3.1）。
+            core::HostEvent event;
+            event.type = core::HostEventType::DpiChanged;
+            event.window = windowIdOf(sdlEvent.window.windowID);
+            event.pixelSize = it->second.window->drawableSize();
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_WINDOW_MINIMIZED: {
+            if (windows_.count(sdlEvent.window.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::WindowMinimized;
+            event.window = windowIdOf(sdlEvent.window.windowID);
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_WINDOW_RESTORED: {
+            if (windows_.count(sdlEvent.window.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::WindowRestored;
+            event.window = windowIdOf(sdlEvent.window.windowID);
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_WINDOW_FOCUS_GAINED: {
+            if (windows_.count(sdlEvent.window.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::WindowFocusGained;
+            event.window = windowIdOf(sdlEvent.window.windowID);
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_WINDOW_FOCUS_LOST: {
+            if (windows_.count(sdlEvent.window.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::WindowFocusLost;
+            event.window = windowIdOf(sdlEvent.window.windowID);
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_WINDOW_CLOSE_REQUESTED: {
+            if (windows_.count(sdlEvent.window.windowID) == 0) {
+                break;
+            }
+            // 关闭请求区别于 Quit：Navigator/Dialog 统一拦截规则（8D）。
+            core::HostEvent event;
+            event.type = core::HostEventType::WindowCloseRequested;
+            event.window = windowIdOf(sdlEvent.window.windowID);
+            push(std::move(event));
+            break;
+        }
+        default:
+            break;
+    }
+    return out.size();
+}
+
+bool Sdl3ApplicationHost::pollEvent(core::HostEvent& out) {
+    if (!initialized_) {
+        out = core::HostEvent{};
+        return false;
+    }
+    if (!pending_.empty()) {
+        out = std::move(pending_.front());
+        pending_.pop_front();
+        return true;
+    }
+    SDL_Event sdlEvent{};
+    while (SDL_PollEvent(&sdlEvent)) {
+        std::vector<core::HostEvent> batch;
+        translateEvent(&sdlEvent, batch);
+        if (!batch.empty()) {
+            out = std::move(batch.front());
+            for (std::size_t i = 1; i < batch.size(); ++i) {
+                pending_.push_back(std::move(batch[i]));
+            }
+            refreshLifecycle();
+            return true;
+        }
+    }
+    out = core::HostEvent{};
+    return false;
+}
+
+std::optional<core::WindowId> Sdl3ApplicationHost::createWindow(
+    const WindowDesc& desc) {
+    if (!initialized_) {
+        return std::nullopt;
+    }
+    Sdl3WindowDesc windowDesc;
+    windowDesc.title = desc.title;
+    windowDesc.width = desc.width;
+    windowDesc.height = desc.height;
+    windowDesc.resizable = desc.resizable;
+    windowDesc.highPixelDensity = desc.highPixelDensity;
+    windowDesc.opengl = desc.opengl;
+    auto window = createSdl3Window(windowDesc);
+    if (window == nullptr) {
+        return std::nullopt;
+    }
+    const NativeSurfaceHandle surface = window->nativeSurface();
+    auto* sdlWindow = static_cast<SDL_Window*>(surface.nativeWindow);
+    const core::WindowId id{SDL_GetWindowID(sdlWindow)};
+    WindowEntry entry;
+    entry.window = std::move(window);
+    entry.textInput = std::make_unique<Sdl3TextInputSession>(
+        entry.window.get());
+    windows_.emplace(id.value, std::move(entry));
+    refreshLifecycle();
+    return id;
+}
+
+void Sdl3ApplicationHost::destroyWindow(core::WindowId id) {
+    windows_.erase(id.value);
+    refreshLifecycle();
+}
+
+std::optional<core::WindowMetrics> Sdl3ApplicationHost::windowMetrics(
+    core::WindowId id) const {
+    const auto it = windows_.find(id.value);
+    if (it == windows_.end()) {
+        return std::nullopt;
+    }
+    const PlatformWindow& window = *it->second.window;
+    core::WindowMetrics metrics;
+    metrics.logicalSize = window.logicalSize();
+    metrics.drawableSize = window.drawableSize();
+    metrics.deviceScale = metrics.logicalSize.width > 0.0F
+                              ? metrics.drawableSize.width /
+                                    metrics.logicalSize.width
+                              : 1.0F;
+    metrics.visible = window.isVisible();
+    metrics.minimized = window.isMinimized();
+    return metrics;
+}
+
+std::vector<core::WindowId> Sdl3ApplicationHost::windowIds() const {
+    std::vector<core::WindowId> ids;
+    ids.reserve(windows_.size());
+    for (const auto& [value, entry] : windows_) {
+        ids.push_back(core::WindowId{value});
+    }
+    return ids;
+}
+
+PlatformWindow* Sdl3ApplicationHost::platformWindow(core::WindowId id) const {
+    const auto it = windows_.find(id.value);
+    return it == windows_.end() ? nullptr : it->second.window.get();
+}
+
+Clipboard* Sdl3ApplicationHost::clipboard() {
+    if (!initialized_) {
+        return nullptr;
+    }
+    if (clipboard_ == nullptr) {
+        clipboard_ = std::make_unique<Sdl3Clipboard>();
+    }
+    return clipboard_.get();
+}
+
+TextInputSession* Sdl3ApplicationHost::textInputSession(core::WindowId id) {
+    WindowEntry* entry = find(id);
+    return entry != nullptr ? entry->textInput.get() : nullptr;
+}
+
+PlatformCapabilities Sdl3ApplicationHost::capabilities() const {
+    PlatformCapabilities caps = capabilities_;
+    int touchCount = 0;
+    SDL_TouchID* devices = SDL_GetTouchDevices(&touchCount);
+    caps.touch = touchCount > 0;
+    if (devices != nullptr) {
+        SDL_free(devices);
+    }
+    return caps;
+}
+
+Sdl3ApplicationHost::WindowEntry* Sdl3ApplicationHost::find(
+    core::WindowId id) {
+    const auto it = windows_.find(id.value);
+    return it == windows_.end() ? nullptr : &it->second;
+}
+
+void Sdl3ApplicationHost::refreshLifecycle() {
+    if (!initialized_) {
+        lifecycle_ = core::AppLifecycle::Launching;
+        return;
+    }
+    if (windows_.empty()) {
+        lifecycle_ = core::AppLifecycle::Active;
+        return;
+    }
+    // 桌面近似：全部窗口不可见（最小化/隐藏）时 Inactive；可见窗口存在
+    // 则 Active。Background/Suspended 保留给移动端 host（阶段8E）。
+    bool anyVisible = false;
+    for (const auto& [value, entry] : windows_) {
+        if (entry.window->isVisible()) {
+            anyVisible = true;
+            break;
+        }
+    }
+    lifecycle_ = anyVisible ? core::AppLifecycle::Active
+                            : core::AppLifecycle::Inactive;
+}
+
+}  // namespace lumen::platform

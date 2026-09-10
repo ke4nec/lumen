@@ -24,6 +24,10 @@ enum class Key : int {
     Home,
     End,
     Delete,
+    // v0.3 阶段8B/8D：编辑与滚动键盘支持。
+    PageUp,
+    PageDown,
+    Backtab,  // Shift-Tab（焦点反向遍历）
 };
 
 // Hit testing walks the render tree in reverse paint order: the last child is

@@ -23,8 +23,9 @@ FrameScheduler::FrameScheduler(Config config, FrameClock* clock)
     lastSubmitMs_ = now();
 }
 
-void FrameScheduler::requestFrame(FrameReason reason) {
+void FrameScheduler::requestFrame(FrameReason reason, core::WindowId window) {
     pending_ |= kReasonBit(reason);
+    lastRequestedWindow_ = window;
     if (reason == FrameReason::Resize) {
         lastResizeRequestMs_ = now();
         hasResizeRequest_ = true;

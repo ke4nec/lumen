@@ -1,9 +1,11 @@
 # Lumen
 
 C++20 自绘 GUI 框架（Flutter 式声明式 UI），详见
-[`docs/lumen-gui-framework-plan.md`](docs/lumen-gui-framework-plan.md) 与
+[`docs/lumen-gui-framework-plan.md`](docs/lumen-gui-framework-plan.md)、
 v0.2 计划
-[`docs/lumen-gui-framework-plan-v0.2.md`](docs/lumen-gui-framework-plan-v0.2.md)。
+[`docs/lumen-gui-framework-plan-v0.2.md`](docs/lumen-gui-framework-plan-v0.2.md)
+与 v0.3 计划
+[`docs/lumen-gui-framework-plan-v0.3.md`](docs/lumen-gui-framework-plan-v0.3.md)。
 
 当前进度：阶段 0–6 + v0.2 阶段 7A–7E（命令管线、Skia GPU 后端与 CPU
 回退、帧调度、异步资源、基准与 CI 矩阵）。

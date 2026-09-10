@@ -65,11 +65,13 @@ std::size_t ResourceManager::acquireSlot() {
     return slots_.size() - 1;
 }
 
-ResourceHandle ResourceManager::requestImage(const std::string& path) {
+ResourceHandle ResourceManager::requestImage(const std::string& path,
+                                             core::WindowId window) {
     const std::size_t index = acquireSlot();
     Slot& slot = slots_[index];
     slot.state = ResourceState::Loading;
     slot.path = path;
+    slot.window = window;
     diagnostics_.requested += 1;
 
     Job job;
@@ -155,6 +157,7 @@ ResourceManager::Completion ResourceManager::applyResult(const Result& result) {
         return completion;
     }
     Slot& slot = slots_[result.index];
+    completion.window = slot.window;
     if (slot.generation != result.generation ||
         slot.state != ResourceState::Loading) {
         // 旧代完成事件：资源已被释放/取消/复用，不能复活（plan §2.3）。

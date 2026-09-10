@@ -1,6 +1,9 @@
 add_library(lumen-platform STATIC
     platform_window.cpp
     sdl3_window.cpp
+    application_host.cpp
+    fake_host.cpp
+    sdl3_host.cpp
 )
 
 target_include_directories(lumen-platform PUBLIC

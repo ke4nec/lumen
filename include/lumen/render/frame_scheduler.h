@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <optional>
 
+#include "lumen/core/windowing.h"
+
 namespace lumen::render {
 
 // v0.2 阶段7D (plan §3.2): 帧调度器，由应用主循环拥有。
@@ -61,8 +63,9 @@ class FrameScheduler {
     FrameScheduler& operator=(const FrameScheduler&) = delete;
 
     // 平台事件/资源完成/显式请求 → 合并进 pending。同一 turn 内多次
-    // 请求只合并为一次提交。
-    void requestFrame(FrameReason reason);
+    // 请求只合并为一次提交。window 随请求关联（阶段8A 诊断：哪个窗口
+    // 触发了本次帧请求；lastRequestedWindow 可查）。
+    void requestFrame(FrameReason reason, core::WindowId window = {});
 
     // 持续动画是否活跃（tween/blink 等）。活跃时按 deadline 循环提交。
     void setAnimationsActive(bool active);
@@ -103,6 +106,10 @@ class FrameScheduler {
     [[nodiscard]] bool isWindowVisible() const { return windowVisible_; }
     [[nodiscard]] bool animationsActive() const { return animationsActive_; }
     [[nodiscard]] std::uint64_t submittedFrames() const { return submittedFrames_; }
+    // 最近一次 requestFrame 关联的窗口（阶段8A 诊断；空 = 未指定）。
+    [[nodiscard]] core::WindowId lastRequestedWindow() const {
+        return lastRequestedWindow_;
+    }
 
   private:
     [[nodiscard]] std::uint64_t now() const;
@@ -120,6 +127,7 @@ class FrameScheduler {
     std::uint64_t lastResizeRequestMs_{0};
     bool hasResizeRequest_{false};
     std::uint64_t submittedFrames_{0};
+    core::WindowId lastRequestedWindow_{};
 };
 
 }  // namespace lumen::render

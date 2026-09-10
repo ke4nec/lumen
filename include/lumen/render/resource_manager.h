@@ -65,6 +65,8 @@ class ResourceManager {
         ResourceHandle handle;
         ResourceState result{ResourceState::Failed};
         ResourceError error{ResourceError::None};
+        // 请求所属窗口（阶段8A：资源完成事件按窗口关联）；未指定时为空。
+        core::WindowId window{};
     };
 
     struct Diagnostics {
@@ -85,7 +87,9 @@ class ResourceManager {
     ResourceManager& operator=(const ResourceManager&) = delete;
 
     // 异步加载图片（PNG/JPEG 由 stb_image 解码；.lumenrgba 原始格式直读）。
-    ResourceHandle requestImage(const std::string& path);
+    // window 随完成事件透传，应用可按窗口投递资源帧请求（阶段8A）。
+    ResourceHandle requestImage(const std::string& path,
+                                core::WindowId window = {});
     // 同步注册已解码像素（不经 worker；状态立即 Ready）。
     ResourceHandle registerImage(PixelBuffer pixels);
 
@@ -120,6 +124,7 @@ class ResourceManager {
         ResourceState state{ResourceState::Loading};
         std::uint32_t generation{1};
         std::string path{};
+        core::WindowId window{};
         PixelBuffer pixels{};
         std::uint64_t bytes{0};
         std::uint64_t lastUse{0};

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "lumen/core/geometry.h"
+#include "lumen/core/windowing.h"
 
 namespace lumen::render {
 
@@ -28,7 +29,7 @@ struct PixelBuffer {
 
 class RenderCommandList;
 
-// 一帧的提交元数据（v0.2 阶段7B, plan §3.1）。
+// 一帧的提交元数据（v0.2 阶段7B, plan §3.1；v0.3 阶段8A 关联 WindowId）。
 struct FrameInfo {
     core::Size viewport{};
     // 本次提交需要更新的区域；nullopt 表示全帧。
@@ -38,6 +39,8 @@ struct FrameInfo {
     float deviceScale{1.0F};
     std::uint64_t frameIndex{0};
     std::uint64_t timestampMs{0};
+    // 提交归属窗口（诊断与多窗口 surface 管理，阶段8A）。
+    core::WindowId window{};
 };
 
 // 后端能力报告（plan §3.1 capabilities()）。
@@ -68,7 +71,8 @@ struct RenderStats {
 };
 
 // 目标 surface 重建描述（plan §3.1 resetSurface）。nativeWindow 是不透明
-// 平台句柄，只在 lumen-platform 与 Renderer 适配层解引用。
+// 平台句柄，只在 lumen-platform 与 Renderer 适配层解引用。window 让设备
+// 重建与窗口关联（阶段8A）。
 struct RenderSurfaceDesc {
     void* nativeWindow{nullptr};
     const char* windowSystem{""};
@@ -76,6 +80,7 @@ struct RenderSurfaceDesc {
     int heightPixels{0};
     float deviceScale{1.0F};
     bool vsync{true};
+    core::WindowId window{};
 };
 
 // Renderer contract shared by CpuRenderer (Stage 2), SkiaRenderer (Stage 5)
