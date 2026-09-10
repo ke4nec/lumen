@@ -16,6 +16,7 @@ set(LUMEN_TEST_SOURCES
     platform_host_tests.cpp
     text_tests.cpp
     semantics_tests.cpp
+    settings_integration_tests.cpp
 )
 
 if(LUMEN_ENABLE_SKIA)
@@ -40,6 +41,7 @@ endif()
 
 target_include_directories(lumen-tests PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/counter
+    ${PROJECT_SOURCE_DIR}/examples/settings
     ${stb_SOURCE_DIR}
 )
 
@@ -49,6 +51,7 @@ target_link_libraries(lumen-tests PRIVATE
     lumen-render
     lumen-text
     lumen-accessibility
+    lumen-widgets
     lumen-platform
     lumen-dsl
     SDL3::SDL3

@@ -275,14 +275,26 @@ void InteractionController::pointerUp(const RenderNode& root,
     pressActive_ = false;
     dragging_ = false;
     selecting_ = false;
-    if (armedOnClick.empty() || wasDragging) {
-        // No click target, or the press turned into a drag: a drag release
-        // never fires a click (basic gesture discrimination).
-        return;
-    }
     std::vector<const RenderNode*> chain;
     const RenderNode* target = hitTestChain(root, position, chain);
     if (target == nullptr) {
+        return;
+    }
+    // Checkbox/Switch：命中（含祖先）即由框架切换状态（plan §3.4，与
+    // TextField 编辑一致的内建行为）；拖动释放不切换。
+    if (!wasDragging) {
+        for (const RenderNode* node : chain) {
+            if ((node->type == WidgetType::Checkbox ||
+                 node->type == WidgetType::Switch) &&
+                !node->bind.empty()) {
+                toggleChecked(*node);
+                return;
+            }
+        }
+    }
+    if (armedOnClick.empty() || wasDragging) {
+        // No click target, or the press turned into a drag: a drag release
+        // never fires a click (basic gesture discrimination).
         return;
     }
     // The first onClick node on the release chain decides: firing only when
@@ -527,58 +539,108 @@ void InteractionController::keyDown(const RenderNode& root, Key key,
             return;
         }
     }
-    // Enter/Space 激活聚焦 Button（与语义 activate 共用，阶段8C）。
+    // Enter/Space 激活聚焦的可激活节点（Button/Checkbox/Switch；与语义
+    // activate 共用，阶段8C）。
     if (key == Key::Enter || keyChar == ' ') {
         if (focusedBind_.empty()) {
             activateFocusedButton(root);
             return;
         }
     }
+    // 无编辑焦点时的滚动键：PageUp/PageDown/Up/Down/Home/End → wheelSink
+    //（plan §3.4 键盘滚动）。
+    if (focusedBind_.empty() &&
+        (key == Key::PageUp || key == Key::PageDown || key == Key::Up ||
+         key == Key::Down || key == Key::Home || key == Key::End)) {
+        scrollKey(root, key);
+        return;
+    }
     keyDown(key, modifiers, keyChar);
 }
 
 bool InteractionController::traverseFocus(const RenderNode& root,
                                           bool backward) {
-    std::vector<const RenderNode*> focusables;
-    std::function<void(const RenderNode&)> collect =
-        [&](const RenderNode& node) {
+    // 收集焦点候选与其 FocusScope 域（最近的 FocusScope 祖先；根域 = ""）。
+    struct Candidate {
+        const RenderNode* node{};
+        std::string scope{};
+    };
+    std::vector<Candidate> focusables;
+    std::function<void(const RenderNode&, const std::string&)> collect =
+        [&](const RenderNode& node, const std::string& scope) {
             const bool editable =
                 (node.type == WidgetType::TextField && !node.bind.empty());
             const bool activatable =
-                node.type == WidgetType::Button && !node.onClick.empty();
+                (node.type == WidgetType::Button &&
+                 !node.onClick.empty()) ||
+                ((node.type == WidgetType::Checkbox ||
+                  node.type == WidgetType::Switch) &&
+                 !node.bind.empty());
             if (editable || activatable) {
-                focusables.push_back(&node);
+                focusables.push_back(Candidate{&node, scope});
             }
+            const std::string childScope =
+                node.type == WidgetType::FocusScope ? node.identity : scope;
             for (const auto& child : node.children) {
-                collect(child);
+                collect(child, childScope);
             }
         };
-    collect(root);
+    collect(root, "");
     if (focusables.empty()) {
         return false;
     }
-    // 当前焦点位置（按 identity，其次 key）。
+    // 当前焦点位置与其域。
     std::ptrdiff_t index = -1;
+    std::string currentScope = "";
     for (std::size_t i = 0; i < focusables.size(); ++i) {
-        if (!focus_.focusedIdentity().empty() &&
-            focusables[i]->identity == focus_.focusedIdentity()) {
+        const bool identityMatch =
+            !focus_.focusedIdentity().empty() &&
+            focusables[i].node->identity == focus_.focusedIdentity();
+        const bool keyMatch = !focus_.focusedKey().empty() &&
+                              focusables[i].node->key == focus_.focusedKey();
+        if (identityMatch || keyMatch) {
             index = static_cast<std::ptrdiff_t>(i);
-            break;
-        }
-        if (!focus_.focusedKey().empty() &&
-            focusables[i]->key == focus_.focusedKey()) {
-            index = static_cast<std::ptrdiff_t>(i);
+            currentScope = focusables[i].scope;
+            if (identityMatch) {
+                break;
+            }
         }
     }
-    std::ptrdiff_t next;
+    // 域内循环（plan §3.4 FocusScope：Tab 不越过边界）。
+    std::vector<std::size_t> inScope;
+    for (std::size_t i = 0; i < focusables.size(); ++i) {
+        if (focusables[i].scope == currentScope) {
+            inScope.push_back(i);
+        }
+    }
+    if (inScope.empty()) {
+        return false;
+    }
+    std::size_t positionInScope = 0;
+    if (index >= 0) {
+        bool found = false;
+        for (std::size_t i = 0; i < inScope.size(); ++i) {
+            if (static_cast<std::ptrdiff_t>(inScope[i]) == index) {
+                positionInScope = i;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            // 焦点在其他域：Tab 不跨界（modal barrier 下的默认）。
+            return false;
+        }
+    }
+    const auto count = inScope.size();
+    std::size_t next;
     if (index < 0) {
-        next = backward ? static_cast<std::ptrdiff_t>(focusables.size()) - 1
-                        : 0;
+        // 无焦点：正向取域内第一个，反向取最后一个。
+        next = backward ? count - 1 : 0;
     } else {
-        const auto count = static_cast<std::ptrdiff_t>(focusables.size());
-        next = backward ? (index - 1 + count) % count : (index + 1) % count;
+        next = backward ? (positionInScope + count - 1) % count
+                        : (positionInScope + 1) % count;
     }
-    const RenderNode* target = focusables[static_cast<std::size_t>(next)];
+    const RenderNode* target = focusables[inScope[next]].node;
     if (target->type == WidgetType::TextField) {
         focus_.setFocus(target->key.empty() ? target->bind : target->key,
                         target->identity);
@@ -590,7 +652,7 @@ bool InteractionController::traverseFocus(const RenderNode& root,
         composing_ = {};
         selection_ = text::TextSelection{0, 0};
     } else {
-        // Button 焦点：字段编辑状态释放。
+        // Button/Checkbox/Switch 焦点：字段编辑状态释放。
         focus_.setFocus(target->key, target->identity);
         focusedBind_.clear();
         composition_.clear();
@@ -604,19 +666,37 @@ void InteractionController::activateFocusedButton(const RenderNode& root) {
     if (focus_.focusedKey().empty() || !focusedBind_.empty()) {
         return;
     }
-    const RenderNode* button =
-        findNodeByIdentity(root, focus_.focusedIdentity());
-    if (button == nullptr) {
-        button = findNodeByKey(root, focus_.focusedKey());
+    const RenderNode* node = findNodeByIdentity(root, focus_.focusedIdentity());
+    if (node == nullptr) {
+        node = findNodeByKey(root, focus_.focusedKey());
     }
-    if (button == nullptr || button->type != WidgetType::Button ||
-        button->onClick.empty()) {
+    if (node == nullptr) {
         return;
     }
-    const auto handler = handlers_.find(button->onClick);
+    if (node->type == WidgetType::Checkbox ||
+        node->type == WidgetType::Switch) {
+        toggleChecked(*node);
+        return;
+    }
+    if (node->type != WidgetType::Button || node->onClick.empty()) {
+        return;
+    }
+    const auto handler = handlers_.find(node->onClick);
     if (handler != handlers_.end()) {
         handler->second();
     }
+}
+
+void InteractionController::toggleChecked(const RenderNode& node) {
+    if (node.bind.empty() ||
+        (node.type != WidgetType::Checkbox &&
+         node.type != WidgetType::Switch)) {
+        return;
+    }
+    // bind 值往返 "true"/"false"（applyBinds 解析时同样宽容 "1"/"0"）。
+    const std::string& value = store_.get(node.bind);
+    const bool checked = value == "true" || value == "1" || value == "on";
+    store_.set(node.bind, checked ? "false" : "true");
 }
 
 // --- 滚轮 ---
@@ -635,7 +715,49 @@ void InteractionController::wheel(const RenderNode& root, Offset position,
     if (hit == nullptr) {
         return;
     }
-    (void)wheelSink_(root, *hit, position, delta);
+    // 命中链上最近的滚动视口承担滚动（plan §3.4 统一手势/焦点状态机）。
+    const RenderNode* viewport = nullptr;
+    for (const RenderNode* node : chain) {
+        if (isScrollableWidget(node->type)) {
+            viewport = node;
+            break;
+        }
+    }
+    if (viewport == nullptr) {
+        return;
+    }
+    (void)wheelSink_(root, viewport, position, delta);
+}
+
+void InteractionController::scrollKey(const RenderNode& root, Key key) {
+    if (!wheelSink_) {
+        return;
+    }
+    // 键盘滚动的目标：聚焦节点；无焦点时交给 sink（默认视口）。
+    const RenderNode* focused = nullptr;
+    if (!focus_.focusedIdentity().empty()) {
+        focused = findNodeByIdentity(root, focus_.focusedIdentity());
+    }
+    float dy = 0.0F;
+    switch (key) {
+        case Key::PageDown:
+        case Key::Down:
+            dy = 120.0F;
+            break;
+        case Key::PageUp:
+        case Key::Up:
+            dy = -120.0F;
+            break;
+        case Key::Home:
+            dy = -1e9F;
+            break;
+        case Key::End:
+            dy = 1e9F;
+            break;
+        default:
+            return;
+    }
+    (void)wheelSink_(root, focused, Offset{}, Offset{0.0F, dy});
 }
 
 // --- 剪贴板/编辑值 ---

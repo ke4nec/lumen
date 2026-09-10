@@ -85,6 +85,10 @@ void applyBinds(Widget& root, const StateStore& store) {
             root.text = value;
         } else if (root.type == WidgetType::Text) {
             root.text = root.bindPrefix + value;
+        } else if (root.type == WidgetType::Checkbox ||
+                   root.type == WidgetType::Switch) {
+            // v0.3 阶段8D：选中状态绑定（宽容解析；框架写回 "true"/"false"）。
+            root.checked = value == "true" || value == "1" || value == "on";
         }
     }
     for (auto& child : root.children) {

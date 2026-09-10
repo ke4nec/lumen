@@ -41,6 +41,12 @@ struct RenderNode {
     std::string semanticsRole{};
     std::uint32_t semanticsActions{0};
 
+    // v0.3 阶段8D：滚动视口与选择状态。
+    bool clipContent{false};     // ScrollView/ListView 视口裁剪
+    float scrollOffset{0.0F};    // 当前滚动偏移（已应用到子 offset）
+    float scrollExtent{0.0F};    // 可滚动的最大范围（内容-视口）
+    bool checked{false};         // Checkbox/Switch 状态
+
     std::vector<RenderNode> children{};
 
     // Field-wise equality (all fields including children); damage tracking

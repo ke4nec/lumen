@@ -45,6 +45,8 @@ endif()
 
 if(LUMEN_BUILD_EXAMPLES)
   add_subdirectory(examples/counter)
+  # v0.3 阶段8D：settings 示例（滚动/表单/弹窗/导航/主题/无障碍）。
+  add_subdirectory(examples/settings)
 endif()
 
 if(LUMEN_BUILD_BENCHMARKS)

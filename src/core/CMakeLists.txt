@@ -5,6 +5,7 @@ add_library(lumen-core STATIC
     utf8.cpp
     state.cpp
     interaction.cpp
+    scroll.cpp
     damage.cpp
     tween.cpp
 )

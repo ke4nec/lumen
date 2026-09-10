@@ -1,0 +1,459 @@
+// v0.3 阶段8D (plan §4 8D / §5.1): 应用基础组件与 settings 集成测试。
+//
+// 覆盖：滚动视口约束（内容主轴不限 + clip）、ScrollController（滚轮/
+// 键盘/拖动/语义 + clamp）、intrinsic/baseline、Checkbox/Switch 点击切换
+// 与语义、FocusScope 域内遍历、局部重绘与 forced full repaint 像素一致、
+// 列表 key 复用、表单校验、弹窗 barrier/Escape 统一规则、导航返回与
+// 状态保持、Theme 切换、DSL 新节点解析、320px 窄窗口可用性。
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+
+#include <string>
+
+#include "lumen/accessibility/semantics.h"
+#include "lumen/core/interaction.h"
+#include "lumen/core/scroll.h"
+#include "lumen/core/state.h"
+#include "lumen/dsl/text_dsl.h"
+#include "lumen/layout/layout.h"
+#include "settings_app.h"
+
+using namespace lumen;
+using namespace lumen::core;
+using namespace lumen::layout;
+using namespace lumen::examples;
+
+namespace {
+
+RenderNode layoutOf(const Widget& widget, float width = 400.0F,
+                    float height = 300.0F) {
+    return LayoutEngine::layout(
+        widget, Constraints::tight(Size{width, height}));
+}
+
+Offset centerOf(const RenderNode& root, const std::string& key) {
+    const RenderNode* node = findNodeByKey(root, key);
+    REQUIRE(node != nullptr);
+    return absoluteOffset(root, key) +
+           Offset{node->size.width * 0.5F, node->size.height * 0.5F};
+}
+
+}  // namespace
+
+// --- 滚动视口布局 ---
+
+TEST_CASE("scroll_viewport_layout_and_clipping", "[widgets][layout]") {
+    // 内容高于视口：视口高度固定，子内容按 scrollOffset 上移。外层用 loose
+    std::vector<Widget> rows;
+    // 约束让显式高度生效（tight 父约束会覆盖显式尺寸）。
+    for (int i = 0; i < 20; ++i) {
+        rows.push_back(withKey(makeText("row"), "row-" + std::to_string(i)));
+    }
+    Widget ui = makeContainer(
+        withScrollOffset(makeScrollView(makeColumn(std::move(rows)), "sv"),
+                         50.0F),
+        300.0F, 200.0F);
+    const RenderNode root = LayoutEngine::layout(
+        ui, Constraints::loose(Size{400.0F, 300.0F}));
+
+    const RenderNode* viewport = findNodeByKey(root, "sv");
+    REQUIRE(viewport != nullptr);
+    CHECK(viewport->type == WidgetType::ScrollView);
+    CHECK(viewport->size.height == 200.0F);
+    CHECK(viewport->clipContent);
+    CHECK(viewport->scrollExtent > 0.0F);
+    CHECK(viewport->scrollOffset == 50.0F);
+    // 子内容第一个 row 相对视口上移 50px（减去 Column 自身）。
+    const RenderNode* firstRow = findNodeByKey(root, "row-0");
+    REQUIRE(firstRow != nullptr);
+    const float rowTop = absoluteOffset(root, "row-0").y;
+    const float viewportTop = absoluteOffset(root, "sv").y;
+    // 未滚时 row 紧贴视口顶部内容区；滚 50 后 row 顶部在视口上方。
+    CHECK(rowTop < viewportTop);
+}
+
+TEST_CASE("scroll_offset_clamps_to_extent", "[widgets][layout]") {
+    std::vector<Widget> rows;
+    for (int i = 0; i < 20; ++i) {
+        rows.push_back(withKey(makeText("row"), "row"));
+    }
+    Widget ui = makeContainer(
+        withScrollOffset(makeScrollView(makeColumn(std::move(rows)), "sv"),
+                         100000.0F),
+        300.0F, 200.0F);
+    const RenderNode root = layoutOf(ui);
+    const RenderNode* viewport = findNodeByKey(root, "sv");
+    REQUIRE(viewport != nullptr);
+    CHECK(viewport->scrollOffset == viewport->scrollExtent);
+}
+
+TEST_CASE("scroll_controller_wheel_keyboard_drag_and_semantics",
+          "[widgets]") {
+    ScrollController scroll;
+    scroll.updateExtents(200.0F, 500.0F);
+    CHECK(scroll.maxScrollOffset() == 300.0F);
+    CHECK(scroll.visibleFraction() == Catch::Approx(0.4F));
+
+    CHECK(scroll.applyWheel(80.0F));
+    CHECK(scroll.offset() == 80.0F);
+    // 拖动内容跟随手指：手指下移 → 内容滚回。
+    CHECK(scroll.applyDrag(30.0F));
+    CHECK(scroll.offset() == 50.0F);
+    // 键盘翻页。
+    CHECK(scroll.applyKey(Key::PageDown, 200.0F));
+    CHECK(scroll.offset() == 230.0F);
+    CHECK(scroll.applyKey(Key::End, 200.0F));
+    CHECK(scroll.offset() == 300.0F);
+    CHECK_FALSE(scroll.applyKey(Key::PageDown, 200.0F));  // 已到底。
+    CHECK(scroll.applyKey(Key::Home, 200.0F));
+    CHECK(scroll.offset() == 0.0F);
+    // 语义滚动（AT 上滚 = 内容向上）。
+    CHECK(scroll.semanticScroll(-60.0F));
+    CHECK(scroll.offset() == 60.0F);
+}
+
+// --- intrinsic / baseline ---
+
+TEST_CASE("layout_engine_intrinsic_size_and_baseline", "[widgets][layout]") {
+    const Size intrinsic =
+        LayoutEngine::intrinsicSize(makeText("hello"), Constraints::unbounded());
+    CHECK(intrinsic.width == 14.0F * 0.6F * 5.0F);
+    CHECK(intrinsic.height == 14.0F * 1.2F);
+
+    // Column 内第一个文本提供 baseline。
+    Widget ui = makeColumn({
+        withKey(makeText("first"), "t1"),
+        withKey(makeButton("OK"), "b1"),
+    });
+    const RenderNode root = layoutOf(ui);
+    const float baseline = LayoutEngine::baseline(root);
+    CHECK(baseline > 0.0F);
+    // 无文本的树返回 -1。
+    const RenderNode bare = layoutOf(makeContainerLeaf(10.0F, 10.0F));
+    CHECK(LayoutEngine::baseline(bare) == -1.0F);
+}
+
+// --- Checkbox / Switch ---
+
+TEST_CASE("checkbox_and_switch_toggle_on_click_and_keyboard", "[widgets]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    store.set("autosave", "false");
+    store.set("notifications", "true");
+
+    Widget ui = makeColumn({
+        withKey(makeCheckbox("Autosave", "autosave", "auto-box"), "auto-box"),
+        withKey(makeSwitch("Notifications", "notifications", "notif-switch"),
+                "notif-switch"),
+    });
+    const RenderNode root = layoutOf(ui);
+
+    controller.pointerDown(root, centerOf(root, "auto-box"));
+    controller.pointerUp(root, centerOf(root, "auto-box"));
+    CHECK(store.get("autosave") == "true");
+
+    controller.pointerDown(root, centerOf(root, "notif-switch"));
+    controller.pointerUp(root, centerOf(root, "notif-switch"));
+    CHECK(store.get("notifications") == "false");
+
+    // 键盘：Tab 聚焦 checkbox，Space/Enter 切换。
+    controller.keyDown(root, Key::Tab);
+    controller.keyDown(root, Key::Enter);
+    CHECK(store.get("autosave") == "false");
+}
+
+TEST_CASE("checkbox_state_resolves_from_bind", "[widgets]") {
+    StateStore store;
+    Widget ui = makeContainer(
+        withKey(makeCheckbox("Autosave", "autosave", "c"), "c"));
+    store.set("autosave", "true");
+    applyBinds(ui, store);
+    REQUIRE(ui.children.size() == 1);
+    CHECK(ui.children[0].checked);
+}
+
+// --- FocusScope 域内遍历 ---
+
+TEST_CASE("focus_scope_keeps_tab_traversal_inside", "[widgets]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    store.set("a", "");
+    store.set("d1", "");
+    store.set("d2", "");
+
+    // 根域一个字段；FocusScope 内两个按钮。
+    Widget ui = makeColumn({
+        withKey(makeTextField("", {}, {}, {}, 0.0F, "outside"), "outside"),
+        makeFocusScope(
+            makeColumn({
+                withKey(makeButton("A", {}, {}, 0.0F, "in-a", std::nullopt,
+                                   std::nullopt, "h"),
+                        "in-a"),
+                withKey(makeButton("B", {}, {}, 0.0F, "in-b", std::nullopt,
+                                   std::nullopt, "h"),
+                        "in-b"),
+            }),
+            "scope"),
+    });
+    ui.children[0].bind = "a";
+    const RenderNode root = layoutOf(ui);
+
+    // 聚焦域内按钮 A：Tab 只在域内循环 A → B → A。
+    controller.focusNode(*findNodeByKey(root, "in-a"));
+    controller.keyDown(root, Key::Tab);
+    CHECK(focus.focusedKey() == "in-b");
+    controller.keyDown(root, Key::Tab);
+    CHECK(focus.focusedKey() == "in-a");
+    // 域内最后一个再 Tab 不逃逸到 outside。
+    controller.keyDown(root, Key::Tab);
+    CHECK(focus.focusedKey() == "in-b");
+}
+
+// --- DSL 新节点 ---
+
+TEST_CASE("dsl_parses_stage8d_widgets", "[widgets][dsl]") {
+    const auto parsed = lumen::dsl::parseLumen(
+        "page root {\n"
+        "  ScrollView(key: \"sv\", scrollOffset: 40) {\n"
+        "    Column {\n"
+        "      Checkbox(\"Autosave\", bind: autosave, checked: true)\n"
+        "      Switch(\"Notify\", bind: notify)\n"
+        "    }\n"
+        "  }\n"
+        "}");
+    REQUIRE(parsed.ok());
+    const auto& scrollNode = parsed.root;
+    CHECK(scrollNode.type == WidgetType::ScrollView);
+    CHECK(scrollNode.scrollOffset == 40.0F);
+    REQUIRE(scrollNode.children.size() == 1);
+    const auto& columnNode = scrollNode.children[0];
+    REQUIRE(columnNode.children.size() == 2);
+    CHECK(columnNode.children[0].type == WidgetType::Checkbox);
+    CHECK(columnNode.children[0].text == "Autosave");
+    CHECK(columnNode.children[0].bind == "autosave");
+    CHECK(columnNode.children[0].checked);
+    CHECK(columnNode.children[1].type == WidgetType::Switch);
+    // 未知/错位属性被拒绝。
+    CHECK_FALSE(lumen::dsl::parseLumen("page root { Text(\"x\", checked: true) }").ok());
+    CHECK_FALSE(
+        lumen::dsl::parseLumen("page root { Column(scrollOffset: 5) {} }").ok());
+}
+
+// --- settings 集成（出口条件） ---
+
+TEST_CASE("settings_narrow_window_stays_usable", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{320.0F, 480.0F});
+    const auto hash = app.renderFrame();
+    CHECK(hash != 0);
+    // 控件落在窗口内且可命中。
+    const RenderNode* list = findNodeByKey(app.root(), "settings-list");
+    REQUIRE(list != nullptr);
+    CHECK(list->size.width <= 320.0F);
+    CHECK(list->size.height <= 480.0F);
+    const RenderNode* button = findNodeByKey(app.root(), "goto-form-button");
+    REQUIRE(button != nullptr);
+    CHECK(button->size.width >= 64.0F);  // 最小可点击目标
+}
+
+TEST_CASE("settings_scroll_partial_repaint_matches_full", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    app.wheel(centerOf(app.root(), "settings-list"), Offset{0.0F, 200.0F});
+    CHECK(app.scroll().offset() == 200.0F);
+    const auto partial = app.renderFrame();
+    // 滚动后强制全帧重绘：与局部重绘像素一致（plan 8D 出口条件）。
+    const auto full = app.renderFrame(/*forceFullRepaint=*/true);
+    CHECK(partial == full);
+    CHECK(app.partialRepaintCount() > 0);
+
+    // 滚动上限 clamp。
+    app.wheel(centerOf(app.root(), "settings-list"), Offset{0.0F, 1e6F});
+    app.renderFrame();
+    const RenderNode* list = findNodeByKey(app.root(), "settings-list");
+    REQUIRE(list != nullptr);
+    CHECK(app.scroll().offset() <= list->scrollExtent);
+    CHECK(app.scroll().offset() == app.scroll().maxScrollOffset());
+}
+
+TEST_CASE("settings_keyboard_scrolls_list", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+    // 无编辑焦点时 PageDown 触发键盘滚动（wheel sink → ScrollController）。
+    app.keyDown(Key::PageDown);
+    CHECK(app.scroll().offset() > 0.0F);
+}
+
+TEST_CASE("settings_list_keys_reuse_across_rebuilds", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+    const std::string identityBefore =
+        findNodeByKey(app.root(), "about-5")->identity;
+
+    // 切换状态触发重建：keyed 列表项 identity 稳定（plan §3.4）。
+    const_cast<StateStore&>(app.state()).set("notifications", "false");
+    (void)app.renderFrame();
+    const RenderNode* item = findNodeByKey(app.root(), "about-5");
+    REQUIRE(item != nullptr);
+    CHECK(item->identity == identityBefore);
+}
+
+TEST_CASE("settings_form_validation_and_dialog_flow", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    // 进入表单。
+    app.pointerDown(centerOf(app.root(), "goto-form-button"));
+    app.pointerUp(centerOf(app.root(), "goto-form-button"));
+    (void)app.renderFrame();
+    CHECK(app.navigator().current() == "form");
+
+    // 空字段提交：校验失败，错误渲染为文本节点。
+    app.pointerDown(centerOf(app.root(), "save-button"));
+    app.pointerUp(centerOf(app.root(), "save-button"));
+    (void)app.renderFrame();
+    CHECK(app.form().errors().size() == 2);
+    CHECK(findNodeByKey(app.root(), "nickname-error") != nullptr);
+    CHECK_FALSE(app.dialogOpen());
+
+    // 填写后提交：弹窗打开。
+    app.pointerDown(centerOf(app.root(), "nickname-field"));
+    app.pointerUp(centerOf(app.root(), "nickname-field"));
+    app.textInput("Lumen");
+    app.pointerDown(centerOf(app.root(), "email-field"));
+    app.pointerUp(centerOf(app.root(), "email-field"));
+    app.textInput("dev@lumen.local");
+    app.pointerDown(centerOf(app.root(), "save-button"));
+    app.pointerUp(centerOf(app.root(), "save-button"));
+    (void)app.renderFrame();
+    CHECK(app.dialogOpen());
+    CHECK(findNodeByKey(app.root(), "saved-dialog") != nullptr);
+    CHECK(app.form().errors().empty());
+
+    // 弹窗内 Tab 不逃逸（FocusScope）：域内 Close 按钮。
+    app.keyDown(Key::Tab);
+    app.keyDown(Key::Enter);
+    CHECK_FALSE(app.dialogOpen());
+}
+
+TEST_CASE("settings_escape_rules_modal_before_route", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    app.pointerDown(centerOf(app.root(), "goto-form-button"));
+    app.pointerUp(centerOf(app.root(), "goto-form-button"));
+    (void)app.renderFrame();
+
+    // 表单内 Escape：pop 路由回 home（统一返回规则，plan §3.4）。
+    app.keyDown(Key::Escape);
+    (void)app.renderFrame();
+    CHECK(app.navigator().current() == "home");
+    // home 是根路由：Escape 交给应用（不 pop）。
+    CHECK_FALSE(app.navigator().handleBack(false));
+}
+
+TEST_CASE("settings_survives_continuous_resize", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    app.pointerDown(centerOf(app.root(), "goto-form-button"));
+    app.pointerUp(centerOf(app.root(), "goto-form-button"));
+    (void)app.renderFrame();
+
+    app.pointerDown(centerOf(app.root(), "nickname-field"));
+    app.pointerUp(centerOf(app.root(), "nickname-field"));
+    app.textInput("kept");
+
+    // 连续 resize：状态不丢（plan 8D 出口条件）。
+    for (float width = 320.0F; width <= 1024.0F; width += 64.0F) {
+        app.setView(Size{width, 480.0F});
+        (void)app.renderFrame();
+    }
+    CHECK(app.state().get("nickname") == "kept");
+    CHECK(app.navigator().current() == "form");
+    const auto hash = app.renderFrame();
+    CHECK(hash != 0);
+}
+
+TEST_CASE("settings_toggles_and_semantics", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    // Switch/Checkbox 点击切换 store。
+    app.pointerDown(centerOf(app.root(), "notifications-switch"));
+    app.pointerUp(centerOf(app.root(), "notifications-switch"));
+    CHECK(app.state().get("notifications") == "false");
+    app.pointerDown(centerOf(app.root(), "autosave-checkbox"));
+    app.pointerUp(centerOf(app.root(), "autosave-checkbox"));
+    CHECK(app.state().get("autosave") == "true");
+    (void)app.renderFrame();
+
+    // 语义树：list/checkbox/switch/dialog 角色与 scroll action。
+    const auto tree = app.semantics();
+    const RenderNode* listView = findNodeByKey(app.root(), "settings-list");
+    REQUIRE(listView != nullptr);
+    const auto* listNode = tree.find(listView->identity);
+    REQUIRE(listNode != nullptr);
+    CHECK(listNode->role == accessibility::SemanticsRole::List);
+    CHECK((listNode->actions & accessibility::kActionScroll) != 0);
+
+    const RenderNode* checkbox = findNodeByKey(app.root(), "autosave-checkbox");
+    const auto* checkNode = tree.find(checkbox->identity);
+    REQUIRE(checkNode != nullptr);
+    CHECK(checkNode->role == accessibility::SemanticsRole::Checkbox);
+    CHECK(checkNode->value == "true");
+    CHECK((checkNode->flags & accessibility::kSemanticsChecked) != 0);
+    CHECK(checkNode->label == "Autosave drafts");  // 语义覆盖生效
+
+    const RenderNode* switchNode = findNodeByKey(app.root(), "notifications-switch");
+    const auto* notif = tree.find(switchNode->identity);
+    REQUIRE(notif != nullptr);
+    CHECK(notif->role == accessibility::SemanticsRole::Switch);
+
+    // 语义 scroll action：经 sink 路由到 ScrollController。
+    accessibility::SemanticsActionContext context;
+    context.root = &app.root();
+    context.scrollSink = [&app](const std::string&, float, float dy) {
+        return app.scrollWheelForTests(dy);
+    };
+    CHECK(accessibility::performSemanticsAction(
+              tree, context, listView->identity, accessibility::kActionScroll,
+              {}, 100.0F) == accessibility::SemanticsActionStatus::Handled);
+    CHECK(app.scroll().offset() == 100.0F);
+}
+
+TEST_CASE("settings_theme_switch_changes_appearance", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+    const auto darkHash = app.renderFrame();
+
+    widgets::Theme light = widgets::Theme::light();
+    app.setTheme(light);
+    const auto lightHash = app.renderFrame();
+    CHECK(darkHash != lightHash);
+    CHECK(app.theme().pageBackground == light.pageBackground);
+}
+
+TEST_CASE("settings_theme_from_accessibility_settings", "[settings]") {
+    accessibility::AccessibilitySettings settings;
+    settings.fontScale = 1.5F;
+    settings.highContrast = true;
+    const widgets::Theme theme =
+        widgets::Theme::fromSettings(settings, /*darkMode=*/true);
+    CHECK(theme.bodyStyle.fontSize == Catch::Approx(14.0F * 1.5F));
+    CHECK(theme.text == Color{255, 255, 255, 255});
+}

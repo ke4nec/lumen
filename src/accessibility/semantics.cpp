@@ -17,10 +17,19 @@ SemanticsRole defaultRoleFor(const RenderNode& node, bool isRoot) {
             return SemanticsRole::TextField;
         case WidgetType::Text:
             return SemanticsRole::Text;
+        case WidgetType::Checkbox:
+            return SemanticsRole::Checkbox;
+        case WidgetType::Switch:
+            return SemanticsRole::Switch;
+        case WidgetType::ListView:
+            return SemanticsRole::List;
+        case WidgetType::ScrollView:
+            return SemanticsRole::List;
         case WidgetType::Container:
         case WidgetType::Row:
         case WidgetType::Column:
         case WidgetType::Stack:
+        case WidgetType::FocusScope:
             return isRoot ? SemanticsRole::Window : SemanticsRole::Group;
     }
     return SemanticsRole::Group;
@@ -32,6 +41,12 @@ std::uint32_t defaultActionsFor(const RenderNode& node) {
             return kActionFocus | kActionActivate;
         case WidgetType::TextField:
             return kActionFocus | kActionSetValue;
+        case WidgetType::Checkbox:
+        case WidgetType::Switch:
+            return kActionFocus | kActionActivate;
+        case WidgetType::ScrollView:
+        case WidgetType::ListView:
+            return kActionScroll;
         default:
             return 0;
     }
@@ -54,6 +69,14 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
             break;
         case WidgetType::Text:
             semantic.label = node.text;
+            break;
+        case WidgetType::Checkbox:
+        case WidgetType::Switch:
+            semantic.label = node.text;
+            semantic.value = node.checked ? "true" : "false";
+            if (node.checked) {
+                semantic.flags |= kSemanticsChecked;
+            }
             break;
         case WidgetType::TextField:
             semantic.label = node.placeholder.empty() ? node.bind
@@ -255,6 +278,13 @@ SemanticsActionStatus performSemanticsAction(
     }
 
     if (action == kActionActivate || action == kActionDismiss) {
+        // Checkbox/Switch：语义 activate 直接切换状态。
+        if (context.controller != nullptr && renderNode != nullptr &&
+            (renderNode->type == core::WidgetType::Checkbox ||
+             renderNode->type == core::WidgetType::Switch)) {
+            context.controller->toggleChecked(*renderNode);
+            return SemanticsActionStatus::Handled;
+        }
         if (context.handlers == nullptr || renderNode == nullptr ||
             renderNode->onClick.empty()) {
             return SemanticsActionStatus::NotHandled;

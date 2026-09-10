@@ -525,6 +525,17 @@ class Parser {
         out = WidgetType::Button;
     } else if (name == "TextField") {
         out = WidgetType::TextField;
+    } else if (name == "ScrollView") {
+        // v0.3 阶段8D 冻结节点名。
+        out = WidgetType::ScrollView;
+    } else if (name == "ListView") {
+        out = WidgetType::ListView;
+    } else if (name == "Checkbox") {
+        out = WidgetType::Checkbox;
+    } else if (name == "Switch") {
+        out = WidgetType::Switch;
+    } else if (name == "FocusScope") {
+        out = WidgetType::FocusScope;
     } else {
         return false;
     }
@@ -542,7 +553,8 @@ class Converter {
         if (!widgetTypeOf(ast.name, type)) {
             return DslError{file_, ast.pos,
                             "unknown widget '" + ast.name + "'",
-                            "Container|Row|Column|Stack|Text|Button|TextField",
+                            "Container|Row|Column|Stack|Text|Button|TextField|"
+                            "ScrollView|ListView|Checkbox|Switch|FocusScope",
                             "'" + ast.name + "'"};
         }
         out.type = type;
@@ -574,12 +586,28 @@ class Converter {
 
     [[nodiscard]] static bool isLeaf(WidgetType type) {
         return type == WidgetType::Text || type == WidgetType::Button ||
-               type == WidgetType::TextField;
+               type == WidgetType::TextField ||
+               type == WidgetType::Checkbox || type == WidgetType::Switch;
+    }
+
+    // 单子容器（v0.3 阶段8D：ScrollView/ListView/FocusScope 同 Container）。
+    [[nodiscard]] static bool isSingleChild(WidgetType type) {
+        return type == WidgetType::Container ||
+               type == WidgetType::ScrollView ||
+               type == WidgetType::ListView ||
+               type == WidgetType::FocusScope;
+    }
+
+    [[nodiscard]] static bool isScrollable(WidgetType type) {
+        return type == WidgetType::ScrollView ||
+               type == WidgetType::ListView;
     }
 
     [[nodiscard]] std::optional<DslError> applyPositional(const Token& value,
                                                           Widget& out) {
-        if (out.type == WidgetType::Text || out.type == WidgetType::Button) {
+        if (out.type == WidgetType::Text || out.type == WidgetType::Button ||
+            out.type == WidgetType::Checkbox ||
+            out.type == WidgetType::Switch) {
             if (value.type != Tok::String) {
                 return makeError(value.pos, "content must be a string",
                                  "string", describeToken(value));
@@ -609,6 +637,16 @@ class Converter {
                 return "Button";
             case WidgetType::TextField:
                 return "TextField";
+            case WidgetType::ScrollView:
+                return "ScrollView";
+            case WidgetType::ListView:
+                return "ListView";
+            case WidgetType::Checkbox:
+                return "Checkbox";
+            case WidgetType::Switch:
+                return "Switch";
+            case WidgetType::FocusScope:
+                return "FocusScope";
         }
         return "?";
     }
@@ -625,7 +663,8 @@ class Converter {
         const Token& v = attr.value;
         const bool styled =
             out.type == WidgetType::Text || out.type == WidgetType::Button ||
-            out.type == WidgetType::TextField;
+            out.type == WidgetType::TextField ||
+            out.type == WidgetType::Checkbox || out.type == WidgetType::Switch;
 
         // Attributes accepted by every widget.
         if (attr.name == "key") {
@@ -703,6 +742,35 @@ class Converter {
                                  "no attribute", "'" + attr.name + "'");
             }
             out.radius = CornerRadius::all(static_cast<float>(v.number));
+            return std::nullopt;
+        }
+        // v0.3 阶段8D 冻结属性（容器/叶子通用段）：Checkbox/Switch 选中与
+        // 滚动偏移。
+        if (attr.name == "checked") {
+            if (out.type != WidgetType::Checkbox &&
+                out.type != WidgetType::Switch) {
+                return makeError(attr.pos,
+                                 "'checked' is only valid on Checkbox/Switch",
+                                 "no attribute", "'" + attr.name + "'");
+            }
+            const auto flag = boolValue(attr);
+            if (!flag.has_value()) {
+                return typeError(attr, "true or false");
+            }
+            out.checked = *flag;
+            return std::nullopt;
+        }
+        if (attr.name == "scrollOffset") {
+            if (!isScrollable(out.type)) {
+                return makeError(
+                    attr.pos,
+                    "'scrollOffset' is only valid on ScrollView/ListView",
+                    "no attribute", "'" + attr.name + "'");
+            }
+            if (v.type != Tok::Number || v.number < 0) {
+                return typeError(attr, "a number >= 0");
+            }
+            out.scrollOffset = static_cast<float>(v.number);
             return std::nullopt;
         }
         if (styled) {
@@ -1001,9 +1069,9 @@ class Converter {
                             "'" + ast.name + "' cannot contain children",
                             "no children", "'{'"};
         }
-        if (out.type == WidgetType::Container && ast.children.size() > 1) {
+        if (isSingleChild(out.type) && ast.children.size() > 1) {
             return DslError{file_, ast.children[1].pos,
-                            "Container accepts at most one child",
+                            "'" + ast.name + "' accepts at most one child",
                             "at most one child",
                             std::to_string(ast.children.size()) + " children"};
         }

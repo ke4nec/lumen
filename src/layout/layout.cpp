@@ -65,6 +65,18 @@ Size measureLeafIntrinsic(const Widget& widget, float maxWidth) {
             const float height = textSize.height + 16.0F;
             return Size{width, height};
         }
+        case WidgetType::Checkbox: {
+            // 18x18 框 + 8 间距 + 标签。
+            const Size label = measureTextIntrinsic(widget, 0.0F, false);
+            return Size{18.0F + 8.0F + label.width,
+                        std::max(18.0F, label.height)};
+        }
+        case WidgetType::Switch: {
+            // 36x20 轨道 + 8 间距 + 标签。
+            const Size label = measureTextIntrinsic(widget, 0.0F, false);
+            return Size{36.0F + 8.0F + label.width,
+                        std::max(20.0F, label.height)};
+        }
         default:
             return measureTextIntrinsic(widget, 0.0F, false);
     }
@@ -91,6 +103,8 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size) {
     node.semanticsValue = widget.semanticsValue;
     node.semanticsRole = widget.semanticsRole;
     node.semanticsActions = widget.semanticsActions;
+    node.checked = widget.checked;
+    node.scrollOffset = widget.scrollOffset;
     return node;
 }
 
@@ -122,6 +136,9 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
 
 RenderNode layoutStack(const Widget& widget, const Constraints& constraints);
 
+RenderNode layoutScrollView(const Widget& widget,
+                            const Constraints& constraints);
+
 RenderNode layoutSingle(const Widget& widget,
                         const Constraints& constraints) {
     if (core::isLeafWidget(widget.type)) {
@@ -129,6 +146,8 @@ RenderNode layoutSingle(const Widget& widget,
     }
     switch (widget.type) {
         case WidgetType::Container:
+        case WidgetType::FocusScope:
+            // FocusScope 布局同 Container：单子，边界用于焦点遍历。
             return layoutContainer(widget, constraints);
         case WidgetType::Row:
             return layoutFlex(widget, constraints, true);
@@ -136,9 +155,14 @@ RenderNode layoutSingle(const Widget& widget,
             return layoutFlex(widget, constraints, false);
         case WidgetType::Stack:
             return layoutStack(widget, constraints);
+        case WidgetType::ScrollView:
+        case WidgetType::ListView:
+            return layoutScrollView(widget, constraints);
         case WidgetType::Text:
         case WidgetType::Button:
         case WidgetType::TextField:
+        case WidgetType::Checkbox:
+        case WidgetType::Switch:
             return layoutLeaf(widget, constraints);
     }
     return layoutLeaf(widget, constraints);
@@ -544,9 +568,58 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
     return node;
 }
 
+// v0.3 阶段8D (plan §3.4): 滚动视口。子内容主轴（纵向）不受限，横向
+// 受视口约束；scrollOffset 应用到子 offset（夹取到 [0, scrollExtent]），
+// painter 按视口裁剪（RenderNode.clipContent）。
+RenderNode layoutScrollView(const Widget& widget,
+                            const Constraints& constraints) {
+    assert(widget.children.size() <= 1);
+    const Constraints outer = constraints.deflate(widget.margin);
+
+    float viewportWidth =
+        widget.width.has_value()
+            ? clampFloat(*widget.width, outer.minWidth, outer.maxWidth)
+            : outer.maxWidth;
+    float viewportHeight =
+        widget.height.has_value()
+            ? clampFloat(*widget.height, outer.minHeight, outer.maxHeight)
+            : outer.maxHeight;
+
+    RenderNode node = makeNode(widget, Offset{0.0F, 0.0F},
+                               Size{viewportWidth, viewportHeight});
+    node.clipContent = true;
+
+    if (widget.children.empty()) {
+        node.scrollExtent = 0.0F;
+        node.scrollOffset = 0.0F;
+        return node;
+    }
+
+    const Widget& child = widget.children.front();
+    // 内容约束：宽 ≤ 视口 - padding，高不限（滚动视口语义）。
+    const float contentMaxWidth =
+        std::max(0.0F, viewportWidth - widget.padding.horizontal());
+    Constraints childConstraints{0.0F, contentMaxWidth, 0.0F,
+                                 Constraints::unbounded().maxHeight};
+    RenderNode childNode = layoutSingle(child, childConstraints);
+    const float contentHeight = childNode.size.height +
+                                child.margin.vertical() +
+                                widget.padding.vertical();
+    const float scrollExtent =
+        std::max(0.0F, contentHeight - viewportHeight);
+    const float offset = std::clamp(widget.scrollOffset, 0.0F, scrollExtent);
+
+    childNode.offset = Offset{
+        widget.padding.left + child.margin.left,
+        widget.padding.top + child.margin.top - offset};
+    node.children.push_back(std::move(childNode));
+    node.scrollExtent = scrollExtent;
+    node.scrollOffset = offset;
+    return node;
+}
+
 void stackAlignmentFactors(core::StackAlignment alignment, float& xFactor,
-                           float& yFactor) {
-    using core::StackAlignment;
+                           float& yFactor) {    using core::StackAlignment;
     switch (alignment) {
         case StackAlignment::TopLeft:
             xFactor = 0.0F;
@@ -692,6 +765,51 @@ core::RenderNode LayoutEngine::layout(const core::Widget& widget,
     core::RenderNode result = layoutSingle(widget, constraints);
     assignIdentities(result, {}, 0);
     return result;
+}
+
+core::Size LayoutEngine::intrinsicSize(const core::Widget& widget,
+                                       const core::Constraints& constraints) {
+    return layoutSingle(widget, constraints).size;
+}
+
+namespace {
+
+// 深度优先寻找第一个文本叶子（Text/TextField/Button）的 baseline。
+bool findBaseline(const core::RenderNode& node, core::Offset absolute,
+                  float& out) {
+    const core::Offset origin = absolute + node.offset;
+    switch (node.type) {
+        case core::WidgetType::Text:
+        case core::WidgetType::TextField:
+        case core::WidgetType::Button: {
+            const float fontSize = node.textStyle.fontSize > 0.0F
+                                       ? node.textStyle.fontSize
+                                       : 14.0F;
+            const float lineCenterOffset =
+                (node.size.height - fontSize * 1.2F) * 0.5F;
+            out = origin.y + node.padding.top + lineCenterOffset +
+                  fontSize * 0.8F;
+            return true;
+        }
+        default:
+            break;
+    }
+    for (const auto& child : node.children) {
+        if (findBaseline(child, origin, out)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+float LayoutEngine::baseline(const core::RenderNode& node) {
+    float result = -1.0F;
+    if (findBaseline(node, core::Offset{}, result)) {
+        return result;
+    }
+    return -1.0F;
 }
 
 }  // namespace lumen::layout

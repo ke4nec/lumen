@@ -17,6 +17,12 @@ enum class WidgetType {
     Text,
     Button,
     TextField,
+    // v0.3 阶段8D 应用基础组件（plan §3.4）。
+    ScrollView,  // 垂直滚动视口：子内容主轴不限，painter 裁剪
+    ListView,   // ScrollView + 稳定 key 列表语义（无虚拟化）
+    Checkbox,   // 勾选框：bind 值 "true"/"false"，点击自动切换
+    Switch,     // 开关：同 Checkbox 行为，不同绘制
+    FocusScope, // 焦点域：Tab 遍历不越过边界（Dialog/Route 用）
 };
 
 enum class MainAxisAlignment {
@@ -100,6 +106,13 @@ struct Widget {
     std::string semanticsValue{};
     std::string semanticsRole{};
     std::uint32_t semanticsActions{0};
+
+    // v0.3 阶段8D（plan §3.4）：
+    // Checkbox/Switch 的选中状态（applyBinds 从 bind 值解析）。
+    bool checked{false};
+    // ScrollView/ListView 的当前滚动偏移（应用侧 ScrollController 持有，
+    // 重建时写回）。
+    float scrollOffset{0.0F};
 
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
     // handler in the app's HandlerRegistry. `bindPrefix` preserves the
@@ -320,7 +333,80 @@ inline Widget withMultiline(Widget child, bool multiline = true) {
     return child;
 }
 
+// v0.3 阶段8D: 滚动与选择组件构建器。
+// ScrollView：单子内容（通常为 Column），纵向滚动；viewport 尺寸由
+// width/height 或父约束给出，scrollOffset 由应用侧 ScrollController
+// 在重建时写回。
+inline Widget makeScrollView(Widget child, std::string key = {},
+                             std::optional<float> width = std::nullopt,
+                             std::optional<float> height = std::nullopt,
+                             EdgeInsets padding = {}) {
+    Widget widget;
+    widget.type = WidgetType::ScrollView;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.height = height;
+    widget.padding = padding;
+    widget.children.push_back(std::move(child));
+    return widget;
+}
+
+// ListView：语义上的列表（role=list）；实现同 ScrollView，子节点应为带
+// 稳定 key 的列表项（首期不做虚拟化，plan §3.4）。
+inline Widget makeListView(Widget child, std::string key = {},
+                           std::optional<float> width = std::nullopt,
+                           std::optional<float> height = std::nullopt) {
+    Widget widget;
+    widget.type = WidgetType::ListView;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.height = height;
+    widget.children.push_back(std::move(child));
+    return widget;
+}
+
+inline Widget withScrollOffset(Widget widget, float offset) {
+    widget.scrollOffset = offset;
+    return widget;
+}
+
+// Checkbox/Switch：bind 值 "true"/"false"（"1"/"0" 亦接受）；点击由框架
+// 自动切换（与 TextField 编辑相同的内建行为）；label 用作语义标签。
+inline Widget makeCheckbox(std::string label, std::string bind,
+                           std::string key = {}, bool checked = false) {
+    Widget widget;
+    widget.type = WidgetType::Checkbox;
+    widget.text = std::move(label);
+    widget.bind = std::move(bind);
+    widget.key = std::move(key);
+    widget.checked = checked;
+    return widget;
+}
+
+inline Widget makeSwitch(std::string label, std::string bind,
+                         std::string key = {}, bool checked = false) {
+    Widget widget;
+    widget.type = WidgetType::Switch;
+    widget.text = std::move(label);
+    widget.bind = std::move(bind);
+    widget.key = std::move(key);
+    widget.checked = checked;
+    return widget;
+}
+
+// FocusScope：单子容器；Tab 遍历在域内循环，不越过边界（modal
+// barrier/Dialog 焦点恢复用）。
+inline Widget makeFocusScope(Widget child, std::string key = {}) {
+    Widget widget;
+    widget.type = WidgetType::FocusScope;
+    widget.key = std::move(key);
+    widget.children.push_back(std::move(child));
+    return widget;
+}
+
 [[nodiscard]] bool isLeafWidget(WidgetType type);
 [[nodiscard]] bool isFlexContainer(WidgetType type);
+// v0.3 阶段8D：滚轮/键盘/语义滚动的命中目标类型。
+[[nodiscard]] bool isScrollableWidget(WidgetType type);
 
 }  // namespace lumen::core

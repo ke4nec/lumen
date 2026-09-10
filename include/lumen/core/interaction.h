@@ -81,11 +81,16 @@ class InteractionController {
                  KeyModifiers modifiers = kModifierNone, char keyChar = 0);
 
     // --- 滚轮转发（8D ScrollController 消费；返回 true 表示已处理） ---
+    // hit 为空表示键盘触发（PageUp/PageDown/方向键），由 sink 决定目标
+    // 视口（聚焦节点所在视口或默认视口）。
     using WheelSink = std::function<bool(const RenderNode& root,
-                                         const RenderNode& hit, Offset position,
-                                         Offset delta)>;
+                                         const RenderNode* hit,
+                                         Offset position, Offset delta)>;
     void setWheelSink(WheelSink sink);
     void wheel(const RenderNode& root, Offset position, Offset delta);
+    // 键盘滚动（无编辑焦点时的 PageUp/PageDown/Up/Down/Home/End）→
+    // wheelSink（hit 为聚焦节点或空）。
+    void scrollKey(const RenderNode& root, Key key);
 
     // --- 剪贴板（可选注入；宿主 Clipboard 适配 core::ClipboardProvider） ---
     void setClipboard(ClipboardProvider* clipboard);
@@ -98,6 +103,10 @@ class InteractionController {
     // 语义/键盘焦点请求（plan §3.3 与语义 actions 共用路径）：字段建立
     // 编辑焦点（光标置末尾），其他节点只设置 FocusManager 焦点。
     void focusNode(const RenderNode& node);
+
+    // Checkbox/Switch 状态切换（bind 值 "true"/"false"）；点击、Enter/
+    // Space 与语义 activate 共用。
+    void toggleChecked(const RenderNode& node);
 
     // --- 查询 ---
     // Button key currently held down ("" when none) — pressed visuals.
@@ -153,9 +162,11 @@ class InteractionController {
     // 测试）。extend=true 从选区锚点扩展。
     void placeCaretByHit(const RenderNode& field, Offset localPosition,
                          bool extend);
-    // 焦点遍历（Tab/Shift-Tab）。返回是否移动了焦点。
+    // 焦点遍历（Tab/Shift-Tab）。返回是否移动了焦点。FocusScope 域内
+    // 循环，不越过边界（plan §3.4）。
     bool traverseFocus(const RenderNode& root, bool backward);
-    // 激活聚焦 Button（Enter/Space/语义 activate 共用）。
+    // 激活聚焦的可激活节点（Button/Checkbox/Switch；Enter/Space/语义
+    // activate 共用）。
     void activateFocusedButton(const RenderNode& root);
 
     StateStore& store_;

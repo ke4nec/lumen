@@ -33,6 +33,13 @@ constexpr Color kPlaceholderText{128, 128, 138, 255};
 constexpr Color kCaret{238, 238, 242, 255};
 constexpr Color kSelection{70, 118, 214, 130};
 constexpr Color kPreeditUnderline{160, 190, 250, 255};
+// v0.3 阶段8D：Checkbox/Switch 外观（内置默认，Theme token 可覆盖颜色）。
+constexpr Color kCheckboxBox{60, 60, 70, 255};
+constexpr Color kCheckboxChecked{86, 140, 240, 255};
+constexpr Color kCheckboxMark{240, 244, 255, 255};
+constexpr Color kSwitchTrackOff{60, 60, 70, 255};
+constexpr Color kSwitchTrackOn{86, 140, 240, 255};
+constexpr Color kSwitchKnob{238, 238, 242, 255};
 constexpr float kFieldTextPadding = 8.0F;
 
 // TextStyle defaults to opaque black. On the dark surfaces the painter
@@ -303,6 +310,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         case WidgetType::Row:
         case WidgetType::Column:
         case WidgetType::Stack:
+        case WidgetType::FocusScope:
+        case WidgetType::ScrollView:
+        case WidgetType::ListView:
             if (node.color.a > 0) {
                 sink.drawRect(rect, node.color, node.radius);
             }
@@ -340,10 +350,67 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                        origin + Offset{node.padding.left, node.padding.top});
             break;
         }
+        case WidgetType::Checkbox: {
+            // 18x18 框 + 选中填充；标签绘制在右侧，垂直居中。
+            const TextStyle style = contentStyle(node.textStyle, kContentText);
+            const float lineHeight = style.fontSize > 0.0F
+                                         ? style.fontSize * 1.2F
+                                         : 16.8F;
+            const float boxTop =
+                origin.y + (node.size.height - 18.0F) * 0.5F;
+            sink.drawRect(Rect{Offset{origin.x, boxTop}, Size{18.0F, 18.0F}},
+                          node.checked ? kCheckboxChecked : kCheckboxBox,
+                          CornerRadius::all(4.0F));
+            if (node.checked) {
+                sink.drawRect(
+                    Rect{Offset{origin.x + 4.0F, boxTop + 4.0F},
+                         Size{10.0F, 10.0F}},
+                    kCheckboxMark, CornerRadius::all(2.0F));
+            }
+            if (!node.text.empty()) {
+                paintTextAt(sink, node.text, style,
+                            Offset{origin.x + 26.0F,
+                                   origin.y + (node.size.height - lineHeight) *
+                                                  0.5F});
+            }
+            break;
+        }
+        case WidgetType::Switch: {
+            // 36x20 轨道 + 14x14 滑块；标签绘制在右侧。
+            const TextStyle style = contentStyle(node.textStyle, kContentText);
+            const float lineHeight = style.fontSize > 0.0F
+                                         ? style.fontSize * 1.2F
+                                         : 16.8F;
+            const float trackTop =
+                origin.y + (node.size.height - 20.0F) * 0.5F;
+            sink.drawRect(Rect{Offset{origin.x, trackTop}, Size{36.0F, 20.0F}},
+                          node.checked ? kSwitchTrackOn : kSwitchTrackOff,
+                          CornerRadius::all(10.0F));
+            const float knobX =
+                node.checked ? origin.x + 19.0F : origin.x + 3.0F;
+            sink.drawRect(
+                Rect{Offset{knobX, trackTop + 3.0F}, Size{14.0F, 14.0F}},
+                kSwitchKnob, CornerRadius::all(7.0F));
+            if (!node.text.empty()) {
+                paintTextAt(sink, node.text, style,
+                            Offset{origin.x + 44.0F,
+                                   origin.y + (node.size.height - lineHeight) *
+                                                  0.5F});
+            }
+            break;
+        }
     }
 
-    for (const auto& child : node.children) {
-        paintNode(sink, child, origin, options);
+    // 滚动视口裁剪：子内容不得溢出 viewport（overflow clip，plan §3.4）。
+    if (node.clipContent) {
+        const ScopedClip<Sink> clip{sink, rect};
+        for (const auto& child : node.children) {
+            paintNode(sink, child, origin, options);
+        }
+    } else {
+        for (const auto& child : node.children) {
+            paintNode(sink, child, origin, options);
+        }
     }
 }
 
