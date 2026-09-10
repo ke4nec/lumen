@@ -1,0 +1,214 @@
+// v0.2 阶段7D tests (plan §5 调度): invalidate 合并、空闲不绘制、动画
+// deadline、resize 防抖、最小化暂停、VSync 开关和时间源注入。
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <cstdint>
+
+#include "lumen/render/frame_scheduler.h"
+
+using lumen::render::FrameClock;
+using lumen::render::FrameReason;
+using lumen::render::FrameScheduler;
+
+namespace {
+
+class ManualClock final : public FrameClock {
+  public:
+    [[nodiscard]] std::uint64_t nowMs() const override { return now_; }
+    void advance(std::uint32_t ms) { now_ += ms; }
+    void setNow(std::uint64_t ms) { now_ = ms; }
+
+  private:
+    std::uint64_t now_{0};
+};
+
+}  // namespace
+
+TEST_CASE("scheduler_merges_invalidate_reasons_per_frame", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 0;  // 不节流，聚焦合并语义
+    FrameScheduler scheduler{config, &clock};
+
+    scheduler.requestFrame(FrameReason::Input);
+    scheduler.requestFrame(FrameReason::Input);
+    scheduler.requestFrame(FrameReason::Resource);
+    CHECK(scheduler.hasPendingReasons());
+
+    // 同一 turn 的多次请求只产生一次提交机会，且当前帧不重入。
+    REQUIRE(scheduler.shouldSubmitFrame());
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK(scheduler.submittedFrames() == 1);
+    CHECK_FALSE(scheduler.hasPendingReasons());
+}
+
+TEST_CASE("scheduler_does_not_submit_when_idle", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler scheduler{FrameScheduler::Config{}, &clock};
+
+    for (int turn = 0; turn < 10; ++turn) {
+        clock.advance(20);
+        CHECK_FALSE(scheduler.shouldSubmitFrame());
+        CHECK(scheduler.msUntilNextFrame() == std::nullopt);
+    }
+    CHECK(scheduler.submittedFrames() == 0);
+}
+
+TEST_CASE("scheduler_applies_animation_deadline", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 60;  // 16ms 帧预算
+    FrameScheduler scheduler{config, &clock};
+
+    scheduler.setAnimationsActive(true);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK(scheduler.submittedFrames() == 1);
+
+    // 未到 deadline：不提交，但要等到 deadline。
+    clock.advance(8);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    REQUIRE(scheduler.msUntilNextFrame().has_value());
+    CHECK(*scheduler.msUntilNextFrame() <= 8);
+
+    // 到达 deadline：动画帧提交。
+    clock.advance(8);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK(scheduler.submittedFrames() == 2);
+
+    // 动画停止后回到空闲。
+    scheduler.setAnimationsActive(false);
+    clock.advance(100);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+}
+
+TEST_CASE("scheduler_debounces_resize", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 0;
+    config.resizeDebounceMs = 30;
+    FrameScheduler scheduler{config, &clock};
+
+    // 连续 resize：每次请求都刷新静默期，一直不提交。
+    for (int burst = 0; burst < 5; ++burst) {
+        scheduler.requestFrame(FrameReason::Resize);
+        CHECK_FALSE(scheduler.shouldSubmitFrame());
+        clock.advance(10);
+    }
+
+    // 静默 30ms 后提交。
+    clock.advance(31);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK(scheduler.submittedFrames() == 1);
+}
+
+TEST_CASE("scheduler_input_bypasses_resize_debounce", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 0;
+    config.resizeDebounceMs = 500;
+    FrameScheduler scheduler{config, &clock};
+
+    scheduler.requestFrame(FrameReason::Resize);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    // 输入优先：resize 防抖不能拖延输入帧。
+    scheduler.requestFrame(FrameReason::Input);
+    CHECK(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+}
+
+TEST_CASE("scheduler_pauses_when_minimized", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 0;
+    FrameScheduler scheduler{config, &clock};
+
+    scheduler.setAnimationsActive(true);
+    scheduler.setWindowVisible(false);
+    for (int turn = 0; turn < 10; ++turn) {
+        clock.advance(20);
+        CHECK_FALSE(scheduler.shouldSubmitFrame());
+    }
+    // 原因与动画保持挂起，不产生提交。
+    CHECK(scheduler.submittedFrames() == 0);
+
+    // 还原后恢复提交。
+    scheduler.setWindowVisible(true);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK(scheduler.submittedFrames() == 1);
+}
+
+TEST_CASE("scheduler_vsync_toggle_changes_throttling", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 60;
+    FrameScheduler scheduler{config, &clock};
+
+    scheduler.setVSyncEnabled(false);
+    // VSync 关：有原因立即提交，不受帧预算限制。
+    clock.advance(1);
+    scheduler.requestFrame(FrameReason::Explicit);
+    CHECK(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+
+    clock.advance(1);
+    scheduler.requestFrame(FrameReason::Explicit);
+    CHECK(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+
+    // VSync 开：同样 1ms 间隔被节流。
+    scheduler.setVSyncEnabled(true);
+    scheduler.requestFrame(FrameReason::Explicit);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    clock.advance(16);
+    CHECK(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+}
+
+TEST_CASE("scheduler_requests_during_turn_target_next_frame", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 0;
+    FrameScheduler scheduler{config, &clock};
+
+    scheduler.requestFrame(FrameReason::Input);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    // 当前帧录制/提交期间到达的新事件只能请求下一帧。
+    scheduler.requestFrame(FrameReason::Input);
+    CHECK(scheduler.hasPendingReasons());
+    scheduler.markFrameSubmitted();
+    // 上一帧已提交，pending 属于新帧。
+    CHECK(scheduler.submittedFrames() == 1);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK(scheduler.submittedFrames() == 2);
+}
+
+TEST_CASE("scheduler_resource_completion_wakes_the_loop", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 60;
+    FrameScheduler scheduler{config, &clock};
+
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    // 模拟 UI 线程 pump 到异步资源完成。
+    scheduler.requestFrame(FrameReason::Resource);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK(scheduler.submittedFrames() == 1);
+    // 消费完毕后回到空闲（不重复提交）。
+    clock.advance(50);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+}
+
+TEST_CASE("realtime_clock_is_monotonic", "[scheduler]") {
+    lumen::render::RealtimeClock clock;
+    const std::uint64_t first = clock.nowMs();
+    const std::uint64_t second = clock.nowMs();
+    CHECK(second >= first);
+}

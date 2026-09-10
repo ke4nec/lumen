@@ -4,6 +4,8 @@ set(LUMEN_TEST_SOURCES
     element_tests.cpp
     render_tests.cpp
     render_command_tests.cpp
+    frame_scheduler_tests.cpp
+    resource_manager_tests.cpp
     interaction_tests.cpp
     counter_integration_tests.cpp
     dsl_tests.cpp
@@ -25,6 +27,7 @@ endif()
 
 target_include_directories(lumen-tests PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/counter
+    ${stb_SOURCE_DIR}
 )
 
 target_link_libraries(lumen-tests PRIVATE

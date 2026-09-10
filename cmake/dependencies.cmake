@@ -19,6 +19,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(sdl3)
 
+# stb_image backs ResourceManager decoding (v0.2 阶段7D, plan §3.3). stb has
+# no release tags; pin the master commit instead (see AGENTS.md pinning rule).
+set(LUMEN_STB_GIT_TAG "2c980bb59875b0d32144a71867fbdebb2f77cd20" CACHE STRING
+    "Pinned stb commit")
+FetchContent_Declare(
+  stb
+  GIT_REPOSITORY https://github.com/nothings/stb.git
+  GIT_TAG ${LUMEN_STB_GIT_TAG}
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(stb)
+
 if(LUMEN_BUILD_TESTS)
   FetchContent_Declare(
     catch2

@@ -1,6 +1,10 @@
 set(LUMEN_RENDER_SOURCES
     renderer.cpp
     render_commands.cpp
+    frame_scheduler.cpp
+    resource_manager.cpp
+    image_decode.cpp
+    stb_image_impl.cpp
     cpu_renderer.cpp
     placeholder_font.cpp
     painter.cpp
@@ -18,6 +22,12 @@ target_include_directories(lumen-render PUBLIC
 
 target_link_libraries(lumen-render PUBLIC lumen-core)
 target_compile_features(lumen-render PUBLIC cxx_std_20)
+
+# stb_image 头文件（ResourceManager 解码用，仅实现侧可见）。
+target_include_directories(lumen-render PRIVATE ${stb_SOURCE_DIR})
+
+find_package(Threads REQUIRED)
+target_link_libraries(lumen-render PRIVATE Threads::Threads)
 
 if(LUMEN_ENABLE_SKIA)
     # Marks the adapter as genuinely compiled in; rendererStageName() and
