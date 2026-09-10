@@ -86,6 +86,11 @@ struct Widget {
     TextStyle textStyle{};
     std::string placeholder{};
 
+    // v0.3 阶段8B TextField 最小属性（plan §3.2 密码/只读/多行）。
+    bool obscure{false};    // 密码模式：绘制为圆点
+    bool readOnly{false};   // 只读：编辑键与 IME 提交被拒绝
+    bool multiline{false};  // 多行：Enter 换行而非失焦
+
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
     // handler in the app's HandlerRegistry. `bindPrefix` preserves the
     // literal part of a bound Text ("Count: " + value) across rebuilds.
@@ -288,6 +293,20 @@ inline Widget withBind(Widget child, std::string key) {
 // Attaches an identity key; used for reuse, focus tracking and press state.
 inline Widget withKey(Widget child, std::string key) {
     child.key = std::move(key);
+    return child;
+}
+
+// v0.3 阶段8B: TextField 属性修饰。
+inline Widget withObscure(Widget child, bool obscure = true) {
+    child.obscure = obscure;
+    return child;
+}
+inline Widget withReadOnly(Widget child, bool readOnly = true) {
+    child.readOnly = readOnly;
+    return child;
+}
+inline Widget withMultiline(Widget child, bool multiline = true) {
+    child.multiline = multiline;
     return child;
 }
 

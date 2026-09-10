@@ -18,6 +18,7 @@ using core::EdgeInsets;
 using core::MainAxisAlignment;
 using core::Offset;
 using core::StackAlignment;
+using core::TextOverflow;
 using core::TextStyle;
 using core::Widget;
 using core::WidgetType;
@@ -732,6 +733,97 @@ class Converter {
                 return typeError(attr, "true or false");
             }
             out.textStyle.bold = *flag;
+            return std::nullopt;
+        }
+        // v0.3 阶段8B 冻结属性（plan §3.2）：只增加属性，不引入脚本能力。
+        if (attr.name == "family") {
+            return expectString(attr, out.textStyle.family);
+        }
+        if (attr.name == "weight") {
+            if (v.type != Tok::Number) {
+                return typeError(attr, "a number");
+            }
+            const int weight = static_cast<int>(v.number);
+            if (weight < 100 || weight > 900 || weight % 100 != 0) {
+                return makeError(attr.value.pos,
+                                 "'weight' expects 100..900 in steps of 100",
+                                 "100|200|...|900",
+                                 "'" + v.text + "'");
+            }
+            out.textStyle.weight = weight;
+            return std::nullopt;
+        }
+        if (attr.name == "italic") {
+            const auto flag = boolValue(attr);
+            if (!flag.has_value()) {
+                return typeError(attr, "true or false");
+            }
+            out.textStyle.italic = *flag;
+            return std::nullopt;
+        }
+        if (attr.name == "letterSpacing") {
+            if (v.type != Tok::Number) {
+                return typeError(attr, "a number");
+            }
+            out.textStyle.letterSpacing = static_cast<float>(v.number);
+            return std::nullopt;
+        }
+        if (attr.name == "lineHeight") {
+            if (v.type != Tok::Number) {
+                return typeError(attr, "a number");
+            }
+            out.textStyle.lineHeight = static_cast<float>(v.number);
+            return std::nullopt;
+        }
+        if (attr.name == "maxLines") {
+            if (v.type != Tok::Number) {
+                return typeError(attr, "a number");
+            }
+            if (v.number < 0) {
+                return makeError(attr.value.pos,
+                                 "'maxLines' expects >= 0", ">= 0",
+                                 "'" + v.text + "'");
+            }
+            out.textStyle.maxLines = static_cast<std::size_t>(v.number);
+            return std::nullopt;
+        }
+        if (attr.name == "overflow") {
+            const std::string& text = v.text;
+            if (v.type != Tok::Ident) {
+                return typeError(attr, "clip|ellipsis|fade|visible");
+            }
+            if (text == "clip") {
+                out.textStyle.overflow = TextOverflow::Clip;
+            } else if (text == "ellipsis") {
+                out.textStyle.overflow = TextOverflow::Ellipsis;
+            } else if (text == "fade") {
+                out.textStyle.overflow = TextOverflow::Fade;
+            } else if (text == "visible") {
+                out.textStyle.overflow = TextOverflow::Visible;
+            } else {
+                return enumError(attr, "clip|ellipsis|fade|visible");
+            }
+            return std::nullopt;
+        }
+        if (attr.name == "obscure" || attr.name == "readOnly" ||
+            attr.name == "multiline") {
+            if (out.type != WidgetType::TextField) {
+                return makeError(attr.pos,
+                                 "'" + attr.name +
+                                     "' is only valid on TextField",
+                                 "no attribute", "'" + attr.name + "'");
+            }
+            const auto flag = boolValue(attr);
+            if (!flag.has_value()) {
+                return typeError(attr, "true or false");
+            }
+            if (attr.name == "obscure") {
+                out.obscure = *flag;
+            } else if (attr.name == "readOnly") {
+                out.readOnly = *flag;
+            } else {
+                out.multiline = *flag;
+            }
             return std::nullopt;
         }
         return makeError(attr.pos,

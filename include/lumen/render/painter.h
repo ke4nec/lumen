@@ -18,11 +18,15 @@ struct PaintOptions {
     // Widget key of the pressed Button; enables the pressed background.
     std::string pressedKey{};
     std::string pressedIdentity{};
-    // Caret position (code points) inside the focused TextField.
-    std::size_t caretCodePoints{0};
-    // Caret opacity 0..1 for the blink animation (plan 阶段6); 1 renders a
-    // solid caret and keeps headless frame hashes deterministic.
+    // 光标（grapheme cluster 索引）与闪烁透明度（plan 阶段6）；1 为实心
+    // 光标，headless 帧哈希保持确定。
+    std::size_t caretGraphemes{0};
     float caretAlpha{1.0F};
+    // v0.3 阶段8B: 焦点字段的选区（grapheme 范围）与 preedit 文本。
+    std::size_t selectionStart{0};
+    std::size_t selectionEnd{0};
+    bool hasSelection{false};
+    std::string composition{};
 };
 
 // Walks the render tree, accumulates absolute offsets and programs the

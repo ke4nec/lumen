@@ -5,6 +5,8 @@
 #include <numeric>
 
 #include "lumen/core/utf8.h"
+#include "lumen/text/font_manager.h"
+#include "lumen/text/text_layout.h"
 
 namespace lumen::layout {
 namespace {
@@ -21,23 +23,31 @@ float clampFloat(float value, float low, float high) {
     return std::clamp(value, low, high);
 }
 
-Size measureTextIntrinsic(const Widget& widget) {
-    const float fontSize =
-        widget.textStyle.fontSize > 0.0F ? widget.textStyle.fontSize : 14.0F;
-    const float lineHeight = fontSize * 1.2F;
+// v0.3 阶段8B: 文本度量统一走 text::TextLayout（布局与绘制共用同一份
+// 布局结果）。maxWidth <= 0 表示不换行；TextField 单行不换行（横向滚动
+// 属于 8D 视口），Text 按约束换行并支持 maxLines/ellipsis。
+Size measureTextIntrinsic(const Widget& widget, float maxWidth, bool wrap) {
     const std::string& content =
         widget.text.empty() && !widget.placeholder.empty() ? widget.placeholder
                                                            : widget.text;
-    const auto glyphs = static_cast<float>(core::utf8Length(content));
-    return Size{glyphs * fontSize * 0.6F, lineHeight};
+    core::TextStyle style = widget.textStyle;
+    if (!wrap) {
+        style.maxLines = 1;
+        maxWidth = 0.0F;
+    }
+    const text::TextLayoutResult layout = text::TextLayout::layout(
+        content, style, maxWidth, text::PlaceholderFontManager::shared());
+    return layout.size;
 }
 
-Size measureLeafIntrinsic(const Widget& widget) {
-    const Size textSize = measureTextIntrinsic(widget);
+Size measureLeafIntrinsic(const Widget& widget, float maxWidth) {
     switch (widget.type) {
         case WidgetType::Text:
-            return textSize;
+            return measureTextIntrinsic(
+                widget, maxWidth,
+                /*wrap=*/widget.multiline || widget.textStyle.maxLines != 1);
         case WidgetType::Button: {
+            const Size textSize = measureTextIntrinsic(widget, 0.0F, false);
             // Button chrome: 12px horizontal + 8px vertical padding each
             // side, 64x32 minimum for a tappable target.
             const float width = std::max(textSize.width + 24.0F, 64.0F);
@@ -45,13 +55,18 @@ Size measureLeafIntrinsic(const Widget& widget) {
             return Size{width, height};
         }
         case WidgetType::TextField: {
-            // Editable field: at least 80px of text width plus chrome.
+            // Editable field: at least 80px of text width plus chrome; single
+            // line by default（多行由 multiline 属性开启）。
+            const Size textSize = measureTextIntrinsic(
+                widget,
+                widget.multiline && maxWidth > 0.0F ? maxWidth : 0.0F,
+                widget.multiline);
             const float width = std::max(textSize.width, 80.0F) + 16.0F;
             const float height = textSize.height + 16.0F;
             return Size{width, height};
         }
         default:
-            return textSize;
+            return measureTextIntrinsic(widget, 0.0F, false);
     }
 }
 
@@ -69,12 +84,17 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size) {
     node.placeholder = widget.placeholder;
     node.bind = widget.bind;
     node.onClick = widget.onClick;
+    node.obscure = widget.obscure;
+    node.readOnly = widget.readOnly;
+    node.multiline = widget.multiline;
     return node;
 }
 
 RenderNode layoutLeaf(const Widget& widget, const Constraints& constraints) {
     const Constraints outer = constraints.deflate(widget.margin);
-    Size intrinsic = measureLeafIntrinsic(widget);
+    Size intrinsic =
+        measureLeafIntrinsic(widget, outer.isBoundedWidth() ? outer.maxWidth
+                                                           : 0.0F);
     intrinsic.width += widget.padding.horizontal();
     intrinsic.height += widget.padding.vertical();
     Size size = outer.constrain(intrinsic);

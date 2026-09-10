@@ -25,7 +25,7 @@ target_include_directories(lumen-render PUBLIC
     ${PROJECT_SOURCE_DIR}/include
 )
 
-target_link_libraries(lumen-render PUBLIC lumen-core)
+target_link_libraries(lumen-render PUBLIC lumen-core lumen-text)
 target_compile_features(lumen-render PUBLIC cxx_std_20)
 
 # stb_image 头文件（ResourceManager 解码用，仅实现侧可见）。

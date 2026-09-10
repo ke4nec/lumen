@@ -13,6 +13,7 @@ set(LUMEN_TEST_SOURCES
     tween_tests.cpp
     platform_smoke_tests.cpp
     platform_host_tests.cpp
+    text_tests.cpp
 )
 
 if(LUMEN_ENABLE_SKIA)

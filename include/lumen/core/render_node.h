@@ -31,6 +31,10 @@ struct RenderNode {
     std::string placeholder{};
     std::string bind{};
     std::string onClick{};
+    // v0.3 阶段8B TextField 属性（painter/interaction 消费）。
+    bool obscure{false};
+    bool readOnly{false};
+    bool multiline{false};
 
     std::vector<RenderNode> children{};
 

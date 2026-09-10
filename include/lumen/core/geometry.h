@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 
 namespace lumen::core {
 
@@ -178,10 +179,25 @@ struct CornerRadius {
     bool operator==(const CornerRadius& other) const = default;
 };
 
+// 文本溢出策略（v0.3 阶段8B 冻结属性）。Fade 在布局中度量同 Ellipsis。
+enum class TextOverflow : std::uint8_t { Clip, Ellipsis, Fade, Visible };
+
+// 段落方向（v0.3 阶段8B）。RTL 采用逐 cluster 视觉逆序的确定性近似。
+enum class TextDirection : std::uint8_t { Ltr, Rtl };
+
 struct TextStyle {
     float fontSize{14.0F};
     Color color{Color::fromRGBA(0, 0, 0)};
     bool bold{false};
+    // v0.3 阶段8B 冻结属性（plan §3.2）。
+    std::string family{};
+    int weight{400};  // 100..900（FontWeight 的整数值）
+    bool italic{false};
+    float letterSpacing{0.0F};
+    float lineHeight{0.0F};  // 倍数；0 = 默认 1.2
+    TextDirection direction{TextDirection::Ltr};
+    std::size_t maxLines{0};  // 0 = 不限
+    TextOverflow overflow{TextOverflow::Clip};
 
     bool operator==(const TextStyle& other) const = default;
 };

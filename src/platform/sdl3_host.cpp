@@ -1,6 +1,7 @@
 #include "lumen/platform/sdl3_host.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <utility>
 

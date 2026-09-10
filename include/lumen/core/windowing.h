@@ -4,7 +4,6 @@
 #include <string>
 
 #include "lumen/core/geometry.h"
-#include "lumen/core/interaction.h"
 
 namespace lumen::core {
 
@@ -13,6 +12,27 @@ namespace lumen::core {
 // 这些值类型属于 lumen-core（plan §6: “core 持有平台无关事件值类型”），
 // SDL3、macOS native host 与移动端 host 都只负责填充字段；交互控制器
 // 只消费这里的归一化结果。平台 SDK 类型不得出现在本头文件中。
+
+// Platform-agnostic key codes. Platform layers map their native keys onto
+// these; printable input arrives separately through text input events.
+enum class Key : int {
+    None = 0,
+    Backspace,
+    Tab,
+    Enter,
+    Escape,
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+    Delete,
+    // v0.3 阶段8B/8D：编辑与滚动键盘支持。
+    PageUp,
+    PageDown,
+    Backtab,  // Shift-Tab（焦点反向遍历）
+};
 
 // 稳定窗口标识。事件、资源上传、语义节点与诊断都通过它关联窗口。
 struct WindowId {

@@ -28,6 +28,8 @@
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
+#include "lumen/text/font_manager.h"
+#include "lumen/text/text_layout.h"
 
 namespace lumen::examples {
 
@@ -50,7 +52,7 @@ class CounterApp {
     [[nodiscard]] static core::Widget buildUi() {
         using namespace dsl;
         core::Widget page = container(
-            column({core::withKey(text("Count: ", bind("counter")),
+            column({core::withKey(dsl::text("Count: ", bind("counter")),
                                   "count-text"),
                     core::withKey(button("Increment", onClick("increment")),
                                   "increment-button"),
@@ -147,13 +149,20 @@ class CounterApp {
         options.focusedIdentity = focus_.focusedIdentity();
         options.pressedKey = controller_.pressedKey();
         options.pressedIdentity = controller_.pressedIdentity();
-        options.caretCodePoints = controller_.caretCodePoints();
+        options.caretGraphemes = controller_.caretGraphemes();
         options.caretAlpha = caretAlpha_;
+        options.selectionStart = controller_.selectionStart();
+        options.selectionEnd = controller_.selectionEnd();
+        options.hasSelection = controller_.hasSelection();
+        options.composition = controller_.composition();
 
         const bool optionsChanged =
             options.focusedIdentity != lastFocusedIdentity_ ||
             options.pressedIdentity != lastPressedIdentity_ ||
-            options.caretCodePoints != lastCaret_ ||
+            options.caretGraphemes != lastCaret_ ||
+            options.selectionStart != lastSelectionStart_ ||
+            options.selectionEnd != lastSelectionEnd_ ||
+            options.composition != lastComposition_ ||
             caretAlpha_ != lastCaretAlpha_;
         const bool needPaint = forceFullRepaint || fullRepaintPending_ ||
                                !framePainted_ || rebuiltThisFrame_ ||
@@ -166,10 +175,13 @@ class CounterApp {
 
         std::vector<core::Rect> damage = pendingDamage_;
         if (optionsChanged) {
-            // Focus/press/caret/blink changes only repaint the affected
-            // nodes; identities locate them in the current tree.
+            // Focus/press/caret/selection/composition changes only repaint the
+            // affected nodes; identities locate them in the current tree.
             if (options.focusedIdentity != lastFocusedIdentity_ ||
-                options.caretCodePoints != lastCaret_ ||
+                options.caretGraphemes != lastCaret_ ||
+                options.selectionStart != lastSelectionStart_ ||
+                options.selectionEnd != lastSelectionEnd_ ||
+                options.composition != lastComposition_ ||
                 caretAlpha_ != lastCaretAlpha_) {
                 addNodeRect(damage, options.focusedIdentity,
                             options.focusedKey);
@@ -212,7 +224,10 @@ class CounterApp {
         // Bookkeeping for the next frame's cache/damage decisions.
         lastFocusedIdentity_ = options.focusedIdentity;
         lastPressedIdentity_ = options.pressedIdentity;
-        lastCaret_ = options.caretCodePoints;
+        lastCaret_ = options.caretGraphemes;
+        lastSelectionStart_ = options.selectionStart;
+        lastSelectionEnd_ = options.selectionEnd;
+        lastComposition_ = options.composition;
         lastCaretAlpha_ = caretAlpha_;
         framePainted_ = true;
         fullRepaintPending_ = false;
@@ -265,7 +280,7 @@ class CounterApp {
     // the current layout even when events and updates share one batch.
     void pointerDown(core::Offset position) {
         rebuildIfDirty();
-        controller_.pointerDown(root_, position);
+        controller_.pointerDown(root_, position, lastTickMs_);
     }
 
     void pointerMove(core::Offset position) {
@@ -284,7 +299,14 @@ class CounterApp {
         controller_.setComposition(text);
     }
 
-    void keyDown(core::Key key) { controller_.keyDown(key); }
+    void keyDown(core::Key key) {
+        rebuildIfDirty();
+        controller_.keyDown(root_, key);
+    }
+    void keyDown(core::Key key, core::KeyModifiers modifiers, char keyChar) {
+        rebuildIfDirty();
+        controller_.keyDown(root_, key, modifiers, keyChar);
+    }
 
     [[nodiscard]] int counterValue() const {
         return std::atoi(state_.get("counter").c_str());
@@ -304,8 +326,8 @@ class CounterApp {
         return controller_.wantsTextInput();
     }
     // Logical rect at the caret for IME candidate positioning
-    // (SDL_SetTextInputArea). Empty rect when nothing is focused. Mirrors
-    // the painter's text origin/caret metric so the candidate window tracks
+    // (SDL_SetTextInputArea). Empty rect when nothing is focused. Uses the
+    // same text::TextLayout as the painter so the candidate window tracks
     // the caret on Linux IBus/Fcitx/Wayland. Query after renderFrame() (as
     // main.cpp does) so the rect tracks the fresh layout.
     [[nodiscard]] core::Rect focusedTextRect() const {
@@ -314,27 +336,39 @@ class CounterApp {
         if (found == nullptr) {
             return core::Rect{};
         }
-        const float x = origin.x + static_cast<float>(focusedCaretOffset());
-        return core::Rect{core::Offset{x, origin.y},
-                          core::Size{1.0F, found->size.height}};
+        const std::string display = controller_.composingActive()
+                                        ? controller_.editingValue().text()
+                                        : found->text;
+        core::TextStyle style = found->textStyle;
+        style.maxLines = 0;
+        const auto layout = text::TextLayout::layout(
+            display, style, 0.0F, text::PlaceholderFontManager::shared());
+        std::size_t lineIndex = 0;
+        const float x = layout.graphemeToX(controller_.caretGraphemes(),
+                                           &lineIndex);
+        return core::Rect{
+            core::Offset{origin.x + 8.0F + x, origin.y},
+            core::Size{1.0F, found->size.height}};
     }
-    // Kept for PlatformWindow implementations that support a separate cursor
-    // offset. The caret is already encoded in focusedTextRect().
+    // Caret x offset (logical px, relative to the focused field origin) —
+    // kept for PlatformWindow implementations that take a separate cursor
+    // offset (SDL_SetTextInputArea cursor).
     [[nodiscard]] int focusedCaretOffset() const {
-        core::Offset ignored{};
-        const core::RenderNode* found = findFocusedField(ignored);
+        core::Offset origin{};
+        const core::RenderNode* found = findFocusedField(origin);
         if (found == nullptr) {
             return 0;
         }
-        const float fontSize = found->textStyle.fontSize > 0.0F
-                                   ? found->textStyle.fontSize
-                                   : 14.0F;
-        const std::size_t caret = controller_.caretCodePoints();
-        const std::size_t clamped =
-            std::min(caret, core::utf8Length(found->text));
-        // 8px left padding (see painter) + 0.6em per code point.
-        return static_cast<int>(8.0F + static_cast<float>(clamped) * fontSize *
-                                0.6F);
+        const std::string display = controller_.composingActive()
+                                        ? controller_.editingValue().text()
+                                        : found->text;
+        core::TextStyle style = found->textStyle;
+        style.maxLines = 0;
+        const auto layout = text::TextLayout::layout(
+            display, style, 0.0F, text::PlaceholderFontManager::shared());
+        return static_cast<int>(8.0F +
+                                layout.graphemeToX(controller_.caretGraphemes(),
+                                                   nullptr));
     }
     // Framebuffer of the internal CPU renderer; the windowed loop presents
     // from here unless an external (Skia) renderer is active.
@@ -470,6 +504,9 @@ class CounterApp {
     std::string lastFocusedIdentity_{};
     std::string lastPressedIdentity_{};
     std::size_t lastCaret_{0};
+    std::size_t lastSelectionStart_{0};
+    std::size_t lastSelectionEnd_{0};
+    std::string lastComposition_{};
     float caretAlpha_{1.0F};
     float lastCaretAlpha_{1.0F};
     bool blinkAnchored_{false};
