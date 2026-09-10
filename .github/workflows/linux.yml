@@ -29,12 +29,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y $LUMEN_LINUX_DEPS
-      - name: Configure (CPU-only)
+      - name: Configure (CPU-only + benchmarks)
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_BENCHMARKS=ON
       - name: Build
         run: cmake --build build --config Debug
       - name: Test
@@ -43,6 +44,22 @@ jobs:
         run: ./build/examples/counter/lumen-counter --headless
       - name: Windowed smoke (Xvfb)
         run: xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter || test $? -eq 124
+      # v0.2 阶段7A/7E：固定场景基准，报告归档为 CPU 基线；两次运行的
+      # frame hash 必须一致（可重复性门槛）。
+      - name: Benchmark (repeatability gate + report)
+        run: |
+          ./build/benchmarks/lumen-scene-bench --frames 120 --warmup 10 --json > bench-1.json
+          ./build/benchmarks/lumen-scene-bench --frames 120 --warmup 10 --json > bench-2.json
+          h1=$(grep -o '"frame_hash": "[0-9a-f]*"' bench-1.json)
+          h2=$(grep -o '"frame_hash": "[0-9a-f]*"' bench-2.json)
+          echo "run1: $h1"; echo "run2: $h2"
+          test "$h1" = "$h2"
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-benchmark-report
+          path: bench-*.json
 
   skia:
     runs-on: ubuntu-24.04
@@ -65,3 +82,33 @@ jobs:
         run: ctest --test-dir build-skia --output-on-failure -C Release
       - name: Windowed Skia smoke (Xvfb)
         run: xvfb-run -a timeout 5 ./build-skia/examples/counter/lumen-counter --renderer skia || test $? -eq 124
+
+  # v0.2 阶段7C/7E：Skia Ganesh GPU 后端。CI 无硬件 GPU，经 Mesa
+  # llvmpipe 软件适配器运行 —— 软件适配器是强制门槛，硬件 GPU 只是
+  # 本地/自托管环境的增强 smoke。
+  skia-gpu:
+    runs-on: ubuntu-24.04
+    env:
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies (incl. Mesa DRI/llvmpipe)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $LUMEN_LINUX_DEPS libgl1-mesa-dri mesa-utils
+      - name: Configure (Skia + GPU)
+        run: >
+          cmake -S . -B build-gpu -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_ENABLE_SKIA=ON
+          -DLUMEN_ENABLE_GPU=ON
+      - name: Build
+        run: cmake --build build-gpu --config Release
+      - name: Test (GPU submit + fallback on software GL)
+        run: xvfb-run -a ctest --test-dir build-gpu --output-on-failure -C Release --timeout 120
+      - name: Windowed GPU smoke (Xvfb + llvmpipe)
+        run: >
+          xvfb-run -a timeout 5 ./build-gpu/examples/counter/lumen-counter
+          --renderer gpu --diagnostics || test $? -eq 124

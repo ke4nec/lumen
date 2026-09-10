@@ -1,0 +1,62 @@
+name: windows
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# v0.2 阶段7E：Windows CI 矩阵 —— CPU-only 与 Skia 光栅为强制门槛；
+# Skia GPU 在 runner 上通常无硬件 GL，gpu smoke 验证探测失败时的
+# CPU 自动回退（回退行为是强制门槛，硬件加速是增强项）。
+
+jobs:
+  cpu:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (CPU-only)
+        run: >
+          cmake -S . -B build
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=ON
+      - name: Build (Debug)
+        run: cmake --build build --config Debug
+      - name: Test (Debug)
+        run: ctest --test-dir build --output-on-failure -C Debug --timeout 120
+      - name: Headless counter smoke
+        run: ./build/examples/counter/Debug/lumen-counter.exe --headless
+
+  skia-raster:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (Skia)
+        run: >
+          cmake -S . -B build-skia
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_ENABLE_SKIA=ON
+      # 预编译 skia.lib 为 Release/MT 静态 CRT：Windows 上 Skia 构建只支持
+      # Release 配置（见根 CMakeLists 注释）。
+      - name: Build (Release)
+        run: cmake --build build-skia --config Release
+      - name: Test (Release, incl. CPU/Skia consistency)
+        run: ctest --test-dir build-skia --output-on-failure -C Release --timeout 120
+
+  # 增强 smoke：runner 无硬件 GL 时 GPU 探测必须干净失败并回退 CPU
+  #（gpu 测试自带该路径断言）；有 GPU 的自托管 runner 上走真实提交。
+  skia-gpu:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (Skia + GPU)
+        run: >
+          cmake -S . -B build-gpu
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_ENABLE_SKIA=ON
+          -DLUMEN_ENABLE_GPU=ON
+      - name: Build (Release)
+        run: cmake --build build-gpu --config Release
+      - name: Test (GPU or verified fallback)
+        run: ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180

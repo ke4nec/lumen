@@ -1,17 +1,23 @@
 # Lumen
 
 C++20 自绘 GUI 框架（Flutter 式声明式 UI），详见
-[`docs/lumen-gui-framework-plan.md`](docs/lumen-gui-framework-plan.md)。
+[`docs/lumen-gui-framework-plan.md`](docs/lumen-gui-framework-plan.md) 与
+v0.2 计划
+[`docs/lumen-gui-framework-plan-v0.2.md`](docs/lumen-gui-framework-plan-v0.2.md)。
 
-当前进度：阶段 0–6（工程骨架、核心树和布局、CPU 渲染与 SDL3 平台层、交互与 C++ DSL、文本 DSL、Skia 适配、框架完善）。
+当前进度：阶段 0–6 + v0.2 阶段 7A–7E（命令管线、Skia GPU 后端与 CPU
+回退、帧调度、异步资源、基准与 CI 矩阵）。
 
 ## 结构
 
 - `include/lumen/`：`core`、`layout`、`render`、`platform`、`dsl` 公共头文件。
-- `src/`：与公共模块一一对应的实现（`render` 含 CPU 光栅器与 painter，`platform` 含 SDL3 后端）。
-- `tests/`：Catch2 单测与无窗口集成测试（几何、布局、Element、渲染像素、交互、counter frame hash）。
+- `src/`：与公共模块一一对应的实现（`render` 含 CPU 光栅器、命令管线、
+  帧调度器、资源管理器、painter 与可选 Skia 光栅/GPU 适配，`platform` 含 SDL3 后端）。
+- `tests/`：Catch2 单测与无窗口集成测试（几何、布局、Element、渲染像素、
+  命令回放/序列化、调度、资源、交互、counter frame hash）。
+- `benchmarks/`：固定 1080p 场景基准（阶段耗时 p50/p95、堆分配、命令数、frame hash）。
 - `examples/counter/`：可交互 counter 示例（窗口模式 + `--headless`）。
-- `cmake/`：FetchContent 依赖声明（SDL3、Catch2，均已 pin 版本）。
+- `cmake/`：FetchContent 依赖声明（SDL3、Catch2、stb，均已 pin 版本）。
 - `docs/`：架构与分阶段计划。
 
 ## 构建
@@ -21,6 +27,16 @@ cmake -S . -B build -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
 cmake --build build --config Debug
 ctest --test-dir build --output-on-failure -C Debug
 ```
+
+构建开关：
+
+| 开关 | 默认 | 说明 |
+| --- | --- | --- |
+| `LUMEN_BUILD_TESTS` | ON | Catch2 单测与集成测试 |
+| `LUMEN_BUILD_EXAMPLES` | ON | counter 示例 |
+| `LUMEN_BUILD_BENCHMARKS` | OFF | `lumen-scene-bench` 固定场景基准 |
+| `LUMEN_ENABLE_SKIA` | OFF | Skia 光栅后端（预编译包自动拉取） |
+| `LUMEN_ENABLE_GPU` | OFF | Skia Ganesh GPU 后端（需 `LUMEN_ENABLE_SKIA`） |
 
 Linux（Ubuntu 24.04/26.04）先安装系统依赖（SDL3 窗口/输入、Skia
 FontConfig、Xvfb 冒烟）：
@@ -90,6 +106,81 @@ Pointer，窗口缩放（含 Wayland 分数缩放）统一转为 Resize。
 > Linux CPU-only 与 Skia 构建均已在 Ubuntu 26.04 验证：
 > `ctest` 全量通过（含 CPU/Skia 一致性）与 Xvfb 窗口冒烟通过，见
 > `.github/workflows/linux.yml`。
+
+## v0.2 桌面运行时（阶段 7A–7E）
+
+### 命令管线（7B）
+
+Painter 只录制命令（`recordScene` → `RenderCommandList`），CPU / Skia 光栅 /
+Skia GPU 后端消费同一份命令：`Renderer::submit(list, FrameInfo)` 提交一帧，
+`capabilities()` 报告后端能力，`stats()` 返回命令数、提交/GPU 等待耗时、
+damage 裁剪数与 full-frame fallback 原因；`resetSurface()` 在尺寸/DPI/设备
+重建后重建目标。命令支持二进制序列化（`serializeCommands`）与 damage
+范围裁剪（`cullCommandsOutside`）；旧 `beginFrame/draw*/endFrame` 即时路径
+经默认适配器继续可用，现有测试无需改写。
+
+### Skia GPU 后端与 CPU 回退（7C）
+
+```sh
+cmake -S . -B build-gpu -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON
+cmake --build build-gpu --config Release
+./build-gpu/examples/counter/lumen-counter --renderer gpu --diagnostics
+```
+
+`--renderer gpu` 先无副作用探测（隐藏窗口上完整初始化 GL + Ganesh），
+成功则以 OpenGL 窗口 + `SkiaGpuRenderer` 运行；探测或初始化失败打印原因
+并自动回退 CPU，应用状态与 UI 树不丢失。纹理、裁剪、透明度、文字、
+surface resize 均已支持；上下文丢失（`gl-context-lost`）经
+`skiaGpuRendererAlive()` 暴露。Graphite 留待后续版本。
+
+### 帧调度与异步资源（7D）
+
+主循环由 `FrameScheduler` 驱动（counter 已接入，替换固定延时）：
+invalidate 原因按帧合并、空闲不提交（事件等待唤醒）、动画按 deadline、
+resize 防抖（输入优先不被拖延）、最小化暂停、VSync/目标帧率节流、turn
+内不重入；时间源可注入（headless 测试确定性运行）。
+
+`ResourceManager` 提供异步图片加载：worker 只做受限文件读取与解码
+（PNG/JPEG 走固定版本 stb_image，另有 `.lumenrgba` 原始格式），代际句柄
+保证异步完成不能复活已释放资源；CPU 缓存按字节上限 LRU 淘汰，upload/
+unload 以命令增量进入帧提交，GPU 设备重建后同 ImageId 重新上传。
+
+`.lumenrgba` 原始图片格式：ASCII 头 `LUMENRGBA\n<width> <height>\n` +
+`w*h*4` 字节 straight RGBA。
+
+### 运行时诊断与基准（7A/7E）
+
+```sh
+./lumen-counter --diagnostics            # 后端/能力/DPI + 周期帧统计
+lumen-scene-bench --frames 300 --json    # 1080p 固定场景基准报告
+```
+
+诊断输出包含后端选择、GPU 回退原因、每帧命令数、damage 裁剪数、提交与
+GPU 等待耗时、空闲轮询数。基准输出各阶段 p50/p95 耗时、堆分配量、命令数
+与 frame hash（同一机器同配置下 hash 必须可重复），CI 归档为 CPU 基线。
+
+### 支持矩阵与故障排查
+
+| 后端 | Windows | Linux |
+| --- | --- | --- |
+| CPU 光栅（默认） | ✅ | ✅ |
+| Skia 光栅 | ✅（仅 Release，静态 CRT） | ✅ |
+| Skia GPU（Ganesh+GL） | ✅（WGL，探测失败自动回退） | ✅（GLX/EGL） |
+
+- CI（`.github/workflows/`）：Windows/Linux × {CPU-only, Skia 光栅,
+  Skia GPU}；Linux GPU 经 Mesa llvmpipe 软件适配器作为强制门槛，硬件
+  GPU 为增强 smoke；Windows runner 无硬件 GL 时验证回退路径。
+- **GPU 初始化失败/回退 CPU**：查 `--diagnostics` 的
+  `[diag] gpu probe failed (...)` 原因（GL 库加载、上下文创建、Ganesh
+  初始化、字体管理器）；确认显卡驱动与 OpenGL ≥ 3.0。
+- **窗口黑屏/无交换**：GL 窗口上不会走 CPU present（返回 Rejected）；
+  确认 `--renderer gpu` 探测成功而不是回退（诊断行 `backend=skia-gpu`）。
+- **隐藏/离屏窗口挂起**：`SkiaGpuRendererDesc::allowSwap=false`（部分
+  驱动在隐藏窗口上 SwapWindow 阻塞）。
+- **Windows Skia 链接错误**：预编译 skia.lib 是 Release/MT 静态 CRT，
+  只能链 Release 配置。
+- **性能回归**：以 CI 归档的基准报告为对照（同机器同配置），固定场景
+  frame hash 不变表示像素路径未漂移。
 
 ## 框架完善（阶段 6）
 
