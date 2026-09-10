@@ -8,6 +8,7 @@
 // App-layer responsibilities per plan §6.1: state keys, event handlers and
 // the frame loop live here, not inside the framework.
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -188,7 +189,12 @@ class CounterApp {
                              treeDamageValid_ && bounds.has_value();
         // v0.2 命令路径（阶段7B）：CPU/Skia 光栅/Skia GPU 消费同一份录制
         // 命令；局部重绘经 damage+preserve 提交，全帧不带 damage。
+        const auto buildStart = std::chrono::steady_clock::now();
         render::RenderCommandList commands = render::recordScene(root_, options);
+        renderer.noteCpuBuildMs(
+            std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - buildStart)
+                .count());
         render::FrameInfo info;
         info.viewport = view_;
         info.deviceScale = deviceScale_;

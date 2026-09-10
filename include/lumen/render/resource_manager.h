@@ -48,6 +48,10 @@ struct ResourceHandle {
     [[nodiscard]] bool operator==(const ResourceHandle&) const = default;
 };
 
+// 未就绪资源的固定占位外观（plan §3.3：Loading/Failed/Cancelled/Evicted
+// 均绘制它）：应用在 `pixels(handle) == nullptr` 时以目标矩形填充此色。
+inline constexpr core::Color kResourcePlaceholderColor{47, 47, 55, 255};
+
 class ResourceManager {
   public:
     struct Config {
