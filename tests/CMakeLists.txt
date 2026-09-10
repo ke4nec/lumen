@@ -18,11 +18,20 @@ if(LUMEN_ENABLE_SKIA)
     list(APPEND LUMEN_TEST_SOURCES skia_smoke_tests.cpp)
 endif()
 
+# v0.2 阶段7C: GPU smoke（探测失败自动跳过；硬件 GPU 为增强门槛）。
+if(LUMEN_ENABLE_GPU)
+    list(APPEND LUMEN_TEST_SOURCES gpu_smoke_tests.cpp)
+endif()
+
 add_executable(lumen-tests ${LUMEN_TEST_SOURCES})
 
 if(LUMEN_ENABLE_SKIA)
     # The stage-name test expects the adapter label only when it is real.
     target_compile_definitions(lumen-tests PRIVATE LUMEN_HAS_SKIA_BACKEND=1)
+endif()
+
+if(LUMEN_ENABLE_GPU)
+    target_compile_definitions(lumen-tests PRIVATE LUMEN_HAS_GPU_BACKEND=1)
 endif()
 
 target_include_directories(lumen-tests PRIVATE
@@ -38,6 +47,11 @@ target_link_libraries(lumen-tests PRIVATE
     lumen-dsl
     Catch2::Catch2WithMain
 )
+
+# GPU smoke 直接调用 SDL 建隐藏 GL 窗口。
+if(LUMEN_ENABLE_GPU)
+    target_link_libraries(lumen-tests PRIVATE SDL3::SDL3)
+endif()
 
 target_compile_features(lumen-tests PRIVATE cxx_std_20)
 

@@ -14,6 +14,10 @@ struct Sdl3WindowDesc {
     bool resizable{true};
     // Match OS scaling so drawable pixels track the logical size (plan §2).
     bool highPixelDensity{true};
+    // 以 SDL_WINDOW_OPENGL 创建窗口供 Skia GPU 适配使用（v0.2 阶段7C）。
+    // 此时窗口没有 SDL 呈现器；CPU present 返回 Rejected，交换由 GPU 适配
+    // 的 endFrame 完成。
+    bool opengl{false};
 };
 
 // Creates an SDL3-backed window. Returns nullptr on failure; SDL's error is

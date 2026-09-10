@@ -14,6 +14,10 @@ if(LUMEN_ENABLE_SKIA)
   target_compile_definitions(lumen-counter PRIVATE LUMEN_HAVE_SKIA=1)
 endif()
 
+if(LUMEN_ENABLE_GPU)
+  target_compile_definitions(lumen-counter PRIVATE LUMEN_HAVE_GPU=1)
+endif()
+
 # The DSL sample loads this asset by name next to the binary.
 add_custom_command(
     TARGET lumen-counter

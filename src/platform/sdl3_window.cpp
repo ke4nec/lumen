@@ -52,7 +52,9 @@ class Sdl3Window final : public PlatformWindow {
         if (texture_ != nullptr) {
             SDL_DestroyTexture(texture_);
         }
-        SDL_DestroyRenderer(renderer_);
+        if (renderer_ != nullptr) {
+            SDL_DestroyRenderer(renderer_);
+        }
         SDL_DestroyWindow(window_);
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
     }
@@ -86,12 +88,16 @@ class Sdl3Window final : public PlatformWindow {
         return core::Size{static_cast<float>(width), static_cast<float>(height)};
     }
 
-    void present(const render::PixelBuffer& buffer) override {
+    PresentResult present(const render::PixelBuffer& buffer) override {
+        if (renderer_ == nullptr) {
+            // OpenGL 窗口没有 SDL 呈现器；GPU 适配负责交换。
+            return PresentResult::Rejected;
+        }
         if (buffer.width <= 0 || buffer.height <= 0 ||
             buffer.rgba.size() !=
                 static_cast<std::size_t>(buffer.width) *
                     static_cast<std::size_t>(buffer.height) * 4) {
-            return;
+            return PresentResult::Rejected;
         }
         if (texture_ == nullptr || textureWidth_ != buffer.width ||
             textureHeight_ != buffer.height) {
@@ -106,18 +112,43 @@ class Sdl3Window final : public PlatformWindow {
             if (texture_ == nullptr) {
                 std::fprintf(stderr, "SDL_CreateTexture failed: %s\n",
                              SDL_GetError());
-                return;
+                return PresentResult::Rejected;
             }
         }
         if (!SDL_UpdateTexture(texture_, nullptr, buffer.rgba.data(),
                                buffer.width * 4)) {
             std::fprintf(stderr, "SDL_UpdateTexture failed: %s\n",
                          SDL_GetError());
-            return;
+            return PresentResult::Rejected;
         }
         SDL_RenderClear(renderer_);
         SDL_RenderTexture(renderer_, texture_, nullptr, nullptr);
         SDL_RenderPresent(renderer_);
+        return PresentResult::Ok;
+    }
+
+    [[nodiscard]] NativeSurfaceHandle nativeSurface() const override {
+        NativeSurfaceHandle handle;
+        handle.nativeWindow = window_;
+        handle.windowSystem = "sdl3";
+        return handle;
+    }
+
+    [[nodiscard]] bool isMinimized() const override {
+        const SDL_WindowFlags flags = SDL_GetWindowFlags(window_);
+        return (flags & SDL_WINDOW_MINIMIZED) != 0;
+    }
+
+    [[nodiscard]] bool isVisible() const override {
+        const SDL_WindowFlags flags = SDL_GetWindowFlags(window_);
+        // MINIMIZED 在 HIDDEN 之外单独判断；隐藏窗口同样视为不可见。
+        return (flags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN)) == 0;
+    }
+
+    void setVSyncEnabled(bool enabled) override {
+        if (renderer_ != nullptr) {
+            SDL_SetRenderVSync(renderer_, enabled ? 1 : 0);
+        }
     }
 
     void setTextInputEnabled(bool enabled) override {
@@ -269,15 +300,29 @@ class Sdl3Window final : public PlatformWindow {
                     break;
                 }
                 case SDL_EVENT_WINDOW_RESIZED:
-                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-                case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
-                case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED: {
+                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
                     Event event;
                     event.type = EventType::Resize;
                     event.pixelSize = drawableSize();
                     pending_.push_back(std::move(event));
                     break;
                 }
+                case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+                case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED: {
+                    // DPI 变化单独成事件：先于下一帧 surface 重建处理
+                    //（v0.2 plan §3.2），设备像素比随之刷新。
+                    Event event;
+                    event.type = EventType::DpiChanged;
+                    event.pixelSize = drawableSize();
+                    pending_.push_back(std::move(event));
+                    break;
+                }
+                case SDL_EVENT_WINDOW_MINIMIZED:
+                    pending_.push_back(Event{EventType::WindowMinimized});
+                    break;
+                case SDL_EVENT_WINDOW_RESTORED:
+                    pending_.push_back(Event{EventType::WindowRestored});
+                    break;
                 case SDL_EVENT_WINDOW_FOCUS_GAINED:
                     pending_.push_back(Event{EventType::FocusGained});
                     break;
@@ -315,6 +360,11 @@ std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
     if (desc.resizable) {
         flags |= SDL_WINDOW_RESIZABLE;
     }
+    // OpenGL 窗口供 Skia GPU 适配创建 GL 上下文；此时不建 SDL 呈现器，
+    // CPU present 路径返回 Rejected（v0.2 阶段7C）。
+    if (desc.opengl) {
+        flags |= SDL_WINDOW_OPENGL;
+    }
     SDL_Window* window =
         SDL_CreateWindow(desc.title.c_str(), desc.width, desc.height, flags);
     if (window == nullptr) {
@@ -322,12 +372,16 @@ std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         return nullptr;
     }
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
-    if (renderer == nullptr) {
-        std::fprintf(stderr, "SDL_CreateRenderer failed: %s\n", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_QuitSubSystem(SDL_INIT_VIDEO);
-        return nullptr;
+    SDL_Renderer* renderer = nullptr;
+    if (!desc.opengl) {
+        renderer = SDL_CreateRenderer(window, nullptr);
+        if (renderer == nullptr) {
+            std::fprintf(stderr, "SDL_CreateRenderer failed: %s\n",
+                         SDL_GetError());
+            SDL_DestroyWindow(window);
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+            return nullptr;
+        }
     }
     return std::make_unique<Sdl3Window>(window, renderer);
 }

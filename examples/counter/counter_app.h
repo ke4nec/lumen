@@ -71,6 +71,7 @@ class CounterApp {
         fullRepaintPending_ = true;
     }
     void setDeviceScale(float scale) {
+        deviceScale_ = scale;
         cpuRenderer_.setDeviceScale(scale);
         // A pure DPI change alters pixel dimensions; the cache and the
         // preserved previous frame are both stale until a full repaint.
@@ -185,25 +186,21 @@ class CounterApp {
         const bool partial = !forceFullRepaint && !fullRepaintPending_ &&
                              externalRenderer_ == nullptr && framePainted_ &&
                              treeDamageValid_ && bounds.has_value();
+        // v0.2 命令路径（阶段7B）：CPU/Skia 光栅/Skia GPU 消费同一份录制
+        // 命令；局部重绘经 damage+preserve 提交，全帧不带 damage。
+        render::RenderCommandList commands = render::recordScene(root_, options);
+        render::FrameInfo info;
+        info.viewport = view_;
+        info.deviceScale = deviceScale_;
+        info.frameIndex = frameIndex_;
+        info.timestampMs = lastTickMs_;
         if (partial) {
-            // Erase the damaged region to the clear color, keep the previous
-            // frame outside it, and repaint only within it — transparent
-            // backgrounds therefore also match a full repaint exactly.
-            cpuRenderer_.beginFrame(view_,
-                                    render::CpuRenderer::FrameMode::Preserve,
-                                    *bounds);
-            cpuRenderer_.save();
-            cpuRenderer_.clipRect(*bounds);
-            render::paintScene(cpuRenderer_, root_, options);
-            cpuRenderer_.restore();
+            info.damage = bounds;
+            info.preservePrevious = true;
             ++partialRepaintCount_;
-        } else {
-            renderer.beginFrame(view_);
-            render::paintScene(renderer, root_, options);
         }
-        // endFrame finalizes the backend's output (CPU: previous-frame
-        // snapshot for Preserve; Skia: the readable pixel snapshot).
-        renderer.endFrame();
+        renderer.submit(commands, info);
+        frameIndex_ += 1;
         element_->clearDirtyTree();
 
         // Bookkeeping for the next frame's cache/damage decisions.
@@ -229,6 +226,7 @@ class CounterApp {
     // Apps own the clock; tests pass fixed timestamps so animation is
     // deterministic. Unfocused frames keep alpha 1.0 (stable hashes).
     void tick(std::uint64_t nowMs) {
+        lastTickMs_ = nowMs;
         if (!controller_.wantsTextInput()) {
             blinkAnchored_ = false;
             caretAlpha_ = 1.0F;
@@ -336,6 +334,14 @@ class CounterApp {
     // from here unless an external (Skia) renderer is active.
     [[nodiscard]] const render::PixelBuffer& pixels() const {
         return cpuRenderer_.pixels();
+    }
+    // 最近一次提交的渲染统计（--diagnostics 输出，v0.2 阶段7E）。
+    [[nodiscard]] render::RenderStats stats() {
+        return activeRenderer().stats();
+    }
+    // 当前渲染后端能力（--diagnostics 启动输出）。
+    [[nodiscard]] render::RendererCapabilities capabilities() {
+        return activeRenderer().capabilities();
     }
 
   private:
@@ -465,6 +471,9 @@ class CounterApp {
     std::uint64_t lastFrameHash_{0};
     std::uint32_t partialRepaintCount_{0};
     core::Size view_{800.0F, 600.0F};
+    float deviceScale_{1.0F};
+    std::uint64_t frameIndex_{0};
+    std::uint64_t lastTickMs_{0};
     render::CpuRenderer cpuRenderer_{1.0F};
     render::Renderer* externalRenderer_{nullptr};
     bool dirty_{true};
