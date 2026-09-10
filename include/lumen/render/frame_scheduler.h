@@ -73,6 +73,8 @@ class FrameScheduler {
     void setWindowVisible(bool visible);
     // VSync 开关：开 = 按 targetFps 节流；关 = 有原因立即提交。
     void setVSyncEnabled(bool vsync);
+    // 减少动画（可访问性设置，阶段8C）：动画不再驱动连续帧提交。
+    void setReduceAnimation(bool reduceAnimation);
 
     struct FrameDecision {
         // 本 turn 是否应提交帧。
@@ -120,6 +122,7 @@ class FrameScheduler {
     std::uint32_t pending_{0};
     std::uint32_t active_{0};
     bool animationsActive_{false};
+    bool reduceAnimation_{false};
     bool windowVisible_{true};
     bool vsync_{true};
     bool hasSubmittedOnce_{false};

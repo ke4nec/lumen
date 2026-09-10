@@ -87,6 +87,10 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size) {
     node.obscure = widget.obscure;
     node.readOnly = widget.readOnly;
     node.multiline = widget.multiline;
+    node.semanticsLabel = widget.semanticsLabel;
+    node.semanticsValue = widget.semanticsValue;
+    node.semanticsRole = widget.semanticsRole;
+    node.semanticsActions = widget.semanticsActions;
     return node;
 }
 

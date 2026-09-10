@@ -14,6 +14,7 @@ set(LUMEN_TEST_SOURCES
     platform_smoke_tests.cpp
     platform_host_tests.cpp
     text_tests.cpp
+    semantics_tests.cpp
 )
 
 if(LUMEN_ENABLE_SKIA)
@@ -45,6 +46,8 @@ target_link_libraries(lumen-tests PRIVATE
     lumen-core
     lumen-layout
     lumen-render
+    lumen-text
+    lumen-accessibility
     lumen-platform
     lumen-dsl
     Catch2::Catch2WithMain

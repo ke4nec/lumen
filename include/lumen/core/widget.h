@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -90,6 +91,15 @@ struct Widget {
     bool obscure{false};    // 密码模式：绘制为圆点
     bool readOnly{false};   // 只读：编辑键与 IME 提交被拒绝
     bool multiline{false};  // 多行：Enter 换行而非失焦
+
+    // v0.3 阶段8C 语义覆盖（plan §3.3）：应用可覆盖 label/value/role/
+    // actions；空字符串 = 使用 widget 默认值，semanticsActions 与推断值
+    // 相或。role 取 SemanticsRole 名称（"button"/"checkbox"/...），由
+    // lumen-accessibility 解析——core 不依赖语义枚举。
+    std::string semanticsLabel{};
+    std::string semanticsValue{};
+    std::string semanticsRole{};
+    std::uint32_t semanticsActions{0};
 
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
     // handler in the app's HandlerRegistry. `bindPrefix` preserves the

@@ -647,4 +647,27 @@ void InteractionController::setEditingValue(
     commitValue(value);
 }
 
+void InteractionController::focusNode(const RenderNode& node) {
+    const bool editable =
+        node.type == WidgetType::TextField && !node.bind.empty();
+    if (editable) {
+        focus_.setFocus(node.key.empty() ? node.bind : node.key, node.identity);
+        focusedBind_ = node.bind;
+        focusedReadOnly_ = node.readOnly;
+        focusedMultiline_ = node.multiline;
+        composition_.clear();
+        composingActive_ = false;
+        composing_ = {};
+        // 光标置于文本末尾。
+        selection_ = text::TextSelection{text::graphemeCount(store_.get(node.bind)),
+                                         text::graphemeCount(store_.get(node.bind))};
+    } else {
+        focus_.setFocus(node.key, node.identity);
+        focusedBind_.clear();
+        composition_.clear();
+        selection_ = {};
+        composingActive_ = false;
+    }
+}
+
 }  // namespace lumen::core

@@ -12,6 +12,10 @@ option(LUMEN_BUILD_BENCHMARKS "Build Lumen benchmarks" OFF)
 option(LUMEN_ENABLE_SKIA "Enable Skia renderer backend" OFF)
 # v0.2 阶段7C: Skia Ganesh GPU 后端，默认关闭；需要 LUMEN_ENABLE_SKIA。
 option(LUMEN_ENABLE_GPU "Enable the Skia Ganesh GPU backend" OFF)
+# v0.3 阶段8C: 平台无障碍桥接（Windows UIA / Linux AT-SPI / macOS
+# NSAccessibility），默认关闭；语义树与 Recording 桥始终可用。
+option(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE
+       "Enable platform accessibility bridges" OFF)
 
 if(LUMEN_ENABLE_GPU AND NOT LUMEN_ENABLE_SKIA)
   message(FATAL_ERROR "LUMEN_ENABLE_GPU=ON requires LUMEN_ENABLE_SKIA=ON.")

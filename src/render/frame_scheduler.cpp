@@ -44,6 +44,12 @@ void FrameScheduler::setVSyncEnabled(bool vsync) {
     vsync_ = vsync;
 }
 
+void FrameScheduler::setReduceAnimation(bool reduceAnimation) {
+    // 可访问性设置（plan 8C：减少动画）：动画不再驱动连续帧提交；光标
+    // 闪烁等视觉效果由应用侧按设置静止。
+    reduceAnimation_ = reduceAnimation;
+}
+
 std::uint64_t FrameScheduler::now() const {
     static const RealtimeClock kRealtime;
     return clock_ != nullptr ? clock_->nowMs() : kRealtime.nowMs();
@@ -59,6 +65,8 @@ std::uint32_t FrameScheduler::frameIntervalMs() const {
 FrameScheduler::FrameDecision FrameScheduler::evaluateFrame() const {
     FrameDecision decision;
     const std::uint64_t nowMs = now();
+    // 减少动画时动画不驱动提交（plan 8C 可访问性设置）。
+    const bool animationsEffective = animationsActive_ && !reduceAnimation_;
 
     // 最小化暂停：原因保留，恢复后按原语义补交。
     if (!windowVisible_ && config_.pauseWhenHidden) {
@@ -93,7 +101,7 @@ FrameScheduler::FrameDecision FrameScheduler::evaluateFrame() const {
             const std::uint32_t remaining =
                 static_cast<std::uint32_t>(interval - sinceSubmit);
             // 帧预算未到：有原因或动画在跑就等到 deadline，否则空闲等待。
-            if (hasPending || animationsActive_) {
+            if (hasPending || animationsEffective) {
                 decision.reasons = pending_;
                 decision.waitMs = remaining;
             } else {
@@ -110,7 +118,7 @@ FrameScheduler::FrameDecision FrameScheduler::evaluateFrame() const {
         return decision;
     }
 
-    if (animationsActive_) {
+    if (animationsEffective) {
         // 动画 deadline：上一帧提交后经过一个帧间隔即到期（上面的节流
         // 已经把未到期的情形挡掉）。
         decision.submit = true;

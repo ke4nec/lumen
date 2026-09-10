@@ -35,6 +35,11 @@ struct RenderNode {
     bool obscure{false};
     bool readOnly{false};
     bool multiline{false};
+    // v0.3 阶段8C 语义覆盖（见 Widget 同名字段）。
+    std::string semanticsLabel{};
+    std::string semanticsValue{};
+    std::string semanticsRole{};
+    std::uint32_t semanticsActions{0};
 
     std::vector<RenderNode> children{};
 

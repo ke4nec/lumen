@@ -1,0 +1,299 @@
+#include "lumen/accessibility/semantics.h"
+
+#include <algorithm>
+#include <utility>
+
+namespace lumen::accessibility {
+namespace {
+
+using core::RenderNode;
+using core::WidgetType;
+
+SemanticsRole defaultRoleFor(const RenderNode& node, bool isRoot) {
+    switch (node.type) {
+        case WidgetType::Button:
+            return SemanticsRole::Button;
+        case WidgetType::TextField:
+            return SemanticsRole::TextField;
+        case WidgetType::Text:
+            return SemanticsRole::Text;
+        case WidgetType::Container:
+        case WidgetType::Row:
+        case WidgetType::Column:
+        case WidgetType::Stack:
+            return isRoot ? SemanticsRole::Window : SemanticsRole::Group;
+    }
+    return SemanticsRole::Group;
+}
+
+std::uint32_t defaultActionsFor(const RenderNode& node) {
+    switch (node.type) {
+        case WidgetType::Button:
+            return kActionFocus | kActionActivate;
+        case WidgetType::TextField:
+            return kActionFocus | kActionSetValue;
+        default:
+            return 0;
+    }
+}
+
+// 递归收集；bounds 以根坐标累积。
+void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
+                  const SemanticsBuildOptions& options, SemanticsTree& tree) {
+    const core::Offset origin = absolute + node.offset;
+    SemanticsNode semantic;
+    semantic.id = node.identity;
+    semantic.role = defaultRoleFor(node, isRoot);
+    semantic.bounds = core::Rect{origin, node.size};
+    semantic.actions = defaultActionsFor(node) | node.semanticsActions;
+
+    // 默认 label/value。
+    switch (node.type) {
+        case WidgetType::Button:
+            semantic.label = node.text;
+            break;
+        case WidgetType::Text:
+            semantic.label = node.text;
+            break;
+        case WidgetType::TextField:
+            semantic.label = node.placeholder.empty() ? node.bind
+                                                      : node.placeholder;
+            // 密码字段不暴露文本（plan §3.3 隐私最小语义）。
+            if (!(node.obscure && options.hideObscuredValues)) {
+                semantic.value = node.text;
+            }
+            if (node.readOnly) {
+                semantic.flags &= ~kSemanticsEnabled;
+            }
+            break;
+        default:
+            break;
+    }
+    // 应用覆盖。
+    if (!node.semanticsLabel.empty()) {
+        semantic.label = node.semanticsLabel;
+    }
+    if (!node.semanticsValue.empty()) {
+        semantic.value = node.semanticsValue;
+    }
+    if (!node.semanticsRole.empty()) {
+        SemanticsRole role = semantic.role;
+        if (semanticsRoleFromName(node.semanticsRole, &role)) {
+            semantic.role = role;
+        }
+    }
+    // 焦点 flag。
+    if (options.focus != nullptr &&
+        !options.focus->focusedIdentity().empty() &&
+        options.focus->focusedIdentity() == node.identity) {
+        semantic.flags |= kSemanticsFocused;
+    }
+
+    for (const auto& child : node.children) {
+        semantic.children.push_back(child.identity);
+    }
+    if (isRoot) {
+        tree.rootId = semantic.id;
+    }
+    tree.nodes.emplace(semantic.id, std::move(semantic));
+    for (const auto& child : node.children) {
+        collectNodes(child, origin, false, options, tree);
+    }
+}
+
+}  // namespace
+
+const char* semanticsRoleName(SemanticsRole role) {
+    switch (role) {
+        case SemanticsRole::Window:
+            return "window";
+        case SemanticsRole::Group:
+            return "group";
+        case SemanticsRole::Text:
+            return "text";
+        case SemanticsRole::Button:
+            return "button";
+        case SemanticsRole::TextField:
+            return "textField";
+        case SemanticsRole::Checkbox:
+            return "checkbox";
+        case SemanticsRole::Switch:
+            return "switch";
+        case SemanticsRole::List:
+            return "list";
+        case SemanticsRole::ListItem:
+            return "listItem";
+        case SemanticsRole::Dialog:
+            return "dialog";
+        case SemanticsRole::Image:
+            return "image";
+    }
+    return "unknown";
+}
+
+bool semanticsRoleFromName(const std::string& name, SemanticsRole* out) {
+    const std::pair<const char*, SemanticsRole> kTable[] = {
+        {"window", SemanticsRole::Window},
+        {"group", SemanticsRole::Group},
+        {"text", SemanticsRole::Text},
+        {"button", SemanticsRole::Button},
+        {"textField", SemanticsRole::TextField},
+        {"text_field", SemanticsRole::TextField},
+        {"checkbox", SemanticsRole::Checkbox},
+        {"switch", SemanticsRole::Switch},
+        {"list", SemanticsRole::List},
+        {"listItem", SemanticsRole::ListItem},
+        {"list_item", SemanticsRole::ListItem},
+        {"dialog", SemanticsRole::Dialog},
+        {"image", SemanticsRole::Image},
+    };
+    for (const auto& [key, role] : kTable) {
+        if (name == key) {
+            if (out != nullptr) {
+                *out = role;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string semanticsActionsName(std::uint32_t actions) {
+    std::string result;
+    const auto append = [&result](const char* name) {
+        if (!result.empty()) {
+            result += "|";
+        }
+        result += name;
+    };
+    if ((actions & kActionFocus) != 0) {
+        append("focus");
+    }
+    if ((actions & kActionActivate) != 0) {
+        append("activate");
+    }
+    if ((actions & kActionSetValue) != 0) {
+        append("setValue");
+    }
+    if ((actions & kActionScroll) != 0) {
+        append("scroll");
+    }
+    if ((actions & kActionDismiss) != 0) {
+        append("dismiss");
+    }
+    return result;
+}
+
+const SemanticsNode* SemanticsTree::find(const std::string& id) const {
+    const auto it = nodes.find(id);
+    return it == nodes.end() ? nullptr : &it->second;
+}
+
+SemanticsTree buildSemanticsTree(const core::RenderNode& root,
+                                 const SemanticsBuildOptions& options) {
+    SemanticsTree tree;
+    collectNodes(root, core::Offset{}, true, options, tree);
+    return tree;
+}
+
+SemanticsDiff diffSemanticsTrees(const SemanticsTree& previous,
+                                 const SemanticsTree& current,
+                                 const std::string& previousFocusedId,
+                                 const std::string& currentFocusedId) {
+    SemanticsDiff diff;
+    diff.previousFocusedId = previousFocusedId;
+    diff.currentFocusedId = currentFocusedId;
+
+    // added / changed。
+    for (const auto& [id, node] : current.nodes) {
+        const auto it = previous.nodes.find(id);
+        if (it == previous.nodes.end()) {
+            diff.added.push_back(id);
+        } else if (!(it->second == node)) {
+            diff.changed.push_back(id);
+        }
+    }
+    // removed。
+    for (const auto& [id, node] : previous.nodes) {
+        if (current.nodes.find(id) == current.nodes.end()) {
+            diff.removed.push_back(id);
+        }
+    }
+    return diff;
+}
+
+SemanticsActionStatus performSemanticsAction(
+    const SemanticsTree& tree, const SemanticsActionContext& context,
+    const std::string& nodeId, std::uint32_t action, const std::string& value,
+    float scrollDeltaY) {
+    const SemanticsNode* node = tree.find(nodeId);
+    if (node == nullptr) {
+        return SemanticsActionStatus::NodeMissing;
+    }
+    if ((node->actions & action) == 0) {
+        return SemanticsActionStatus::NotHandled;
+    }
+    const core::RenderNode* renderNode =
+        context.root != nullptr
+            ? core::findNodeByIdentity(*context.root, nodeId)
+            : nullptr;
+
+    if (action == kActionFocus) {
+        if (context.focus == nullptr || renderNode == nullptr) {
+            return SemanticsActionStatus::NotHandled;
+        }
+        // 与键盘遍历共用路径：字段建立编辑焦点，其余节点设置焦点。
+        if (context.controller != nullptr) {
+            context.controller->focusNode(*renderNode);
+        } else {
+            context.focus->setFocus(
+                renderNode->key.empty() ? renderNode->identity
+                                        : renderNode->key,
+                renderNode->identity);
+        }
+        return SemanticsActionStatus::Handled;
+    }
+
+    if (action == kActionActivate || action == kActionDismiss) {
+        if (context.handlers == nullptr || renderNode == nullptr ||
+            renderNode->onClick.empty()) {
+            return SemanticsActionStatus::NotHandled;
+        }
+        const auto handler = context.handlers->find(renderNode->onClick);
+        if (handler == context.handlers->end()) {
+            return SemanticsActionStatus::NotHandled;
+        }
+        handler->second();
+        return SemanticsActionStatus::Handled;
+    }
+
+    if (action == kActionSetValue) {
+        if (context.controller == nullptr || renderNode == nullptr ||
+            renderNode->type != core::WidgetType::TextField ||
+            renderNode->bind.empty()) {
+            return SemanticsActionStatus::NotHandled;
+        }
+        // 字段必须先持有编辑焦点才能写入。
+        if (context.controller->focusedBind() != renderNode->bind) {
+            return SemanticsActionStatus::NotHandled;
+        }
+        text::TextEditingValue next =
+            context.controller->editingValue().replaceAll(
+                value, text::graphemeCount(value));
+        context.controller->setEditingValue(next);
+        return SemanticsActionStatus::Handled;
+    }
+
+    if (action == kActionScroll) {
+        if (!context.scrollSink) {
+            return SemanticsActionStatus::NotHandled;
+        }
+        return context.scrollSink(nodeId, 0.0F, scrollDeltaY)
+                   ? SemanticsActionStatus::Handled
+                   : SemanticsActionStatus::NotHandled;
+    }
+
+    return SemanticsActionStatus::NotHandled;
+}
+
+}  // namespace lumen::accessibility

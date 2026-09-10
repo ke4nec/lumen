@@ -95,6 +95,10 @@ class InteractionController {
     // 程序设置编辑值（测试/语义 setValue 用）；只读字段拒绝编辑。
     void setEditingValue(const text::TextEditingValue& value);
 
+    // 语义/键盘焦点请求（plan §3.3 与语义 actions 共用路径）：字段建立
+    // 编辑焦点（光标置末尾），其他节点只设置 FocusManager 焦点。
+    void focusNode(const RenderNode& node);
+
     // --- 查询 ---
     // Button key currently held down ("" when none) — pressed visuals.
     [[nodiscard]] const std::string& pressedKey() const { return pressedKey_; }
