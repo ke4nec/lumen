@@ -383,11 +383,105 @@ Options parseOptions(int argc, char** argv) {
 
 const char* kPhaseNames[] = {"reconcile", "layout", "paint"};
 
+// M0 基线冻结：基线 JSON 必须携带 backend/scenario/viewport/warmup/
+// measured/toolchain/build_type/frame_hash/各阶段 p50/p95/分配统计，
+// 禁止用不同场景或不同后端直接比较（比较规则见
+// docs/perf-baselines/README.md）。toolchain/commit/platform 允许经环境
+// 变量覆盖，便于 CI 归档带元数据的 artifact；本地默认值为编译期信息。
+constexpr char kBenchScenario[] = "card-grid-6x8-1080p";
+
+std::string benchEnv(const char* name) {
+    const char* value = std::getenv(name);
+    return value != nullptr ? std::string(value) : std::string();
+}
+
+std::string jsonEscape(const std::string& input) {
+    std::string output;
+    output.reserve(input.size());
+    for (char c : input) {
+        switch (c) {
+            case '"': output += "\\\""; break;
+            case '\\': output += "\\\\"; break;
+            case '\n': output += "\\n"; break;
+            case '\r': output += "\\r"; break;
+            case '\t': output += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    output += buf;
+                } else {
+                    output += c;
+                }
+                break;
+        }
+    }
+    return output;
+}
+
+std::string benchToolchain() {
+    std::string override = benchEnv("LUMEN_BENCH_TOOLCHAIN");
+    if (!override.empty()) {
+        return override;
+    }
+#ifdef __VERSION__
+    return __VERSION__;
+#elif defined(_MSC_VER)
+    return "MSVC " + std::to_string(_MSC_VER);
+#else
+    return "unknown-toolchain";
+#endif
+}
+
+std::string benchBuildType() {
+    std::string override = benchEnv("LUMEN_BENCH_BUILD_TYPE");
+    if (!override.empty()) {
+        return override;
+    }
+#ifdef LUMEN_BENCH_BUILD_TYPE
+    return LUMEN_BENCH_BUILD_TYPE;
+#else
+    return "unknown";
+#endif
+}
+
+std::string benchCommit() {
+    for (const char* name : {"LUMEN_BENCH_COMMIT", "GITHUB_SHA"}) {
+        std::string value = benchEnv(name);
+        if (!value.empty()) {
+            return value;
+        }
+    }
+    return "working-tree";
+}
+
+std::string benchPlatform() {
+    for (const char* name : {"LUMEN_BENCH_PLATFORM", "RUNNER_OS"}) {
+        std::string value = benchEnv(name);
+        if (!value.empty()) {
+            return value;
+        }
+    }
+#if defined(_WIN32)
+    return "windows";
+#elif defined(__APPLE__)
+    return "macos";
+#elif defined(__linux__)
+    return "linux";
+#else
+    return "unknown";
+#endif
+}
+
 void reportText(const Options& options, const std::map<std::string, PhaseStats>& phases,
                 std::uint64_t finalHash, std::size_t nodeCount,
                 std::uint64_t commandCount, std::uint64_t culledCount,
                 int partialFrames) {
     std::printf("lumen-scene-bench (v0.2 stage 7A CPU baseline, 7B command path)\n");
+    std::printf("scenario: %s  backend: cpu  toolchain: %s  build_type: %s\n",
+                kBenchScenario, benchToolchain().c_str(), benchBuildType().c_str());
+    std::printf("commit: %s  platform: %s\n", benchCommit().c_str(),
+                benchPlatform().c_str());
     std::printf("viewport: %.0fx%.0f  cards: %dx%d  nodes: %zu  commands/frame: %llu  culled/partial-frame: %llu\n",
                 kViewportWidth, kViewportHeight, kGridColumns, kGridRows, nodeCount,
                 static_cast<unsigned long long>(commandCount),
@@ -410,6 +504,7 @@ void reportJson(const Options& options, const std::map<std::string, PhaseStats>&
     std::printf("{\n");
     std::printf("  \"benchmark\": \"lumen-scene-bench\",\n");
     std::printf("  \"backend\": \"cpu\",\n");
+    std::printf("  \"scenario\": \"%s\",\n", kBenchScenario);
     std::printf("  \"viewport\": [%.0f, %.0f],\n", kViewportWidth, kViewportHeight);
     std::printf("  \"cards\": [%d, %d],\n", kGridColumns, kGridRows);
     std::printf("  \"nodes\": %zu,\n", nodeCount);
@@ -420,6 +515,10 @@ void reportJson(const Options& options, const std::map<std::string, PhaseStats>&
     std::printf("  \"warmup_frames\": %d,\n", options.warmupFrames);
     std::printf("  \"measured_frames\": %d,\n", options.measuredFrames);
     std::printf("  \"partial_repaint_frames\": %d,\n", partialFrames);
+    std::printf("  \"toolchain\": \"%s\",\n", jsonEscape(benchToolchain()).c_str());
+    std::printf("  \"build_type\": \"%s\",\n", jsonEscape(benchBuildType()).c_str());
+    std::printf("  \"commit\": \"%s\",\n", jsonEscape(benchCommit()).c_str());
+    std::printf("  \"platform\": \"%s\",\n", jsonEscape(benchPlatform()).c_str());
     std::printf("  \"phases\": {\n");
     bool first = true;
     for (const auto& [name, stats] : phases) {

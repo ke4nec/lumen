@@ -10,8 +10,13 @@ v0.2 计划
 [`docs/lumen-visual-system-design.md`](docs/lumen-visual-system-design.md)。
 面向自用工具类应用的桌面优先跨端路线图见
 [`docs/lumen-self-use-roadmap.md`](docs/lumen-self-use-roadmap.md)。
+统一构建/验证命令表见
+[`docs/build-commands.md`](docs/build-commands.md)，性能基线见
+[`docs/perf-baselines/README.md`](docs/perf-baselines/README.md)。
 
-当前进度：阶段 0–6 + v0.2 阶段 7A–7E + v0.3 阶段 8A–8E 的核心契约（跨平台宿主、
+当前进度：M0 基线冻结完成（统一命令表、工具链/依赖基线、四态定义、
+`docs/perf-baselines/v0.2-cpu-scene.json` CPU 归档基线）；
+阶段 0–6 + v0.2 阶段 7A–7E + v0.3 阶段 8A–8E 的核心契约（跨平台宿主、
 文本/IME/编辑模型、语义树与 Recording 桥、滚动/表单/弹窗/导航组件、SDL-free
 移动 host 接缝）。Android/iOS 原生胶水、平台原生无障碍 provider 和完整发布打包
 仍未纳入。平台能力详见

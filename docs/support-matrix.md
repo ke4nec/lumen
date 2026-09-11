@@ -1,10 +1,37 @@
-# Lumen 平台支持矩阵（v0.3）
+# Lumen 平台支持矩阵（v0.3 + M0 基线）
 
-> 状态：随 v0.3 阶段 8A–8E 更新（2026-09）。构建命令与系统依赖的单一
-> 事实来源是 README 与 `.github/workflows/`。
+> 状态：随 v0.3 阶段 8A–8E 更新（2026-09），M0 基线冻结补充工具链与四态定义。
+> 构建命令与系统依赖的单一事实来源是
+> [`build-commands.md`](build-commands.md) 与 `.github/workflows/`。
 >
 > 面向自用工具类应用的后续里程碑见
 > [`lumen-self-use-roadmap.md`](lumen-self-use-roadmap.md)。
+> 性能基线见 [`perf-baselines/README.md`](perf-baselines/README.md)。
+
+## 能力四态定义（M0 冻结）
+
+后续里程碑必须用以下四种状态描述能力，不得把“接口存在”标记为“平台完成”：
+
+| 状态 | 含义 | 证据要求 |
+| --- | --- | --- |
+| 接口已存在 | 公共头文件冻结，Fake/Recording 可断言 | 头文件 + headless fake 测试 |
+| headless 已验证 | 确定性单测/headless 集成通过 | `ctest` 全量通过（含 Fake host/Recording bridge） |
+| 真实平台已验证 | 在目标 OS/驱动/输入法上 smoke 通过 | 窗口 smoke、真实输入法/剪贴板/GPU 呈现记录 |
+| 可发布 | 便携包可在干净机器运行并可追溯 | install 产物 + 解包启动 + 版本/commit 追溯 |
+
+## 工具链与依赖基线（M0 冻结，三桌面 CI）
+
+| 平台 | runner | 编译器 | 系统依赖安装方式 |
+| --- | --- | --- | --- |
+| Windows | `windows-2025` | MSVC（VS 2025 自带，`/utf-8 /W4`，Skia 时强制静态 CRT/MT，Release） | 无额外系统包；Skia 预编译自动拉取 |
+| Linux | `ubuntu-24.04` | GCC（系统默认，`-Wall -Wextra -Wpedantic`；Skia Release 经 clang-12 官方构建包链接） | `LUMEN_LINUX_DEPS`（见 `linux.yml` env，与 `build-commands.md` 同源）+ GPU job 追加 `libgl1-mesa-dri mesa-utils` |
+| macOS | `macos-15` | AppleClang（Xcode CLT） | 无额外系统包；SDL3 经 FetchContent 编译 |
+
+固定第三方版本（`cmake/dependencies.cmake`）：SDL3 `release-3.2.10`、
+Catch2 `v3.8.1`、stb `2c980bb59875b0d32144a71867fbdebb2f77cd20`、
+Skia `m124-08a5439a6b`（Windows/ Linux 预编译 Release 包）、
+zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本、
+记录许可证，并说明 CPU-only 行为。
 
 ## 桌面平台
 
@@ -40,14 +67,21 @@ accessibility tree、Metal/Graphite。
 | 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥） | 当前只提供平台无关契约与 Recording 桥；平台原生 provider 尚未实现，工厂返回 nullptr 并给出原因 |
 | 可访问性设置 | `PlatformCapabilities`（只读查询） | 高对比/减少动画/字体缩放由 `Theme::fromSettings` 与 `FrameScheduler::setReduceAnimation` 消费 |
 
-## 已知限制（v0.3）
+## 已知限制（v0.3，映射到自用路线图里程碑）
 
 - 键盘撤销（undo 栈）未实现：`TextEditingValue` 状态机已为撤销边界预留
-  （纯函数编辑操作），撤销栈与快捷键列入 v0.4。
+  （纯函数编辑操作），撤销栈与快捷键列入路线图 M1。
 - RTL 为逐 grapheme 视觉逆序的确定性近似：纯 RTL/LTR 段落正确，混合方
-  向重排（UAX#9 完整实现）与双向光标映射列入后续版本。
-- 列表无虚拟化：ListView 要求稳定 key 与可预测子树复用；大规模虚拟化
-  Sliver 系统按计划属 v0.4。
-- 惯性滚动默认关闭（确定性测试优先）；动量物理列入 v0.4。
+  向重排（UAX#9 完整实现）与双向光标映射列入 M1。
+- 列表无虚拟化：ListView 要求稳定 key 与可预测子树复用；Grid/VirtualList
+  列入 M3。
+- 惯性滚动默认关闭（确定性测试优先）；动量物理列入 M3/M9。
 - 平台原生无障碍桥（UIA/AT-SPI/NSAccessibility）的完整 provider 实现
-  属 v0.4；v0.3 冻结了桥接契约与 headless 验证路径。
+  属后续版本；v0.3 冻结了桥接契约与 headless 验证路径，语义收口见 M5。
+- 应用主循环/damage 管线仍由 counter/settings 各自手写，无统一 `runApp`
+  壳；C++ DSL builder 仅覆盖基础容器/文本/按钮/TextField：见 M2。
+- 平台服务（文件选择/通知/光标形状/窗口图标）未形成统一接口：见 M4。
+- Icon/阴影/转场/ThemeScope、Dropdown/Menu/Tooltip/Slider/ProgressBar/
+  Radio/Tabs、Scrollbar 完整控件、表单扩展校验器：见 M6。
+- GPU `partialSubmit` 固定 false，macOS GPU 非门槛：见 M7。
+- 无正式便携包流水线：见 M8；移动软键盘/字体策略：见 M9。

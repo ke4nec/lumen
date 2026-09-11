@@ -1,5 +1,7 @@
 # v0.2 阶段7A: 独立基准目标，默认不随常规构建打开
 # (LUMEN_BUILD_BENCHMARKS=ON)。Headless CPU-only，不依赖 SDL/窗口。
+# M0 基线冻结：把构建类型编译进报告，保证基线 JSON 携带 build_type；
+# toolchain/commit/platform 允许运行时经环境变量覆盖（见 scene_bench.cpp）。
 add_executable(lumen-scene-bench scene_bench.cpp)
 
 target_include_directories(lumen-scene-bench PRIVATE ${PROJECT_SOURCE_DIR}/include)
@@ -11,6 +13,14 @@ target_link_libraries(lumen-scene-bench PRIVATE
 )
 
 target_compile_features(lumen-scene-bench PRIVATE cxx_std_20)
+
+if(CMAKE_BUILD_TYPE)
+  target_compile_definitions(lumen-scene-bench PRIVATE
+      LUMEN_BENCH_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
+else()
+  target_compile_definitions(lumen-scene-bench PRIVATE
+      LUMEN_BENCH_BUILD_TYPE="unknown")
+endif()
 
 if(WIN32)
   # 基准在无控制台的 GUI 子系统环境下也要能输出报告。

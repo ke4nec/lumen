@@ -414,7 +414,79 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 
 ## 9. 维护规则
 
-- 每个里程碑完成后，在本文件对应章节补充完成日期、提交号、测试数量和未覆盖平台。
+- 每个里程碑完成后，在本文件 §10 补充完成日期、提交号、测试数量和未覆盖平台。
 - 代码行为、支持矩阵、README 和 CI 发生变化时，必须在同一变更中更新路线图状态。
 - 发现设计文档与实现不一致时，先以源码、构建目标和实际测试为事实来源，再决定是补实现还是降级文档承诺。
 - 所有新功能必须有至少一个 headless 测试；涉及窗口、输入、GPU 或系统服务时，再增加对应平台 smoke。
+- 能力状态必须使用 `support-matrix.md` 的四态（接口已存在/headless 已验证/
+  真实平台已验证/可发布），禁止把“接口存在”标记为“平台完成”。
+
+## 10. 里程碑完成记录（M0 冻结模板）
+
+每个里程碑的完成记录必须包含：变更、测试、平台、已知限制、回滚点。
+模板：
+
+```text
+### Mx 完成记录
+- 完成日期：
+- 提交号：
+- 变更：（模块/接口/行为，指向源码符号）
+- 测试：（单测/headless/像素/窗口 smoke/基准数量与命令）
+- 平台：（三桌面/mobile-core 覆盖与未覆盖平台）
+- 已知限制：（与出口条件的差异）
+- 回滚点：（回退到的提交号/行为）
+```
+
+### M0 完成记录（基线冻结与工程入口）
+
+- 完成日期：2026-09-11
+- 提交号：（本变更提交，见 Git 历史 `chore(m0)`）
+- 变更：
+  - 新增 `docs/build-commands.md` 统一命令表（CPU/Skia/GPU/mobile-core/
+    headless/窗口 smoke/基准 canonical 命令）。
+  - 新增 `docs/perf-baselines/v0.2-cpu-scene.json`（`backend=cpu`、
+    `scenario=card-grid-6x8-1080p`、viewport 1920x1080、warmup 30、
+    measured 300、Release）与 `docs/perf-baselines/README.md` 比较规则。
+  - 扩展 `benchmarks/scene_bench.cpp` JSON 字段（`scenario`、`toolchain`、
+    `build_type`、`commit`、`platform`），`benchmarks/CMakeLists.txt`
+    把 `CMAKE_BUILD_TYPE` 编译进报告；`commit`/`platform` 允许
+    `LUMEN_BENCH_COMMIT`/`GITHUB_SHA` 与 `LUMEN_BENCH_PLATFORM`/`RUNNER_OS` 覆盖。
+  - `docs/support-matrix.md` 增加四态定义、工具链/依赖基线（Windows
+    `windows-2025`/MSVC、Linux `ubuntu-24.04`/GCC、macOS `macos-15`/
+    AppleClang；SDL3/Catch2/stb/Skia/zlib pin 版本）与已知限制到 M1–M9 的映射。
+- 测试：
+  - `lumen-scene-bench --frames 300 --warmup 30 --json` 两次运行
+    `frame_hash=d28e364efe1b4aca` 一致（本地 Linux/GCC 15.2.0/Release；
+    干净目录 `/tmp/lumen-m0-check` 复现同一 hash）。
+  - 干净构建目录可重复（`build-bench` out-of-source，见 `build-commands.md`）。
+  - 现有 `ctest` 基线不受影响（本地 Linux CPU Debug `228/228` 通过；
+    全二进制直跑的 3 个 SDL 视频设备失败为预期的无会话 quirk，`ctest`
+    隔离运行通过；bench 扩展仅增 JSON 字段，不改布局/渲染路径）。
+- 平台：本地 Linux 已验证基线生成与可重复性；Windows/macOS 工具链以 CI
+  配置为事实来源，未在本地重复生成（未覆盖平台）。
+- 已知限制：归档基线为本地 Linux Release 单点；Skia/GPU/新增场景基线待 M7
+  按同后端同场景规则首次归档；CI artifact 的 commit/platform 元数据依赖
+  bench 环境变量透传（GITHUB_SHA/RUNNER_OS）。
+- 回滚点：`2735261 docs(roadmap): 完善自用跨端里程碑路线图`（M0 前）。
+
+### M1–M9 完成记录（待实施，占位）
+
+- M1 真实文本与编辑：未开始（出口：桌面 Skia 布局不再使用占位字体度量；
+  编辑可撤销/重做；缺字体可启动并诊断）。
+- M2 应用框架层与 C++ DSL：未开始（出口：新工具页只需提供 build/状态逻辑；
+  应用壳统一事件/帧/damage/DPI/IME）。
+- M3 布局/Grid/VirtualList/Image：未开始（出口：千项列表不全量构建子树；
+  复用后滚动/焦点/语义/状态正确；窄窗口可用）。
+- M4 平台服务与窗口能力：未开始（出口：三桌面完成打开文件/编辑/复制粘贴/
+  通知/缩放/退出；服务失败有诊断）。
+- M5 语义与键盘可用性：未开始（出口：语义/键盘/视觉/交互无分叉；
+  Recording bridge 可作回归证据）。
+- M6 视觉 V3 与控件库：未开始（出口：视觉扩展由 token/StyleResolver 驱动；
+  后端不依赖 Theme；主题/动效可运行中切换）。
+- M7 GPU 与性能门槛：未开始（出口：三桌面 GPU CI 通过；故障恢复无崩溃/
+  卡死/泄漏/旧资源复活；partialSubmit 有实测与降级说明；p50/p95 相对
+  `v0.2-cpu-scene.json` 恶化 ≤10%，同后端同场景比较）。
+- M8 三桌面便携发布：未开始（出口：干净机器可启动；依赖/GPU/字体缺失有提示；
+  可追溯到 commit）。
+- M9 Android/iOS 原生接入：未开始（出口：模拟器+真机启动最小页；
+  surface 重连/暂停恢复不丢状态；mobile-core 仍 SDL-free）。

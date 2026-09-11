@@ -49,8 +49,11 @@ jobs:
         run: xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter || test $? -eq 124
       - name: Windowed settings smoke (Xvfb)
         run: xvfb-run -a timeout 5 ./build/examples/settings/lumen-settings || test $? -eq 124
-      # v0.2 阶段7A/7E：固定场景基准，报告归档为 CPU 基线；两次运行的
-      # frame hash 必须一致（可重复性门槛）。
+      # M0 基线冻结：固定场景基准 repeatability 门槛；报告（bench-*.json）
+      # 自带 backend/scenario/toolchain/build_type/commit(GITHUB_SHA)/
+      # platform(RUNNER_OS)/frame_hash（见 benchmarks/scene_bench.cpp），
+      # 与归档基线 docs/perf-baselines/v0.2-cpu-scene.json 同场景定义；
+      # canonical 归档命令见 docs/build-commands.md（--frames 300 --warmup 30）。
       - name: Benchmark (repeatability gate + report)
         run: |
           ./build/benchmarks/lumen-scene-bench --frames 120 --warmup 10 --json > bench-1.json
