@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "lumen/accessibility/bridge.h"
 #include "lumen/core/damage.h"
 #include "lumen/core/element.h"
 #include "lumen/core/interaction.h"
@@ -28,6 +29,7 @@
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
+#include "lumen/style/state.h"
 #include "lumen/text/font_manager.h"
 #include "lumen/text/text_layout.h"
 
@@ -110,7 +112,8 @@ class CounterApp {
         // observers, keys dropped by the rebuild are cleaned up (plan §9).
         syncSubscriptions(core::collectBindKeys(element_->widget()));
         core::RenderNode fresh = layout::LayoutEngine::layout(
-            element_->widget(), core::Constraints::tight(view_));
+            element_->widget(), core::Constraints::tight(view_),
+            styleContext());
         // Accumulate damage across rebuilds that share one paint: the screen
         // still shows the last PAINTED tree, so dropping earlier rects here
         // would leave stale pixels. renderFrame clears after painting and
@@ -134,21 +137,23 @@ class CounterApp {
     // Paint + post-frame bookkeeping; returns the frame hash (plan §9).
     //
     // Damage-aware painting (plan 阶段6: 脏矩形/绘制缓存):
-    //  - a frame with no tree, option, or animation change is skipped and
-    //    the previous hash returned (paint cache);
-    //  - otherwise the internal CPU renderer repaints only the damaged
-    //    region on top of the preserved previous frame; the result is
-    //    pixel-identical to a full repaint (asserted by tests);
-    //  - `forceFullRepaint` bypasses both optimizations.
-    // External (Skia) renderers always clear-paint the full frame; the hash
-    // is only meaningful for the internal CPU renderer and yields 0 there.
+    //  - hover/pressed/focused 等控件状态先进入交互快照，快照变化触发
+    //    重建——状态折算进 RenderNode 的 resolved style，diff 产生的
+    //    damage 自动覆盖新旧状态（visual-system §5 规则 6）；
+    //  - caret/selection/composition 仍是绘制瞬态，只重绘受影响节点；
+    //  - 无树/瞬态/动画变化的帧跳过绘制并返回上一哈希（绘制缓存）；
+    //  - 内部 CPU 渲染器在保留的上一帧之上只重绘损伤区；结果与全量重
+    //    绘逐像素一致（由测试断言）；
+    //  - `forceFullRepaint` 绕过两层优化。
     std::uint64_t renderFrame(bool forceFullRepaint = false) {
+        // 交互快照变化 → 重建（resolved style 折算状态）。
+        syncInteractionSnapshot();
+        if (!(interactionSnapshot_ == lastInteraction_)) {
+            lastInteraction_ = interactionSnapshot_;
+            dirty_ = true;
+        }
         rebuildIfDirty();
         render::PaintOptions options;
-        options.focusedKey = focus_.focusedKey();
-        options.focusedIdentity = focus_.focusedIdentity();
-        options.pressedKey = controller_.pressedKey();
-        options.pressedIdentity = controller_.pressedIdentity();
         options.caretGraphemes = controller_.caretGraphemes();
         options.caretAlpha = caretAlpha_;
         options.selectionStart = controller_.selectionStart();
@@ -156,9 +161,9 @@ class CounterApp {
         options.hasSelection = controller_.hasSelection();
         options.composition = controller_.composition();
 
+        const std::string& focusedIdentity = focus_.focusedIdentity();
         const bool optionsChanged =
-            options.focusedIdentity != lastFocusedIdentity_ ||
-            options.pressedIdentity != lastPressedIdentity_ ||
+            focusedIdentity != lastFocusedIdentity_ ||
             options.caretGraphemes != lastCaret_ ||
             options.selectionStart != lastSelectionStart_ ||
             options.selectionEnd != lastSelectionEnd_ ||
@@ -175,22 +180,16 @@ class CounterApp {
 
         std::vector<core::Rect> damage = pendingDamage_;
         if (optionsChanged) {
-            // Focus/press/caret/selection/composition changes only repaint the
+            // Focus/caret/selection/composition changes only repaint the
             // affected nodes; identities locate them in the current tree.
-            if (options.focusedIdentity != lastFocusedIdentity_ ||
+            if (focusedIdentity != lastFocusedIdentity_ ||
                 options.caretGraphemes != lastCaret_ ||
                 options.selectionStart != lastSelectionStart_ ||
                 options.selectionEnd != lastSelectionEnd_ ||
                 options.composition != lastComposition_ ||
                 caretAlpha_ != lastCaretAlpha_) {
-                addNodeRect(damage, options.focusedIdentity,
-                            options.focusedKey);
+                addNodeRect(damage, focusedIdentity, focus_.focusedKey());
                 addNodeRect(damage, lastFocusedIdentity_, "");
-            }
-            if (options.pressedIdentity != lastPressedIdentity_) {
-                addNodeRect(damage, options.pressedIdentity,
-                            options.pressedKey);
-                addNodeRect(damage, lastPressedIdentity_, "");
             }
         }
 
@@ -222,8 +221,7 @@ class CounterApp {
         element_->clearDirtyTree();
 
         // Bookkeeping for the next frame's cache/damage decisions.
-        lastFocusedIdentity_ = options.focusedIdentity;
-        lastPressedIdentity_ = options.pressedIdentity;
+        lastFocusedIdentity_ = focusedIdentity;
         lastCaret_ = options.caretGraphemes;
         lastSelectionStart_ = options.selectionStart;
         lastSelectionEnd_ = options.selectionEnd;
@@ -243,12 +241,37 @@ class CounterApp {
         return 0;
     }
 
+    // 可访问性设置变化 → 派生 Theme（font scale/high contrast/reduce
+    // animation/density，visual-system §4）。
+    void setAccessibilitySettings(
+        accessibility::AccessibilitySettings settings) {
+        accessibility_ = settings;
+        theme_ = style::Theme::fromSettings(accessibility_);
+        dirty_ = true;
+        fullRepaintPending_ = true;
+    }
+
+    // 视觉系统应用入口（visual-system §6.3）：默认暗色 Theme + 交互快照。
+    // 快照是成员——StyleContext 只持引用，临时对象会悬空。
+    void syncInteractionSnapshot() {
+        interactionSnapshot_ = style::InteractionStateSnapshot{
+            controller_.hoveredIdentity(), controller_.pressedIdentity(),
+            focus_.focusedIdentity()};
+    }
+
+    [[nodiscard]] style::StyleContext styleContext() const {
+        return style::StyleContext{theme_, interactionSnapshot_,
+                                   accessibility_, deviceScale_};
+    }
+
     // Advances time-driven state: the caret blink tween (plan 阶段6).
     // Apps own the clock; tests pass fixed timestamps so animation is
     // deterministic. Unfocused frames keep alpha 1.0 (stable hashes).
+    // reduceAnimation 时闪烁时长归零（MotionTokens，visual-system §4）。
     void tick(std::uint64_t nowMs) {
         lastTickMs_ = nowMs;
-        if (!controller_.wantsTextInput()) {
+        if (!controller_.wantsTextInput() ||
+            theme_.motion.caretBlinkHalfPeriodMs == 0) {
             blinkAnchored_ = false;
             caretAlpha_ = 1.0F;
             return;
@@ -259,9 +282,11 @@ class CounterApp {
             blinkAnchored_ = true;
             blinkAnchorMs_ = nowMs;
         }
-        constexpr double kHalfPeriodMs = 530.0;
-        const double phase = std::fmod(
-            static_cast<double>(nowMs - blinkAnchorMs_), kHalfPeriodMs * 2.0);
+        const double kHalfPeriodMs =
+            static_cast<double>(theme_.motion.caretBlinkHalfPeriodMs);
+        const double phase =
+            std::fmod(static_cast<double>(nowMs - blinkAnchorMs_),
+                      kHalfPeriodMs * 2.0);
         const core::Tween down{1.0, 0.0, kHalfPeriodMs, core::Easing::EaseInOut};
         const core::Tween up{0.0, 1.0, kHalfPeriodMs, core::Easing::EaseInOut};
         caretAlpha_ = static_cast<float>(
@@ -341,7 +366,7 @@ class CounterApp {
         const std::string display = controller_.composingActive()
                                         ? controller_.editingValue().text()
                                         : found->text;
-        core::TextStyle style = found->textStyle;
+        core::TextStyle style = found->textStyle();
         style.maxLines = 0;
         const auto layout = text::TextLayout::layout(
             display, style, 0.0F, text::PlaceholderFontManager::shared());
@@ -349,7 +374,8 @@ class CounterApp {
         const float x = layout.graphemeToX(controller_.caretGraphemes(),
                                            &lineIndex);
         return core::Rect{
-            core::Offset{origin.x + 8.0F + x, origin.y},
+            core::Offset{origin.x + found->commonStyle().padding.left + x,
+                         origin.y},
             core::Size{1.0F, found->size.height}};
     }
     // Caret x offset (logical px, relative to the focused field origin) —
@@ -364,11 +390,11 @@ class CounterApp {
         const std::string display = controller_.composingActive()
                                         ? controller_.editingValue().text()
                                         : found->text;
-        core::TextStyle style = found->textStyle;
+        core::TextStyle style = found->textStyle();
         style.maxLines = 0;
         const auto layout = text::TextLayout::layout(
             display, style, 0.0F, text::PlaceholderFontManager::shared());
-        return static_cast<int>(8.0F +
+        return static_cast<int>(found->commonStyle().padding.left +
                                 layout.graphemeToX(controller_.caretGraphemes(),
                                                    nullptr));
     }
@@ -489,6 +515,10 @@ class CounterApp {
     std::map<std::string, core::StateStore::ObserverId> subscriptions_{};
     core::FocusManager focus_{};
     core::InteractionController controller_{state_, handlers_, focus_};
+    // 视觉系统：默认暗色主题（窗口根 Theme，visual-system §4）。
+    style::Theme theme_{style::Theme::dark()};
+    accessibility::AccessibilitySettings accessibility_{};
+    style::InteractionStateSnapshot interactionSnapshot_{};
     core::Widget uiTemplate_{};
     std::optional<core::Element> element_{};
     core::RenderNode root_{};
@@ -503,8 +533,9 @@ class CounterApp {
     bool rebuiltThisFrame_{false};
     bool framePainted_{false};
     bool fullRepaintPending_{false};
+    // 视觉系统：交互快照（hover/press/focus）驱动重建。
+    style::InteractionStateSnapshot lastInteraction_{};
     std::string lastFocusedIdentity_{};
-    std::string lastPressedIdentity_{};
     std::size_t lastCaret_{0};
     std::size_t lastSelectionStart_{0};
     std::size_t lastSelectionEnd_{0};

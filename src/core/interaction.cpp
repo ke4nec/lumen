@@ -16,8 +16,6 @@ namespace {
 constexpr float kDragSlopPx = 4.0F;
 // 双击判定窗口（毫秒）。
 constexpr std::uint64_t kDoubleClickMs = 400;
-// painter 的字段文本左内边距（与 drawText 起点一致）。
-constexpr float kFieldTextPadding = 8.0F;
 
 // 树内节点的根相对（绝对）原点；target 以指针比较。
 bool absoluteOffsetOf(const RenderNode& tree, const RenderNode& target,
@@ -33,6 +31,26 @@ bool absoluteOffsetOf(const RenderNode& tree, const RenderNode& target,
         }
     }
     return false;
+}
+
+// 命中链上 hover 的承载节点：最深的有效可交互控件（disabled 不承载，
+// 容器不参与——避免整页 hover 抖动触发无谓重建，visual-system §5）。
+const RenderNode* hoverTargetOf(const std::vector<const RenderNode*>& chain) {
+    for (const RenderNode* node : chain) {
+        if (!node->enabled) {
+            continue;
+        }
+        switch (node->type) {
+            case WidgetType::Button:
+            case WidgetType::TextField:
+            case WidgetType::Checkbox:
+            case WidgetType::Switch:
+                return node;
+            default:
+                break;
+        }
+    }
+    return nullptr;
 }
 
 }  // namespace
@@ -131,6 +149,13 @@ void InteractionController::pointerDown(const RenderNode& root,
     dragCurrent_ = position;
     std::vector<const RenderNode*> chain;
     const RenderNode* target = hitTestChain(root, position, chain);
+    if (const RenderNode* hover = hoverTargetOf(chain)) {
+        hoveredKey_ = hover->key;
+        hoveredIdentity_ = hover->identity;
+    } else {
+        hoveredKey_.clear();
+        hoveredIdentity_.clear();
+    }
     if (target == nullptr) {
         focus_.clearFocus();
         focusedBind_.clear();
@@ -140,19 +165,20 @@ void InteractionController::pointerDown(const RenderNode& root,
         return;
     }
 
-    // Nearest button in the target chain gets the pressed state; its key
-    // (required) stays stable across the rebuild between down and up.
+    // Nearest enabled button in the target chain gets the pressed state;
+    // disabled 控件不响应指针（visual-system §7.3）。
     for (const RenderNode* node : chain) {
-        if (node->type == WidgetType::Button) {
+        if (node->type == WidgetType::Button && node->enabled) {
             pressedKey_ = node->key;
             pressedIdentity_ = node->identity;
             break;
         }
     }
-    // Arm the nearest click target (first onClick walking target->root);
-    // releasing over the same target fires it, anything else cancels.
+    // Arm the nearest enabled click target (first onClick walking
+    // target->root); releasing over the same target fires it, anything else
+    // cancels.
     for (const RenderNode* node : chain) {
-        if (!node->onClick.empty()) {
+        if (!node->onClick.empty() && node->enabled) {
             armedOnClick_ = node->onClick;
             armedKey_ = node->key;
             armedIdentity_ = node->identity;
@@ -160,10 +186,11 @@ void InteractionController::pointerDown(const RenderNode& root,
         }
     }
 
-    // Nearest TextField grabs focus; clicking anywhere else releases it.
+    // Nearest enabled TextField grabs focus; clicking anywhere else (含
+    // disabled 字段) releases it.
     const RenderNode* field = nullptr;
     for (const RenderNode* node : chain) {
-        if (node->type == WidgetType::TextField) {
+        if (node->type == WidgetType::TextField && node->enabled) {
             field = node;
             break;
         }
@@ -218,14 +245,16 @@ void InteractionController::placeCaretByHit(const RenderNode& field,
     const std::string& content = field.text.empty() && !field.placeholder.empty()
                                      ? field.placeholder
                                      : field.text;
+    const CommonResolvedStyle& common = field.commonStyle();
+    const float padX = common.padding.left;
     const float availableWidth =
-        std::max(0.0F, field.size.width - 2.0F * kFieldTextPadding);
-    core::TextStyle style = field.textStyle;
+        std::max(0.0F, field.size.width - common.padding.horizontal());
+    core::TextStyle style = common.text;
     style.maxLines = 0;  // 命中测试按自然行
     const text::TextLayoutResult layout = text::TextLayout::layout(
         content, style, field.multiline ? availableWidth : 0.0F,
         text::PlaceholderFontManager::shared());
-    const float xInText = localPosition.x - kFieldTextPadding;
+    const float xInText = localPosition.x - padX;
     const std::size_t grapheme =
         layout.positionToGrapheme(xInText, localPosition.y);
     if (extend) {
@@ -237,6 +266,18 @@ void InteractionController::placeCaretByHit(const RenderNode& field,
 
 void InteractionController::pointerMove(const RenderNode& root,
                                         Offset position) {
+    // hover 跟踪与按压状态独立：未按下时也更新命中（visual-system §5）。
+    {
+        std::vector<const RenderNode*> chain;
+        (void)hitTestChain(root, position, chain);
+        if (const RenderNode* hover = hoverTargetOf(chain)) {
+            hoveredKey_ = hover->key;
+            hoveredIdentity_ = hover->identity;
+        } else {
+            hoveredKey_.clear();
+            hoveredIdentity_.clear();
+        }
+    }
     if (!pressActive_) {
         return;
     }
@@ -281,12 +322,12 @@ void InteractionController::pointerUp(const RenderNode& root,
         return;
     }
     // Checkbox/Switch：命中（含祖先）即由框架切换状态（plan §3.4，与
-    // TextField 编辑一致的内建行为）；拖动释放不切换。
+    // TextField 编辑一致的内建行为）；拖动释放与 disabled 不切换。
     if (!wasDragging) {
         for (const RenderNode* node : chain) {
             if ((node->type == WidgetType::Checkbox ||
                  node->type == WidgetType::Switch) &&
-                !node->bind.empty()) {
+                !node->bind.empty() && node->enabled) {
                 toggleChecked(*node);
                 return;
             }
@@ -305,7 +346,7 @@ void InteractionController::pointerUp(const RenderNode& root,
             continue;
         }
         if (node->onClick == armedOnClick && node->key == armedKey &&
-            node->identity == armedIdentity) {
+            node->identity == armedIdentity && node->enabled) {
             const auto handler = handlers_.find(armedOnClick);
             if (handler != handlers_.end()) {
                 handler->second();
@@ -569,13 +610,15 @@ bool InteractionController::traverseFocus(const RenderNode& root,
     std::function<void(const RenderNode&, const std::string&)> collect =
         [&](const RenderNode& node, const std::string& scope) {
             const bool editable =
-                (node.type == WidgetType::TextField && !node.bind.empty());
+                (node.type == WidgetType::TextField && !node.bind.empty() &&
+                 node.enabled);
             const bool activatable =
-                (node.type == WidgetType::Button &&
-                 !node.onClick.empty()) ||
-                ((node.type == WidgetType::Checkbox ||
-                  node.type == WidgetType::Switch) &&
-                 !node.bind.empty());
+                node.enabled &&
+                ((node.type == WidgetType::Button &&
+                  !node.onClick.empty()) ||
+                 ((node.type == WidgetType::Checkbox ||
+                   node.type == WidgetType::Switch) &&
+                  !node.bind.empty()));
             if (editable || activatable) {
                 focusables.push_back(Candidate{&node, scope});
             }
@@ -670,7 +713,7 @@ void InteractionController::activateFocusedButton(const RenderNode& root) {
     if (node == nullptr) {
         node = findNodeByKey(root, focus_.focusedKey());
     }
-    if (node == nullptr) {
+    if (node == nullptr || !node->enabled) {
         return;
     }
     if (node->type == WidgetType::Checkbox ||
@@ -688,7 +731,7 @@ void InteractionController::activateFocusedButton(const RenderNode& root) {
 }
 
 void InteractionController::toggleChecked(const RenderNode& node) {
-    if (node.bind.empty() ||
+    if (node.bind.empty() || !node.enabled ||
         (node.type != WidgetType::Checkbox &&
          node.type != WidgetType::Switch)) {
         return;
@@ -779,6 +822,10 @@ void InteractionController::setEditingValue(
 }
 
 void InteractionController::focusNode(const RenderNode& node) {
+    // disabled 节点不建立焦点（键盘/语义 activate 与 focus 共用路径）。
+    if (!node.enabled) {
+        return;
+    }
     const bool editable =
         node.type == WidgetType::TextField && !node.bind.empty();
     if (editable) {

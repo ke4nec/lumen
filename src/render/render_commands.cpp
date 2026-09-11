@@ -12,8 +12,10 @@ namespace {
 
 // 小端序列化：固定 magic + 版本 + 数量，然后逐命令逐字段。反序列化对
 // 任何长度/校验不匹配返回 false，调用方按损坏帧处理（全帧重绘）。
+// v2：TextStyle 全字段（视觉系统后 resolved 样式带 weight/family 等区分
+// 字段，v1 只存 fontSize/color 会丢失语义）。
 constexpr char kMagic[] = "LUMENCMD";
-constexpr std::uint32_t kVersion = 1;
+constexpr std::uint32_t kVersion = 2;
 
 void putU8(std::string& out, std::uint8_t value) {
     out.push_back(static_cast<char>(value));
@@ -140,6 +142,15 @@ void serializeCommand(const RenderCommand& command, std::string& out) {
     putU8(out, command.textStyle.color.g);
     putU8(out, command.textStyle.color.b);
     putU8(out, command.textStyle.color.a);
+    putU8(out, command.textStyle.bold ? 1 : 0);
+    putString(out, command.textStyle.family);
+    putU32(out, static_cast<std::uint32_t>(command.textStyle.weight));
+    putU8(out, command.textStyle.italic ? 1 : 0);
+    putF32(out, command.textStyle.letterSpacing);
+    putF32(out, command.textStyle.lineHeight);
+    putU8(out, static_cast<std::uint8_t>(command.textStyle.direction));
+    putU32(out, static_cast<std::uint32_t>(command.textStyle.maxLines));
+    putU8(out, static_cast<std::uint8_t>(command.textStyle.overflow));
     putU64(out, command.image);
     putU32(out, static_cast<std::uint32_t>(command.pixels.width));
     putU32(out, static_cast<std::uint32_t>(command.pixels.height));
@@ -199,6 +210,18 @@ bool deserializeCommand(Reader& reader, RenderCommand& command) {
     command.textStyle.color.g = reader.getU8();
     command.textStyle.color.b = reader.getU8();
     command.textStyle.color.a = reader.getU8();
+    command.textStyle.bold = reader.getU8() != 0;
+    command.textStyle.family = reader.getString();
+    command.textStyle.weight = static_cast<int>(reader.getU32());
+    command.textStyle.italic = reader.getU8() != 0;
+    command.textStyle.letterSpacing = reader.getF32();
+    command.textStyle.lineHeight = reader.getF32();
+    command.textStyle.direction =
+        static_cast<core::TextDirection>(reader.getU8());
+    command.textStyle.maxLines =
+        static_cast<std::size_t>(reader.getU32());
+    command.textStyle.overflow =
+        static_cast<core::TextOverflow>(reader.getU8());
     command.image = reader.getU64();
     command.pixels.width = static_cast<int>(reader.getU32());
     command.pixels.height = static_cast<int>(reader.getU32());

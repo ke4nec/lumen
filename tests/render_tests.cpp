@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "lumen/accessibility/bridge.h"
 #include "lumen/core/geometry.h"
 #include "lumen/core/interaction.h"
 #include "lumen/core/state.h"
@@ -8,6 +9,9 @@
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
+#include "lumen/style/resolver.h"
+#include "lumen/style/state.h"
+#include "lumen/style/theme.h"
 
 using lumen::core::Color;
 using lumen::core::CornerRadius;
@@ -316,11 +320,39 @@ TEST_CASE("painter_shows_focus_for_keyless_bound_field", "[render]") {
     controller.pointerDown(root, Offset{20.0F, 20.0F});
     REQUIRE(controller.wantsTextInput());
     REQUIRE(!focus.focusedIdentity().empty());
+    // 焦点视觉现在经由布局折算：用携带焦点快照的 StyleContext 重新布局，
+    // resolved style 进入 RenderNode（visual-system §5）。
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    const lumen::style::InteractionStateSnapshot interaction{
+        "", "", focus.focusedIdentity()};
+    const lumen::accessibility::AccessibilitySettings settings;
+    const auto focusedRoot = lumen::layout::LayoutEngine::layout(
+        widget, lumen::core::Constraints::tight(Size{100.0F, 40.0F}),
+        lumen::style::StyleContext{theme, interaction, settings});
     renderer.beginFrame(Size{100.0F, 40.0F});
-    lumen::render::paintScene(
-        renderer, root,
-        lumen::render::PaintOptions{"", focus.focusedIdentity(), "", "", 0});
+    lumen::render::paintScene(renderer, focusedRoot,
+                              lumen::render::PaintOptions{});
     CHECK(lumen::render::frameHash(renderer.pixels()) != before);
+}
+
+TEST_CASE("theme_metric_change_updates_control_layout", "[render][style]") {
+    // Theme 指标变化 → 控件最小尺寸/布局结果随之变化（§10.2）。
+    const auto button = lumen::core::makeButton("OK");
+    const lumen::core::Constraints constraints =
+        lumen::core::Constraints::loose(Size{400.0F, 300.0F});
+    const lumen::style::Theme comfortable = lumen::style::Theme::dark();
+    const lumen::style::Theme touch = lumen::style::Theme::dark(
+        lumen::style::ControlDensity::Touch);
+    const lumen::accessibility::AccessibilitySettings settings;
+    const lumen::style::InteractionStateSnapshot idle;
+    const auto medium = lumen::layout::LayoutEngine::layout(
+        button, constraints,
+        lumen::style::StyleContext{comfortable, idle, settings});
+    const auto large = lumen::layout::LayoutEngine::layout(
+        button, constraints, lumen::style::StyleContext{touch, idle, settings});
+    CHECK(medium.size.height == comfortable.metrics.minHeight[1]);
+    CHECK(large.size.height == touch.metrics.minHeight[2]);
+    CHECK(large.size.height > medium.size.height);
 }
 
 // --- Stage 6: preserve-mode partial redraw and image lifecycle. ---

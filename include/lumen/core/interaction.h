@@ -114,6 +114,14 @@ class InteractionController {
     [[nodiscard]] const std::string& pressedIdentity() const {
         return pressedIdentity_;
     }
+    // 视觉系统（visual-system §5）：hover 状态由指针命中的最深节点承载，
+    // 应用汇总进 InteractionStateSnapshot 交给样式解析。
+    [[nodiscard]] const std::string& hoveredKey() const {
+        return hoveredKey_;
+    }
+    [[nodiscard]] const std::string& hoveredIdentity() const {
+        return hoveredIdentity_;
+    }
     // True while the pressed pointer moved beyond the drag slop; a drag
     // release never fires a click.
     [[nodiscard]] bool isDragging() const { return dragging_; }
@@ -177,6 +185,9 @@ class InteractionController {
 
     std::string pressedKey_{};
     std::string pressedIdentity_{};
+    // hover：最近一次指针移动/按下的最深命中节点（disabled 除外）。
+    std::string hoveredKey_{};
+    std::string hoveredIdentity_{};
     // Click target armed at pointer down: nearest onClick node identity.
     std::string armedOnClick_{};
     std::string armedKey_{};

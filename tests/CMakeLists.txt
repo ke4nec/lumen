@@ -1,5 +1,8 @@
 set(LUMEN_TEST_SOURCES
     geometry_tests.cpp
+    # 视觉系统（visual-system §10.1）：token 映射、Theme 派生、状态解析
+    # 与 StyleOverrides 契约。
+    style_tests.cpp
     layout_tests.cpp
     element_tests.cpp
     render_tests.cpp
@@ -55,6 +58,7 @@ target_include_directories(lumen-tests PRIVATE
 
 target_link_libraries(lumen-tests PRIVATE
     lumen-core
+    lumen-style
     lumen-layout
     lumen-render
     lumen-text

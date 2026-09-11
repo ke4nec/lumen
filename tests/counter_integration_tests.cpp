@@ -114,12 +114,12 @@ TEST_CASE("counter_frame_paints_content_pixels", "[counter]") {
              x < static_cast<int>(origin.x + button->size.width); ++x) {
             const std::size_t offset =
                 (static_cast<std::size_t>(y) * 800 + x) * 4;
-            if (pixels.rgba[offset] > 100) {
+            if (pixels.rgba[offset + 2] > 100) {
                 ++litPixels;
             }
         }
     }
-    // Button background (212) covers most of its rect; label adds texture.
+    // Filled 按钮背景是 accent 蓝（blue 通道 > 100），覆盖大部分区域。
     const int total = static_cast<int>(button->size.width) *
                       static_cast<int>(button->size.height);
     CHECK(litPixels > total * 3 / 4);
@@ -144,14 +144,14 @@ TEST_CASE("counter_focused_rect_tracks_text_field", "[counter]") {
     CHECK(rect.size.height == field->size.height);
     CHECK(rect.origin.x == lumen::core::absoluteOffset(app.root(),
                                                        "name-field")
-                               .x + 8.0F);
-    // Empty text: caret sits after the 8px left padding.
-    CHECK(app.focusedCaretOffset() == 8);
+                               .x + 12.0F);
+    // Empty text: caret sits after the 12px chrome padding.
+    CHECK(app.focusedCaretOffset() == 12);
 
     app.textInput("hi");
     app.renderFrame();
-    // 2 code points at 0.6em (14px font): 8 + 2*8.4 = 24 (truncated).
-    CHECK(app.focusedCaretOffset() == 24);
+    // 2 code points at 0.6em (14px font): 12 + 2*8.4 = 28 (truncated).
+    CHECK(app.focusedCaretOffset() == 28);
 
     // IME preedit never touches the document.
     app.textEditing("ni");
@@ -313,4 +313,74 @@ TEST_CASE("counter_renderer_switch_invalidates_cpu_cache", "[counter]") {
     const auto forced = app.renderFrame(true);
     CHECK(restored == forced);
     CHECK(restored != initial);
+}
+
+// --- 视觉系统：状态变化的局部重绘与全量重绘像素一致（§10.2） ---
+
+TEST_CASE("counter_pressed_state_partial_repaint_matches_full", "[counter]") {
+    CounterApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    // 按住不放：pressed 进入 resolved style，重建走 diff damage。
+    app.pointerDown(centerOf(app, "increment-button"));
+    const auto partialCountBefore = app.partialRepaintCount();
+    const auto pressedPartial = app.renderFrame();
+    CHECK(app.partialRepaintCount() == partialCountBefore + 1);
+    CHECK(pressedPartial == app.renderFrame(true));
+
+    // 释放：pressed 消失，同样像素一致。
+    app.pointerUp(centerOf(app, "increment-button"));
+    (void)app.renderFrame();
+    const auto released = app.renderFrame();
+    CHECK(released == app.renderFrame(true));
+    CHECK(released != pressedPartial);
+}
+
+TEST_CASE("counter_hover_state_changes_frame", "[counter]") {
+    CounterApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    // 悬停在按钮上：hover 折算进 resolved style，帧像素变化。
+    app.pointerMove(centerOf(app, "increment-button"));
+    const auto hovered = app.renderFrame();
+    CHECK(hovered == app.renderFrame(true));
+    app.pointerMove(Offset{10.0F, 10.0F});
+    const auto elsewhere = app.renderFrame();
+    CHECK(elsewhere == app.renderFrame(true));
+    CHECK(hovered != elsewhere);
+}
+
+TEST_CASE("counter_reduce_animation_stops_caret_blink", "[counter]") {
+    CounterApp app;
+    app.setView(Size{320.0F, 180.0F});
+    (void)app.renderFrame();
+    app.pointerDown(centerOf(app, "name-field"));
+    app.pointerUp(centerOf(app, "name-field"));
+    (void)app.renderFrame();
+
+    // reduceAnimation：闪烁时长归零，任何 tick 光标保持可见（§4）。
+    lumen::accessibility::AccessibilitySettings settings;
+    settings.reduceAnimation = true;
+    app.setAccessibilitySettings(settings);
+    (void)app.renderFrame();
+    app.tick(0);
+    const auto atStart = app.renderFrame();
+    app.tick(530);
+    const auto atDarkPhase = app.renderFrame();
+    CHECK(atStart == atDarkPhase);
+    CHECK(atStart == app.renderFrame(true));
+}
+
+TEST_CASE("counter_high_contrast_changes_visuals", "[counter]") {
+    CounterApp app;
+    app.setView(Size{320.0F, 180.0F});
+    const auto normal = app.renderFrame();
+    lumen::accessibility::AccessibilitySettings settings;
+    settings.highContrast = true;
+    app.setAccessibilitySettings(settings);
+    const auto contrast = app.renderFrame();
+    CHECK(contrast != normal);
+    CHECK(contrast == app.renderFrame(true));
 }

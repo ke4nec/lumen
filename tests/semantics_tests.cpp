@@ -15,6 +15,8 @@
 #include "lumen/core/state.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/frame_scheduler.h"
+#include "lumen/style/resolver.h"
+#include "lumen/style/theme.h"
 
 using namespace lumen;
 using namespace lumen::accessibility;
@@ -359,4 +361,99 @@ TEST_CASE("frame_scheduler_honors_reduce_animation_setting", "[a11y][sched]") {
     scheduler.requestFrame(render::FrameReason::Input);
     clock.current = 1300;
     CHECK(scheduler.evaluateFrame().submit);
+}
+
+// --- 视觉系统：disabled/selected 语义（§10.3） ---
+
+TEST_CASE("semantics_disabled_controls_drop_enabled_flag", "[semantics]") {
+    Widget ui = makeColumn({
+        withKey(withEnabled(
+                    makeButton("OK", {}, {}, 0.0F, "btn", std::nullopt,
+                               std::nullopt, "go"),
+                    /*enabled=*/false),
+                "btn"),
+        withKey(withEnabled(makeCheckbox("A", "a", "cb"), false), "cb"),
+        withKey(withEnabled(makeSwitch("S", "s", "sw"), false), "sw"),
+    });
+    ui.key = "root";
+    const RenderNode root = layoutOf(ui);
+    const SemanticsTree tree = buildSemanticsTree(root);
+
+    for (const char* key : {"btn", "cb", "sw"}) {
+        const RenderNode* node = findNodeByKey(root, key);
+        REQUIRE(node != nullptr);
+        const SemanticsNode* semantic = tree.find(node->identity);
+        REQUIRE(semantic != nullptr);
+        CHECK((semantic->flags & kSemanticsEnabled) == 0);
+    }
+}
+
+TEST_CASE("semantics_disabled_activate_returns_not_handled", "[semantics]") {
+    AppHarness harness;
+    Widget ui = makeContainer(withKey(
+        withEnabled(makeButton("OK", {}, {}, 0.0F, "btn", std::nullopt,
+                               std::nullopt, "increment"),
+                    /*enabled=*/false),
+        "btn"));
+    ui.key = "root";
+    const RenderNode root = layoutOf(ui);
+    const SemanticsTree tree = buildSemanticsTree(root);
+    const RenderNode* button = findNodeByKey(root, "btn");
+    REQUIRE(button != nullptr);
+
+    SemanticsActionContext context;
+    context.handlers = &harness.handlers;
+    context.root = &root;
+    // Focus/Activate 对禁用节点一律拒绝（§7.3：视觉、hit test、键盘激活
+    // 与 semantics flags 一致）。
+    CHECK(performSemanticsAction(tree, context, button->identity,
+                                 kActionFocus) ==
+          SemanticsActionStatus::NotHandled);
+    CHECK(performSemanticsAction(tree, context, button->identity,
+                                 kActionActivate) ==
+          SemanticsActionStatus::NotHandled);
+    CHECK(harness.clicks == 0);
+}
+
+TEST_CASE("semantics_selected_flag_from_widget", "[semantics]") {
+    Widget ui = makeContainer(withKey(
+        withSelected(makeCheckbox("A", "a", "cb"), /*selected=*/true), "cb"));
+    ui.key = "root";
+    const RenderNode root = layoutOf(ui);
+    const SemanticsTree tree = buildSemanticsTree(root);
+    const RenderNode* checkbox = findNodeByKey(root, "cb");
+    REQUIRE(checkbox != nullptr);
+    const SemanticsNode* semantic = tree.find(checkbox->identity);
+    REQUIRE(semantic != nullptr);
+    CHECK((semantic->flags & kSemanticsSelected) != 0);
+}
+
+TEST_CASE("semantics_checked_visual_and_flags_stay_in_sync", "[semantics]") {
+    // checked 同时影响视觉（resolved style）与 semantics flags（§7.3）。
+    Widget unchecked = makeCheckbox("A", "a", "cb");
+    Widget checked = withSelected(makeCheckbox("A", "a", "cb"), true);
+
+    const style::Theme theme = style::Theme::dark();
+    const style::InteractionStateSnapshot idle;
+    const lumen::accessibility::AccessibilitySettings settings;
+    const auto uncheckedStyle = lumen::style::resolveStyle(
+        unchecked, style::StyleContext{theme, idle, settings}, "/k:cb");
+    const auto checkedStyle = lumen::style::resolveStyle(
+        checked, style::StyleContext{theme, idle, settings}, "/k:cb");
+    const auto& off = std::get<lumen::core::CheckboxResolvedStyle>(
+        uncheckedStyle.component);
+    const auto& on = std::get<lumen::core::CheckboxResolvedStyle>(
+        checkedStyle.component);
+    CHECK(off.checked != on.checked);
+    CHECK(off.indicator == on.indicator);  // 未选中色不变，绘制按 checked 取 indicatorChecked
+
+    const RenderNode root = layoutOf(withKey(
+        makeContainer(withSelected(makeCheckbox("A", "a", "cb"), true)),
+        "root2"));
+    const SemanticsTree tree = buildSemanticsTree(root);
+    const RenderNode* node = findNodeByKey(root, "cb");
+    REQUIRE(node != nullptr);
+    const SemanticsNode* semantic = tree.find(node->identity);
+    REQUIRE(semantic != nullptr);
+    CHECK((semantic->flags & kSemanticsChecked) != 0);
 }

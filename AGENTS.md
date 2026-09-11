@@ -4,7 +4,7 @@
 
 Lumen is a C++20, Flutter-inspired, self-drawn UI framework. See [`docs/lumen-gui-framework-plan.md`](docs/lumen-gui-framework-plan.md) for the design baseline.
 
-- `include/lumen/`: public headers grouped by `core`, `layout`, `render`, `platform`, and `dsl`.
+- `include/lumen/`: public headers grouped by `core`, `style`, `layout`, `render`, `platform`, and `dsl`.
 - `src/`: private implementations matching the public module groups.
 - `tests/`: Catch2 unit and headless integration tests.
 - `examples/counter/`: the executable interaction sample.

@@ -329,3 +329,44 @@ TEST_CASE("dsl_cache_misses_on_changed_content_and_skips_errors", "[dsl]") {
     CHECK(cache.stats().misses == 5);
     CHECK(cache.stats().hits == 0);
 }
+
+// --- 视觉系统：控件声明属性解析（visual-system §6.1 / §10.1） ---
+
+TEST_CASE("dsl_parses_visual_system_control_attributes", "[dsl]") {
+    const DslParseResult parsed = parseLumen(
+        "page root {\n"
+        "  Column {\n"
+        "    Button(\"Save\", variant: outline, size: large, onClick: save)\n"
+        "    TextField(bind: name, invalid: true, enabled: false)\n"
+        "    Checkbox(\"A\", bind: a, selected: true)\n"
+        "  }\n"
+        "}");
+    REQUIRE(parsed.ok());
+    // page 的唯一根就是 Column 本身。
+    const Widget& column = parsed.root;
+    REQUIRE(column.children.size() == 3);
+
+    const Widget& button = column.children[0];
+    CHECK(button.buttonVariant == ButtonVariant::Outline);
+    CHECK(button.controlSize == ControlSize::Large);
+    CHECK(button.enabled);
+
+    const Widget& field = column.children[1];
+    CHECK(field.invalid);
+    CHECK_FALSE(field.enabled);
+
+    const Widget& checkbox = column.children[2];
+    CHECK(checkbox.selected);
+}
+
+TEST_CASE("dsl_rejects_invalid_visual_attributes", "[dsl]") {
+    // variant 只对 Button 有效；取值必须是五个枚举名之一。
+    CHECK_FALSE(parseLumen(
+        "page root { Text(\"x\", variant: outline) }").ok());
+    CHECK_FALSE(parseLumen(
+        "page root { Button(\"x\", variant: round) }").ok());
+    CHECK_FALSE(parseLumen(
+        "page root { Button(\"x\", size: huge) }").ok());
+    CHECK_FALSE(parseLumen(
+        "page root { Button(\"x\", enabled: maybe) }").ok());
+}

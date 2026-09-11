@@ -473,3 +473,103 @@ TEST_CASE("gesture_move_without_press_is_ignored", "[interaction]") {
     CHECK_FALSE(controller.isDragging());
     CHECK(controller.dragDelta() == Offset{0.0F, 0.0F});
 }
+
+// --- 视觉系统：disabled 门控（§10.3 disabled 不响应 pointer/keyboard） ---
+
+TEST_CASE("disabled_button_ignores_pointer_and_keyboard", "[interaction]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    int clicks = 0;
+    handlers["doIt"] = [&clicks] { ++clicks; };
+    Widget ui = withKey(
+        makeContainer(withEnabled(
+            makeButton("OK", {}, {}, 0.0F, "btn", std::nullopt, std::nullopt,
+                       "doIt"),
+            /*enabled=*/false)),
+        "root");
+    const RenderNode root = layoutOf(ui);
+
+    const Offset at = centerOf(root, "btn");
+    controller.pointerDown(root, at);
+    // 不产生按压视觉，也不武装点击。
+    CHECK(controller.pressedKey().empty());
+    controller.pointerUp(root, at);
+    CHECK(clicks == 0);
+
+    // 键盘路径：禁用按钮不进焦点遍历，也无法被激活。
+    controller.keyDown(root, Key::Tab);
+    CHECK(focus.focusedKey().empty());
+}
+
+TEST_CASE("disabled_checkbox_and_switch_do_not_toggle", "[interaction]") {
+    StateStore store;
+    store.set("check", "false");
+    store.set("toggle", "false");
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    Widget ui = withKey(
+        makeContainer(makeColumn({
+            withEnabled(makeCheckbox("A", "check", "cb"), false),
+            withEnabled(makeSwitch("S", "toggle", "sw"), false),
+        })),
+        "root");
+    const RenderNode root = layoutOf(ui);
+
+    controller.pointerDown(root, centerOf(root, "cb"));
+    controller.pointerUp(root, centerOf(root, "cb"));
+    controller.pointerDown(root, centerOf(root, "sw"));
+    controller.pointerUp(root, centerOf(root, "sw"));
+    CHECK(store.get("check") == "false");
+    CHECK(store.get("toggle") == "false");
+
+    // 语义/键盘共用路径 toggleChecked 也拒绝禁用节点。
+    const RenderNode* checkbox = findNodeByKey(root, "cb");
+    REQUIRE(checkbox != nullptr);
+    controller.toggleChecked(*checkbox);
+    CHECK(store.get("check") == "false");
+}
+
+TEST_CASE("disabled_textfield_takes_no_focus", "[interaction]") {
+    StateStore store;
+    store.set("name", "");
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    Widget field = withEnabled(
+        makeTextField("", "Name", {}, {}, 0.0F, "field"), false);
+    field.bind = "name";
+    const RenderNode root = layoutOf(withKey(makeContainer(std::move(field)),
+                                             "root"));
+
+    controller.pointerDown(root, centerOf(root, "field"));
+    controller.pointerUp(root, centerOf(root, "field"));
+    CHECK_FALSE(controller.wantsTextInput());
+    CHECK(focus.focusedKey().empty());
+}
+
+TEST_CASE("hover_tracking_follows_pointer", "[interaction]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    Widget ui = withKey(
+        makeContainer(makeButton("OK", {}, {}, 0.0F, "btn")),
+        "root");
+    const RenderNode root = layoutOf(ui);
+
+    CHECK(controller.hoveredIdentity().empty());
+    controller.pointerMove(root, centerOf(root, "btn"));
+    CHECK(controller.hoveredKey() == "btn");
+    CHECK_FALSE(controller.hoveredIdentity().empty());
+    // 离开控件：hover 清空（容器不承载 hover）。
+    controller.pointerMove(root, Offset{250.0F, 150.0F});
+    CHECK(controller.hoveredIdentity().empty());
+    // 按下时 hover 同步到命中目标，释放后保留。
+    controller.pointerDown(root, centerOf(root, "btn"));
+    CHECK(controller.hoveredKey() == "btn");
+    controller.pointerUp(root, centerOf(root, "btn"));
+    CHECK(controller.hoveredKey() == "btn");
+}

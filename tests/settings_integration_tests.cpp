@@ -441,19 +441,162 @@ TEST_CASE("settings_theme_switch_changes_appearance", "[settings]") {
     (void)app.renderFrame();
     const auto darkHash = app.renderFrame();
 
-    widgets::Theme light = widgets::Theme::light();
+    style::Theme light = style::Theme::light();
     app.setTheme(light);
     const auto lightHash = app.renderFrame();
     CHECK(darkHash != lightHash);
-    CHECK(app.theme().pageBackground == light.pageBackground);
+    CHECK(app.theme().colors.pageBackground == light.colors.pageBackground);
+}
+
+TEST_CASE("settings_theme_switch_damage_matches_full_repaint", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    // 不强制全量：主题切换只走 diff damage 的局部重绘（§10.2——damage
+    // 必须同时覆盖旧颜色与新颜色区域，不残留上一帧控件外观）。
+    app.setTheme(style::Theme::light(), /*forceFullRepaint=*/false);
+    const auto partial = app.renderFrame();
+    CHECK(app.partialRepaintCount() > 0);
+    const auto full = app.renderFrame(/*forceFullRepaint=*/true);
+    CHECK(partial == full);
+
+    // 切回暗色同样成立。
+    app.setTheme(style::Theme::dark(), /*forceFullRepaint=*/false);
+    const auto backPartial = app.renderFrame();
+    const auto backFull = app.renderFrame(/*forceFullRepaint=*/true);
+    CHECK(backPartial == backFull);
+}
+
+TEST_CASE("settings_invalid_field_syncs_with_form_errors", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    app.pointerDown(centerOf(app.root(), "goto-form-button"));
+    app.pointerUp(centerOf(app.root(), "goto-form-button"));
+    (void)app.renderFrame();
+
+    // 空字段提交：错误出现，字段携带 invalid 声明（§10.3）。
+    app.pointerDown(centerOf(app.root(), "save-button"));
+    app.pointerUp(centerOf(app.root(), "save-button"));
+    (void)app.renderFrame();
+    const RenderNode* field = findNodeByKey(app.root(), "nickname-field");
+    REQUIRE(field != nullptr);
+    CHECK(field->invalid);
+    CHECK(findNodeByKey(app.root(), "nickname-error") != nullptr);
+
+    // 填写后重新提交：校验通过，错误清除，invalid 复位（§10.3 与
+    // FormController 错误信息同步——提交时重算）。
+    app.pointerDown(centerOf(app.root(), "nickname-field"));
+    app.pointerUp(centerOf(app.root(), "nickname-field"));
+    app.textInput("Lumen");
+    app.pointerDown(centerOf(app.root(), "email-field"));
+    app.pointerUp(centerOf(app.root(), "email-field"));
+    app.textInput("dev@lumen.local");
+    app.pointerDown(centerOf(app.root(), "save-button"));
+    app.pointerUp(centerOf(app.root(), "save-button"));
+    (void)app.renderFrame();
+    CHECK(app.form().errors().empty());
+    field = findNodeByKey(app.root(), "nickname-field");
+    REQUIRE(field != nullptr);
+    CHECK_FALSE(field->invalid);
 }
 
 TEST_CASE("settings_theme_from_accessibility_settings", "[settings]") {
     accessibility::AccessibilitySettings settings;
     settings.fontScale = 1.5F;
     settings.highContrast = true;
-    const widgets::Theme theme =
-        widgets::Theme::fromSettings(settings, /*darkMode=*/true);
-    CHECK(theme.bodyStyle.fontSize == Catch::Approx(14.0F * 1.5F));
-    CHECK(theme.text == Color{255, 255, 255, 255});
+    const style::Theme theme =
+        style::Theme::fromSettings(settings, /*darkMode=*/true);
+    CHECK(theme.typography.body.fontSize ==
+          Catch::Approx(14.0F * 1.5F).margin(1e-4F));
+    CHECK(theme.colors.contentPrimary == Color{255, 255, 255, 255});
+}
+
+TEST_CASE("settings_accessibility_derivation_relayouts_controls",
+          "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+    const float baseHeight =
+        findNodeByKey(app.root(), "goto-form-button")->size.height;
+
+    // font scale 1.5 + touch density：控件最小高度同步放大（§4 派生）。
+    accessibility::AccessibilitySettings settings;
+    settings.fontScale = 1.5F;
+    app.setAccessibilitySettings(settings);
+    (void)app.renderFrame();
+    const float scaledHeight =
+        findNodeByKey(app.root(), "goto-form-button")->size.height;
+    CHECK(scaledHeight > baseHeight);
+}
+
+TEST_CASE("settings_theme_switch_keeps_state_and_selection", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+
+    // 聚焦字段并输入文本。
+    app.pointerDown(centerOf(app.root(), "goto-form-button"));
+    app.pointerUp(centerOf(app.root(), "goto-form-button"));
+    (void)app.renderFrame();
+    app.pointerDown(centerOf(app.root(), "nickname-field"));
+    app.pointerUp(centerOf(app.root(), "nickname-field"));
+    app.textInput("kept");
+    (void)app.renderFrame();
+
+    // 主题切换：StateStore/Element/文本/滚动/路由不丢（§10.3）。
+    const float scrollBefore = app.scroll().offset();
+    app.setTheme(style::Theme::light());
+    (void)app.renderFrame();
+    CHECK(app.state().get("nickname") == "kept");
+    CHECK(app.navigator().current() == "form");
+    CHECK(app.scroll().offset() == scrollBefore);
+    // 焦点与选区保留（编辑焦点仍在 nickname 字段）。
+    CHECK(app.controller().wantsTextInput());
+}
+
+TEST_CASE("settings_accessibility_keeps_light_theme", "[settings]") {
+    SettingsApp app;
+    app.setView(Size{800.0F, 600.0F});
+    (void)app.renderFrame();
+    app.setTheme(style::Theme::light());
+    (void)app.renderFrame();
+
+    accessibility::AccessibilitySettings settings;
+    settings.fontScale = 1.25F;
+    app.setAccessibilitySettings(settings);
+    (void)app.renderFrame();
+
+    const style::Theme expected =
+        style::Theme::fromSettings(settings, /*darkMode=*/false);
+    CHECK(app.theme().colors.pageBackground == expected.colors.pageBackground);
+    CHECK(app.theme().typography.body.fontSize ==
+          Catch::Approx(expected.typography.body.fontSize).margin(1e-4F));
+}
+
+TEST_CASE("settings_touch_density_and_high_contrast_pixel_stability",
+          "[settings]") {
+    SettingsApp app;
+    app.setView(Size{320.0F, 480.0F});
+    (void)app.renderFrame();
+
+    // 触摸密度：列表仍可用（视口内、控件命中）。
+    app.setTheme(style::Theme::dark(lumen::style::ControlDensity::Touch),
+                 /*forceFullRepaint=*/false);
+    const auto touchPartial = app.renderFrame();
+    CHECK(touchPartial == app.renderFrame(true));
+    const RenderNode* button = findNodeByKey(app.root(), "goto-form-button");
+    REQUIRE(button != nullptr);
+    CHECK(button->size.width <= 320.0F);
+    CHECK(button->size.height >= 48.0F);  // Touch 档最小高度
+
+    // 高对比度：像素稳定且局部重绘与全量一致。
+    accessibility::AccessibilitySettings settings;
+    settings.highContrast = true;
+    app.setAccessibilitySettings(settings);
+    const auto contrast = app.renderFrame();
+    CHECK(contrast != 0);
+    CHECK(contrast == app.renderFrame(true));
 }

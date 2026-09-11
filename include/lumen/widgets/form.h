@@ -14,8 +14,8 @@ namespace lumen::widgets {
 //
 // 字段按 bind key 注册校验器；validate(store) 评估全部字段并把错误写
 // 入应用可见的 errors() 映射（key = bind key，value = 错误文案，空 = 通
-// 过）。应用侧把错误渲染为 themedError 行；错误状态由应用决定何时清除
-//（提交时重算）。
+// 过）。应用侧把错误渲染为 errorText（StyleOverrides 前景色覆盖）行，
+// 并给字段声明 invalid；错误状态由应用决定何时清除（提交时重算）。
 class FormController {
   public:
     using Validator = std::function<std::string(const std::string&)>;

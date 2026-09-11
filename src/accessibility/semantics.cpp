@@ -72,9 +72,12 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
             break;
         case WidgetType::Checkbox:
         case WidgetType::Switch:
+            // 视觉系统：selected 与 checked 同样折算（resolver 已把
+            // selected 计入选中视觉，语义保持一致，§7.3）。
             semantic.label = node.text;
-            semantic.value = node.checked ? "true" : "false";
-            if (node.checked) {
+            semantic.value =
+                (node.checked || node.selected) ? "true" : "false";
+            if (node.checked || node.selected) {
                 semantic.flags |= kSemanticsChecked;
             }
             break;
@@ -91,6 +94,14 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
             break;
         default:
             break;
+    }
+    // 视觉系统（visual-system §7.3）：disabled 同时影响视觉、命中、键盘
+    // 与语义 flags；selected 暴露列表/工具栏选中语义。
+    if (!node.enabled) {
+        semantic.flags &= ~kSemanticsEnabled;
+    }
+    if (node.selected) {
+        semantic.flags |= kSemanticsSelected;
     }
     // 应用覆盖。
     if (!node.semanticsLabel.empty()) {
@@ -254,6 +265,12 @@ SemanticsActionStatus performSemanticsAction(
         return SemanticsActionStatus::NodeMissing;
     }
     if ((node->actions & action) == 0) {
+        return SemanticsActionStatus::NotHandled;
+    }
+    // disabled 控件不响应语义 action（visual-system §10.3）；Scroll 与
+    // Dismiss（modal barrier）不受影响。
+    if ((node->flags & kSemanticsEnabled) == 0 && action != kActionScroll &&
+        action != kActionDismiss) {
         return SemanticsActionStatus::NotHandled;
     }
     const core::RenderNode* renderNode =

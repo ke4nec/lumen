@@ -9,20 +9,16 @@
 
 namespace lumen::render {
 
-// Interaction-driven visual state the painter cannot derive from the tree.
+// 视觉系统（visual-system-design §5）：控件 chrome 状态（hover、pressed、
+// focused、disabled、checked、invalid）已在布局期折算进 RenderNode 的
+// resolved style；PaintOptions 只保留文本绘制无法从样式树推导的编辑瞬
+// 态（caret、selection、IME composition）。
 struct PaintOptions {
-    // Widget key of the focused TextField; enables the caret and the focused
-    // field background.
-    std::string focusedKey{};
-    std::string focusedIdentity{};
-    // Widget key of the pressed Button; enables the pressed background.
-    std::string pressedKey{};
-    std::string pressedIdentity{};
     // 光标（grapheme cluster 索引）与闪烁透明度（plan 阶段6）；1 为实心
     // 光标，headless 帧哈希保持确定。
     std::size_t caretGraphemes{0};
     float caretAlpha{1.0F};
-    // v0.3 阶段8B: 焦点字段的选区（grapheme 范围）与 preedit 文本。
+    // 焦点字段的选区（grapheme 范围）与 preedit 文本。
     std::size_t selectionStart{0};
     std::size_t selectionEnd{0};
     bool hasSelection{false};
@@ -30,8 +26,9 @@ struct PaintOptions {
 };
 
 // Walks the render tree, accumulates absolute offsets and programs the
-// renderer (plan §5.2 step 4). Button/TextField chrome uses built-in
-// defaults so the CPU backend alone yields a presentable UI.
+// renderer (plan §5.2 step 4). 所有颜色、圆角、边框、焦点环与部件几何
+// 都来自 RenderNode 的 resolved style——painter 不再持有控件默认值，也
+// 不依赖 Theme（CPU/Skia/GPU 命令路径无需知道 Theme）。
 void paintScene(Renderer& renderer, const core::RenderNode& root,
                 const PaintOptions& options = {});
 

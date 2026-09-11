@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <variant>
 #include <vector>
 
 #include "lumen/core/utf8.h"
@@ -15,6 +16,7 @@ namespace lumen::render {
 namespace {
 
 using core::Color;
+using core::CommonResolvedStyle;
 using core::CornerRadius;
 using core::Offset;
 using core::RenderNode;
@@ -22,37 +24,6 @@ using core::Rect;
 using core::Size;
 using core::TextStyle;
 using core::WidgetType;
-
-constexpr Color kButtonBackground{212, 212, 216, 255};
-constexpr Color kButtonPressed{162, 162, 170, 255};
-constexpr Color kFieldBackground{46, 46, 54, 255};
-constexpr Color kFieldFocused{64, 64, 76, 255};
-constexpr Color kContentText{228, 228, 234, 255};
-constexpr Color kButtonLabel{24, 24, 27, 255};
-constexpr Color kPlaceholderText{128, 128, 138, 255};
-constexpr Color kCaret{238, 238, 242, 255};
-constexpr Color kSelection{70, 118, 214, 130};
-constexpr Color kPreeditUnderline{160, 190, 250, 255};
-// v0.3 阶段8D：Checkbox/Switch 外观（内置默认，Theme token 可覆盖颜色）。
-constexpr Color kCheckboxBox{60, 60, 70, 255};
-constexpr Color kCheckboxChecked{86, 140, 240, 255};
-constexpr Color kCheckboxMark{240, 244, 255, 255};
-constexpr Color kSwitchTrackOff{60, 60, 70, 255};
-constexpr Color kSwitchTrackOn{86, 140, 240, 255};
-constexpr Color kSwitchKnob{238, 238, 242, 255};
-constexpr float kFieldTextPadding = 8.0F;
-
-// TextStyle defaults to opaque black. On the dark surfaces the painter
-// draws (page, fields) that is unreadable, so treat the untouched default as
-// "unset" and substitute `fallback`; explicitly styled text passes through.
-TextStyle contentStyle(const TextStyle& style, Color fallback) {
-    if (style.color == Color{0, 0, 0, 255}) {
-        TextStyle adjusted = style;
-        adjusted.color = fallback;
-        return adjusted;
-    }
-    return style;
-}
 
 // v0.3 阶段8B: 文本布局统一走 text::TextLayout（与 layout.cpp 同源，光
 // 标/选区/绘制宽度不会漂移）。
@@ -66,6 +37,10 @@ float textWidth(const std::string& text, const TextStyle& style) {
     return layoutText(text, style, 0.0F).size.width;
 }
 
+float lineHeightOf(const TextStyle& style) {
+    return style.fontSize > 0.0F ? style.fontSize * 1.2F : 16.8F;
+}
+
 // 密码模式显示文本：每个 grapheme 一个圆点（U+2022）。
 std::string obscuredDisplay(const std::string& text) {
     const std::size_t count = text::graphemeCount(text);
@@ -75,6 +50,16 @@ std::string obscuredDisplay(const std::string& text) {
         display += "\xE2\x80\xA2";
     }
     return display;
+}
+
+CornerRadius insetCorners(const CornerRadius& radius, float inset) {
+    const auto clampCorner = [inset](float value) {
+        return std::max(0.0F, value - inset);
+    };
+    return CornerRadius{clampCorner(radius.topLeft),
+                        clampCorner(radius.topRight),
+                        clampCorner(radius.bottomLeft),
+                        clampCorner(radius.bottomRight)};
 }
 
 // v0.2 阶段7B: 命令录制 sink。与 Renderer 暴露的同一组即时调用，另维护
@@ -171,20 +156,89 @@ struct ScopedClip {
     ScopedClip& operator=(const ScopedClip&) = delete;
 };
 
-// v0.3 阶段8B: TextField 绘制。显示文本 = 文档文本（密码模式为圆点），
-// preedit 插入在选区起点；选区背景、preedit 下划线与光标都按 TextLayout
-// 的 grapheme 位置绘制。
+// 控件表面 + 焦点环 + 边框（visual-system §7/§11）。
+//
+// damage 不变量：控件的所有绘制都落在节点矩形内。焦点环因此内嵌绘制
+//（环 = 节点矩形外圈，表面按 focusWidth 内缩），不影响布局尺寸也不产
+// 生矩形外的脏像素。只支持填充矩形的渲染契约下边框用双层绘制表达
+//（外层边框色，内层背景色按 borderWidth 内缩）。
+template <typename Sink>
+void paintControlSurface(Sink& sink, const Rect& rect,
+                         const CommonResolvedStyle& common) {
+    Rect surfaceRect = rect;
+    float radiusShrink = 0.0F;
+    if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
+        sink.drawRect(rect, common.focusRing, common.radius);
+        const float w = common.focusWidth;
+        surfaceRect =
+            Rect{Offset{rect.origin.x + w, rect.origin.y + w},
+                 Size{std::max(0.0F, rect.size.width - 2.0F * w),
+                      std::max(0.0F, rect.size.height - 2.0F * w)}};
+        radiusShrink = w;
+    }
+    const CornerRadius surfaceRadius =
+        insetCorners(common.radius, radiusShrink);
+    if (common.borderWidth > 0.0F && common.border.a > 0) {
+        sink.drawRect(surfaceRect, common.border, surfaceRadius);
+        const float inset = common.borderWidth;
+        const Size innerSize{
+            std::max(0.0F, surfaceRect.size.width - 2.0F * inset),
+            std::max(0.0F, surfaceRect.size.height - 2.0F * inset)};
+        if (innerSize.width > 0.0F && innerSize.height > 0.0F &&
+            common.background.a > 0) {
+            sink.drawRect(
+                Rect{Offset{surfaceRect.origin.x + inset,
+                            surfaceRect.origin.y + inset},
+                     innerSize},
+                common.background,
+                insetCorners(surfaceRadius, inset));
+        }
+        return;
+    }
+    if (common.background.a > 0) {
+        sink.drawRect(surfaceRect, common.background, surfaceRadius);
+    }
+}
+
+// 容器表面（无焦点环；卡片/页面背景）。
+template <typename Sink>
+void paintSurface(Sink& sink, const Rect& rect,
+                  const CommonResolvedStyle& common) {
+    if (common.borderWidth > 0.0F && common.border.a > 0) {
+        sink.drawRect(rect, common.border, common.radius);
+        const float inset = common.borderWidth;
+        const Size innerSize{
+            std::max(0.0F, rect.size.width - 2.0F * inset),
+            std::max(0.0F, rect.size.height - 2.0F * inset)};
+        if (innerSize.width > 0.0F && innerSize.height > 0.0F &&
+            common.background.a > 0) {
+            sink.drawRect(
+                Rect{Offset{rect.origin.x + inset, rect.origin.y + inset},
+                     innerSize},
+                common.background, insetCorners(common.radius, inset));
+        }
+        return;
+    }
+    if (common.background.a > 0) {
+        sink.drawRect(rect, common.background, common.radius);
+    }
+}
+
+// v0.3 阶段8B + 视觉系统: TextField 绘制。显示文本 = 文档文本（密码模
+// 式为圆点），preedit 插入在选区起点；选区背景、preedit 下划线与光标都
+// 按 TextLayout 的 grapheme 位置绘制。chrome（背景/边框/焦点环/padding/
+// 颜色）全部来自 resolved style。
 template <typename Sink>
 void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
+                    const core::TextFieldResolvedStyle& field,
                     const PaintOptions& options) {
-    const bool focused = !options.focusedIdentity.empty() &&
-                         options.focusedIdentity == node.identity;
     const Rect rect{origin, node.size};
-    sink.drawRect(rect, focused ? kFieldFocused : kFieldBackground,
-                  CornerRadius::all(4.0F));
-    const TextStyle style = contentStyle(node.textStyle, kContentText);
+    const CommonResolvedStyle& common = field.common;
+    const TextStyle& style = common.text;
+    paintControlSurface(sink, rect, field.common);
+    const float padX = common.padding.left;
     const float availableWidth =
-        std::max(0.0F, node.size.width - 2.0F * kFieldTextPadding);
+        std::max(0.0F, node.size.width - common.padding.horizontal());
     const ScopedClip<Sink> clip{sink, rect};
 
     const bool showingPlaceholder =
@@ -197,7 +251,7 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
                               : (showingPlaceholder ? node.placeholder
                                                     : node.text);
     const std::size_t compositionGraphemes =
-        focused && !options.composition.empty() && !showingPlaceholder
+        field.focused && !options.composition.empty() && !showingPlaceholder
             ? text::graphemeCount(options.composition)
             : 0;
     const std::size_t insertAt = options.selectionStart >= compositionGraphemes
@@ -221,10 +275,10 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
     const auto layout = layoutText(
         display, layoutStyle, node.multiline ? availableWidth : 0.0F);
     const Offset textOrigin{
-        origin.x + kFieldTextPadding,
+        origin.x + padX,
         origin.y + (node.size.height - layout.size.height) * 0.5F};
 
-    if (focused && options.hasSelection && !showingPlaceholder) {
+    if (field.focused && options.hasSelection && !showingPlaceholder) {
         // 选区背景：按行绘制选区覆盖的区间。
         const std::size_t selectionStart = options.selectionStart;
         const std::size_t selectionEnd = options.selectionEnd;
@@ -248,13 +302,13 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
                             textOrigin.y + static_cast<float>(i) *
                                                layout.lineHeightPx},
                      Size{width, layout.lineHeightPx}},
-                kSelection);
+                common.selection);
         }
     }
 
     TextStyle contentPaintStyle = style;
     if (showingPlaceholder) {
-        contentPaintStyle.color = kPlaceholderText;
+        contentPaintStyle.color = field.placeholder;
     }
     paintLines(sink, layout, contentPaintStyle, textOrigin);
 
@@ -272,10 +326,10 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
                                            layout.lineHeightPx -
                                1.5F},
                  Size{width, 1.5F}},
-            kPreeditUnderline);
+            field.preeditUnderline);
     }
 
-    if (focused) {
+    if (field.focused) {
         // 光标：显示文本中的 grapheme 位置（preedit 已计入）。
         std::size_t lineIndex = 0;
         const float caretOffset =
@@ -287,7 +341,7 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
         if (alpha <= 0.0F) {
             return;
         }
-        Color caretColor = kCaret;
+        Color caretColor = field.caret;
         caretColor.a =
             static_cast<std::uint8_t>(std::lround(caretColor.a * alpha));
         sink.drawRect(
@@ -304,6 +358,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                const PaintOptions& options) {
     const Offset origin = absolute + node.offset;
     const Rect rect{origin, node.size};
+    const CommonResolvedStyle& common = node.commonStyle();
 
     switch (node.type) {
         case WidgetType::Container:
@@ -313,87 +368,128 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         case WidgetType::FocusScope:
         case WidgetType::ScrollView:
         case WidgetType::ListView:
-            if (node.color.a > 0) {
-                sink.drawRect(rect, node.color, node.radius);
-            }
+            paintSurface(sink, rect, common);
             break;
         case WidgetType::Button: {
-            const bool pressed =
-                !options.pressedIdentity.empty() &&
-                options.pressedIdentity == node.identity;
-            sink.drawRect(rect, pressed ? kButtonPressed : kButtonBackground,
-                          CornerRadius::all(6.0F));
-            const TextStyle style = contentStyle(node.textStyle, kButtonLabel);
-            const float width = textWidth(node.text, style);
-            const float lineHeight = style.fontSize > 0.0F
-                                         ? style.fontSize * 1.2F
-                                         : 16.8F;
+            paintControlSurface(sink, rect, common);
+            const float width = textWidth(node.text, common.text);
+            const float lineHeight = lineHeightOf(common.text);
             const ScopedClip<Sink> clip{sink, rect};
-            paintTextAt(sink, node.text, style,
+            paintTextAt(sink, node.text, common.text,
                         Offset{origin.x + (node.size.width - width) * 0.5F,
                                origin.y + (node.size.height - lineHeight) *
                                               0.5F});
             break;
         }
-        case WidgetType::TextField:
-            paintTextField(sink, node, origin, options);
+        case WidgetType::TextField: {
+            const auto* field =
+                std::get_if<core::TextFieldResolvedStyle>(&node.style.component);
+            if (field != nullptr) {
+                paintTextField(sink, node, origin, *field, options);
+            }
             break;
+        }
         case WidgetType::Text: {
             const ScopedClip<Sink> clip{sink, rect};
-            const TextStyle style =
-                contentStyle(node.textStyle, kContentText);
             const bool wrap =
-                node.multiline || node.textStyle.maxLines != 1;
+                node.multiline || common.text.maxLines != 1;
             const auto layout =
-                layoutText(node.text, style, wrap ? node.size.width : 0.0F);
-            paintLines(sink, layout, style,
+                layoutText(node.text, common.text, wrap ? node.size.width : 0.0F);
+            paintLines(sink, layout, common.text,
                        origin + Offset{node.padding.left, node.padding.top});
             break;
         }
         case WidgetType::Checkbox: {
-            // 18x18 框 + 选中填充；标签绘制在右侧，垂直居中。
-            const TextStyle style = contentStyle(node.textStyle, kContentText);
-            const float lineHeight = style.fontSize > 0.0F
-                                         ? style.fontSize * 1.2F
-                                         : 16.8F;
-            const float boxTop =
-                origin.y + (node.size.height - 18.0F) * 0.5F;
-            sink.drawRect(Rect{Offset{origin.x, boxTop}, Size{18.0F, 18.0F}},
-                          node.checked ? kCheckboxChecked : kCheckboxBox,
-                          CornerRadius::all(4.0F));
-            if (node.checked) {
+            // 指示框 + 选中填充；标签绘制在右侧，垂直居中。几何全部来自
+            // resolved token（布局度量同源，visual-system §7.3）。
+            const auto* checkbox =
+                std::get_if<core::CheckboxResolvedStyle>(&node.style.component);
+            if (checkbox == nullptr) {
+                break;
+            }
+            const float indicator = checkbox->indicatorSize;
+            Rect indicatorRect{
+                Offset{origin.x,
+                       origin.y + (node.size.height - indicator) * 0.5F},
+                Size{indicator, indicator}};
+            float indicatorRadius = checkbox->indicatorRadius;
+            // 焦点环内嵌在指示框外圈（damage 不变量：绘制不越出节点）。
+            if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
+                sink.drawRect(indicatorRect, common.focusRing,
+                              CornerRadius::all(indicatorRadius));
+                const float w = common.focusWidth;
+                indicatorRect =
+                    Rect{Offset{indicatorRect.origin.x + w,
+                                indicatorRect.origin.y + w},
+                         Size{indicator - 2.0F * w, indicator - 2.0F * w}};
+                indicatorRadius = std::max(0.0F, indicatorRadius - w);
+            }
+            sink.drawRect(indicatorRect,
+                          checkbox->checked ? checkbox->indicatorChecked
+                                            : checkbox->indicator,
+                          CornerRadius::all(indicatorRadius));
+            if (checkbox->checked) {
+                const float inset = checkbox->markInset;
                 sink.drawRect(
-                    Rect{Offset{origin.x + 4.0F, boxTop + 4.0F},
-                         Size{10.0F, 10.0F}},
-                    kCheckboxMark, CornerRadius::all(2.0F));
+                    Rect{Offset{indicatorRect.origin.x + inset,
+                                indicatorRect.origin.y + inset},
+                         Size{indicatorRect.size.width - 2.0F * inset,
+                              indicatorRect.size.height - 2.0F * inset}},
+                    checkbox->mark, CornerRadius::all(checkbox->markRadius));
             }
             if (!node.text.empty()) {
-                paintTextAt(sink, node.text, style,
-                            Offset{origin.x + 26.0F,
+                const float lineHeight = lineHeightOf(common.text);
+                paintTextAt(sink, node.text, common.text,
+                            Offset{origin.x + indicator + checkbox->labelGap,
                                    origin.y + (node.size.height - lineHeight) *
                                                   0.5F});
             }
             break;
         }
         case WidgetType::Switch: {
-            // 36x20 轨道 + 14x14 滑块；标签绘制在右侧。
-            const TextStyle style = contentStyle(node.textStyle, kContentText);
-            const float lineHeight = style.fontSize > 0.0F
-                                         ? style.fontSize * 1.2F
-                                         : 16.8F;
+            // 轨道（pill 圆角 = 高度一半）+ 滑块；标签绘制在右侧。
+            const auto* control =
+                std::get_if<core::SwitchResolvedStyle>(&node.style.component);
+            if (control == nullptr) {
+                break;
+            }
             const float trackTop =
-                origin.y + (node.size.height - 20.0F) * 0.5F;
-            sink.drawRect(Rect{Offset{origin.x, trackTop}, Size{36.0F, 20.0F}},
-                          node.checked ? kSwitchTrackOn : kSwitchTrackOff,
-                          CornerRadius::all(10.0F));
+                origin.y + (node.size.height - control->trackHeight) * 0.5F;
+            Rect trackRect{Offset{origin.x, trackTop},
+                           Size{control->trackWidth, control->trackHeight}};
+            float trackRadius = control->trackHeight * 0.5F;
+            // 焦点环内嵌在轨道外圈。
+            if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
+                sink.drawRect(trackRect, common.focusRing,
+                              CornerRadius::all(trackRadius));
+                const float w = common.focusWidth;
+                trackRect = Rect{
+                    Offset{trackRect.origin.x + w, trackRect.origin.y + w},
+                    Size{control->trackWidth - 2.0F * w,
+                         control->trackHeight - 2.0F * w}};
+                trackRadius = std::max(0.0F, trackRadius - w);
+            }
+            sink.drawRect(trackRect,
+                          control->checked ? control->trackOn
+                                           : control->trackOff,
+                          CornerRadius::all(trackRadius));
             const float knobX =
-                node.checked ? origin.x + 19.0F : origin.x + 3.0F;
+                control->checked
+                    ? trackRect.origin.x + trackRect.size.width -
+                          control->knobInset - control->knobSize
+                    : trackRect.origin.x + control->knobInset;
             sink.drawRect(
-                Rect{Offset{knobX, trackTop + 3.0F}, Size{14.0F, 14.0F}},
-                kSwitchKnob, CornerRadius::all(7.0F));
+                Rect{Offset{knobX,
+                            trackRect.origin.y +
+                                (trackRect.size.height - control->knobSize) *
+                                    0.5F},
+                     Size{control->knobSize, control->knobSize}},
+                control->knob, CornerRadius::all(control->knobSize * 0.5F));
             if (!node.text.empty()) {
-                paintTextAt(sink, node.text, style,
-                            Offset{origin.x + 44.0F,
+                const float lineHeight = lineHeightOf(common.text);
+                paintTextAt(sink, node.text, common.text,
+                            Offset{origin.x + control->trackWidth +
+                                       control->labelGap,
                                    origin.y + (node.size.height - lineHeight) *
                                                   0.5F});
             }

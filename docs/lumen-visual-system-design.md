@@ -1,6 +1,6 @@
 # Lumen 自绘控件视觉系统设计
 
-> 文档状态：设计基线
+> 文档状态：设计基线；V1/V2 已实施（见文末实施状态）
 >
 > 编写时间：2026-09
 >
@@ -47,7 +47,8 @@ Lumen 是 C++20 自绘 GUI 框架。当前控件已经具备基本的布局、�
 
 ### 2.2 当前视觉问题
 
-当前 [`Theme`](../include/lumen/widgets/theme.h) 已有页面背景、surface、文本、主色、
+编写本文时旧 [`Theme`](../include/lumen/widgets/theme.h)（已删除，见 §12
+实施状态）已有页面背景、surface、文本、主色、
 错误色、间距和排版 token，也能派生 light/dark 与部分无障碍设置。但它还不是完整的
 控件主题：
 
@@ -344,7 +345,7 @@ struct ResolvedStyle {
 
 ```cpp
 class SettingsApp {
-    widgets::Theme theme_;
+    style::Theme theme_;
     style::InteractionStateSnapshot interaction_;
 };
 
@@ -509,3 +510,23 @@ ctest --test-dir build --output-on-failure -C Debug
 - 图标、阴影和动效扩展不得改变现有 `RenderCommandList` 的 CPU/Skia/GPU 回退不变量。
 - 移动核心继续保持 SDL-free；Theme 只接收 host 提供的能力和指标，不接触 native handle。
 
+## 12. 实施状态（2026-09 追记）
+
+V1（样式基础和当前控件迁移）与 V2（状态、交互和无障碍联动）已实施：
+
+- `lumen-style` 模块（`include/lumen/style/`、`src/style/`）与 `core/style.h`
+  的 `ResolvedStyle` 值类型已落地；Theme 为分组 token 结构，primitive →
+  semantic → component 映射函数可测（`tests/style_tests.cpp`）。
+- `LayoutEngine::layout()` 接收 `StyleContext`（保留无上下文的便捷重载，
+  默认暗色 Theme），identity 在遍历中按 `assignIdentities` 同规则分配。
+- RenderNode 持有 resolved style 并参与 `sameNode()`/damage；hover、
+  pressed、focused、disabled、checked、invalid 折算进样式；焦点环内嵌
+  绘制（damage 不变量：控件绘制不越出节点矩形）。
+- `applyTheme()`/themed helper 已删除；counter/settings 使用语义属性 +
+  `StyleOverrides`；DSL 支持 `variant/size/enabled/invalid/selected`。
+- §8 的扩展契约以 token 先行冻结：`IconTheme`/`IconId`、`ElevationTokens`、
+  `MotionTokens`（reduceAnimation 归零）已入 Theme；图标/阴影绘制、状态
+  过渡动画、ThemeScope 与 `PlatformThemeAdapter` 留待 V3/V4。
+- 命令序列化升级 v2 以携带完整 TextStyle（resolved 样式带 weight/family）。
+- 验收：桌面 ctest 300 用例、`LUMEN_BUILD_MOBILE_CORE=ON` SDL-free 配置
+  288 用例全部通过；counter/settings headless 与窗口 smoke 正常。

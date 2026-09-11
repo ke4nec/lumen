@@ -15,7 +15,9 @@ using core::Constraints;
 using core::EdgeInsets;
 using core::Offset;
 using core::RenderNode;
+using core::ResolvedStyle;
 using core::Size;
+using core::TextStyle;
 using core::Widget;
 using core::WidgetType;
 
@@ -23,76 +25,29 @@ float clampFloat(float value, float low, float high) {
     return std::clamp(value, low, high);
 }
 
-// v0.3 阶段8B: 文本度量统一走 text::TextLayout（布局与绘制共用同一份
-// 布局结果）。maxWidth <= 0 表示不换行；TextField 单行不换行（横向滚动
-// 属于 8D 视口），Text 按约束换行并支持 maxLines/ellipsis。
-Size measureTextIntrinsic(const Widget& widget, float maxWidth, bool wrap) {
-    const std::string& content =
-        widget.text.empty() && !widget.placeholder.empty() ? widget.placeholder
-                                                           : widget.text;
-    core::TextStyle style = widget.textStyle;
-    if (!wrap) {
-        style.maxLines = 1;
-        maxWidth = 0.0F;
-    }
-    const text::TextLayoutResult layout = text::TextLayout::layout(
-        content, style, maxWidth, text::PlaceholderFontManager::shared());
-    return layout.size;
+// identity 与旧 assignIdentities 相同的拼接规则：keyless = 索引路径，
+// keyed = key 路径（重建间稳定，交互快照/damage 依赖）。
+std::string childIdentity(const std::string& parentPath, const Widget& child,
+                          std::size_t index) {
+    const std::string segment =
+        child.key.empty() ? "i:" + std::to_string(index) : "k:" + child.key;
+    return parentPath + "/" + segment;
 }
 
-Size measureLeafIntrinsic(const Widget& widget, float maxWidth) {
-    switch (widget.type) {
-        case WidgetType::Text:
-            return measureTextIntrinsic(
-                widget, maxWidth,
-                /*wrap=*/widget.multiline || widget.textStyle.maxLines != 1);
-        case WidgetType::Button: {
-            const Size textSize = measureTextIntrinsic(widget, 0.0F, false);
-            // Button chrome: 12px horizontal + 8px vertical padding each
-            // side, 64x32 minimum for a tappable target.
-            const float width = std::max(textSize.width + 24.0F, 64.0F);
-            const float height = std::max(textSize.height + 16.0F, 32.0F);
-            return Size{width, height};
-        }
-        case WidgetType::TextField: {
-            // Editable field: at least 80px of text width plus chrome; single
-            // line by default（多行由 multiline 属性开启）。
-            const Size textSize = measureTextIntrinsic(
-                widget,
-                widget.multiline && maxWidth > 0.0F ? maxWidth : 0.0F,
-                widget.multiline);
-            const float width = std::max(textSize.width, 80.0F) + 16.0F;
-            const float height = textSize.height + 16.0F;
-            return Size{width, height};
-        }
-        case WidgetType::Checkbox: {
-            // 18x18 框 + 8 间距 + 标签。
-            const Size label = measureTextIntrinsic(widget, 0.0F, false);
-            return Size{18.0F + 8.0F + label.width,
-                        std::max(18.0F, label.height)};
-        }
-        case WidgetType::Switch: {
-            // 36x20 轨道 + 8 间距 + 标签。
-            const Size label = measureTextIntrinsic(widget, 0.0F, false);
-            return Size{36.0F + 8.0F + label.width,
-                        std::max(20.0F, label.height)};
-        }
-        default:
-            return measureTextIntrinsic(widget, 0.0F, false);
-    }
-}
-
-RenderNode makeNode(const Widget& widget, Offset offset, Size size) {
+// 视觉系统（visual-system-design §5）：每个节点在布局前解析一次样式；
+// 布局度量与 painter 使用同一份 resolved style。resolver 不修改 Widget。
+RenderNode makeNode(const Widget& widget, Offset offset, Size size,
+                    const style::StyleContext& styleContext,
+                    const std::string& identity) {
     RenderNode node;
     node.type = widget.type;
     node.key = widget.key;
+    node.identity = identity;
     node.offset = offset;
     node.size = size;
-    node.padding = widget.padding;
-    node.color = widget.color;
-    node.radius = widget.radius;
+    node.style = style::resolveStyle(widget, styleContext, identity);
+    node.padding = core::commonStyle(node.style).padding;
     node.text = widget.text;
-    node.textStyle = widget.textStyle;
     node.placeholder = widget.placeholder;
     node.bind = widget.bind;
     node.onClick = widget.onClick;
@@ -105,16 +60,108 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size) {
     node.semanticsActions = widget.semanticsActions;
     node.checked = widget.checked;
     node.scrollOffset = widget.scrollOffset;
+    node.enabled = widget.enabled;
+    node.invalid = widget.invalid;
+    node.selected = widget.selected;
     return node;
 }
 
-RenderNode layoutLeaf(const Widget& widget, const Constraints& constraints) {
+// v0.3 阶段8B: 文本度量统一走 text::TextLayout（布局与绘制共用同一份
+// 布局结果）。maxWidth <= 0 表示不换行；TextField 单行不换行（横向滚动
+// 属于 8D 视口），Text 按约束换行并支持 maxLines/ellipsis。
+Size measureTextContent(const std::string& content, const TextStyle& style,
+                        float maxWidth, bool wrap) {
+    TextStyle effective = style;
+    if (!wrap) {
+        effective.maxLines = 1;
+        maxWidth = 0.0F;
+    }
+    const text::TextLayoutResult layout = text::TextLayout::layout(
+        content, effective, maxWidth, text::PlaceholderFontManager::shared());
+    return layout.size;
+}
+
+Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
+                          float maxWidth) {
+    const TextStyle& textStyle = core::commonStyle(resolved).text;
+    const std::string& content =
+        widget.text.empty() && !widget.placeholder.empty() ? widget.placeholder
+                                                           : widget.text;
+    switch (widget.type) {
+        case WidgetType::Text:
+            return measureTextContent(
+                content, textStyle, maxWidth,
+                /*wrap=*/widget.multiline || textStyle.maxLines != 1);
+        case WidgetType::Button: {
+            // chrome（padding/最小尺寸）来自 resolved style——布局与
+            // painter 同源（visual-system §7.1）。
+            const EdgeInsets& chrome = core::commonStyle(resolved).padding;
+            const Size textSize = measureTextContent(content, textStyle, 0.0F,
+                                                     false);
+            const float width =
+                std::max(textSize.width + chrome.horizontal(),
+                         resolved.minWidth);
+            const float height = std::max(textSize.height + chrome.vertical(),
+                                          resolved.minHeight);
+            return Size{width, height};
+        }
+        case WidgetType::TextField: {
+            const EdgeInsets& chrome = core::commonStyle(resolved).padding;
+            const Size textSize = measureTextContent(
+                content, textStyle,
+                widget.multiline && maxWidth > 0.0F ? maxWidth : 0.0F,
+                widget.multiline);
+            const float width =
+                std::max(textSize.width + chrome.horizontal(),
+                         resolved.minWidth);
+            const float height = std::max(textSize.height + chrome.vertical(),
+                                          resolved.minHeight);
+            return Size{width, height};
+        }
+        case WidgetType::Checkbox: {
+            const auto* checkbox =
+                std::get_if<core::CheckboxResolvedStyle>(&resolved.component);
+            if (checkbox == nullptr) {
+                return measureTextContent(content, textStyle, 0.0F, false);
+            }
+            const Size label = measureTextContent(content, textStyle, 0.0F,
+                                                  false);
+            return Size{checkbox->indicatorSize + checkbox->labelGap +
+                            label.width,
+                        std::max(checkbox->indicatorSize, label.height)};
+        }
+        case WidgetType::Switch: {
+            const auto* control =
+                std::get_if<core::SwitchResolvedStyle>(&resolved.component);
+            if (control == nullptr) {
+                return measureTextContent(content, textStyle, 0.0F, false);
+            }
+            const Size label = measureTextContent(content, textStyle, 0.0F,
+                                                  false);
+            return Size{control->trackWidth + control->labelGap + label.width,
+                        std::max(control->trackHeight, label.height)};
+        }
+        default:
+            return measureTextContent(content, textStyle, 0.0F, false);
+    }
+}
+
+RenderNode layoutLeaf(const Widget& widget, const Constraints& constraints,
+                      const style::StyleContext& styleContext,
+                      const std::string& identity) {
     const Constraints outer = constraints.deflate(widget.margin);
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
     Size intrinsic =
-        measureLeafIntrinsic(widget, outer.isBoundedWidth() ? outer.maxWidth
-                                                           : 0.0F);
-    intrinsic.width += widget.padding.horizontal();
-    intrinsic.height += widget.padding.vertical();
+        measureLeafIntrinsic(widget, resolved,
+                             outer.isBoundedWidth() ? outer.maxWidth : 0.0F);
+    // Button/TextField intrinsic measurement already includes their chrome
+    // padding; text and generic leaves use the resolved box padding here.
+    if (widget.type != WidgetType::Button &&
+        widget.type != WidgetType::TextField) {
+        intrinsic.width += core::commonStyle(resolved).padding.horizontal();
+        intrinsic.height += core::commonStyle(resolved).padding.vertical();
+    }
     Size size = outer.constrain(intrinsic);
     // Border-box overrides: fixed size wins over intrinsic measurement.
     if (widget.width.has_value()) {
@@ -125,60 +172,74 @@ RenderNode layoutLeaf(const Widget& widget, const Constraints& constraints) {
         size.height =
             clampFloat(*widget.height, outer.minHeight, outer.maxHeight);
     }
-    return makeNode(widget, Offset{0.0F, 0.0F}, size);
+    return makeNode(widget, Offset{0.0F, 0.0F}, size, styleContext, identity);
 }
 
-RenderNode layoutContainer(const Widget& widget,
-                           const Constraints& constraints);
+RenderNode layoutContainer(const Widget& widget, const Constraints& constraints,
+                           const style::StyleContext& styleContext,
+                           const std::string& identity);
 
 RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
-                      bool isRow);
+                      const style::StyleContext& styleContext,
+                      const std::string& identity, bool isRow);
 
-RenderNode layoutStack(const Widget& widget, const Constraints& constraints);
+RenderNode layoutStack(const Widget& widget, const Constraints& constraints,
+                       const style::StyleContext& styleContext,
+                       const std::string& identity);
 
-RenderNode layoutScrollView(const Widget& widget,
-                            const Constraints& constraints);
+RenderNode layoutScrollView(const Widget& widget, const Constraints& constraints,
+                            const style::StyleContext& styleContext,
+                            const std::string& identity);
 
-RenderNode layoutSingle(const Widget& widget,
-                        const Constraints& constraints) {
+RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
+                        const style::StyleContext& styleContext,
+                        const std::string& identity) {
     if (core::isLeafWidget(widget.type)) {
-        return layoutLeaf(widget, constraints);
+        return layoutLeaf(widget, constraints, styleContext, identity);
     }
     switch (widget.type) {
         case WidgetType::Container:
         case WidgetType::FocusScope:
             // FocusScope 布局同 Container：单子，边界用于焦点遍历。
-            return layoutContainer(widget, constraints);
+            return layoutContainer(widget, constraints, styleContext,
+                                   identity);
         case WidgetType::Row:
-            return layoutFlex(widget, constraints, true);
+            return layoutFlex(widget, constraints, styleContext, identity,
+                              true);
         case WidgetType::Column:
-            return layoutFlex(widget, constraints, false);
+            return layoutFlex(widget, constraints, styleContext, identity,
+                              false);
         case WidgetType::Stack:
-            return layoutStack(widget, constraints);
+            return layoutStack(widget, constraints, styleContext, identity);
         case WidgetType::ScrollView:
         case WidgetType::ListView:
-            return layoutScrollView(widget, constraints);
+            return layoutScrollView(widget, constraints, styleContext,
+                                    identity);
         case WidgetType::Text:
         case WidgetType::Button:
         case WidgetType::TextField:
         case WidgetType::Checkbox:
         case WidgetType::Switch:
-            return layoutLeaf(widget, constraints);
+            return layoutLeaf(widget, constraints, styleContext, identity);
     }
-    return layoutLeaf(widget, constraints);
+    return layoutLeaf(widget, constraints, styleContext, identity);
 }
 
-RenderNode layoutContainer(const Widget& widget,
-                           const Constraints& constraints) {
+RenderNode layoutContainer(const Widget& widget, const Constraints& constraints,
+                           const style::StyleContext& styleContext,
+                           const std::string& identity) {
     // Container is single-child by contract (see widget.h); extra children
     // indicate a programming error.
     assert(widget.children.size() <= 1);
 
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
+    const EdgeInsets& padding = core::commonStyle(resolved).padding;
     const Constraints outer = constraints.deflate(widget.margin);
-    const Constraints inner = outer.deflate(widget.padding);
+    const Constraints inner = outer.deflate(padding);
 
-    float borderWidth = widget.padding.horizontal();
-    float borderHeight = widget.padding.vertical();
+    float borderWidth = padding.horizontal();
+    float borderHeight = padding.vertical();
     RenderNode childNode{};
     bool hasChild = !widget.children.empty();
 
@@ -196,7 +257,7 @@ RenderNode layoutContainer(const Widget& widget,
         Constraints childConstraints;
         if (widget.width.has_value()) {
             const float contentWidth =
-                std::max(0.0F, borderWidth - widget.padding.horizontal());
+                std::max(0.0F, borderWidth - padding.horizontal());
             childConstraints.minWidth = 0.0F;
             childConstraints.maxWidth = contentWidth;
         } else {
@@ -205,38 +266,39 @@ RenderNode layoutContainer(const Widget& widget,
         }
         if (widget.height.has_value()) {
             const float contentHeight =
-                std::max(0.0F, borderHeight - widget.padding.vertical());
+                std::max(0.0F, borderHeight - padding.vertical());
             childConstraints.minHeight = 0.0F;
             childConstraints.maxHeight = contentHeight;
         } else {
             childConstraints.minHeight = 0.0F;
             childConstraints.maxHeight = inner.maxHeight;
         }
-        childNode = layoutSingle(child, childConstraints);
+        childNode = layoutSingle(child, childConstraints, styleContext,
+                                 childIdentity(identity, child, 0));
         // The parent consumes the child margin, same rule as Row/Column/
         // Stack: it offsets the child inside the padded content box and
         // participates in the border size.
-        childNode.offset = Offset{widget.padding.left + child.margin.left,
-                                  widget.padding.top + child.margin.top};
+        childNode.offset = Offset{padding.left + child.margin.left,
+                                  padding.top + child.margin.top};
         if (!widget.width.has_value()) {
             borderWidth = clampFloat(
-                childNode.size.width + widget.padding.horizontal() +
+                childNode.size.width + padding.horizontal() +
                     child.margin.horizontal(),
                 outer.minWidth, outer.maxWidth);
         }
         if (!widget.height.has_value()) {
             borderHeight = clampFloat(
-                childNode.size.height + widget.padding.vertical() +
+                childNode.size.height + padding.vertical() +
                     child.margin.vertical(),
                 outer.minHeight, outer.maxHeight);
         }
     } else {
         if (!widget.width.has_value()) {
-            borderWidth = clampFloat(widget.padding.horizontal(),
+            borderWidth = clampFloat(padding.horizontal(),
                                      outer.minWidth, outer.maxWidth);
         }
         if (!widget.height.has_value()) {
-            borderHeight = clampFloat(widget.padding.vertical(),
+            borderHeight = clampFloat(padding.vertical(),
                                       outer.minHeight, outer.maxHeight);
         }
     }
@@ -245,8 +307,9 @@ RenderNode layoutContainer(const Widget& widget,
     borderWidth = clampFloat(borderWidth, outer.minWidth, outer.maxWidth);
     borderHeight = clampFloat(borderHeight, outer.minHeight, outer.maxHeight);
 
-    RenderNode node =
-        makeNode(widget, Offset{0.0F, 0.0F}, Size{borderWidth, borderHeight});
+    RenderNode node = makeNode(widget, Offset{0.0F, 0.0F},
+                               Size{borderWidth, borderHeight}, styleContext,
+                               identity);
     if (hasChild) {
         node.children.push_back(std::move(childNode));
     }
@@ -310,12 +373,14 @@ float crossAxisOffset(core::CrossAxisAlignment align, float freeSpace) {
 
 // Row/Column share one implementation; isRow selects the main axis.
 RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
-                      bool isRow) {
+                      const style::StyleContext& styleContext,
+                      const std::string& identity, bool isRow) {
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
+    const EdgeInsets& padding = core::commonStyle(resolved).padding;
     const Constraints outer = constraints.deflate(widget.margin);
-    const float paddingMain = isRow ? widget.padding.horizontal()
-                                    : widget.padding.vertical();
-    const float paddingCross = isRow ? widget.padding.vertical()
-                                     : widget.padding.horizontal();
+    const float paddingMain = isRow ? padding.horizontal() : padding.vertical();
+    const float paddingCross = isRow ? padding.vertical() : padding.horizontal();
     const float outerMinMain =
         isRow ? outer.minWidth : outer.minHeight;
     const float outerMaxMain =
@@ -384,7 +449,8 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
             childConstraints = Constraints{0.0F, contentMaxCross, 0.0F,
                                            contentMaxMain};
         }
-        measured[i] = layoutSingle(child, childConstraints);
+        measured[i] = layoutSingle(child, childConstraints, styleContext,
+                                   childIdentity(identity, child, i));
         const float childMain =
             (isRow ? measured[i].size.width : measured[i].size.height) +
             (isRow ? child.margin.horizontal() : child.margin.vertical());
@@ -419,7 +485,8 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
                 childConstraints =
                     Constraints{0.0F, contentMaxCross, budget, budget};
             }
-            measured[i] = layoutSingle(child, childConstraints);
+            measured[i] = layoutSingle(child, childConstraints, styleContext,
+                                       childIdentity(identity, child, i));
             const float childMain =
                 (isRow ? measured[i].size.width : measured[i].size.height) +
                 (isRow ? child.margin.horizontal() : child.margin.vertical());
@@ -493,7 +560,8 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
                                                      contentMaxMain};
                 }
             }
-            measured[i] = layoutSingle(child, stretchConstraints);
+            measured[i] = layoutSingle(child, stretchConstraints, styleContext,
+                                       childIdentity(identity, child, i));
             crossWithMargin[i] =
                 (isRow ? measured[i].size.height : measured[i].size.width) +
                 (isRow ? child.margin.vertical() : child.margin.horizontal());
@@ -528,7 +596,8 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
 
     RenderNode node = makeNode(
         widget, Offset{0.0F, 0.0F},
-        isRow ? Size{borderMain, borderCross} : Size{borderCross, borderMain});
+        isRow ? Size{borderMain, borderCross} : Size{borderCross, borderMain},
+        styleContext, identity);
 
     for (std::size_t i = 0; i < count; ++i) {
         const Widget& child = widget.children[i];
@@ -548,15 +617,15 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
         Offset childOffset{};
         if (isRow) {
             childOffset = Offset{
-                widget.padding.left + cursor + child.margin.left,
-                widget.padding.top + crossOffset + child.margin.top,
+                padding.left + cursor + child.margin.left,
+                padding.top + crossOffset + child.margin.top,
             };
             cursor +=
                 childMainNoMargin + childMarginMain + widget.spacing + extraGap;
         } else {
             childOffset = Offset{
-                widget.padding.left + crossOffset + child.margin.left,
-                widget.padding.top + cursor + child.margin.top,
+                padding.left + crossOffset + child.margin.left,
+                padding.top + cursor + child.margin.top,
             };
             cursor +=
                 childMainNoMargin + childMarginMain + widget.spacing + extraGap;
@@ -572,8 +641,13 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
 // 受视口约束；scrollOffset 应用到子 offset（夹取到 [0, scrollExtent]），
 // painter 按视口裁剪（RenderNode.clipContent）。
 RenderNode layoutScrollView(const Widget& widget,
-                            const Constraints& constraints) {
+                            const Constraints& constraints,
+                            const style::StyleContext& styleContext,
+                            const std::string& identity) {
     assert(widget.children.size() <= 1);
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
+    const EdgeInsets& padding = core::commonStyle(resolved).padding;
     const Constraints outer = constraints.deflate(widget.margin);
 
     float viewportWidth =
@@ -586,7 +660,8 @@ RenderNode layoutScrollView(const Widget& widget,
             : outer.maxHeight;
 
     RenderNode node = makeNode(widget, Offset{0.0F, 0.0F},
-                               Size{viewportWidth, viewportHeight});
+                               Size{viewportWidth, viewportHeight},
+                               styleContext, identity);
     node.clipContent = true;
 
     if (widget.children.empty()) {
@@ -598,20 +673,21 @@ RenderNode layoutScrollView(const Widget& widget,
     const Widget& child = widget.children.front();
     // 内容约束：宽 ≤ 视口 - padding，高不限（滚动视口语义）。
     const float contentMaxWidth =
-        std::max(0.0F, viewportWidth - widget.padding.horizontal());
+        std::max(0.0F, viewportWidth - padding.horizontal());
     Constraints childConstraints{0.0F, contentMaxWidth, 0.0F,
                                  Constraints::unbounded().maxHeight};
-    RenderNode childNode = layoutSingle(child, childConstraints);
+    RenderNode childNode = layoutSingle(child, childConstraints, styleContext,
+                                        childIdentity(identity, child, 0));
     const float contentHeight = childNode.size.height +
                                 child.margin.vertical() +
-                                widget.padding.vertical();
+                                padding.vertical();
     const float scrollExtent =
         std::max(0.0F, contentHeight - viewportHeight);
     const float offset = std::clamp(widget.scrollOffset, 0.0F, scrollExtent);
 
     childNode.offset = Offset{
-        widget.padding.left + child.margin.left,
-        widget.padding.top + child.margin.top - offset};
+        padding.left + child.margin.left,
+        padding.top + child.margin.top - offset};
     node.children.push_back(std::move(childNode));
     node.scrollExtent = scrollExtent;
     node.scrollOffset = offset;
@@ -660,8 +736,12 @@ void stackAlignmentFactors(core::StackAlignment alignment, float& xFactor,
     }
 }
 
-RenderNode layoutStack(const Widget& widget,
-                       const Constraints& constraints) {
+RenderNode layoutStack(const Widget& widget, const Constraints& constraints,
+                       const style::StyleContext& styleContext,
+                       const std::string& identity) {
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
+    const EdgeInsets& padding = core::commonStyle(resolved).padding;
     const Constraints outer = constraints.deflate(widget.margin);
     // Resolve explicit sizes before measuring so children are constrained by
     // the border box the stack will actually occupy (same rule as Container).
@@ -676,20 +756,23 @@ RenderNode layoutStack(const Widget& widget,
     const float contentMaxWidth = std::max(
         0.0F,
         (widget.width.has_value() ? resolvedWidth : outer.maxWidth) -
-            widget.padding.horizontal());
+            padding.horizontal());
     const float contentMaxHeight = std::max(
         0.0F,
         (widget.height.has_value() ? resolvedHeight : outer.maxHeight) -
-            widget.padding.vertical());
+        padding.vertical());
 
     std::vector<RenderNode> measured;
     measured.reserve(widget.children.size());
     float contentWidth = 0.0F;
     float contentHeight = 0.0F;
-    for (const auto& child : widget.children) {
+    for (std::size_t i = 0; i < widget.children.size(); ++i) {
+        const Widget& child = widget.children[i];
         Constraints childConstraints{0.0F, contentMaxWidth, 0.0F,
                                      contentMaxHeight};
-        RenderNode childNode = layoutSingle(child, childConstraints);
+        RenderNode childNode = layoutSingle(child, childConstraints,
+                                            styleContext,
+                                            childIdentity(identity, child, i));
         contentWidth = std::max(
             contentWidth, childNode.size.width + child.margin.horizontal());
         contentHeight = std::max(
@@ -698,9 +781,9 @@ RenderNode layoutStack(const Widget& widget,
     }
 
     float borderWidth =
-        clampFloat(contentWidth + widget.padding.horizontal(), outer.minWidth,
+        clampFloat(contentWidth + padding.horizontal(), outer.minWidth,
                    outer.maxWidth);
-    float borderHeight = clampFloat(contentHeight + widget.padding.vertical(),
+    float borderHeight = clampFloat(contentHeight + padding.vertical(),
                                     outer.minHeight, outer.maxHeight);
     if (widget.width.has_value()) {
         borderWidth = resolvedWidth;
@@ -709,24 +792,25 @@ RenderNode layoutStack(const Widget& widget,
         borderHeight = resolvedHeight;
     }
     const float contentBoxWidth =
-        std::max(0.0F, borderWidth - widget.padding.horizontal());
+        std::max(0.0F, borderWidth - padding.horizontal());
     const float contentBoxHeight =
-        std::max(0.0F, borderHeight - widget.padding.vertical());
+        std::max(0.0F, borderHeight - padding.vertical());
 
     float xFactor = 0.0F;
     float yFactor = 0.0F;
     stackAlignmentFactors(widget.stackAlignment, xFactor, yFactor);
 
     RenderNode node =
-        makeNode(widget, Offset{0.0F, 0.0F}, Size{borderWidth, borderHeight});
+        makeNode(widget, Offset{0.0F, 0.0F}, Size{borderWidth, borderHeight},
+                 styleContext, identity);
     for (std::size_t i = 0; i < measured.size(); ++i) {
         const Widget& child = widget.children[i];
         Offset childOffset{};
         if (child.stackPosition.has_value()) {
             childOffset = Offset{
-                widget.padding.left + child.stackPosition->x +
+                padding.left + child.stackPosition->x +
                     child.margin.left,
-                widget.padding.top + child.stackPosition->y +
+                padding.top + child.stackPosition->y +
                     child.margin.top,
             };
         } else {
@@ -737,8 +821,8 @@ RenderNode layoutStack(const Widget& widget,
                 0.0F, contentBoxHeight - measured[i].size.height -
                          child.margin.vertical());
             childOffset = Offset{
-                widget.padding.left + child.margin.left + freeWidth * xFactor,
-                widget.padding.top + child.margin.top + freeHeight * yFactor,
+                padding.left + child.margin.left + freeWidth * xFactor,
+                padding.top + child.margin.top + freeHeight * yFactor,
             };
         }
         measured[i].offset = childOffset;
@@ -749,27 +833,38 @@ RenderNode layoutStack(const Widget& widget,
 
 }  // namespace
 
-void assignIdentities(core::RenderNode& node, const std::string& parentPath,
-                      std::size_t index) {
-    const std::string segment = node.key.empty()
-                                    ? "i:" + std::to_string(index)
-                                    : "k:" + node.key;
-    node.identity = parentPath + "/" + segment;
-    for (std::size_t i = 0; i < node.children.size(); ++i) {
-        assignIdentities(node.children[i], node.identity, i);
-    }
+core::RenderNode LayoutEngine::layout(const core::Widget& widget,
+                                       const core::Constraints& constraints,
+                                       const style::StyleContext& styleContext) {
+    return layoutSingle(widget, constraints, styleContext,
+                        childIdentity({}, widget, 0));
 }
 
 core::RenderNode LayoutEngine::layout(const core::Widget& widget,
                                        const core::Constraints& constraints) {
-    core::RenderNode result = layoutSingle(widget, constraints);
-    assignIdentities(result, {}, 0);
-    return result;
+    // 便捷入口（DSL/headless/测试）：默认暗色主题、空交互状态。
+    const style::Theme theme = style::Theme::dark();
+    const style::InteractionStateSnapshot interaction;
+    const accessibility::AccessibilitySettings settings;
+    return layout(widget, constraints,
+                  style::StyleContext{theme, interaction, settings});
+}
+
+core::Size LayoutEngine::intrinsicSize(const core::Widget& widget,
+                                       const core::Constraints& constraints,
+                                       const style::StyleContext& styleContext) {
+    return layoutSingle(widget, constraints, styleContext,
+                        childIdentity({}, widget, 0))
+        .size;
 }
 
 core::Size LayoutEngine::intrinsicSize(const core::Widget& widget,
                                        const core::Constraints& constraints) {
-    return layoutSingle(widget, constraints).size;
+    const style::Theme theme = style::Theme::dark();
+    const style::InteractionStateSnapshot interaction;
+    const accessibility::AccessibilitySettings settings;
+    return intrinsicSize(widget, constraints,
+                         style::StyleContext{theme, interaction, settings});
 }
 
 namespace {
@@ -782,9 +877,9 @@ bool findBaseline(const core::RenderNode& node, core::Offset absolute,
         case core::WidgetType::Text:
         case core::WidgetType::TextField:
         case core::WidgetType::Button: {
-            const float fontSize = node.textStyle.fontSize > 0.0F
-                                       ? node.textStyle.fontSize
-                                       : 14.0F;
+            const core::TextStyle& style = node.textStyle();
+            const float fontSize =
+                style.fontSize > 0.0F ? style.fontSize : 14.0F;
             const float lineCenterOffset =
                 (node.size.height - fontSize * 1.2F) * 0.5F;
             out = origin.y + node.padding.top + lineCenterOffset +

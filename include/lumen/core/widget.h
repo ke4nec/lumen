@@ -53,6 +53,42 @@ enum class StackAlignment {
     BottomRight,
 };
 
+// 视觉系统（docs/lumen-visual-system-design.md §6.1）：控件语义声明。
+// Widget 只描述语义/变体/尺寸/状态；最终颜色与几何由 StyleResolver 结
+// 合 Theme 与交互状态解析，Widget 不被 Theme 应用过程原地修改。
+
+// Button 外观变体。
+enum class ButtonVariant : std::uint8_t {
+    Filled,   // 主操作：accent 背景。
+    Tonal,    // 次操作：低饱和容器。
+    Outline,  // 边框按钮：透明背景 + 强边框。
+    Ghost,    // 幽灵按钮：透明背景，hover/pressed 才出现容器色。
+    Danger,   // 破坏性操作：错误色背景。
+};
+
+// 控件尺寸档位（Small/Compact、Medium/Comfortable、Large/Touch）；与
+// Theme 的 ControlDensity 一起决定最小尺寸、内边距与圆角。
+enum class ControlSize : std::uint8_t { Small, Medium, Large };
+
+// 字段级局部样式覆盖：只在应用需要品牌定制时提供（§3.1）。空 = 全部
+// 由 Theme 派生；显式设置的值（包括透明/黑色）按字面生效。
+struct StyleOverrides {
+    std::optional<Color> background{};
+    std::optional<Color> foreground{};
+    std::optional<Color> border{};
+    std::optional<CornerRadius> radius{};
+    std::optional<EdgeInsets> padding{};
+    std::optional<TextStyle> text{};
+
+    [[nodiscard]] bool empty() const {
+        return !background.has_value() && !foreground.has_value() &&
+               !border.has_value() && !radius.has_value() &&
+               !padding.has_value() && !text.has_value();
+    }
+
+    bool operator==(const StyleOverrides&) const = default;
+};
+
 // Immutable UI description. Aggregates are intentionally copyable so tests and
 // the C++ DSL can build trees by value; runtime state lives in Element.
 //
@@ -113,6 +149,16 @@ struct Widget {
     // ScrollView/ListView 的当前滚动偏移（应用侧 ScrollController 持有，
     // 重建时写回）。
     float scrollOffset{0.0F};
+
+    // 视觉系统声明属性（visual-system-design §6.1）：enabled=false 时控
+    // 件不可用（视觉、命中、键盘与语义一致拒绝）；invalid=true 表达校验
+    // 失败（边框/辅助文本/语义）；selected 用于列表/工具栏选中语义。
+    ButtonVariant buttonVariant{ButtonVariant::Filled};
+    ControlSize controlSize{ControlSize::Medium};
+    bool enabled{true};
+    bool invalid{false};
+    bool selected{false};
+    StyleOverrides styleOverrides{};
 
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
     // handler in the app's HandlerRegistry. `bindPrefix` preserves the
@@ -330,6 +376,33 @@ inline Widget withReadOnly(Widget child, bool readOnly = true) {
 }
 inline Widget withMultiline(Widget child, bool multiline = true) {
     child.multiline = multiline;
+    return child;
+}
+
+// 视觉系统语义修饰（visual-system-design §6.1）。控件 chrome 全部由
+// Theme + StyleResolver 派生；这些修饰只表达语义声明与局部覆盖。
+inline Widget withVariant(Widget child, ButtonVariant variant) {
+    child.buttonVariant = variant;
+    return child;
+}
+inline Widget withControlSize(Widget child, ControlSize size) {
+    child.controlSize = size;
+    return child;
+}
+inline Widget withEnabled(Widget child, bool enabled = true) {
+    child.enabled = enabled;
+    return child;
+}
+inline Widget withInvalid(Widget child, bool invalid = true) {
+    child.invalid = invalid;
+    return child;
+}
+inline Widget withSelected(Widget child, bool selected = true) {
+    child.selected = selected;
+    return child;
+}
+inline Widget withStyleOverrides(Widget child, StyleOverrides overrides) {
+    child.styleOverrides = std::move(overrides);
     return child;
 }
 

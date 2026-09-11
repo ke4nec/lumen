@@ -6,14 +6,26 @@
 namespace lumen::core {
 namespace {
 
-// All fields except children: geometry, paint props and semantics. Children
-// are handled by the recursive alignment walk, not by this comparison.
+// All fields except children: geometry, resolved style and semantics.
+// Children are handled by the recursive alignment walk, not by this
+// comparison. `style` participates so state-only visual changes (hover/
+// pressed/focused/checked) produce damage（visual-system §5 规则 6）.
 bool sameNodeFields(const RenderNode& a, const RenderNode& b) {
     return a.type == b.type && a.key == b.key && a.identity == b.identity &&
            a.offset == b.offset && a.size == b.size && a.padding == b.padding &&
-           a.color == b.color && a.radius == b.radius && a.text == b.text &&
-           a.textStyle == b.textStyle && a.placeholder == b.placeholder &&
-           a.bind == b.bind && a.onClick == b.onClick;
+           a.style == b.style && a.text == b.text &&
+           a.placeholder == b.placeholder && a.bind == b.bind &&
+           a.onClick == b.onClick && a.obscure == b.obscure &&
+           a.readOnly == b.readOnly && a.multiline == b.multiline &&
+           a.semanticsLabel == b.semanticsLabel &&
+           a.semanticsValue == b.semanticsValue &&
+           a.semanticsRole == b.semanticsRole &&
+           a.semanticsActions == b.semanticsActions &&
+           a.clipContent == b.clipContent &&
+           a.scrollOffset == b.scrollOffset &&
+           a.scrollExtent == b.scrollExtent && a.checked == b.checked &&
+           a.enabled == b.enabled && a.invalid == b.invalid &&
+           a.selected == b.selected;
 }
 
 // Conservative bounds of a subtree: the node rect union every descendant, so

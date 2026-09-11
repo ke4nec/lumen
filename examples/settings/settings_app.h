@@ -23,11 +23,54 @@
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
+#include "lumen/style/state.h"
+#include "lumen/style/theme.h"
 #include "lumen/widgets/form.h"
 #include "lumen/widgets/navigator.h"
-#include "lumen/widgets/theme.h"
 
 namespace lumen::examples {
+
+namespace {
+
+// 视觉系统 builder（visual-system §6.1）：语义属性 + StyleOverrides 表达
+// 个性化；旧 themed* helper 已删除，chrome 由 Theme 派生。
+core::Widget titleText(std::string text, const style::Theme& theme) {
+    return core::makeText(std::move(text), theme.typography.title);
+}
+
+core::Widget mutedLabel(std::string text, const style::Theme& theme) {
+    core::StyleOverrides overrides;
+    overrides.foreground = theme.colors.contentSecondary;
+    return core::withStyleOverrides(core::makeText(std::move(text)),
+                                    std::move(overrides));
+}
+
+core::Widget errorText(std::string text, const style::Theme& theme) {
+    core::StyleOverrides overrides;
+    overrides.foreground = theme.colors.statusError;
+    overrides.text = theme.typography.caption;
+    return core::withStyleOverrides(core::makeText(std::move(text)),
+                                    std::move(overrides));
+}
+
+core::Widget fieldWidget(std::string bind, std::string placeholder,
+                         std::string key, bool invalid) {
+    core::Widget field = core::makeTextField(
+        "", std::move(placeholder), core::TextStyle{}, core::EdgeInsets{},
+        0.0F, std::move(key));
+    field.bind = std::move(bind);
+    return core::withInvalid(std::move(field), invalid);
+}
+
+core::Widget buttonWidget(std::string label, std::string onClick,
+                          std::string key, core::ButtonVariant variant) {
+    core::Widget button = core::makeButton(
+        std::move(label), core::TextStyle{}, core::EdgeInsets{}, 0.0F,
+        std::move(key), std::nullopt, std::nullopt, std::move(onClick));
+    return core::withVariant(std::move(button), variant);
+}
+
+}  // namespace
 
 class SettingsApp {
   public:
@@ -62,48 +105,47 @@ class SettingsApp {
     // settings 页面：home = 滚动列表（开关/勾选/关于行）；form = 资料
     // 表单（校验 + 提交弹窗）。语义标签覆盖到每个控件。
     [[nodiscard]] core::Widget buildUi() const {
-        using widgets::Theme;
-        const Theme& theme = theme_;
+        const style::Theme& theme = theme_;
         std::vector<core::Widget> page;
 
         if (navigator_.current() == "form") {
             std::vector<core::Widget> form;
-            form.push_back(core::withKey(widgets::themedTitle("Profile", theme),
+            form.push_back(core::withKey(titleText("Profile", theme),
                                          "form-title"));
+            form.push_back(core::withKey(mutedLabel("Nickname", theme),
+                                         "nickname-label"));
             form.push_back(core::withKey(
-                widgets::themedLabel("Nickname", theme, /*muted=*/true),
-                "nickname-label"));
-            form.push_back(core::withKey(
-                widgets::themedTextField("nickname", "Nickname", theme,
-                                         "nickname-field"),
+                fieldWidget("nickname", "Nickname", "nickname-field",
+                            form_.errors().count("nickname") != 0),
                 "nickname-field"));
             if (form_.errors().count("nickname") != 0) {
                 form.push_back(core::withKey(
-                    widgets::themedError(form_.errors().at("nickname"), theme),
+                    errorText(form_.errors().at("nickname"), theme),
                     "nickname-error"));
             }
+            form.push_back(
+                core::withKey(mutedLabel("Email", theme), "email-label"));
             form.push_back(core::withKey(
-                widgets::themedLabel("Email", theme, /*muted=*/true),
-                "email-label"));
-            form.push_back(core::withKey(
-                widgets::themedTextField("email", "name@example.com", theme,
-                                         "email-field"),
+                fieldWidget("email", "name@example.com", "email-field",
+                            form_.errors().count("email") != 0),
                 "email-field"));
             if (form_.errors().count("email") != 0) {
                 form.push_back(core::withKey(
-                    widgets::themedError(form_.errors().at("email"), theme),
+                    errorText(form_.errors().at("email"), theme),
                     "email-error"));
             }
             form.push_back(core::withKey(
-                widgets::themedButton("Save", "save", theme, "save-button"),
+                buttonWidget("Save", "save", "save-button",
+                             core::ButtonVariant::Filled),
                 "save-button"));
             form.push_back(core::withKey(
-                widgets::themedButton("Back", "back", theme, "back-button"),
+                buttonWidget("Back", "back", "back-button",
+                             core::ButtonVariant::Outline),
                 "back-button"));
             core::Widget column = core::makeColumn(
                 std::move(form), core::MainAxisAlignment::Start,
-                core::CrossAxisAlignment::Start, theme.spacingUnit * 2,
-                core::EdgeInsets::all(theme.spacingUnit * 3));
+                core::CrossAxisAlignment::Start, style::spaceToken(4),
+                core::EdgeInsets::all(style::spaceToken(6)));
             column.flex = 1.0F;
             page.push_back(core::withKey(
                 core::withScrollOffset(
@@ -112,11 +154,11 @@ class SettingsApp {
                 "settings-list"));
         } else {
             std::vector<core::Widget> list;
-            list.push_back(core::withKey(widgets::themedTitle("Settings", theme),
-                                         "home-title"));
+            list.push_back(
+                core::withKey(titleText("Settings", theme), "home-title"));
             list.push_back(core::withKey(
-                widgets::themedButton("Edit profile", "goto-form", theme,
-                                      "goto-form-button"),
+                buttonWidget("Edit profile", "goto-form", "goto-form-button",
+                             core::ButtonVariant::Filled),
                 "goto-form-button"));
             core::Widget notifications =
                 core::makeSwitch("Notifications", "notifications",
@@ -132,14 +174,13 @@ class SettingsApp {
             // 长列表内容：验证滚动与 key 复用。
             for (int i = 0; i < 24; ++i) {
                 list.push_back(core::withKey(
-                    widgets::themedLabel("About entry " + std::to_string(i),
-                                         theme, /*muted=*/true),
+                    mutedLabel("About entry " + std::to_string(i), theme),
                     "about-" + std::to_string(i)));
             }
             core::Widget column = core::makeColumn(
                 std::move(list), core::MainAxisAlignment::Start,
-                core::CrossAxisAlignment::Start, theme.spacingUnit * 2,
-                core::EdgeInsets::all(theme.spacingUnit * 3));
+                core::CrossAxisAlignment::Start, style::spaceToken(4),
+                core::EdgeInsets::all(style::spaceToken(6)));
             column.flex = 1.0F;
             page.push_back(core::withKey(
                 core::withScrollOffset(
@@ -150,21 +191,22 @@ class SettingsApp {
 
         core::Widget ui = core::makeContainer(
             core::makeColumn(std::move(page)), std::nullopt, std::nullopt,
-            core::EdgeInsets{}, core::EdgeInsets{}, theme_.pageBackground);
+            core::EdgeInsets{}, core::EdgeInsets{}, theme_.colors.pageBackground);
         ui.key = "root";
 
         if (dialogOpen_) {
             core::Widget content = core::makeColumn({
-                core::withKey(widgets::themedTitle("Saved", theme_),
-                              "dialog-title"),
-                core::withKey(widgets::themedLabel("Profile updated.", theme_),
+                core::withKey(titleText("Saved", theme_), "dialog-title"),
+                core::withKey(core::makeText("Profile updated.",
+                                             theme_.typography.body),
                               "dialog-body"),
-                core::withKey(widgets::themedButton("Close", "dismiss-dialog",
-                                                    theme_, "dialog-close"),
-                              "dialog-close"),
+                core::withKey(
+                    buttonWidget("Close", "dismiss-dialog", "dialog-close",
+                                 core::ButtonVariant::Tonal),
+                    "dialog-close"),
             }, core::MainAxisAlignment::Start,
-               core::CrossAxisAlignment::Start, theme_.spacingUnit * 2,
-               core::EdgeInsets::all(theme_.spacingUnit * 3));
+               core::CrossAxisAlignment::Start, style::spaceToken(4),
+               core::EdgeInsets::all(style::spaceToken(6)));
             core::Widget dialog = widgets::makeDialog(
                 std::move(content), theme_, "dismiss-dialog", "saved-dialog",
                 view_);
@@ -180,11 +222,11 @@ class SettingsApp {
         }
         core::Widget next = buildUi();
         core::applyBinds(next, state_);
-        widgets::applyTheme(next, theme_);
         element_->update(std::move(next));
         syncSubscriptions(core::collectBindKeys(element_->widget()));
         core::RenderNode fresh = layout::LayoutEngine::layout(
-            element_->widget(), core::Constraints::tight(view_));
+            element_->widget(), core::Constraints::tight(view_),
+            styleContext());
         if (hasPreviousRoot_) {
             treeDamageValid_ =
                 treeDamageValid_ &&
@@ -211,22 +253,39 @@ class SettingsApp {
         }
     }
 
+    // 视觉系统应用入口（visual-system §6.3）：应用拥有 Theme，每帧提供
+    // StyleContext（Theme × 交互快照 × 可访问性设置）。快照是成员——
+    // StyleContext 只持引用，临时对象会悬空。
+    void syncInteractionSnapshot() {
+        interactionSnapshot_ = style::InteractionStateSnapshot{
+            controller_.hoveredIdentity(), controller_.pressedIdentity(),
+            focus_.focusedIdentity()};
+    }
+
+    [[nodiscard]] style::StyleContext styleContext() const {
+        return style::StyleContext{theme_, interactionSnapshot_,
+                                   accessibility_, deviceScale_};
+    }
+
     std::uint64_t renderFrame(bool forceFullRepaint = false) {
+        // 交互快照变化 → 重建（状态折算进 resolved style，diff 产生
+        // damage；visual-system §5 规则 6）。
+        syncInteractionSnapshot();
+        if (!(interactionSnapshot_ == lastInteraction_)) {
+            lastInteraction_ = interactionSnapshot_;
+            dirty_ = true;
+        }
         rebuildIfDirty();
         render::PaintOptions options;
-        options.focusedKey = focus_.focusedKey();
-        options.focusedIdentity = focus_.focusedIdentity();
-        options.pressedKey = controller_.pressedKey();
-        options.pressedIdentity = controller_.pressedIdentity();
         options.caretGraphemes = controller_.caretGraphemes();
         options.selectionStart = controller_.selectionStart();
         options.selectionEnd = controller_.selectionEnd();
         options.hasSelection = controller_.hasSelection();
         options.composition = controller_.composition();
 
+        const std::string& focusedIdentity = focus_.focusedIdentity();
         const bool optionsChanged =
-            options.focusedIdentity != lastFocusedIdentity_ ||
-            options.pressedIdentity != lastPressedIdentity_ ||
+            focusedIdentity != lastFocusedIdentity_ ||
             options.caretGraphemes != lastCaret_ ||
             options.selectionStart != lastSelectionStart_ ||
             options.selectionEnd != lastSelectionEnd_ ||
@@ -241,16 +300,10 @@ class SettingsApp {
 
         std::vector<core::Rect> damage = pendingDamage_;
         if (optionsChanged) {
-            if (options.focusedIdentity != lastFocusedIdentity_ ||
+            if (focusedIdentity != lastFocusedIdentity_ ||
                 options.caretGraphemes != lastCaret_) {
-                addNodeRect(damage, options.focusedIdentity,
-                            options.focusedKey);
+                addNodeRect(damage, focusedIdentity, focus_.focusedKey());
                 addNodeRect(damage, lastFocusedIdentity_, "");
-            }
-            if (options.pressedIdentity != lastPressedIdentity_) {
-                addNodeRect(damage, options.pressedIdentity,
-                            options.pressedKey);
-                addNodeRect(damage, lastPressedIdentity_, "");
             }
         }
 
@@ -281,8 +334,7 @@ class SettingsApp {
         frameIndex_ += 1;
         element_->clearDirtyTree();
 
-        lastFocusedIdentity_ = options.focusedIdentity;
-        lastPressedIdentity_ = options.pressedIdentity;
+        lastFocusedIdentity_ = focusedIdentity;
         lastCaret_ = options.caretGraphemes;
         lastSelectionStart_ = options.selectionStart;
         lastSelectionEnd_ = options.selectionEnd;
@@ -350,12 +402,36 @@ class SettingsApp {
     [[nodiscard]] widgets::FormController& form() { return form_; }
     [[nodiscard]] bool dialogOpen() const { return dialogOpen_; }
     [[nodiscard]] core::Size view() const { return view_; }
-    void setTheme(widgets::Theme theme) {
+    void setTheme(style::Theme theme, bool forceFullRepaint = true) {
+        const style::Theme lightBaseline =
+            style::Theme::light(theme.metrics.density);
+        const style::Theme darkBaseline =
+            style::Theme::dark(theme.metrics.density);
+        if (theme.colors.pageBackground == lightBaseline.colors.pageBackground) {
+            darkMode_ = false;
+        } else if (theme.colors.pageBackground ==
+                   darkBaseline.colors.pageBackground) {
+            darkMode_ = true;
+        }
         theme_ = std::move(theme);
+        dirty_ = true;
+        fullRepaintPending_ = fullRepaintPending_ || forceFullRepaint;
+    }
+    [[nodiscard]] const style::Theme& theme() const { return theme_; }
+    // 可访问性设置变化 → 派生 Theme 并请求全量重绘（font scale/high
+    // contrast/density/reduce animation，visual-system §4）。
+    void setAccessibilitySettings(
+        accessibility::AccessibilitySettings settings) {
+        accessibility_ = settings;
+        theme_ = style::Theme::fromSettings(accessibility_, darkMode_,
+                                             theme_.metrics.density);
         dirty_ = true;
         fullRepaintPending_ = true;
     }
-    [[nodiscard]] const widgets::Theme& theme() const { return theme_; }
+    [[nodiscard]] const accessibility::AccessibilitySettings&
+    accessibilitySettings() const {
+        return accessibility_;
+    }
     [[nodiscard]] render::RendererCapabilities capabilities() {
         return externalRenderer_ != nullptr ? externalRenderer_->capabilities()
                                             : cpuRenderer_.capabilities();
@@ -522,7 +598,9 @@ class SettingsApp {
     core::ScrollController scroll_{};
     widgets::FormController form_{};
     widgets::NavigatorController navigator_{"home"};
-    widgets::Theme theme_{widgets::Theme::dark()};
+    style::Theme theme_{style::Theme::dark()};
+    bool darkMode_{true};
+    accessibility::AccessibilitySettings accessibility_{};
     bool dialogOpen_{false};
 
     std::optional<core::Element> element_{};
@@ -534,8 +612,10 @@ class SettingsApp {
     bool rebuiltThisFrame_{false};
     bool framePainted_{false};
     bool fullRepaintPending_{false};
+    // 视觉系统：交互快照（hover/press/focus）驱动重建。
+    style::InteractionStateSnapshot interactionSnapshot_{};
+    style::InteractionStateSnapshot lastInteraction_{};
     std::string lastFocusedIdentity_{};
-    std::string lastPressedIdentity_{};
     std::size_t lastCaret_{0};
     std::size_t lastSelectionStart_{0};
     std::size_t lastSelectionEnd_{0};

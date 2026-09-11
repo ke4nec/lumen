@@ -16,7 +16,7 @@ v0.2 计划
 
 ## 结构
 
-- `include/lumen/`：`core`、`layout`、`render`、`text`、`accessibility`、
+- `include/lumen/`：`core`、`style`、`layout`、`render`、`text`、`accessibility`、
   `widgets`、`platform`、`dsl` 公共头文件。
 - `src/`：与公共模块一一对应的实现（`render` 含 CPU 光栅器、命令管线、
   帧调度器、资源管理器、painter 与可选 Skia 光栅/GPU 适配，`platform` 含
@@ -134,12 +134,24 @@ actions，节点 id 复用 RenderNode 稳定 identity）、identity diff（重�
 
 `ScrollView`/`ListView`（滚动视口：内容主轴不限、clip、`ScrollController`
 统一滚轮/拖动/键盘/语义入口，确定性无惯性）、`Checkbox`/`Switch`（bind
-状态自动切换）、`FocusScope`（Tab 域内循环）、`lumen-widgets` 的
-`Theme` token、`FormController` 校验、`NavigatorController`
-（push/pop/handleBack 统一 Escape/返回/关闭规则）与 `makeDialog`
-（modal barrier + FocusScope + 语义 dismiss）。`examples/settings/`
-组合以上全部能力；320px 窄窗口、连续 resize、局部重绘与全帧像素一致
-（测试断言）。
+状态自动切换）、`FocusScope`（Tab 域内循环）、`FormController` 校验、
+`NavigatorController`（push/pop/handleBack 统一 Escape/返回/关闭规则）与
+`makeDialog`（modal barrier + FocusScope + 语义 dismiss；视觉来自
+`DialogTokens`）。`examples/settings/` 组合以上全部能力；320px 窄窗口、
+连续 resize、局部重绘与全帧像素一致（测试断言）。
+
+### 视觉系统（V1/V2）
+
+`lumen-style`：primitive → semantic → component 三层 token、分组
+`Theme`（ColorScheme/Typography/Metrics/Elevation/Motion/Icon 与 Button/
+TextField/Checkbox/Switch/Dialog/Scrollbar token）、`WidgetState` 与
+`InteractionStateSnapshot`、`StyleResolver`（`resolveStyle` 折算 hover/
+pressed/focused/disabled/checked/invalid）。`core/style.h` 的
+`ResolvedStyle` 写入 RenderNode 并参与 diff/damage；painter 只读
+resolved style（无控件硬编码，CPU/Skia/GPU 命令路径不依赖 Theme）。
+`Theme::fromSettings` 派生高对比/字体缩放/减少动画/density；焦点环内嵌
+绘制且不影响布局尺寸；`StyleOverrides` 提供字段级品牌定制（显式黑/透明
+按字面生效）。DSL 支持 `variant/size/enabled/invalid/selected` 声明。
 
 ### macOS 与移动 host 接缝（8E）
 

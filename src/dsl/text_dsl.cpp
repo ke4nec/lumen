@@ -744,6 +744,62 @@ class Converter {
             out.radius = CornerRadius::all(static_cast<float>(v.number));
             return std::nullopt;
         }
+        // 视觉系统声明属性（visual-system §6.1）：variant/size/enabled/
+        // invalid/selected。
+        if (attr.name == "variant") {
+            if (out.type != WidgetType::Button) {
+                return makeError(attr.pos,
+                                 "'variant' is only valid on Button",
+                                 "no attribute", "'" + attr.name + "'");
+            }
+            if (v.type != Tok::Ident) {
+                return typeError(attr, "filled|tonal|outline|ghost|danger");
+            }
+            if (v.text == "filled") {
+                out.buttonVariant = core::ButtonVariant::Filled;
+            } else if (v.text == "tonal") {
+                out.buttonVariant = core::ButtonVariant::Tonal;
+            } else if (v.text == "outline") {
+                out.buttonVariant = core::ButtonVariant::Outline;
+            } else if (v.text == "ghost") {
+                out.buttonVariant = core::ButtonVariant::Ghost;
+            } else if (v.text == "danger") {
+                out.buttonVariant = core::ButtonVariant::Danger;
+            } else {
+                return enumError(attr, "filled|tonal|outline|ghost|danger");
+            }
+            return std::nullopt;
+        }
+        if (attr.name == "size") {
+            if (v.type != Tok::Ident) {
+                return typeError(attr, "small|medium|large");
+            }
+            if (v.text == "small") {
+                out.controlSize = core::ControlSize::Small;
+            } else if (v.text == "medium") {
+                out.controlSize = core::ControlSize::Medium;
+            } else if (v.text == "large") {
+                out.controlSize = core::ControlSize::Large;
+            } else {
+                return enumError(attr, "small|medium|large");
+            }
+            return std::nullopt;
+        }
+        if (attr.name == "enabled" || attr.name == "invalid" ||
+            attr.name == "selected") {
+            const auto flag = boolValue(attr);
+            if (!flag.has_value()) {
+                return typeError(attr, "true or false");
+            }
+            if (attr.name == "enabled") {
+                out.enabled = *flag;
+            } else if (attr.name == "invalid") {
+                out.invalid = *flag;
+            } else {
+                out.selected = *flag;
+            }
+            return std::nullopt;
+        }
         // v0.3 阶段8D 冻结属性（容器/叶子通用段）：Checkbox/Switch 选中与
         // 滚动偏移。
         if (attr.name == "checked") {

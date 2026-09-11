@@ -51,20 +51,25 @@ bool NavigatorController::handleBack(bool modalOpen) {
     return pop();
 }
 
-core::Widget makeDialog(core::Widget content, const Theme& theme,
+core::Widget makeDialog(core::Widget content, const style::Theme& theme,
                         std::string onDismiss, std::string key,
                         core::Size windowSize) {
-    // 全屏 barrier：点击关闭；内容卡居中（宽 60%，最大 420）。
+    // 全屏 barrier：点击关闭；内容卡居中。尺寸/颜色/圆角全部来自
+    // DialogTokens（visual-system §7.4；elevation 渲染能力冻结，先用表
+    // 面层级表达）。
+    const style::DialogTokens& tokens = theme.dialog;
     const float cardWidth =
-        std::min(420.0F, std::max(240.0F, windowSize.width * 0.6F));
-    const core::Size cardSize{cardWidth, windowSize.height * 0.5F};
+        std::min(tokens.maxWidth,
+                 std::max(tokens.minWidth,
+                          windowSize.width * tokens.widthRatio));
+    const core::Size cardSize{cardWidth, windowSize.height * tokens.heightRatio};
     const core::Offset cardOrigin{
         (windowSize.width - cardSize.width) * 0.5F,
         (windowSize.height - cardSize.height) * 0.5F};
 
     core::Widget barrier = core::makeContainerLeaf(
         windowSize.width, windowSize.height, core::EdgeInsets{},
-        core::EdgeInsets{}, theme.barrier);
+        core::EdgeInsets{}, tokens.scrim);
     barrier.onClick = std::move(onDismiss);
     barrier.semanticsRole = "dialog";
     barrier.semanticsActions = accessibility::kActionDismiss;
@@ -72,8 +77,10 @@ core::Widget makeDialog(core::Widget content, const Theme& theme,
 
     core::Widget card;
     card.type = core::WidgetType::Container;
-    card.color = theme.surfaceElevated;
-    card.radius = core::CornerRadius::all(12.0F);
+    card.color = tokens.surface;
+    card.radius = core::CornerRadius::all(tokens.radius);
+    // 内容自带内边距（DialogTokens.padding 供应用侧组合使用，避免双重
+    // padding）。
     card.children.push_back(std::move(content));
     card = core::withStackPosition(std::move(card), cardOrigin);
     card.key = key.empty() ? key : key + "-card";
