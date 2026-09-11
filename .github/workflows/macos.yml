@@ -29,9 +29,20 @@ jobs:
       - name: Headless settings smoke
         run: ./build/examples/settings/lumen-settings --headless
       - name: Dummy-driver smoke (no window server dependency)
-        run: >
-          SDL_VIDEODRIVER=dummy timeout 10
-          ./build/examples/counter/lumen-counter || test $? -eq 124
+        # macOS 无 GNU coreutils 的 timeout；等价语义：dummy 驱动下运行
+        # 10 秒仍存活（提前退出即失败），随后由我们终止。
+        run: |
+          SDL_VIDEODRIVER=dummy ./build/examples/counter/lumen-counter &
+          pid=$!
+          sleep 10
+          if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid"
+            echo "counter survived 10s under the dummy video driver"
+          else
+            wait "$pid"
+            echo "counter exited early with status $?"
+            exit 1
+          fi
 
   # 移动核心门槛（与 linux.yml 相同）：iOS host 使用的 SDL-free 目标集
   # 可编译且全部 headless 测试通过。

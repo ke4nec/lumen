@@ -42,7 +42,7 @@ class FakeClipboard final : public Clipboard {
 
     // 测试钩子：模拟“剪贴板不可用”（无桌面会话）。
     void setAvailable(bool available) { available_ = available; }
-    [[nodiscard]] std::uint64_t setCount{0};
+    std::uint64_t setCount{0};
 
   private:
     std::string text_{};

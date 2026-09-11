@@ -32,7 +32,10 @@ class MobileHostSeam {
         bool touchNormalized{true};
     };
 
-    explicit MobileHostSeam(Config config = {});
+    // Config 的 NSDMI 在包围类完成前不可用作默认实参（CWG 1397，
+    // GCC/Clang 拒绝 `Config config = {}`），默认构造经委托实现。
+    MobileHostSeam() : MobileHostSeam(Config{}) {}
+    explicit MobileHostSeam(Config config);
 
     // --- surface 生命周期（UI 线程调用） ---
     // surface 创建/重连：metrics 先行，SurfaceReattached + Resize 入队。

@@ -72,9 +72,8 @@ class RecordingAccessibilityBridge final : public AccessibilityBridge {
     std::vector<std::string> focusedNodes{};
 };
 
-// 平台桥接工厂（可选目标；SDK 未编入或服务不可用时返回 nullptr 并把
-// 原因写入 *diagnostics）。桌面实现见 src/accessibility/ 下的可选源，
-// 未启用时此函数恒返回 nullptr。
+// 平台桥接工厂（预留接口；当前仓库未包含桌面 provider，因此返回 nullptr
+// 并把原因写入 *diagnostics）。RecordingAccessibilityBridge 用于验证协议。
 [[nodiscard]] std::unique_ptr<AccessibilityBridge>
 createPlatformAccessibilityBridge(std::string* diagnostics = nullptr);
 

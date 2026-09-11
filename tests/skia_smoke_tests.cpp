@@ -13,6 +13,7 @@
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
 #include "lumen/render/skia_renderer.h"
+#include "lumen/style/theme.h"
 
 using lumen::core::Color;
 using lumen::core::CornerRadius;
@@ -212,14 +213,17 @@ TEST_CASE("skia_paints_counter_frame_consistently", "[skia]") {
     const Offset center =
         lumen::core::absoluteOffset(app.root(), "increment-button") +
         Offset{button->size.width * 0.9F, button->size.height * 0.5F};
-    // Button face is solid light gray on both backends.
+    // Button face is the dark-theme filled accent on both backends. The
+    // expectation derives from the theme so token changes cannot silently
+    // invalidate this anchor.
+    const Color buttonFace = lumen::style::Theme::dark().button.filled
+                                 .background;
     CHECK(readPixel(app.pixels(), static_cast<int>(center.x),
                     static_cast<int>(center.y)) ==
           readPixel(skia.pixels(), static_cast<int>(center.x),
                     static_cast<int>(center.y)));
     CHECK(readPixel(skia.pixels(), static_cast<int>(center.x),
-                    static_cast<int>(center.y)) ==
-          Color::fromRGBA(212, 212, 216, 255));
+                    static_cast<int>(center.y)) == buttonFace);
 
     // Text uses different font backends; the button anchor and matching frame
     // dimensions above verify the shared scene output without requiring glyph

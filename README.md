@@ -9,9 +9,10 @@ v0.2 计划
 以及视觉系统设计
 [`docs/lumen-visual-system-design.md`](docs/lumen-visual-system-design.md)。
 
-当前进度：阶段 0–6 + v0.2 阶段 7A–7E + v0.3 阶段 8A–8E（跨平台宿主契约、
-文本/IME/编辑模型、语义树与无障碍契约、滚动/表单/弹窗/导航组件、macOS
-桌面与移动 host 接缝、CI 矩阵与支持矩阵）。平台能力详见
+当前进度：阶段 0–6 + v0.2 阶段 7A–7E + v0.3 阶段 8A–8E 的核心契约（跨平台宿主、
+文本/IME/编辑模型、语义树与 Recording 桥、滚动/表单/弹窗/导航组件、SDL-free
+移动 host 接缝）。Android/iOS 原生胶水、平台原生无障碍 provider 和完整发布打包
+仍未纳入。平台能力详见
 [`docs/support-matrix.md`](docs/support-matrix.md)。
 
 ## 结构
@@ -48,7 +49,7 @@ ctest --test-dir build --output-on-failure -C Debug
 | `LUMEN_BUILD_BENCHMARKS` | OFF | `lumen-scene-bench` 固定场景基准 |
 | `LUMEN_ENABLE_SKIA` | OFF | Skia 光栅后端（预编译包自动拉取） |
 | `LUMEN_ENABLE_GPU` | OFF | Skia Ganesh GPU 后端（需 `LUMEN_ENABLE_SKIA`） |
-| `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` | OFF | 平台原生无障碍桥（UIA/AT-SPI/NSAccessibility；语义树与 Recording 桥始终可用） |
+| `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` | OFF | 预留的平台原生无障碍桥开关；当前 provider 未纳入，语义树与 Recording 桥始终可用 |
 | `LUMEN_BUILD_MOBILE_CORE` | OFF | v0.3 移动核心：SDL-free 配置（跳过 SDL 与桌面示例），Android NDK / iOS Xcode 交叉编译用 |
 
 Linux（Ubuntu 24.04/26.04）先安装系统依赖（SDL3 窗口/输入、Skia

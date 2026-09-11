@@ -19,8 +19,8 @@
 
 | 平台 | v0.3 承诺 | 实现 | 验证 |
 | --- | --- | --- | --- |
-| Android | native host 接缝（生命周期/surface/触摸/安全区） | `lumen-mobile-host`（SDL-free）：surface attach/detach、pause/resume、安全区、触摸归一化、返回键；NDK 交叉编译经 `LUMEN_BUILD_MOBILE_CORE=ON` | `linux.yml` mobile-core（编译 + headless 全测）；模拟器/NDK 目标为 v0.4 |
-| iOS | Objective-C++ host 接缝（同上） | 同一 `MobileHostSeam` 状态机；Xcode 交叉编译经 `LUMEN_BUILD_MOBILE_CORE=ON` | `macos.yml` mobile-core |
+| Android | SDL-free host 接缝（实验性） | `lumen-mobile-host`：surface attach/detach、pause/resume、安全区、触摸归一化、返回键；Android JNI/NativeActivity 胶水尚未纳入本仓库 | `linux.yml` mobile-core 只验证通用静态库和 headless；NDK/模拟器目标待实现 |
+| iOS | SDL-free host 接缝（实验性） | 同一 `MobileHostSeam` 状态机；iOS Objective-C++ 胶水尚未纳入本仓库 | `macos.yml` mobile-core 只验证通用静态库和 headless；Xcode/模拟器目标待实现 |
 
 移动端不承诺（v0.4 再评估）：商店发布、完整移动端控件、后台渲染、原生
 accessibility tree、Metal/Graphite。
@@ -34,7 +34,7 @@ accessibility tree、Metal/Graphite。
 | Skia GPU | `SkiaGpuRenderer`（可选 `LUMEN_ENABLE_GPU`） | 探测/初始化失败自动回退 CPU，诊断记录原因（v0.2 §7C） |
 | 文本 shaping | `lumen-text` + `PlaceholderFontManager`（确定性） | 桌面正式 shaping 由可选 Skia 实现提供；缺失时布局/编辑照常（回退明确报告） |
 | 剪贴板 | `platform::Clipboard` / `core::ClipboardProvider` | 不可用时 `setText` 返回 false，编辑状态不丢 |
-| 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥） | 平台原生桥（UIA/AT-SPI/NSAccessibility）经 `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` 可选编入；未编入返回 nullptr 并给出原因，渲染/输入不受影响 |
+| 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥） | 当前只提供平台无关契约与 Recording 桥；平台原生 provider 尚未实现，工厂返回 nullptr 并给出原因 |
 | 可访问性设置 | `PlatformCapabilities`（只读查询） | 高对比/减少动画/字体缩放由 `Theme::fromSettings` 与 `FrameScheduler::setReduceAnimation` 消费 |
 
 ## 已知限制（v0.3）

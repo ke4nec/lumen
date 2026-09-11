@@ -192,7 +192,7 @@ TEST_CASE("default_submit_adapter_replays_through_legacy_path",
         }
         void save() override { ++saves; }
         void restore() override { ++restores; }
-        void clipRect(Rect rect) override { ++clips; }
+        void clipRect(Rect) override { ++clips; }
         void drawRect(Rect, Color, CornerRadius) override { ++rects; }
         void drawText(lumen::render::TextRun, lumen::core::TextStyle) override {
             ++texts;

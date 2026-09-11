@@ -15,7 +15,13 @@ option(LUMEN_ENABLE_GPU "Enable the Skia Ganesh GPU backend" OFF)
 # v0.3 阶段8C: 平台无障碍桥接（Windows UIA / Linux AT-SPI / macOS
 # NSAccessibility），默认关闭；语义树与 Recording 桥始终可用。
 option(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE
-       "Enable platform accessibility bridges" OFF)
+       "Enable platform accessibility bridge providers (reserved)" OFF)
+if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE)
+  message(WARNING
+          "LUMEN_ENABLE_ACCESSIBILITY_BRIDGE is reserved; no platform "
+          "provider is included yet. RecordingAccessibilityBridge remains "
+          "available for headless validation.")
+endif()
 # v0.3 阶段8E: 移动核心。交叉编译（Android NDK / iOS Xcode）时打开：跳过
 # SDL 桌面依赖与示例，构建 core/layout/render(CPU)/text/accessibility/
 # widgets + mobile-host（SDL-free 接缝）静态库；不依赖桌面会话。

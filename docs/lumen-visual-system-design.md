@@ -41,9 +41,9 @@ Lumen 是 C++20 自绘 GUI 框架。当前控件已经具备基本的布局、�
 | 示例 | counter 示例和展示滚动、表单、弹窗、导航、主题切换、无障碍的 settings 示例 |
 | 验证 | Catch2 单元测试、无窗口集成测试、CPU 像素测试、命令回放测试、文本/语义/平台测试 |
 
-已提交的稳定阶段为 0–6、7A–7E、8A–8D。当前工作区另有未提交的 8E 移动核心接缝：
-`LUMEN_BUILD_MOBILE_CORE`、SDL-free platform 配置、mobile host 生命周期和触摸事件。
-8E 应作为进行中的兼容性约束维护，不能在它提交前把它描述成已发布能力。
+已提交的稳定阶段为 0–6、7A–7E、8A–8E。8E 当前提供的是可移植的 SDL-free
+`MobileHostSeam` 接缝；Android JNI/NativeActivity 与 iOS Objective-C++ 胶水仍是
+外部集成目标，不能把它描述成已完成的原生移动端发布能力。
 
 ### 2.2 当前视觉问题
 
@@ -528,5 +528,6 @@ V1（样式基础和当前控件迁移）与 V2（状态、交互和无障碍联
   `MotionTokens`（reduceAnimation 归零）已入 Theme；图标/阴影绘制、状态
   过渡动画、ThemeScope 与 `PlatformThemeAdapter` 留待 V3/V4。
 - 命令序列化升级 v2 以携带完整 TextStyle（resolved 样式带 weight/family）。
-- 验收：桌面 ctest 300 用例、`LUMEN_BUILD_MOBILE_CORE=ON` SDL-free 配置
-  288 用例全部通过；counter/settings headless 与窗口 smoke 正常。
+- 验收记录：当前 Windows CPU Debug 为 303 个用例，SDL-free mobile-core 为
+  291 个用例；counter/settings headless 与窗口 smoke 正常。Skia Release 还需
+  通过 `skia_paints_counter_frame_consistently` 后才能作为完整后端门槛。

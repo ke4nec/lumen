@@ -43,22 +43,25 @@ struct Fixture {
     }
 };
 
-const lumen::core::ButtonResolvedStyle& buttonPart(
+// 按值返回：调用点 `const auto& x = ...Part(fixture.resolve(...))` 把 prvalue
+// 直接绑定到引用，生命周期延长到引用作用域；按引用返回会指向已销毁的
+// ResolvedStyle 临时对象（MSVC 侥幸可用，GCC/Clang 下悬空读）。
+lumen::core::ButtonResolvedStyle buttonPart(
     const lumen::core::ResolvedStyle& style) {
     return std::get<lumen::core::ButtonResolvedStyle>(style.component);
 }
 
-const lumen::core::TextFieldResolvedStyle& fieldPart(
+lumen::core::TextFieldResolvedStyle fieldPart(
     const lumen::core::ResolvedStyle& style) {
     return std::get<lumen::core::TextFieldResolvedStyle>(style.component);
 }
 
-const lumen::core::CheckboxResolvedStyle& checkboxPart(
+lumen::core::CheckboxResolvedStyle checkboxPart(
     const lumen::core::ResolvedStyle& style) {
     return std::get<lumen::core::CheckboxResolvedStyle>(style.component);
 }
 
-const lumen::core::SwitchResolvedStyle& switchPart(
+lumen::core::SwitchResolvedStyle switchPart(
     const lumen::core::ResolvedStyle& style) {
     return std::get<lumen::core::SwitchResolvedStyle>(style.component);
 }
@@ -376,7 +379,8 @@ TEST_CASE("style_overrides_foreground_recolors_text", "[style]") {
     overrides.foreground = brandFg;
     Widget label = lumen::core::withStyleOverrides(
         lumen::core::makeText("hi"), overrides);
-    const auto& common = lumen::core::commonStyle(fixture.resolve(label));
+    // 按值持有：commonStyle 返回入参内部的引用，按引用绑定会悬空。
+    const auto common = lumen::core::commonStyle(fixture.resolve(label));
     CHECK(common.foreground == brandFg);
     CHECK(common.text.color == brandFg);
 }
@@ -390,7 +394,7 @@ TEST_CASE("style_overrides_text_honors_literal_colors", "[style]") {
     overrides.text = literal;
     Widget label = lumen::core::withStyleOverrides(
         lumen::core::makeText("hi"), overrides);
-    const auto& common = lumen::core::commonStyle(fixture.resolve(label));
+    const auto common = lumen::core::commonStyle(fixture.resolve(label));
     CHECK(common.text.color == Color{0, 0, 0, 255});
 }
 
