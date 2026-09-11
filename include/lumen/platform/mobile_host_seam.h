@@ -18,7 +18,8 @@ namespace lumen::platform {
 //     期间不销毁状态树，只暂停提交（plan §3.1/§7 移动端生命周期）。
 //   - pause/resume：AppLifecycle 映射（Background/Suspended）；resume 时
 //     只有 surface 已重连才恢复 Active。
-//   - 触摸归一化：pointer id + 归一化坐标 → 逻辑坐标 HostEvent。
+//   - 触摸坐标：格式由 Config.touchNormalized 决定，统一转换为逻辑坐标
+//     HostEvent。
 //   - 返回/关闭请求：统一为 WindowCloseRequested 事件（8D Navigator 的
 //     handleBack 消费）。
 // 平台 SDK 类型不出现在此头文件；native 胶水是各平台的可选编译目标。
@@ -26,8 +27,8 @@ namespace lumen::platform {
 class MobileHostSeam {
   public:
     struct Config {
-        // 触摸事件是否直接消费归一化坐标（Android MotionEvent 为像素，
-        // iOS 为点；胶水层换算后传入）。
+        // true 时输入为 0..1 归一化坐标；false 时输入为 drawable 像素坐标，
+        // 由接缝按 deviceScale 转成逻辑坐标。
         bool touchNormalized{true};
     };
 
@@ -52,13 +53,10 @@ class MobileHostSeam {
     void appLowMemory();
 
     // --- 输入 ---
-    // 归一化（0..1）触摸坐标 → 逻辑坐标事件。
-    void touchDown(std::uint32_t pointerId, float normalizedX,
-                   float normalizedY);
-    void touchMove(std::uint32_t pointerId, float normalizedX,
-                   float normalizedY);
-    void touchUp(std::uint32_t pointerId, float normalizedX,
-                 float normalizedY);
+    // 触摸坐标 → 逻辑坐标事件；坐标格式由 Config.touchNormalized 决定。
+    void touchDown(std::uint32_t pointerId, float x, float y);
+    void touchMove(std::uint32_t pointerId, float x, float y);
+    void touchUp(std::uint32_t pointerId, float x, float y);
     void touchCancel(std::uint32_t pointerId);
     // 平台返回键/关闭请求（Android back button / iOS 无）。
     void backRequested();
@@ -83,13 +81,13 @@ class MobileHostSeam {
     void setLifecycle(core::AppLifecycle next);
     void updateMetrics(float widthPixels, float heightPixels,
                        float deviceScale, core::EdgeInsets safeArea);
-    [[nodiscard]] core::Offset toLogical(float normalizedX,
-                                         float normalizedY) const;
+    [[nodiscard]] core::Offset toLogical(float x, float y) const;
 
     Config config_{};
     core::WindowMetrics metrics_{};
     core::AppLifecycle lifecycle_{core::AppLifecycle::Launching};
     bool surfaceAttached_{false};
+    bool foregroundRequested_{false};
     std::uint64_t nextTimestampMs_{0};
     std::deque<core::HostEvent> queue_{};
     std::string lastNotice_{};

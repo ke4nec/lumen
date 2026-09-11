@@ -34,10 +34,13 @@ void MobileHostSeam::updateMetrics(float widthPixels, float heightPixels,
     metrics_.safeArea = safeArea;
 }
 
-core::Offset MobileHostSeam::toLogical(float normalizedX,
-                                       float normalizedY) const {
-    return core::Offset{normalizedX * metrics_.logicalSize.width,
-                        normalizedY * metrics_.logicalSize.height};
+core::Offset MobileHostSeam::toLogical(float x, float y) const {
+    if (!config_.touchNormalized) {
+        return core::Offset{x / metrics_.deviceScale,
+                            y / metrics_.deviceScale};
+    }
+    return core::Offset{x * metrics_.logicalSize.width,
+                        y * metrics_.logicalSize.height};
 }
 
 void MobileHostSeam::surfaceCreated(float widthPixels, float heightPixels,
@@ -60,9 +63,13 @@ void MobileHostSeam::surfaceCreated(float widthPixels, float heightPixels,
     resize.pixelSize = metrics_.drawableSize;
     push(std::move(resize));
 
-    // surface 就绪 + 应用在前台 → Active。
-    if (lifecycle_ == core::AppLifecycle::Background ||
-        lifecycle_ == core::AppLifecycle::Launching) {
+    // 首次 surface 代表初始启动；恢复则必须同时满足 resume 已到达。
+    if (lifecycle_ == core::AppLifecycle::Launching) {
+        foregroundRequested_ = true;
+        setLifecycle(core::AppLifecycle::Active);
+    } else if ((lifecycle_ == core::AppLifecycle::Background ||
+                lifecycle_ == core::AppLifecycle::Suspended) &&
+               foregroundRequested_) {
         setLifecycle(core::AppLifecycle::Active);
     }
     lastNotice_.clear();
@@ -95,6 +102,7 @@ void MobileHostSeam::surfaceDestroyed() {
 }
 
 void MobileHostSeam::appPaused() {
+    foregroundRequested_ = false;
     if (lifecycle_ == core::AppLifecycle::Active ||
         lifecycle_ == core::AppLifecycle::Inactive) {
         setLifecycle(core::AppLifecycle::Background);
@@ -111,8 +119,9 @@ void MobileHostSeam::appResumed() {
                       std::string(core::appLifecycleName(lifecycle_));
         return;
     }
+    foregroundRequested_ = true;
     if (!surfaceAttached_) {
-        // surface 尚未重连：保持 Background，等待 surfaceCreated。
+        // surface 尚未重连：保持当前挂起状态，等待 surfaceCreated。
         lastNotice_ = "appResumed deferred: surface detached";
         return;
     }
@@ -126,34 +135,31 @@ void MobileHostSeam::appLowMemory() {
     }
 }
 
-void MobileHostSeam::touchDown(std::uint32_t pointerId, float normalizedX,
-                               float normalizedY) {
+void MobileHostSeam::touchDown(std::uint32_t pointerId, float x, float y) {
     core::HostEvent event;
     event.type = core::HostEventType::PointerDown;
     event.device = core::PointerDevice::Touch;
     event.pointerId = pointerId;
-    event.position = toLogical(normalizedX, normalizedY);
+    event.position = toLogical(x, y);
     event.button = core::PointerButton::Primary;
     push(std::move(event));
 }
 
-void MobileHostSeam::touchMove(std::uint32_t pointerId, float normalizedX,
-                               float normalizedY) {
+void MobileHostSeam::touchMove(std::uint32_t pointerId, float x, float y) {
     core::HostEvent event;
     event.type = core::HostEventType::PointerMove;
     event.device = core::PointerDevice::Touch;
     event.pointerId = pointerId;
-    event.position = toLogical(normalizedX, normalizedY);
+    event.position = toLogical(x, y);
     push(std::move(event));
 }
 
-void MobileHostSeam::touchUp(std::uint32_t pointerId, float normalizedX,
-                             float normalizedY) {
+void MobileHostSeam::touchUp(std::uint32_t pointerId, float x, float y) {
     core::HostEvent event;
     event.type = core::HostEventType::PointerUp;
     event.device = core::PointerDevice::Touch;
     event.pointerId = pointerId;
-    event.position = toLogical(normalizedX, normalizedY);
+    event.position = toLogical(x, y);
     event.button = core::PointerButton::Primary;
     push(std::move(event));
 }

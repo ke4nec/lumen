@@ -24,14 +24,14 @@ jobs:
       - name: Test (Debug)
         run: ctest --test-dir build --output-on-failure -C Debug --timeout 120
       - name: Headless counter smoke
-        run: ./build/examples/counter/Debug/lumen-counter --headless
+        run: ./build/examples/counter/lumen-counter --headless
       # v0.3 阶段8D/8E：settings 示例与无桌面会话冒烟（dummy 驱动）。
       - name: Headless settings smoke
-        run: ./build/examples/settings/Debug/lumen-settings --headless
+        run: ./build/examples/settings/lumen-settings --headless
       - name: Dummy-driver smoke (no window server dependency)
         run: >
           SDL_VIDEODRIVER=dummy timeout 10
-          ./build/examples/counter/Debug/lumen-counter || test $? -eq 124
+          ./build/examples/counter/lumen-counter || test $? -eq 124
 
   # 移动核心门槛（与 linux.yml 相同）：iOS host 使用的 SDL-free 目标集
   # 可编译且全部 headless 测试通过。

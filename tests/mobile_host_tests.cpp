@@ -102,6 +102,56 @@ TEST_CASE("mobile_seam_pause_resume_defers_until_surface", "[mobile]") {
     CHECK(seam.canRender());
 }
 
+TEST_CASE("mobile_seam_surface_resume_order_requires_both_signals", "[mobile]") {
+    MobileHostSeam seam;
+    seam.surfaceCreated(1000.0F, 2000.0F, 2.0F, core::EdgeInsets{});
+    core::HostEvent event;
+    while (seam.pollEvent(event)) {
+    }
+
+    seam.appPaused();
+    seam.surfaceDestroyed();
+    seam.surfaceCreated(1000.0F, 2000.0F, 2.0F, core::EdgeInsets{});
+    CHECK(seam.lifecycle() == AppLifecycle::Background);
+    CHECK_FALSE(seam.canRender());
+    seam.appResumed();
+    CHECK(seam.lifecycle() == AppLifecycle::Active);
+
+    seam.appPaused();
+    seam.surfaceDestroyed();
+    seam.appResumed();
+    CHECK(seam.lifecycle() == AppLifecycle::Background);
+    seam.surfaceCreated(1000.0F, 2000.0F, 2.0F, core::EdgeInsets{});
+    CHECK(seam.lifecycle() == AppLifecycle::Active);
+}
+
+TEST_CASE("mobile_seam_low_memory_resume_survives_surface_order", "[mobile]") {
+    MobileHostSeam seam;
+    seam.surfaceCreated(500.0F, 1000.0F, 2.0F, core::EdgeInsets{});
+    core::HostEvent event;
+    while (seam.pollEvent(event)) {
+    }
+    seam.appPaused();
+    seam.appLowMemory();
+    seam.surfaceDestroyed();
+    seam.appResumed();
+    CHECK(seam.lifecycle() == AppLifecycle::Suspended);
+    seam.surfaceCreated(500.0F, 1000.0F, 2.0F, core::EdgeInsets{});
+    CHECK(seam.lifecycle() == AppLifecycle::Active);
+}
+
+TEST_CASE("mobile_seam_touch_pixel_config_converts_to_logical", "[mobile]") {
+    MobileHostSeam seam(MobileHostSeam::Config{false});
+    seam.surfaceCreated(1080.0F, 2340.0F, 3.0F, core::EdgeInsets{});
+    core::HostEvent event;
+    while (seam.pollEvent(event)) {
+    }
+    seam.touchDown(1, 540.0F, 585.0F);
+    const auto down = drainOne(seam);
+    CHECK(down.position.x == Catch::Approx(180.0F));
+    CHECK(down.position.y == Catch::Approx(195.0F));
+}
+
 TEST_CASE("mobile_seam_low_memory_suspends_from_background", "[mobile]") {
     MobileHostSeam seam;
     seam.surfaceCreated(500.0F, 1000.0F, 1.0F, core::EdgeInsets{});
