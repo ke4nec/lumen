@@ -2,6 +2,9 @@
 
 > 状态：随 v0.3 阶段 8A–8E 更新（2026-09）。构建命令与系统依赖的单一
 > 事实来源是 README 与 `.github/workflows/`。
+>
+> 面向自用工具类应用的后续里程碑见
+> [`lumen-self-use-roadmap.md`](lumen-self-use-roadmap.md)。
 
 ## 桌面平台
 

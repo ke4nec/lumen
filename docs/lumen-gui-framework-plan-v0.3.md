@@ -1,5 +1,8 @@
 # Lumen：C++20 自绘 GUI 框架 v0.3 跨平台产品化与应用基础计划
 
+> 后续面向自用工具类应用的跨端路线图见
+> [`lumen-self-use-roadmap.md`](lumen-self-use-roadmap.md)。
+
 > 文档状态：下一阶段提案（2026-09）
 > 上一版本：[v0.2 桌面 GPU 与性能工程计划](lumen-gui-framework-plan-v0.2.md)
 > 适用基线：[初始框架计划](lumen-gui-framework-plan.md)

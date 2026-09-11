@@ -6,8 +6,10 @@ v0.2 计划
 [`docs/lumen-gui-framework-plan-v0.2.md`](docs/lumen-gui-framework-plan-v0.2.md)
 与 v0.3 计划
 [`docs/lumen-gui-framework-plan-v0.3.md`](docs/lumen-gui-framework-plan-v0.3.md)，
-以及视觉系统设计
+视觉系统设计
 [`docs/lumen-visual-system-design.md`](docs/lumen-visual-system-design.md)。
+面向自用工具类应用的桌面优先跨端路线图见
+[`docs/lumen-self-use-roadmap.md`](docs/lumen-self-use-roadmap.md)。
 
 当前进度：阶段 0–6 + v0.2 阶段 7A–7E + v0.3 阶段 8A–8E 的核心契约（跨平台宿主、
 文本/IME/编辑模型、语义树与 Recording 桥、滚动/表单/弹窗/导航组件、SDL-free
