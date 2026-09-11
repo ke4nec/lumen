@@ -38,11 +38,11 @@
 
 | 场景 | 命令 |
 | --- | --- |
-| CPU-only 构建+测试（默认门槛） | `cmake -S . -B build -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`<br>`cmake --build build --config Debug`<br>`ctest --test-dir build --output-on-failure -C Debug` |
+| CPU-only 构建+测试（默认门槛） | `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`<br>`cmake --build build --config Debug`<br>`ctest --test-dir build --output-on-failure -C Debug` |
 | CPU-only + 基准 | `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON -DLUMEN_BUILD_BENCHMARKS=ON`<br>`cmake --build build --config Debug`<br>`ctest --test-dir build --output-on-failure -C Debug` |
-| Skia 光栅 | `cmake -S . -B build-skia -DLUMEN_ENABLE_SKIA=ON`<br>`cmake --build build-skia --config Release`（Windows 必须 Release）<br>`ctest --test-dir build-skia -C Release`（含 CPU/Skia 一致性）<br>`./build-skia/examples/counter/lumen-counter --renderer skia` |
-| Skia GPU（Ganesh+GL） | `cmake -S . -B build-gpu -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON`<br>`cmake --build build-gpu --config Release`<br>`./build-gpu/examples/counter/lumen-counter --renderer gpu --diagnostics` |
-| mobile-core（SDL-free） | `cmake -S . -B build-mobile -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_MOBILE_CORE=ON`<br>`cmake --build build-mobile --config Debug`<br>`ctest --test-dir build-mobile --output-on-failure -C Debug` |
+| Skia 光栅 | `cmake -S . -B build-skia -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON`<br>`cmake --build build-skia --config Release`（Windows 必须 Release）<br>`ctest --test-dir build-skia -C Release`（含 CPU/Skia 一致性）<br>`./build-skia/examples/counter/lumen-counter --renderer skia` |
+| Skia GPU（Ganesh+GL） | `cmake -S . -B build-gpu -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON`<br>`cmake --build build-gpu --config Release`<br>`./build-gpu/examples/counter/lumen-counter --renderer gpu --diagnostics` |
+| mobile-core（SDL-free） | `cmake -S . -B build-mobile -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_MOBILE_CORE=ON`<br>`cmake --build build-mobile --config Debug`<br>`ctest --test-dir build-mobile --output-on-failure -C Debug` |
 | headless smoke | `./build/examples/counter/lumen-counter --headless`<br>`./build/examples/settings/lumen-settings --headless` |
 | 窗口 smoke（Linux） | `xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build/examples/settings/lumen-settings \|\| test $? -eq 124` |
 | 窗口 smoke（macOS 无窗口服务器） | `SDL_VIDEODRIVER=dummy ./build/examples/counter/lumen-counter & pid=$!; sleep 10; kill -0 "$pid"`（见 `macos.yml`） |

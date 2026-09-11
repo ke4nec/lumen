@@ -14,13 +14,11 @@ target_link_libraries(lumen-scene-bench PRIVATE
 
 target_compile_features(lumen-scene-bench PRIVATE cxx_std_20)
 
-if(CMAKE_BUILD_TYPE)
-  target_compile_definitions(lumen-scene-bench PRIVATE
-      LUMEN_BENCH_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
-else()
-  target_compile_definitions(lumen-scene-bench PRIVATE
-      LUMEN_BENCH_BUILD_TYPE="unknown")
-endif()
+# Use the generator's active configuration so multi-config generators
+# (Visual Studio, Xcode, Ninja Multi-Config) report the configuration selected
+# by `cmake --build --config`, rather than the usually-empty CMAKE_BUILD_TYPE.
+target_compile_definitions(lumen-scene-bench PRIVATE
+    LUMEN_BENCH_BUILD_TYPE=\"$<CONFIG>\")
 
 if(WIN32)
   # 基准在无控制台的 GUI 子系统环境下也要能输出报告。

@@ -459,7 +459,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     `frame_hash=d28e364efe1b4aca` 一致（本地 Linux/GCC 15.2.0/Release；
     干净目录 `/tmp/lumen-m0-check` 复现同一 hash）。
   - 干净构建目录可重复（`build-bench` out-of-source，见 `build-commands.md`）。
-  - 现有 `ctest` 基线不受影响（本地 Linux CPU Debug `228/228` 通过；
+  - 现有 `ctest` 基线不受影响（本地 Linux CPU Debug `303/303` 通过；
     全二进制直跑的 3 个 SDL 视频设备失败为预期的无会话 quirk，`ctest`
     隔离运行通过；bench 扩展仅增 JSON 字段，不改布局/渲染路径）。
 - 平台：本地 Linux 已验证基线生成与可重复性；Windows/macOS 工具链以 CI
