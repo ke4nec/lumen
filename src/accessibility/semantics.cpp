@@ -59,15 +59,32 @@ std::uint32_t defaultActionsFor(const RenderNode& node) {
     }
 }
 
+bool intersectsAll(const core::Rect& bounds,
+                   const std::vector<core::Rect>& viewports) {
+    for (const auto& viewport : viewports) {
+        if (!bounds.intersects(viewport)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // 递归收集；bounds 以根坐标累积。
 void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
-                  const SemanticsBuildOptions& options, SemanticsTree& tree) {
+                  const SemanticsBuildOptions& options,
+                  const std::vector<core::Rect>& clipViewports,
+                  SemanticsTree& tree) {
     const core::Offset origin = absolute + node.offset;
     SemanticsNode semantic;
     semantic.id = node.identity;
     semantic.role = defaultRoleFor(node, isRoot);
     semantic.bounds = core::Rect{origin, node.size};
     semantic.actions = defaultActionsFor(node) | node.semanticsActions;
+    // 滚动视口外（与任一裁剪视口不相交）→ 隐藏。
+    if (!clipViewports.empty() &&
+        !intersectsAll(semantic.bounds, clipViewports)) {
+        semantic.flags |= kSemanticsHidden;
+    }
 
     // 默认 label/value。
     switch (node.type) {
@@ -88,6 +105,10 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
                 semantic.flags |= kSemanticsChecked;
             }
             break;
+        case WidgetType::Image:
+            // M5：可访问名称保留（覆盖 → 资源路径）。
+            semantic.label = node.imageSource;
+            break;
         case WidgetType::TextField:
             semantic.label = node.placeholder.empty() ? node.bind
                                                       : node.placeholder;
@@ -97,6 +118,10 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
             }
             if (node.readOnly) {
                 semantic.flags &= ~kSemanticsEnabled;
+            }
+            // M5：校验失败状态与视觉/hit/键盘一致暴露。
+            if (node.invalid) {
+                semantic.flags |= kSemanticsInvalid;
             }
             break;
         default:
@@ -137,8 +162,13 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
         tree.rootId = semantic.id;
     }
     tree.nodes.emplace(semantic.id, std::move(semantic));
+    // 裁剪视口传播：clipContent（滚动视口）节点的盒子加入子树裁剪栈。
+    std::vector<core::Rect> childViewports = clipViewports;
+    if (node.clipContent) {
+        childViewports.push_back(core::Rect{origin, node.size});
+    }
     for (const auto& child : node.children) {
-        collectNodes(child, origin, false, options, tree);
+        collectNodes(child, origin, false, options, childViewports, tree);
     }
 }
 
@@ -233,7 +263,7 @@ const SemanticsNode* SemanticsTree::find(const std::string& id) const {
 SemanticsTree buildSemanticsTree(const core::RenderNode& root,
                                  const SemanticsBuildOptions& options) {
     SemanticsTree tree;
-    collectNodes(root, core::Offset{}, true, options, tree);
+    collectNodes(root, core::Offset{}, true, options, {}, tree);
     return tree;
 }
 
@@ -271,7 +301,7 @@ SemanticsActionStatus performSemanticsAction(
     if (node == nullptr) {
         return SemanticsActionStatus::NodeMissing;
     }
-    if ((node->actions & action) == 0) {
+    if ((node->actions & action) != action) {
         return SemanticsActionStatus::NotHandled;
     }
     // disabled 控件不响应语义 action（visual-system §10.3）；Scroll 与

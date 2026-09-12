@@ -120,6 +120,11 @@ class InteractionController {
     // 编辑焦点（光标置末尾），其他节点只设置 FocusManager 焦点。
     void focusNode(const RenderNode& node);
 
+    // M5：焦点恢复（路由 pop/页面切换）：把焦点给 subtree 内第一个
+    // 可聚焦节点（enabled 的字段/按钮/开关；遍历顺序与 Tab 一致）。
+    // 无可聚焦节点时清除焦点。返回是否建立了焦点。
+    bool focusFirstFocusable(const RenderNode& subtree);
+
     // Checkbox/Switch 状态切换（bind 值 "true"/"false"）；点击、Enter/
     // Space 与语义 activate 共用。
     void toggleChecked(const RenderNode& node);

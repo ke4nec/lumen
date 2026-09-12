@@ -944,6 +944,45 @@ void InteractionController::setEditingValue(
     commitValue(value, text::EditKind::Other);
 }
 
+bool InteractionController::focusFirstFocusable(
+    const RenderNode& subtree) {
+    // 与 traverseFocus 相同的候选规则（enabled 的字段/可激活控件），
+    // 深度优先顺序即 Tab 顺序；disabled 不建立焦点。
+    std::function<const RenderNode*(const RenderNode&)> first =
+        [&](const RenderNode& node) -> const RenderNode* {
+        const bool editable =
+            node.type == WidgetType::TextField && !node.bind.empty() &&
+            node.enabled;
+        const bool activatable =
+            node.enabled &&
+            ((node.type == WidgetType::Button && !node.onClick.empty()) ||
+             ((node.type == WidgetType::Checkbox ||
+               node.type == WidgetType::Switch) &&
+              !node.bind.empty()));
+        if (editable || activatable) {
+            return &node;
+        }
+        for (const auto& child : node.children) {
+            if (const RenderNode* found = first(child)) {
+                return found;
+            }
+        }
+        return nullptr;
+    };
+    const RenderNode* target = first(subtree);
+    if (target == nullptr) {
+        focus_.clearFocus();
+        focusedBind_.clear();
+        selection_ = {};
+        composingActive_ = false;
+        composing_ = {};
+        composition_.clear();
+        return false;
+    }
+    focusNode(*target);
+    return true;
+}
+
 void InteractionController::focusNode(const RenderNode& node) {
     // disabled 节点不建立焦点（键盘/语义 activate 与 focus 共用路径）。
     if (!node.enabled) {

@@ -715,3 +715,127 @@ TEST_CASE("settings_services_page_actions_and_diagnostics", "[settings][m4]") {
     CHECK(app.navigator().current() == "home");
     CHECK_FALSE(app.dialogOpen());
 }
+
+// M5：语义契约与键盘可用性收口（Recording bridge 作回归证据）。
+
+TEST_CASE("settings_semantics_bridge_records_full_contract", "[settings][m5]") {
+    using lumen::accessibility::RecordingAccessibilityBridge;
+    using lumen::accessibility::SemanticsActionStatus;
+    using lumen::accessibility::kActionActivate;
+    using lumen::accessibility::kActionDismiss;
+    using lumen::accessibility::kActionScroll;
+    using lumen::accessibility::kSemanticsInvalid;
+    using lumen::accessibility::SemanticsRole;
+
+    SettingsApp app;
+    app.setView(core::Size{800.0F, 600.0F});
+    RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+
+    // 首帧：全量推送（added = 全部节点）。
+    (void)app.renderFrame();
+    REQUIRE(bridge.updates.size() >= 1);
+    CHECK(bridge.updates.front().diff.added.size() ==
+          bridge.updates.front().treeSize);
+
+    const auto click = [&app](const char* key) {
+        const auto* node = core::findNodeByKey(app.root(), key);
+        REQUIRE(node != nullptr);
+        const auto pos = core::absoluteOffset(app.root(), key) +
+                         core::Offset{node->size.width * 0.5F,
+                                      node->size.height * 0.5F};
+        app.pointerDown(pos);
+        app.pointerUp(pos);
+    };
+    // 键盘路径与语义 action 触发同一 handler：语义 Activate goto-form。
+    const std::string gotoId = core::findNodeByKey(app.root(),
+                                                   "goto-form-button")
+                                   ->identity;
+    const auto status = app.shell().performAccessibilityAction(
+        gotoId, kActionActivate);
+    CHECK(status == SemanticsActionStatus::Handled);
+    (void)app.renderFrame();
+    REQUIRE(app.navigator().current() == "form");
+    REQUIRE_FALSE(bridge.actions.empty());
+    CHECK(bridge.actions.back().nodeId == gotoId);
+    CHECK(bridge.actions.back().status == SemanticsActionStatus::Handled);
+
+    // 表单错误 → invalid flag 进入语义 diff（changed 含 nickname-field）。
+    click("save-button");
+    (void)app.renderFrame();
+    REQUIRE(app.form().errors().count("nickname") == 1);
+    const auto invalidId =
+        core::findNodeByKey(app.root(), "nickname-field")->identity;
+    bool sawInvalid = false;
+    for (const auto& update : bridge.updates) {
+        for (const auto& changed : update.diff.changed) {
+            if (changed == invalidId) {
+                sawInvalid = true;
+            }
+        }
+    }
+    CHECK(sawInvalid);
+    // 树上 flag 已暴露。
+    const auto semantics = app.semantics();
+    const auto* fieldNode = semantics.find(invalidId);
+    REQUIRE(fieldNode != nullptr);
+    CHECK((fieldNode->flags & kSemanticsInvalid) != 0);
+
+    // 填写并保存 → 弹窗：barrier 语义（Dialog role + Dismiss action）。
+    click("nickname-field");
+    app.textInput("Lumen");
+    click("email-field");
+    app.textInput("dev@lumen.local");
+    click("save-button");
+    (void)app.renderFrame();
+    REQUIRE(app.dialogOpen());
+    const std::string barrierId = [ &app ] {
+        // barrier 是 keyless 的 dialog 根（semanticsRole=dialog）。
+        const auto tree = app.semantics();
+        for (const auto& [id, node] : tree.nodes) {
+            if (node.role == SemanticsRole::Dialog) {
+                return id;
+            }
+        }
+        return std::string{};
+    }();
+    REQUIRE_FALSE(barrierId.empty());
+    {
+        const auto tree = app.semantics();
+        const auto* barrier = tree.find(barrierId);
+        REQUIRE(barrier != nullptr);
+        CHECK((barrier->actions & kActionDismiss) != 0);
+    }
+
+    // 语义 Dismiss ≡ 点击/Escape 关闭（同一 handler 路径）+ 焦点恢复。
+    const auto dismissStatus = app.shell().performAccessibilityAction(
+        barrierId, kActionDismiss);
+    CHECK(dismissStatus == SemanticsActionStatus::Handled);
+    (void)app.renderFrame();
+    CHECK_FALSE(app.dialogOpen());
+    CHECK_FALSE(bridge.actions.empty());
+    // modal 焦点恢复：dialog-close 焦点已随树消失，恢复到路由内首个
+    // 可聚焦节点（form 页的 nickname-field）。
+    CHECK(app.shell().focus().focusedIdentity() ==
+          core::findNodeByKey(app.root(), "nickname-field")->identity);
+
+    // Navigator back（Escape）→ 焦点恢复（M5：pop 后首个可聚焦节点）。
+    const std::size_t focusedBefore = bridge.focusedNodes.size();
+    app.keyDown(core::Key::Escape);
+    (void)app.renderFrame();
+    CHECK(app.navigator().current() == "home");
+    CHECK(bridge.focusedNodes.size() > focusedBefore);
+    // 恢复焦点为 home 首个可聚焦节点（goto-form-button）。
+    CHECK(app.shell().focus().focusedIdentity() ==
+          core::findNodeByKey(app.root(), "goto-form-button")->identity);
+
+    // 语义滚动命中目标视口中心，确保非原点视口也实际滚动。
+    const std::string listId =
+        core::findNodeByKey(app.root(), "settings-list")->identity;
+    const float beforeScroll = app.scroll().offset();
+    CHECK(app.shell().performAccessibilityAction(listId, kActionScroll, {},
+                                                 100.0F) ==
+          SemanticsActionStatus::Handled);
+    (void)app.renderFrame();
+    CHECK(app.scroll().offset() > beforeScroll);
+}

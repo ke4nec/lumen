@@ -60,6 +60,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M2 | 已完成应用框架层与 C++ DSL | `lumen-app`（AppShell/runApp）、counter/settings 迁移、C++ builder 补齐（见 §10 M2 完成记录） |
 | 自用 M3 | 已完成布局/Grid/VirtualList/Image | Grid/Image/VirtualList 组件、VirtualListController、virtual-list 基准场景（见 §10 M3 完成记录） |
 | 自用 M4 | 已完成三桌面平台服务与窗口能力 | 文件选择/OpenURL/通知/光标/图标契约与 SDL/Fake 实现、能力统一报告、settings 服务区（见 §10 M4 完成记录） |
+| 自用 M5 | 已完成语义契约与键盘可用性收口 | invalid/hidden flags、语义桥驱动、focusFirstFocusable 焦点恢复、Recording bridge 回归证据（见 §10 M5 完成记录） |
 
 当前验证基线：Windows CPU Debug 303/303，Skia Release 314/314，SDL-free mobile-core 291/291。`817ad43` 后 Windows 的 CPU/Skia/GPU 三个 job、Linux 的 CPU/Skia/GPU/mobile-core 四个 job、macOS 的 CPU/mobile-core 两个 job 均已纳入 CI；真实 macOS GPU 仍待 M7 纳入门槛。最新基线提交为 `817ad43 fix(platform): 对齐跨平台能力与验证契约`。
 
@@ -78,7 +79,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 惯性滚动、横向网格后续版本 | M3 已收口 |
 | 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | 惯性滚动后续版本 | M3 已收口 |
 | 平台服务 | M4 已完成：ApplicationHost 增加文件选择（异步→FileDialogCompleted 事件）/OpenURL/通知/光标形状/窗口图标契约；PlatformCapabilities 统一报告外观（dark/accent/fontScale）与服务可用性；SDL 实现与 Fake host 记录/失败注入 | 通知在 SDL 3.2.10 无 API：能力关闭+结构化降级（真实通知待 SDL 升级或原生后端） | M4 已收口 |
-| 无障碍 | 语义树和 Recording bridge 已有，UIA/AT-SPI/NSAccessibility provider 未实现 | 第一版可做结构验收，无法直接被桌面读屏器消费 | M5 先收口，后续版本再做原生 provider |
+| 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| UIA/AT-SPI/NSAccessibility 原生 provider 属后续版本（Recording bridge 作跨平台回归证据） | M5 已收口 |
 | 视觉 V3 | IconId、Elevation、Motion token 已冻结，实际图标/阴影/转场/ThemeScope 未完成 | 复杂应用的视觉一致性和反馈不足 | M6 |
 | GPU | Skia Ganesh + OpenGL 已有，GPU `partialSubmit` 固定为 false，macOS GPU 不是当前门槛 | 三桌面发布能力不对称，局部 damage 在 GPU 上退化为全帧提交 | M7 |
 | 发布 | 有构建和 smoke，没有正式便携包流水线 | 用户无法脱离开发环境分发 | M8 |
@@ -707,6 +708,51 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
    （false/固定色），后续随 SDL 能力或平台原生后端接入。
   - 光标为进程级（SDL_SetCursor）；窗口级后端待 SDL 支持。
 - 回滚点：M3 合入后的提交（见 M3 完成记录）。
+
+### M5 完成记录（语义契约与键盘可用性收口）
+
+- 完成日期：2026-09-16
+- 提交号：（本变更提交，见 Git 历史 `feat(a11y)`）
+- 变更：
+  - 语义契约固化：`kSemanticsInvalid` flag（TextField 校验失败与视觉/
+    hit/键盘一致暴露）；`kSemanticsHidden` 实际生效——滚动视口
+   （clipContent）裁剪栈传播，与任一视口不相交的子树标 Hidden（保留
+    在树中）；Image 可访问名兜底（覆盖 → imageSource）；Grid 归组
+    （Group，子序=阅读顺序）；VirtualList 物化项的缓存区（视口外）
+    项标 Hidden。
+  - `AccessibilityBridge::noteActionPerformed`（默认 no-op）+
+    RecordingAccessibilityBridge::ActionRecord（nodeId/action/status）。
+  - `app::AppShell` 语义桥驱动：`setAccessibilityBridge`（下一次绘制
+    末尾全量推送）、每帧绘制末尾 `pushSemantics`（构建 → identity diff →
+    updateTree → 焦点变化 setFocusedNode；仅注册时执行）；
+    `performAccessibilityAction`（与键盘同路径分发 + 结果回执；滚动经
+    控制器 wheelSink 的语义/键盘回退视口路径）。
+  - `InteractionController::focusFirstFocusable`：路由 pop/页面切换
+    后的焦点恢复（候选规则与 Tab 遍历一致；disabled 不建立焦点；无
+    候选清焦点）。
+  - settings：Escape 返回与 back 按钮、Dialog 关闭（closeDialog）统一
+    置焦点恢复请求（onRebuilt 落地——新树首个可聚焦节点）。
+- 测试：
+  - 新增 7 用例：invalid flag 与视觉状态一致（invalid 仍可交互）、
+    滚动视口外子树 Hidden、Image label 兜底/role、Grid 顺序、
+    VirtualList 缓存项 Hidden + List role/scroll action、
+    focusFirstFocusable 恢复 Tab 顺序、settings RecordingBridge 全契约
+   （首帧全量 added、语义 Activate ≡ 键盘同 handler、表单错误 invalid
+    进 diff 与树、dialog barrier role+Dismiss、语义 Dismiss 关闭 +
+    modal 焦点恢复、Navigator back + Escape 焦点恢复 + bridge
+    setFocusedNode 序列）。
+  - 本地 Linux：CPU Debug 362/362、Skia Release 368/368、GPU Release
+    375/375、mobile-core Debug 344/344；窗口 smoke 与 M0 基准
+    `frame_hash=d28e364efe1b4aca` 保持。
+- 平台：本地 Linux 全部验证；Windows/macOS 以 CI 为事实来源。
+- 已知限制：
+  - UIA/AT-SPI/NSAccessibility 原生 provider 未实现（工厂继续返回
+    nullptr + 诊断；第一版便携发布不阻塞，后续版本）。
+  - 语义滚动 sink 恒返回 true（wheelSink 消费状态未回传；
+    InteractionController::wheel 无返回值——后续版本补）。
+  - pushSemantics 与绘制同步（cache-hit 帧不推送；焦点/树变化必然
+    触发重绘，语义与像素一致）。
+- 回滚点：`68f5f14 feat(platform): 完善平台服务与文件对话框`（M5 前）。
 
 ### M1–M9 完成记录（待实施，占位）
 - M5 语义与键盘可用性：未开始（出口：语义/键盘/视觉/交互无分叉；

@@ -85,6 +85,86 @@ void AppShell::setRenderer(render::Renderer* renderer) {
     fullRepaintPending_ = true;
 }
 
+void AppShell::setAccessibilityBridge(
+    accessibility::AccessibilityBridge* bridge) {
+    accessibilityBridge_ = bridge;
+    lastSemantics_.reset();
+    lastSemanticFocus_.clear();
+    semanticsNeedsPush_ = bridge != nullptr;
+    // 延迟到下一次绘制后推送，确保首帧语义树已经完成布局。
+}
+
+accessibility::SemanticsActionStatus AppShell::performAccessibilityAction(
+    const std::string& nodeId, std::uint32_t action, const std::string& value,
+    float scrollDeltaY) {
+    if (!lastSemantics_.has_value()) {
+        pushSemantics();
+    }
+    if (!lastSemantics_.has_value()) {
+        return accessibility::SemanticsActionStatus::NodeMissing;
+    }
+    accessibility::SemanticsActionContext context;
+    context.root = &root_;
+    context.handlers = &handlers_;
+    context.focus = &focus_;
+    context.controller = &controller_;
+    // 滚动 sink：经控制器已注册的 wheelSink（虚拟列表/ScrollView 同
+    // 源；hit 为空 = 键盘/语义触发的回退视口路径）。
+    context.scrollSink = [this](const std::string& nodeId, float deltaX,
+                                float deltaY) {
+        if (!config_.onWheel) {
+            return false;
+        }
+        core::Offset origin{};
+        const core::RenderNode* viewport =
+            findByIdentity(root_, nodeId, origin);
+        if (viewport == nullptr ||
+            !core::isScrollableWidget(viewport->type)) {
+            return false;
+        }
+        const core::Offset center =
+            origin + core::Offset{viewport->size.width * 0.5F,
+                                  viewport->size.height * 0.5F};
+        return config_.onWheel(root_, viewport, center,
+                               core::Offset{deltaX, deltaY});
+    };
+    const auto status = accessibility::performSemanticsAction(
+        *lastSemantics_, context, nodeId, action, value, scrollDeltaY);
+    if (accessibilityBridge_ != nullptr) {
+        accessibilityBridge_->noteActionPerformed(nodeId, action, status);
+    }
+    return status;
+}
+
+void AppShell::pushSemantics() {
+    if (accessibilityBridge_ == nullptr) {
+        return;
+    }
+    accessibility::SemanticsBuildOptions options;
+    options.focus = &focus_;
+    accessibility::SemanticsTree tree =
+        accessibility::buildSemanticsTree(root_, options);
+    const std::string focusedId = focus_.focusedIdentity();
+    accessibility::SemanticsDiff diff;
+    if (lastSemantics_.has_value()) {
+        diff = accessibility::diffSemanticsTrees(*lastSemantics_, tree,
+                                                 lastSemanticFocus_,
+                                                 focusedId);
+    } else {
+        // 首帧：全部为新增。
+        for (const auto& [id, node] : tree.nodes) {
+            diff.added.push_back(id);
+        }
+    }
+    accessibilityBridge_->updateTree(tree, diff, focusedId);
+    if (focusedId != lastSemanticFocus_) {
+        accessibilityBridge_->setFocusedNode(focusedId);
+    }
+    lastSemantics_ = std::move(tree);
+    lastSemanticFocus_ = focusedId;
+    semanticsNeedsPush_ = false;
+}
+
 void AppShell::setFontManager(std::shared_ptr<const text::FontManager> fonts) {
     textFonts_ = std::move(fonts);
     controller_.setTextFonts(textFonts_ ? textFonts_.get() : nullptr);
@@ -240,6 +320,9 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
                            !framePainted_ || rebuiltThisFrame_ ||
                            optionsChanged;
     if (!needPaint) {
+        if (semanticsNeedsPush_) {
+            pushSemantics();
+        }
         // 绘制缓存命中：无可见变化，跳过提交并返回上一哈希（仅内部
         // CPU 后端的哈希有意义；外部后端恒返回 0，避免泄漏切换前的
         // CPU 帧哈希）。
@@ -303,6 +386,8 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
     pendingDamage_.clear();
     // 新绘制让屏幕与树重新一致：全量回退后 damage 跟踪也重新武装。
     treeDamageValid_ = true;
+    // M5：绘制落地后推送语义（仅注册了桥时构建；diff 含焦点变化）。
+    pushSemantics();
     if (externalRenderer_ == nullptr) {
         lastFrameHash_ = render::frameHash(cpuRenderer_.pixels());
         return lastFrameHash_;

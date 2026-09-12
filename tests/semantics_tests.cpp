@@ -457,3 +457,177 @@ TEST_CASE("semantics_checked_visual_and_flags_stay_in_sync", "[semantics]") {
     REQUIRE(semantic != nullptr);
     CHECK((semantic->flags & kSemanticsChecked) != 0);
 }
+
+// --- M5：语义契约收口 ---
+
+TEST_CASE("semantics_invalid_flag_exposed_with_visual_state", "[a11y][m5]") {
+    Widget field = makeTextField("email");
+    field.key = "email";
+    field.invalid = true;
+    Widget page;
+    page.key = "root";
+    page.children = {std::move(field)};
+
+    const RenderNode root = layoutOf(page);
+    const auto tree = buildSemanticsTree(root);
+    const auto* node = tree.find(findNodeByKey(root, "email")->identity);
+    REQUIRE(node != nullptr);
+    CHECK((node->flags & kSemanticsInvalid) != 0);
+    CHECK((node->flags & kSemanticsEnabled) != 0);  // invalid 仍可交互。
+}
+
+TEST_CASE("semantics_hidden_flags_nodes_outside_scroll_viewport", "[a11y][m5]") {
+    // 长列表滚到中部：视口外的项标 Hidden（仍在树中）。
+    std::vector<Widget> items;
+    for (int i = 0; i < 20; ++i) {
+        Widget item = makeText("row");
+        item.key = "row-" + std::to_string(i);
+        item.height = 40.0F;
+        items.push_back(std::move(item));
+    }
+    Widget column = makeColumn(std::move(items));
+    Widget scroll = makeScrollView(std::move(column), "scroll", std::nullopt,
+                                   200.0F);
+    scroll.scrollOffset = 400.0F;  // 滚到中部：row-0..9 在视口上方。
+    Widget page;
+    page.key = "root";
+    page.children = {std::move(scroll)};
+
+    const RenderNode root = layoutOf(page);
+    const auto tree = buildSemanticsTree(root);
+    const std::string top =
+        findNodeByKey(root, "row-0")->identity;
+    const std::string visible =
+        findNodeByKey(root, "row-12")->identity;
+    const auto* hiddenNode = tree.find(top);
+    const auto* visibleNode = tree.find(visible);
+    REQUIRE(hiddenNode != nullptr);
+    REQUIRE(visibleNode != nullptr);
+    CHECK((hiddenNode->flags & kSemanticsHidden) != 0);
+    CHECK((visibleNode->flags & kSemanticsHidden) == 0);
+}
+
+TEST_CASE("semantics_image_label_falls_back_to_source", "[a11y][m5]") {
+    Widget image = makeImage(0, "asset://cover.png", 120.0F, 80.0F, "cover");
+    Widget page;
+    page.key = "root";
+    page.children = {std::move(image)};
+    const RenderNode root = layoutOf(page);
+    const auto tree = buildSemanticsTree(root);
+    const auto* node = tree.find(findNodeByKey(root, "cover")->identity);
+    REQUIRE(node != nullptr);
+    CHECK(node->role == SemanticsRole::Image);
+    CHECK(node->label == "asset://cover.png");  // 可访问名称保留。
+}
+
+TEST_CASE("semantics_grid_groups_children_in_reading_order", "[a11y][m5]") {
+    std::vector<Widget> cells;
+    for (int i = 0; i < 6; ++i) {
+        cells.push_back(withKey(makeText("c"), "cell-" + std::to_string(i)));
+    }
+    Widget grid = makeGrid(std::move(cells), 3, 0.0F, 4.0F, 4.0F, "grid");
+    Widget page;
+    page.key = "root";
+    page.children = {std::move(grid)};
+    const RenderNode root = layoutOf(page);
+    const auto tree = buildSemanticsTree(root);
+    const auto* node = tree.find(findNodeByKey(root, "grid")->identity);
+    REQUIRE(node != nullptr);
+    CHECK(node->role == SemanticsRole::Group);
+    REQUIRE(node->children.size() == 6);
+    // 子顺序 = 阅读顺序（布局后的树序）。
+    CHECK(node->children[0] == findNodeByKey(root, "cell-0")->identity);
+    CHECK(node->children[5] == findNodeByKey(root, "cell-5")->identity);
+}
+
+TEST_CASE("virtual_list_cache_items_are_hidden_in_semantics", "[a11y][m5]") {
+    // M3 测试内 ListSource：可见区含缓存；缓存区（视口外）物化项标 Hidden。
+    struct FixedSource final : VirtualListSource {
+        std::size_t count{100};
+        float offset{0.0F};
+        float viewport{200.0F};
+        float itemExtent{40.0F};
+        mutable std::vector<std::size_t> built{};
+        [[nodiscard]] std::size_t itemCount() const override { return count; }
+        [[nodiscard]] float estimatedExtent() const override {
+            return itemExtent;
+        }
+        [[nodiscard]] float extentOf(std::size_t) const override {
+            return itemExtent;
+        }
+        [[nodiscard]] float scrollOffset() const override { return offset; }
+        [[nodiscard]] float totalExtent() const override {
+            return static_cast<float>(count) * itemExtent;
+        }
+        [[nodiscard]] float offsetOfIndex(std::size_t i) const override {
+            return static_cast<float>(i) * itemExtent;
+        }
+        [[nodiscard]] std::pair<std::size_t, std::size_t> visibleRange(
+            float viewportExtent, float cache) const override {
+            const float top = std::max(0.0F, offset - cache);
+            const float bottom = offset + viewportExtent + cache;
+            return {static_cast<std::size_t>(top / itemExtent),
+                    static_cast<std::size_t>(bottom / itemExtent) + 1};
+        }
+        [[nodiscard]] Widget buildItem(std::size_t i) const override {
+            built.push_back(i);
+            Widget item = makeText("item");
+            item.key = "item-" + std::to_string(i);
+            item.height = itemExtent;
+            return item;
+        }
+        void noteExtent(std::size_t, float) const override {}
+    };
+    FixedSource source;
+    source.offset = 400.0F;  // 首个可见项 index 10。
+
+    Widget list = makeVirtualList(&source, "list", std::nullopt, 200.0F,
+                                  40.0F /* 缓存 = 1 项 */);
+    Widget page;
+    page.key = "root";
+    page.children = {std::move(list)};
+    const RenderNode root = layoutOf(page);
+    const auto tree = buildSemanticsTree(root);
+    const auto* listNode = tree.find(findNodeByKey(root, "list")->identity);
+    REQUIRE(listNode != nullptr);
+    CHECK(listNode->role == SemanticsRole::List);
+    CHECK((listNode->actions & kActionScroll) != 0);
+    // 缓存区项（item-9，视口上方）标 Hidden；首个可见项不标。
+    const auto* cached = tree.find(findNodeByKey(root, "item-9")->identity);
+    const auto* visible = tree.find(findNodeByKey(root, "item-10")->identity);
+    REQUIRE(cached != nullptr);
+    REQUIRE(visible != nullptr);
+    CHECK((cached->flags & kSemanticsHidden) != 0);
+    CHECK((visible->flags & kSemanticsHidden) == 0);
+}
+
+TEST_CASE("focus_first_focusable_restores_focus_in_tab_order", "[a11y][m5]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    store.set("a", "");
+    handlers["go"] = [] {};
+
+    Widget field = makeTextField();
+    field.bind = "a";
+    field.key = "field";
+    Widget button = makeButton("Go");
+    button.onClick = "go";
+    button.key = "go";
+    Widget page = makeColumn({
+        withKey(makeText("标题"), "title"),
+        std::move(field),
+        std::move(button),
+    });
+    page.key = "root";
+    const RenderNode root = layoutOf(page);
+
+    // 焦点在按钮上 → 恢复到首个可聚焦节点（field）。
+    const RenderNode* go = findNodeByKey(root, "go");
+    controller.focusNode(*go);
+    CHECK(focus.focusedKey() == "go");
+    CHECK(controller.focusFirstFocusable(root));
+    CHECK(focus.focusedKey() == "field");
+    CHECK(controller.wantsTextInput());
+}

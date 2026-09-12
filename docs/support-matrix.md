@@ -66,7 +66,7 @@ accessibility tree、Metal/Graphite。
 | 编辑撤销 | `text::EditingHistory` + `InteractionController`（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y；连续单字输入/删除合并，IME 提交为单事务，preedit 不进栈） | 只读字段与 preedit 期间拒绝撤销；栈按字段 bind 隔离，容量 100 |
 | 应用壳 | `lumen-app`（`app::AppShell` 帧管线 + `app::runApp` 主循环；M2） | 示例只保留 build/状态/handler；支持 Fake host 与外部测试 renderer 注入；GPU 失效经回退钩子重建软件窗口回到 CPU |
 | 剪贴板 | `platform::Clipboard` / `core::ClipboardProvider` | runApp 启动时接入宿主剪贴板（Ctrl+C/V；宿主不可用保持未注入）；`setText` 失败返回 false，编辑状态不丢 |
-| 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥） | 当前只提供平台无关契约与 Recording 桥；平台原生 provider 尚未实现，工厂返回 nullptr 并给出原因 |
+| 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥 + AppShell 每帧 identity diff/焦点/action 回执驱动，M5 收口） | 平台原生 provider（UIA/AT-SPI/NSAccessibility）未实现：工厂返回 nullptr 并给出原因；Recording 桥作跨平台回归证据 |
 | 可访问性设置 | `PlatformCapabilities`（只读查询） | 高对比/减少动画/字体缩放由 `Theme::fromSettings` 与 `FrameScheduler::setReduceAnimation` 消费 |
 
 ## 已知限制（v0.3，映射到自用路线图里程碑）

@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "lumen/accessibility/bridge.h"
+#include "lumen/accessibility/semantics.h"
 #include "lumen/core/damage.h"
 #include "lumen/core/element.h"
 #include "lumen/core/geometry.h"
@@ -133,6 +134,17 @@ class AppShell {
     // M1：正式字体事实注入（布局/绘制/命中测试/IME 查询共享）。
     void setFontManager(std::shared_ptr<const text::FontManager> fonts);
 
+    // --- M5：语义桥（可观测回归证据） ---
+    // 注册后在下一次绘制末尾构建语义树并推送 identity diff + 焦点变化
+    //（RecordingAccessibilityBridge 可作跨平台回归断言）；nullptr 注销。
+    void setAccessibilityBridge(accessibility::AccessibilityBridge* bridge);
+    // 语义 action 分发（与键盘同路径）+ 结果回执到桥。
+    [[nodiscard]] accessibility::SemanticsActionStatus
+    performAccessibilityAction(const std::string& nodeId,
+                                std::uint32_t action,
+                                const std::string& value = {},
+                                float scrollDeltaY = 0.0F);
+
     // --- 事件分发（runApp 调用；headless 测试可直接驱动） ---
     void pointerDown(core::Offset position);
     void pointerMove(core::Offset position);
@@ -196,6 +208,8 @@ class AppShell {
     void addNodeRect(std::vector<core::Rect>& damage,
                      const std::string& identity, const std::string& key);
     void syncSubscriptions(const std::set<std::string>& keys);
+    // M5：绘制后语义推送（树构建 + diff + 焦点；仅注册了桥时执行）。
+    void pushSemantics();
 
     ShellConfig config_{};
     core::StateStore state_{};
@@ -240,6 +254,11 @@ class AppShell {
     std::uint64_t lastTickMs_{0};
     render::CpuRenderer cpuRenderer_{1.0F};
     render::Renderer* externalRenderer_{nullptr};
+    // M5：语义桥（外部拥有）与上次推送树/焦点。
+    accessibility::AccessibilityBridge* accessibilityBridge_{nullptr};
+    std::optional<accessibility::SemanticsTree> lastSemantics_{};
+    std::string lastSemanticFocus_{};
+    bool semanticsNeedsPush_{false};
     bool dirty_{true};
 };
 

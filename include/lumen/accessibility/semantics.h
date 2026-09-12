@@ -44,6 +44,8 @@ enum SemanticsFlags : std::uint32_t {
     kSemanticsSelected = 1U << 2,
     kSemanticsChecked = 1U << 3,
     kSemanticsHidden = 1U << 4,
+    // M5：校验失败状态（与视觉 invalid/hit/键盘一致暴露）。
+    kSemanticsInvalid = 1U << 5,
 };
 
 enum SemanticsActions : std::uint32_t {

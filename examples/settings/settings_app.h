@@ -391,6 +391,8 @@ class SettingsApp {
                     self->closeDialog();
                 } else {
                     shell.markDirty();
+                    // M5：路由返回统一走焦点恢复（与 back 按钮同规则）。
+                    self->focusRestorePending_ = true;
                 }
                 return true;
             }
@@ -426,6 +428,12 @@ class SettingsApp {
                 if (close != nullptr) {
                     shell.controller().focusNode(*close);
                 }
+            }
+            // M5：路由返回后焦点恢复（新路由树首个可聚焦节点，与 Tab
+            // 顺序一致；plan §3.4 pop 后重新聚焦）。
+            if (self->focusRestorePending_) {
+                self->focusRestorePending_ = false;
+                shell.controller().focusFirstFocusable(shell.root());
             }
         };
         return config;
@@ -482,6 +490,9 @@ class SettingsApp {
         handlers["back"] = [this] {
             navigator_.pop();
             shell_.markDirty();
+            // M5：路由返回后焦点恢复（重建后首帧执行见 onRebuilt 之外
+            // 的即时路径——pop 后树未重建，先记请求）。
+            focusRestorePending_ = true;
         };
         handlers["save"] = [this] {
             if (form_.validate(shell_.state())) {
@@ -554,6 +565,9 @@ class SettingsApp {
         dialogOpen_ = false;
         shell_.markDirty();
         shell_.requestFullRepaint();
+        // M5：modal 焦点恢复——弹窗关闭后原 dialog-close 焦点已随树
+        // 消失，恢复到路由内首个可聚焦节点（与 Tab 顺序一致）。
+        focusRestorePending_ = true;
     }
 
     // 服务调用统一包装：不可用/失败 → 可读诊断（picked-file 位置展示）。
@@ -617,6 +631,8 @@ class SettingsApp {
     widgets::NavigatorController navigator_{"home"};
     bool darkMode_{true};
     bool dialogOpen_{false};
+    // M5：路由切换后的焦点恢复请求。
+    bool focusRestorePending_{false};
     // M3：千项库列表（可变缓存供布局期 noteExtent 回填）。
     mutable core::VirtualListController library_{};
     // M4：平台服务动作（main 注入）与最近结果展示。

@@ -40,6 +40,15 @@ class AccessibilityBridge {
                             const std::string& focusedId) = 0;
     // 辅助技术焦点跟踪。
     virtual void setFocusedNode(const std::string& id) = 0;
+
+    // M5：语义 action 结果记录（应用壳分发后回执；默认 no-op）。
+    virtual void noteActionPerformed(const std::string& nodeId,
+                                     std::uint32_t action,
+                                     SemanticsActionStatus status) {
+        (void)nodeId;
+        (void)action;
+        (void)status;
+    }
 };
 
 // headless/测试桥：记录 updateTree/setFocusedNode 事件序列，断言桥接
@@ -70,6 +79,19 @@ class RecordingAccessibilityBridge final : public AccessibilityBridge {
 
     std::vector<UpdateRecord> updates{};
     std::vector<std::string> focusedNodes{};
+
+    struct ActionRecord {
+        std::string nodeId{};
+        std::uint32_t action{0};
+        SemanticsActionStatus status{SemanticsActionStatus::NotHandled};
+        bool operator==(const ActionRecord&) const = default;
+    };
+    std::vector<ActionRecord> actions{};
+
+    void noteActionPerformed(const std::string& nodeId, std::uint32_t action,
+                             SemanticsActionStatus status) override {
+        actions.push_back(ActionRecord{nodeId, action, status});
+    }
 };
 
 // 平台桥接工厂（预留接口；当前仓库未包含桌面 provider，因此返回 nullptr
