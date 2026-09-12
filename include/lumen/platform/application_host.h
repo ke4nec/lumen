@@ -29,6 +29,10 @@ struct WindowDesc {
     bool highPixelDensity{true};
     // OpenGL 窗口供 GPU 适配创建上下文（v0.2 阶段7C）。
     bool opengl{false};
+    // 原生软件呈现表面（无 GPU/SDL renderer）：GPU 回退窗口用，避免
+    // 回退路径依赖渲染器重建（M2：counter_software_present_failure
+    // 奇偶性依赖 SDL_UpdateWindowSurface 路径）。
+    bool softwarePresentation{false};
 };
 
 // 剪贴板服务（实现 core::ClipboardProvider，交互层直接消费）。不可用
@@ -93,6 +97,13 @@ class ApplicationHost {
     // 归一化事件出队；队列空返回 false。多窗口事件按 WindowId 区分，
     // 事件先归一化再进入交互/焦点/状态/重绘流程（plan §2.3 不变量）。
     virtual bool pollEvent(core::HostEvent& out) = 0;
+
+    // 空闲等待：最多阻塞 timeoutMs 或直到新事件到达（事件泵唤醒）。
+    // 默认 no-op（Fake host/测试：立即返回，纯轮询）；SDL 宿主用
+    // SDL_WaitEventTimeout 实现。不得在该方法内分发事件。
+    virtual void waitForEvents(std::uint32_t timeoutMs) {
+        (void)timeoutMs;
+    }
 
     virtual std::optional<core::WindowId> createWindow(
         const WindowDesc& desc) = 0;

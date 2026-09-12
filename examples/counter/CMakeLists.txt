@@ -3,8 +3,10 @@ add_executable(lumen-counter main.cpp)
 target_compile_features(lumen-counter PRIVATE cxx_std_20)
 target_link_libraries(lumen-counter PRIVATE
     lumen-core
+    lumen-app
     lumen-layout
     lumen-render
+    lumen-text
     lumen-platform
     lumen-dsl
     SDL3::SDL3
@@ -16,6 +18,10 @@ endif()
 
 if(LUMEN_ENABLE_GPU)
   target_compile_definitions(lumen-counter PRIVATE LUMEN_HAVE_GPU=1)
+  # Skia 静态归档引用 GLX；显式尾置 GL 依赖保证链接行上 GL 位于
+  # Skia 归档之后（静态归档单遍解析）。
+  find_package(OpenGL REQUIRED)
+  target_link_libraries(lumen-counter PRIVATE OpenGL::GL)
   if(LUMEN_BUILD_TESTS)
     add_test(NAME counter_gpu_fallback
         COMMAND ${CMAKE_COMMAND}

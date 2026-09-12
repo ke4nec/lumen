@@ -24,6 +24,7 @@ bool sameNodeFields(const RenderNode& a, const RenderNode& b) {
            a.clipContent == b.clipContent &&
            a.scrollOffset == b.scrollOffset &&
            a.scrollExtent == b.scrollExtent && a.checked == b.checked &&
+           a.imageId == b.imageId && a.imageSource == b.imageSource &&
            a.enabled == b.enabled && a.invalid == b.invalid &&
            a.selected == b.selected;
 }

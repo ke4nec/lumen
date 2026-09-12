@@ -1,13 +1,11 @@
 // Counter sample (plan §7): interactive UI over the C++ declarative DSL or a
 // `.lumen` document, rendered with the CPU backend (default), the optional
 // Skia raster backend, or the Skia Ganesh GPU backend with automatic CPU
-// fallback (v0.2 阶段7C). The loop is driven by FrameScheduler (阶段7D):
-// idle windows stop submitting, input/animation/resize follow deadlines and
-// debounce, minimized windows pause. `--headless` runs the same pipeline
-// without a window and prints stable frame hashes (plan §9). `--watch`
-// (implies `--dsl`) reloads the document when its mtime changes (hot reload,
-// plan 阶段6). `--diagnostics` prints backend/device/DPI/frame stats and
-// fallback events (阶段7E).
+// fallback (v0.2 阶段7C)。
+//
+// M2（自用路线图）：窗口主循环收敛到 app::runApp ——本文件只保留应用
+// 装配：后端选择/GPU 探测与回退策略、Skia 字体注入、热重载轮询与
+// headless 冒烟脚本。`--headless` 输出稳定 frame hash（plan §9）。
 
 #include <algorithm>
 #include <charconv>
@@ -20,13 +18,12 @@
 #include <sstream>
 #include <string>
 
-#include <SDL3/SDL.h>
-
 #include "counter_app.h"
+#include "lumen/app/app_shell.h"
+#include "lumen/core/windowing.h"
 #include "lumen/dsl/text_dsl.h"
-#include "lumen/platform/sdl3_window.h"
-#include "lumen/render/frame_scheduler.h"
-#include "renderer_fallback.h"
+#include "lumen/platform/sdl3_host.h"
+#include "lumen/text/skia_font_manager.h"
 
 #ifdef LUMEN_HAVE_SKIA
 #include "lumen/render/skia_renderer.h"
@@ -37,7 +34,6 @@
 
 namespace {
 
-using lumen::core::Key;
 using lumen::core::Offset;
 using lumen::core::Widget;
 using lumen::examples::CounterApp;
@@ -146,7 +142,7 @@ class HotReloader {
     }
 
     // Returns true when the app root was swapped this poll.
-    bool poll(CounterApp& app) {
+    bool poll(lumen::app::AppShell& shell) {
         if (!refreshStamp()) {
             return false;
         }
@@ -157,11 +153,9 @@ class HotReloader {
                          parsed.error->format().c_str());
             return false;
         }
-        app.swapRoot(parsed.root);
+        shell.swapRoot(parsed.root);
         return true;
     }
-
-    [[nodiscard]] const lumen::dsl::DslCache& cache() const { return cache_; }
 
   private:
     [[nodiscard]] std::string readFile() const {
@@ -192,45 +186,27 @@ class HotReloader {
     lumen::dsl::DslCache cache_{};
 };
 
-// v0.2 运行时诊断（阶段7E, plan §7E）：启动输出后端/设备/DPI，运行中
-// 周期输出帧统计与回退事件。
-void printStartupDiagnostics(const lumen::render::RendererCapabilities& caps,
-                             const lumen::platform::PlatformWindow& window) {
-    const auto logical = window.logicalSize();
-    const auto drawable = window.drawableSize();
-    const float dpi = drawable.width / std::max(1.0F, logical.width);
-    std::printf("[diag] backend=%s gpu=%s partial=%s dpi=%.2f pixels=%.0fx%.0f\n",
-                caps.backendName, caps.gpu ? "yes" : "no",
-                caps.partialSubmit ? "yes" : "no", dpi, drawable.width,
-                drawable.height);
-}
+// M2：窗口主循环 = app::runApp + 应用装配（后端选择/GPU 回退/字体/
+// 热重载）。所有平台交互经 ApplicationHost，本文件无窗口 API。
+int runWindowed(CounterApp& app, const Options& options) {
+    lumen::platform::Sdl3ApplicationHost host;
 
-void printFrameDiagnostics(std::uint64_t frames, std::uint32_t partial,
-                           const lumen::render::RenderStats& stats,
-                           std::uint64_t skippedIdleTurns) {
-    std::printf("[diag] frames=%llu partial=%u idleTurns=%llu cmds=%llu "
-                "culled=%llu submitMs=%.2f gpuWaitMs=%.2f buildMs=%.2f "
-                "uploads=%llu%s%s\n",
-                static_cast<unsigned long long>(frames), partial,
-                static_cast<unsigned long long>(skippedIdleTurns),
-                static_cast<unsigned long long>(stats.commandCount),
-                static_cast<unsigned long long>(stats.culledCommands),
-                stats.submitMs, stats.gpuWaitMs, stats.cpuBuildMs,
-                static_cast<unsigned long long>(stats.uploads),
-                stats.fullFrameFallback ? " fallback=yes" : "",
-                stats.fallbackReason.empty()
-                    ? ""
-                    : (" reason=" + stats.fallbackReason).c_str());
-}
+    lumen::app::RunOptions runOptions;
+    runOptions.windowDesc.title = "Lumen Counter - v0.2";
+    runOptions.windowDesc.width = 800;
+    runOptions.windowDesc.height = 600;
+    runOptions.maxFrames = options.maxFrames;
+    runOptions.diagnostics = options.diagnostics;
 
-int runWindowed(CounterApp& app, const std::string& rendererName,
-                const Options& options) {
-    // --- 后端选择（阶段7C）：GPU 请求先探测，失败自动回退 CPU ---
-    bool wantGpu = rendererName == "gpu";
-    bool gpuActive = false;
-    std::string gpuDiagnostics;
+    // Skia 度量激活标志（GPU 探测/初始化成功或 skia 后端）。
+#if defined(LUMEN_HAVE_SKIA) || defined(LUMEN_HAVE_GPU)
+    bool skiaMetricsActive = false;
+#endif
+
 #ifdef LUMEN_HAVE_GPU
+    const bool wantGpu = options.renderer == "gpu";
     bool probeGpu = false;
+    std::string gpuDiagnostics;
     if (wantGpu) {
         probeGpu = lumen::render::probeSkiaGpuAvailable(&gpuDiagnostics);
         if (!probeGpu) {
@@ -238,268 +214,173 @@ int runWindowed(CounterApp& app, const std::string& rendererName,
                         gpuDiagnostics.c_str());
         }
     }
+    runOptions.windowDesc.opengl = wantGpu && probeGpu;
+    std::unique_ptr<lumen::render::Renderer> gpuRenderer;
+    if (wantGpu && probeGpu) {
+        runOptions.rendererFactory =
+            [&gpuRenderer, &gpuDiagnostics,
+             &skiaMetricsActive](lumen::platform::ApplicationHost& host,
+                                 lumen::core::WindowId& id)
+            -> lumen::app::RendererSetup {
+            lumen::platform::PlatformWindow* window = host.platformWindow(id);
+            if (window == nullptr) {
+                return {};
+            }
+            const auto surface = window->nativeSurface();
+            lumen::render::SkiaGpuRendererDesc gpuDesc;
+            gpuDesc.sdlWindow = surface.nativeWindow;
+            gpuDesc.windowSystem = surface.windowSystem;
+            gpuDesc.widthPixels =
+                static_cast<int>(window->drawableSize().width);
+            gpuDesc.heightPixels =
+                static_cast<int>(window->drawableSize().height);
+            gpuDesc.deviceScale = window->drawableSize().width /
+                                  std::max(1.0F, window->logicalSize().width);
+            gpuRenderer = lumen::render::createSkiaGpuRenderer(gpuDesc,
+                                                               &gpuDiagnostics);
+            if (gpuRenderer == nullptr) {
+                // 探测通过但正式窗口初始化失败：销毁 OpenGL 窗口，重建
+                // 软件呈现窗口 + CPU（GPU 资源先于窗口销毁）。
+                std::printf("[diag] gpu init failed (%s) — falling back to cpu\n",
+                            gpuDiagnostics.c_str());
+                const lumen::core::Size logical = window->logicalSize();
+                gpuRenderer.reset();
+                host.destroyWindow(id);
+                lumen::platform::WindowDesc desc;
+                desc.title = "Lumen Counter - v0.2";
+                desc.softwarePresentation = true;
+                desc.width =
+                    std::max(1, static_cast<int>(logical.width));
+                desc.height =
+                    std::max(1, static_cast<int>(logical.height));
+                const auto fallbackWindow = host.createWindow(desc);
+                if (!fallbackWindow.has_value()) {
+                    id = lumen::core::WindowId{};
+                    return {};
+                }
+                id = *fallbackWindow;
+                return {};
+            }
+            skiaMetricsActive = true;
+            lumen::app::RendererSetup setup;
+            setup.renderer = gpuRenderer.get();
+            // GPU 交换在 submit/endFrame 内完成，无 CPU 呈现回调。
+            setup.failed = [&gpuRenderer] {
+                return !lumen::render::skiaGpuRendererAlive(*gpuRenderer);
+            };
+            return setup;
+        };
+        // GPU 运行时失败（上下文丢失/GL 交换失败）：销毁 GPU 资源与
+        // OpenGL 窗口，重建软件窗口回退 CPU（状态/焦点/选区保留）。
+        runOptions.onRendererFailure =
+            [&app, &gpuRenderer,
+             &runOptions](lumen::platform::ApplicationHost& host,
+                          lumen::core::WindowId& id)
+            -> std::optional<lumen::app::RendererSetup> {
+            std::printf("[diag] gpu failed (%s) — falling back to cpu\n",
+                        gpuRenderer->stats().fallbackReason.c_str());
+            const auto metrics = host.windowMetrics(id);
+            const lumen::core::Size logical =
+                metrics.has_value() ? metrics->logicalSize
+                                    : lumen::core::Size{800.0F, 600.0F};
+            app.shell().cancelComposition();
+            app.shell().setRenderer(nullptr);
+            // GPU 资源必须先于窗口/视频子系统销毁。
+            gpuRenderer.reset();
+            host.destroyWindow(id);
+            lumen::platform::WindowDesc desc = runOptions.windowDesc;
+            desc.opengl = false;
+            // 原生软件呈现：回退路径不得依赖 SDL 渲染器重建。
+            desc.softwarePresentation = true;
+            desc.width = std::max(1, static_cast<int>(logical.width));
+            desc.height = std::max(1, static_cast<int>(logical.height));
+            const auto replacement = host.createWindow(desc);
+            if (!replacement.has_value()) {
+                return std::nullopt;
+            }
+            id = *replacement;
+            // 有值的空 setup = 回退到应用壳内部 CPU 渲染器（注意不是
+            // 空 optional——那会表示回退失败）。
+            return lumen::app::RendererSetup{};
+        };
+    }
 #else
-    if (wantGpu) {
+    if (options.renderer == "gpu") {
         std::printf("[diag] gpu backend not built in "
                     "(rebuild with -DLUMEN_ENABLE_GPU=ON) — using cpu\n");
     }
 #endif
 
-    lumen::platform::Sdl3WindowDesc desc;
-    desc.title = "Lumen Counter - v0.2";
-    desc.width = 800;
-    desc.height = 600;
-#ifdef LUMEN_HAVE_GPU
-    desc.opengl = wantGpu && probeGpu;
-#endif
-    desc.softwarePresentation = wantGpu && !desc.opengl;
-    auto window = lumen::platform::createSdl3Window(desc);
-#ifdef LUMEN_HAVE_GPU
-    if (window == nullptr && desc.opengl) {
-        std::printf("[diag] gpu window creation failed — falling back to cpu\n");
-        desc.opengl = false;
-        desc.softwarePresentation = true;
-        window = lumen::platform::createSdl3Window(desc);
-    }
-#endif
-    if (window == nullptr) {
-        return 1;
-    }
-
-    std::unique_ptr<lumen::render::Renderer> gpuRenderer;
-#ifdef LUMEN_HAVE_GPU
-    if (desc.opengl) {
-        const auto surface = window->nativeSurface();
-        lumen::render::SkiaGpuRendererDesc gpuDesc;
-        gpuDesc.sdlWindow = surface.nativeWindow;
-        gpuDesc.windowSystem = surface.windowSystem;
-        gpuDesc.widthPixels = static_cast<int>(window->drawableSize().width);
-        gpuDesc.heightPixels = static_cast<int>(window->drawableSize().height);
-        gpuDesc.deviceScale = window->drawableSize().width /
-                              std::max(1.0F, window->logicalSize().width);
-        gpuRenderer = lumen::render::createSkiaGpuRenderer(gpuDesc,
-                                                           &gpuDiagnostics);
-        if (gpuRenderer != nullptr) {
-            app.setRenderer(gpuRenderer.get());
-            gpuActive = true;
-        } else {
-            // 探测通过但正式窗口初始化失败：换普通窗口 + CPU。
-            std::printf("[diag] gpu init failed (%s) — falling back to cpu\n",
-                        gpuDiagnostics.c_str());
-            if (!lumen::examples::recreateCpuWindow(app, gpuRenderer, window,
-                                                    desc)) {
-                return 1;
-            }
-        }
-    }
-#endif
-
 #ifdef LUMEN_HAVE_SKIA
     std::optional<lumen::render::SkiaRenderer> skia;
-    if (!gpuActive && rendererName == "skia") {
-        skia.emplace(1.0F);
-        app.setRenderer(&*skia);
+    if (options.renderer == "skia") {
+        runOptions.rendererFactory =
+            [&skia, &skiaMetricsActive](lumen::platform::ApplicationHost& host,
+                                        lumen::core::WindowId id)
+            -> lumen::app::RendererSetup {
+            skia.emplace(1.0F);
+            skiaMetricsActive = true;
+            lumen::app::RendererSetup setup;
+            setup.renderer = &*skia;
+            setup.present = [&host, id, &skia]() -> bool {
+                lumen::platform::PlatformWindow* window =
+                    host.platformWindow(id);
+                return window != nullptr &&
+                       window->present(skia->pixels()) ==
+                           lumen::platform::PresentResult::Ok;
+            };
+            setup.syncDeviceScale = [&skia](float scale) {
+                skia->setDeviceScale(scale);
+            };
+            return setup;
+        };
     }
 #else
-    if (!gpuActive && rendererName == "skia") {
+    if (options.renderer == "skia") {
         std::fprintf(stderr,
                      "skia backend not built in; rebuild with "
                      "-DLUMEN_ENABLE_SKIA=ON (using cpu)\n");
     }
 #endif
 
-    // Query the device scale up front; resize/DPI events refresh it later.
-    const auto applyScale = [&window, &app
-#ifdef LUMEN_HAVE_SKIA
-                             ,
-                             &skia
-#endif
-    ]() {
-        const float scale = window->drawableSize().width /
-                            std::max(1.0F, window->logicalSize().width);
-        app.setDeviceScale(scale);
-#ifdef LUMEN_HAVE_SKIA
-        if (skia.has_value()) {
-            skia->setDeviceScale(scale);
+    // M1：Skia 度量激活时注入正式字体；工厂失败保持占位并诊断。
+#if defined(LUMEN_HAVE_SKIA) || defined(LUMEN_HAVE_GPU)
+    runOptions.fontFactory = [&skiaMetricsActive]()
+        -> std::shared_ptr<lumen::text::FontManager> {
+        if (!skiaMetricsActive) {
+            return {};
         }
-#endif
+        std::string fontDiagnostics;
+        auto fonts =
+            lumen::text::createSkiaFontManager(&fontDiagnostics);
+        if (fonts != nullptr) {
+            std::printf("[diag] fonts: %s\n", fontDiagnostics.c_str());
+            return std::shared_ptr<lumen::text::FontManager>(
+                std::move(fonts));
+        }
+        std::printf("[diag] fonts: %s — keeping placeholder metrics\n",
+                    fontDiagnostics.c_str());
+        return {};
     };
-    applyScale();
-    app.setView(window->logicalSize());
+#endif
 
+    // 热重载：文档 mtime 变化 → swapRoot（plan 阶段6）。
     std::optional<HotReloader> reloader;
     if (options.watch && options.dslPath.has_value()) {
         reloader.emplace(*options.dslPath);
-        std::printf("watching %s for changes\n", options.dslPath->c_str());
-    }
-
-    // --- 调度器（阶段7D）：替换固定 SDL_Delay(16) ---
-    lumen::render::RealtimeClock clock;
-    lumen::render::FrameScheduler::Config schedulerConfig;
-    schedulerConfig.targetFps = 60;
-    schedulerConfig.resizeDebounceMs = 16;
-    schedulerConfig.pauseWhenHidden = true;
-    lumen::render::FrameScheduler scheduler{schedulerConfig, &clock};
-    scheduler.requestFrame(lumen::render::FrameReason::Explicit);
-
-    if (options.diagnostics) {
-        printStartupDiagnostics(app.capabilities(), *window);
-    }
-
-    Uint64 lastWatchPoll = SDL_GetTicks();
-    Uint64 lastDiagPrint = SDL_GetTicks();
-    std::uint64_t idleTurns = 0;
-    bool running = true;
-    while (running) {
-        bool eventsPumped = false;
-        for (auto event = window->pollEvent();
-             event.type != lumen::platform::EventType::None;
-             event = window->pollEvent()) {
-            eventsPumped = true;
-            switch (event.type) {
-                case lumen::platform::EventType::Quit:
-                    running = false;
-                    break;
-                case lumen::platform::EventType::Resize:
-                case lumen::platform::EventType::DpiChanged:
-                    // Root constraints track the new logical size; DPI
-                    // 变化在下一帧 surface 重建前处理（plan §3.2）。
-                    app.setView(window->logicalSize());
-                    applyScale();
-                    scheduler.requestFrame(lumen::render::FrameReason::Resize);
-                    break;
-                case lumen::platform::EventType::WindowMinimized:
-                    scheduler.setWindowVisible(false);
-                    break;
-                case lumen::platform::EventType::WindowRestored:
-                    scheduler.setWindowVisible(true);
-                    scheduler.requestFrame(lumen::render::FrameReason::Resize);
-                    break;
-                case lumen::platform::EventType::PointerDown:
-                    app.pointerDown(event.position);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input);
-                    break;
-                case lumen::platform::EventType::PointerMove:
-                    // Feeds tap/drag gesture discrimination (plan 阶段6).
-                    app.pointerMove(event.position);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input);
-                    break;
-                case lumen::platform::EventType::PointerUp:
-                    app.pointerUp(event.position);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input);
-                    break;
-                case lumen::platform::EventType::TextInput:
-                    app.textInput(event.text);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input);
-                    break;
-                case lumen::platform::EventType::TextEditing:
-                    app.textEditing(event.text);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input);
-                    break;
-                case lumen::platform::EventType::KeyDown:
-                    app.keyDown(static_cast<Key>(event.keyCode));
-                    scheduler.requestFrame(lumen::render::FrameReason::Input);
-                    break;
-                default:
-                    break;
-            }
-        }
-        // 空轮询（无事件）也照常走调度决策：空闲时不提交。
-        if (!eventsPumped) {
-            idleTurns += 1;
-        }
-
-        // 输入法/焦点驱动的 caret 闪烁是当前唯一的连续动画源。
-        scheduler.setAnimationsActive(app.wantsTextInput());
-
-        if (reloader.has_value() && SDL_GetTicks() - lastWatchPoll >= 250) {
-            lastWatchPoll = SDL_GetTicks();
-            if (reloader->poll(app)) {
+        std::printf("watching %s for changes\n",
+                    options.dslPath->c_str());
+        runOptions.poll = [&reloader](lumen::app::AppShell& shell,
+                                      std::uint64_t /*nowMs*/) {
+            if (reloader->poll(shell)) {
                 std::printf("ui reloaded\n");
-                scheduler.requestFrame(
-                    lumen::render::FrameReason::HotReload);
+                return true;
             }
-        }
-
-        // Time-driven state (caret blink) rides the frame loop.
-        app.tick(SDL_GetTicks());
-        window->setTextInputEnabled(app.wantsTextInput());
-
-        if (scheduler.shouldSubmitFrame()) {
-            app.renderFrame(options.maxFrames != 0);
-#ifdef LUMEN_HAVE_GPU
-            if (gpuActive &&
-                !lumen::render::skiaGpuRendererAlive(*gpuRenderer)) {
-                std::printf("[diag] gpu failed (%s) — falling back to cpu\n",
-                            gpuRenderer->stats().fallbackReason.c_str());
-                if (!lumen::examples::recreateCpuWindow(app, gpuRenderer,
-                                                        window, desc)) {
-                    return 1;
-                }
-                gpuActive = false;
-                scheduler.setWindowVisible(window->isVisible());
-                // The failed GPU submission produced no frame. Repaint and
-                // present through CPU before counting this turn as submitted.
-                app.renderFrame(true);
-                if (options.diagnostics) {
-                    printStartupDiagnostics(app.capabilities(), *window);
-                }
-            }
-#endif
-            if (app.wantsTextInput()) {
-                // Keep the IME candidate window anchored to the focused
-                // field. Required on Linux (IBus/Fcitx); harmless elsewhere.
-                window->setTextInputArea(app.focusedTextRect(), 0);
-            }
-            if (!gpuActive) {
-#ifdef LUMEN_HAVE_SKIA
-                const auto result = window->present(
-                    skia.has_value() ? skia->pixels() : app.pixels());
-#else
-                const auto result = window->present(app.pixels());
-#endif
-                if (result != lumen::platform::PresentResult::Ok) {
-                    std::fprintf(stderr, "CPU present failed\n");
-                    return 1;
-                }
-            }
-            // GPU 路径的交换已在 submit/endFrame 完成。
-            scheduler.markFrameSubmitted();
-            if (options.maxFrames != 0) {
-                if (scheduler.submittedFrames() >= options.maxFrames) {
-                    running = false;
-                } else {
-                    scheduler.requestFrame(lumen::render::FrameReason::Explicit);
-                }
-            }
-
-            if (options.diagnostics &&
-                SDL_GetTicks() - lastDiagPrint >= 2000) {
-                lastDiagPrint = SDL_GetTicks();
-                printFrameDiagnostics(scheduler.submittedFrames(),
-                                      app.partialRepaintCount(), app.stats(),
-                                      idleTurns);
-            }
-        }
-
-        if (!running) {
-            break;
-        }
-        // 空闲等待：有 deadline 就等到 deadline，否则最多等一个热重载
-        // 轮询周期；任何输入事件立刻唤醒。
-        const auto waitMs = scheduler.msUntilNextFrame();
-        const std::uint32_t capped =
-            std::min<std::uint32_t>(waitMs.value_or(250), 250);
-        if (capped > 0) {
-            SDL_WaitEventTimeout(nullptr, capped);
-        }
+            return false;
+        };
     }
-    if (options.diagnostics) {
-        printFrameDiagnostics(scheduler.submittedFrames(),
-                              app.partialRepaintCount(), app.stats(),
-                              idleTurns);
-    }
-    return 0;
+
+    return lumen::app::runApp(app.shell(), host, runOptions);
 }
 
 }  // namespace
@@ -511,5 +392,5 @@ int main(int argc, char** argv) {
     if (options.headless) {
         return runHeadless(app);
     }
-    return runWindowed(app, options.renderer, options);
+    return runWindowed(app, options);
 }

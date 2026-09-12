@@ -57,6 +57,8 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | v0.3 8E | 已完成 SDL-free 移动接缝 | `MobileHostSeam`、生命周期、safe area、触摸归一化、返回键 |
 | 视觉 V1/V2 | 已完成主要状态样式迁移 | token、Theme、StyleResolver、ResolvedStyle、状态与 damage 联动 |
 | 自用 M1 | 已完成真实文本与编辑闭环 | SkiaFontManager、shaped TextLayout/RenderCommand、UAX#9 子集、EditingHistory（见 §10 M1 完成记录） |
+| 自用 M2 | 已完成应用框架层与 C++ DSL | `lumen-app`（AppShell/runApp）、counter/settings 迁移、C++ builder 补齐（见 §10 M2 完成记录） |
+| 自用 M3 | 已完成布局/Grid/VirtualList/Image | Grid/Image/VirtualList 组件、VirtualListController、virtual-list 基准场景（见 §10 M3 完成记录） |
 
 当前验证基线：Windows CPU Debug 303/303，Skia Release 314/314，SDL-free mobile-core 291/291。`817ad43` 后 Windows 的 CPU/Skia/GPU 三个 job、Linux 的 CPU/Skia/GPU/mobile-core 四个 job、macOS 的 CPU/mobile-core 两个 job 均已纳入 CI；真实 macOS GPU 仍待 M7 纳入门槛。最新基线提交为 `817ad43 fix(platform): 对齐跨平台能力与验证契约`。
 
@@ -69,11 +71,11 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 文本 | M1 已完成：`SkiaFontManager`（字体族/weight/回退/度量/shaping，pimpl 无 Skia 类型）+ `TextLayoutResult` shaped run/glyph/cluster/baseline；CPU 占位与 Skia 共享同一契约，缺字体明确诊断 | 复杂脚本合字（HarfBuzz 级）、移动字体策略属后续版本（M9） | M1 已收口 |
 | 编辑 | M1 已完成：`EditingHistory` undo/redo 栈、事务边界、连续输入合并、Ctrl+Z/Shift+Z/Y、IME 提交单事务、preedit 不进栈 | 富文本编辑不纳入第一版 | M1 已收口 |
 | 方向文本 | M1 已完成：UAX#9 确定性子集（强/弱/中性类 + L2 重排），混合方向命中测试可靠，grapheme 边界为唯一编辑索引 | 显式嵌入控制/镜像括号/数字定形属后续增强 | M1 已收口 |
-| 应用框架层 | counter/settings 各自手写主循环、rebuild、damage 和事件路由，没有统一 `runApp`/应用壳 | 新应用需要复制大量生命周期样板，容易产生行为分叉 | M2 |
-| DSL | `.lumen` 文本 DSL 覆盖组件多于 C++ builder，C++ builder 目前只覆盖基础容器、文本、按钮和 TextField | C++ 声明式 API 与文本 DSL 能力不对称 | M2 |
-| 控件库 | 没有 Image Widget、Dropdown/Menu、Tooltip、Slider、ProgressBar、Radio/Tabs；Scrollbar token 已有但无完整绘制控件；FormController 实现只有 nonEmpty/minLength，头文件注释提到的邮箱校验器尚未提供 | 工具应用常见信息展示、选择和表单校验能力不足 | M3/M6 |
-| 布局 | Box/Flex 子集，缺少 Grid、真正虚拟化列表 | 页面复杂度和大数据量受到限制 | M3 |
-| 滚动 | 确定性滚动，惯性默认关闭 | 触摸端和长列表体验较弱 | M3/M9 |
+| 应用框架层 | M2 已完成：`lumen-app` 目标（`app::AppShell` + `app::runApp`）统一主循环/事件泵/重建/damage/DPI/IME 同步，支持 Fake host 与外部 renderer 注入；counter/settings 已迁移（示例只保留 build/状态/handler） | — | M2 已收口 |
+| DSL | M2 已完成：C++ builder 补齐 stack/checkbox/switch_widget/scroll_view/list_view/focus_scope，与 `.lumen` 冻结节点集对齐（golden 对照测试）；Dialog/Navigator 经 `widgets::makeDialog`/`NavigatorController` 提供 | DSL 可编程性/脚本能力不纳入第一版 | M2 已收口 |
+| 控件库 | 没有 Dropdown/Menu、Tooltip、Slider、ProgressBar、Radio/Tabs；Scrollbar token 已有但无完整绘制控件；FormController 实现只有 nonEmpty/minLength，头文件注释提到的邮箱校验器尚未提供 | 工具应用常见信息展示、选择和表单校验能力不足 | M6 |
+| 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 惯性滚动、横向网格后续版本 | M3 已收口 |
+| 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | 惯性滚动后续版本 | M3 已收口 |
 | 平台服务 | 剪贴板和文本输入已有，文件选择/通知、鼠标光标形状、窗口图标等服务未形成统一接口 | 工具应用无法完成常见系统操作 | M4 |
 | 无障碍 | 语义树和 Recording bridge 已有，UIA/AT-SPI/NSAccessibility provider 未实现 | 第一版可做结构验收，无法直接被桌面读屏器消费 | M5 先收口，后续版本再做原生 provider |
 | 视觉 V3 | IconId、Elevation、Motion token 已冻结，实际图标/阴影/转场/ThemeScope 未完成 | 复杂应用的视觉一致性和反馈不足 | M6 |
@@ -529,11 +531,127 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     窗口 smoke 人工验收；headless IME 状态机已覆盖。
 - 回滚点：`d4dbb4a fix(build): 修复基准配置识别与构建命令`（M1 前）。
 
+### M2 完成记录（应用框架层与 C++ DSL）
+
+- 完成日期：2026-09-13
+- 提交号：（本变更提交，见 Git 历史 `feat(app)`）
+- 变更：
+  - 新增 `lumen-app` 目标：`include/lumen/app/app_shell.h`+
+    `src/app/{app_shell,run_app}.cpp`。`app::AppShell` 拥有 StateStore/
+    HandlerRegistry/FocusManager/InteractionController、Element reconcile、
+    订阅同步、布局 + damage、绘制缓存与脏矩形提交、caret 闪烁（可关）、
+    IME 候选框查询与热重载换根；`app::runApp` 驱动 UI 线程主循环
+   （ApplicationHost 事件泵 → 分发 → FrameScheduler 决策 → renderFrame
+    → 呈现 → 空闲等待），公共头无 SDL/Skia 类型。
+  - 应用配置钩子（ShellConfig）：build/onKey（Escape 统一规则）/
+    onWheel（滚动 sink）/onCloseRequested（关闭策略）/onRebuilt
+    （modal 焦点规则）/caretBlink；装配注入（RunOptions）：rendererFactory
+    （含窗口重建）/onRendererFailure（GPU→CPU 回退，可重建窗口）/
+    fontFactory/poll（热重载）/maxFrames/diagnostics。
+  - `ApplicationHost` 新增 `waitForEvents(timeoutMs)`（默认 no-op，SDL 实
+    现为 SDL_WaitEventTimeout）；`WindowDesc` 新增 softwarePresentation
+    （GPU 回退窗口的原生软件呈现）。`lumen-core` 显式声明对 `lumen-text`
+    的真实依赖（interaction 公共头/实现引用；静态库循环由链接线重复解析），
+    修复 lumen-app 介入后 CMake 库排序丢失 core 尾置的问题；GPU 构建把
+    OpenGL 移入 Skia 归档组并在消费者尾置 GL 依赖。
+  - counter/settings 迁移：两示例的帧管线/主循环收敛到应用壳
+    （settings main 253→129 行，counter_app 553→163 行；示例只保留
+    build/状态/handler 与装配）；counter 保留 GPU 探测/初始化失败/
+    运行时失效三条回退路径（经工厂与回退钩子，软件窗口重建）。
+  - C++ DSL builder 补齐：`stack`/`checkbox`/`switch_widget`/
+    `scroll_view`/`list_view`/`focus_scope`（`switch` 为关键字）；属性经
+    core 层 with* 修饰器叠加，与 `.lumen` 冻结属性同名同义。
+  - review 修复（本轮）：AppShell 首帧延迟落地（构造期不再求值 build，
+    消除 SettingsApp 未构造完成即读成员的 UB）；settings 关闭请求去重
+    （一次关闭只消费一级 modal/路由，不重入按键管线）；runApp 接入宿主
+    剪贴板（Ctrl+C/V 可用，不可用保持未注入）；DSL parity 对照修正
+    （Stack 包裹/flex/空文本）与 `stack()` key 参数；Skia 光栅字体管理
+    器按 renderer 缓存；dialog 身份常量化；测试死码清理。
+- 测试：
+  - 新增 `tests/app_shell_tests.cpp`（8 用例）：Fake host 驱动 runApp 的
+    事件顺序/状态流转、指针+文本进入焦点字段、关闭请求消费/退出、
+    IME 会话启停与候选框锚点同步、dirty 合并与绘制缓存命中、视口/
+    DPI 变化重建、renderer 替换与缓存失效、渲染器失效钩子回退。
+  - 新增 DSL 全节点 golden 对照（冻结节点集 + 常用属性逐字段相等）与
+    FocusScope/修饰器覆盖用例。
+  - 迁移验收：counter/settings 集成测试全部不变通过，headless 帧哈希
+    与迁移前一致（counter `1a32cd5be756e9bf`/`df7487f8a9fb0eb8`/
+    `55fb5a6e22f5dfaf`/`96166bdba1c35ff5`；settings `528e7440ed00451b`）。
+  - 本地 Linux：CPU Debug 326/326、Skia Release 332/332、GPU Release
+    339/339（含三条 GPU 失败注入冒烟）、mobile-core Debug 314/314；
+    窗口 smoke（CPU/Skia/GPU llvmpipe）与 M0 基准
+    `frame_hash=d28e364efe1b4aca` 保持。
+- 平台：本地 Linux 全部验证；Windows/macOS 以 CI 为事实来源（事件泵/
+    回退路径的跨平台行为由 ApplicationHost 契约与 Fake host 测试锁定）。
+- 已知限制：
+  - runApp 为单窗口主循环（多窗口属后续里程碑；事件不按 windowId 过滤）。
+  - 诊断输出格式沿用 counter 契约（`backend=/frames=/gpu failed`），
+    settings 的 host 能力诊断行被应用壳诊断取代。
+  - rendererFactory 内窗口重建失败时 runApp 降级为无呈现循环（软件窗口
+    创建失败属极端场景，无结构化致命错误通道）。
+- 回滚点：`06191a7 feat(text): 桌面真实文本与编辑闭环`（M1，
+  M2 文件集）。
+
+### M3 完成记录（约束布局、Grid、VirtualList 与 Image）
+
+- 完成日期：2026-09-14
+- 提交号：（本变更提交，见 Git 历史 `feat(layout)`）
+- 变更：
+  - 新增 `WidgetType::{Grid, Image, VirtualList}` 与配套字段/构建器
+    （`makeGrid`/`makeImage`/`makeVirtualList`；`isScrollableWidget` 纳入
+    VirtualList）。RenderNode 新增 `imageId`/`imageSource`。
+  - Grid 布局（`src/layout/layout.cpp::layoutGrid`）：固定列数或最小
+    列宽自适应（列数 = floor((可用宽+列间距)/(最小列宽+列间距))，≥1），
+    单元宽紧约束均分，行高 = 行内最大外部高度，行列间距独立；窗口
+    变化重排由约束传播自然发生。
+  - `core::VirtualListSource` 接口 + `VirtualListController`
+    （`include/lumen/core/virtual_list.h`）：itemCount/estimatedExtent/
+    extentOf/scrollOffset/totalExtent/offsetOfIndex/visibleRange/buildItem/
+    noteExtent；实测 extent 缓存（布局期回填，视口上方修正平移 offset
+    保锚点，不跳顶）；可见区含前后 cacheExtent 像素缓存；
+    scrollToIndex（最小移动语义）；滚动输入复用 ScrollController
+   （滚轮/键盘/触摸拖动/语义）。
+  - VirtualList 布局（`layoutVirtualList`）：children 为空——布局期经
+    source 物化可见区，子项绝对定位在内容坐标（offsetOfIndex），
+    实测修正后同帧补齐可见区（每项每次布局最多构建、测量一次）；stable key
+   （item key）作为 identity，key 变化 = 项目替换。
+  - Image Widget：imageId（0 = 未就绪固定占位：表面+边框+中心叉，
+    语义名称保留）/imageSource；painter 接入既有 DrawImage 命令路径
+   （CPU/Skia/GPU 同源）。
+  - settings 示例：Grid 页（18 tile、最小列宽 160 自适应）与千项
+    VirtualList 页（偶数项更高验证 extent 修正；滚轮/键盘 Home/End
+    汇入同一 sink）。
+  - 基准：`lumen-scene-bench --scenario virtual-list[-<items>]`
+   （默认 card-grid 场景与 M0 基线不变）。
+- 测试：
+  - 新增 `tests/grid_virtual_tests.cpp`（12 用例）：Grid 在 320/768/
+    1080 与连续 resize 几何稳定、最小列宽自适应（窄窗口 320 单列仍
+    可用）、行高聚合/固定尺寸；VirtualList 只物化可见窗口（千项首屏
+    ~25 项）、快速拖动定位底部窗口、实测 extent 单帧位置修正、锚点
+    平移与 itemCount 收缩不跳顶、visibleRange/scrollToIndex 契约、
+    焦点 identity 回收往返稳定、局部 damage 与全帧逐像素一致
+   （AppShell 真实帧管线）、Image 占位/位图命令、语义角色。
+  - settings headless 冒烟扩展：grid/library 页导航、千项首屏物化 17
+    项、滚动后 22 项、scrollExtent 43427。
+  - 本地 Linux：CPU Debug 338/338、Skia Release 344/344、GPU Release
+    351/351、mobile-core Debug 326/326；窗口 smoke 通过。
+  - 基准（本地 Linux/GCC 15.2/Release/1080p/120 帧）：
+    virtual-list-1000：nodes 90、cmds 359/帧、partial 120/120、layout
+    p50/p95 1371/1977us、paint p50/p95 22137/25148us；virtual-list-10000
+    与 1000 节点/命令数完全一致（90/359，严格 O(visible)）。card-grid
+    基线 hash `d28e364efe1b4aca` 保持。
+- 平台：本地 Linux 全部验证；Windows/macOS 以 CI 为事实来源。
+- 已知限制：
+  - Grid 为纵向网格（无横向滚动/跨行列合并）；单元格紧宽度填充
+   （子项不支持列内对齐覆盖，后续版本随 M6 视觉对齐扩展）。
+  - VirtualList 仅纵向；estimated extent 首帧后由实测修正（两帧内
+    收敛，布局期同帧重算覆盖绝大多数情况）。
+  - Image 需应用侧 ResourceManager 驱动加载并回写 imageId（框架不
+    管理异步资源生命周期；上传命令沿阶段7D 契约）。
+  - 惯性滚动不纳入 M3（默认关闭，M3/M9 后续）。
+- 回滚点：M2 合入后的提交（见 M2 完成记录）。
+
 ### M1–M9 完成记录（待实施，占位）
-- M2 应用框架层与 C++ DSL：未开始（出口：新工具页只需提供 build/状态逻辑；
-  应用壳统一事件/帧/damage/DPI/IME）。
-- M3 布局/Grid/VirtualList/Image：未开始（出口：千项列表不全量构建子树；
-  复用后滚动/焦点/语义/状态正确；窄窗口可用）。
 - M4 平台服务与窗口能力：未开始（出口：三桌面完成打开文件/编辑/复制粘贴/
   通知/缩放/退出；服务失败有诊断）。
 - M5 语义与键盘可用性：未开始（出口：语义/键盘/视觉/交互无分叉；

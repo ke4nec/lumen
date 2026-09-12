@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "lumen/core/geometry.h"
 #include "lumen/core/render_node.h"
 #include "lumen/core/widget.h"
@@ -19,6 +21,8 @@ namespace lumen::layout {
 // 样式解析查询交互快照。
 class LayoutEngine {
   public:
+    // 虚拟子项在布局期才物化；应用可在度量前解析 bind 等声明属性。
+    using PrepareItem = std::function<void(core::Widget&)>;
     // 应用入口：每帧提供 Theme + 交互快照 + 可访问性设置。
     static core::RenderNode layout(const core::Widget& widget,
                                    const core::Constraints& constraints,
@@ -33,7 +37,8 @@ class LayoutEngine {
     static core::RenderNode layout(const core::Widget& widget,
                                    const core::Constraints& constraints,
                                    const style::StyleContext& styleContext,
-                                   const text::FontManager& fonts);
+                                   const text::FontManager& fonts,
+                                   const PrepareItem& prepareItem = {});
     static core::RenderNode layout(const core::Widget& widget,
                                    const core::Constraints& constraints,
                                    const text::FontManager& fonts);

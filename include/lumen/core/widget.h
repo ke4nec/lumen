@@ -23,6 +23,11 @@ enum class WidgetType {
     Checkbox,   // 勾选框：bind 值 "true"/"false"，点击自动切换
     Switch,     // 开关：同 Checkbox 行为，不同绘制
     FocusScope, // 焦点域：Tab 遍历不越过边界（Dialog/Route 用）
+    // M3（自用路线图）：约束布局扩展组件。
+    Grid,        // 网格：固定列数/最小列宽自适应，行/列间距，窗口变化重排
+    Image,       // 图像：已就绪 ImageId 绘制，未就绪固定占位（语义保留）
+    VirtualList, // 虚拟列表：按需物化可见项（itemCount/itemBuilder/
+                 // estimatedExtent/stable key/viewport cache）
 };
 
 enum class MainAxisAlignment {
@@ -89,6 +94,45 @@ struct StyleOverrides {
     bool operator==(const StyleOverrides&) const = default;
 };
 
+struct Widget;  // 前置声明：VirtualListSource::buildItem 按值返回。
+
+// M3（自用路线图）：VirtualList 数据源接口。应用拥有实现（通常由
+// VirtualListController 适配），Widget 只存裸指针（UI 线程独占，生命周期
+// 覆盖布局；operator== 比较指针身份）。布局期可回填实测 extent——实现
+// 自持有可变缓存，修正后布局重新计算范围与位置。
+class VirtualListSource {
+  public:
+    virtual ~VirtualListSource() = default;
+
+    [[nodiscard]] virtual std::size_t itemCount() const = 0;
+    // 项目初始估算高度（未测量项的占位）。
+    [[nodiscard]] virtual float estimatedExtent() const = 0;
+    // 项目 i 的高度：已测量取实测，否则估算。
+    [[nodiscard]] virtual float extentOf(std::size_t index) const = 0;
+    // 当前滚动偏移（应用侧 ScrollController 持有）。
+    [[nodiscard]] virtual float scrollOffset() const = 0;
+    // 内容总高（全部项 extentOf 之和；布局计算 scrollExtent）。
+    [[nodiscard]] virtual float totalExtent() const = 0;
+    // 项 i 顶部相对内容顶部的累计偏移（子项绝对定位）。
+    [[nodiscard]] virtual float offsetOfIndex(std::size_t index) const = 0;
+    // 可见项区间 [first, last)（含前后 cacheExtent 像素缓存）。
+    [[nodiscard]] virtual std::pair<std::size_t, std::size_t> visibleRange(
+        float viewportExtent, float cacheExtent) const = 0;
+    // 布局用已夹取的偏移查询；支持 padding 使内容起点落在视口内部。
+    [[nodiscard]] std::pair<std::size_t, std::size_t> visibleRangeAt(
+        float offset, float viewportExtent, float cacheExtent) const;
+    // 布局先同步视口，控制器据此更新滚动范围；静态数据源可忽略。
+    virtual void updateViewport(float viewportExtent, float contentPadding) const {
+        (void)viewportExtent;
+        (void)contentPadding;
+    }
+    // 构建项目 i 的 Widget：必须携带含 index 的稳定 key（复用/焦点/
+    // 语义身份依据；key 变化 = 项目替换）。
+    [[nodiscard]] virtual Widget buildItem(std::size_t index) const = 0;
+    // 布局期回填实测高度（幂等缓存写入，允许修正滚动锚点）。
+    virtual void noteExtent(std::size_t index, float extent) const = 0;
+};
+
 // Immutable UI description. Aggregates are intentionally copyable so tests and
 // the C++ DSL can build trees by value; runtime state lives in Element.
 //
@@ -146,9 +190,27 @@ struct Widget {
     // v0.3 阶段8D（plan §3.4）：
     // Checkbox/Switch 的选中状态（applyBinds 从 bind 值解析）。
     bool checked{false};
-    // ScrollView/ListView 的当前滚动偏移（应用侧 ScrollController 持有，
-    // 重建时写回）。
+    // ScrollView/ListView/VirtualList 的当前滚动偏移（应用侧
+    // ScrollController 持有，重建时写回；VirtualList 亦经 source 读取）。
     float scrollOffset{0.0F};
+
+    // M3 Grid：固定列数（>0）或按最小列宽自适应（=0 时用
+    // gridMinColumnWidth 推导 ≥1 列）；行列间距独立。
+    int gridColumnCount{0};
+    float gridMinColumnWidth{0.0F};
+    float gridColumnGap{0.0F};
+    float gridRowGap{0.0F};
+
+    // M3 Image：imageId 为已上传资源的稳定 id（render::ImageId；
+    // 0 = 未就绪，绘制固定占位）；imageSource 为资源路径/请求键
+    //（诊断与语义保留，加载由应用侧 ResourceManager 驱动）。
+    std::uint64_t imageId{0};
+    std::string imageSource{};
+
+    // M3 VirtualList：数据源（应用拥有；空 = 空列表）与视口前后缓存
+    //（像素）。children 必须为空——布局期按可见区物化。
+    const VirtualListSource* virtualSource{nullptr};
+    float virtualCacheExtent{200.0F};
 
     // 视觉系统声明属性（visual-system-design §6.1）：enabled=false 时控
     // 件不可用（视觉、命中、键盘与语义一致拒绝）；invalid=true 表达校验
@@ -474,6 +536,66 @@ inline Widget makeFocusScope(Widget child, std::string key = {}) {
     widget.type = WidgetType::FocusScope;
     widget.key = std::move(key);
     widget.children.push_back(std::move(child));
+    return widget;
+}
+
+// --- M3（自用路线图）：Grid / Image / VirtualList ---
+
+// Grid：子项按阅读顺序填入；固定列数（columnCount>0）或按最小列宽
+// 自适应（minColumnWidth>0 时列数 = floor((可用宽+列间距)/
+// (最小列宽+列间距))，至少 1 列）。窗口变化重排由约束传播自然发生。
+inline Widget makeGrid(std::vector<Widget> children,
+                       int columnCount = 0, float minColumnWidth = 0.0F,
+                       float columnGap = 0.0F, float rowGap = 0.0F,
+                       std::string key = {},
+                       std::optional<float> width = std::nullopt,
+                       std::optional<float> height = std::nullopt) {
+    Widget widget;
+    widget.type = WidgetType::Grid;
+    widget.gridColumnCount = columnCount;
+    widget.gridMinColumnWidth = minColumnWidth;
+    widget.gridColumnGap = columnGap;
+    widget.gridRowGap = rowGap;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.height = height;
+    widget.children = std::move(children);
+    return widget;
+}
+
+// Image：声明式图像。imageId 为已上传资源（0 = 未就绪占位）；
+// source 为资源路径（加载由应用侧 ResourceManager 异步驱动，就绪后
+// 应用把 id 写回重建）。固定尺寸（width/height）推荐显式给定。
+inline Widget makeImage(std::uint64_t imageId, std::string source,
+                        std::optional<float> width = std::nullopt,
+                        std::optional<float> height = std::nullopt,
+                        std::string key = {}) {
+    Widget widget;
+    widget.type = WidgetType::Image;
+    widget.imageId = imageId;
+    widget.imageSource = std::move(source);
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.height = height;
+    return widget;
+}
+
+// VirtualList：大数据量列表。不要求应用把全部子树放入 children——
+// 布局期按 scrollOffset/estimatedExtent/实测 extent 计算可见区并经
+// source 物化（含视口前后 cacheExtent 像素缓存）。项目稳定 key 由
+// source 的 buildItem 提供；key 变化 = 项目替换（不携带旧状态）。
+inline Widget makeVirtualList(const VirtualListSource* source,
+                              std::string key = {},
+                              std::optional<float> width = std::nullopt,
+                              std::optional<float> height = std::nullopt,
+                              float cacheExtent = 200.0F) {
+    Widget widget;
+    widget.type = WidgetType::VirtualList;
+    widget.virtualSource = source;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.height = height;
+    widget.virtualCacheExtent = cacheExtent;
     return widget;
 }
 

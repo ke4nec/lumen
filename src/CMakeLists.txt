@@ -10,4 +10,6 @@ add_subdirectory(widgets)
 # lumen-platform 自行按 LUMEN_BUILD_MOBILE_CORE 排除 SDL 适配源（8E）。
 add_subdirectory(platform)
 add_subdirectory(platform/mobile)
+# M2：应用壳（runApp/帧管线收敛；示例与 headless 测试共用）。
+add_subdirectory(app)
 add_subdirectory(dsl)

@@ -1,26 +1,20 @@
 // v0.3 阶段8D settings 示例：滚动列表、表单校验、弹窗、导航、主题与
-// 无障碍标签。窗口循环使用阶段8A 的 Sdl3ApplicationHost（归一化事件：
-// 修饰键、滚轮、指针取消、关闭请求），CPU 后端渲染；`--headless` 输出
-// 确定性帧哈希。
+// 无障碍标签。M2 起窗口主循环由 app::runApp 驱动（ApplicationHost 事件
+// 泵 + FrameScheduler + damage/IME 同步）；本文件只保留选项解析与
+// headless 冒烟脚本。`--headless` 输出确定性帧哈希。
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <cstring>
 #include <exception>
-#include <memory>
 #include <string>
 
-#include <SDL3/SDL.h>
-
 #include "settings_app.h"
+#include "lumen/app/app_shell.h"
 #include "lumen/platform/sdl3_host.h"
-#include "lumen/render/frame_scheduler.h"
 
 namespace {
 
-using lumen::core::HostEvent;
-using lumen::core::HostEventType;
 using lumen::examples::SettingsApp;
 
 struct Options {
@@ -95,161 +89,66 @@ int runHeadless(SettingsApp& app) {
     std::printf("frame3 %016llx\n",
                 static_cast<unsigned long long>(app.renderFrame()));
 
+    // M3：Grid 页（自适应列宽）与千项 VirtualList 页（可见区物化）。
+    // 回滚到顶：入口按钮需在视口内（滚动 240 后已滚出，点击被裁剪拒绝）。
+    app.wheel(centerOf("settings-list"), lumen::core::Offset{0.0F, -240.0F});
+    (void)app.renderFrame();
+    app.pointerDown(centerOf("goto-grid-button"));
+    app.pointerUp(centerOf("goto-grid-button"));
+    std::printf("route %s\n", app.navigator().current().c_str());
+    (void)app.renderFrame();
+    const auto* grid = lumen::core::findNodeByKey(app.root(), "tile-grid");
+    std::printf("grid %s cells=%zu\n", grid != nullptr ? "yes" : "no",
+                grid != nullptr ? grid->children.size() : 0U);
+    app.keyDown(lumen::core::Key::Escape);
+    (void)app.renderFrame();  // home 树落地后才能取入口按钮坐标。
+
+    app.pointerDown(centerOf("goto-library-button"));
+    app.pointerUp(centerOf("goto-library-button"));
+    std::printf("route %s\n", app.navigator().current().c_str());
+    (void)app.renderFrame();
+    const auto* library = lumen::core::findNodeByKey(app.root(),
+                                                     "library-list");
+    std::printf("library %s visible=%zu\n",
+                library != nullptr ? "yes" : "no",
+                library != nullptr ? library->children.size() : 0U);
+    app.wheel(centerOf("library-list"), lumen::core::Offset{0.0F, 4000.0F});
+    (void)app.renderFrame();
+    library = lumen::core::findNodeByKey(app.root(), "library-list");
+    std::printf("library visible=%zu extent=%.0f\n",
+                library != nullptr ? library->children.size() : 0U,
+                library != nullptr ? library->scrollExtent : 0.0F);
+    app.keyDown(lumen::core::Key::Escape);
+    std::printf("route %s\n", app.navigator().current().c_str());
     return 0;
 }
 
+// M2：窗口主循环 = app::runApp（关闭请求策略/IME 同步/调度在应用壳与
+// 应用配置钩子里）。
 int runWindowed(SettingsApp& app, const Options& options) {
     lumen::platform::Sdl3ApplicationHost host;
-    if (!host.initialize()) {
-        return 1;
-    }
-    lumen::platform::WindowDesc desc;
-    desc.title = "Lumen Settings - v0.3";
-    desc.width = 800;
-    desc.height = 600;
-    const auto id = host.createWindow(desc);
-    if (!id.has_value()) {
-        return 1;
-    }
-    auto* window = host.platformWindow(*id);
-    if (window == nullptr) {
-        return 1;
-    }
 
-    const auto applyScale = [&host, &app, id]() {
-        const auto metrics = host.windowMetrics(*id);
-        if (metrics.has_value() && metrics->logicalSize.width > 0.0F) {
-            app.setDeviceScale(metrics->deviceScale);
-            app.setView(metrics->logicalSize);
-        }
-    };
-    applyScale();
+    lumen::app::RunOptions runOptions;
+    runOptions.windowDesc.title = "Lumen Settings - v0.3";
+    runOptions.windowDesc.width = 800;
+    runOptions.windowDesc.height = 600;
+    runOptions.diagnostics = options.diagnostics;
 
-    lumen::render::RealtimeClock clock;
-    lumen::render::FrameScheduler::Config schedulerConfig;
-    schedulerConfig.targetFps = 60;
-    lumen::render::FrameScheduler scheduler{schedulerConfig, &clock};
-    scheduler.requestFrame(lumen::render::FrameReason::Explicit, *id);
-
-    if (options.diagnostics) {
-        const auto caps = host.capabilities();
-        std::printf("[diag] host=%s clipboard=%s ime=%s multiWindow=%s\n",
-                    caps.adapterName.c_str(), caps.clipboard ? "yes" : "no",
-                    caps.ime ? "yes" : "no",
-                    caps.multiWindow ? "yes" : "no");
-    }
-
-    bool running = true;
-    while (running) {
-        HostEvent event;
-        while (host.pollEvent(event)) {
-            switch (event.type) {
-                case HostEventType::Quit:
-                    running = false;
-                    break;
-                case HostEventType::WindowCloseRequested:
-                    // 统一关闭规则：modal → 路由栈 → 退出（plan §3.4）。
-                    if (app.dialogOpen() ||
-                        app.navigator().handleBack(false)) {
-                        app.keyDown(lumen::core::Key::Escape);
-                    } else {
-                        running = false;
-                    }
-                    break;
-                case HostEventType::Resize:
-                case HostEventType::DpiChanged: {
-                    const auto metrics = host.windowMetrics(*id);
-                    if (metrics.has_value()) {
-                        app.setView(metrics->logicalSize);
-                        app.setDeviceScale(metrics->deviceScale);
-                    }
-                    scheduler.requestFrame(lumen::render::FrameReason::Resize,
-                                           event.window);
-                    break;
-                }
-                case HostEventType::WindowMinimized:
-                    scheduler.setWindowVisible(false);
-                    break;
-                case HostEventType::WindowRestored:
-                    scheduler.setWindowVisible(true);
-                    scheduler.requestFrame(lumen::render::FrameReason::Resize,
-                                           event.window);
-                    break;
-                case HostEventType::PointerDown:
-                    app.pointerDown(event.position);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input,
-                                           event.window);
-                    break;
-                case HostEventType::PointerMove:
-                    app.pointerMove(event.position);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input,
-                                           event.window);
-                    break;
-                case HostEventType::PointerUp:
-                    app.pointerUp(event.position);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input,
-                                           event.window);
-                    break;
-                case HostEventType::PointerCancel:
-                    app.pointerCancel();
-                    break;
-                case HostEventType::Wheel:
-                    app.wheel(event.position, event.scrollDelta);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input,
-                                           event.window);
-                    break;
-                case HostEventType::TextInput:
-                    app.textInput(event.text);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input,
-                                           event.window);
-                    break;
-                case HostEventType::TextEditing:
-                    app.textEditing(event.text);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input,
-                                           event.window);
-                    break;
-                case HostEventType::KeyDown:
-                    app.keyDown(event.keyCode, event.modifiers, event.keyChar);
-                    scheduler.requestFrame(lumen::render::FrameReason::Input,
-                                           event.window);
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        app.tick(clock.nowMs());
-        window->setTextInputEnabled(app.controller().wantsTextInput());
-
-        if (scheduler.shouldSubmitFrame()) {
-            app.renderFrame();
-            window->present(app.pixels());
-            scheduler.markFrameSubmitted();
-        }
-
-        const auto waitMs = scheduler.msUntilNextFrame();
-        const std::uint32_t capped =
-            std::min<std::uint32_t>(waitMs.value_or(250), 250);
-        if (capped > 0) {
-            SDL_Delay(capped);
-        }
-    }
-    return 0;
+    return lumen::app::runApp(app.shell(), host, runOptions);
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::setvbuf(stdout, nullptr, _IONBF, 0);
     const Options options = parseOptions(argc, argv);
+    SettingsApp app;
     try {
-        SettingsApp app;
         if (options.headless) {
             return runHeadless(app);
         }
         return runWindowed(app, options);
     } catch (const std::exception& error) {
         std::fprintf(stderr, "fatal: %s\n", error.what());
-        return 2;
+        return 1;
     }
 }

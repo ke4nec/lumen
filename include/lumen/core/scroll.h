@@ -31,6 +31,7 @@ class ScrollController {
     bool semanticScroll(float deltaY);
 
     [[nodiscard]] float offset() const { return offset_; }
+    [[nodiscard]] float viewportExtent() const { return viewportExtent_; }
     [[nodiscard]] float maxScrollOffset() const { return maxOffset_; }
     [[nodiscard]] bool canScroll() const { return maxOffset_ > 0.0F; }
     // 视口可见内容比例（滚动条/语义 value 用）。

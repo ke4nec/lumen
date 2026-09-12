@@ -647,6 +647,12 @@ class Converter {
                 return "Switch";
             case WidgetType::FocusScope:
                 return "FocusScope";
+            case WidgetType::Grid:
+                return "Grid";
+            case WidgetType::Image:
+                return "Image";
+            case WidgetType::VirtualList:
+                return "VirtualList";
         }
         return "?";
     }

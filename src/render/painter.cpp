@@ -405,8 +405,58 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         case WidgetType::FocusScope:
         case WidgetType::ScrollView:
         case WidgetType::ListView:
+        case WidgetType::VirtualList:  // M3：滚动视口同源绘制（裁剪/表面）
             paintSurface(sink, rect, common);
             break;
+        case WidgetType::Grid:
+            paintSurface(sink, rect, common);
+            break;
+        case WidgetType::Image: {
+            // M3：已就绪 → 位图拉满盒子（与 DrawImage 语义一致）；
+            // 未就绪 → 固定占位（表面 + 边框 + 中心叉），语义名称保留。
+            paintSurface(sink, rect, common);
+            if (node.imageId != 0) {
+                sink.drawImage(node.imageId, rect);
+            } else {
+                const Color placeholderFill =
+                    common.background.a > 0 ? common.background
+                                            : Color::fromRGBA(39, 39, 42);
+                sink.drawRect(rect, placeholderFill);
+                const Color border = Color::fromRGBA(82, 82, 91);
+                const float thickness = std::max(1.0F, node.size.height * 0.04F);
+                // 边框（四条薄矩形）+ 中心叉（占位语义，确定性几何）。
+                sink.drawRect(Rect{origin, Size{node.size.width, thickness}},
+                              border);
+                sink.drawRect(Rect{Offset{origin.x,
+                                          origin.y + node.size.height -
+                                              thickness},
+                                   Size{node.size.width, thickness}},
+                              border);
+                sink.drawRect(Rect{origin, Size{thickness, node.size.height}},
+                              border);
+                sink.drawRect(Rect{Offset{origin.x + node.size.width -
+                                              thickness,
+                                          origin.y},
+                                   Size{thickness, node.size.height}},
+                              border);
+                const float arm = std::min(node.size.width, node.size.height) *
+                                  0.25F;
+                if (arm > 1.0F) {
+                    const float cx = origin.x + node.size.width * 0.5F;
+                    const float cy = origin.y + node.size.height * 0.5F;
+                    const float ct = std::max(1.0F, thickness);
+                    sink.drawRect(
+                        Rect{Offset{cx - arm * 0.5F, cy - ct * 0.5F},
+                             Size{arm, ct}},
+                        border);
+                    sink.drawRect(
+                        Rect{Offset{cx - ct * 0.5F, cy - arm * 0.5F},
+                             Size{ct, arm}},
+                        border);
+                }
+            }
+            break;
+        }
         case WidgetType::Button: {
             paintControlSurface(sink, rect, common);
             const float width = textWidth(node.text, common.text);

@@ -600,3 +600,70 @@ TEST_CASE("settings_touch_density_and_high_contrast_pixel_stability",
     CHECK(contrast != 0);
     CHECK(contrast == app.renderFrame(true));
 }
+
+// M3：Grid 页与千项 VirtualList 页（可见区物化/滚动/焦点语义保持）。
+
+TEST_CASE("settings_grid_and_virtual_list_pages", "[settings][m3]") {
+    SettingsApp app;
+    app.setView(core::Size{800.0F, 600.0F});
+    (void)app.renderFrame();  // 首帧布局落地。
+
+    // Grid 页：入口 → 18 格自适应列宽 → Escape 返回。
+    REQUIRE(core::findNodeByKey(app.root(), "goto-grid-button") != nullptr);
+    const auto gridCenter = [] (SettingsApp& a) {
+        const auto* node = core::findNodeByKey(a.root(), "goto-grid-button");
+        return core::absoluteOffset(a.root(), "goto-grid-button") +
+               core::Offset{node->size.width * 0.5F,
+                            node->size.height * 0.5F};
+    };
+    app.pointerDown(gridCenter(app));
+    app.pointerUp(gridCenter(app));
+    REQUIRE(app.navigator().current() == "grid");
+    (void)app.renderFrame();
+    const auto* grid = core::findNodeByKey(app.root(), "tile-grid");
+    REQUIRE(grid != nullptr);
+    CHECK(grid->children.size() == 18);
+    CHECK(grid->children.front().size.width ==
+          Catch::Approx(grid->children[1].size.width).margin(0.01F));
+    app.keyDown(core::Key::Escape);
+    CHECK(app.navigator().current() == "home");
+
+    // Library 页：千项只物化可见窗口；滚动改变窗口；Escape 返回。
+    (void)app.renderFrame();
+    const auto libraryCenter = [](SettingsApp& a) {
+        const auto* node =
+            core::findNodeByKey(a.root(), "goto-library-button");
+        return core::absoluteOffset(a.root(), "goto-library-button") +
+               core::Offset{node->size.width * 0.5F,
+                            node->size.height * 0.5F};
+    };
+    app.pointerDown(libraryCenter(app));
+    app.pointerUp(libraryCenter(app));
+    REQUIRE(app.navigator().current() == "library");
+    (void)app.renderFrame();
+    const auto* list = core::findNodeByKey(app.root(), "library-list");
+    REQUIRE(list != nullptr);
+    CHECK(list->children.size() < 60);   // 千项不全量构建。
+    CHECK(list->children.size() >= 10);
+    CHECK(list->scrollExtent > 10000.0F);
+    // 首屏含 item-0；滚动后窗口移动且不构建全部。
+    CHECK(core::findNodeByKey(app.root(), "item-0") != nullptr);
+
+    const auto wheelAt = [&app](float deltaY) {
+        const auto* node = core::findNodeByKey(app.root(), "library-list");
+        const auto pos = core::absoluteOffset(app.root(), "library-list") +
+                         core::Offset{node->size.width * 0.5F,
+                                      node->size.height * 0.5F};
+        app.wheel(pos, core::Offset{0.0F, deltaY});
+    };
+    wheelAt(4000.0F);
+    (void)app.renderFrame();
+    CHECK(core::findNodeByKey(app.root(), "item-0") == nullptr);
+    CHECK(core::findNodeByKey(app.root(), "item-999") == nullptr);
+    const std::size_t afterScroll =
+        core::findNodeByKey(app.root(), "library-list")->children.size();
+    CHECK(afterScroll < 60);
+
+    app.keyDown(core::Key::Escape);
+    CHECK(app.navigator().current() == "home");
+}

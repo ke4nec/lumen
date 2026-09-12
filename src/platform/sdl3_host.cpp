@@ -432,6 +432,7 @@ bool Sdl3ApplicationHost::pollEvent(core::HostEvent& out) {
     if (!pending_.empty()) {
         out = std::move(pending_.front());
         pending_.pop_front();
+        refreshLifecycle();
         return true;
     }
     SDL_Event sdlEvent{};
@@ -451,6 +452,23 @@ bool Sdl3ApplicationHost::pollEvent(core::HostEvent& out) {
     return false;
 }
 
+void Sdl3ApplicationHost::waitForEvents(std::uint32_t timeoutMs) {
+    if (!initialized_) {
+        return;
+    }
+    // SDL_WaitEventTimeout 会从队列取走唤醒事件；不能传 nullptr，否则
+    // 空闲期间到达的第一条输入会被静默丢弃。先翻译并放回宿主 pending
+    // 队列，下一次 pollEvent 再按正常顺序出队（这里不分发事件）。
+    SDL_Event event{};
+    if (SDL_WaitEventTimeout(&event, static_cast<std::int32_t>(timeoutMs))) {
+        std::vector<core::HostEvent> batch;
+        translateEvent(&event, batch);
+        for (auto& translated : batch) {
+            pending_.push_back(std::move(translated));
+        }
+    }
+}
+
 std::optional<core::WindowId> Sdl3ApplicationHost::createWindow(
     const WindowDesc& desc) {
     if (!initialized_) {
@@ -463,6 +481,7 @@ std::optional<core::WindowId> Sdl3ApplicationHost::createWindow(
     windowDesc.resizable = desc.resizable;
     windowDesc.highPixelDensity = desc.highPixelDensity;
     windowDesc.opengl = desc.opengl;
+    windowDesc.softwarePresentation = desc.softwarePresentation;
     auto window = createSdl3Window(windowDesc);
     if (window == nullptr) {
         return std::nullopt;

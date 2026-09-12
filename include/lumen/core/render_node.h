@@ -49,10 +49,14 @@ struct RenderNode {
     std::uint32_t semanticsActions{0};
 
     // v0.3 阶段8D：滚动视口与选择状态。
-    bool clipContent{false};     // ScrollView/ListView 视口裁剪
+    bool clipContent{false};     // ScrollView/ListView/VirtualList 视口裁剪
     float scrollOffset{0.0F};    // 当前滚动偏移（已应用到子 offset）
     float scrollExtent{0.0F};    // 可滚动的最大范围（内容-视口）
     bool checked{false};         // Checkbox/Switch 状态
+
+    // M3 Image：已就绪资源 id（0 = 占位）与资源路径（诊断/语义）。
+    std::uint64_t imageId{0};
+    std::string imageSource{};
 
     // 视觉系统声明状态：interaction/semantics 的可用性与选中语义。
     bool enabled{true};

@@ -64,7 +64,8 @@ accessibility tree、Metal/Graphite。
 | Skia GPU | `SkiaGpuRenderer`（可选 `LUMEN_ENABLE_GPU`） | 探测/初始化失败自动回退 CPU，诊断记录原因（v0.2 §7C） |
 | 文本 shaping | `lumen-text` + `SkiaFontManager`（可选 `LUMEN_ENABLE_SKIA`，封装字体族/回退/度量/shaping；公共接口无 Skia 类型） | CPU-only 构建或无系统字体时回退 `PlaceholderFontManager`，布局/编辑照常（`fontDiagnostic`/工厂诊断明确报告）；布局与绘制共享同一份 shaped 结果，光标/选区不跨后端漂移 |
 | 编辑撤销 | `text::EditingHistory` + `InteractionController`（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y；连续单字输入/删除合并，IME 提交为单事务，preedit 不进栈） | 只读字段与 preedit 期间拒绝撤销；栈按字段 bind 隔离，容量 100 |
-| 剪贴板 | `platform::Clipboard` / `core::ClipboardProvider` | 不可用时 `setText` 返回 false，编辑状态不丢 |
+| 应用壳 | `lumen-app`（`app::AppShell` 帧管线 + `app::runApp` 主循环；M2） | 示例只保留 build/状态/handler；支持 Fake host 与外部测试 renderer 注入；GPU 失效经回退钩子重建软件窗口回到 CPU |
+| 剪贴板 | `platform::Clipboard` / `core::ClipboardProvider` | runApp 启动时接入宿主剪贴板（Ctrl+C/V；宿主不可用保持未注入）；`setText` 失败返回 false，编辑状态不丢 |
 | 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥） | 当前只提供平台无关契约与 Recording 桥；平台原生 provider 尚未实现，工厂返回 nullptr 并给出原因 |
 | 可访问性设置 | `PlatformCapabilities`（只读查询） | 高对比/减少动画/字体缩放由 `Theme::fromSettings` 与 `FrameScheduler::setReduceAnimation` 消费 |
 
@@ -75,13 +76,14 @@ accessibility tree、Metal/Graphite。
   本；grapheme 边界仍是唯一编辑索引（M1 已收口，见 M1 完成记录）。
 - Skia shaping 为逐 grapheme cluster（无 HarfBuzz 连写/合字）：拉丁/
   CJK/希伯来/阿拉伯基本形正确，复杂脚本合字后续增强。
-- 列表无虚拟化：ListView 要求稳定 key 与可预测子树复用；Grid/VirtualList
-  列入 M3。
-- 惯性滚动默认关闭（确定性测试优先）；动量物理列入 M3/M9。
+- VirtualList 已落地（M3：可见区物化/实测 extent 修正/锚点稳定），但仅
+  纵向且惯性滚动默认关闭（动量物理属后续版本）。
+- Grid 为纵向网格（无横向滚动/跨行列合并）；Image 需应用侧资源管理器
+  驱动加载（框架不管理异步资源生命周期）。
 - 平台原生无障碍桥（UIA/AT-SPI/NSAccessibility）的完整 provider 实现
   属后续版本；v0.3 冻结了桥接契约与 headless 验证路径，语义收口见 M5。
-- 应用主循环/damage 管线仍由 counter/settings 各自手写，无统一 `runApp`
-  壳；C++ DSL builder 仅覆盖基础容器/文本/按钮/TextField：见 M2。
+- 应用主循环/damage 管线已收敛到 `lumen-app` 应用壳（M2）：新工具页只需
+  提供 build/状态逻辑；runApp 为单窗口主循环（多窗口属后续里程碑）。
 - 平台服务（文件选择/通知/光标形状/窗口图标）未形成统一接口：见 M4。
 - Icon/阴影/转场/ThemeScope、Dropdown/Menu/Tooltip/Slider/ProgressBar/
   Radio/Tabs、Scrollbar 完整控件、表单扩展校验器：见 M6。

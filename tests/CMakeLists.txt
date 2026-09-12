@@ -12,6 +12,10 @@ set(LUMEN_TEST_SOURCES
     interaction_tests.cpp
     counter_integration_tests.cpp
     counter_fallback_tests.cpp
+    # M2：应用壳（runApp/AppShell）headless 验收——Fake host 驱动。
+    app_shell_tests.cpp
+    # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
+    grid_virtual_tests.cpp
     dsl_tests.cpp
     damage_tests.cpp
     tween_tests.cpp
@@ -58,6 +62,7 @@ target_include_directories(lumen-tests PRIVATE
 
 target_link_libraries(lumen-tests PRIVATE
     lumen-core
+    lumen-app
     lumen-style
     lumen-layout
     lumen-render
@@ -72,6 +77,12 @@ target_link_libraries(lumen-tests PRIVATE
 
 if(NOT LUMEN_BUILD_MOBILE_CORE)
   target_link_libraries(lumen-tests PRIVATE SDL3::SDL3)
+endif()
+
+if(LUMEN_ENABLE_GPU)
+  # GPU 构建的测试链接 Skia 静态归档（引用 GLX）；GL 尾置解析。
+  find_package(OpenGL REQUIRED)
+  target_link_libraries(lumen-tests PRIVATE OpenGL::GL)
 endif()
 
 target_compile_features(lumen-tests PRIVATE cxx_std_20)

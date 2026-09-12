@@ -3,6 +3,7 @@ add_executable(lumen-settings main.cpp)
 target_compile_features(lumen-settings PRIVATE cxx_std_20)
 target_link_libraries(lumen-settings PRIVATE
     lumen-core
+    lumen-app
     lumen-layout
     lumen-render
     lumen-text

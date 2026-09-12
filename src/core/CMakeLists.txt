@@ -6,6 +6,7 @@ add_library(lumen-core STATIC
     state.cpp
     interaction.cpp
     scroll.cpp
+    virtual_list.cpp
     damage.cpp
     tween.cpp
     windowing.cpp

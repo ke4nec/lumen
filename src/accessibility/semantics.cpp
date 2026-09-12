@@ -24,7 +24,11 @@ SemanticsRole defaultRoleFor(const RenderNode& node, bool isRoot) {
         case WidgetType::ListView:
             return SemanticsRole::List;
         case WidgetType::ScrollView:
+        case WidgetType::VirtualList:  // M3：虚拟列表同列表语义
             return SemanticsRole::List;
+        case WidgetType::Image:  // M3：图像（label/value 保留可访问名）
+            return SemanticsRole::Image;
+        case WidgetType::Grid:  // M3：网格归组语义
         case WidgetType::Container:
         case WidgetType::Row:
         case WidgetType::Column:
@@ -46,7 +50,10 @@ std::uint32_t defaultActionsFor(const RenderNode& node) {
             return kActionFocus | kActionActivate;
         case WidgetType::ScrollView:
         case WidgetType::ListView:
+        case WidgetType::VirtualList:
             return kActionScroll;
+        case WidgetType::Image:
+            return kActionFocus;  // 可聚焦/可访问（无激活语义）
         default:
             return 0;
     }

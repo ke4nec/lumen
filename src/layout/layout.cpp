@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
+#include <map>
 #include <numeric>
 
 #include "lumen/core/utf8.h"
@@ -18,6 +20,7 @@ using core::RenderNode;
 using core::ResolvedStyle;
 using core::Size;
 using core::TextStyle;
+using core::VirtualListSource;
 using core::Widget;
 using core::WidgetType;
 
@@ -28,6 +31,17 @@ float clampFloat(float value, float low, float high) {
 // M1：布局期字体源（UI 线程独占；公开入口显式传入，内部经作用域 guard
 // 读取，避免为每个递归层新增参数；默认占位，CPU 不依赖 Skia）。
 thread_local const text::FontManager* t_activeFonts = nullptr;
+thread_local const LayoutEngine::PrepareItem* t_prepareItem = nullptr;
+
+struct ScopedItemPreparation {
+    const LayoutEngine::PrepareItem* previous{t_prepareItem};
+    explicit ScopedItemPreparation(const LayoutEngine::PrepareItem& prepare) {
+        t_prepareItem = &prepare;
+    }
+    ~ScopedItemPreparation() { t_prepareItem = previous; }
+    ScopedItemPreparation(const ScopedItemPreparation&) = delete;
+    ScopedItemPreparation& operator=(const ScopedItemPreparation&) = delete;
+};
 
 const text::FontManager& activeFonts() {
     return t_activeFonts != nullptr ? *t_activeFonts
@@ -80,6 +94,8 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.semanticsActions = widget.semanticsActions;
     node.checked = widget.checked;
     node.scrollOffset = widget.scrollOffset;
+    node.imageId = widget.imageId;
+    node.imageSource = widget.imageSource;
     node.enabled = widget.enabled;
     node.invalid = widget.invalid;
     node.selected = widget.selected;
@@ -211,6 +227,14 @@ RenderNode layoutScrollView(const Widget& widget, const Constraints& constraints
                             const style::StyleContext& styleContext,
                             const std::string& identity);
 
+// M3：Grid 与 VirtualList（定义见后；layoutSingle 引用）。
+RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
+                      const style::StyleContext& styleContext,
+                      const std::string& identity);
+RenderNode layoutVirtualList(const Widget& widget, const Constraints& constraints,
+                             const style::StyleContext& styleContext,
+                             const std::string& identity);
+
 RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
                         const style::StyleContext& styleContext,
                         const std::string& identity) {
@@ -235,6 +259,12 @@ RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
         case WidgetType::ListView:
             return layoutScrollView(widget, constraints, styleContext,
                                     identity);
+        case WidgetType::Grid:
+            return layoutGrid(widget, constraints, styleContext, identity);
+        case WidgetType::VirtualList:
+            return layoutVirtualList(widget, constraints, styleContext,
+                                     identity);
+        case WidgetType::Image:
         case WidgetType::Text:
         case WidgetType::Button:
         case WidgetType::TextField:
@@ -714,8 +744,203 @@ RenderNode layoutScrollView(const Widget& widget,
     return node;
 }
 
+// M3（自用路线图）：Grid。子项按阅读顺序填入；固定列数
+//（columnCount>0）或按最小列宽自适应（列数 =
+// floor((可用宽+列间距)/(最小列宽+列间距))，至少 1 列）。单元宽度均分
+//（(可用宽-(列-1)*列间距)/列）；行高 = 行内子项外部高度最大值；行间用
+// gridRowGap。子项约束：宽度 ≤ 单元宽（子项自身决定填充），高度不限。
+// 窗口变化重排由约束传播自然发生（几何确定性：同约束同结果）。
+RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
+                      const style::StyleContext& styleContext,
+                      const std::string& identity) {
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
+    const EdgeInsets& padding = core::commonStyle(resolved).padding;
+    const Constraints outer = constraints.deflate(widget.margin);
+
+    const float availableWidth =
+        widget.width.has_value()
+            ? clampFloat(*widget.width, outer.minWidth, outer.maxWidth)
+            : outer.maxWidth;
+    const float contentWidth =
+        std::max(0.0F, availableWidth - padding.horizontal());
+    const float columnGap = std::max(0.0F, widget.gridColumnGap);
+    int columns = widget.gridColumnCount;
+    if (columns <= 0) {
+        const float minWidth = widget.gridMinColumnWidth;
+        columns = minWidth > 0.0F
+                      ? static_cast<int>(std::floor(
+                            (contentWidth + columnGap) /
+                            (minWidth + columnGap)))
+                      : 1;
+        columns = std::max(1, columns);
+    }
+    const int safeColumns = std::max(1, columns);
+    const float cellWidth =
+        std::max(0.0F, (contentWidth - static_cast<float>(safeColumns - 1) *
+                                            columnGap) /
+                           static_cast<float>(safeColumns));
+    const float rowGap = std::max(0.0F, widget.gridRowGap);
+
+    RenderNode node = makeNode(widget, Offset{0.0F, 0.0F},
+                               Size{availableWidth, 0.0F}, styleContext,
+                               identity);
+    // 先分单元约束布局全部子项，再按行聚合定位（行高 = 行内最大）。
+    struct Cell {
+        RenderNode node{};
+        float outerHeight{0.0F};
+    };
+    std::vector<Cell> cells;
+    cells.reserve(widget.children.size());
+    for (std::size_t i = 0; i < widget.children.size(); ++i) {
+        const Widget& child = widget.children[i];
+        // 单元宽度紧约束（网格语义：单元格均匀填满列宽；子项高度
+        // 自适应，行高 = 行内最大外部高度）。
+        const Constraints childConstraints{
+            cellWidth, cellWidth, 0.0F, Constraints::unbounded().maxHeight};
+        RenderNode childNode =
+            layoutSingle(child, childConstraints, styleContext,
+                         childIdentity(identity, child, i));
+        cells.push_back(Cell{std::move(childNode),
+                             childNode.size.height + child.margin.vertical()});
+    }
+
+    const std::size_t rows =
+        (widget.children.size() + static_cast<std::size_t>(safeColumns) - 1) /
+        static_cast<std::size_t>(safeColumns);
+    float contentHeight = 0.0F;
+    for (std::size_t row = 0; row < rows; ++row) {
+        const std::size_t begin =
+            row * static_cast<std::size_t>(safeColumns);
+        const std::size_t end =
+            std::min(widget.children.size(),
+                     begin + static_cast<std::size_t>(safeColumns));
+        float rowHeight = 0.0F;
+        for (std::size_t i = begin; i < end; ++i) {
+            rowHeight = std::max(rowHeight, cells[i].outerHeight);
+        }
+        for (std::size_t i = begin; i < end; ++i) {
+            Cell& cell = cells[i];
+            const std::size_t column = i - begin;
+            cell.node.offset = Offset{
+                padding.left + static_cast<float>(column) *
+                                   (cellWidth + columnGap) +
+                                   widget.children[i].margin.left,
+                padding.top + contentHeight +
+                    widget.children[i].margin.top};
+            node.children.push_back(std::move(cell.node));
+        }
+        contentHeight += rowHeight;
+        if (row + 1 < rows) {
+            contentHeight += rowGap;
+        }
+    }
+    contentHeight += padding.vertical();
+
+    node.size = Size{availableWidth,
+                     widget.height.has_value()
+                         ? clampFloat(*widget.height, outer.minHeight,
+                                      outer.maxHeight)
+                         : outer.constrain(Size{availableWidth, contentHeight})
+                               .height};
+    return node;
+}
+
+// M3：VirtualList。数据源（itemCount/estimatedExtent/extentOf/
+// scrollOffset/buildItem/noteExtent）驱动：可见区（含缓存）经
+// buildItem 物化，子项绝对定位在内容坐标（offsetOfIndex），滚动偏移
+// 应用到子 offset；实测修正后继续物化到视口填满。每项在本次布局中
+// 仅构建/测量一次，避免估值偏大时留下空白或反复构建同一项目。
+RenderNode layoutVirtualList(const Widget& widget,
+                             const Constraints& constraints,
+                             const style::StyleContext& styleContext,
+                             const std::string& identity) {
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
+    const EdgeInsets& padding = core::commonStyle(resolved).padding;
+    const Constraints outer = constraints.deflate(widget.margin);
+
+    const float viewportWidth =
+        widget.width.has_value()
+            ? clampFloat(*widget.width, outer.minWidth, outer.maxWidth)
+            : outer.maxWidth;
+    const float viewportHeight =
+        widget.height.has_value()
+            ? clampFloat(*widget.height, outer.minHeight, outer.maxHeight)
+            : outer.maxHeight;
+
+    RenderNode node = makeNode(widget, Offset{0.0F, 0.0F},
+                               Size{viewportWidth, viewportHeight},
+                               styleContext, identity);
+    node.clipContent = true;
+
+    const VirtualListSource* source = widget.virtualSource;
+    if (source != nullptr) {
+        source->updateViewport(viewportHeight, padding.vertical());
+    }
+    if (source == nullptr || source->itemCount() == 0) {
+        node.scrollExtent = 0.0F;
+        node.scrollOffset = 0.0F;
+        return node;
+    }
+
+    const float contentMaxWidth =
+        std::max(0.0F, viewportWidth - padding.horizontal());
+    const float cacheExtent = std::max(0.0F, widget.virtualCacheExtent);
+
+    struct MaterializedItem {
+        RenderNode node;
+        EdgeInsets margin;
+    };
+    std::map<std::size_t, MaterializedItem> materialized;
+    for (;;) {
+        node.scrollExtent = std::max(
+            0.0F, source->totalExtent() + padding.vertical() - viewportHeight);
+        node.scrollOffset = std::clamp(source->scrollOffset(), 0.0F,
+                                        node.scrollExtent);
+        const auto [first, last] = source->visibleRangeAt(
+            node.scrollOffset - padding.top, viewportHeight, cacheExtent);
+        bool extentsChanged = false;
+        for (std::size_t i = first; i < last; ++i) {
+            if (materialized.contains(i)) {
+                continue;
+            }
+            Widget item = source->buildItem(i);
+            if (t_prepareItem != nullptr && *t_prepareItem) {
+                (*t_prepareItem)(item);
+            }
+            const Constraints childConstraints{
+                0.0F, contentMaxWidth, 0.0F,
+                Constraints::unbounded().maxHeight};
+            RenderNode childNode = layoutSingle(
+                item, childConstraints, styleContext,
+                childIdentity(identity, item, i));
+            const float assumed = source->extentOf(i);
+            source->noteExtent(i, childNode.size.height + item.margin.vertical());
+            extentsChanged = extentsChanged || source->extentOf(i) != assumed;
+            materialized.emplace(i, MaterializedItem{std::move(childNode), item.margin});
+        }
+        if (extentsChanged) {
+            // 每次修正都来自首次物化的新项，因此至多物化 itemCount 项。
+            // 下一轮沿用已测节点，只补齐修正后进入可见区的项目。
+            continue;
+        }
+        for (std::size_t i = first; i < last; ++i) {
+            auto& item = materialized.at(i);
+            item.node.offset = Offset{
+                padding.left + item.margin.left,
+                padding.top + item.margin.top + source->offsetOfIndex(i) -
+                    node.scrollOffset};
+            node.children.push_back(std::move(item.node));
+        }
+        break;
+    }
+    return node;
+}
+
 void stackAlignmentFactors(core::StackAlignment alignment, float& xFactor,
-                           float& yFactor) {    using core::StackAlignment;
+                           float& yFactor) {
+    using core::StackAlignment;
     switch (alignment) {
         case StackAlignment::TopLeft:
             xFactor = 0.0F;
@@ -863,8 +1088,10 @@ core::RenderNode LayoutEngine::layout(const core::Widget& widget,
 core::RenderNode LayoutEngine::layout(const core::Widget& widget,
                                        const core::Constraints& constraints,
                                        const style::StyleContext& styleContext,
-                                       const text::FontManager& fonts) {
+                                       const text::FontManager& fonts,
+                                       const PrepareItem& prepareItem) {
     const ScopedFonts guard{fonts};
+    const ScopedItemPreparation preparation{prepareItem};
     return layoutSingle(widget, constraints, styleContext,
                         childIdentity({}, widget, 0));
 }

@@ -370,3 +370,114 @@ TEST_CASE("dsl_rejects_invalid_visual_attributes", "[dsl]") {
     CHECK_FALSE(parseLumen(
         "page root { Button(\"x\", enabled: maybe) }").ok());
 }
+
+// --- M2：C++ builder 与 .lumen DSL 全节点对齐（能力对称验收） ---
+
+TEST_CASE("cpp_builder_matches_text_dsl_across_frozen_widget_set",
+          "[dsl][m2]") {
+    // 覆盖 .lumen 冻结节点全集与常用属性；C++ builder + core with*
+    // 修饰器必须逐字段重建同一棵树（roadmap M2 验证条款）。
+    constexpr const char* kSource =
+        "page Parity {\n"
+        "  Column(key: \"root\", padding: 0, spacing: 0) {\n"
+        "    Row(padding: 8, spacing: 4, mainAxis: center, crossAxis: end) {\n"
+        "      Checkbox(\"Notify\", bind: notify, checked: true, "
+        "key: \"notify-box\")\n"
+        "      Switch(\"Autosave\", bind: autosave, key: \"autosave-switch\")\n"
+        "    }\n"
+        "    Column(padding: 6, spacing: 2, mainAxis: spaceBetween) {\n"
+        "      Text(\"Hi\", fontSize: 18, weight: 700, italic: true, "
+        "letterSpacing: 0.5, maxLines: 2, overflow: ellipsis, "
+        "key: \"title\")\n"
+        "      Button(\"Go\", onClick: go, variant: tonal, size: small, "
+        "key: \"go\")\n"
+        "      TextField(bind: name, placeholder: \"Name\", obscure: true, "
+        "readOnly: false, multiline: true, key: \"field\")\n"
+        "    }\n"
+        "    Stack(alignment: topLeft) {\n"
+        "      ScrollView(key: \"scroll\", scrollOffset: 12, flex: 1) { "
+        "ListView(key: \"list\") { Text(\"items\", bind: items) } }\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+    const DslParseResult parsed = parseLumen(kSource, "parity.lumen");
+    REQUIRE(parsed.ok());
+
+    using namespace lumen::dsl;
+    namespace core = lumen::core;
+    Widget root_ = column(
+        {stack({core::withFlex(
+             core::withScrollOffset(
+                 scroll_view(list_view(text("items", bind("items")), "list"),
+                             "scroll"),
+                 12.0F),
+             1.0F)})},
+        core::EdgeInsets{}, 0.0F);
+    root_.key = "root";
+
+    Widget row_ = row(
+        {checkbox("Notify", bind("notify"), "notify-box", true),
+         switch_widget("Autosave", bind("autosave"), "autosave-switch")},
+        lumen::core::EdgeInsets::all(8.0F), 4.0F);
+    row_.mainAxis = MainAxisAlignment::Center;
+    row_.crossAxis = CrossAxisAlignment::End;
+
+    core::TextStyle titleStyle;
+    titleStyle.fontSize = 18.0F;
+    titleStyle.weight = 700;
+    titleStyle.italic = true;
+    titleStyle.letterSpacing = 0.5F;
+    titleStyle.maxLines = 2;
+    titleStyle.overflow = TextOverflow::Ellipsis;
+    Widget title;
+    title.type = WidgetType::Text;
+    title.text = "Hi";
+    title.bindPrefix = "Hi";
+    title.key = "title";
+    title.textStyle = titleStyle;
+
+    Widget button_ = button("Go", onClick("go"));
+    button_.buttonVariant = ButtonVariant::Tonal;
+    button_.controlSize = ControlSize::Small;
+    button_.key = "go";
+
+    Widget field = text_field(bind("name"), placeholder("Name"));
+    field.key = "field";
+    field.obscure = true;
+    field.readOnly = false;
+    field.multiline = true;
+
+    Widget column_ = column({title, button_, field},
+                            lumen::core::EdgeInsets::all(6.0F), 2.0F);
+    column_.mainAxis = MainAxisAlignment::SpaceBetween;
+
+    root_.children = {row_, column_, root_.children.front()};
+
+    CHECK(parsed.root == root_);
+}
+
+TEST_CASE("cpp_builder_focus_scope_and_core_modifiers_cover_lumen_attrs",
+          "[dsl][m2]") {
+    using namespace lumen::dsl;
+    // FocusScope：.lumen 冻结语法未包含（modal 焦点域），C++ builder
+    // 必须提供（M2 对齐条款）。
+    Widget scope = focus_scope(text("modal"), "modal-scope");
+    REQUIRE(scope.type == WidgetType::FocusScope);
+    CHECK(scope.key == "modal-scope");
+    REQUIRE(scope.children.size() == 1);
+    CHECK(scope.children.front().type == WidgetType::Text);
+
+    // 常用样式/状态属性经 core with* 修饰器与 .lumen 属性同名同义。
+    Widget box = lumen::core::withEnabled(lumen::core::withSelected(
+        lumen::core::withControlSize(
+            lumen::core::withVariant(
+                container(text("x"), lumen::core::Color{}),
+                ButtonVariant::Danger),
+            ControlSize::Large),
+        true),
+        false);
+    CHECK(box.enabled == false);
+    CHECK(box.selected == true);
+    CHECK(box.controlSize == ControlSize::Large);
+    CHECK(box.buttonVariant == ButtonVariant::Danger);
+}

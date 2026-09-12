@@ -29,6 +29,7 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     void shutdown() override;
     [[nodiscard]] core::AppLifecycle lifecycle() const override;
     bool pollEvent(core::HostEvent& out) override;
+    void waitForEvents(std::uint32_t timeoutMs) override;
 
     std::optional<core::WindowId> createWindow(const WindowDesc& desc) override;
     void destroyWindow(core::WindowId id) override;

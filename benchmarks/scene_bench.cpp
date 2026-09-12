@@ -10,8 +10,11 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <charconv>
 #include <cmath>
 #include <cstdio>
+#include <functional>
+#include <memory>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -23,6 +26,7 @@
 #include "lumen/core/damage.h"
 #include "lumen/core/element.h"
 #include "lumen/core/render_node.h"
+#include "lumen/core/virtual_list.h"
 #include "lumen/core/widget.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
@@ -254,13 +258,56 @@ PhaseStats summarize(const std::vector<PhaseSample>& samples) {
     return stats;
 }
 
+// --- M3 virtual-list 场景 ----------------------------------------------------------
+//
+// 千/万项 VirtualList：每帧滚动 32px（可见窗口移动 → 物化/回收）。
+// 输出节点数/命令数/分配量验证“不全量构建子树”（出口条件）。
+
+class VirtualListScene {
+  public:
+    static constexpr char kName[] = "virtual-list";
+
+    explicit VirtualListScene(int items) {
+        controller_.setItemCount(static_cast<std::size_t>(items));
+        controller_.setEstimatedExtent(44.0F);
+        controller_.setItemBuilder([](std::size_t index) {
+            Widget item;
+            item.type = WidgetType::Text;
+            item.text = "Entry " + std::to_string(index);
+            item.key = "item-" + std::to_string(index);
+            return item;
+        });
+        controller_.scroll().updateExtents(kViewportHeight,
+                                           controller_.totalExtent());
+    }
+
+    [[nodiscard]] Widget root(int frame) {
+        (void)frame;
+        // 逐帧滚动（触底回绕，保证确定性且覆盖回收窗口）。
+        controller_.scroll().scrollBy(32.0F);
+        if (controller_.scroll().offset() >=
+            controller_.scroll().maxScrollOffset()) {
+            controller_.scroll().scrollTo(0.0F);
+        }
+        return lumen::core::makeVirtualList(&controller_, "bench-list",
+                                            std::nullopt, kViewportHeight,
+                                            200.0F);
+    }
+
+  private:
+    mutable lumen::core::VirtualListController controller_{};
+};
+
 // --- Benchmark app ----------------------------------------------------------------
 
 // Minimal frame pipeline mirroring CounterApp: reconcile a changed template,
 // layout, collect damage, repaint the damaged region on the preserved frame.
 class BenchApp {
   public:
-    BenchApp() : element_(BenchScene::root(0)) {
+    using RootBuilder = std::function<Widget(int)>;
+
+    explicit BenchApp(RootBuilder rootAt)
+        : rootAt_(std::move(rootAt)), element_(rootAt_(0)) {
         previousRoot_ = lumen::layout::LayoutEngine::layout(
             element_.widget(), Constraints::tight(Size{kViewportWidth, kViewportHeight}));
         paintFull(previousRoot_);
@@ -278,7 +325,7 @@ class BenchApp {
         FrameResult result;
         {
             const AllocSnapshot start = AllocSnapshot{};
-            element_.update(BenchScene::root(frame));
+            element_.update(rootAt_(frame));
             reconcile_ = AllocSnapshot{}.elapsedSince(start);
         }
         RenderNode fresh;
@@ -343,6 +390,7 @@ class BenchApp {
         return count;
     }
 
+    RootBuilder rootAt_;
     Element element_;
     lumen::render::CpuRenderer renderer_{1.0F};
     RenderNode previousRoot_{};
@@ -360,10 +408,27 @@ struct Options {
     int warmupFrames{30};
     int measuredFrames{300};
     bool json{false};
+    // M3：场景选择。card-grid（M0 基线，禁止改动）或 virtual-list
+    //（千/万项可见区物化；items 可配）。
+    std::string scenario{"card-grid-6x8-1080p"};
+    int items{1000};
+    // 非 0 = 当前为 virtual-list 场景（--items 更新场景名）。
+    int scenarioItems{0};
 };
 
 Options parseOptions(int argc, char** argv) {
     Options options;
+    const auto itemCount = [](const std::string& value) {
+        int count = 0;
+        const auto result = std::from_chars(
+            value.data(), value.data() + value.size(), count);
+        if (result.ec != std::errc{} ||
+            result.ptr != value.data() + value.size() || count <= 0) {
+            std::fprintf(stderr, "item count must be a positive integer\n");
+            std::exit(2);
+        }
+        return count;
+    };
     for (int i = 1; i < argc; ++i) {
         const std::string flag = argv[i];
         if (flag == "--frames" && i + 1 < argc) {
@@ -372,9 +437,35 @@ Options parseOptions(int argc, char** argv) {
             options.warmupFrames = std::max(0, std::atoi(argv[++i]));
         } else if (flag == "--json") {
             options.json = true;
+        } else if (flag == "--scenario" && i + 1 < argc) {
+            const std::string value = argv[++i];
+            if (value == "virtual-list") {
+                options.scenario = "virtual-list-" + std::to_string(options.items) +
+                                   "-1080p";
+                options.scenarioItems = 1;
+            } else if (value.rfind("virtual-list-", 0) == 0) {
+                // virtual-list-<items>：场景名携带项数。
+                options.items = itemCount(value.substr(13));
+                options.scenario = "virtual-list-" + std::to_string(options.items) +
+                                   "-1080p";
+                options.scenarioItems = 1;
+            } else if (value == "card-grid-6x8-1080p") {
+                options.scenario = value;
+                options.scenarioItems = 0;
+            } else {
+                std::fprintf(stderr, "unknown scenario: %s\n", value.c_str());
+                std::exit(2);
+            }
+        } else if (flag == "--items" && i + 1 < argc) {
+            options.items = itemCount(argv[++i]);
+            if (options.scenarioItems != 0) {
+                options.scenario =
+                    "virtual-list-" + std::to_string(options.items) + "-1080p";
+            }
         } else {
             std::fprintf(stderr,
-                         "usage: lumen-scene-bench [--frames N] [--warmup N] [--json]\n");
+                         "usage: lumen-scene-bench [--frames N] [--warmup N] [--json] "
+                         "[--scenario card-grid-6x8-1080p|virtual-list[-N]] [--items N]\n");
             std::exit(2);
         }
     }
@@ -479,7 +570,8 @@ void reportText(const Options& options, const std::map<std::string, PhaseStats>&
                 int partialFrames) {
     std::printf("lumen-scene-bench (v0.2 stage 7A CPU baseline, 7B command path)\n");
     std::printf("scenario: %s  backend: cpu  toolchain: %s  build_type: %s\n",
-                kBenchScenario, benchToolchain().c_str(), benchBuildType().c_str());
+                options.scenario.c_str(), benchToolchain().c_str(),
+                benchBuildType().c_str());
     std::printf("commit: %s  platform: %s\n", benchCommit().c_str(),
                 benchPlatform().c_str());
     std::printf("viewport: %.0fx%.0f  cards: %dx%d  nodes: %zu  commands/frame: %llu  culled/partial-frame: %llu\n",
@@ -504,7 +596,7 @@ void reportJson(const Options& options, const std::map<std::string, PhaseStats>&
     std::printf("{\n");
     std::printf("  \"benchmark\": \"lumen-scene-bench\",\n");
     std::printf("  \"backend\": \"cpu\",\n");
-    std::printf("  \"scenario\": \"%s\",\n", kBenchScenario);
+    std::printf("  \"scenario\": \"%s\",\n", options.scenario.c_str());
     std::printf("  \"viewport\": [%.0f, %.0f],\n", kViewportWidth, kViewportHeight);
     std::printf("  \"cards\": [%d, %d],\n", kGridColumns, kGridRows);
     std::printf("  \"nodes\": %zu,\n", nodeCount);
@@ -537,9 +629,17 @@ void reportJson(const Options& options, const std::map<std::string, PhaseStats>&
 }  // namespace
 
 int main(int argc, char** argv) {
-    const Options options = parseOptions(argc, argv);
+    Options options = parseOptions(argc, argv);
+    std::unique_ptr<VirtualListScene> listScene;
+    BenchApp::RootBuilder rootAt;
+    if (options.scenario.rfind("virtual-list", 0) == 0) {
+        listScene = std::make_unique<VirtualListScene>(options.items);
+        rootAt = [&listScene](int frame) { return listScene->root(frame); };
+    } else {
+        rootAt = [](int frame) { return BenchScene::root(frame); };
+    }
 
-    BenchApp app;
+    BenchApp app{std::move(rootAt)};
     std::map<std::string, PhaseStats> phases;
     std::vector<PhaseSample> reconcileSamples;
     std::vector<PhaseSample> layoutSamples;
