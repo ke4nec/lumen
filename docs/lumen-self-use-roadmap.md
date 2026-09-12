@@ -56,6 +56,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | v0.3 8D | 已完成应用基础组件 | ScrollView/ListView、Form、Dialog、Navigator、settings 示例 |
 | v0.3 8E | 已完成 SDL-free 移动接缝 | `MobileHostSeam`、生命周期、safe area、触摸归一化、返回键 |
 | 视觉 V1/V2 | 已完成主要状态样式迁移 | token、Theme、StyleResolver、ResolvedStyle、状态与 damage 联动 |
+| 自用 M1 | 已完成真实文本与编辑闭环 | SkiaFontManager、shaped TextLayout/RenderCommand、UAX#9 子集、EditingHistory（见 §10 M1 完成记录） |
 
 当前验证基线：Windows CPU Debug 303/303，Skia Release 314/314，SDL-free mobile-core 291/291。`817ad43` 后 Windows 的 CPU/Skia/GPU 三个 job、Linux 的 CPU/Skia/GPU/mobile-core 四个 job、macOS 的 CPU/mobile-core 两个 job 均已纳入 CI；真实 macOS GPU 仍待 M7 纳入门槛。最新基线提交为 `817ad43 fix(platform): 对齐跨平台能力与验证契约`。
 
@@ -65,9 +66,9 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 
 | 领域 | 当前实现 | 对自用版的影响 | 计划里程碑 |
 | --- | --- | --- | --- |
-| 文本 | CPU 光栅的内置 5x7 字体只覆盖 ASCII，非 ASCII 会落到方块占位；布局主要使用 `PlaceholderFontManager`，Skia 绘制虽可使用系统字体但布局度量未完全统一 | 中文、字体 fallback、复杂脚本和光标定位可能跨后端漂移 | M1 |
-| 编辑 | selection/composing 已有，undo/redo 未完成 | 长时间编辑体验不完整 | M1 |
-| 方向文本 | RTL 是确定性近似，混合方向未完整实现 | 双语工具和混排文本命中测试不可靠 | M1 |
+| 文本 | M1 已完成：`SkiaFontManager`（字体族/weight/回退/度量/shaping，pimpl 无 Skia 类型）+ `TextLayoutResult` shaped run/glyph/cluster/baseline；CPU 占位与 Skia 共享同一契约，缺字体明确诊断 | 复杂脚本合字（HarfBuzz 级）、移动字体策略属后续版本（M9） | M1 已收口 |
+| 编辑 | M1 已完成：`EditingHistory` undo/redo 栈、事务边界、连续输入合并、Ctrl+Z/Shift+Z/Y、IME 提交单事务、preedit 不进栈 | 富文本编辑不纳入第一版 | M1 已收口 |
+| 方向文本 | M1 已完成：UAX#9 确定性子集（强/弱/中性类 + L2 重排），混合方向命中测试可靠，grapheme 边界为唯一编辑索引 | 显式嵌入控制/镜像括号/数字定形属后续增强 | M1 已收口 |
 | 应用框架层 | counter/settings 各自手写主循环、rebuild、damage 和事件路由，没有统一 `runApp`/应用壳 | 新应用需要复制大量生命周期样板，容易产生行为分叉 | M2 |
 | DSL | `.lumen` 文本 DSL 覆盖组件多于 C++ builder，C++ builder 目前只覆盖基础容器、文本、按钮和 TextField | C++ 声明式 API 与文本 DSL 能力不对称 | M2 |
 | 控件库 | 没有 Image Widget、Dropdown/Menu、Tooltip、Slider、ProgressBar、Radio/Tabs；Scrollbar token 已有但无完整绘制控件；FormController 实现只有 nonEmpty/minLength，头文件注释提到的邮箱校验器尚未提供 | 工具应用常见信息展示、选择和表单校验能力不足 | M3/M6 |
@@ -469,10 +470,66 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   bench 环境变量透传（GITHUB_SHA/RUNNER_OS）。
 - 回滚点：`2735261 docs(roadmap): 完善自用跨端里程碑路线图`（M0 前）。
 
-### M1–M9 完成记录（待实施，占位）
+### M1 完成记录（桌面真实文本与编辑闭环）
 
-- M1 真实文本与编辑：未开始（出口：桌面 Skia 布局不再使用占位字体度量；
-  编辑可撤销/重做；缺字体可启动并诊断）。
+- 完成日期：2026-09-12
+- 提交号：（本变更提交，见 Git 历史 `feat(text)`）
+- 变更：
+  - `lumen-text` 新增 `SkiaFontManager`（`include/lumen/text/skia_font_manager.h`，
+    pimpl 封装字体族/weight/style/fallback/glyph metrics/shaping；公共接口
+    无 Skia 类型；Windows GDI / Linux FontConfig / macOS CoreText 端口），
+    `FontManager` 基类新增 `resolveWithStatus`/`horizontalMetrics`/
+    `shapeCluster`/`diagnostic` 默认实现；CPU-only 构建工厂返回 nullptr
+    并给出诊断（占位启动不阻塞）。
+  - `TextLayoutResult`/`TextLine` 保存 shaped run、glyph id、advance、
+    x 偏移、cluster 映射、真实 baseline、行高与命中测试信息；
+    `TextLayoutCache` 键增加字体后端；缺字 cluster 回退占位 advance 并
+    标记 `usedPlaceholderFallback`，不改变编辑索引。
+  - `RenderCommand`（v3）的 `TextRun` 携带 `baselinePx` 与可序列化
+    `TextGlyphRun`（family/placeholder/glyphs）；`LayoutEngine`/
+    `paintScene`/`recordScene` 增加显式字体源入口；CPU 按占位 xOffsetPx
+    定位，Skia 光栅/GPU 按真实 glyph id 绘制（`src/render/skia_text.cpp`
+    共享），后端无对应数据时回退旧逐码点路径。
+  - 混合 LTR/RTL：`lumen/text/bidi.h`（UAX#9 确定性子集：强/弱/中性
+    类近似 + L2 逐层逆序），视觉序/命中测试/光标映射共用
+    `graphemeX`，grapheme 边界仍为唯一编辑索引。
+  - 编辑撤销：`lumen/text/editing_history.h`（值快照栈、连续单字
+    输入/删除合并、事务边界、容量 100、分支丢弃 redo）；
+    `InteractionController` 接入 Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y，preedit
+    期间拒绝，IME commit 为单个事务，纯选区移动只打断合并；
+    命中测试/光标定位经 `setTextFonts` 与布局共享同一份 FontManager
+    （默认占位；Skia 应用传入 `SkiaFontManager`，示例的默认接线随 M2
+    应用壳落地，本里程碑以测试证明闭环）。
+- 测试：
+  - 新增单测/headless：bidi 类别/runs/视觉序（含纯 RTL、LTR 段嵌 R、
+    RTL 段嵌 L）、混合方向布局保持 grapheme 索引与命中测试、
+    shaped run 结构/ellipsis cluster、`EditingHistory` 合并/事务/
+    分支/容量、IME 提交单次撤销、只读拒绝、Ctrl+Z/Shift+Z/Y、
+    工厂诊断（CPU-only 与 Skia 构建同一用例）、命令携带 shaped 数据
+    与 v3 序列化 roundtrip、Skia 真实字体布局+绘制确定性（Skia 构建）。
+  - 本地 Linux（M1 文件集；工作树另含 10 个未提交的 M2 用例，
+    全量亦通过）：CPU Debug `316/316`，Skia Release `322/322`，
+    GPU Release `329/329`，mobile-core Debug `304/304`；
+    counter/settings headless 集成测试随 CPU 套件通过；Skia 真实字体
+    确定性（同布局双帧同 hash）与 CPU 占位像素路径（M0 基线 hash 不变）
+    均已验证。窗口 smoke 与真实输入法验收随 M2 示例接线后补测。
+  - 基准：M0 规格命令（`--frames 300 --warmup 30`）在 HEAD 与本变更
+    均为 `frame_hash=d28e364efe1b4aca`（与归档基线一致），layout/paint
+    p50 与 HEAD 相当。
+- 平台：本地 Linux 已验证 CPU/Skia/GPU/mobile-core；Windows/macOS
+  以 CI 为事实来源（windows.yml 三 job、macos.yml 两 job 均含本变更
+  的 headless 覆盖），真实输入法 smoke 未在本地执行（CI/人工验收项）。
+- 已知限制：
+  - 双向算法为 UAX#9 子集（无显式嵌入控制、镜像括号、数字定形）；
+    Skia shaping 为逐 grapheme cluster，无 HarfBuzz 合字（阿拉伯连写
+    基本形可用，合字后续增强）。
+  - CPU 后端消费 Skia 度量数据时（GPU→CPU 回退）文本绘制退回占位
+    度量旧路径；caret/选区几何仍出自布局。
+  - 真实 IME（IBus/Fcitx/TSF）下的 undo/redo 与候选框行为待三桌面
+    窗口 smoke 人工验收；headless IME 状态机已覆盖。
+- 回滚点：`d4dbb4a fix(build): 修复基准配置识别与构建命令`（M1 前）。
+
+### M1–M9 完成记录（待实施，占位）
 - M2 应用框架层与 C++ DSL：未开始（出口：新工具页只需提供 build/状态逻辑；
   应用壳统一事件/帧/damage/DPI/IME）。
 - M3 布局/Grid/VirtualList/Image：未开始（出口：千项列表不全量构建子树；

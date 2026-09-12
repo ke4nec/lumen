@@ -1,5 +1,7 @@
 #include "lumen/text/font_manager.h"
 
+#include "lumen/text/grapheme.h"
+
 namespace lumen::text {
 namespace {
 
@@ -59,6 +61,83 @@ std::vector<std::string> PlaceholderFontManager::availableFamilies() const {
 PlaceholderFontManager& PlaceholderFontManager::shared() {
     static PlaceholderFontManager instance;
     return instance;
+}
+
+// --- FontManager 默认实现（M1：不暴露 Skia 类型，可序列化 shaping） ---
+
+FontFallbackStatus FontManager::resolveWithStatus(
+    const FontQuery& query, char32_t codePoint) const {
+    FontFallbackStatus status;
+    status.resolvedFamily = resolveFamily(query, codePoint);
+    if (status.resolvedFamily.empty()) {
+        status.missing = true;
+        status.fallbackUsed = false;
+        status.diagnostic = "no family covers U+" +
+                            std::to_string(static_cast<std::uint32_t>(codePoint));
+        return status;
+    }
+    status.missing = false;
+    status.fallbackUsed =
+        !query.family.empty() && status.resolvedFamily != query.family;
+    return status;
+}
+
+bool FontManager::horizontalMetrics(const FontQuery& query, float* ascentPx,
+                                    float* descentPx) const {
+    if (ascentPx != nullptr) {
+        *ascentPx = query.sizePx > 0.0F ? query.sizePx * 0.8F : 11.2F;
+    }
+    if (descentPx != nullptr) {
+        *descentPx = query.sizePx > 0.0F ? query.sizePx * 0.4F : 5.6F;
+    }
+    return true;
+}
+
+std::vector<ShapedGlyph> FontManager::shapeCluster(
+    const FontQuery& query, const std::string& graphemeUtf8,
+    std::uint32_t clusterIndex) const {
+    if (graphemeUtf8.empty()) {
+        return {};
+    }
+    float advancePx = 0.0F;
+    char32_t firstCp = 0;
+    bool first = true;
+    bool anyMissing = false;
+    for (const DecodedCodePoint& cp : decodeUtf8(graphemeUtf8)) {
+        if (first) {
+            firstCp = cp.codePoint;
+            first = false;
+        }
+        GlyphMetrics metrics{};
+        if (glyphMetrics(query, cp.codePoint, &metrics)) {
+            advancePx += metrics.advanceEm * query.sizePx;
+        } else {
+            anyMissing = true;
+        }
+    }
+    if (first) {
+        return {};
+    }
+    if (anyMissing && advancePx <= 0.0F) {
+        return {};
+    }
+    ShapedGlyph glyph;
+    glyph.glyphId = static_cast<std::uint32_t>(firstCp);
+    glyph.advancePx = advancePx;
+    glyph.xOffsetPx = 0.0F;
+    glyph.cluster = clusterIndex;
+    return {glyph};
+}
+
+std::string FontManager::diagnostic() const {
+    const std::vector<std::string> families = availableFamilies();
+    std::string out = "backend=";
+    out += fontBackendName(backend());
+    out += " families=" + std::to_string(families.size());
+    if (families.empty()) {
+        out += " (missing system fonts, placeholder in use)";
+    }
+    return out;
 }
 
 }  // namespace lumen::text

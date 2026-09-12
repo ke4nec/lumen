@@ -62,17 +62,19 @@ accessibility tree、Metal/Graphite。
 | CPU 光栅 | `CpuRenderer`（确定性占位字体） | 无需降级；CPU-only 构建不依赖 SDL 实现库与桌面会话 |
 | Skia 光栅 | `SkiaRenderer`（可选 `LUMEN_ENABLE_SKIA`） | 未编入时能力报告 `backendName=cpu`，应用安全运行 |
 | Skia GPU | `SkiaGpuRenderer`（可选 `LUMEN_ENABLE_GPU`） | 探测/初始化失败自动回退 CPU，诊断记录原因（v0.2 §7C） |
-| 文本 shaping | `lumen-text` + `PlaceholderFontManager`（确定性） | 桌面正式 shaping 由可选 Skia 实现提供；缺失时布局/编辑照常（回退明确报告） |
+| 文本 shaping | `lumen-text` + `SkiaFontManager`（可选 `LUMEN_ENABLE_SKIA`，封装字体族/回退/度量/shaping；公共接口无 Skia 类型） | CPU-only 构建或无系统字体时回退 `PlaceholderFontManager`，布局/编辑照常（`fontDiagnostic`/工厂诊断明确报告）；布局与绘制共享同一份 shaped 结果，光标/选区不跨后端漂移 |
+| 编辑撤销 | `text::EditingHistory` + `InteractionController`（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y；连续单字输入/删除合并，IME 提交为单事务，preedit 不进栈） | 只读字段与 preedit 期间拒绝撤销；栈按字段 bind 隔离，容量 100 |
 | 剪贴板 | `platform::Clipboard` / `core::ClipboardProvider` | 不可用时 `setText` 返回 false，编辑状态不丢 |
 | 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥） | 当前只提供平台无关契约与 Recording 桥；平台原生 provider 尚未实现，工厂返回 nullptr 并给出原因 |
 | 可访问性设置 | `PlatformCapabilities`（只读查询） | 高对比/减少动画/字体缩放由 `Theme::fromSettings` 与 `FrameScheduler::setReduceAnimation` 消费 |
 
 ## 已知限制（v0.3，映射到自用路线图里程碑）
 
-- 键盘撤销（undo 栈）未实现：`TextEditingValue` 状态机已为撤销边界预留
-  （纯函数编辑操作），撤销栈与快捷键列入路线图 M1。
-- RTL 为逐 grapheme 视觉逆序的确定性近似：纯 RTL/LTR 段落正确，混合方
-  向重排（UAX#9 完整实现）与双向光标映射列入 M1。
+- 双向文本为 UAX#9 确定性子集（强/弱/中性类近似，无显式嵌入控制、镜像
+  括号与数字定形）：纯 RTL/LTR 与常见混合段落正确，完整 UBA 属后续版
+  本；grapheme 边界仍是唯一编辑索引（M1 已收口，见 M1 完成记录）。
+- Skia shaping 为逐 grapheme cluster（无 HarfBuzz 连写/合字）：拉丁/
+  CJK/希伯来/阿拉伯基本形正确，复杂脚本合字后续增强。
 - 列表无虚拟化：ListView 要求稳定 key 与可预测子树复用；Grid/VirtualList
   列入 M3。
 - 惯性滚动默认关闭（确定性测试优先）；动量物理列入 M3/M9。

@@ -7,14 +7,33 @@
 
 #include "lumen/core/geometry.h"
 #include "lumen/core/windowing.h"
+#include "lumen/text/font_manager.h"
 
 namespace lumen::render {
 
 using ImageId = std::uint64_t;
 
+// M1：与布局共享的 shaped 文本绘制数据（可序列化，无平台类型）。
+// family 为布局解析出的覆盖族；placeholder=true 表示 glyphId 实为码点
+// （占位/缺字路径），后端按占位字形绘制。
+struct TextGlyphRun {
+    std::string family{};
+    bool placeholder{true};
+    std::vector<text::ShapedGlyph> glyphs{};
+
+    [[nodiscard]] bool operator==(const TextGlyphRun&) const = default;
+};
+
 struct TextRun {
     std::string text{};
     core::Offset origin{};
+    // M1：行顶到 baseline 的距离（布局真实 ascent）；<=0 时后端回退到
+    // 自身默认基线（保持旧路径兼容）。
+    float baselinePx{0.0F};
+    // M1：布局产出的视觉序 shaped runs（glyphs 的 xOffsetPx 相对
+    // origin）。为空时后端走自身逐码点路径；布局与绘制共享同一份
+    // TextLayout 时非空，光标/选区/字形位置不跨后端漂移。
+    std::vector<TextGlyphRun> shapedRuns{};
 
     [[nodiscard]] bool operator==(const TextRun&) const = default;
 };

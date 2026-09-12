@@ -27,17 +27,27 @@ struct TextLine {
     std::size_t startByte{0};
     std::size_t byteLength{0};
     float width{0.0F};
-    // graphemeX[k] = 逻辑 cluster k 的起始 x；长度 = graphemeCount+1，
-    // 末元素为行末边界（LTR = 行宽，RTL = 0）。
+    // graphemeX[k] = 逻辑 cluster k 的左边缘 x；长度 = graphemeCount+1，
+    // 末元素为段落结束边界（LTR = 行宽，RTL = 0，混合按段落方向）。
     std::vector<float> graphemeX{};
-    // 行文本（视觉序；RTL 行为逻辑逆序）。
+    // 行文本（视觉序；RTL/混合按双向重排）。
     std::string visual{};
+    // 可序列化的 shaped runs（视觉序分组；生命周期由本结果拥有，
+    // RenderCommand 只接收文本绘制数据，不持有本结构）。
+    struct ShapedRun {
+        std::string family{};
+        bool placeholder{true};
+        std::vector<ShapedGlyph> glyphs{};
+
+        bool operator==(const ShapedRun&) const = default;
+    };
+    std::vector<ShapedRun> runs{};
 };
 
 struct TextLayoutResult {
     std::vector<TextLine> lines{};
     core::Size size{};
-    // 首行 baseline 距顶部。
+    // 首行 baseline 距顶部（Skia 路径为真实 ascent，见 horizontalMetrics）。
     float baseline{0.0F};
     float lineHeightPx{0.0F};
     bool ellipsized{false};
@@ -45,6 +55,11 @@ struct TextLayoutResult {
     bool rtl{false};
     // grapheme 总数（含被 ellipsis 裁掉的）。
     std::size_t graphemeCount{0};
+    // M1：布局使用的字体事实（与 Skia renderer 共享同一份结果时，
+    // Skia 路径为 Skia 后端；CPU 为占位；缺字体时 fallback 明确报告）。
+    FontBackend fontBackend{FontBackend::Placeholder};
+    bool usedPlaceholderFallback{true};
+    std::string fontDiagnostic{};
 
     // 命中测试：x（相对布局原点）→ 最近 cluster 边界索引。多行文本按
     // 行高映射到行。
@@ -65,12 +80,6 @@ class TextLayout {
 
     // ellipsis 字符。
     static constexpr const char* kEllipsis = "\xE2\x80\xA6";  // …
-
-  private:
-    // 单 cluster 的像素 advance（含 letterSpacing）。
-    [[nodiscard]] static float graphemeAdvance(const std::string& grapheme,
-                                               const core::TextStyle& style,
-                                               const FontManager& fonts);
 };
 
 // 布局缓存（plan §3.2 布局缓存 + 命中率）：键为文本/样式/宽度。缓存返回
@@ -97,6 +106,8 @@ class TextLayoutCache {
     struct Key {
         std::string text{};
         float fontSize{0.0F};
+        bool bold{false};
+        std::string family{};
         int weight{400};
         bool italic{false};
         float letterSpacing{0.0F};
@@ -105,6 +116,11 @@ class TextLayoutCache {
         core::TextOverflow overflow{core::TextOverflow::Clip};
         core::TextDirection direction{core::TextDirection::Ltr};
         float maxWidth{0.0F};
+        // M1：不同字体后端度量不同，缓存键必须区分后端。
+        FontBackend backend{FontBackend::Placeholder};
+        // Two managers can share a backend while resolving different font
+        // sets (for example, separate test or platform instances).
+        const FontManager* manager{nullptr};
 
         [[nodiscard]] bool operator<(const Key& other) const;
     };

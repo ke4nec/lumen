@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "skia_text.h"
+
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
 #include "include/core/SkFontMgr.h"
@@ -78,6 +80,9 @@ struct SkiaRenderer::Impl {
     sk_sp<SkImage> lastFrame{};
     // Paint reused across draws within a frame (single-threaded UI loop).
     SkPaint paint{};
+    // M1：平台字体管理器缓存（FontConfig/GDI 初始化昂贵；缺失时保持
+    // null 并走回退路径，见 drawText）。
+    sk_sp<SkFontMgr> fontMgr{};
 };
 
 SkiaRenderer::SkiaRenderer(float deviceScale, core::Color clear)
@@ -248,6 +253,30 @@ void SkiaRenderer::drawText(TextRun run, core::TextStyle style) {
     impl_->paint.setStyle(SkPaint::kFill_Style);
     impl_->paint.setAntiAlias(true);
     impl_->paint.setColor(toSkColor(style.color));
+
+    // M1：优先消费布局共享的 shaped 数据（真实 glyph id + 布局 advance/
+    // baseline）；存在占位 run（缺字/CPU 数据）时回退旧逐码点路径。
+    bool hasRealShaping = false;
+    bool hasPlaceholderRun = false;
+    for (const TextGlyphRun& glyphRun : run.shapedRuns) {
+        if (glyphRun.placeholder) {
+            hasPlaceholderRun = true;
+        } else if (!glyphRun.glyphs.empty()) {
+            hasRealShaping = true;
+        }
+    }
+    if (hasRealShaping && !hasPlaceholderRun) {
+        // 字体管理器按 renderer 生命周期缓存（与 GPU 后端一致）。
+        if (impl_->fontMgr == nullptr) {
+            impl_->fontMgr = skia_text::makePlatformFontMgr();
+        }
+        if (impl_->fontMgr != nullptr) {
+            skia_text::drawShapedText(impl_->canvas, impl_->fontMgr.get(),
+                                      run, style, scale);
+            return;
+        }
+        // 平台字体管理器不可用：走下方旧逐码点路径（默认 typeface）。
+    }
 
     // Use Skia's UTF-8 text path so the optional backend provides real font
     // rasterization and fallback glyphs instead of the CPU placeholder font.

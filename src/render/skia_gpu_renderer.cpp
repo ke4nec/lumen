@@ -46,6 +46,8 @@
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/GrDirectContext.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
+
+#include "skia_text.h"
 #include "include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "include/gpu/ganesh/gl/GrGLDirectContext.h"
 #include "include/gpu/gl/GrGLInterface.h"
@@ -123,13 +125,7 @@ class SkiaGpuRenderer final : public Renderer {
             fail(diagnostics, "GrDirectContexts::MakeGL returned null");
             return;
         }
-#ifdef _WIN32
-        fontMgr_ = SkFontMgr_New_GDI();
-#elif defined(__linux__)
-        fontMgr_ = SkFontMgr_New_FontConfig(nullptr);
-#else
-        fontMgr_ = SkFontMgr_RefDefault();
-#endif
+        fontMgr_ = skia_text::makePlatformFontMgr();
         if (fontMgr_ == nullptr) {
             fail(diagnostics, "system font manager unavailable");
             return;
@@ -434,20 +430,36 @@ class SkiaGpuRenderer final : public Renderer {
         if (run.text.empty() || style.color.a == 0 || fontMgr_ == nullptr) {
             return;
         }
-        // 与 SkiaRenderer 光栅后端相同的逐码点路径：真实字体光栅化 +
-        // 缺字回退，top-left 原点 + fontSize 基线。
         const float fontSize = style.fontSize > 0.0F ? style.fontSize : 14.0F;
         const float scale = deviceScale_;
+        SkPaint paint;
+        paint.setStyle(SkPaint::kFill_Style);
+        paint.setAntiAlias(true);
+        paint.setColor(toSkColor(style.color));
+        // M1：优先消费布局共享的 shaped 数据（真实 glyph id + 布局
+        // advance/baseline）；存在占位 run 时回退旧逐码点路径。
+        bool hasRealShaping = false;
+        bool hasPlaceholderRun = false;
+        for (const TextGlyphRun& glyphRun : run.shapedRuns) {
+            if (glyphRun.placeholder) {
+                hasPlaceholderRun = true;
+            } else if (!glyphRun.glyphs.empty()) {
+                hasRealShaping = true;
+            }
+        }
+        if (hasRealShaping && !hasPlaceholderRun) {
+            skia_text::drawShapedText(canvas, fontMgr_.get(), run, style,
+                                      scale);
+            return;
+        }
+        // 与 SkiaRenderer 光栅后端相同的逐码点路径：真实字体光栅化 +
+        // 缺字回退，top-left 原点 + fontSize 基线。
         const SkFontStyle fontStyle =
             style.bold ? SkFontStyle::Bold() : SkFontStyle::Normal();
         sk_sp<SkTypeface> typeface =
             fontMgr_->matchFamilyStyle(nullptr, fontStyle);
         float x = run.origin.x * scale;
         const float baseline = (run.origin.y + fontSize) * scale;
-        SkPaint paint;
-        paint.setStyle(SkPaint::kFill_Style);
-        paint.setAntiAlias(true);
-        paint.setColor(toSkColor(style.color));
         for (std::size_t offset = 0; offset < run.text.size();) {
             const std::size_t length = utf8SequenceLength(
                 run.text.data() + offset, run.text.size() - offset);

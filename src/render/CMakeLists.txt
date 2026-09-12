@@ -11,7 +11,7 @@ set(LUMEN_RENDER_SOURCES
 )
 
 if(LUMEN_ENABLE_SKIA)
-    list(APPEND LUMEN_RENDER_SOURCES skia_renderer.cpp)
+    list(APPEND LUMEN_RENDER_SOURCES skia_renderer.cpp skia_text.cpp)
 endif()
 
 # v0.2 阶段7C: Skia Ganesh GPU 后端（需要 SDL3 + Skia）。
@@ -106,12 +106,29 @@ if(LUMEN_ENABLE_SKIA)
         target_link_libraries(lumen-render PRIVATE ZLIB::ZLIB)
     else()
         target_link_libraries(lumen-render PRIVATE ${LUMEN_SKIA_LIBRARY})
+        if(APPLE)
+            # skia_text CoreText 端口（SkFontMgr_New_CoreText）。
+            target_link_libraries(lumen-render PRIVATE "-framework CoreText")
+        endif()
     endif()
 endif()
 
-# Static Skia references WGL/GLX. Keep OpenGL after its archives so linkers
-# using --as-needed retain the GL libraries until those references resolve.
+# Static Skia references WGL/GLX. On Linux keep OpenGL inside the archive
+# group so the GL libraries always accompany Skia's objects regardless of
+# how CMake orders the (repeated) lumen-render entries on a consumer's link
+# line. Other platforms lack --start-group (MSVC/macOS linkers) and only
+# need OpenGL appended (Skia archives are linked in the SKIA block above).
 if(LUMEN_ENABLE_GPU)
     find_package(OpenGL REQUIRED)
-    target_link_libraries(lumen-render PRIVATE SDL3::SDL3 OpenGL::GL)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_libraries(lumen-render PRIVATE
+            "-Wl,--start-group"
+            ${LUMEN_SKIA_LIBRARY}
+            ${LUMEN_SKIA_BUNDLED_LIBS}
+            OpenGL::GL
+            "-Wl,--end-group")
+    else()
+        target_link_libraries(lumen-render PRIVATE OpenGL::GL)
+    endif()
+    target_link_libraries(lumen-render PRIVATE SDL3::SDL3)
 endif()

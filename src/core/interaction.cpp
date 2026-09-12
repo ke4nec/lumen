@@ -110,7 +110,7 @@ text::TextEditingValue InteractionController::buildValue() const {
 }
 
 void InteractionController::commitValue(
-    const text::TextEditingValue& value) {
+    const text::TextEditingValue& value, text::EditKind kind) {
     if (focusedBind_.empty()) {
         return;
     }
@@ -121,14 +121,78 @@ void InteractionController::commitValue(
     if (!composingActive_) {
         composition_.clear();
     }
+    // M1：内容变更进 undo 栈（纯选区移动只打断合并，不进栈）。
+    historyFor(focusedBind_).push(value, kind);
 }
 
 template <typename Fn>
-void InteractionController::applyEdit(Fn&& transform) {
+void InteractionController::applyEdit(Fn&& transform, text::EditKind kind) {
     if (focusedBind_.empty() || focusedReadOnly_) {
         return;
     }
-    commitValue(transform(buildValue()));
+    commitValue(transform(buildValue()), kind);
+}
+
+text::EditingHistory& InteractionController::historyFor(
+    const std::string& bind) {
+    auto it = histories_.find(bind);
+    if (it != histories_.end()) {
+        return it->second;
+    }
+    text::EditingHistory history;
+    history.seed(text::TextEditingValue{store_.get(bind)});
+    auto inserted = histories_.emplace(bind, std::move(history));
+    return inserted.first->second;
+}
+
+void InteractionController::undo() {
+    if (focusedBind_.empty() || focusedReadOnly_ || composingActive_) {
+        return;
+    }
+    auto it = histories_.find(focusedBind_);
+    if (it == histories_.end()) {
+        return;
+    }
+    if (const auto prev = it->second.undo()) {
+        store_.set(focusedBind_, prev->text());
+        selection_ = prev->selection();
+        composingActive_ = false;
+        composing_ = {};
+        composition_.clear();
+    }
+}
+
+void InteractionController::redo() {
+    if (focusedBind_.empty() || focusedReadOnly_ || composingActive_) {
+        return;
+    }
+    auto it = histories_.find(focusedBind_);
+    if (it == histories_.end()) {
+        return;
+    }
+    if (const auto next = it->second.redo()) {
+        store_.set(focusedBind_, next->text());
+        selection_ = next->selection();
+        composingActive_ = false;
+        composing_ = {};
+        composition_.clear();
+    }
+}
+
+bool InteractionController::canUndo() const {
+    if (focusedBind_.empty()) {
+        return false;
+    }
+    const auto it = histories_.find(focusedBind_);
+    return it != histories_.end() && it->second.canUndo();
+}
+
+bool InteractionController::canRedo() const {
+    if (focusedBind_.empty()) {
+        return false;
+    }
+    const auto it = histories_.find(focusedBind_);
+    return it != histories_.end() && it->second.canRedo();
 }
 
 // --- 指针 ---
@@ -206,6 +270,9 @@ void InteractionController::pointerDown(const RenderNode& root,
         composition_.clear();
         composingActive_ = false;
         composing_ = {};
+        // M1：聚焦时以 store 值种子化历史（首个 undo 回到聚焦时状态；
+        // 历史按 bind 持久，返回字段不重种子）。
+        (void)historyFor(focusedBind_);
         // 双击选词：同一字段且时间窗内。
         const bool doubleClick = !refocus && lastClickWasField_ &&
                                  lastClickIdentity_ == field->identity &&
@@ -221,7 +288,7 @@ void InteractionController::pointerDown(const RenderNode& root,
             placeCaretByHit(*field, position - fieldOrigin, false);
             const auto value =
                 buildValue().selectWord(selection_.extent);
-            commitValue(value);
+            commitValue(value, text::EditKind::Selection);
         } else {
             placeCaretByHit(*field, position - fieldOrigin, false);
         }
@@ -253,7 +320,8 @@ void InteractionController::placeCaretByHit(const RenderNode& field,
     style.maxLines = 0;  // 命中测试按自然行
     const text::TextLayoutResult layout = text::TextLayout::layout(
         content, style, field.multiline ? availableWidth : 0.0F,
-        text::PlaceholderFontManager::shared());
+        textFonts_ != nullptr ? *textFonts_
+                              : text::PlaceholderFontManager::shared());
     const float xInText = localPosition.x - padX;
     const std::size_t grapheme =
         layout.positionToGrapheme(xInText, localPosition.y);
@@ -261,6 +329,11 @@ void InteractionController::placeCaretByHit(const RenderNode& field,
         selection_ = text::TextSelection{selection_.base, grapheme};
     } else {
         selection_ = text::TextSelection{grapheme, grapheme};
+    }
+    // M1：点击/拖动定位只打断输入合并，不进 undo 栈。
+    if (!focusedBind_.empty()) {
+        historyFor(focusedBind_)
+            .push(buildValue(), text::EditKind::Selection);
     }
 }
 
@@ -380,9 +453,15 @@ void InteractionController::textInput(const std::string& text) {
         commitComposition(text);
         return;
     }
-    applyEdit([&text](const text::TextEditingValue& value) {
-        return value.insertText(text);
-    });
+    // M1：单字输入合并，批量插入为独立事务。
+    const text::EditKind kind =
+        text::graphemeCount(text) == 1 ? text::EditKind::Insert
+                                       : text::EditKind::Other;
+    applyEdit(
+        [&text](const text::TextEditingValue& value) {
+            return value.insertText(text);
+        },
+        kind);
 }
 
 void InteractionController::setComposition(const std::string& preedit) {
@@ -452,13 +531,35 @@ void InteractionController::keyDown(Key key, KeyModifiers modifiers,
         (modifiers & (kModifierCtrl | kModifierGui)) != 0;
     const bool shift = (modifiers & kModifierShift) != 0;
 
-    // Ctrl/Gui 快捷键（plan §3.2：Ctrl/Command 快捷键）。
+    // Ctrl/Gui 快捷键（plan §3.2：Ctrl/Command 快捷键；M1：undo/redo）。
     if (ctrlLike && keyChar != 0) {
         switch (keyChar) {
+            case 'z':
+            case 'Z':
+                if (composingActive_) {
+                    return;
+                }
+                if (shift) {
+                    redo();
+                } else {
+                    undo();
+                }
+                return;
+            case 'y':
+            case 'Y':
+                if (composingActive_) {
+                    return;
+                }
+                redo();
+                return;
             case 'a':
             case 'A': {
                 const auto next = buildValue().selectAll();
                 selection_ = next.selection();
+                if (!focusedBind_.empty()) {
+                    historyFor(focusedBind_)
+                        .push(buildValue(), text::EditKind::Selection);
+                }
                 return;
             }
             case 'c':
@@ -494,52 +595,70 @@ void InteractionController::keyDown(Key key, KeyModifiers modifiers,
 
     switch (key) {
         case Key::Backspace:
-            applyEdit([](const text::TextEditingValue& value) {
-                return value.deleteBackward();
-            });
+            applyEdit(
+                [](const text::TextEditingValue& value) {
+                    return value.deleteBackward();
+                },
+                text::EditKind::Delete);
             return;
         case Key::Delete:
-            applyEdit([](const text::TextEditingValue& value) {
-                return value.deleteForward();
-            });
+            applyEdit(
+                [](const text::TextEditingValue& value) {
+                    return value.deleteForward();
+                },
+                text::EditKind::Delete);
             return;
         case Key::Left:
             if (ctrlLike) {
-                applyEdit([shift](const text::TextEditingValue& value) {
-                    return value.moveWordLeft(shift);
-                });
+                applyEdit(
+                    [shift](const text::TextEditingValue& value) {
+                        return value.moveWordLeft(shift);
+                    },
+                    text::EditKind::Selection);
             } else {
-                applyEdit([shift](const text::TextEditingValue& value) {
-                    return value.moveCaretLeft(shift);
-                });
+                applyEdit(
+                    [shift](const text::TextEditingValue& value) {
+                        return value.moveCaretLeft(shift);
+                    },
+                    text::EditKind::Selection);
             }
             return;
         case Key::Right:
             if (ctrlLike) {
-                applyEdit([shift](const text::TextEditingValue& value) {
-                    return value.moveWordRight(shift);
-                });
+                applyEdit(
+                    [shift](const text::TextEditingValue& value) {
+                        return value.moveWordRight(shift);
+                    },
+                    text::EditKind::Selection);
             } else {
-                applyEdit([shift](const text::TextEditingValue& value) {
-                    return value.moveCaretRight(shift);
-                });
+                applyEdit(
+                    [shift](const text::TextEditingValue& value) {
+                        return value.moveCaretRight(shift);
+                    },
+                    text::EditKind::Selection);
             }
             return;
         case Key::Home:
-            applyEdit([shift](const text::TextEditingValue& value) {
-                return value.moveCaretToStart(shift);
-            });
+            applyEdit(
+                [shift](const text::TextEditingValue& value) {
+                    return value.moveCaretToStart(shift);
+                },
+                text::EditKind::Selection);
             return;
         case Key::End:
-            applyEdit([shift](const text::TextEditingValue& value) {
-                return value.moveCaretToEnd(shift);
-            });
+            applyEdit(
+                [shift](const text::TextEditingValue& value) {
+                    return value.moveCaretToEnd(shift);
+                },
+                text::EditKind::Selection);
             return;
         case Key::Enter:
             if (focusedMultiline_) {
-                applyEdit([](const text::TextEditingValue& value) {
-                    return value.insertText("\n");
-                });
+                applyEdit(
+                    [](const text::TextEditingValue& value) {
+                        return value.insertText("\n");
+                    },
+                    text::EditKind::Insert);
                 return;
             }
             focus_.clearFocus();
@@ -809,6 +928,10 @@ void InteractionController::setClipboard(ClipboardProvider* clipboard) {
     clipboard_ = clipboard;
 }
 
+void InteractionController::setTextFonts(const text::FontManager* fonts) {
+    textFonts_ = fonts;
+}
+
 text::TextEditingValue InteractionController::editingValue() const {
     return buildValue();
 }
@@ -818,7 +941,7 @@ void InteractionController::setEditingValue(
     if (focusedBind_.empty()) {
         return;
     }
-    commitValue(value);
+    commitValue(value, text::EditKind::Other);
 }
 
 void InteractionController::focusNode(const RenderNode& node) {
@@ -839,6 +962,7 @@ void InteractionController::focusNode(const RenderNode& node) {
         // 光标置于文本末尾。
         selection_ = text::TextSelection{text::graphemeCount(store_.get(node.bind)),
                                          text::graphemeCount(store_.get(node.bind))};
+        (void)historyFor(focusedBind_);
     } else {
         focus_.setFocus(node.key, node.identity);
         focusedBind_.clear();

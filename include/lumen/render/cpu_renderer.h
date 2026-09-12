@@ -69,6 +69,10 @@ class CpuRenderer final : public Renderer {
     void blendPixel(int px, int py, core::Color color);
     void fillLogicalRect(const core::Rect& rect, core::Color color,
                          const core::CornerRadius& radius);
+    // M1：单个占位字形盒（glyphId = 码点；advance/位置来自布局）。
+    void drawPlaceholderGlyph(std::uint32_t codePoint, float glyphX,
+                              float topY, float lineHeight, float glyphScale,
+                              float advance, core::TextStyle style);
 
     float deviceScale_;
     core::Color clearColor_;

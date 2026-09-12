@@ -270,39 +270,69 @@ void CpuRenderer::drawText(TextRun run, core::TextStyle style) {
         return;
     }
     const float fontSize = style.fontSize > 0.0F ? style.fontSize : 14.0F;
-    const float advance = fontSize * 0.6F;
     const float glyphScale = fontSize / 14.0F;
     const float lineHeight = fontSize * 1.2F;
-    const float inv = 1.0F / deviceScale_;
 
+    // M1：占位 shaped 数据（glyphId = 码点）按布局 xOffsetPx 定位，
+    // 字形位置/advance 与 TextLayout 完全一致（letterSpacing、多码点
+    // cluster 不再漂移）。Skia 度量的 shaped 数据被 CPU 回退消费时走
+    // 下方旧逐码点路径（占位度量的既有降级）。
+    bool allPlaceholder = !run.shapedRuns.empty();
+    for (const TextGlyphRun& glyphRun : run.shapedRuns) {
+        if (!glyphRun.placeholder) {
+            allPlaceholder = false;
+            break;
+        }
+    }
+    if (allPlaceholder) {
+        for (const TextGlyphRun& glyphRun : run.shapedRuns) {
+            for (const text::ShapedGlyph& glyph : glyphRun.glyphs) {
+                drawPlaceholderGlyph(glyph.glyphId,
+                                     run.origin.x + glyph.xOffsetPx,
+                                     run.origin.y, lineHeight, glyphScale,
+                                     glyph.advancePx, style);
+            }
+        }
+        return;
+    }
+
+    const float advance = fontSize * 0.6F;
     std::size_t glyphIndex = 0;
     for (std::size_t i = 0; i < run.text.size();) {
         const std::uint32_t codePoint = decodeCodePoint(run.text, i);
         const float glyphX = run.origin.x + advance *
                           static_cast<float>(glyphIndex);
-        const int x0 = std::max(0, toPixel(glyphX));
-        const int y0 = std::max(0, toPixel(run.origin.y));
-        const int x1 = std::min(buffer_.width, toPixel(glyphX + advance));
-        const int y1 = std::min(buffer_.height,
-                                toPixel(run.origin.y + lineHeight));
-        for (int py = y0; py < y1; ++py) {
-            for (int px = x0; px < x1; ++px) {
-                const float lx = (static_cast<float>(px) + 0.5F) * inv;
-                const float ly = (static_cast<float>(py) + 0.5F) * inv;
-                const float gx = (lx - glyphX) / glyphScale;
-                const float gy = (ly - run.origin.y) / glyphScale;
-                if (!glyphPixel(codePoint, static_cast<int>(gx),
-                                static_cast<int>(gy))) {
-                    continue;
-                }
-                blendPixel(px, py, style.color);
-                if (style.bold) {
-                    // Cheap bold: 1px rightward smear.
-                    blendPixel(px + 1, py, style.color);
-                }
+        drawPlaceholderGlyph(codePoint, glyphX, run.origin.y, lineHeight,
+                             glyphScale, advance, style);
+        ++glyphIndex;
+    }
+}
+
+void CpuRenderer::drawPlaceholderGlyph(std::uint32_t codePoint, float glyphX,
+                                       float topY, float lineHeight,
+                                       float glyphScale, float advance,
+                                       core::TextStyle style) {
+    const float inv = 1.0F / deviceScale_;
+    const int x0 = std::max(0, toPixel(glyphX));
+    const int y0 = std::max(0, toPixel(topY));
+    const int x1 = std::min(buffer_.width, toPixel(glyphX + advance));
+    const int y1 = std::min(buffer_.height, toPixel(topY + lineHeight));
+    for (int py = y0; py < y1; ++py) {
+        for (int px = x0; px < x1; ++px) {
+            const float lx = (static_cast<float>(px) + 0.5F) * inv;
+            const float ly = (static_cast<float>(py) + 0.5F) * inv;
+            const float gx = (lx - glyphX) / glyphScale;
+            const float gy = (ly - topY) / glyphScale;
+            if (!glyphPixel(codePoint, static_cast<int>(gx),
+                            static_cast<int>(gy))) {
+                continue;
+            }
+            blendPixel(px, py, style.color);
+            if (style.bold) {
+                // Cheap bold: 1px rightward smear.
+                blendPixel(px + 1, py, style.color);
             }
         }
-        ++glyphIndex;
     }
 }
 

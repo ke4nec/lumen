@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -10,7 +11,9 @@
 #include "lumen/core/render_node.h"
 #include "lumen/core/state.h"
 #include "lumen/core/windowing.h"
+#include "lumen/text/editing_history.h"
 #include "lumen/text/editing_value.h"
+#include "lumen/text/font_manager.h"
 
 namespace lumen::core {
 
@@ -95,10 +98,23 @@ class InteractionController {
     // --- 剪贴板（可选注入；宿主 Clipboard 适配 core::ClipboardProvider） ---
     void setClipboard(ClipboardProvider* clipboard);
 
+    // --- M1 字体事实（可选注入） ---
+    // 命中测试/光标定位与布局共享同一份 FontManager（Skia 后端时传入
+    // SkiaFontManager；nullptr/未设置 = 占位，与 CPU 布局一致）。生命
+    // 周期由调用方（应用）拥有，UI 线程独占。
+    void setTextFonts(const text::FontManager* fonts);
+
     // --- 编辑值（焦点字段） ---
     [[nodiscard]] text::TextEditingValue editingValue() const;
     // 程序设置编辑值（测试/语义 setValue 用）；只读字段拒绝编辑。
     void setEditingValue(const text::TextEditingValue& value);
+
+    // M1：撤销/重做（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y 与语义 action 共用）。
+    // preedit 更新不进栈；IME 提交为单个 Other 项。
+    void undo();
+    void redo();
+    [[nodiscard]] bool canUndo() const;
+    [[nodiscard]] bool canRedo() const;
 
     // 语义/键盘焦点请求（plan §3.3 与语义 actions 共用路径）：字段建立
     // 编辑焦点（光标置末尾），其他节点只设置 FocusManager 焦点。
@@ -161,11 +177,15 @@ class InteractionController {
   private:
     // 焦点字段的编辑值（store 文本 + 本地 selection/composing）。
     [[nodiscard]] text::TextEditingValue buildValue() const;
-    // 应用新编辑值：写 store、更新 selection/composing。
-    void commitValue(const text::TextEditingValue& value);
-    // 泛化编辑操作（readOnly 时拒绝）。
+    // 应用新编辑值：写 store、更新 selection/composing、进 undo 栈。
+    void commitValue(const text::TextEditingValue& value,
+                     text::EditKind kind = text::EditKind::Other);
+    // 泛化编辑操作（readOnly 时拒绝；kind 决定 undo 合并/边界）。
     template <typename Fn>
-    void applyEdit(Fn&& transform);
+    void applyEdit(Fn&& transform,
+                   text::EditKind kind = text::EditKind::Other);
+    // 当前字段的历史（按 bind；聚焦时以 store 值种子化）。
+    text::EditingHistory& historyFor(const std::string& bind);
     // 点击定位光标：命中字段局部坐标 → grapheme 边界（TextLayout 命中
     // 测试）。extend=true 从选区锚点扩展。
     void placeCaretByHit(const RenderNode& field, Offset localPosition,
@@ -202,6 +222,10 @@ class InteractionController {
     text::TextSelection composing_{};
     text::TextSelection selectionBeforeComposition_{};
     std::string composition_{};
+    // M1：按字段的 undo/redo 栈（seed 为聚焦时 store 值）。
+    std::map<std::string, text::EditingHistory> histories_{};
+    // M1：命中测试/光标定位的字体源（nullptr = 占位）。
+    const text::FontManager* textFonts_{};
 
     // Gesture state: press anchor and current pointer while held.
     bool pressActive_{false};

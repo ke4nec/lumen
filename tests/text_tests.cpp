@@ -10,6 +10,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <string>
 
 #include "lumen/core/interaction.h"
@@ -17,9 +18,12 @@
 #include "lumen/dsl/dsl.h"
 #include "lumen/dsl/text_dsl.h"
 #include "lumen/layout/layout.h"
+#include "lumen/text/bidi.h"
+#include "lumen/text/editing_history.h"
 #include "lumen/text/editing_value.h"
 #include "lumen/text/font_manager.h"
 #include "lumen/text/grapheme.h"
+#include "lumen/text/skia_font_manager.h"
 #include "lumen/text/text_layout.h"
 
 using namespace lumen;
@@ -667,4 +671,421 @@ TEST_CASE("dsl_rejects_bad_frozen_attribute_values", "[text][dsl]") {
     const auto misplaced =
         parseLumen("page root { Button(\"x\", obscure: true) }");
     CHECK_FALSE(misplaced.ok());
+}
+
+// --- M1 双向段落处理（UAX#9 确定性子集） ---
+
+TEST_CASE("bidi_classifies_strong_and_neutral_scripts", "[text][bidi]") {
+    // 希伯来（强 R）。
+    CHECK(bidiClassFor(0x05D0) == BidiClass::R);
+    CHECK(bidiClassFor(0xFB1D) == BidiClass::R);
+    // 阿拉伯（AL 视同 R）与阿拉伯指示数字（AN 视同 R）。
+    CHECK(bidiClassFor(0x0627) == BidiClass::R);
+    CHECK(bidiClassFor(0x0660) == BidiClass::R);
+    // ASCII 数字（EN 视同 L）、拉丁/CJK/emoji 强 L。
+    CHECK(bidiClassFor('7') == BidiClass::L);
+    CHECK(bidiClassFor('a') == BidiClass::L);
+    CHECK(bidiClassFor(0x4F60) == BidiClass::L);  // 你
+    CHECK(bidiClassFor(0x1F600) == BidiClass::L);  // 😀
+    // 空白与标点中性。
+    CHECK(bidiClassFor(' ') == BidiClass::Neutral);
+    CHECK(bidiClassFor('.') == BidiClass::Neutral);
+    CHECK(bidiClassFor(0x3000) == BidiClass::Neutral);  // 全角空格
+}
+
+TEST_CASE("bidi_runs_split_by_strong_direction", "[text][bidi]") {
+    // LTR 基准段：L R L → 三个 run（level 0/1/0）。
+    const std::vector<BidiClass> mixed{
+        BidiClass::L, BidiClass::R, BidiClass::R, BidiClass::L};
+    const auto runs = resolveBidiRuns(mixed, false);
+    REQUIRE(runs.size() == 3);
+    CHECK(runs[0] == BidiRun{0, 1, 0});
+    CHECK(runs[1] == BidiRun{1, 2, 1});
+    CHECK(runs[2] == BidiRun{3, 1, 0});
+
+    // RTL 基准段：R 段 level 1，L 段 level 2（反向嵌入）。
+    const auto rtlBase = resolveBidiRuns(mixed, true);
+    REQUIRE(rtlBase.size() == 3);
+    CHECK(rtlBase[0] == BidiRun{0, 1, 2});
+    CHECK(rtlBase[1] == BidiRun{1, 2, 1});
+    CHECK(rtlBase[2] == BidiRun{3, 1, 2});
+
+    // 中性消解：两侧强方向一致取该方向，否则取段落方向。
+    const std::vector<BidiClass> withNeutral{
+        BidiClass::L, BidiClass::Neutral, BidiClass::L,
+        BidiClass::Neutral, BidiClass::R};
+    const auto resolved = resolveBidiRuns(withNeutral, false);
+    // 中性 1 两侧皆 L → L；中性 3 两侧 L/R → 段落方向 L。
+    REQUIRE(resolved.size() == 2);
+    CHECK(resolved[0] == BidiRun{0, 4, 0});
+    CHECK(resolved[1] == BidiRun{4, 1, 1});
+}
+
+TEST_CASE("bidi_visual_order_reverses_rtl_segments", "[text][bidi]") {
+    // LTR 段落：R 段逆序，L 段保持。
+    const std::vector<BidiClass> mixed{
+        BidiClass::L, BidiClass::L, BidiClass::L,
+        BidiClass::R, BidiClass::R, BidiClass::R,
+        BidiClass::L, BidiClass::L, BidiClass::L};
+    const auto runs = resolveBidiRuns(mixed, false);
+    const auto order = visualOrder(mixed.size(), runs);
+    REQUIRE(order.size() == 9);
+    CHECK(order == std::vector<std::size_t>{0, 1, 2, 5, 4, 3, 6, 7, 8});
+
+    // 纯 RTL 段落：整行逆序。
+    const std::vector<BidiClass> allR{BidiClass::R, BidiClass::R,
+                                      BidiClass::R, BidiClass::R};
+    const auto rtlRuns = resolveBidiRuns(allR, true);
+    CHECK(visualOrder(4, rtlRuns) == std::vector<std::size_t>{3, 2, 1, 0});
+
+    // RTL 段落中的 L 段（level 2）：整体逆序后 L 段内部恢复正序。
+    const std::vector<BidiClass> rtlWithL{
+        BidiClass::R, BidiClass::L, BidiClass::L, BidiClass::R};
+    const auto nested = resolveBidiRuns(rtlWithL, true);
+    // level: R=1, L=2, R=1 → 视觉：R(3) L(1,2 正序) R(0)。
+    CHECK(visualOrder(4, nested) == std::vector<std::size_t>{3, 1, 2, 0});
+
+    // 全 L：不变。
+    const std::vector<BidiClass> allL(3, BidiClass::L);
+    const auto lRuns = resolveBidiRuns(allL, false);
+    CHECK(visualOrder(3, lRuns) == std::vector<std::size_t>{0, 1, 2});
+}
+
+TEST_CASE("text_layout_mixed_direction_keeps_grapheme_indices",
+          "[text][text][bidi]") {
+    core::TextStyle style;  // LTR 基准
+    // "abc" + "שלום" + "123"。
+    const std::string mixed =
+        "abc\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D"
+        "123";
+    const auto layout = TextLayout::layout(mixed, style, 0.0F,
+                                           PlaceholderFontManager::shared());
+    REQUIRE(layout.lines.size() == 1);
+    const auto& line = layout.lines[0];
+    REQUIRE(line.graphemeCount == 10);
+    // 视觉序：abc + 逆序希伯来 + 123。
+    std::string visual;
+    for (std::size_t i = 0; i < line.graphemeCount; ++i) {
+        visual += graphemeSubstring(mixed, i, i + 1);
+    }
+    std::string expected = "abc";
+    for (std::size_t i = 0; i < 4; ++i) {
+        expected += graphemeSubstring(mixed, 6 - i, 7 - i);  // 逆序 3..6
+    }
+    expected += "123";
+    CHECK(line.visual == expected);
+
+    // Shaped runs 的 cluster 保持逻辑索引（编辑索引不随重排改变）。
+    std::vector<std::uint32_t> clusters;
+    for (const auto& run : line.runs) {
+        for (const auto& glyph : run.glyphs) {
+            clusters.push_back(glyph.cluster);
+        }
+    }
+    std::sort(clusters.begin(), clusters.end());
+    std::vector<std::uint32_t> expectedClusters;
+    for (std::uint32_t i = 0; i < 10; ++i) {
+        expectedClusters.push_back(i);
+    }
+    CHECK(clusters == expectedClusters);
+
+    // 命中测试：最左给逻辑 0，最右给逻辑 10（段落 LTR）。
+    CHECK(layout.positionToGrapheme(0.0F, 0.0F) == 0);
+    CHECK(layout.positionToGrapheme(line.width, 0.0F) == 10);
+    // 希伯来段逻辑 6 的左边缘 = 其视觉位置（abc 之后）。
+    const float hebrewStart = line.graphemeX[6];
+    CHECK(layout.positionToGrapheme(hebrewStart, 0.0F) == 6);
+}
+
+TEST_CASE("text_layout_shaped_runs_describe_placeholder_and_ellipsis",
+          "[text][text]") {
+    core::TextStyle style;
+    style.letterSpacing = 1.0F;
+    const auto layout = TextLayout::layout(
+        "hi", style, 0.0F, PlaceholderFontManager::shared());
+    REQUIRE(layout.lines.size() == 1);
+    const auto& line = layout.lines[0];
+    REQUIRE(line.runs.size() == 1);
+    CHECK(line.runs[0].placeholder);
+    CHECK(line.runs[0].family == "lumen-latin");
+    REQUIRE(line.runs[0].glyphs.size() == 2);
+    // 占位路径 glyphId = 码点；字形 advance 不含 letterSpacing（布局叠加
+    // 到 cluster 间距）；cluster = 逻辑位。
+    CHECK(line.runs[0].glyphs[0].glyphId == 'h');
+    CHECK(line.runs[0].glyphs[0].advancePx ==
+          Catch::Approx(14.0F * 0.6F).epsilon(0.001F));
+    CHECK(line.runs[0].glyphs[0].cluster == 0);
+    CHECK(line.runs[0].glyphs[1].cluster == 1);
+    CHECK(line.runs[0].glyphs[0].xOffsetPx == 0.0F);
+    // cluster 间距含 letterSpacing（0.6em + 1px）。
+    CHECK(line.graphemeX[1] - line.graphemeX[0] ==
+          Catch::Approx(14.0F * 0.6F + 1.0F).epsilon(0.001F));
+    // baseline/行高仍按占位水平度量（0.8em ascent）。
+    CHECK(layout.baseline == Catch::Approx(14.0F * 0.8F).epsilon(0.001F));
+    CHECK(layout.fontBackend == FontBackend::Placeholder);
+    CHECK(layout.usedPlaceholderFallback);
+
+    // ellipsis：合成省略号的 cluster 指向行尾逻辑位（graphemeCount）。
+    core::TextStyle ellipsisStyle;
+    ellipsisStyle.overflow = core::TextOverflow::Ellipsis;
+    ellipsisStyle.maxLines = 1;
+    const auto trimmed = TextLayout::layout(
+        "hello world", ellipsisStyle, 14.0F * 0.6F * 4.0F,
+        PlaceholderFontManager::shared());
+    REQUIRE(trimmed.lines.size() == 1);
+    REQUIRE(trimmed.ellipsized);
+    const auto& ellipsisRun = trimmed.lines[0].runs.back();
+    REQUIRE_FALSE(ellipsisRun.glyphs.empty());
+    const std::uint32_t lastCluster =
+        ellipsisRun.glyphs.back().cluster;
+    // 行内 cluster 位（相对整段）：行起始 + 行内 cluster 数 - 1。
+    CHECK(lastCluster ==
+          trimmed.lines[0].startGrapheme + trimmed.lines[0].graphemeCount -
+              1);
+}
+
+// --- M1 undo/redo（EditingHistory + InteractionController） ---
+
+TEST_CASE("editing_history_merges_runs_and_branches", "[text][history]") {
+    EditingHistory history;
+    CHECK_FALSE(history.canUndo());
+    CHECK_FALSE(history.canRedo());
+
+    history.seed(TextEditingValue{"", TextSelection{0, 0}});
+    CHECK_FALSE(history.canUndo());
+    // 连续单字输入合并为一个 undo 项。
+    for (char c : std::string("abc")) {
+        const std::string next(1, c);
+        history.push(TextEditingValue{next, TextSelection{1, 1}},
+                     EditKind::Insert);
+    }
+    // 直接构造连续输入序列（值序列模拟 caret 前进）。
+    EditingHistory typed;
+    typed.seed(TextEditingValue{"", TextSelection{0, 0}});
+    typed.push(TextEditingValue{"a", TextSelection{1, 1}},
+               EditKind::Insert);
+    typed.push(TextEditingValue{"ab", TextSelection{2, 2}},
+               EditKind::Insert);
+    typed.push(TextEditingValue{"abc", TextSelection{3, 3}},
+               EditKind::Insert);
+    CHECK(typed.undoSize() == 1);
+    CHECK(typed.canUndo());
+    const auto undone = typed.undo();
+    REQUIRE(undone.has_value());
+    CHECK(undone->text().empty());
+    CHECK_FALSE(typed.canUndo());
+    CHECK(typed.canRedo());
+    const auto redone = typed.redo();
+    REQUIRE(redone.has_value());
+    CHECK(redone->text() == "abc");
+    CHECK(redone->selection().collapsed());
+    CHECK(redone->caret() == 3);
+
+    // 分支：undo 后新编辑丢弃 redo。
+    const auto mid = typed.undo();
+    REQUIRE(mid.has_value());
+    typed.push(TextEditingValue{"z", TextSelection{1, 1}},
+               EditKind::Insert);
+    CHECK_FALSE(typed.canRedo());
+
+    // 连续单字删除合并。
+    EditingHistory deleted;
+    deleted.seed(TextEditingValue{"ab", TextSelection{2, 2}});
+    deleted.push(TextEditingValue{"a", TextSelection{1, 1}},
+                 EditKind::Delete);
+    deleted.push(TextEditingValue{"", TextSelection{0, 0}},
+                 EditKind::Delete);
+    CHECK(deleted.undoSize() == 1);
+    CHECK(deleted.undo()->text() == "ab");
+
+    // 选区移动不进栈，但打断合并。
+    EditingHistory moved;
+    moved.seed(TextEditingValue{"ab", TextSelection{2, 2}});
+    moved.push(TextEditingValue{"a", TextSelection{1, 1}},
+               EditKind::Delete);
+    moved.push(TextEditingValue{"a", TextSelection{0, 0}},
+               EditKind::Selection);
+    moved.push(TextEditingValue{"", TextSelection{0, 0}},
+               EditKind::Delete);
+    CHECK(moved.undoSize() == 2);
+}
+
+TEST_CASE("editing_history_transaction_is_single_entry", "[text][history]") {
+    EditingHistory history;
+    history.seed(TextEditingValue{"", TextSelection{0, 0}});
+    history.beginTransaction();
+    history.push(TextEditingValue{"a", TextSelection{1, 1}},
+                 EditKind::Insert);
+    history.push(TextEditingValue{"abc", TextSelection{3, 3}},
+                 EditKind::Insert);
+    history.endTransaction();
+    CHECK(history.undoSize() == 1);
+    const auto undone = history.undo();
+    REQUIRE(undone.has_value());
+    CHECK(undone->text().empty());
+
+    // 嵌套事务：外层 end 才提交。
+    history.redo();
+    history.beginTransaction();
+    history.beginTransaction();
+    history.push(TextEditingValue{"abcd", TextSelection{4, 4}},
+                 EditKind::Insert);
+    history.endTransaction();
+    CHECK(history.undoSize() == 1);  // 仍挂起未入栈，深度不变。
+    history.endTransaction();
+    CHECK(history.undoSize() == 2);
+}
+
+TEST_CASE("editing_history_capacity_trims_oldest", "[text][history]") {
+    EditingHistory history;
+    history.seed(TextEditingValue{"0", TextSelection{1, 1}});
+    for (int i = 1; i <= static_cast<int>(EditingHistory::kCapacity) + 5;
+         ++i) {
+        history.push(TextEditingValue{std::to_string(i * 11),
+                                      TextSelection{2, 2}},
+                     EditKind::Other);
+    }
+    // 超容量后最旧条目被淘汰，undo 深度不超过 kCapacity。
+    CHECK(history.undoSize() <= EditingHistory::kCapacity);
+    CHECK(history.undoSize() >= EditingHistory::kCapacity - 1);
+}
+
+TEST_CASE("textfield_undo_redo_through_controller", "[text][interaction]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    store.set("f", "");
+
+    Widget ui = makeContainer(
+        withKey(makeTextField(store.get("f"), {}, {}, {}, 0.0F, "field"),
+                "field"));
+    ui.children[0].bind = "f";
+    const RenderNode root = layoutOf(ui);
+
+    controller.pointerDown(root, centerOf(root, "field"));
+    REQUIRE(controller.wantsTextInput());
+    CHECK_FALSE(controller.canUndo());
+
+    // 单字输入合并：两次 undo 回到空串。
+    controller.textInput("a");
+    controller.textInput("b");
+    controller.textInput("c");
+    CHECK(store.get("f") == "abc");
+    CHECK(controller.canUndo());
+    controller.keyDown(Key::None, kModifierCtrl, 'z');
+    CHECK(store.get("f").empty());
+    CHECK(controller.caretGraphemes() == 0);
+    CHECK_FALSE(controller.canUndo());
+    CHECK(controller.canRedo());
+
+    // Ctrl+Shift+Z 与 Ctrl+Y 均为重做。
+    controller.keyDown(Key::None, kModifierCtrl | kModifierShift, 'z');
+    CHECK(store.get("f") == "abc");
+    controller.keyDown(Key::None, kModifierCtrl, 'z');
+    CHECK(store.get("f").empty());
+    controller.keyDown(Key::None, kModifierCtrl, 'y');
+    CHECK(store.get("f") == "abc");
+    CHECK_FALSE(controller.canRedo());
+
+    // 分支：undo 后输入新内容，redo 分支被丢弃。
+    controller.keyDown(Key::None, kModifierCtrl, 'z');
+    controller.textInput("x");
+    CHECK_FALSE(controller.canRedo());
+    CHECK(store.get("f") == "x");
+
+    // 删除可撤销（Backspace 合并为一个项）。
+    controller.keyDown(Key::None, kModifierCtrl, 'z');
+    CHECK(store.get("f").empty());
+}
+
+TEST_CASE("textfield_ime_commit_is_single_undo_entry",
+          "[text][interaction]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    store.set("f", "");
+
+    Widget ui = makeContainer(
+        withKey(makeTextField(store.get("f"), {}, {}, {}, 0.0F, "field"),
+                "field"));
+    ui.children[0].bind = "f";
+    const RenderNode root = layoutOf(ui);
+
+    controller.pointerDown(root, centerOf(root, "field"));
+    // IME：preedit 更新不进栈；commit 作为单个 Other 项一次撤销。
+    controller.setComposition("ni");
+    controller.setComposition("你好");
+    CHECK(store.get("f").empty());
+    CHECK_FALSE(controller.canUndo());
+    controller.commitComposition("你好");
+    CHECK(store.get("f") == "你好");
+    CHECK(controller.canUndo());
+    controller.keyDown(Key::None, kModifierCtrl, 'z');
+    CHECK(store.get("f").empty());
+    // preedit 期间 undo 不响应（返回后正常）。
+    controller.textInput("a");
+    controller.setComposition("h");
+    controller.keyDown(Key::None, kModifierCtrl, 'z');
+    CHECK(store.get("f") == "a");
+    controller.cancelComposition();
+    controller.keyDown(Key::None, kModifierCtrl, 'z');
+    CHECK(store.get("f").empty());
+}
+
+TEST_CASE("readonly_field_rejects_undo_redo", "[text][interaction]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    store.set("f", "locked");
+
+    Widget field = makeTextField(store.get("f"), {}, {}, {}, 0.0F, "field");
+    field.readOnly = true;
+    Widget ui = makeContainer(withKey(std::move(field), "field"));
+    ui.children[0].bind = "f";
+    const RenderNode root = layoutOf(ui);
+
+    controller.pointerDown(root, centerOf(root, "field"));
+    controller.keyDown(Key::None, kModifierCtrl, 'z');
+    CHECK(store.get("f") == "locked");
+    controller.keyDown(Key::None, kModifierCtrl, 'y');
+    CHECK(store.get("f") == "locked");
+}
+
+// --- M1 Skia FontManager 工厂（CPU-only 与 Skia 构建都可运行） ---
+
+TEST_CASE("skia_font_manager_factory_reports_backend_state",
+          "[text][fonts]") {
+    std::string diagnostic;
+    const auto fonts = createSkiaFontManager(&diagnostic);
+    CHECK_FALSE(diagnostic.empty());
+    if (fonts == nullptr) {
+        // CPU-only 构建：工厂明确说明未编译，不静默。
+        CHECK(diagnostic.find("not compiled") != std::string::npos);
+    } else {
+        CHECK(fonts->backend() == FontBackend::Skia);
+        CHECK(fonts->supportsShaping());
+        CHECK(diagnostic.find("skia") != std::string::npos);
+        if (fonts->availableFamilies().empty()) {
+            // 极简容器：Skia 已编译但无系统字体，缺字状态必须明确、
+            // 编辑索引不受影响（M1 缺字体可启动条款）。
+            const FontFallbackStatus status = fonts->resolveWithStatus(
+                FontQuery{"", FontWeight::Normal, false, 14.0F}, 'A');
+            CHECK(status.missing);
+            CHECK_FALSE(status.diagnostic.empty());
+            return;
+        }
+        // 拉丁字母应可解析（任何桌面系统字体环境）。
+        const std::string family = fonts->resolveFamily(
+            FontQuery{"", FontWeight::Normal, false, 14.0F}, 'A');
+        CHECK_FALSE(family.empty());
+        // shaped cluster 返回非空字形且携带 cluster 索引。
+        const auto glyphs = fonts->shapeCluster(
+            FontQuery{"", FontWeight::Normal, false, 14.0F}, "A", 3);
+        REQUIRE(glyphs.size() == 1);
+        CHECK(glyphs[0].cluster == 3);
+        CHECK(glyphs[0].advancePx > 0.0F);
+    }
 }

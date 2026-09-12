@@ -25,6 +25,26 @@ float clampFloat(float value, float low, float high) {
     return std::clamp(value, low, high);
 }
 
+// M1：布局期字体源（UI 线程独占；公开入口显式传入，内部经作用域 guard
+// 读取，避免为每个递归层新增参数；默认占位，CPU 不依赖 Skia）。
+thread_local const text::FontManager* t_activeFonts = nullptr;
+
+const text::FontManager& activeFonts() {
+    return t_activeFonts != nullptr ? *t_activeFonts
+                                    : text::PlaceholderFontManager::shared();
+}
+
+struct ScopedFonts {
+    const text::FontManager* previous{nullptr};
+    explicit ScopedFonts(const text::FontManager& fonts) {
+        previous = t_activeFonts;
+        t_activeFonts = &fonts;
+    }
+    ~ScopedFonts() { t_activeFonts = previous; }
+    ScopedFonts(const ScopedFonts&) = delete;
+    ScopedFonts& operator=(const ScopedFonts&) = delete;
+};
+
 // identity 与旧 assignIdentities 相同的拼接规则：keyless = 索引路径，
 // keyed = key 路径（重建间稳定，交互快照/damage 依赖）。
 std::string childIdentity(const std::string& parentPath, const Widget& child,
@@ -77,7 +97,7 @@ Size measureTextContent(const std::string& content, const TextStyle& style,
         maxWidth = 0.0F;
     }
     const text::TextLayoutResult layout = text::TextLayout::layout(
-        content, effective, maxWidth, text::PlaceholderFontManager::shared());
+        content, effective, maxWidth, activeFonts());
     return layout.size;
 }
 
@@ -841,6 +861,25 @@ core::RenderNode LayoutEngine::layout(const core::Widget& widget,
 }
 
 core::RenderNode LayoutEngine::layout(const core::Widget& widget,
+                                       const core::Constraints& constraints,
+                                       const style::StyleContext& styleContext,
+                                       const text::FontManager& fonts) {
+    const ScopedFonts guard{fonts};
+    return layoutSingle(widget, constraints, styleContext,
+                        childIdentity({}, widget, 0));
+}
+
+core::RenderNode LayoutEngine::layout(const core::Widget& widget,
+                                       const core::Constraints& constraints,
+                                       const text::FontManager& fonts) {
+    const style::Theme theme = style::Theme::dark();
+    const style::InteractionStateSnapshot interaction;
+    const accessibility::AccessibilitySettings settings;
+    return layout(widget, constraints,
+                  style::StyleContext{theme, interaction, settings}, fonts);
+}
+
+core::RenderNode LayoutEngine::layout(const core::Widget& widget,
                                        const core::Constraints& constraints) {
     // 便捷入口（DSL/headless/测试）：默认暗色主题、空交互状态。
     const style::Theme theme = style::Theme::dark();
@@ -856,6 +895,27 @@ core::Size LayoutEngine::intrinsicSize(const core::Widget& widget,
     return layoutSingle(widget, constraints, styleContext,
                         childIdentity({}, widget, 0))
         .size;
+}
+
+core::Size LayoutEngine::intrinsicSize(const core::Widget& widget,
+                                       const core::Constraints& constraints,
+                                       const style::StyleContext& styleContext,
+                                       const text::FontManager& fonts) {
+    const ScopedFonts guard{fonts};
+    return layoutSingle(widget, constraints, styleContext,
+                        childIdentity({}, widget, 0))
+        .size;
+}
+
+core::Size LayoutEngine::intrinsicSize(const core::Widget& widget,
+                                       const core::Constraints& constraints,
+                                       const text::FontManager& fonts) {
+    const style::Theme theme = style::Theme::dark();
+    const style::InteractionStateSnapshot interaction;
+    const accessibility::AccessibilitySettings settings;
+    return intrinsicSize(widget, constraints,
+                         style::StyleContext{theme, interaction, settings},
+                         fonts);
 }
 
 core::Size LayoutEngine::intrinsicSize(const core::Widget& widget,

@@ -26,11 +26,29 @@ using core::TextStyle;
 using core::WidgetType;
 
 // v0.3 阶段8B: 文本布局统一走 text::TextLayout（与 layout.cpp 同源，光
-// 标/选区/绘制宽度不会漂移）。
+// 标/选区/绘制宽度不会漂移）。M1：经作用域字体源读取，默认占位。
+thread_local const text::FontManager* t_paintFonts = nullptr;
+
+const text::FontManager& paintFonts() {
+    return t_paintFonts != nullptr
+               ? *t_paintFonts
+               : text::PlaceholderFontManager::shared();
+}
+
+struct ScopedPaintFonts {
+    const text::FontManager* previous{nullptr};
+    explicit ScopedPaintFonts(const text::FontManager& fonts) {
+        previous = t_paintFonts;
+        t_paintFonts = &fonts;
+    }
+    ~ScopedPaintFonts() { t_paintFonts = previous; }
+    ScopedPaintFonts(const ScopedPaintFonts&) = delete;
+    ScopedPaintFonts& operator=(const ScopedPaintFonts&) = delete;
+};
+
 text::TextLayoutResult layoutText(const std::string& text,
                                   const TextStyle& style, float maxWidth) {
-    return text::TextLayout::layout(text, style, maxWidth,
-                                    text::PlaceholderFontManager::shared());
+    return text::TextLayout::layout(text, style, maxWidth, paintFonts());
 }
 
 float textWidth(const std::string& text, const TextStyle& style) {
@@ -118,15 +136,23 @@ class CommandRecorder {
 };
 
 template <typename Sink>
+void paintLines(Sink& sink, const text::TextLayoutResult& layout,
+                const TextStyle& style, Offset origin);
+
+template <typename Sink>
 void paintTextAt(Sink& sink, const std::string& text, const TextStyle& style,
                  Offset origin) {
     if (text.empty()) {
         return;
     }
-    sink.drawText(TextRun{text, origin}, style);
+    // M1：单行标签也携带布局 shaped 数据（与正文同一份字体事实；
+    // 无 shaping 能力的后端忽略并回退自身路径）。
+    const auto layout = layoutText(text, style, 0.0F);
+    paintLines(sink, layout, style, origin);
 }
 
-// 多行文本绘制：逐行发 TextRun（视觉序文本，RTL 已逆序）。
+// 多行文本绘制：逐行发 TextRun（视觉序文本 + shaped runs，RTL/混合
+// 已按双向重排；baseline/字形 xOffset 均出自同一份 TextLayout）。
 template <typename Sink>
 void paintLines(Sink& sink, const text::TextLayoutResult& layout,
                 const TextStyle& style, Offset origin) {
@@ -135,10 +161,21 @@ void paintLines(Sink& sink, const text::TextLayoutResult& layout,
         if (line.visual.empty()) {
             continue;
         }
-        paintTextAt(sink, line.visual, style,
-                    Offset{origin.x, origin.y +
-                                          static_cast<float>(i) *
-                                              layout.lineHeightPx});
+        TextRun run;
+        run.text = line.visual;
+        run.origin = Offset{origin.x,
+                            origin.y + static_cast<float>(i) *
+                                           layout.lineHeightPx};
+        run.baselinePx = layout.baseline;
+        run.shapedRuns.reserve(line.runs.size());
+        for (const auto& shaped : line.runs) {
+            TextGlyphRun glyphRun;
+            glyphRun.family = shaped.family;
+            glyphRun.placeholder = shaped.placeholder;
+            glyphRun.glyphs = shaped.glyphs;
+            run.shapedRuns.push_back(std::move(glyphRun));
+        }
+        sink.drawText(std::move(run), style);
     }
 }
 
@@ -517,8 +554,25 @@ void paintScene(Renderer& renderer, const core::RenderNode& root,
     paintNode(renderer, root, Offset{}, options);
 }
 
+void paintScene(Renderer& renderer, const core::RenderNode& root,
+                const PaintOptions& options,
+                const text::FontManager& fonts) {
+    const ScopedPaintFonts guard{fonts};
+    paintNode(renderer, root, Offset{}, options);
+}
+
 RenderCommandList recordScene(const core::RenderNode& root,
                               const PaintOptions& options) {
+    RenderCommandList list;
+    CommandRecorder recorder{list};
+    paintNode(recorder, root, Offset{}, options);
+    return list;
+}
+
+RenderCommandList recordScene(const core::RenderNode& root,
+                              const PaintOptions& options,
+                              const text::FontManager& fonts) {
+    const ScopedPaintFonts guard{fonts};
     RenderCommandList list;
     CommandRecorder recorder{list};
     paintNode(recorder, root, Offset{}, options);

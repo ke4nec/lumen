@@ -2,6 +2,7 @@
 // damage culling, serialization round-trips, upload/unload lifecycle commands
 // and the capability/stats contract.
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <optional>
@@ -14,6 +15,7 @@
 #include "lumen/render/painter.h"
 #include "lumen/render/render_commands.h"
 #include "lumen/render/renderer.h"
+#include "lumen/text/font_manager.h"
 
 using lumen::core::Color;
 using lumen::core::Constraints;
@@ -409,4 +411,106 @@ TEST_CASE("nested_clip_commands_replay_with_same_semantics",
     immediate.endFrame();
 
     CHECK(frameHash(submitted.pixels()) == frameHash(immediate.pixels()));
+}
+
+// --- M1：shaped 文本数据随命令录制/序列化（布局与绘制共享同一份结果） ---
+
+namespace {
+
+// 确定性“真实后端”字体双：0.5em advance / 0.7em ascent，与占位不同，
+// 用于验证布局与命令携带同一份字体事实。
+class FixedMetricsFontManager final : public lumen::text::FontManager {
+  public:
+    [[nodiscard]] lumen::text::FontBackend backend() const override {
+        return lumen::text::FontBackend::Skia;
+    }
+    [[nodiscard]] bool supportsShaping() const override { return true; }
+    [[nodiscard]] std::string resolveFamily(
+        const lumen::text::FontQuery&, char32_t) const override {
+        return "fixed-test";
+    }
+    [[nodiscard]] bool glyphMetrics(const lumen::text::FontQuery&,
+                                    char32_t,
+                                    lumen::text::GlyphMetrics* out)
+        const override {
+        out->advanceEm = 0.5F;
+        out->ascentEm = 0.7F;
+        out->descentEm = 0.3F;
+        return true;
+    }
+    [[nodiscard]] bool horizontalMetrics(const lumen::text::FontQuery& query,
+                                         float* ascentPx,
+                                         float* descentPx)
+        const override {
+        const float size = query.sizePx > 0.0F ? query.sizePx : 14.0F;
+        if (ascentPx != nullptr) {
+            *ascentPx = size * 0.7F;
+        }
+        if (descentPx != nullptr) {
+            *descentPx = size * 0.3F;
+        }
+        return true;
+    }
+    [[nodiscard]] std::vector<std::string> availableFamilies()
+        const override {
+        return {"fixed-test"};
+    }
+};
+
+const lumen::render::RenderCommand* firstTextCommand(
+    const lumen::render::RenderCommandList& list) {
+    for (const auto& command : list.commands()) {
+        if (command.type == lumen::render::CommandType::DrawText) {
+            return &command;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+TEST_CASE("text_commands_carry_shaped_runs_from_layout", "[render][commands]") {
+    const auto root = laidOutScene(sampleScene());
+
+    // 默认（占位）：命令带占位 shaped runs + 占位 baseline。
+    const RenderCommandList placeholderList = recordScene(root);
+    const auto* placeholderText = firstTextCommand(placeholderList);
+    REQUIRE(placeholderText != nullptr);
+    REQUIRE_FALSE(placeholderText->textRun.shapedRuns.empty());
+    CHECK(placeholderText->textRun.baselinePx > 0.0F);
+    for (const auto& run : placeholderText->textRun.shapedRuns) {
+        CHECK(run.placeholder);
+        CHECK(run.family == "lumen-latin");
+    }
+
+    // 显式字体源：布局与录制共享同一份度量（advance/baseline 均出自
+    // FixedMetricsFontManager）。
+    FixedMetricsFontManager fonts;
+    const auto shapedRoot = LayoutEngine::layout(
+        sampleScene(), Constraints::tight(Size{300.0F, 200.0F}), fonts);
+    const RenderCommandList shapedList = recordScene(shapedRoot, {}, fonts);
+    const auto* shapedText = firstTextCommand(shapedList);
+    REQUIRE(shapedText != nullptr);
+    REQUIRE_FALSE(shapedText->textRun.shapedRuns.empty());
+    CHECK(shapedText->textRun.baselinePx ==
+          Catch::Approx(14.0F * 0.7F).margin(0.01F));
+    for (const auto& run : shapedText->textRun.shapedRuns) {
+        CHECK_FALSE(run.placeholder);
+        CHECK(run.family == "fixed-test");
+        for (const auto& glyph : run.glyphs) {
+            // 0.5em advance，与布局使用的度量一致。
+            CHECK(glyph.advancePx ==
+                  Catch::Approx(14.0F * 0.5F).margin(0.01F));
+        }
+    }
+    // 文本节点宽度按真实 advance（"Count: 0" = 8 字符 × 0.5em）。
+    CHECK(shapedRoot.children.front().children.front().size.width ==
+          Catch::Approx(8.0F * 14.0F * 0.5F).margin(0.05F));
+
+    // 序列化保持 shaped 字段逐位相等（v3）。
+    const std::string blob =
+        lumen::render::serializeCommands(shapedList);
+    lumen::render::RenderCommandList parsed;
+    REQUIRE(lumen::render::deserializeCommands(blob, parsed));
+    CHECK(parsed == shapedList);
 }

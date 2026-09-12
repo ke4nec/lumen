@@ -4,6 +4,7 @@
 #include "lumen/core/render_node.h"
 #include "lumen/core/widget.h"
 #include "lumen/style/resolver.h"
+#include "lumen/text/font_manager.h"
 
 namespace lumen::layout {
 
@@ -27,6 +28,16 @@ class LayoutEngine {
     static core::RenderNode layout(const core::Widget& widget,
                                    const core::Constraints& constraints);
 
+    // M1：显式字体源入口。LayoutEngine 与 Skia renderer 共享同一份布局
+    // 结果时传入 Skia FontManager；CPU 继续用占位（默认入口）。
+    static core::RenderNode layout(const core::Widget& widget,
+                                   const core::Constraints& constraints,
+                                   const style::StyleContext& styleContext,
+                                   const text::FontManager& fonts);
+    static core::RenderNode layout(const core::Widget& widget,
+                                   const core::Constraints& constraints,
+                                   const text::FontManager& fonts);
+
     // intrinsic（自然）尺寸：在给定约束下测量的内容尺寸（不定位）。
     // flex 近似为“约束下的布局尺寸”，两遍 min/max intrinsic 留待后续。
     [[nodiscard]] static core::Size intrinsicSize(
@@ -34,6 +45,14 @@ class LayoutEngine {
         const style::StyleContext& styleContext);
     [[nodiscard]] static core::Size intrinsicSize(
         const core::Widget& widget, const core::Constraints& constraints);
+    // M1：显式字体源的 intrinsic 入口（同上）。
+    [[nodiscard]] static core::Size intrinsicSize(
+        const core::Widget& widget, const core::Constraints& constraints,
+        const style::StyleContext& styleContext,
+        const text::FontManager& fonts);
+    [[nodiscard]] static core::Size intrinsicSize(
+        const core::Widget& widget, const core::Constraints& constraints,
+        const text::FontManager& fonts);
 
     // 子树的文本 baseline（根相对 y；无文本节点返回 -1）。
     [[nodiscard]] static float baseline(const core::RenderNode& node);

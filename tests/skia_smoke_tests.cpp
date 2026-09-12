@@ -10,10 +10,13 @@
 
 #include "counter_app.h"
 #include "lumen/core/geometry.h"
+#include "lumen/core/widget.h"
+#include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
 #include "lumen/render/skia_renderer.h"
 #include "lumen/style/theme.h"
+#include "lumen/text/skia_font_manager.h"
 
 using lumen::core::Color;
 using lumen::core::CornerRadius;
@@ -263,4 +266,80 @@ TEST_CASE("skia_preserve_mode_matches_full_clear", "[skia]") {
         compareBuffers(full.pixels(), partial.pixels(), 8);
     CHECK(stats.differingPixels <= stats.totalPixels / 50);
     CHECK(stats.meanAbsDiff < 2.0);
+}
+
+// --- M1：真实字体事实贯通布局/绘制（Skia build 专用） ---
+
+namespace {
+
+lumen::core::RenderNode layoutRootOfMixedText(const std::string& text,
+                                               const lumen::text::FontManager&
+                                                   fonts) {
+    lumen::core::Widget widget;
+    widget.type = lumen::core::WidgetType::Text;
+    widget.text = text;
+    return lumen::layout::LayoutEngine::layout(
+        widget, lumen::core::Constraints::loose(Size{400.0F, 60.0F}), fonts);
+}
+
+}  // namespace
+
+TEST_CASE("skia_real_fonts_shape_layout_and_paint", "[skia][text]") {
+    std::string diagnostic;
+    auto fonts = lumen::text::createSkiaFontManager(&diagnostic);
+    if (fonts == nullptr) {
+        // 无系统字体的环境：工厂明确报告而不是静默失败（M1 出口条件）。
+        INFO("skia font manager unavailable: " << diagnostic);
+    REQUIRE(diagnostic.find("skia") != std::string::npos);
+    if (fonts->availableFamilies().empty()) {
+        // Skia 已编译但极简容器无系统字体：布局走占位回退并明确诊断，
+        // 应用仍可启动（M1 缺字体可启动条款），编辑索引不受影响。
+        const std::string mixed = "Count: A";
+        const auto layout = lumen::text::TextLayout::layout(
+            mixed, TextStyle{}, 0.0F, *fonts);
+        CHECK(layout.usedPlaceholderFallback);
+        CHECK_FALSE(layout.fontDiagnostic.empty());
+        CHECK(layout.graphemeCount == 8);
+        return;
+    }
+        return;
+    }
+    REQUIRE(diagnostic.find("skia") != std::string::npos);
+
+    // 混合 LTR/RTL/CJK：真实度量（baseline 不再是占位 0.8em 的倍数关系
+    // 不作跨机器断言，只验证同一份结果贯通）。
+    const std::string mixed =
+        "Count: \xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D \xE4\xBD\xA0\xE5\xA5\xBD";
+    const auto layout = lumen::text::TextLayout::layout(
+        mixed, TextStyle{}, 0.0F, *fonts);
+    CHECK(layout.fontBackend == lumen::text::FontBackend::Skia);
+    CHECK(layout.size.width > 0.0F);
+    CHECK(layout.baseline > 0.0F);
+    REQUIRE(layout.lines.size() == 1);
+    bool anyRealRun = false;
+    for (const auto& run : layout.lines[0].runs) {
+        if (!run.placeholder && !run.glyphs.empty()) {
+            anyRealRun = true;
+        }
+    }
+    CHECK(anyRealRun);
+
+    // 布局与绘制共享同一份字体源：Skia 消费 shaped 命令出帧且确定性。
+    const auto paint = [&](SkiaRenderer& renderer) {
+        renderer.beginFrame(Size{400.0F, 60.0F});
+        lumen::render::RenderCommandList commands =
+            lumen::render::recordScene(
+                layoutRootOfMixedText(mixed, *fonts), {}, *fonts);
+        lumen::render::FrameInfo info;
+        info.viewport = Size{400.0F, 60.0F};
+        renderer.submit(commands, info);
+        renderer.endFrame();
+    };
+    SkiaRenderer first;
+    paint(first);
+    const std::uint64_t hashA = lumen::render::frameHash(first.pixels());
+    SkiaRenderer second;
+    paint(second);
+    CHECK(lumen::render::frameHash(second.pixels()) == hashA);
+    CHECK(hashA != 0);
 }

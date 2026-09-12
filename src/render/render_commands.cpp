@@ -14,8 +14,9 @@ namespace {
 // 任何长度/校验不匹配返回 false，调用方按损坏帧处理（全帧重绘）。
 // v2：TextStyle 全字段（视觉系统后 resolved 样式带 weight/family 等区分
 // 字段，v1 只存 fontSize/color 会丢失语义）。
+// v3：TextRun 增加 baselinePx 与 shapedRuns（M1 布局/绘制共享 shaping）。
 constexpr char kMagic[] = "LUMENCMD";
-constexpr std::uint32_t kVersion = 2;
+constexpr std::uint32_t kVersion = 3;
 
 void putU8(std::string& out, std::uint8_t value) {
     out.push_back(static_cast<char>(value));
@@ -137,6 +138,21 @@ void serializeCommand(const RenderCommand& command, std::string& out) {
     putString(out, command.textRun.text);
     putF32(out, command.textRun.origin.x);
     putF32(out, command.textRun.origin.y);
+    // v3：shaped 文本绘制数据（baseline + runs + glyphs）。
+    putF32(out, command.textRun.baselinePx);
+    putU32(out, static_cast<std::uint32_t>(
+                     command.textRun.shapedRuns.size()));
+    for (const TextGlyphRun& run : command.textRun.shapedRuns) {
+        putString(out, run.family);
+        putU8(out, run.placeholder ? 1 : 0);
+        putU32(out, static_cast<std::uint32_t>(run.glyphs.size()));
+        for (const text::ShapedGlyph& glyph : run.glyphs) {
+            putU32(out, glyph.glyphId);
+            putF32(out, glyph.advancePx);
+            putF32(out, glyph.xOffsetPx);
+            putU32(out, glyph.cluster);
+        }
+    }
     putF32(out, command.textStyle.fontSize);
     putU8(out, command.textStyle.color.r);
     putU8(out, command.textStyle.color.g);
@@ -205,6 +221,29 @@ bool deserializeCommand(Reader& reader, RenderCommand& command) {
     command.textRun.text = reader.getString();
     command.textRun.origin.x = reader.getF32();
     command.textRun.origin.y = reader.getF32();
+    command.textRun.baselinePx = reader.getF32();
+    const std::uint32_t runCount = reader.getU32();
+    if (reader.failed || runCount > reader.size - reader.offset) {
+        reader.failed = true;
+        return false;
+    }
+    command.textRun.shapedRuns.resize(runCount);
+    for (TextGlyphRun& run : command.textRun.shapedRuns) {
+        run.family = reader.getString();
+        run.placeholder = reader.getU8() != 0;
+        const std::uint32_t glyphCount = reader.getU32();
+        if (reader.failed || glyphCount > reader.size - reader.offset) {
+            reader.failed = true;
+            return false;
+        }
+        run.glyphs.resize(glyphCount);
+        for (text::ShapedGlyph& glyph : run.glyphs) {
+            glyph.glyphId = reader.getU32();
+            glyph.advancePx = reader.getF32();
+            glyph.xOffsetPx = reader.getF32();
+            glyph.cluster = reader.getU32();
+        }
+    }
     command.textStyle.fontSize = reader.getF32();
     command.textStyle.color.r = reader.getU8();
     command.textStyle.color.g = reader.getU8();
