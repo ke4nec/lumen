@@ -430,3 +430,178 @@ TEST_CASE("sdl3_host_smoke_creates_window_and_pumps_events", "[platform]") {
     host.shutdown();
     CHECK(host.lifecycle() == core::AppLifecycle::Terminating);
 }
+
+// --- M4：平台服务契约（Fake host 确定性记录 + 失败注入） ---
+
+TEST_CASE("platform_service_results_are_structured", "[platform][m4]") {
+    using lumen::platform::ServiceError;
+    using lumen::platform::ServiceResult;
+
+    const auto ok = ServiceResult::success();
+    CHECK(ok.ok);
+    CHECK(ok.error == ServiceError::None);
+    CHECK(ok.message.empty());
+
+    const auto unavailable =
+        ServiceResult::unavailable("dialogs unsupported");
+    CHECK_FALSE(unavailable.ok);
+    CHECK(unavailable.error == ServiceError::Unavailable);
+    CHECK(unavailable.message == "dialogs unsupported");
+
+    const auto cancelled = ServiceResult::cancelled();
+    CHECK_FALSE(cancelled.ok);
+    CHECK(cancelled.error == ServiceError::Cancelled);
+
+    const auto failed = ServiceResult::failed("EIO");
+    CHECK_FALSE(failed.ok);
+    CHECK(failed.error == ServiceError::Failed);
+}
+
+TEST_CASE("fake_host_file_dialog_semantics", "[platform][m4]") {
+    using lumen::platform::FileDialogRequest;
+    using lumen::platform::FileDialogResult;
+    using lumen::platform::FakeApplicationHost;
+    using lumen::platform::ServiceError;
+
+    FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow({});
+    REQUIRE(id.has_value());
+    // 清空 createWindow 的积压事件（窗口焦点等），只看对话框语义。
+    core::HostEvent drain;
+    while (host.pollEvent(drain)) {
+    }
+
+    SECTION("no queued result reports unavailable without blocking") {
+        FileDialogRequest request;
+        request.title = "Open";
+        const auto result = host.requestFileDialog(*id, request);
+        CHECK_FALSE(result.ok);
+        CHECK(result.error == ServiceError::Unavailable);
+        CHECK_FALSE(result.message.empty());
+        CHECK(host.fileDialogCalls.size() == 1);
+    }
+
+    SECTION("injected request failure is synchronous and structured") {
+        host.setFileDialogFailure(
+            lumen::platform::ServiceResult::unavailable("denied"));
+        const auto result =
+            host.requestFileDialog(*id, FileDialogRequest{});
+        CHECK_FALSE(result.ok);
+        CHECK(result.error == ServiceError::Unavailable);
+        // 请求失败不发完成事件。
+        core::HostEvent event;
+        CHECK_FALSE(host.pollEvent(event));
+    }
+
+    SECTION("queued result completes as FileDialogCompleted event") {
+        FileDialogResult queued;
+        queued.status = lumen::platform::ServiceResult::success();
+        queued.paths = {"/tmp/a.txt", "/tmp/b.txt"};
+        host.queueFileDialogResult(std::move(queued));
+
+        FileDialogRequest request;
+        request.title = "Open";
+        request.allowMultiple = true;
+        CHECK(host.requestFileDialog(*id, request).ok);
+
+        core::HostEvent event;
+        REQUIRE(host.pollEvent(event));
+        CHECK(event.type == core::HostEventType::FileDialogCompleted);
+        CHECK(event.window == *id);
+        REQUIRE(event.filePaths.size() == 2);
+        CHECK(event.filePaths[0] == "/tmp/a.txt");
+        CHECK(event.filePaths[1] == "/tmp/b.txt");
+        CHECK(event.text.empty());  // 成功无诊断。
+    }
+
+    SECTION("cancellation completes with empty paths and no error") {
+        FileDialogResult queued;
+        queued.status = lumen::platform::ServiceResult::cancelled();
+        host.queueFileDialogResult(std::move(queued));
+        CHECK(host.requestFileDialog(*id, FileDialogRequest{}).ok);
+        core::HostEvent event;
+        REQUIRE(host.pollEvent(event));
+        CHECK(event.filePaths.empty());
+        CHECK(event.text.empty());
+    }
+}
+
+TEST_CASE("fake_host_records_cursor_icon_url_and_notifications",
+          "[platform][m4]") {
+    using lumen::platform::FakeApplicationHost;
+    using lumen::platform::NotificationRequest;
+    using lumen::platform::SystemCursor;
+    using lumen::platform::WindowIcon;
+
+    FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow({});
+    REQUIRE(id.has_value());
+
+    // openUrl：默认成功 + 记录；注入失败结构化。
+    CHECK(host.openUrl("https://example.com").ok);
+    REQUIRE(host.openUrlCalls.size() == 1);
+    CHECK(host.openUrlCalls[0].url == "https://example.com");
+    host.setOpenUrlFailure(
+        lumen::platform::ServiceResult::failed("no browser"));
+    CHECK_FALSE(host.openUrl("https://example.com/2").ok);
+    CHECK(host.openUrlCalls.back().result.error ==
+          lumen::platform::ServiceError::Failed);
+
+    // 通知：默认成功 + 记录。
+    NotificationRequest notification;
+    notification.title = "T";
+    notification.body = "B";
+    CHECK(host.postNotification(notification).ok);
+    REQUIRE(host.notificationCalls.size() == 1);
+    CHECK(host.notificationCalls[0].request.title == "T");
+
+    // 光标：按窗口记录。
+    host.setCursor(*id, SystemCursor::IBeam);
+    host.setCursor(*id, SystemCursor::PointingHand);
+    REQUIRE(host.cursorCalls.size() == 2);
+    CHECK(host.cursorCalls[0].second == SystemCursor::IBeam);
+    CHECK(host.cursorCalls[1].second == SystemCursor::PointingHand);
+
+    // 图标：记录 + 失败注入。
+    WindowIcon icon;
+    icon.width = 2;
+    icon.height = 2;
+    icon.rgba.assign(2 * 2 * 4, 0xFF);
+    CHECK(host.setWindowIcon(*id, icon).ok);
+    REQUIRE(host.iconCalls.size() == 1);
+    CHECK(host.iconCalls[0].icon.width == 2);
+    host.setIconFailure(
+        lumen::platform::ServiceResult::failed("bad pixels"));
+    CHECK_FALSE(host.setWindowIcon(*id, icon).ok);
+}
+
+TEST_CASE("platform_capabilities_report_services_and_appearance",
+          "[platform][m4]") {
+    lumen::platform::FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    auto caps = host.capabilities();
+    // Fake host 默认：服务关闭（测试显式注入能力）。
+    CHECK_FALSE(caps.fileDialogs);
+    CHECK_FALSE(caps.notifications);
+
+    caps.fileDialogs = true;
+    caps.notifications = false;
+    caps.openUrl = true;
+    caps.cursorShape = true;
+    caps.windowIcon = true;
+    caps.prefersDarkMode = true;
+    caps.accentColor = lumen::core::Color::fromRGBA(10, 20, 30);
+    caps.fontScale = 1.25F;
+    host.setCapabilities(caps);
+
+    const auto updated = host.capabilities();
+    CHECK(updated.fileDialogs);
+    CHECK(updated.openUrl);
+    CHECK(updated.cursorShape);
+    CHECK(updated.windowIcon);
+    CHECK(updated.prefersDarkMode);
+    CHECK(updated.accentColor == lumen::core::Color::fromRGBA(10, 20, 30));
+    CHECK(updated.fontScale == 1.25F);
+}

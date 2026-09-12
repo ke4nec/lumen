@@ -124,15 +124,84 @@ int runHeadless(SettingsApp& app) {
 }
 
 // M2：窗口主循环 = app::runApp（关闭请求策略/IME 同步/调度在应用壳与
-// 应用配置钩子里）。
+// 应用配置钩子里）。M4：平台服务（文件选择/通知/外部链接）经注入装配。
 int runWindowed(SettingsApp& app, const Options& options) {
     lumen::platform::Sdl3ApplicationHost host;
+
+    // M4：服务动作注入（能力先行查询；不可用→按钮给出可读诊断）。
+    SettingsApp::ServiceActions actions;
+    const auto caps = [&host]() {
+        // host.initialize 之前的查询不可靠；首次使用时能力已就绪。
+        return host.capabilities();
+    };
+    actions.openFile = [&host, &app, caps]() {
+        if (!caps().fileDialogs) {
+            app.setPickedFile("open file: dialogs unavailable");
+            return false;
+        }
+        lumen::platform::FileDialogRequest request;
+        request.title = "Open file";
+        request.allowMultiple = false;
+        const auto result = host.requestFileDialog({}, request);
+        if (!result.ok) {
+            app.setPickedFile("open file: " + result.message);
+            return false;
+        }
+        return true;
+    };
+    actions.saveFile = [&host, &app, caps]() {
+        if (!caps().fileDialogs) {
+            app.setPickedFile("save file: dialogs unavailable");
+            return false;
+        }
+        lumen::platform::FileDialogRequest request;
+        request.title = "Save file";
+        request.forSave = true;
+        request.defaultName = "lumen-export.txt";
+        const auto result = host.requestFileDialog({}, request);
+        if (!result.ok) {
+            app.setPickedFile("save file: " + result.message);
+            return false;
+        }
+        return true;
+    };
+    actions.notify = [&host, &app, caps]() {
+        if (!caps().notifications) {
+            app.setPickedFile("notify: notifications unavailable");
+            return false;
+        }
+        lumen::platform::NotificationRequest request;
+        request.title = "Lumen settings";
+        request.body = "Profile saved.";
+        return host.postNotification(request).ok;
+    };
+    actions.openDocs = [&host, &app, caps]() {
+        if (!caps().openUrl) {
+            app.setPickedFile("open docs: url unavailable");
+            return false;
+        }
+        return host.openUrl("https://www.libsdl.org/").ok;
+    };
+    app.setServiceActions(std::move(actions));
 
     lumen::app::RunOptions runOptions;
     runOptions.windowDesc.title = "Lumen Settings - v0.3";
     runOptions.windowDesc.width = 800;
     runOptions.windowDesc.height = 600;
     runOptions.diagnostics = options.diagnostics;
+
+    // M4：文件选择完成事件 → 应用状态（UI 线程内同步落地）。
+    runOptions.onEvent = [&app](lumen::app::AppShell&,
+                                const lumen::core::HostEvent& event) {
+        if (event.type ==
+            lumen::core::HostEventType::FileDialogCompleted) {
+            app.setPickedFile(event.filePaths.empty()
+                                  ? event.text.empty()
+                                        ? "(cancelled)"
+                                        : event.text
+                                  : event.filePaths.front());
+        }
+    };
 
     return lumen::app::runApp(app.shell(), host, runOptions);
 }

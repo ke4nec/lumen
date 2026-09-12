@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "lumen/platform/application_host.h"
@@ -99,6 +100,16 @@ class FakeApplicationHost final : public ApplicationHost {
         core::WindowId id) override;
     [[nodiscard]] PlatformCapabilities capabilities() const override;
 
+    // --- M4：平台服务（确定性记录 + 失败注入） ---
+    [[nodiscard]] ServiceResult openUrl(const std::string& url) override;
+    [[nodiscard]] ServiceResult requestFileDialog(
+        core::WindowId id, const FileDialogRequest& request) override;
+    [[nodiscard]] ServiceResult postNotification(
+        const NotificationRequest& request) override;
+    void setCursor(core::WindowId id, SystemCursor cursor) override;
+    [[nodiscard]] ServiceResult setWindowIcon(
+        core::WindowId id, const WindowIcon& icon) override;
+
     // --- 可注入事件源（归一化事件直接入队） ---
     void pushPointerDown(core::WindowId id, core::Offset position,
                          core::PointerDevice device = core::PointerDevice::Mouse,
@@ -145,6 +156,44 @@ class FakeApplicationHost final : public ApplicationHost {
     // 手动入队（测试自定义事件）。
     void pushRaw(core::HostEvent event);
 
+    // --- M4：服务注入/记录断言 ---
+    // 预置文件对话框结果（FIFO）；队列为空且未注入失败时返回
+    // Unavailable。完成事件入队（FileDialogCompleted）。
+    void queueFileDialogResult(FileDialogResult result);
+    // 注入请求期失败（如服务不可用）。
+    void setFileDialogFailure(ServiceResult failure);
+    // 注入 openUrl/通知失败；空 = 成功。
+    void setOpenUrlFailure(ServiceResult failure);
+    void setNotificationFailure(ServiceResult failure);
+    void setIconFailure(ServiceResult failure);
+
+    // 记录（断言用）。
+    struct OpenUrlCall {
+        std::string url{};
+        ServiceResult result{};
+        bool operator==(const OpenUrlCall&) const = default;
+    };
+    std::vector<OpenUrlCall> openUrlCalls{};
+    struct NotificationCall {
+        NotificationRequest request{};
+        ServiceResult result{};
+        bool operator==(const NotificationCall&) const = default;
+    };
+    std::vector<NotificationCall> notificationCalls{};
+    struct FileDialogCall {
+        core::WindowId window{};
+        FileDialogRequest request{};
+        bool operator==(const FileDialogCall&) const = default;
+    };
+    std::vector<FileDialogCall> fileDialogCalls{};
+    std::vector<std::pair<core::WindowId, SystemCursor>> cursorCalls{};
+    struct IconCall {
+        core::WindowId window{};
+        WindowIcon icon{};
+        bool operator==(const IconCall&) const = default;
+    };
+    std::vector<IconCall> iconCalls{};
+
   private:
     struct WindowEntry {
         core::WindowMetrics metrics{};
@@ -167,6 +216,12 @@ class FakeApplicationHost final : public ApplicationHost {
     bool initialized_{false};
     PlatformCapabilities capabilities_{};
     FakeClipboard clipboard_{};
+    // M4 服务注入。
+    std::deque<FileDialogResult> dialogResults_{};
+    std::optional<ServiceResult> dialogFailure_{};
+    std::optional<ServiceResult> openUrlFailure_{};
+    std::optional<ServiceResult> notificationFailure_{};
+    std::optional<ServiceResult> iconFailure_{};
 };
 
 }  // namespace lumen::platform

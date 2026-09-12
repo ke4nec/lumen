@@ -667,3 +667,51 @@ TEST_CASE("settings_grid_and_virtual_list_pages", "[settings][m3]") {
     app.keyDown(core::Key::Escape);
     CHECK(app.navigator().current() == "home");
 }
+
+// M4：平台服务区（文件选择/通知/外部链接；动作注入 + 状态展示）。
+
+TEST_CASE("settings_services_page_actions_and_diagnostics", "[settings][m4]") {
+    SettingsApp app;
+    app.setView(core::Size{800.0F, 600.0F});
+
+    // 无动作注入：按钮点击给出“服务不可用”诊断（不崩溃、不阻塞）。
+    (void)app.renderFrame();
+    const auto click = [&app](const char* key) {
+        const auto* node = core::findNodeByKey(app.root(), key);
+        REQUIRE(node != nullptr);
+        const auto pos = core::absoluteOffset(app.root(), key) +
+                         core::Offset{node->size.width * 0.5F,
+                                      node->size.height * 0.5F};
+        app.pointerDown(pos);
+        app.pointerUp(pos);
+    };
+    click("open-file-button");
+    (void)app.renderFrame();
+    const auto* picked = core::findNodeByKey(app.root(), "picked-file");
+    REQUIRE(picked != nullptr);
+    CHECK(picked->text.find("unavailable") != std::string::npos);
+    // 状态不丢：焦点/路由/导航仍在 home。
+    CHECK(app.navigator().current() == "home");
+
+    // 注入 fake 动作：打开成功 → 完成回调更新选中路径。
+    SettingsApp::ServiceActions actions;
+    actions.openFile = [&app] {
+        app.setPickedFile("/tmp/fake-open.txt");
+        return true;
+    };
+    actions.notify = [] { return false; };  // 失败路径 → 诊断。
+    app.setServiceActions(std::move(actions));
+    click("open-file-button");
+    (void)app.renderFrame();
+    CHECK(app.pickedFile() == "/tmp/fake-open.txt");
+    const auto* updated = core::findNodeByKey(app.root(), "picked-file");
+    REQUIRE(updated != nullptr);
+    CHECK(updated->text == "/tmp/fake-open.txt");
+
+    click("notify-button");
+    (void)app.renderFrame();
+    CHECK(app.pickedFile().find("failed") != std::string::npos);
+    // 服务失败后应用状态完整：路由/表单/弹窗状态未受影响。
+    CHECK(app.navigator().current() == "home");
+    CHECK_FALSE(app.dialogOpen());
+}

@@ -84,7 +84,9 @@ accessibility tree、Metal/Graphite。
   属后续版本；v0.3 冻结了桥接契约与 headless 验证路径，语义收口见 M5。
 - 应用主循环/damage 管线已收敛到 `lumen-app` 应用壳（M2）：新工具页只需
   提供 build/状态逻辑；runApp 为单窗口主循环（多窗口属后续里程碑）。
-- 平台服务（文件选择/通知/光标形状/窗口图标）未形成统一接口：见 M4。
+- 平台服务已统一接口（M4：文件选择/OpenURL/通知/光标/图标 + 能力报
+  告）；通知在 SDL 3.2.10 无 API（结构化降级，真实通知待 SDL 升级或
+  原生后端）；prefersDarkMode/accentColor 为安全默认（SDL 3.2 无查询）。
 - Icon/阴影/转场/ThemeScope、Dropdown/Menu/Tooltip/Slider/ProgressBar/
   Radio/Tabs、Scrollbar 完整控件、表单扩展校验器：见 M6。
 - GPU `partialSubmit` 固定 false，macOS GPU 非门槛：见 M7。

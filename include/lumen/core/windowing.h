@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "lumen/core/geometry.h"
 
@@ -128,6 +129,8 @@ enum class HostEventType : std::uint8_t {
     LifecycleChanged,
     SurfaceDetached,
     SurfaceReattached,
+    // M4：平台服务异步完成（文件选择等）。
+    FileDialogCompleted,
 };
 
 struct HostEvent {
@@ -165,6 +168,10 @@ struct HostEvent {
     // LifecycleChanged 携带新旧状态。
     AppLifecycle lifecycle{AppLifecycle::Launching};
     AppLifecycle previousLifecycle{AppLifecycle::Launching};
+
+    // M4：FileDialogCompleted 携带用户选择的路径（取消为空且无错误；
+    // text 复用为失败诊断消息）。
+    std::vector<std::string> filePaths{};
 };
 
 }  // namespace lumen::core

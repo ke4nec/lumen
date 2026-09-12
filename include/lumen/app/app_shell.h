@@ -279,6 +279,9 @@ struct RunOptions {
     std::function<std::shared_ptr<text::FontManager>()> fontFactory{};
     // 扩展轮询（热重载等；返回 true = 请求重绘）。
     std::function<bool(AppShell&, std::uint64_t nowMs)> poll{};
+    // M4：宿主服务事件转发（FileDialogCompleted 等应用壳不消费的
+    // 事件类型）；事件泵内同步调用，UI 线程独占。
+    std::function<void(AppShell&, const core::HostEvent&)> onEvent{};
 };
 
 // 阻塞运行应用直到关闭请求/maxFrames；返回进程退出码。

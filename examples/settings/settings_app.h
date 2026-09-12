@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -88,6 +89,26 @@ class SettingsApp {
     void tick(std::uint64_t nowMs) { shell_.tick(nowMs); }
     void swapRoot(core::Widget root) { shell_.swapRoot(std::move(root)); }
     void markDirty() { shell_.markDirty(); }
+
+    // --- M4：平台服务动作（main 注入；测试可换 fake） ---
+    struct ServiceActions {
+        // 打开文件对话框（异步：结果经 onEvent → setPickedFile）。
+        std::function<bool()> openFile{};
+        std::function<bool()> saveFile{};
+        std::function<bool()> notify{};
+        std::function<bool()> openDocs{};
+    };
+    void setServiceActions(ServiceActions actions) {
+        serviceActions_ = std::move(actions);
+    }
+    // 文件选择完成（FileDialogCompleted 事件落地）。
+    void setPickedFile(const std::string& path) {
+        pickedFile_ = path.empty() ? "(cancelled)" : path;
+        shell_.markDirty();
+    }
+    [[nodiscard]] const std::string& pickedFile() const {
+        return pickedFile_;
+    }
 
     // --- 事件分发（Escape/返回统一规则在 configFor 的 onKey 钩子） ---
 
@@ -281,6 +302,29 @@ class SettingsApp {
             autosave.semanticsLabel = "Autosave drafts";
             list.push_back(
                 core::withKey(std::move(autosave), "autosave-checkbox"));
+            // M4：平台服务区（文件选择/通知/外部链接）。
+            list.push_back(
+                core::withKey(titleText("Services", theme), "services-title"));
+            list.push_back(core::withKey(
+                buttonWidget("Open file...", "open-file", "open-file-button",
+                             core::ButtonVariant::Outline),
+                "open-file-button"));
+            list.push_back(core::withKey(
+                buttonWidget("Save file...", "save-file", "save-file-button",
+                             core::ButtonVariant::Outline),
+                "save-file-button"));
+            list.push_back(core::withKey(
+                buttonWidget("Notify", "notify", "notify-button",
+                             core::ButtonVariant::Outline),
+                "notify-button"));
+            list.push_back(core::withKey(
+                buttonWidget("Open docs", "open-docs", "open-docs-button",
+                             core::ButtonVariant::Outline),
+                "open-docs-button"));
+            list.push_back(core::withKey(
+                mutedLabel(pickedFile_.empty() ? "No file picked" : pickedFile_,
+                           theme),
+                "picked-file"));
             // 长列表内容：验证滚动与 key 复用。
             for (int i = 0; i < 24; ++i) {
                 list.push_back(core::withKey(
@@ -418,6 +462,19 @@ class SettingsApp {
             navigator_.push("grid");
             shell_.markDirty();
         };
+        // M4：平台服务（动作经 main 注入；缺省时报告服务不可用）。
+        handlers["open-file"] = [this] {
+            (void)invokeService(serviceActions_.openFile, "open file");
+        };
+        handlers["save-file"] = [this] {
+            (void)invokeService(serviceActions_.saveFile, "save file");
+        };
+        handlers["notify"] = [this] {
+            (void)invokeService(serviceActions_.notify, "notify");
+        };
+        handlers["open-docs"] = [this] {
+            (void)invokeService(serviceActions_.openDocs, "open docs");
+        };
         handlers["goto-library"] = [this] {
             navigator_.push("library");
             shell_.markDirty();
@@ -499,6 +556,22 @@ class SettingsApp {
         shell_.requestFullRepaint();
     }
 
+    // 服务调用统一包装：不可用/失败 → 可读诊断（picked-file 位置展示）。
+    bool invokeService(const std::function<bool()>& action,
+                       const char* name) {
+        if (action == nullptr) {
+            pickedFile_ = std::string(name) + ": service unavailable";
+            shell_.markDirty();
+            return false;
+        }
+        if (!action()) {
+            pickedFile_ = std::string(name) + ": failed (see diagnostics)";
+            shell_.markDirty();
+            return false;
+        }
+        return true;
+    }
+
     // --- 页面构建辅助（与迁移前一致，视觉全部来自 Theme token） ---
     [[nodiscard]] static core::Widget titleText(std::string text,
                                                 const style::Theme& theme) {
@@ -546,6 +619,9 @@ class SettingsApp {
     bool dialogOpen_{false};
     // M3：千项库列表（可变缓存供布局期 noteExtent 回填）。
     mutable core::VirtualListController library_{};
+    // M4：平台服务动作（main 注入）与最近结果展示。
+    ServiceActions serviceActions_{};
+    std::string pickedFile_{};
 
     app::AppShell shell_;
 };

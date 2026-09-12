@@ -34,6 +34,7 @@ class SkiaFontManager final : public FontManager {
         std::uint32_t clusterIndex) const override;
     [[nodiscard]] std::vector<std::string> availableFamilies()
         const override;
+    [[nodiscard]] std::size_t familyCount() const override;
     [[nodiscard]] std::string diagnostic() const override;
 
     ~SkiaFontManager() override;

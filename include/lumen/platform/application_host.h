@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "lumen/core/clipboard.h"
@@ -41,6 +42,88 @@ struct WindowDesc {
 class Clipboard : public core::ClipboardProvider {
   public:
     ~Clipboard() override = default;
+};
+
+// --- M4（自用路线图）：平台服务契约 ---
+//
+// 服务失败必须结构化（类别 + 可读原因）且不阻塞 UI 线程；能力先行
+// 查询（PlatformCapabilities），调用方按可用性降级。
+
+enum class ServiceError : std::uint8_t {
+    None = 0,
+    Unavailable,  // 服务在当前平台/构建不可用
+    Cancelled,    // 用户取消（如文件对话框）
+    Failed,       // 平台调用失败
+};
+
+struct ServiceResult {
+    bool ok{false};
+    ServiceError error{ServiceError::None};
+    // 用户可读诊断（不可用原因/失败详情）；成功时为空。
+    std::string message{};
+
+    [[nodiscard]] static ServiceResult success() {
+        return ServiceResult{true, ServiceError::None, {}};
+    }
+    [[nodiscard]] static ServiceResult unavailable(std::string why) {
+        return ServiceResult{false, ServiceError::Unavailable, std::move(why)};
+    }
+    [[nodiscard]] static ServiceResult cancelled() {
+        return ServiceResult{false, ServiceError::Cancelled,
+                             "cancelled by user"};
+    }
+    [[nodiscard]] static ServiceResult failed(std::string why) {
+        return ServiceResult{false, ServiceError::Failed, std::move(why)};
+    }
+
+    [[nodiscard]] bool operator==(const ServiceResult&) const = default;
+};
+
+// 文件选择请求：打开（forSave=false）或保存（forSave=true）。
+struct FileDialogRequest {
+    std::string title{};
+    // 过滤器（如 "*.txt"、"Images"；平台解释，空 = 不过滤）。
+    std::vector<std::string> filters{};
+    // 保存对话框默认名 / 打开对话框起始目录。
+    std::string defaultName{};
+    bool forSave{false};
+    bool allowMultiple{false};
+};
+
+struct FileDialogResult {
+    ServiceResult status{};
+    // 用户选择的路径（allowMultiple 时可多条；取消为空）。
+    std::vector<std::string> paths{};
+
+    [[nodiscard]] bool operator==(const FileDialogResult&) const = default;
+};
+
+// 通知（桌面系统通知；不可用时结构化降级，不得阻塞）。
+struct NotificationRequest {
+    std::string title{};
+    std::string body{};
+};
+
+// 鼠标系统光标形状（SDL 为进程级；窗口参数保留给窗口级后端）。
+enum class SystemCursor : std::uint8_t {
+    Arrow,
+    IBeam,
+    Wait,
+    Crosshair,
+    PointingHand,
+    Grab,
+    Grabbing,
+    ResizeAll,
+    ResizeNS,
+    ResizeEW,
+    Forbidden,
+};
+
+// 窗口图标（straight RGBA8）。
+struct WindowIcon {
+    int width{0};
+    int height{0};
+    std::vector<std::uint8_t> rgba{};
 };
 
 // TextField 编辑状态快照（grapheme cluster 索引，plan §3.2）。平台转换
@@ -83,6 +166,16 @@ struct PlatformCapabilities {
     bool reduceAnimation{false};
     float fontScale{1.0F};
     std::string adapterName{"unknown"};
+    // --- M4：外观与服务统一报告 ---
+    // 外观（系统主题输入；不可用时安全默认）。
+    bool prefersDarkMode{false};
+    core::Color accentColor{core::Color::fromRGBA(63, 81, 181)};
+    // 服务可用性（调用前查询；不可用服务返回结构化失败）。
+    bool fileDialogs{false};
+    bool notifications{false};
+    bool openUrl{false};
+    bool cursorShape{false};
+    bool windowIcon{false};
 };
 
 class ApplicationHost {
@@ -122,6 +215,24 @@ class ApplicationHost {
     [[nodiscard]] virtual TextInputSession* textInputSession(
         core::WindowId id) = 0;
     [[nodiscard]] virtual PlatformCapabilities capabilities() const = 0;
+
+    // --- M4：平台服务（结构化失败，不阻塞 UI 线程） ---
+    // 默认实现全部 Unavailable（契约 host/未支持平台安全降级）。
+
+    // 外部链接（同步打开系统浏览器；结果立即返回）。
+    [[nodiscard]] virtual ServiceResult openUrl(const std::string& url);
+    // 文件选择（异步：请求立即返回，完成经 pollEvent 以
+    // FileDialogCompleted 事件交付；取消 = 空路径且无错误）。
+    [[nodiscard]] virtual ServiceResult requestFileDialog(
+        core::WindowId id, const FileDialogRequest& request);
+    // 系统通知（不可用平台返回 Unavailable 结构化降级）。
+    [[nodiscard]] virtual ServiceResult postNotification(
+        const NotificationRequest& request);
+    // 鼠标系统光标形状。
+    virtual void setCursor(core::WindowId id, SystemCursor cursor);
+    // 窗口图标（straight RGBA8）。
+    [[nodiscard]] virtual ServiceResult setWindowIcon(
+        core::WindowId id, const WindowIcon& icon);
 };
 
 // 阶段标识（阶段8A 契约冻结）。

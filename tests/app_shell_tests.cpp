@@ -385,3 +385,38 @@ TEST_CASE("run_app_replaces_renderer_via_failure_hook", "[app]") {
     // 回退后仍有帧产出（内部 CPU 渲染器接管）。
     CHECK(shell.renderFrame() != 0);
 }
+
+// --- M4：平台服务事件转发 ---
+
+TEST_CASE("run_app_forwards_file_dialog_events_to_on_event", "[app][m4]") {
+    using lumen::platform::FileDialogResult;
+    FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    AppShell shell{counterConfig()};
+    wireCounter(shell);
+    shell.setView(Size{800.0F, 600.0F});
+    (void)shell.renderFrame();
+
+    FileDialogResult queued;
+    queued.status = lumen::platform::ServiceResult::success();
+    queued.paths = {"/tmp/report.txt"};
+    host.queueFileDialogResult(std::move(queued));
+    // 请求 + quit（完成事件在两者之间被泵出）。
+    host.createWindow({});
+    const auto window = host.windowIds().front();
+    CHECK(host.requestFileDialog(
+              window, lumen::platform::FileDialogRequest{})
+              .ok);
+    host.pushQuit();
+
+    lumen::core::HostEvent received{};
+    RunOptions options;
+    options.onEvent = [&received](AppShell&, const lumen::core::HostEvent& e) {
+        received = e;
+    };
+    CHECK(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(received.type ==
+          lumen::core::HostEventType::FileDialogCompleted);
+    REQUIRE(received.filePaths.size() == 1);
+    CHECK(received.filePaths[0] == "/tmp/report.txt");
+}

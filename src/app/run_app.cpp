@@ -228,6 +228,15 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                     scheduler.requestFrame(render::FrameReason::Input,
                                            event.window);
                     break;
+                case HostEventType::FileDialogCompleted:
+                    // M4：平台服务异步完成（文件选择等）——转给应用钩子
+                    // 处理；无钩子则忽略。
+                    if (options.onEvent) {
+                        options.onEvent(shell, event);
+                        scheduler.requestFrame(render::FrameReason::Input,
+                                               event.window);
+                    }
+                    break;
                 default:
                     break;
             }

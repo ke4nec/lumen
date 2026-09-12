@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <mutex>
+#include <optional>
 #include <utility>
 
 #include <SDL3/SDL.h>
@@ -115,6 +117,62 @@ class Sdl3ApplicationHost::Sdl3Clipboard final : public Clipboard {
 };
 
 // --- TextInputSession（包装既有 PlatformWindow 文本输入接口） ---
+// --- M4：文件对话框（SDL 异步回调 → 事件入队） ---
+// SDL 文档：回调“可能在另一线程”触发——结果经互斥写入 pending，
+// pollEvent（UI 线程）持锁取走并转为 FileDialogCompleted 事件，全程
+// 不阻塞 UI 线程。宿主销毁后仍可能触发的回调写入进程级“孤儿”列表
+//（SDL 3.2 无取消 API；数量有限，进程生命周期内安全释放由退出兜底）。
+namespace {
+
+}  // namespace
+
+struct Sdl3ApplicationHost::PendingDialog {
+    core::WindowId window{};
+    std::mutex mutex{};
+    std::vector<std::string> paths{};
+    std::string error{};
+    bool done{false};
+    // SDL 要求这些过滤器在异步回调完成前保持有效；所有字符串和结构
+    // 都由 PendingDialog 持有，避免 requestFileDialog 返回后的悬空指针。
+    std::vector<std::string> filterNames{};
+    std::vector<std::string> filterPatterns{};
+    std::vector<SDL_DialogFileFilter> filters{};
+    std::string title{};
+    std::string defaultLocation{};
+
+    // 孤儿安置（成员函数可访问私有嵌套类型）：宿主销毁后回调仍需
+    // userdata 存活，SDL 3.2 无取消 API；数量有限，随进程终结。
+    static void adopt(std::unique_ptr<PendingDialog> dialog);
+};
+
+void Sdl3ApplicationHost::PendingDialog::adopt(
+    std::unique_ptr<PendingDialog> dialog) {
+    static std::mutex mutex;
+    static std::vector<std::unique_ptr<PendingDialog>> orphans;
+    std::lock_guard<std::mutex> lock(mutex);
+    orphans.push_back(std::move(dialog));
+}
+
+void Sdl3ApplicationHost::dialogCallback(void* userdata,
+                                         const char* const* filelist,
+                                         int /*filter*/) {
+    auto* pending = static_cast<PendingDialog*>(userdata);
+    {
+        std::lock_guard<std::mutex> lock(pending->mutex);
+        if (filelist != nullptr) {
+            for (const char* const* it = filelist; *it != nullptr; ++it) {
+                pending->paths.emplace_back(*it);
+            }
+        } else {
+            pending->error = SDL_GetError();
+            if (pending->error.empty()) {
+                pending->error = "file dialog failed";
+            }
+        }
+        pending->done = true;
+    }
+}
+
 class Sdl3ApplicationHost::Sdl3TextInputSession final : public TextInputSession {
   public:
     explicit Sdl3TextInputSession(PlatformWindow* window)
@@ -170,6 +228,14 @@ bool Sdl3ApplicationHost::initialize() {
     capabilities_.mouse = true;
     capabilities_.multiWindow = true;
     capabilities_.adapterName = "sdl3";
+    // M4：桌面服务可用性（SDL 3.2.10：对话框/URL/光标/图标可用；
+    // 通知无 API）。
+    capabilities_.fileDialogs = true;
+    capabilities_.notifications = false;
+    capabilities_.openUrl = true;
+    capabilities_.cursorShape = true;
+    capabilities_.windowIcon = true;
+    capabilities_.prefersDarkMode = false;  // SDL 3.2 无系统主题查询
     refreshLifecycle();
     return true;
 }
@@ -179,7 +245,21 @@ void Sdl3ApplicationHost::shutdown() {
         return;
     }
     lifecycle_ = core::AppLifecycle::Terminating;
+    for (auto& [id, entry] : windows_) {
+        if (entry.cursor != nullptr) {
+            SDL_DestroyCursor(static_cast<SDL_Cursor*>(entry.cursor));
+            entry.cursor = nullptr;
+        }
+    }
     windows_.clear();
+    // 未完成的对话框转移到孤儿列表：SDL 回调可能晚于宿主销毁触发，
+    // userdata 必须存活（SDL 3.2 无取消 API；数量有限，随进程终结）。
+    if (!dialogs_.empty()) {
+        for (auto& dialog : dialogs_) {
+            PendingDialog::adopt(std::move(dialog));
+        }
+        dialogs_.clear();
+    }
     clipboard_.reset();
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
     initialized_ = false;
@@ -435,6 +515,29 @@ bool Sdl3ApplicationHost::pollEvent(core::HostEvent& out) {
         refreshLifecycle();
         return true;
     }
+    // 异步 SDL 对话框回调可能来自工作线程；只在 UI 线程持锁读取已完成
+    // 结果，并将其转换为正常宿主事件。未完成请求继续留在 dialogs_。
+    for (auto it = dialogs_.begin(); it != dialogs_.end(); ++it) {
+        PendingDialog& dialog = **it;
+        bool completed = false;
+        {
+            std::lock_guard<std::mutex> lock(dialog.mutex);
+            if (!dialog.done) {
+                continue;
+            }
+            out = core::HostEvent{};
+            out.type = core::HostEventType::FileDialogCompleted;
+            out.window = dialog.window;
+            out.filePaths = std::move(dialog.paths);
+            out.text = std::move(dialog.error);
+            completed = true;
+        }
+        if (completed) {
+            dialogs_.erase(it);
+            refreshLifecycle();
+            return true;
+        }
+    }
     SDL_Event sdlEvent{};
     while (SDL_PollEvent(&sdlEvent)) {
         std::vector<core::HostEvent> batch;
@@ -552,6 +655,7 @@ TextInputSession* Sdl3ApplicationHost::textInputSession(core::WindowId id) {
 }
 
 PlatformCapabilities Sdl3ApplicationHost::capabilities() const {
+    // M4：桌面 SDL 能力（通知在 SDL 3.2.10 无 API → 不可用，结构化降级）。
     PlatformCapabilities caps = capabilities_;
     int touchCount = 0;
     SDL_TouchID* devices = SDL_GetTouchDevices(&touchCount);
@@ -560,6 +664,154 @@ PlatformCapabilities Sdl3ApplicationHost::capabilities() const {
         SDL_free(devices);
     }
     return caps;
+}
+
+// --- M4：平台服务实现 ---
+
+ServiceResult Sdl3ApplicationHost::openUrl(const std::string& url) {
+    if (!SDL_OpenURL(url.c_str())) {
+        return ServiceResult::failed("SDL_OpenURL: " +
+                                     std::string(SDL_GetError()));
+    }
+    return ServiceResult::success();
+}
+
+ServiceResult Sdl3ApplicationHost::requestFileDialog(
+    core::WindowId id, const FileDialogRequest& request) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr && !windows_.empty()) {
+        // 单窗口应用便捷路径：无效窗口 id 时挂靠首个窗口（对话框获得
+        // 父窗口，避免无父悬浮面板）。
+        entry = &windows_.begin()->second;
+    }
+    if (entry == nullptr) {
+        return ServiceResult::failed("window not found");
+    }
+    SDL_Window* window =
+        entry != nullptr
+            ? static_cast<SDL_Window*>(entry->window->nativeSurface()
+                                           .nativeWindow)
+            : nullptr;
+    // 过滤器（name/pattern 对；模式即过滤器串本身）。PendingDialog
+    // 持有字符串，保证异步调用期间所有 c_str 指针稳定。
+    auto pending = std::make_unique<PendingDialog>();
+    pending->window = id;
+    pending->title = request.title;
+    pending->defaultLocation = request.defaultName;
+    pending->filterNames.assign(request.filters.size(), "Files");
+    pending->filterPatterns = request.filters;
+    pending->filters.reserve(request.filters.size());
+    for (std::size_t i = 0; i < request.filters.size(); ++i) {
+        pending->filters.push_back(SDL_DialogFileFilter{
+            pending->filterNames[i].c_str(), pending->filterPatterns[i].c_str()});
+    }
+    PendingDialog* raw = pending.get();
+    dialogs_.push_back(std::move(pending));
+    SDL_PropertiesID properties = SDL_CreateProperties();
+    if (properties == 0) {
+        dialogs_.pop_back();
+        return ServiceResult::failed("SDL_CreateProperties: " +
+                                     std::string(SDL_GetError()));
+    }
+    SDL_SetPointerProperty(properties, SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
+                           window);
+    SDL_SetPointerProperty(properties, SDL_PROP_FILE_DIALOG_FILTERS_POINTER,
+                           raw->filters.empty() ? nullptr : raw->filters.data());
+    SDL_SetNumberProperty(properties, SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER,
+                          static_cast<Sint64>(raw->filters.size()));
+    SDL_SetBooleanProperty(properties, SDL_PROP_FILE_DIALOG_MANY_BOOLEAN,
+                           request.allowMultiple);
+    if (!raw->title.empty()) {
+        SDL_SetStringProperty(properties, SDL_PROP_FILE_DIALOG_TITLE_STRING,
+                              raw->title.c_str());
+    }
+    if (!raw->defaultLocation.empty()) {
+        SDL_SetStringProperty(properties, SDL_PROP_FILE_DIALOG_LOCATION_STRING,
+                              raw->defaultLocation.c_str());
+    }
+    SDL_ShowFileDialogWithProperties(
+        request.forSave ? SDL_FILEDIALOG_SAVEFILE : SDL_FILEDIALOG_OPENFILE,
+        &Sdl3ApplicationHost::dialogCallback, raw, properties);
+    SDL_DestroyProperties(properties);
+    return ServiceResult::success();
+}
+
+ServiceResult Sdl3ApplicationHost::postNotification(
+    const NotificationRequest& request) {
+    (void)request;
+    // SDL 3.2.10 无通知 API：结构化降级（能力报告 notifications=false，
+    // 调用方按可用性规避；误用时给出可读原因）。
+    return ServiceResult::unavailable(
+        "notifications unsupported by SDL 3.2.10");
+}
+
+void Sdl3ApplicationHost::setCursor(core::WindowId id, SystemCursor cursor) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr) {
+        return;
+    }
+    if (entry->cursorShape == cursor) {
+        return;  // 形状未变：不重建系统光标。
+    }
+    static const SDL_SystemCursor kShapes[] = {
+        SDL_SYSTEM_CURSOR_DEFAULT,    // Arrow
+        SDL_SYSTEM_CURSOR_TEXT,       // IBeam
+        SDL_SYSTEM_CURSOR_WAIT,       // Wait
+        SDL_SYSTEM_CURSOR_CROSSHAIR,  // Crosshair
+        SDL_SYSTEM_CURSOR_POINTER,    // PointingHand
+        SDL_SYSTEM_CURSOR_MOVE,       // Grab（SDL 无 GRAB：四向移动）
+        SDL_SYSTEM_CURSOR_MOVE,       // Grabbing（同上，近似）
+        SDL_SYSTEM_CURSOR_MOVE,       // ResizeAll
+        SDL_SYSTEM_CURSOR_NS_RESIZE,  // ResizeNS
+        SDL_SYSTEM_CURSOR_EW_RESIZE,  // ResizeEW
+        SDL_SYSTEM_CURSOR_NOT_ALLOWED,
+    };
+    const auto index = static_cast<std::size_t>(cursor);
+    SDL_Cursor* shape =
+        index < sizeof(kShapes) / sizeof(kShapes[0])
+            ? SDL_CreateSystemCursor(kShapes[index])
+            : nullptr;
+    if (shape == nullptr) {
+        return;
+    }
+    SDL_SetCursor(shape);
+    if (entry->cursor != nullptr) {
+        SDL_DestroyCursor(static_cast<SDL_Cursor*>(entry->cursor));
+    }
+    entry->cursor = shape;
+    entry->cursorShape = cursor;
+}
+
+ServiceResult Sdl3ApplicationHost::setWindowIcon(core::WindowId id,
+                                                 const WindowIcon& icon) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr) {
+        return ServiceResult::failed("window not found");
+    }
+    if (icon.width <= 0 || icon.height <= 0 ||
+        icon.rgba.size() !=
+            static_cast<std::size_t>(icon.width) *
+                static_cast<std::size_t>(icon.height) * 4U) {
+        return ServiceResult::failed("invalid icon pixels");
+    }
+    SDL_Surface* surface = SDL_CreateSurfaceFrom(
+        icon.width, icon.height, SDL_PIXELFORMAT_RGBA32,
+        const_cast<std::uint8_t*>(icon.rgba.data()),
+        static_cast<std::size_t>(icon.width) * 4U);
+    if (surface == nullptr) {
+        return ServiceResult::failed("SDL_CreateSurfaceFrom: " +
+                                     std::string(SDL_GetError()));
+    }
+    const bool ok = SDL_SetWindowIcon(
+        static_cast<SDL_Window*>(
+            entry->window->nativeSurface().nativeWindow),
+        surface);
+    SDL_DestroySurface(surface);
+    if (!ok) {
+        return ServiceResult::failed("SDL_SetWindowIcon: " +
+                                     std::string(SDL_GetError()));
+    }
+    return ServiceResult::success();
 }
 
 Sdl3ApplicationHost::WindowEntry* Sdl3ApplicationHost::find(

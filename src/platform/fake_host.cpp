@@ -330,4 +330,77 @@ core::HostEvent FakeApplicationHost::makeEvent(core::HostEventType type,
 
 std::uint64_t FakeApplicationHost::nowMs() const { return clock_->nowMs; }
 
+// --- M4：平台服务（确定性记录 + 失败注入） ---
+
+ServiceResult FakeApplicationHost::openUrl(const std::string& url) {
+    ServiceResult result =
+        openUrlFailure_.has_value() ? *openUrlFailure_
+                                    : ServiceResult::success();
+    openUrlCalls.push_back(OpenUrlCall{url, result});
+    return result;
+}
+
+ServiceResult FakeApplicationHost::requestFileDialog(
+    core::WindowId id, const FileDialogRequest& request) {
+    fileDialogCalls.push_back(FileDialogCall{id, request});
+    if (dialogFailure_.has_value()) {
+        return *dialogFailure_;  // 请求期失败（同步，结构化）。
+    }
+    if (dialogResults_.empty()) {
+        return ServiceResult::unavailable(
+            "fake host: no queued dialog result");
+    }
+    // 完成：异步语义——结果入队为 FileDialogCompleted 事件。
+    FileDialogResult result = std::move(dialogResults_.front());
+    dialogResults_.pop_front();
+    core::HostEvent event = makeEvent(core::HostEventType::FileDialogCompleted,
+                                      id);
+    event.filePaths = std::move(result.paths);
+    if (!result.status.ok && result.status.error != ServiceError::Cancelled) {
+        event.text = result.status.message;
+    }
+    queue_.push_back(std::move(event));
+    return ServiceResult::success();
+}
+
+ServiceResult FakeApplicationHost::postNotification(
+    const NotificationRequest& request) {
+    ServiceResult result =
+        notificationFailure_.has_value() ? *notificationFailure_
+                                         : ServiceResult::success();
+    notificationCalls.push_back(NotificationCall{request, result});
+    return result;
+}
+
+void FakeApplicationHost::setCursor(core::WindowId id, SystemCursor cursor) {
+    cursorCalls.emplace_back(id, cursor);
+}
+
+ServiceResult FakeApplicationHost::setWindowIcon(core::WindowId id,
+                                                 const WindowIcon& icon) {
+    iconCalls.push_back(IconCall{id, icon});
+    return iconFailure_.has_value() ? *iconFailure_
+                                    : ServiceResult::success();
+}
+
+void FakeApplicationHost::queueFileDialogResult(FileDialogResult result) {
+    dialogResults_.push_back(std::move(result));
+}
+
+void FakeApplicationHost::setFileDialogFailure(ServiceResult failure) {
+    dialogFailure_ = std::move(failure);
+}
+
+void FakeApplicationHost::setOpenUrlFailure(ServiceResult failure) {
+    openUrlFailure_ = std::move(failure);
+}
+
+void FakeApplicationHost::setNotificationFailure(ServiceResult failure) {
+    notificationFailure_ = std::move(failure);
+}
+
+void FakeApplicationHost::setIconFailure(ServiceResult failure) {
+    iconFailure_ = std::move(failure);
+}
+
 }  // namespace lumen::platform

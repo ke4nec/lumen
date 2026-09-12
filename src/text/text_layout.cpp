@@ -463,7 +463,7 @@ TextLayoutResult TextLayout::layout(const std::string& text,
         static_cast<float>(result.lines.size()) * result.lineHeightPx};
     result.fontDiagnostic =
         "backend=" + std::string(fontBackendName(fonts.backend())) +
-        " families=" + std::to_string(fonts.availableFamilies().size()) +
+        " families=" + std::to_string(fonts.familyCount()) +
         " fallbackClusters=" + std::to_string(fallbackClusters) +
         " missingClusters=" + std::to_string(missingClusters);
     return result;

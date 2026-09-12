@@ -59,6 +59,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M1 | 已完成真实文本与编辑闭环 | SkiaFontManager、shaped TextLayout/RenderCommand、UAX#9 子集、EditingHistory（见 §10 M1 完成记录） |
 | 自用 M2 | 已完成应用框架层与 C++ DSL | `lumen-app`（AppShell/runApp）、counter/settings 迁移、C++ builder 补齐（见 §10 M2 完成记录） |
 | 自用 M3 | 已完成布局/Grid/VirtualList/Image | Grid/Image/VirtualList 组件、VirtualListController、virtual-list 基准场景（见 §10 M3 完成记录） |
+| 自用 M4 | 已完成三桌面平台服务与窗口能力 | 文件选择/OpenURL/通知/光标/图标契约与 SDL/Fake 实现、能力统一报告、settings 服务区（见 §10 M4 完成记录） |
 
 当前验证基线：Windows CPU Debug 303/303，Skia Release 314/314，SDL-free mobile-core 291/291。`817ad43` 后 Windows 的 CPU/Skia/GPU 三个 job、Linux 的 CPU/Skia/GPU/mobile-core 四个 job、macOS 的 CPU/mobile-core 两个 job 均已纳入 CI；真实 macOS GPU 仍待 M7 纳入门槛。最新基线提交为 `817ad43 fix(platform): 对齐跨平台能力与验证契约`。
 
@@ -76,7 +77,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 控件库 | 没有 Dropdown/Menu、Tooltip、Slider、ProgressBar、Radio/Tabs；Scrollbar token 已有但无完整绘制控件；FormController 实现只有 nonEmpty/minLength，头文件注释提到的邮箱校验器尚未提供 | 工具应用常见信息展示、选择和表单校验能力不足 | M6 |
 | 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 惯性滚动、横向网格后续版本 | M3 已收口 |
 | 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | 惯性滚动后续版本 | M3 已收口 |
-| 平台服务 | 剪贴板和文本输入已有，文件选择/通知、鼠标光标形状、窗口图标等服务未形成统一接口 | 工具应用无法完成常见系统操作 | M4 |
+| 平台服务 | M4 已完成：ApplicationHost 增加文件选择（异步→FileDialogCompleted 事件）/OpenURL/通知/光标形状/窗口图标契约；PlatformCapabilities 统一报告外观（dark/accent/fontScale）与服务可用性；SDL 实现与 Fake host 记录/失败注入 | 通知在 SDL 3.2.10 无 API：能力关闭+结构化降级（真实通知待 SDL 升级或原生后端） | M4 已收口 |
 | 无障碍 | 语义树和 Recording bridge 已有，UIA/AT-SPI/NSAccessibility provider 未实现 | 第一版可做结构验收，无法直接被桌面读屏器消费 | M5 先收口，后续版本再做原生 provider |
 | 视觉 V3 | IconId、Elevation、Motion token 已冻结，实际图标/阴影/转场/ThemeScope 未完成 | 复杂应用的视觉一致性和反馈不足 | M6 |
 | GPU | Skia Ganesh + OpenGL 已有，GPU `partialSubmit` 固定为 false，macOS GPU 不是当前门槛 | 三桌面发布能力不对称，局部 damage 在 GPU 上退化为全帧提交 | M7 |
@@ -525,6 +526,12 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   - 双向算法为 UAX#9 子集（无显式嵌入控制、镜像括号、数字定形）；
     Skia shaping 为逐 grapheme cluster，无 HarfBuzz 合字（阿拉伯连写
     基本形可用，合字后续增强）。
+  - 性能修复（M4 review 追记）：`TextLayout::layout` 的诊断字符串与
+    按码点字体回退原直接打 fontconfig——Skia 路径每次布局
+    ~52ms/次。`FontManager::familyCount()`（Skia 缓存计数）+
+    `SkiaFontManager` 按字符回退 typeface 缓存（含负缓存）后降至
+    ~39µs/次（1333×）；charFaceCache 无上限（工具应用码点量级内存
+    可忽略，M7 门槛再评估缓存策略）。
   - CPU 后端消费 Skia 度量数据时（GPU→CPU 回退）文本绘制退回占位
     度量旧路径；caret/选区几何仍出自布局。
   - 真实 IME（IBus/Fcitx/TSF）下的 undo/redo 与候选框行为待三桌面
@@ -651,9 +658,57 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   - 惯性滚动不纳入 M3（默认关闭，M3/M9 后续）。
 - 回滚点：M2 合入后的提交（见 M2 完成记录）。
 
+### M4 完成记录（三桌面平台服务与窗口能力闭环）
+
+- 完成日期：2026-09-15
+- 提交号：（本变更提交，见 Git 历史 `feat(platform)`）
+- 变更：
+  - `ApplicationHost` 平台服务契约（`include/lumen/platform/application_host.h`）：
+    `ServiceResult`（结构化失败：Unavailable/Cancelled/Failed + 可读消息）、
+    `FileDialogRequest/Result`、`NotificationRequest`、`SystemCursor`
+   （11 形状）、`WindowIcon`（RGBA8）；新虚方法 `openUrl`/
+    `requestFileDialog`/`postNotification`/`setCursor`/`setWindowIcon`
+   （默认实现全部结构化 Unavailable）。
+  - `core::HostEvent` 新增 `FileDialogCompleted` 类型与 `filePaths` 字段
+   （文件选择异步完成事件；取消 = 空路径且无错误）。
+  - `PlatformCapabilities` 统一报告：`prefersDarkMode`/`accentColor`/
+    `fontScale` + 服务可用性（fileDialogs/notifications/openUrl/
+    cursorShape/windowIcon）。
+  - `FakeApplicationHost`：服务确定性记录（openUrlCalls/
+    notificationCalls/fileDialogCalls/cursorCalls/iconCalls）+ 失败注入
+   （setXxxFailure）+ 预置对话框结果（queueFileDialogResult→事件）。
+  - `Sdl3ApplicationHost`：SDL_OpenURL；SDL 异步文件对话框
+   （回调“可能在另一线程”——PendingDialog 互斥同步；宿主销毁时未完成
+    对话框转移进程级孤儿列表避免 userdata 悬空；无效窗口 id 回退挂靠
+    首窗口）；pollEvent 转 FileDialogCompleted，不阻塞 UI 线程；光标（SDL_CreateSystemCursor 映射 + 窗口缓存，公共头无
+    SDL 类型）；图标（SDL_SetWindowIcon）；通知在 SDL 3.2.10 无 API
+    →能力 false + 结构化 Unavailable 降级。
+  - `app::RunOptions.onEvent`：应用壳不消费的服务事件转发给应用。
+  - settings 示例 Services 区：Open file.../Save file.../Notify/Open
+    docs 按钮 + 选中路径/诊断展示（动作由 main 注入，能力先行查询；
+    测试可换 fake）。
+- 测试：
+  - 新增 6 用例：ServiceResult 工厂、fake 文件对话框全语义（空队列
+    Unavailable/请求期同步失败/多选完成事件/取消空路径无错误）、
+    光标/图标/URL/通知记录与失败注入、能力报告、SDL host 无头降级
+    冒烟（通知 Unavailable + 光标 + 非法图标）、runApp onEvent 转发、
+    settings 服务区状态流（不可用诊断/fake 成功/失败路径后状态完整）。
+  - SDL 对话框 dummy 驱动冒烟（请求安全完成或同步结构化失败）。
+  - 本地 Linux：CPU Debug 355/355、Skia Release 360/360、GPU Release
+    367/367、mobile-core Debug 337/337；窗口 smoke 通过。
+- 平台：本地 Linux 全部验证（含 SDL dummy 驱动降级路径）；Windows/
+  macOS 以 CI 为事实来源；真实文件对话框的三桌面交互验证属窗口
+  smoke/人工验收（xvfb 无显示环境不能自动开真对话框）。
+- 已知限制：
+  - 通知在 SDL 3.2.10 无 API：能力关闭 + 结构化降级；真实通知待
+    SDL 升级或平台原生后端（后续版本，不阻塞 M5+）。
+  - 文件对话框过滤器为 SDL name/pattern 简化映射（"Files"/模式串）。
+  - prefersDarkMode/accentColor 在 SDL 3.2 无系统主题查询：安全默认
+   （false/固定色），后续随 SDL 能力或平台原生后端接入。
+  - 光标为进程级（SDL_SetCursor）；窗口级后端待 SDL 支持。
+- 回滚点：M3 合入后的提交（见 M3 完成记录）。
+
 ### M1–M9 完成记录（待实施，占位）
-- M4 平台服务与窗口能力：未开始（出口：三桌面完成打开文件/编辑/复制粘贴/
-  通知/缩放/退出；服务失败有诊断）。
 - M5 语义与键盘可用性：未开始（出口：语义/键盘/视觉/交互无分叉；
   Recording bridge 可作回归证据）。
 - M6 视觉 V3 与控件库：未开始（出口：视觉扩展由 token/StyleResolver 驱动；

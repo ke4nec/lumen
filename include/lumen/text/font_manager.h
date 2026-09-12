@@ -109,6 +109,12 @@ class FontManager {
     // 系统字体查询（诊断/设置页用）。
     [[nodiscard]] virtual std::vector<std::string> availableFamilies()
         const = 0;
+    // M4 review：廉价族计数（诊断字符串热路径用；默认实现走全量枚举，
+    // Skia 实现覆盖为构造期缓存——避免每次布局 ~50ms 的 fontconfig
+    // 枚举）。
+    [[nodiscard]] virtual std::size_t familyCount() const {
+        return availableFamilies().size();
+    }
     // 诊断字符串（后端/族数/缺字说明；缺字体时仍可启动）。
     [[nodiscard]] virtual std::string diagnostic() const;
 };

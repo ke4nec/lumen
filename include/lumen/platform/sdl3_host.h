@@ -44,6 +44,16 @@ class Sdl3ApplicationHost final : public ApplicationHost {
         core::WindowId id) override;
     [[nodiscard]] PlatformCapabilities capabilities() const override;
 
+    // --- M4：平台服务 ---
+    [[nodiscard]] ServiceResult openUrl(const std::string& url) override;
+    [[nodiscard]] ServiceResult requestFileDialog(
+        core::WindowId id, const FileDialogRequest& request) override;
+    [[nodiscard]] ServiceResult postNotification(
+        const NotificationRequest& request) override;
+    void setCursor(core::WindowId id, SystemCursor cursor) override;
+    [[nodiscard]] ServiceResult setWindowIcon(
+        core::WindowId id, const WindowIcon& icon) override;
+
   private:
     class Sdl3Clipboard;
     class Sdl3TextInputSession;
@@ -51,7 +61,15 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     struct WindowEntry {
         std::unique_ptr<PlatformWindow> window{};
         std::unique_ptr<TextInputSession> textInput{};
+        // M4：窗口级系统光标缓存（不透明指针：SDL 类型不出公共头）。
+        void* cursor{nullptr};
+        SystemCursor cursorShape{SystemCursor::Arrow};
     };
+
+    // M4：文件对话框异步完成暂存（回调线程填充，pollEvent 消费）。
+    struct PendingDialog;
+    static void dialogCallback(void* userdata, const char* const* filelist,
+                               int filter);
 
     [[nodiscard]] WindowEntry* find(core::WindowId id);
     // 把单个 SDL 事件翻译为 0..n 条归一化事件；返回入队条数。
@@ -66,6 +84,8 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     std::deque<core::HostEvent> pending_{};
     std::unique_ptr<Sdl3Clipboard> clipboard_{};
     PlatformCapabilities capabilities_{};
+    // M4：进行中的文件对话框（至多几个；完成后移除）。
+    std::vector<std::unique_ptr<PendingDialog>> dialogs_{};
 };
 
 }  // namespace lumen::platform

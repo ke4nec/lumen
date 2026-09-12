@@ -8,8 +8,10 @@
 #ifdef LUMEN_HAS_SKIA_TEXT
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 
 #include "include/core/SkFont.h"
 #include "include/core/SkFontMgr.h"
@@ -48,7 +50,14 @@ struct SkiaFontManager::Impl {
     sk_sp<SkFontMgr> mgr{};
     std::string initDiagnostic{};
     mutable std::map<std::string, sk_sp<SkTypeface>> faceCache{};
+    // M4 review：按码点回退解析缓存（matchFamilyStyleCharacter 一次
+    // ~1ms 的 fontconfig 查询；文本场景重复字符多，未缓存时每字符
+    // 2 次 → 每次布局数十毫秒）。
+    mutable std::map<std::uint64_t, sk_sp<SkTypeface>> charFaceCache{};
     mutable std::mutex mutex{};
+    // M4 review：族计数缓存（fontconfig 全量枚举 ~50ms，诊断字符串的
+    // 热路径不得反复触发；构造后首次查询时计算一次）。
+    mutable std::optional<std::size_t> cachedFamilyCount{};
 
     [[nodiscard]] std::string cacheKey(const FontQuery& query,
                                        const std::string& family) const {
@@ -76,11 +85,34 @@ struct SkiaFontManager::Impl {
         return face;
     }
 
+    [[nodiscard]] static std::uint64_t charCacheKey(const FontQuery& query,
+                                                    char32_t cp) {
+        // 键折叠：cp(21bit) | italic(1) | weight(12) | family 哈希折叠
+        // 到高位；冲突概率可忽略（族名集合小）。
+        const std::uint64_t familyHash = static_cast<std::uint64_t>(
+            std::hash<std::string>{}(query.family) & 0xFFFF'FFF8ULL);
+        return familyHash |
+               (static_cast<std::uint64_t>(cp) << 32) |
+               (static_cast<std::uint64_t>(
+                    std::clamp(static_cast<int>(query.weight), 100, 900))
+                << 21) |
+               (query.italic ? 2ULL : 0ULL) |
+               1ULL;
+    }
+
     sk_sp<SkTypeface> typefaceForChar(const FontQuery& query,
                                       const std::string& family,
                                       char32_t cp) const {
         if (!mgr) {
             return nullptr;
+        }
+        const std::uint64_t key = charCacheKey(query, cp);
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            const auto it = charFaceCache.find(key);
+            if (it != charFaceCache.end()) {
+                return it->second;  // 未命中覆盖族时为空（负缓存）。
+            }
         }
         // 请求族优先：命中且覆盖码点则直接用。
         if (!family.empty()) {
@@ -89,13 +121,18 @@ struct SkiaFontManager::Impl {
             if (requested &&
                 requested->unicharToGlyph(
                     static_cast<SkUnichar>(cp)) != 0) {
+                std::lock_guard<std::mutex> lock(mutex);
+                charFaceCache.emplace(key, requested);
                 return requested;
             }
         }
         const char* name = family.empty() ? nullptr : family.c_str();
-        return mgr->matchFamilyStyleCharacter(
+        sk_sp<SkTypeface> matched = mgr->matchFamilyStyleCharacter(
             name, toSkStyle(query), nullptr, 0,
             static_cast<SkUnichar>(cp));
+        std::lock_guard<std::mutex> lock(mutex);
+        charFaceCache.emplace(key, matched);  // 负缓存：缺字也记。
+        return matched;
     }
 };
 
@@ -271,12 +308,21 @@ std::vector<std::string> SkiaFontManager::availableFamilies() const {
     return families;
 }
 
+std::size_t SkiaFontManager::familyCount() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (!impl_->cachedFamilyCount.has_value()) {
+        impl_->cachedFamilyCount =
+            impl_->mgr ? static_cast<std::size_t>(impl_->mgr->countFamilies())
+                       : std::size_t{0};
+    }
+    return *impl_->cachedFamilyCount;
+}
+
 std::string SkiaFontManager::diagnostic() const {
     std::string out = "backend=skia ";
     out += impl_->initDiagnostic;
     if (impl_->mgr) {
-        out += " families=" +
-               std::to_string(impl_->mgr->countFamilies());
+        out += " families=" + std::to_string(familyCount());
     } else {
         out += " (unavailable, placeholder fallback in TextLayout)";
     }
@@ -336,6 +382,8 @@ std::vector<ShapedGlyph> SkiaFontManager::shapeCluster(
 std::vector<std::string> SkiaFontManager::availableFamilies() const {
     return {};
 }
+
+std::size_t SkiaFontManager::familyCount() const { return 0; }
 
 std::string SkiaFontManager::diagnostic() const {
     return "backend=skia (not compiled, CPU-only build)";
