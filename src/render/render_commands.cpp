@@ -15,8 +15,9 @@ namespace {
 // v2：TextStyle 全字段（视觉系统后 resolved 样式带 weight/family 等区分
 // 字段，v1 只存 fontSize/color 会丢失语义）。
 // v3：TextRun 增加 baselinePx 与 shapedRuns（M1 布局/绘制共享 shaping）。
+// v4：DrawIcon/DrawShadow（M6 视觉系统 V3：折线组 + 线宽）。
 constexpr char kMagic[] = "LUMENCMD";
-constexpr std::uint32_t kVersion = 3;
+constexpr std::uint32_t kVersion = 4;
 
 void putU8(std::string& out, std::uint8_t value) {
     out.push_back(static_cast<char>(value));
@@ -167,6 +168,15 @@ void serializeCommand(const RenderCommand& command, std::string& out) {
     putU8(out, static_cast<std::uint8_t>(command.textStyle.direction));
     putU32(out, static_cast<std::uint32_t>(command.textStyle.maxLines));
     putU8(out, static_cast<std::uint8_t>(command.textStyle.overflow));
+    putU32(out, static_cast<std::uint32_t>(command.polylines.size()));
+    for (const auto& polyline : command.polylines) {
+        putU32(out, static_cast<std::uint32_t>(polyline.size()));
+        for (const core::Offset& point : polyline) {
+            putF32(out, point.x);
+            putF32(out, point.y);
+        }
+    }
+    putF32(out, command.strokeWidth);
     putU64(out, command.image);
     putU32(out, static_cast<std::uint32_t>(command.pixels.width));
     putU32(out, static_cast<std::uint32_t>(command.pixels.height));
@@ -186,6 +196,8 @@ bool deserializeCommand(Reader& reader, RenderCommand& command) {
         case CommandType::DrawImage:
         case CommandType::UploadImage:
         case CommandType::UnloadImage:
+        case CommandType::DrawIcon:
+        case CommandType::DrawShadow:
             break;
         default:
             reader.failed = true;
@@ -261,6 +273,25 @@ bool deserializeCommand(Reader& reader, RenderCommand& command) {
         static_cast<std::size_t>(reader.getU32());
     command.textStyle.overflow =
         static_cast<core::TextOverflow>(reader.getU8());
+    const std::uint32_t polylineCount = reader.getU32();
+    if (reader.failed || polylineCount > reader.size - reader.offset) {
+        reader.failed = true;
+        return false;
+    }
+    command.polylines.resize(polylineCount);
+    for (auto& polyline : command.polylines) {
+        const std::uint32_t pointCount = reader.getU32();
+        if (reader.failed || pointCount > reader.size - reader.offset) {
+            reader.failed = true;
+            return false;
+        }
+        polyline.resize(pointCount);
+        for (auto& point : polyline) {
+            point.x = reader.getF32();
+            point.y = reader.getF32();
+        }
+    }
+    command.strokeWidth = reader.getF32();
     command.image = reader.getU64();
     command.pixels.width = static_cast<int>(reader.getU32());
     command.pixels.height = static_cast<int>(reader.getU32());
@@ -339,6 +370,8 @@ RenderCommandList cullCommandsOutside(const RenderCommandList& list,
             case CommandType::DrawRect:
             case CommandType::DrawText:
             case CommandType::DrawImage:
+            case CommandType::DrawIcon:
+            case CommandType::DrawShadow:
                 if (command.hasBounds &&
                     !command.bounds.intersects(bounds)) {
                     continue;
@@ -362,6 +395,8 @@ std::optional<core::Rect> commandDrawBounds(const RenderCommandList& list) {
                 case CommandType::DrawRect:
                 case CommandType::DrawText:
                 case CommandType::DrawImage:
+                case CommandType::DrawIcon:
+                case CommandType::DrawShadow:
                     return std::nullopt;
                 default:
                     break;
@@ -372,6 +407,8 @@ std::optional<core::Rect> commandDrawBounds(const RenderCommandList& list) {
             case CommandType::DrawRect:
             case CommandType::DrawText:
             case CommandType::DrawImage:
+            case CommandType::DrawIcon:
+            case CommandType::DrawShadow:
                 if (bounds.has_value()) {
                     *bounds = bounds->uniteWith(command.bounds);
                 } else {

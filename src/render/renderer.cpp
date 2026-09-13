@@ -57,6 +57,16 @@ void Renderer::submit(const RenderCommandList& commands, const FrameInfo& info) 
             case CommandType::DrawImage:
                 drawImage(command.image, command.rect);
                 break;
+            case CommandType::DrawIcon:
+                drawIcon(command.polylines, command.rect, command.color,
+                         command.strokeWidth);
+                break;
+            case CommandType::DrawShadow:
+                drawShadow(command.rect, command.color,
+                           core::Offset{command.transform.tx,
+                                        command.transform.ty},
+                           command.strokeWidth);
+                break;
             case CommandType::UploadImage:
             case CommandType::UnloadImage:
                 // 资源生命周期命令只有原生 submit 实现（CpuRenderer 等）

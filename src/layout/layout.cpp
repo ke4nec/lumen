@@ -31,6 +31,8 @@ float clampFloat(float value, float low, float high) {
 // M1：布局期字体源（UI 线程独占；公开入口显式传入，内部经作用域 guard
 // 读取，避免为每个递归层新增参数；默认占位，CPU 不依赖 Skia）。
 thread_local const text::FontManager* t_activeFonts = nullptr;
+
+
 thread_local const LayoutEngine::PrepareItem* t_prepareItem = nullptr;
 
 struct ScopedItemPreparation {
@@ -96,6 +98,25 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.scrollOffset = widget.scrollOffset;
     node.imageId = widget.imageId;
     node.imageSource = widget.imageSource;
+    node.dropdownOpen = widget.dropdownOpen;
+    node.value = widget.value;
+    node.iconStrokeWidth = styleContext.theme.icons.strokeWidth;
+    node.icon = static_cast<std::uint8_t>(widget.icon);
+    node.transitionAlpha = widget.transitionAlpha;
+    node.showScrollbar = widget.showScrollbar;
+    node.elevation = widget.elevation;
+    if (widget.elevation > 0.0F) {
+        const style::ElevationTokens& elevation = styleContext.theme.elevation;
+        node.shadowColor = elevation.shadowColor;
+        node.shadowOffset = elevation.shadowOffset;
+        node.shadowBlur = elevation.shadowBlur;
+    }
+    if (widget.showScrollbar &&
+        (widget.type == WidgetType::ScrollView ||
+         widget.type == WidgetType::ListView ||
+         widget.type == WidgetType::VirtualList)) {
+        node.scrollbarThickness = styleContext.theme.scrollbar.thickness;
+    }
     node.enabled = widget.enabled;
     node.invalid = widget.invalid;
     node.selected = widget.selected;
@@ -118,6 +139,7 @@ Size measureTextContent(const std::string& content, const TextStyle& style,
 }
 
 Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
+                          const style::StyleContext& styleContext,
                           float maxWidth) {
     const TextStyle& textStyle = core::commonStyle(resolved).text;
     const std::string& content =
@@ -154,6 +176,40 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
                                           resolved.minHeight);
             return Size{width, height};
         }
+        case WidgetType::Icon: {
+            // M6：默认尺寸来自 IconTheme（token），width/height 覆盖。
+            return Size{styleContext.theme.icons.defaultSize,
+                        styleContext.theme.icons.defaultSize};
+        }
+        case WidgetType::Slider: {
+            // M6：轨道高度按行高派生；宽度默认填充（无 intrinsic 宽）。
+            const float track = std::max(24.0F, textStyle.fontSize * 1.4F);
+            return Size{0.0F, track};
+        }
+        case WidgetType::ProgressBar: {
+            const float track = std::max(16.0F, textStyle.fontSize * 0.9F);
+            return Size{0.0F, track};
+        }
+        case WidgetType::Radio: {
+            // 同 Checkbox 度量（圆形指示）。
+            const auto* checkbox =
+                std::get_if<core::CheckboxResolvedStyle>(&resolved.component);
+            if (checkbox == nullptr) {
+                return measureTextContent(content, textStyle, 0.0F, false);
+            }
+            const Size label = measureTextContent(content, textStyle, 0.0F,
+                                                  false);
+            return Size{checkbox->indicatorSize + checkbox->labelGap +
+                            label.width,
+                        std::max(checkbox->indicatorSize, label.height)};
+        }
+        case WidgetType::Tooltip: {
+            const Size text = measureTextContent(content, textStyle, maxWidth,
+                                                 false);
+            const EdgeInsets frame = EdgeInsets::all(6.0F);
+            return Size{text.width + frame.horizontal(),
+                        text.height + frame.vertical()};
+        }
         case WidgetType::Checkbox: {
             const auto* checkbox =
                 std::get_if<core::CheckboxResolvedStyle>(&resolved.component);
@@ -188,9 +244,9 @@ RenderNode layoutLeaf(const Widget& widget, const Constraints& constraints,
     const Constraints outer = constraints.deflate(widget.margin);
     const ResolvedStyle resolved =
         style::resolveStyle(widget, styleContext, identity);
-    Size intrinsic =
-        measureLeafIntrinsic(widget, resolved,
-                             outer.isBoundedWidth() ? outer.maxWidth : 0.0F);
+    Size intrinsic = measureLeafIntrinsic(
+        widget, resolved, styleContext,
+        outer.isBoundedWidth() ? outer.maxWidth : 0.0F);
     // Button/TextField intrinsic measurement already includes their chrome
     // padding; text and generic leaves use the resolved box padding here.
     if (widget.type != WidgetType::Button &&
@@ -199,6 +255,12 @@ RenderNode layoutLeaf(const Widget& widget, const Constraints& constraints,
         intrinsic.height += core::commonStyle(resolved).padding.vertical();
     }
     Size size = outer.constrain(intrinsic);
+    // M6：Slider/ProgressBar 填充可用宽（轨道语义；显式 width 优先）。
+    if ((widget.type == WidgetType::Slider ||
+         widget.type == WidgetType::ProgressBar) &&
+        !widget.width.has_value() && outer.isBoundedWidth()) {
+        size.width = outer.maxWidth;
+    }
     // Border-box overrides: fixed size wins over intrinsic measurement.
     if (widget.width.has_value()) {
         size.width =
@@ -259,6 +321,29 @@ RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
         case WidgetType::ListView:
             return layoutScrollView(widget, constraints, styleContext,
                                     identity);
+        case WidgetType::Dropdown:
+            // M6：展开式 = 纵向排布（值行 + 选项）。
+            return layoutFlex(widget, constraints, styleContext, identity,
+                              false);
+        case WidgetType::ThemeScope: {
+            // M6：局部主题域——子树解析切换到覆盖主题。
+            const auto* override =
+            static_cast<const style::Theme*>(
+                    widget.themeOverride.get());
+            if (override != nullptr) {
+                const style::StyleContext scopedContext{
+                    *override, styleContext.interaction,
+                    styleContext.accessibility, styleContext.deviceScale};
+                const style::ScopedThemeOverride guard{*override};
+                return layoutContainer(widget, constraints, scopedContext,
+                                       identity);
+            }
+            return layoutContainer(widget, constraints, styleContext,
+                                   identity);
+        }
+        case WidgetType::Tabs:
+            return layoutFlex(widget, constraints, styleContext, identity,
+                              true);
         case WidgetType::Grid:
             return layoutGrid(widget, constraints, styleContext, identity);
         case WidgetType::VirtualList:
@@ -270,6 +355,11 @@ RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
         case WidgetType::TextField:
         case WidgetType::Checkbox:
         case WidgetType::Switch:
+        case WidgetType::Icon:
+        case WidgetType::Slider:
+        case WidgetType::ProgressBar:
+        case WidgetType::Radio:
+        case WidgetType::Tooltip:
             return layoutLeaf(widget, constraints, styleContext, identity);
     }
     return layoutLeaf(widget, constraints, styleContext, identity);

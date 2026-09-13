@@ -18,6 +18,9 @@
 #include "include/core/SkImage.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkPaint.h"
+#include "include/core/SkPath.h"
+#include "include/core/SkBlurTypes.h"
+#include "include/core/SkMaskFilter.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkRect.h"
@@ -316,6 +319,58 @@ void SkiaRenderer::drawText(TextRun run, core::TextStyle style) {
                               SkTextEncoding::kUTF8);
         offset += length;
     }
+}
+
+void SkiaRenderer::drawIcon(
+    std::vector<std::vector<core::Offset>> polylines, core::Rect box,
+    core::Color color, float strokeWidth) {
+    if (impl_->canvas == nullptr || polylines.empty() || color.a == 0) {
+        return;
+    }
+    const float scale = impl_->deviceScale;
+    SkPath path;
+    for (const auto& polyline : polylines) {
+        if (polyline.empty()) {
+            continue;
+        }
+        path.moveTo((box.origin.x + polyline.front().x * box.size.width) *
+                        scale,
+                    (box.origin.y + polyline.front().y * box.size.height) *
+                        scale);
+        for (std::size_t i = 1; i < polyline.size(); ++i) {
+            path.lineTo(
+                (box.origin.x + polyline[i].x * box.size.width) * scale,
+                (box.origin.y + polyline[i].y * box.size.height) * scale);
+        }
+    }
+    impl_->paint.setStyle(SkPaint::kStroke_Style);
+    impl_->paint.setAntiAlias(true);
+    impl_->paint.setColor(toSkColor(color));
+    impl_->paint.setStrokeWidth(strokeWidth * scale);
+    impl_->paint.setStrokeCap(SkPaint::kRound_Cap);
+    impl_->paint.setStrokeJoin(SkPaint::kRound_Join);
+    impl_->canvas->drawPath(path, impl_->paint);
+}
+
+void SkiaRenderer::drawShadow(core::Rect elevatedBox, core::Color color,
+                              core::Offset offset, float blur) {
+    if (impl_->canvas == nullptr || color.a == 0) {
+        return;
+    }
+    const float scale = impl_->deviceScale;
+    const SkRect rect = SkRect::MakeXYWH(
+        (elevatedBox.origin.x + offset.x) * scale,
+        (elevatedBox.origin.y + offset.y) * scale,
+        elevatedBox.size.width * scale, elevatedBox.size.height * scale);
+    SkPaint paint;
+    paint.setStyle(SkPaint::kFill_Style);
+    paint.setAntiAlias(true);
+    paint.setColor(toSkColor(color));
+    if (blur > 0.0F) {
+        paint.setMaskFilter(SkMaskFilter::MakeBlur(
+            kNormal_SkBlurStyle, blur * 0.5F * scale));
+    }
+    impl_->canvas->drawRect(rect, paint);
 }
 
 void SkiaRenderer::drawImage(ImageId id, core::Rect destination) {

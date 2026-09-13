@@ -16,6 +16,8 @@ set(LUMEN_TEST_SOURCES
     app_shell_tests.cpp
     # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
     grid_virtual_tests.cpp
+    # M6：视觉系统 V3 与控件库（图标/阴影/滚动条/控件交互/语义）。
+    visual_m6_tests.cpp
     dsl_tests.cpp
     damage_tests.cpp
     tween_tests.cpp

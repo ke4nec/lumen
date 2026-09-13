@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "lumen/core/geometry.h"
+#include "lumen/core/icon_id.h"
 #include "lumen/core/style.h"
 #include "lumen/core/widget.h"
 
@@ -57,6 +58,25 @@ struct RenderNode {
     // M3 Image：已就绪资源 id（0 = 占位）与资源路径（诊断/语义）。
     std::uint64_t imageId{0};
     std::string imageSource{};
+    // M6：Dropdown 展开态。
+    bool dropdownOpen{false};
+    // M6：控件值（Slider/ProgressBar 0..100；Dropdown 当前值）。
+    // bind 控件经 applyBinds 把 store 值写入 text，未绑定控件用 value。
+    std::string value{};
+    // M6：图标语义 ID、控件转场透明度与滚动条显隐。
+    std::uint8_t icon{0};  // core::IconId 数值（core 层避免样式依赖）
+    float transitionAlpha{1.0F};
+    bool showScrollbar{false};
+    // M6：布局期折算的阴影（elevation>0 时；参数来自 Theme.elevation）
+    // 与滚动条厚度（0 = 无滚动条；来自 ScrollbarTokens）。painter/后端
+    // 只消费这些值，不依赖 Theme 对象。
+    float elevation{0.0F};
+    Color shadowColor{};
+    Offset shadowOffset{};
+    float shadowBlur{0.0F};
+    float scrollbarThickness{0.0F};
+    // M6：图标线宽（IconTheme 折算）。
+    float iconStrokeWidth{1.5F};
 
     // 视觉系统声明状态：interaction/semantics 的可用性与选中语义。
     bool enabled{true};

@@ -37,6 +37,11 @@ bool isLeafWidget(WidgetType type) {
         case WidgetType::Checkbox:
         case WidgetType::Switch:
         case WidgetType::Image:  // M3：图像叶子（占位/位图绘制）
+        case WidgetType::Icon:   // M6：图标叶子（矢量折线）
+        case WidgetType::Slider:      // M6：值控件叶子
+        case WidgetType::ProgressBar: // M6：展示叶子
+        case WidgetType::Radio:       // M6：选择叶子
+        case WidgetType::Tooltip:     // M6：提示叶子
             return true;
         case WidgetType::Container:
         case WidgetType::Row:
@@ -47,6 +52,9 @@ bool isLeafWidget(WidgetType type) {
         case WidgetType::FocusScope:
         case WidgetType::Grid:
         case WidgetType::VirtualList:
+        case WidgetType::Dropdown:  // M6：展开式容器（选项子树）
+        case WidgetType::Tabs:      // M6：标签行容器
+        case WidgetType::ThemeScope:  // M6：主题域（单子容器）
             return false;
     }
     return false;

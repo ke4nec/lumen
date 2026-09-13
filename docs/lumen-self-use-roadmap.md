@@ -61,6 +61,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M3 | 已完成布局/Grid/VirtualList/Image | Grid/Image/VirtualList 组件、VirtualListController、virtual-list 基准场景（见 §10 M3 完成记录） |
 | 自用 M4 | 已完成三桌面平台服务与窗口能力 | 文件选择/OpenURL/通知/光标/图标契约与 SDL/Fake 实现、能力统一报告、settings 服务区（见 §10 M4 完成记录） |
 | 自用 M5 | 已完成语义契约与键盘可用性收口 | invalid/hidden flags、语义桥驱动、focusFirstFocusable 焦点恢复、Recording bridge 回归证据（见 §10 M5 完成记录） |
+| 自用 M6 | 已完成视觉系统 V3 与控件库 | 图标/阴影/滚动条 token 路径、六控件、ThemeScope、PlatformThemeAdapter、settings 控件+主题页（见 §10 M6 完成记录） |
 
 当前验证基线：Windows CPU Debug 303/303，Skia Release 314/314，SDL-free mobile-core 291/291。`817ad43` 后 Windows 的 CPU/Skia/GPU 三个 job、Linux 的 CPU/Skia/GPU/mobile-core 四个 job、macOS 的 CPU/mobile-core 两个 job 均已纳入 CI；真实 macOS GPU 仍待 M7 纳入门槛。最新基线提交为 `817ad43 fix(platform): 对齐跨平台能力与验证契约`。
 
@@ -80,7 +81,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | 惯性滚动后续版本 | M3 已收口 |
 | 平台服务 | M4 已完成：ApplicationHost 增加文件选择（异步→FileDialogCompleted 事件）/OpenURL/通知/光标形状/窗口图标契约；PlatformCapabilities 统一报告外观（dark/accent/fontScale）与服务可用性；SDL 实现与 Fake host 记录/失败注入 | 通知在 SDL 3.2.10 无 API：能力关闭+结构化降级（真实通知待 SDL 升级或原生后端） | M4 已收口 |
 | 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| UIA/AT-SPI/NSAccessibility 原生 provider 属后续版本（Recording bridge 作跨平台回归证据） | M5 已收口 |
-| 视觉 V3 | IconId、Elevation、Motion token 已冻结，实际图标/阴影/转场/ThemeScope 未完成 | 复杂应用的视觉一致性和反馈不足 | M6 |
+| 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur/CPU 扁平面降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | Dialog/Navigator 完整转场动画驱动、MotionTokens 全量状态过渡属后续增强 | M6 已收口 |
 | GPU | Skia Ganesh + OpenGL 已有，GPU `partialSubmit` 固定为 false，macOS GPU 不是当前门槛 | 三桌面发布能力不对称，局部 damage 在 GPU 上退化为全帧提交 | M7 |
 | 发布 | 有构建和 smoke，没有正式便携包流水线 | 用户无法脱离开发环境分发 | M8 |
 | 移动端 | 只有 SDL-free seam，没有文本输入/软键盘入口；mobile-core 与 Skia 互斥，当前只能 CPU 占位字体 | 不能在模拟器/真机启动可用的文本工具页面 | M9 |
@@ -754,11 +755,68 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     触发重绘，语义与像素一致）。
 - 回滚点：`68f5f14 feat(platform): 完善平台服务与文件对话框`（M5 前）。
 
+### M6 完成记录（自用级视觉系统 V3 与控件库）
+
+- 完成日期：2026-09-17
+- 提交号：（本变更提交，见 Git 历史 `feat(visual)`）
+- 变更：
+  - 图标系统：`core::IconId`（12 语义 ID，枚举自 style/tokens.h 迁移并
+    经 using 复用保持 token 冻结）+ 归一化折线目录
+   （`core::iconPolylines`，纯几何属 core）；`Widget.icon`/
+    `RenderNode.icon+iconStrokeWidth`（IconTheme 布局期折算）；
+    `DrawIcon` 命令（可序列化折线组）；CPU 软件线条光栅（方形笔刷）
+    与 Skia SkPath stroke（圆帽）共用命令；Icon 节点 + Button 图标位。
+  - 阴影/层级：`Widget.elevation`（值来自 ElevationTokens）→ 布局期折
+    算 shadowColor/offset/blur 进 RenderNode（后端不依赖 Theme 对象）；
+    `DrawShadow` 命令：Skia 光栅/GPU 用 blur mask filter，CPU 降级为
+    token 色的偏移扁平面（命令跨后端一致，像素按能力）。
+  - 滚动条：ScrollbarTokens.thickness 布局期折算；painter 在 clipContent
+    视口按 scrollOffset/scrollExtent 实绘 thumb（前景半透明派生色）；
+    `withScrollbar` 控制。
+  - 控件库（六控件 + applyBinds 值绑定）：Slider（点击/拖动/键盘 ±5、
+    填充可用宽、语义 value+SetValue action）、ProgressBar（展示，语义
+    value）、Radio（与 Checkbox 同 toggle 路径、applyBinds checked、
+    圆形指示）、Tooltip（气泡表面+文本，语义 label）、Dropdown（值行
+    +ChevronDown 图标+展开选项子树，open 控制）、Tabs（标签行容器，
+    selected 指示）。
+  - ThemeScope：`WidgetType::ThemeScope` + `shared_ptr<void>` 携带
+    Theme 拷贝（核心不接触样式类型）+ `style::ScopedThemeOverride`
+   （thread_local，resolveStyle 子树覆盖；交互快照/可访问性优先级不
+    变）；`style::makeThemeScopeData`。
+  - `style::adaptPlatformTheme`：系统主题输入（dark/accent/fontScale）
+    → Theme 派生（不返回平台控件对象；M4 PlatformCapabilities 输入）。
+  - `FormController::compose`：组合校验器（按序首错返回）；邮箱/范围/
+    格式等业务规则由应用组合提供。
+  - RenderCommand 序列化 v4（DrawIcon/DrawShadow：折线组+线宽；损坏
+    拒绝）；cull/bounds/drawCount 纳入新命令。
+  - settings 新页：Widgets（Slider/ProgressBar/Radio/Dropdown/Tabs/
+    Tooltip/Icon 预览，StateStore bind 驱动）与 Theme（深浅切换 +
+    light ThemeScope 对比预览）；headless 冒烟覆盖。
+- 测试：
+  - 新增 `tests/visual_m6_tests.cpp`（11 用例）：图标目录归一化/
+    DrawIcon 命令/CPU 光栅像素、Button 图标、序列化 v4 roundtrip+
+    损坏拒绝、阴影命令（elevation 折算+命令一致）、滚动条 thumb、
+    Slider 点击 75%/键盘 ±5、ProgressBar 语义、Radio 同路径切换+
+    checked 语义、Dropdown 展开+值行 chevron+语义值、Tabs 行布局、
+    Tooltip 语义。
+  - 本地 Linux：CPU Debug 374/374、Skia Release 380/380、GPU Release
+    387/387、mobile-core Debug 356/356；窗口 smoke、headless（widgets/
+    theme 页导航）与 M0 基准 `frame_hash=d28e364efe1b4aca` 保持。
+- 平台：本地 Linux 全部验证；Windows/macOS 以 CI 为事实来源。
+- 已知限制：
+  - 状态/Dialog/Navigator 完整转场动画驱动未实现（MotionTokens 已接
+    入 caret 闪烁与 FrameScheduler reduceAnimation；transitionAlpha
+    通道就绪——Icon/Button/滚动条已乘，表面级插值待后续增强版）。
+  - Dropdown 为树内展开（无浮动层/模态菜单键盘导航）；Tooltip 为常驻
+    节点（显隐由应用 rebuild 控制，无 hover 延迟驱动）。
+  - CPU 阴影为扁平面近似（无模糊）；图标光栅为方形笔刷（无圆帽/
+    抗锯齿近似）。
+  - Radio 组互斥由应用写值管理（框架不内置组语义）。
+- 回滚点：M5 合入后的提交（见 M5 完成记录）。
+
 ### M1–M9 完成记录（待实施，占位）
 - M5 语义与键盘可用性：未开始（出口：语义/键盘/视觉/交互无分叉；
   Recording bridge 可作回归证据）。
-- M6 视觉 V3 与控件库：未开始（出口：视觉扩展由 token/StyleResolver 驱动；
-  后端不依赖 Theme；主题/动效可运行中切换）。
 - M7 GPU 与性能门槛：未开始（出口：三桌面 GPU CI 通过；故障恢复无崩溃/
   卡死/泄漏/旧资源复活；partialSubmit 有实测与降级说明；p50/p95 相对
   `v0.2-cpu-scene.json` 恶化 ≤10%，同后端同场景比较）。

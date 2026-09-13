@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "lumen/core/geometry.h"
+#include "lumen/core/icon_id.h"
 
 namespace lumen::style {
 
@@ -73,14 +74,9 @@ constexpr std::uint32_t kDurationSlowMs = 350;
 
 // 图标以语义 ID 表达，不把 SVG 路径写入控件逻辑；颜色默认继承前景色。
 // Renderer 的 vector path / 统一 image 适配属后续版本。
-enum class IconId : std::uint8_t {
-    None,
-    Check,
-    Close,
-    ChevronDown,
-    ChevronRight,
-    Alert,
-};
+// M6：图标语义 ID 移至 core（几何目录与 Widget/RenderNode 携带；
+// token 冻结——名字与值不变，经别名复用）。
+using IconId = core::IconId;
 
 // 图标默认几何（渲染能力冻结，token 先行）。
 struct IconTheme {

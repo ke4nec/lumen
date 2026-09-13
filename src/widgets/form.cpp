@@ -36,4 +36,21 @@ FormController::Validator FormController::minLength(std::size_t length,
     };
 }
 
+FormController::Validator FormController::compose(
+    std::vector<Validator> chain) {
+    return [chain = std::move(chain)](
+               const std::string& value) -> std::string {
+        for (const auto& validator : chain) {
+            if (validator == nullptr) {
+                continue;
+            }
+            const std::string error = validator(value);
+            if (!error.empty()) {
+                return error;
+            }
+        }
+        return {};
+    };
+}
+
 }  // namespace lumen::widgets

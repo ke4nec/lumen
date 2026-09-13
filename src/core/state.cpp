@@ -81,12 +81,17 @@ std::set<std::string> collectBindKeys(const Widget& root) {
 void applyBinds(Widget& root, const StateStore& store) {
     if (!root.bind.empty()) {
         const std::string& value = store.get(root.bind);
-        if (root.type == WidgetType::TextField) {
+        if (root.type == WidgetType::TextField ||
+            root.type == WidgetType::Slider ||
+            root.type == WidgetType::ProgressBar ||
+            root.type == WidgetType::Dropdown) {
+            // M6：值控件经 bind 携带当前值（绘制/语义消费 text）。
             root.text = value;
         } else if (root.type == WidgetType::Text) {
             root.text = root.bindPrefix + value;
         } else if (root.type == WidgetType::Checkbox ||
-                   root.type == WidgetType::Switch) {
+                   root.type == WidgetType::Switch ||
+                   root.type == WidgetType::Radio) {
             // v0.3 阶段8D：选中状态绑定（宽容解析；框架写回 "true"/"false"）。
             root.checked = value == "true" || value == "1" || value == "on";
         }

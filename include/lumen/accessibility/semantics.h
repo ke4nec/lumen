@@ -31,6 +31,9 @@ enum class SemanticsRole : std::uint8_t {
     ListItem,
     Dialog,
     Image,
+    Slider,
+    ProgressBar,
+    Radio,
 };
 
 [[nodiscard]] const char* semanticsRoleName(SemanticsRole role);

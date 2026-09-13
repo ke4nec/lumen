@@ -19,6 +19,8 @@ SemanticsRole defaultRoleFor(const RenderNode& node, bool isRoot) {
             return SemanticsRole::Text;
         case WidgetType::Checkbox:
             return SemanticsRole::Checkbox;
+        case WidgetType::Radio:
+            return SemanticsRole::Radio;
         case WidgetType::Switch:
             return SemanticsRole::Switch;
         case WidgetType::ListView:
@@ -28,6 +30,17 @@ SemanticsRole defaultRoleFor(const RenderNode& node, bool isRoot) {
             return SemanticsRole::List;
         case WidgetType::Image:  // M3：图像（label/value 保留可访问名）
             return SemanticsRole::Image;
+        case WidgetType::Slider:
+            return SemanticsRole::Slider;
+        case WidgetType::ProgressBar:
+            return SemanticsRole::ProgressBar;
+        case WidgetType::Tooltip:
+            return SemanticsRole::Text;
+        case WidgetType::Dropdown:  // M6：展开选择
+        case WidgetType::Tabs:
+        case WidgetType::Icon:
+        case WidgetType::ThemeScope:
+            return SemanticsRole::Group;
         case WidgetType::Grid:  // M3：网格归组语义
         case WidgetType::Container:
         case WidgetType::Row:
@@ -47,7 +60,10 @@ std::uint32_t defaultActionsFor(const RenderNode& node) {
             return kActionFocus | kActionSetValue;
         case WidgetType::Checkbox:
         case WidgetType::Switch:
+        case WidgetType::Radio:
             return kActionFocus | kActionActivate;
+        case WidgetType::Slider:
+            return kActionFocus | kActionSetValue;
         case WidgetType::ScrollView:
         case WidgetType::ListView:
         case WidgetType::VirtualList:
@@ -96,6 +112,7 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
             break;
         case WidgetType::Checkbox:
         case WidgetType::Switch:
+        case WidgetType::Radio:  // M6：单选同选中语义（组由应用管理）
             // 视觉系统：selected 与 checked 同样折算（resolver 已把
             // selected 计入选中视觉，语义保持一致，§7.3）。
             semantic.label = node.text;
@@ -108,6 +125,18 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
         case WidgetType::Image:
             // M5：可访问名称保留（覆盖 → 资源路径）。
             semantic.label = node.imageSource;
+            break;
+        case WidgetType::Slider:
+        case WidgetType::ProgressBar:
+            // 值（0..100）为语义 value；label 依覆盖。
+            semantic.value =
+                node.bind.empty() ? node.value : node.text;
+            break;
+        case WidgetType::Dropdown:
+            semantic.value = node.bind.empty() ? node.value : node.text;
+            break;
+        case WidgetType::Tooltip:
+            semantic.label = node.text;
             break;
         case WidgetType::TextField:
             semantic.label = node.placeholder.empty() ? node.bind
@@ -198,6 +227,12 @@ const char* semanticsRoleName(SemanticsRole role) {
             return "dialog";
         case SemanticsRole::Image:
             return "image";
+        case SemanticsRole::Slider:
+            return "slider";
+        case SemanticsRole::ProgressBar:
+            return "progressBar";
+        case SemanticsRole::Radio:
+            return "radio";
     }
     return "unknown";
 }
@@ -217,6 +252,10 @@ bool semanticsRoleFromName(const std::string& name, SemanticsRole* out) {
         {"list_item", SemanticsRole::ListItem},
         {"dialog", SemanticsRole::Dialog},
         {"image", SemanticsRole::Image},
+        {"slider", SemanticsRole::Slider},
+        {"progressBar", SemanticsRole::ProgressBar},
+        {"progress_bar", SemanticsRole::ProgressBar},
+        {"radio", SemanticsRole::Radio},
     };
     for (const auto& [key, role] : kTable) {
         if (name == key) {
@@ -352,6 +391,12 @@ SemanticsActionStatus performSemanticsAction(
     }
 
     if (action == kActionSetValue) {
+        if (context.controller != nullptr && renderNode != nullptr &&
+            renderNode->type == core::WidgetType::Slider) {
+            return context.controller->setSliderValue(*renderNode, value)
+                       ? SemanticsActionStatus::Handled
+                       : SemanticsActionStatus::NotHandled;
+        }
         if (context.controller == nullptr || renderNode == nullptr ||
             renderNode->type != core::WidgetType::TextField ||
             renderNode->bind.empty()) {

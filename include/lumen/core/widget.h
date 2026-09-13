@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "lumen/core/geometry.h"
+#include "lumen/core/icon_id.h"
 
 namespace lumen::core {
 
@@ -28,6 +30,16 @@ enum class WidgetType {
     Image,       // 图像：已就绪 ImageId 绘制，未就绪固定占位（语义保留）
     VirtualList, // 虚拟列表：按需物化可见项（itemCount/itemBuilder/
                  // estimatedExtent/stable key/viewport cache）
+    // M6（自用路线图）：视觉系统 V3 与控件库。
+    Icon,        // 图标：矢量折线（语义 ID），装饰性
+    Slider,      // 滑块：bind 数值（0..100），拖动/键盘改值
+    ProgressBar, // 进度条：bind/value 0..100，无交互
+    Radio,       // 单选：同 Checkbox 语义，圆形指示
+    Tooltip,     // 提示气泡：hover 显示（常驻树，透明度切换）
+    Dropdown,    // 下拉：当前值 + 展开选项（open 控制），选项点击经
+                 // onClick("select:<index>") 交应用
+    Tabs,        // 页签：bind 当前 tab id + 标签列表，点击切换
+    ThemeScope,  // M6：局部主题域（子树覆盖父主题；布局期生效）
 };
 
 enum class MainAxisAlignment {
@@ -206,6 +218,26 @@ struct Widget {
     //（诊断与语义保留，加载由应用侧 ResourceManager 驱动）。
     std::uint64_t imageId{0};
     std::string imageSource{};
+
+    // M6：图标（Icon/IconBox 节点与 Button 图标位；语义 ID，几何出自
+    // core::iconPolylines，颜色继承前景、线宽来自 IconTheme）。
+    IconId icon{IconId::None};
+    // 控件转场透明度（MotionTokens 驱动；reduceAnimation 时恒 1.0）。
+    float transitionAlpha{1.0F};
+    // M6：滚动条显隐（ScrollView/ListView/VirtualList 视口；thumb 几何
+    // 出自布局的 scrollOffset/scrollExtent + ScrollbarTokens）。
+    bool showScrollbar{false};
+    // M6：层级（0 = 无阴影；值来自 ElevationTokens，如 dialogLevel=3）。
+    // 阴影参数在布局期由 Theme 折算进 RenderNode（后端不依赖 Theme）。
+    float elevation{0.0F};
+
+    // M6 控件：Slider/ProgressBar 值（0..100，字符串或 bind 值解析）；
+    // Dropdown 展开态；Tooltip 常驻（应用控制显隐）。
+    std::string value{};       // Slider/ProgressBar/未绑定的直接值
+    bool dropdownOpen{false};  // Dropdown：展开选项列表
+    // M6 ThemeScope：局部主题（shared_ptr<void> 持有 style::Theme 拷贝，
+    // 避免核心依赖样式头；布局层还原为 Theme 并覆盖子树解析）。
+    std::shared_ptr<void> themeOverride{};
 
     // M3 VirtualList：数据源（应用拥有；空 = 空列表）与视口前后缓存
     //（像素）。children 必须为空——布局期按可见区物化。
@@ -535,6 +567,120 @@ inline Widget makeFocusScope(Widget child, std::string key = {}) {
     Widget widget;
     widget.type = WidgetType::FocusScope;
     widget.key = std::move(key);
+    widget.children.push_back(std::move(child));
+    return widget;
+}
+
+// --- M6：图标与主题域 ---
+
+// 图标节点：矢量图标（语义 ID；固定尺寸默认取 IconTheme.defaultSize，
+// 可经 width/height 覆盖）。装饰性（无语义标签则不进语义树）。
+inline Widget makeIcon(IconId icon, std::string key = {},
+                       std::optional<float> width = std::nullopt,
+                       std::optional<float> height = std::nullopt) {
+    Widget widget;
+    widget.type = WidgetType::Icon;
+    widget.icon = icon;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.height = height;
+    return widget;
+}
+
+inline Widget withIcon(Widget child, IconId icon) {
+    child.icon = icon;
+    return child;
+}
+
+inline Widget withTransitionAlpha(Widget child, float alpha) {
+    child.transitionAlpha = alpha;
+    return child;
+}
+
+inline Widget withScrollbar(Widget child, bool show = true) {
+    child.showScrollbar = show;
+    return child;
+}
+
+// --- M6：控件库（Slider/ProgressBar/Radio/Tooltip/Dropdown/Tabs） ---
+
+// Slider：拖动/键盘改值（bind 值为 0..100 整数串）。语义 role=slider。
+inline Widget makeSlider(std::string bind, std::string key = {},
+                         std::optional<float> width = std::nullopt) {
+    Widget widget;
+    widget.type = WidgetType::Slider;
+    widget.bind = std::move(bind);
+    widget.key = std::move(key);
+    widget.width = width;
+    return widget;
+}
+
+// ProgressBar：进度 0..100（value 或 bind）；无交互，语义 value。
+inline Widget makeProgressBar(std::string value, std::string key = {},
+                              std::optional<float> width = std::nullopt) {
+    Widget widget;
+    widget.type = WidgetType::ProgressBar;
+    widget.value = std::move(value);
+    widget.key = std::move(key);
+    widget.width = width;
+    return widget;
+}
+
+// Radio：bind "true"/"false"（组内互斥由应用写值实现；与 Checkbox 同
+// 交互路径，圆形指示）。
+inline Widget makeRadio(std::string label, std::string bind,
+                        std::string key = {}, bool checked = false) {
+    Widget widget;
+    widget.type = WidgetType::Radio;
+    widget.text = std::move(label);
+    widget.bind = std::move(bind);
+    widget.key = std::move(key);
+    widget.checked = checked;
+    return widget;
+}
+
+// Tooltip：提示气泡（文本；常驻树，应用控制显隐/定位，一般放 Stack）。
+inline Widget makeTooltip(std::string text, std::string key = {}) {
+    Widget widget;
+    widget.type = WidgetType::Tooltip;
+    widget.text = std::move(text);
+    widget.key = std::move(key);
+    return widget;
+}
+
+// Dropdown：当前值 + 选项展开。children = 选项（open 时可见；选项点击
+// 经通用 onClick）。当前值行自带 ChevronDown 图标。
+inline Widget makeDropdown(std::string value, std::vector<Widget> options,
+                           bool open, std::string key = {},
+                           std::optional<float> width = std::nullopt) {
+    Widget widget;
+    widget.type = WidgetType::Dropdown;
+    widget.value = std::move(value);
+    widget.dropdownOpen = open;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.children = std::move(options);
+    return widget;
+}
+
+// Tabs：标签行（children = 标签按钮，selected 标记当前；点击切换由
+// 应用经 onClick 处理；bind 携带当前 tab id 供语义）。
+inline Widget makeTabs(std::vector<Widget> tabButtons, std::string key = {},
+                       std::optional<float> width = std::nullopt) {
+    Widget widget;
+    widget.type = WidgetType::Tabs;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.children = std::move(tabButtons);
+    return widget;
+}
+
+// M6：ThemeScope —— 子树主题覆盖（单子容器；shared_ptr<void> 实参由
+// style::makeThemeScope 产生，核心不接触 Theme 类型）。
+inline Widget makeThemeScope(Widget child, std::shared_ptr<void> theme) {
+    Widget widget;
+    widget.type = WidgetType::ThemeScope;
+    widget.themeOverride = std::move(theme);
     widget.children.push_back(std::move(child));
     return widget;
 }

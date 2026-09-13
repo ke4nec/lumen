@@ -47,18 +47,6 @@ const ButtonVariantTokens& variantTokens(const ButtonTokens& tokens,
     return tokens.filled;
 }
 
-const TextStyle& roleTypography(const Typography& typography,
-                                WidgetType type) {
-    switch (type) {
-        case WidgetType::Button:
-        case WidgetType::Checkbox:
-        case WidgetType::Switch:
-            return typography.label;
-        default:
-            return typography.body;
-    }
-}
-
 // 声明文本合并（§6.1）：Widget.textStyle 是旧声明通道——非默认即视为显
 // 式样式，未着色（不透明黑）回落到角色前景色，显式颜色透传；
 // StyleOverrides.text 是全显式通道，透明/黑按字面生效。
@@ -344,8 +332,25 @@ ResolvedStyle resolveSwitch(const Widget& widget, const StyleContext& context,
 
 }  // namespace
 
-ResolvedStyle resolveStyle(const Widget& widget, const StyleContext& context,
-                           const std::string& identity) {
+namespace {
+
+// M6：ThemeScope 覆盖（UI 线程；空 = 使用 StyleContext.theme）。
+thread_local const Theme* t_themeOverride = nullptr;
+
+}  // namespace
+
+ScopedThemeOverride::ScopedThemeOverride(const Theme& theme)
+    : previous_(t_themeOverride) {
+    t_themeOverride = &theme;
+}
+
+ScopedThemeOverride::~ScopedThemeOverride() { t_themeOverride = previous_; }
+
+namespace {
+
+ResolvedStyle resolveStyleImpl(const Widget& widget,
+                               const StyleContext& context,
+                               const std::string& identity) {
     const WidgetState state = stateFor(widget, context, identity);
     switch (widget.type) {
         case WidgetType::Button:
@@ -361,6 +366,20 @@ ResolvedStyle resolveStyle(const Widget& widget, const StyleContext& context,
         default:
             return resolveContainer(widget, context.theme);
     }
+}
+
+}  // namespace
+
+ResolvedStyle resolveStyle(const Widget& widget, const StyleContext& context,
+                           const std::string& identity) {
+    if (t_themeOverride != nullptr) {
+        // 局部主题域：覆盖主题 + 原交互快照（状态解析优先级不变）。
+        const StyleContext scoped{*t_themeOverride, context.interaction,
+                                  context.accessibility,
+                                  context.deviceScale};
+        return resolveStyleImpl(widget, scoped, identity);
+    }
+    return resolveStyleImpl(widget, context, identity);
 }
 
 }  // namespace lumen::style

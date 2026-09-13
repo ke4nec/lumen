@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include "lumen/accessibility/bridge.h"
 #include "lumen/core/geometry.h"
@@ -224,6 +225,16 @@ struct Theme {
 
     bool operator==(const Theme&) const = default;
 };
+
+// M6：ThemeScope 构建（shared_ptr<void> 携带 Theme 拷贝；核心不接触
+// 样式类型，布局层经 style::ScopedThemeOverride 还原）。
+[[nodiscard]] std::shared_ptr<void> makeThemeScopeData(Theme theme);
+
+// M6：平台主题适配器——只转换系统主题输入（dark mode/accent/字体缩放）
+// 到 Theme 派生，不返回平台控件对象。base 为应用当前主题。
+[[nodiscard]] Theme adaptPlatformTheme(const Theme& base, bool darkMode,
+                                       core::Color accentColor,
+                                       float fontScale);
 
 // Primitive → semantic 映射（测试契约 §10.1）。
 [[nodiscard]] ColorScheme darkColorScheme(const PrimitivePalette& palette);

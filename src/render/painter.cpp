@@ -7,6 +7,7 @@
 #include <variant>
 #include <vector>
 
+#include "lumen/core/icon_id.h"
 #include "lumen/core/utf8.h"
 #include "lumen/text/font_manager.h"
 #include "lumen/text/grapheme.h"
@@ -110,6 +111,15 @@ class CommandRecorder {
     }
     void drawImage(ImageId id, Rect destination) {
         list_.drawImage(id, destination);
+    }
+    void drawIcon(std::vector<std::vector<Offset>> polylines, Rect box,
+                  Color color, float strokeWidth) {
+        list_.drawIcon(std::move(polylines), box, color, strokeWidth,
+                       currentClip_);
+    }
+    void drawShadow(Rect elevatedBox, Color color, Offset offset,
+                    float blur) {
+        list_.drawShadow(elevatedBox, color, offset, blur, currentClip_);
     }
 
   private:
@@ -397,6 +407,13 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
     const Rect rect{origin, node.size};
     const CommonResolvedStyle& common = node.commonStyle();
 
+    // M6：层级阴影（布局期折算参数；命令一致地发往所有后端——CPU 的
+    // 降级由后端决定）。
+    if (node.elevation > 0.0F && node.shadowColor.a > 0) {
+        sink.drawShadow(rect, node.shadowColor, node.shadowOffset,
+                        node.shadowBlur);
+    }
+
     switch (node.type) {
         case WidgetType::Container:
         case WidgetType::Row:
@@ -406,6 +423,8 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         case WidgetType::ScrollView:
         case WidgetType::ListView:
         case WidgetType::VirtualList:  // M3：滚动视口同源绘制（裁剪/表面）
+        case WidgetType::Tabs:
+        case WidgetType::ThemeScope:
             paintSurface(sink, rect, common);
             break;
         case WidgetType::Grid:
@@ -457,15 +476,206 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             }
             break;
         }
+        case WidgetType::Slider:
+        case WidgetType::ProgressBar: {
+            // M6：轨道 + 填充/滑块（0..100；bind 控件经 text，未绑定用
+            // value；夹取 [0,100]）。色由前景派生（token 链）。
+            const std::string& raw =
+                node.bind.empty() ? node.value : node.text;
+            const float position = std::clamp(
+                static_cast<float>(std::atoi(raw.c_str())), 0.0F, 100.0F);
+            const float trackHeight =
+                std::max(8.0F, node.size.height * 0.35F);
+            const float trackY =
+                origin.y + (node.size.height - trackHeight) * 0.5F;
+            Color track = common.foreground;
+            track.a = static_cast<std::uint8_t>(
+                std::lround(static_cast<float>(track.a) * 0.25F));
+            Color fill = common.foreground;
+            fill.a = static_cast<std::uint8_t>(
+                std::lround(static_cast<float>(fill.a) * 0.75F));
+            const float fillWidth =
+                node.size.width * position / 100.0F;
+            sink.drawRect(Rect{Offset{origin.x, trackY},
+                               Size{node.size.width, trackHeight}},
+                          track, CornerRadius::all(trackHeight * 0.5F));
+            if (node.type == WidgetType::ProgressBar) {
+                if (fillWidth > 0.5F) {
+                    sink.drawRect(
+                        Rect{Offset{origin.x, trackY},
+                             Size{fillWidth, trackHeight}}, fill,
+                        CornerRadius::all(trackHeight * 0.5F));
+                }
+            } else {
+                // Slider：填充到 thumb + 圆形 thumb。
+                const float thumb = trackHeight * 1.6F;
+                const float thumbX =
+                    origin.x + fillWidth - thumb * 0.5F;
+                if (fillWidth > 0.5F) {
+                    sink.drawRect(
+                        Rect{Offset{origin.x, trackY},
+                             Size{std::max(0.0F, thumbX - origin.x),
+                                  trackHeight}},
+                        fill, CornerRadius::all(trackHeight * 0.5F));
+                }
+                sink.drawRect(
+                    Rect{Offset{std::max(origin.x, thumbX),
+                                origin.y +
+                                    (node.size.height - thumb) * 0.5F},
+                         Size{thumb, thumb}},
+                    common.foreground, CornerRadius::all(thumb * 0.5F));
+            }
+            break;
+        }
+        case WidgetType::Radio: {
+            // M6：圆形指示 + 标签（选中画内点）。
+            const auto* checkbox =
+                std::get_if<core::CheckboxResolvedStyle>(
+                    &node.style.component);
+            const float indicator =
+                checkbox != nullptr ? checkbox->indicatorSize : 16.0F;
+            const float cy = origin.y + (node.size.height - indicator) *
+                                            0.5F;
+            Rect ring{Offset{origin.x, cy}, Size{indicator, indicator}};
+            if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
+                sink.drawRect(ring, common.focusRing,
+                              CornerRadius::all(indicator));
+                const float w = common.focusWidth;
+                ring = Rect{Offset{ring.origin.x + w, ring.origin.y + w},
+                            Size{indicator - 2.0F * w,
+                                 indicator - 2.0F * w}};
+            }
+            sink.drawRect(ring, common.foreground,
+                          CornerRadius::all(indicator * 0.5F));
+            if (node.checked || node.selected) {
+                const float inset = indicator * 0.28F;
+                sink.drawRect(
+                    Rect{Offset{ring.origin.x + inset,
+                                ring.origin.y + inset},
+                         Size{indicator - 2.0F * inset,
+                              indicator - 2.0F * inset}},
+                    common.foreground,
+                    CornerRadius::all((indicator - 2.0F * inset) * 0.5F));
+            }
+            if (!node.text.empty()) {
+                const float lineHeight = lineHeightOf(common.text);
+                paintTextAt(
+                    sink, node.text, common.text,
+                    Offset{origin.x + indicator +
+                               (checkbox != nullptr ? checkbox->labelGap
+                                                    : 8.0F),
+                           origin.y + (node.size.height - lineHeight) *
+                                          0.5F});
+            }
+            break;
+        }
+        case WidgetType::Tooltip: {
+            // M6：提示气泡（表面 + 边框 + 文本；token 链派生色）。
+            paintSurface(sink, rect, common);
+            {
+                const ScopedClip<Sink> clip{sink, rect};
+                const float lineHeight = lineHeightOf(common.text);
+                paintTextAt(sink, node.text, common.text,
+                            Offset{origin.x + 6.0F,
+                                   origin.y +
+                                       (node.size.height - lineHeight) *
+                                           0.5F});
+            }
+            break;
+        }
+        case WidgetType::Dropdown: {
+            // M6：值行（按钮表面 + 文本 + ChevronDown 图标）；展开的选项
+            // 子树由通用子绘制路径处理（Column 布局）。值行高度取行高，
+            // 展开时表面覆盖到首个子节点顶部。
+            const float lineHeight = lineHeightOf(common.text);
+            const Rect valueRow{
+                origin, Size{node.size.width,
+                             node.children.empty() || !node.dropdownOpen
+                                 ? node.size.height
+                                 : lineHeight}};
+            paintControlSurface(sink, valueRow, common);
+            {
+                const ScopedClip<Sink> clip{sink, valueRow};
+                paintTextAt(sink,
+                            node.bind.empty() ? node.value : node.text,
+                            common.text,
+                            Offset{origin.x + 8.0F, origin.y});
+                const float iconSize = lineHeight;
+                const auto& polylines =
+                    core::iconPolylines(core::IconId::ChevronDown);
+                if (!polylines.empty()) {
+                    sink.drawIcon(
+                        polylines,
+                        Rect{Offset{origin.x + node.size.width -
+                                        iconSize - 6.0F,
+                                    origin.y},
+                             Size{iconSize, iconSize}},
+                        common.foreground, node.iconStrokeWidth);
+                }
+            }
+            break;
+        }
+        case WidgetType::Icon: {
+            // M6：矢量图标（语义 ID → 折线目录；颜色继承前景、线宽默认
+            // token，风格可用 textStyle 覆盖）。装饰性：无语义标签不进
+            // 语义树（semantics 跳过空 label 的 Icon）。
+            const auto iconId = static_cast<core::IconId>(node.icon);
+            if (iconId != core::IconId::None) {
+                const std::vector<std::vector<Offset>>& polylines =
+                    core::iconPolylines(iconId);
+                if (!polylines.empty()) {
+                    Color stroke = common.foreground;
+                    stroke.a = static_cast<std::uint8_t>(std::lround(
+                        static_cast<float>(stroke.a) * node.transitionAlpha));
+                    sink.drawIcon(polylines, rect, stroke,
+                                  node.iconStrokeWidth);
+                }
+            }
+            break;
+        }
         case WidgetType::Button: {
             paintControlSurface(sink, rect, common);
             const float width = textWidth(node.text, common.text);
             const float lineHeight = lineHeightOf(common.text);
+            const auto buttonIcon =
+                static_cast<core::IconId>(node.icon);
+            const float iconSize = common.text.fontSize > 0.0F
+                                       ? common.text.fontSize
+                                       : 16.0F;
+            const float iconGap =
+                buttonIcon != core::IconId::None && !node.text.empty()
+                    ? iconSize * 0.35F
+                    : 0.0F;
+            const float totalWidth =
+                width + (buttonIcon != core::IconId::None
+                             ? iconSize + iconGap
+                             : 0.0F);
             const ScopedClip<Sink> clip{sink, rect};
             paintTextAt(sink, node.text, common.text,
-                        Offset{origin.x + (node.size.width - width) * 0.5F,
+                        Offset{origin.x + (node.size.width - totalWidth) *
+                                               0.5F,
                                origin.y + (node.size.height - lineHeight) *
                                               0.5F});
+            if (buttonIcon != core::IconId::None) {
+                const auto& polylines = core::iconPolylines(buttonIcon);
+                if (!polylines.empty()) {
+                    Color stroke = common.foreground;
+                    stroke.a = static_cast<std::uint8_t>(
+                        std::lround(static_cast<float>(stroke.a) *
+                                    node.transitionAlpha));
+                    const float top = origin.y +
+                                      (node.size.height - iconSize) * 0.5F;
+                    sink.drawIcon(
+                        polylines,
+                        Rect{Offset{origin.x +
+                                        (node.size.width - totalWidth) *
+                                            0.5F +
+                                        width + iconGap,
+                                    top},
+                             Size{iconSize, iconSize}},
+                        stroke, iconSize * 0.1F);
+                }
+            }
             break;
         }
         case WidgetType::TextField: {
@@ -589,6 +799,35 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         const ScopedClip<Sink> clip{sink, rect};
         for (const auto& child : node.children) {
             paintNode(sink, child, origin, options);
+        }
+        // M6：滚动条（ScrollbarTokens 厚度经布局折算；thumb 几何出自
+        // scrollOffset/scrollExtent，色为前景半透明派生）。
+        if (node.scrollbarThickness > 0.0F &&
+            node.scrollExtent > 0.0F) {
+            const float trackHeight =
+                node.size.height - node.scrollbarThickness;
+            const float fraction =
+                node.size.height / (node.size.height + node.scrollExtent);
+            const float thumbHeight = std::max(
+                node.scrollbarThickness * 3.0F, trackHeight * fraction);
+            const float scrollable = std::max(
+                0.0F, trackHeight - thumbHeight);
+            const float progress = node.scrollExtent > 0.0F
+                                       ? node.scrollOffset /
+                                             node.scrollExtent
+                                       : 0.0F;
+            const float thumbY =
+                node.scrollbarThickness * 0.5F + progress * scrollable;
+            Color thumb = common.foreground;
+            thumb.a = static_cast<std::uint8_t>(std::lround(
+                static_cast<float>(thumb.a) * 0.45F));
+            sink.drawRect(Rect{Offset{origin.x + node.size.width -
+                                          node.scrollbarThickness,
+                                      origin.y + thumbY},
+                               Size{node.scrollbarThickness * 0.5F,
+                                    thumbHeight}},
+                          thumb,
+                          CornerRadius::all(node.scrollbarThickness * 0.25F));
         }
     } else {
         for (const auto& child : node.children) {

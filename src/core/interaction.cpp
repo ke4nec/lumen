@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <utility>
 
 #include "lumen/text/font_manager.h"
@@ -337,6 +338,39 @@ void InteractionController::placeCaretByHit(const RenderNode& field,
     }
 }
 
+void InteractionController::setSliderByPosition(const RenderNode& root,
+                                                const RenderNode& node,
+                                                Offset rootPosition) {
+    if (node.size.width <= 0.0F) {
+        return;
+    }
+    Offset origin{};
+    if (!absoluteOffsetOf(root, node, Offset{}, origin)) {
+        return;
+    }
+    const float clamped = std::clamp(
+        (rootPosition.x - origin.x) / node.size.width, 0.0F, 1.0F);
+    const int value = static_cast<int>(std::lround(clamped * 100.0F));
+    store_.set(node.bind, std::to_string(value));
+}
+
+bool InteractionController::setSliderValue(const RenderNode& node,
+                                            const std::string& raw) {
+    if (node.type != WidgetType::Slider || node.bind.empty() ||
+        !node.enabled) {
+        return false;
+    }
+    char* end = nullptr;
+    const float parsed = std::strtof(raw.c_str(), &end);
+    if (end == raw.c_str() || *end != '\0' || !std::isfinite(parsed)) {
+        return false;
+    }
+    const int value = static_cast<int>(std::lround(std::clamp(parsed, 0.0F,
+                                                               100.0F)));
+    store_.set(node.bind, std::to_string(value));
+    return true;
+}
+
 void InteractionController::pointerMove(const RenderNode& root,
                                         Offset position) {
     // hover 跟踪与按压状态独立：未按下时也更新命中（visual-system §5）。
@@ -399,9 +433,20 @@ void InteractionController::pointerUp(const RenderNode& root,
     if (!wasDragging) {
         for (const RenderNode* node : chain) {
             if ((node->type == WidgetType::Checkbox ||
-                 node->type == WidgetType::Switch) &&
+                 node->type == WidgetType::Switch ||
+                 node->type == WidgetType::Radio) &&
                 !node->bind.empty() && node->enabled) {
                 toggleChecked(*node);
+                return;
+            }
+        }
+    }
+    // M6 Slider：点击/拖动命中轨道即按位置设值（bind 0..100 整数）。
+    if (!chain.empty()) {
+        for (const RenderNode* node : chain) {
+            if (node->type == WidgetType::Slider && !node->bind.empty() &&
+                node->enabled && node->size.width > 0.0F) {
+                setSliderByPosition(root, *node, position);
                 return;
             }
         }
@@ -709,6 +754,22 @@ void InteractionController::keyDown(const RenderNode& root, Key key,
     }
     // 无编辑焦点时的滚动键：PageUp/PageDown/Up/Down/Home/End → wheelSink
     //（plan §3.4 键盘滚动）。
+    // M6：聚焦 Slider 的 Left/Right 调值（±5，夹取 0..100）。
+    if (focusedBind_.empty() &&
+        (key == Key::Left || key == Key::Right) &&
+        !focus_.focusedIdentity().empty()) {
+        const RenderNode* slider =
+            findNodeByIdentity(root, focus_.focusedIdentity());
+        if (slider != nullptr && slider->type == WidgetType::Slider &&
+            !slider->bind.empty() && slider->enabled) {
+            const int current =
+                std::atoi(store_.get(slider->bind).c_str());
+            const int next = std::clamp(
+                current + (key == Key::Right ? 5 : -5), 0, 100);
+            store_.set(slider->bind, std::to_string(next));
+            return;
+        }
+    }
     if (focusedBind_.empty() &&
         (key == Key::PageUp || key == Key::PageDown || key == Key::Up ||
          key == Key::Down || key == Key::Home || key == Key::End)) {
@@ -737,7 +798,9 @@ bool InteractionController::traverseFocus(const RenderNode& root,
                   !node.onClick.empty()) ||
                  ((node.type == WidgetType::Checkbox ||
                    node.type == WidgetType::Switch) &&
-                  !node.bind.empty()));
+                  !node.bind.empty()) ||
+                 (node.type == WidgetType::Radio && !node.bind.empty()) ||
+                 (node.type == WidgetType::Slider && !node.bind.empty()));
             if (editable || activatable) {
                 focusables.push_back(Candidate{&node, scope});
             }
@@ -836,7 +899,7 @@ void InteractionController::activateFocusedButton(const RenderNode& root) {
         return;
     }
     if (node->type == WidgetType::Checkbox ||
-        node->type == WidgetType::Switch) {
+        node->type == WidgetType::Switch || node->type == WidgetType::Radio) {
         toggleChecked(*node);
         return;
     }
@@ -852,7 +915,8 @@ void InteractionController::activateFocusedButton(const RenderNode& root) {
 void InteractionController::toggleChecked(const RenderNode& node) {
     if (node.bind.empty() || !node.enabled ||
         (node.type != WidgetType::Checkbox &&
-         node.type != WidgetType::Switch)) {
+         node.type != WidgetType::Switch &&
+         node.type != WidgetType::Radio)) {
         return;
     }
     // bind 值往返 "true"/"false"（applyBinds 解析时同样宽容 "1"/"0"）。

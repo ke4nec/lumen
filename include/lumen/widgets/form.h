@@ -39,6 +39,10 @@ class FormController {
                                              std::string message);
 
   private:
+    // M6：组合器（校验按序执行，首个非空错误返回）；邮箱/范围/格式等
+    // 业务规则由应用经 compose 组合提供，不写死在框架。
+    [[nodiscard]] static Validator compose(std::vector<Validator> chain);
+
     std::map<std::string, Validator> validators_{};
     std::map<std::string, std::string> errors_{};
 };

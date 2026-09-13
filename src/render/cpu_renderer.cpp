@@ -336,6 +336,72 @@ void CpuRenderer::drawPlaceholderGlyph(std::uint32_t codePoint, float glyphX,
     }
 }
 
+void CpuRenderer::drawIcon(std::vector<std::vector<core::Offset>> polylines,
+                           core::Rect box, core::Color color,
+                           float strokeWidth) {
+    if (color.a == 0 || box.size.width <= 0.0F || box.size.height <= 0.0F) {
+        return;
+    }
+    const float scale = deviceScale_;
+    // 归一化 → 设备像素；线宽以设备像素计（至少 1）。
+    const int widthPx = std::max(1, static_cast<int>(std::lround(
+                                        strokeWidth * scale)));
+    const auto toDevice = [&](const core::Offset& point) {
+        return std::pair<float, float>{
+            (box.origin.x + point.x * box.size.width) * scale,
+            (box.origin.y + point.y * box.size.height) * scale};
+    };
+    const auto strokeSegment = [&](float x0, float y0, float x1, float y1) {
+        // Bresenham-ish 数值步进（亚像素端点）。
+        const float dx = x1 - x0;
+        const float dy = y1 - y0;
+        const float length = std::max(std::abs(dx), std::abs(dy));
+        if (length <= 0.0F) {
+            return;
+        }
+        const int steps = static_cast<int>(std::ceil(length * 2.0F));
+        const float stepX = dx / static_cast<float>(steps);
+        const float stepY = dy / static_cast<float>(steps);
+        float x = x0;
+        float y = y0;
+        for (int i = 0; i <= steps; ++i) {
+            // 粗线：方形笔刷（宽度取半，四邻域 + 自身）。
+            const int brush = widthPx / 2;
+            const int px = static_cast<int>(std::lround(x));
+            const int py = static_cast<int>(std::lround(y));
+            for (int oy = -brush; oy <= brush; ++oy) {
+                for (int ox = -brush; ox <= brush; ++ox) {
+                    blendPixel(px + ox, py + oy, color);
+                }
+            }
+            x += stepX;
+            y += stepY;
+        }
+    };
+    for (const auto& polyline : polylines) {
+        for (std::size_t i = 1; i < polyline.size(); ++i) {
+            const auto [x0, y0] = toDevice(polyline[i - 1]);
+            const auto [x1, y1] = toDevice(polyline[i]);
+            strokeSegment(x0, y0, x1, y1);
+        }
+    }
+}
+
+void CpuRenderer::drawShadow(core::Rect elevatedBox, core::Color color,
+                             core::Offset offset, float blur) {
+    (void)blur;  // CPU 无模糊：扁平面近似。
+    if (color.a == 0) {
+        return;
+    }
+    // 降级：token 阴影色的偏移矩形（透明度衰减，视觉近似层级）。
+    core::Color flat = color;
+    flat.a = static_cast<std::uint8_t>(std::lround(
+        static_cast<float>(flat.a) * 0.5F));
+    fillLogicalRect(core::Rect{elevatedBox.origin + offset,
+                               elevatedBox.size},
+                    flat, {});
+}
+
 void CpuRenderer::drawImage(ImageId id, core::Rect destination) {
     const auto it = images_.find(id);
     if (it == images_.end()) {

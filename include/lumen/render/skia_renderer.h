@@ -53,6 +53,12 @@ class SkiaRenderer final : public Renderer {
                   core::CornerRadius radius = {}) override;
     void drawText(TextRun run, core::TextStyle style) override;
     void drawImage(ImageId id, core::Rect destination) override;
+    // M6：矢量图标（SkPath stroke）与阴影（blur mask filter）。
+    void drawIcon(std::vector<std::vector<core::Offset>> polylines,
+                  core::Rect box, core::Color color,
+                  float strokeWidth) override;
+    void drawShadow(core::Rect elevatedBox, core::Color color,
+                    core::Offset offset, float blur) override;
     void endFrame() override;
 
     // v0.2 阶段7B: 报告光栅后端能力；submit 走 Renderer 默认适配器。

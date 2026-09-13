@@ -120,6 +120,31 @@ int runHeadless(SettingsApp& app) {
                 library != nullptr ? library->scrollExtent : 0.0F);
     app.keyDown(lumen::core::Key::Escape);
     std::printf("route %s\n", app.navigator().current().c_str());
+
+    // M6：控件展示页与主题调试页。
+    (void)app.renderFrame();  // home 树落地。
+    app.wheel(centerOf("settings-list"), lumen::core::Offset{0.0F, -240.0F});
+    (void)app.renderFrame();
+    app.pointerDown(centerOf("goto-widgets-button"));
+    app.pointerUp(centerOf("goto-widgets-button"));
+    std::printf("route %s\n", app.navigator().current().c_str());
+    (void)app.renderFrame();
+    std::printf("widgets slider=%s progress=%s\n",
+                app.state().get("volume").c_str(),
+                app.state().get("progress").c_str());
+    app.keyDown(lumen::core::Key::Escape);
+    (void)app.renderFrame();
+
+    app.pointerDown(centerOf("goto-theme-button"));
+    app.pointerUp(centerOf("goto-theme-button"));
+    std::printf("route %s\n", app.navigator().current().c_str());
+    (void)app.renderFrame();
+    app.pointerDown(centerOf("toggle-dark-button"));
+    app.pointerUp(centerOf("toggle-dark-button"));
+    (void)app.renderFrame();
+    std::printf("theme switched ok\n");
+    app.keyDown(lumen::core::Key::Escape);
+    std::printf("route %s\n", app.navigator().current().c_str());
     return 0;
 }
 

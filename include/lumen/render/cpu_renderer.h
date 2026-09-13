@@ -48,6 +48,14 @@ class CpuRenderer final : public Renderer {
                   core::CornerRadius radius = {}) override;
     void drawText(TextRun run, core::TextStyle style) override;
     void drawImage(ImageId id, core::Rect destination) override;
+    // M6：矢量图标 —— 软件线条光栅（粗线 = 垂直/水平/对角微偏移多遍）。
+    void drawIcon(std::vector<std::vector<core::Offset>> polylines,
+                  core::Rect box, core::Color color,
+                  float strokeWidth) override;
+    // M6：阴影降级 —— 无模糊：token 阴影色的偏移扁平面（确定性近似；
+    // 命令与 Skia/GPU 一致，像素由后端能力决定）。
+    void drawShadow(core::Rect elevatedBox, core::Color color,
+                    core::Offset offset, float blur) override;
     void endFrame() override;
 
     // --- v0.2 命令路径（阶段7B）---

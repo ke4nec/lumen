@@ -121,6 +121,23 @@ class Renderer {
                           core::CornerRadius radius = {}) = 0;
     virtual void drawText(TextRun run, core::TextStyle style) = 0;
     virtual void drawImage(ImageId id, core::Rect destination) = 0;
+    // M6：矢量图标（归一化折线，stroke）与阴影（Skia blur；CPU 后端
+    // 以 token 指定的边框/表面降级——由 painter 决定，接口保持几何）。
+    virtual void drawIcon(std::vector<std::vector<core::Offset>> polylines,
+                          core::Rect box, core::Color color,
+                          float strokeWidth) {
+        (void)polylines;
+        (void)box;
+        (void)color;
+        (void)strokeWidth;
+    }
+    virtual void drawShadow(core::Rect elevatedBox, core::Color color,
+                            core::Offset offset, float blur) {
+        (void)elevatedBox;
+        (void)color;
+        (void)offset;
+        (void)blur;
+    }
     virtual void endFrame() = 0;
 
     // --- v0.2 command path ---

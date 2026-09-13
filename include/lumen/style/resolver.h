@@ -10,6 +10,19 @@
 
 namespace lumen::style {
 
+// M6：ThemeScope 布局期主题覆盖（UI 线程；子树解析切换到覆盖主题，
+// 析构恢复父主题；ThemeScope Widget 的 shared_ptr<void> 由布局层还原）。
+class ScopedThemeOverride {
+  public:
+    explicit ScopedThemeOverride(const Theme& theme);
+    ~ScopedThemeOverride();
+    ScopedThemeOverride(const ScopedThemeOverride&) = delete;
+    ScopedThemeOverride& operator=(const ScopedThemeOverride&) = delete;
+
+  private:
+    const Theme* previous_;
+};
+
 // 样式解析入口（docs/lumen-visual-system-design.md §5）。
 //
 // LayoutEngine 在布局前对每个节点解析一次样式并写入 RenderNode；resolver

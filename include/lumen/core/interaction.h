@@ -119,6 +119,8 @@ class InteractionController {
     // 语义/键盘焦点请求（plan §3.3 与语义 actions 共用路径）：字段建立
     // 编辑焦点（光标置末尾），其他节点只设置 FocusManager 焦点。
     void focusNode(const RenderNode& node);
+    // 语义 setValue：将 Slider 值限制到 0..100 后写回绑定状态。
+    bool setSliderValue(const RenderNode& node, const std::string& value);
 
     // M5：焦点恢复（路由 pop/页面切换）：把焦点给 subtree 内第一个
     // 可聚焦节点（enabled 的字段/按钮/开关；遍历顺序与 Tab 一致）。
@@ -193,6 +195,9 @@ class InteractionController {
     text::EditingHistory& historyFor(const std::string& bind);
     // 点击定位光标：命中字段局部坐标 → grapheme 边界（TextLayout 命中
     // 测试）。extend=true 从选区锚点扩展。
+    // M6：Slider 按根坐标位置设值（0..100 整数写 bind）。
+    void setSliderByPosition(const RenderNode& root,
+                             const RenderNode& node, Offset rootPosition);
     void placeCaretByHit(const RenderNode& field, Offset localPosition,
                          bool extend);
     // 焦点遍历（Tab/Shift-Tab）。返回是否移动了焦点。FocusScope 域内

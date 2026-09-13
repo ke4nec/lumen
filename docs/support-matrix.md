@@ -87,7 +87,8 @@ accessibility tree、Metal/Graphite。
 - 平台服务已统一接口（M4：文件选择/OpenURL/通知/光标/图标 + 能力报
   告）；通知在 SDL 3.2.10 无 API（结构化降级，真实通知待 SDL 升级或
   原生后端）；prefersDarkMode/accentColor 为安全默认（SDL 3.2 无查询）。
-- Icon/阴影/转场/ThemeScope、Dropdown/Menu/Tooltip/Slider/ProgressBar/
-  Radio/Tabs、Scrollbar 完整控件、表单扩展校验器：见 M6。
+- M6 视觉系统 V3 已收口（图标/阴影/滚动条 token 路径、六控件、
+  ThemeScope、组合校验器）；完整转场动画驱动、Dropdown 浮动菜单与
+  Tooltip hover 延迟属后续增强（transitionAlpha 通道就绪）。
 - GPU `partialSubmit` 固定 false，macOS GPU 非门槛：见 M7。
 - 无正式便携包流水线：见 M8；移动软键盘/字体策略：见 M9。

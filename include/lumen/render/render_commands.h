@@ -39,6 +39,9 @@ enum class CommandType : std::uint8_t {
     // Renderer 所属线程创建和销毁（plan §3.3）。
     UploadImage,
     UnloadImage,
+    // M6（自用路线图）：视觉系统 V3 扩展。
+    DrawIcon,    // 矢量图标（归一化折线组，stroke）
+    DrawShadow,  // 阴影（Skia blur；CPU 后端以 token 边框降级）
 };
 
 // 单条绘制命令。字段并集避免堆分配 variant；`bounds` 是命令影响的逻辑
@@ -59,6 +62,11 @@ struct RenderCommand {
     Transform2D transform{Transform2D::identity()};
     core::Rect bounds{};
     bool hasBounds{false};
+    // M6：DrawIcon —— 归一化折线组（0..1 盒内坐标）+ 线宽；颜色复用
+    // color，盒子复用 rect。DrawShadow —— 偏移/模糊半径复用 rect.origin
+    //（offset）/ rect.size.width（blur）；颜色复用 color。
+    std::vector<std::vector<core::Offset>> polylines{};
+    float strokeWidth{1.5F};
 
     [[nodiscard]] bool operator==(const RenderCommand&) const = default;
 };
@@ -108,6 +116,36 @@ class RenderCommandList {
         command.hasBounds = true;
     }
 
+    void drawIcon(std::vector<std::vector<core::Offset>> polylines,
+                  core::Rect box, core::Color color, float strokeWidth,
+                  std::optional<core::Rect> bounds = std::nullopt) {
+        RenderCommand& command = push(CommandType::DrawIcon);
+        command.polylines = std::move(polylines);
+        command.rect = box;
+        command.color = color;
+        command.strokeWidth = strokeWidth;
+        if (bounds.has_value()) {
+            command.bounds = *bounds;
+            command.hasBounds = true;
+        }
+    }
+
+    void drawShadow(core::Rect elevatedBox, core::Color color,
+                    core::Offset offset, float blur,
+                    std::optional<core::Rect> bounds = std::nullopt) {
+        RenderCommand& command = push(CommandType::DrawShadow);
+        command.rect = elevatedBox;
+        command.color = color;
+        // 偏移/模糊经专用字段（见 drawShadow 扩展字段）。
+        command.transform.tx = offset.x;
+        command.transform.ty = offset.y;
+        command.strokeWidth = blur;
+        if (bounds.has_value()) {
+            command.bounds = *bounds;
+            command.hasBounds = true;
+        }
+    }
+
     void uploadImage(ImageId id, PixelBuffer pixels) {
         RenderCommand& command = push(CommandType::UploadImage);
         command.image = id;
@@ -138,6 +176,8 @@ class RenderCommandList {
                 case CommandType::DrawRect:
                 case CommandType::DrawText:
                 case CommandType::DrawImage:
+                case CommandType::DrawIcon:
+                case CommandType::DrawShadow:
                     ++count;
                     break;
                 default:

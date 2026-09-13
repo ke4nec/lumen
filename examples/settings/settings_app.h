@@ -179,7 +179,122 @@ class SettingsApp {
         const style::Theme& theme = shell_.theme();
         std::vector<core::Widget> page;
 
-        if (navigator_.current() == "grid") {
+        if (navigator_.current() == "widgets") {
+            // M6：控件展示页（Slider/ProgressBar/Radio/Dropdown/Tabs/
+            // Tooltip/Icon；值经 StateStore bind 驱动）。
+            std::vector<core::Widget> items;
+            items.push_back(
+                core::withKey(titleText("Widgets", theme), "widgets-title"));
+            items.push_back(core::withKey(
+                mutedLabel("Volume: " + shell_.state().get("volume"),
+                           theme),
+                "volume-label"));
+            items.push_back(
+                core::withKey(core::makeSlider("volume"), "volume-slider"));
+            items.push_back(core::withKey(
+                mutedLabel("Progress: " + shell_.state().get("progress"),
+                           theme),
+                "progress-label"));
+            items.push_back(core::withKey(
+                core::makeProgressBar(shell_.state().get("progress")),
+                "progress-bar"));
+            core::Widget radioA =
+                core::makeRadio("Compact", "mode-a", "mode-a");
+            radioA.checked =
+                shell_.state().get("mode-a") == "true";
+            core::Widget radioB =
+                core::makeRadio("Full", "mode-b", "mode-b");
+            radioB.checked =
+                shell_.state().get("mode-b") == "true";
+            items.push_back(
+                core::withKey(std::move(radioA), "mode-a"));
+            items.push_back(
+                core::withKey(std::move(radioB), "mode-b"));
+            std::vector<core::Widget> options;
+            for (const char* color : {"Red", "Green", "Blue"}) {
+                core::Widget option =
+                    core::makeButton(std::string("Pick ") + color);
+                option.onClick = "pick-color";
+                option.key = "color-" + std::string(color);
+                options.push_back(std::move(option));
+            }
+            items.push_back(core::withKey(
+                core::makeDropdown(shell_.state().get("color"),
+                                   std::move(options), dropdownOpen_, "color"),
+                "color-dropdown"));
+            std::vector<core::Widget> tabButtons;
+            for (const char* tab : {"Basic", "More"}) {
+                core::Widget tabButton = core::makeButton(std::string(tab));
+                tabButton.onClick = "switch-tab";
+                tabButton.key = "tab-" + std::string(tab);
+                tabButton.selected =
+                    shell_.state().get("widget-tab") == tab;
+                tabButtons.push_back(std::move(tabButton));
+            }
+            items.push_back(
+                core::withKey(core::makeTabs(std::move(tabButtons), "tabs"),
+                              "tabs"));
+            items.push_back(core::withKey(
+                core::makeTooltip("M6 widget showcase", "showcase-tip"),
+                "showcase-tip"));
+            items.push_back(core::withKey(
+                core::makeIcon(core::IconId::Check, "icon-check"),
+                "icon-check"));
+            items.push_back(core::withKey(
+                core::withIcon(core::makeButton("Add"), core::IconId::Plus),
+                "icon-add-button"));
+            items.push_back(core::withKey(
+                buttonWidget("Back", "back", "back-button",
+                             core::ButtonVariant::Outline),
+                "back-button"));
+            core::Widget column = core::makeColumn(
+                std::move(items), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Start, style::spaceToken(4),
+                core::EdgeInsets::all(style::spaceToken(6)));
+            column.flex = 1.0F;
+            page.push_back(core::withKey(
+                core::withScrollOffset(
+                    core::makeListView(std::move(column), "settings-list"),
+                    scroll_.offset()),
+                "settings-list"));
+        } else if (navigator_.current() == "theme") {
+            // M6：主题调试页（深浅切换/强调色/局部 ThemeScope 预览）。
+            std::vector<core::Widget> items;
+            items.push_back(
+                core::withKey(titleText("Theme", theme), "theme-title"));
+            items.push_back(core::withKey(
+                buttonWidget(darkMode_ ? "Switch to light" : "Switch to dark",
+                             "toggle-dark", "toggle-dark-button",
+                             core::ButtonVariant::Filled),
+                "toggle-dark-button"));
+            // 局部主题域：对比预览（light scope 内的按钮/文本）。
+            core::Widget scopeBody = core::makeColumn({
+                core::withKey(mutedLabel("Inside light scope", theme),
+                              "scope-label"),
+                core::withKey(
+                    core::withIcon(core::makeButton("Scoped"),
+                                   core::IconId::Check),
+                    "scope-button"),
+            });
+            core::Widget scope =
+                core::makeThemeScope(std::move(scopeBody),
+                                     themeScopeData_);
+            items.push_back(core::withKey(std::move(scope), "theme-scope"));
+            items.push_back(core::withKey(
+                buttonWidget("Back", "back", "back-button",
+                             core::ButtonVariant::Outline),
+                "back-button"));
+            core::Widget column = core::makeColumn(
+                std::move(items), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Start, style::spaceToken(4),
+                core::EdgeInsets::all(style::spaceToken(6)));
+            column.flex = 1.0F;
+            page.push_back(core::withKey(
+                core::withScrollOffset(
+                    core::makeListView(std::move(column), "settings-list"),
+                    scroll_.offset()),
+                "settings-list"));
+        } else if (navigator_.current() == "grid") {
             // M3：Grid 页面（最小列宽自适应，窗口变化重排）。
             std::vector<core::Widget> cells;
             for (int i = 0; i < 18; ++i) {
@@ -286,6 +401,14 @@ class SettingsApp {
                 buttonWidget("Library grid", "goto-grid", "goto-grid-button",
                              core::ButtonVariant::Filled),
                 "goto-grid-button"));
+            list.push_back(core::withKey(
+                buttonWidget("Widgets", "goto-widgets", "goto-widgets-button",
+                             core::ButtonVariant::Filled),
+                "goto-widgets-button"));
+            list.push_back(core::withKey(
+                buttonWidget("Theme", "goto-theme", "goto-theme-button",
+                             core::ButtonVariant::Filled),
+                "goto-theme-button"));
             list.push_back(core::withKey(
                 buttonWidget("Browse library (1000)", "goto-library",
                              "goto-library-button",
@@ -457,6 +580,12 @@ class SettingsApp {
             return item;
         });
 
+        shell_.state().set("volume", "40");
+        shell_.state().set("progress", "64");
+        shell_.state().set("mode-a", "true");
+        shell_.state().set("mode-b", "false");
+        shell_.state().set("color", "Red");
+        shell_.state().set("widget-tab", "Basic");
         shell_.state().set("nickname", "");
         shell_.state().set("email", "");
         shell_.state().set("notifications", "true");
@@ -468,6 +597,30 @@ class SettingsApp {
         };
         handlers["goto-grid"] = [this] {
             navigator_.push("grid");
+            shell_.markDirty();
+        };
+        handlers["goto-widgets"] = [this] {
+            navigator_.push("widgets");
+            shell_.markDirty();
+        };
+        handlers["goto-theme"] = [this] {
+            navigator_.push("theme");
+            shell_.markDirty();
+        };
+        // M6 控件页。
+        handlers["pick-color"] = [this] {
+            // 选项按钮 key = color-<Name>。
+            dropdownOpen_ = false;
+            shell_.markDirty();
+        };
+        handlers["switch-tab"] = [this] {
+            shell_.markDirty();
+        };
+        handlers["toggle-dark"] = [this] {
+            darkMode_ = !darkMode_;
+            shell_.setTheme(style::Theme::fromSettings(
+                shell_.accessibilitySettings(), darkMode_,
+                shell_.theme().metrics.density));
             shell_.markDirty();
         };
         // M4：平台服务（动作经 main 注入；缺省时报告服务不可用）。
@@ -638,6 +791,10 @@ class SettingsApp {
     // M4：平台服务动作（main 注入）与最近结果展示。
     ServiceActions serviceActions_{};
     std::string pickedFile_{};
+    // M6：控件页状态与主题域数据（light 对比预览）。
+    bool dropdownOpen_{true};
+    std::shared_ptr<void> themeScopeData_{
+        style::makeThemeScopeData(style::Theme::light())};
 
     app::AppShell shell_;
 };

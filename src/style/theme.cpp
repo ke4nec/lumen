@@ -338,4 +338,23 @@ Theme Theme::fromSettings(
     return theme;
 }
 
+std::shared_ptr<void> makeThemeScopeData(Theme theme) {
+    return std::make_shared<Theme>(std::move(theme));
+}
+
+Theme adaptPlatformTheme(const Theme& base, bool darkMode,
+                         core::Color accentColor, float fontScale) {
+    accessibility::AccessibilitySettings settings;
+    settings.fontScale = fontScale;
+    Theme adapted = Theme::fromSettings(settings, darkMode,
+                                         base.metrics.density);
+    // 强调色：filled 按钮与焦点环随平台 accent（token 链派生）。
+    adapted.button.filled.background = accentColor;
+    adapted.colors.accent = accentColor;
+    // 字体缩放：经 accessibility 派生（typography 由 fromSettings 派生，
+    // 这里保留 metrics 供后续 fromSettings 重派生）。
+    (void)fontScale;
+    return adapted;
+}
+
 }  // namespace lumen::style
