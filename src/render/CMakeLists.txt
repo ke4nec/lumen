@@ -121,11 +121,14 @@ if(LUMEN_ENABLE_SKIA)
         # skia_text CoreText 端口（SkFontMgr_New_CoreText）：CoreText 的
         # CTFont/CFString 符号落在 CoreFoundation，字形光栅经 CoreGraphics，
         # 缺一即 ld 报 kCF* / ___CFConstantStringClassReference 未定义
-        #（macos skia-gpu Build 失败实测）。
+        #（macos skia-gpu Build 失败实测）。dng_sdk（Adobe DNG 编解码）
+        # 在 macOS 用 Carbon 文本编码转换（ConvertFromTextToUnicode 等），
+        # 符号在 CoreServices，需一并链接，否则第二轮报 Carbon 未定义。
         target_link_libraries(lumen-render PRIVATE
             "-framework CoreText"
             "-framework CoreFoundation"
-            "-framework CoreGraphics")
+            "-framework CoreGraphics"
+            "-framework CoreServices")
         find_package(Threads REQUIRED)
         target_link_libraries(lumen-render PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
         find_package(ZLIB REQUIRED)

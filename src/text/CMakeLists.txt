@@ -6,6 +6,7 @@ add_library(lumen-text STATIC
     editing_value.cpp
     editing_history.cpp
     skia_font_manager.cpp
+    mobile_font_manager.cpp
 )
 
 target_include_directories(lumen-text PUBLIC
@@ -15,6 +16,11 @@ target_include_directories(lumen-text PUBLIC
 # lumen-text 只依赖 lumen-core（plan §6：Skia 实现是可选目标，契约不含
 # 平台/Skia 类型）。
 target_link_libraries(lumen-text PUBLIC lumen-core)
+# M9：移动字体后端（stb_truetype；实现侧私有依赖）。
+if(TARGET stb)
+    target_compile_definitions(lumen-text PRIVATE LUMEN_HAS_STB_TRUETYPE=1)
+    target_include_directories(lumen-text PRIVATE ${stb_SOURCE_DIR})
+endif()
 target_compile_features(lumen-text PUBLIC cxx_std_20)
 
 # M1：Skia-backed FontManager（桌面正式字体/回退/shaping）。
@@ -84,7 +90,8 @@ if(LUMEN_ENABLE_SKIA)
         target_link_libraries(lumen-text PRIVATE
             "-framework CoreText"
             "-framework CoreFoundation"
-            "-framework CoreGraphics")
+            "-framework CoreGraphics"
+            "-framework CoreServices")
         find_package(Threads REQUIRED)
         target_link_libraries(lumen-text PRIVATE
             Threads::Threads ${CMAKE_DL_LIBS} m)
