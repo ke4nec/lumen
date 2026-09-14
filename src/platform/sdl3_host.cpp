@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <SDL3/SDL.h>
@@ -678,6 +679,17 @@ ServiceResult Sdl3ApplicationHost::openUrl(const std::string& url) {
 
 ServiceResult Sdl3ApplicationHost::requestFileDialog(
     core::WindowId id, const FileDialogRequest& request) {
+    // Headless/dummy 驱动无原生对话框实现：在 macOS 上 Cocoa 面板在
+    // dummy 下可能永不回调甚至崩溃，Linux 上则走 portal 异步路径。
+    // 为三端一致，dummy 下直接同步返回 Unavailable（调用方按契约降级，
+    // 测试走同步失败分支），避免平台相关的异步悬挂/崩溃。
+    if (const char* driver = SDL_GetCurrentVideoDriver();
+        driver != nullptr && std::string(driver) == "dummy") {
+        (void)request;
+        (void)id;
+        return ServiceResult::unavailable(
+            "file dialogs unavailable with dummy video driver");
+    }
     WindowEntry* entry = find(id);
     if (entry == nullptr && !windows_.empty()) {
         // 单窗口应用便捷路径：无效窗口 id 时挂靠首个窗口（对话框获得
