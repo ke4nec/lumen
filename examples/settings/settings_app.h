@@ -25,6 +25,7 @@
 #include "lumen/render/renderer.h"
 #include "lumen/style/theme.h"
 #include "lumen/text/font_manager.h"
+#include "lumen/widgets/dropdown.h"
 #include "lumen/widgets/form.h"
 #include "lumen/widgets/navigator.h"
 
@@ -204,17 +205,10 @@ class SettingsApp {
                 core::withKey(std::move(radioA), "mode-a"));
             items.push_back(
                 core::withKey(std::move(radioB), "mode-b"));
-            std::vector<core::Widget> options;
-            for (const char* color : {"Red", "Green", "Blue"}) {
-                core::Widget option =
-                    core::makeButton(std::string("Pick ") + color);
-                option.onClick = "pick-color";
-                option.key = "color-" + std::string(color);
-                options.push_back(std::move(option));
-            }
+            // M11：Dropdown 浮动菜单（收起叶子；点击值行打开 overlay）。
             items.push_back(core::withKey(
                 core::makeDropdown(shell_.state().get("color"),
-                                   std::move(options), dropdownOpen_, "color"),
+                                   "open-dropdown", "color"),
                 "color-dropdown"));
             std::vector<core::Widget> tabButtons;
             for (const char* tab : {"Basic", "More"}) {
@@ -515,6 +509,11 @@ class SettingsApp {
         // Escape/返回键统一规则：先问 modal，再问路由栈（plan §3.4）。
         config.onKey = [self](app::AppShell& shell, core::Key key,
                               core::KeyModifiers, char) {
+            // M11：下拉菜单键盘导航（modal 优先于路由返回规则；未打开
+            // 时 Up/Down 仍走滚动路径）。
+            if (self->dropdown_.handleKey(shell, key)) {
+                return true;
+            }
             if (key == core::Key::Escape &&
                 self->navigator_.handleBack(self->dialogOpen_)) {
                 if (self->dialogOpen_) {
@@ -588,6 +587,11 @@ class SettingsApp {
         library_.setItemCount(1000);
         // M11：Tooltip hover 延迟驱动（anchor → tooltip 关联）。
         shell_.registerTooltip("icon-add-button", "showcase-tip");
+        // M11：下拉选中回调（关闭菜单后写状态重建）。
+        dropdown_.onSelected = [this](const std::string& name) {
+            shell_.state().set("color", name);
+            shell_.markDirty();
+        };
         library_.setEstimatedExtent(44.0F);
         library_.setItemBuilder([this](std::size_t index) {
             core::Widget item = core::makeText(
@@ -628,11 +632,10 @@ class SettingsApp {
             navigator_.push("theme");
             shell_.markDirty();
         };
-        // M6 控件页。
-        handlers["pick-color"] = [this] {
-            // 选项按钮 key = color-<Name>。
-            dropdownOpen_ = false;
-            shell_.markDirty();
+        // M6 控件页。M11：Dropdown 浮动菜单（值行点击打开；选中回调
+        // 写状态）。
+        handlers["open-dropdown"] = [this] {
+            dropdown_.open(shell_, "color");
         };
         handlers["switch-tab"] = [this] {
             shell_.markDirty();
@@ -864,8 +867,12 @@ class SettingsApp {
     // M4：平台服务动作（main 注入）与最近结果展示。
     ServiceActions serviceActions_{};
     std::string pickedFile_{};
-    // M6：控件页状态与主题域数据（light 对比预览）。
-    bool dropdownOpen_{true};
+    // M6：控件页状态与主题域数据（light 对比预览）。M11：下拉改浮动
+    // 菜单控制器。
+    widgets::DropdownController dropdown_{{{"Red", "Red"},
+                                           {"Green", "Green"},
+                                           {"Blue", "Blue"}},
+                                          "Red"};
     std::shared_ptr<void> themeScopeData_{
         style::makeThemeScopeData(style::Theme::light())};
 

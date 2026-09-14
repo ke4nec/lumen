@@ -65,6 +65,18 @@ void go(GalleryApp& app, const std::string& navKey) {
     (void)app.renderFrame();
 }
 
+// M11：点击 overlay 菜单选项（坐标相对 overlay 根 = 窗口坐标）。
+void clickOverlayOption(GalleryApp& app, const std::string& key) {
+    const RenderNode* overlay = app.shell().overlayRoot();
+    REQUIRE(overlay != nullptr);
+    const RenderNode* node = findNodeByKey(*overlay, key);
+    REQUIRE(node != nullptr);
+    const Offset point = absoluteOffset(*overlay, key) +
+        Offset{node->size.width * 0.5F, node->size.height * 0.5F};
+    app.pointerDown(point);
+    app.pointerUp(point);
+}
+
 }  // namespace
 
 TEST_CASE("gallery_navigation_and_button_counter", "[gallery]") {
@@ -103,12 +115,40 @@ TEST_CASE("gallery_inputs_dropdown_tabs_and_form", "[gallery]") {
     clickVisible(app, "autosave-checkbox");
     CHECK(app.state().get("autosave") == "true");
 
-    // 下拉默认展开：选中 Green 后收起。
-    clickVisible(app, "color-Green");
+    // M11：下拉浮动菜单——值行点击打开 overlay（barrier+锚定菜单）。
+    REQUIRE_FALSE(app.dropdownOpen());
+    clickVisible(app, "color-dropdown");
+    (void)app.renderFrame();
+    REQUIRE(app.dropdownOpen());
+    REQUIRE(app.shell().overlayRoot() != nullptr);
+    // 选项在 overlay 树中（主树不含选项子树）。
+    CHECK(findNodeByKey(*app.shell().overlayRoot(),
+                        "color-dropdown-opt-1") != nullptr);
+    clickOverlayOption(app, "color-dropdown-opt-1");  // Green
+    (void)app.renderFrame();
     CHECK(app.state().get("color") == "Green");
     CHECK_FALSE(app.dropdownOpen());
-    clickVisible(app, "toggle-dropdown-button");
-    CHECK(app.dropdownOpen());
+    CHECK(app.shell().overlayRoot() == nullptr);
+
+    // 键盘路径：值行聚焦 + Enter 打开 → Down/Enter 选中（与指针同
+    // handler 路径）。
+    clickVisible(app, "color-dropdown");
+    (void)app.renderFrame();
+    REQUIRE(app.dropdownOpen());
+    app.keyDown(Key::Down);
+    app.keyDown(Key::Enter);
+    (void)app.renderFrame();
+    CHECK_FALSE(app.dropdownOpen());
+    CHECK(app.state().get("color") == "Blue");  // Red→Down→Blue
+
+    // Esc 关闭不选值。
+    clickVisible(app, "color-dropdown");
+    (void)app.renderFrame();
+    REQUIRE(app.dropdownOpen());
+    app.keyDown(Key::Escape);
+    (void)app.renderFrame();
+    CHECK_FALSE(app.dropdownOpen());
+    CHECK(app.state().get("color") == "Blue");
 
     clickVisible(app, "tab-More");
     (void)app.renderFrame();

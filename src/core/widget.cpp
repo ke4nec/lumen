@@ -42,6 +42,7 @@ bool isLeafWidget(WidgetType type) {
         case WidgetType::ProgressBar: // M6：展示叶子
         case WidgetType::Radio:       // M6：选择叶子
         case WidgetType::Tooltip:     // M6：提示叶子
+        case WidgetType::Dropdown:    // M11：值行叶子（选项走 overlay）
             return true;
         case WidgetType::Container:
         case WidgetType::Row:
@@ -52,7 +53,6 @@ bool isLeafWidget(WidgetType type) {
         case WidgetType::FocusScope:
         case WidgetType::Grid:
         case WidgetType::VirtualList:
-        case WidgetType::Dropdown:  // M6：展开式容器（选项子树）
         case WidgetType::Tabs:      // M6：标签行容器
         case WidgetType::ThemeScope:  // M6：主题域（单子容器）
             return false;

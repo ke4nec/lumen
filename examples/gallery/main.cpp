@@ -118,13 +118,26 @@ int runHeadless(GalleryApp& app) {
     std::printf("username=%s autosave=%s\n",
                 app.state().get("username").c_str(),
                 app.state().get("autosave").c_str());
-    clickVisible(app, "color-Green");
+    // M11：下拉浮动菜单——值行点击打开 overlay，选项在 overlay 树中。
+    clickVisible(app, "color-dropdown");
+    (void)app.renderFrame();
+    std::printf("dropdown=%s\n", app.dropdownOpen() ? "open" : "closed");
+    if (app.shell().overlayRoot() != nullptr) {
+        const lumen::core::RenderNode* option = lumen::core::findNodeByKey(
+            *app.shell().overlayRoot(), "color-dropdown-opt-1");
+        if (option != nullptr) {
+            const lumen::core::Offset point =
+                lumen::core::absoluteOffset(*app.shell().overlayRoot(),
+                                            "color-dropdown-opt-1") +
+                lumen::core::Offset{option->size.width * 0.5F,
+                                    option->size.height * 0.5F};
+            app.pointerDown(point);
+            app.pointerUp(point);
+        }
+    }
     std::printf("color=%s dropdown=%s\n",
                 app.state().get("color").c_str(),
                 app.dropdownOpen() ? "open" : "closed");
-    (void)app.renderFrame();
-    clickVisible(app, "toggle-dropdown-button");
-    std::printf("dropdown=%s\n", app.dropdownOpen() ? "open" : "closed");
     (void)app.renderFrame();
     clickVisible(app, "tab-More");
     (void)app.renderFrame();

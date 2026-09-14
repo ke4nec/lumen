@@ -599,15 +599,10 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             break;
         }
         case WidgetType::Dropdown: {
-            // M6：值行（按钮表面 + 文本 + ChevronDown 图标）；展开的选项
-            // 子树由通用子绘制路径处理（Column 布局）。值行高度取行高，
-            // 展开时表面覆盖到首个子节点顶部。
+            // M11：值行（按钮表面 + 文本 + ChevronDown 图标）；收起叶子，
+            // 选项经框架级 overlay 浮动菜单呈现（不再内嵌展开）。
             const float lineHeight = lineHeightOf(common.text);
-            const Rect valueRow{
-                origin, Size{node.size.width,
-                             node.children.empty() || !node.dropdownOpen
-                                 ? node.size.height
-                                 : lineHeight}};
+            const Rect valueRow{origin, node.size};
             paintControlSurface(sink, valueRow, common);
             {
                 const ScopedClip<Sink> clip{sink, valueRow};

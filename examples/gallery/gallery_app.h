@@ -21,6 +21,7 @@
 #include "lumen/core/scroll.h"
 #include "lumen/core/virtual_list.h"
 #include "lumen/core/state.h"
+#include "lumen/widgets/dropdown.h"
 #include "lumen/core/widget.h"
 #include "lumen/render/renderer.h"
 #include "lumen/style/theme.h"
@@ -102,7 +103,8 @@ class GalleryApp {
     }
     [[nodiscard]] widgets::FormController& form() { return form_; }
     [[nodiscard]] bool dialogOpen() const { return dialogOpen_; }
-    [[nodiscard]] bool dropdownOpen() const { return dropdownOpen_; }
+    [[nodiscard]] bool dropdownOpen() const { return dropdown_.isOpen(); }
+    [[nodiscard]] widgets::DropdownController& dropdown() { return dropdown_; }
     [[nodiscard]] bool darkMode() const { return darkMode_; }
     [[nodiscard]] style::ThemeDirection direction() const {
         return direction_;
@@ -177,6 +179,11 @@ class GalleryApp {
         config.build = [self] { return self->buildUi(); };
         config.onKey = [self](app::AppShell& shell, core::Key key,
                               core::KeyModifiers, char) {
+            // M11：下拉菜单键盘导航（modal 优先于路由返回规则；未打开
+            // 时 Up/Down 仍走滚动路径）。
+            if (self->dropdown_.handleKey(shell, key)) {
+                return true;
+            }
             if (key == core::Key::Escape &&
                 self->navigator_.handleBack(self->dialogOpen_)) {
                 if (self->dialogOpen_) {
@@ -238,6 +245,10 @@ class GalleryApp {
         library_.setItemCount(1000);
         // M11：Tooltip hover 延迟驱动（anchor → tooltip 关联）。
         shell_.registerTooltip("tooltip-anchor-button", "showcase-tip");
+        // M11：下拉选中回调（关闭菜单后写状态重建）。
+        dropdown_.onSelected = [this](const std::string& name) {
+            pickColor(name);
+        };
         library_.setEstimatedExtent(44.0F);
         library_.setItemBuilder([this](std::size_t index) {
             core::Widget item = core::makeText(
@@ -287,13 +298,11 @@ class GalleryApp {
             shell_.state().set("button-clicks",
                                std::to_string(clicks + 1));
         };
-        handlers["toggle-dropdown"] = [this] {
-            dropdownOpen_ = !dropdownOpen_;
-            shell_.markDirty();
+        handlers["open-dropdown"] = [this] {
+            // M11：Dropdown 浮动菜单（值行/按钮点击打开；选中经控制器
+            // onSelected 回调写状态）。
+            dropdown_.open(shell_, "color-dropdown");
         };
-        handlers["pick-red"] = [this] { pickColor("Red"); };
-        handlers["pick-green"] = [this] { pickColor("Green"); };
-        handlers["pick-blue"] = [this] { pickColor("Blue"); };
         handlers["switch-tab-basic"] = [this] {
             shell_.state().set("gallery-tab", "Basic");
         };
@@ -409,7 +418,6 @@ class GalleryApp {
 
     void pickColor(const std::string& name) {
         shell_.state().set("color", name);
-        dropdownOpen_ = false;
         shell_.markDirty();
     }
 
@@ -630,7 +638,7 @@ class GalleryApp {
         std::string status = "Route: " + navigator_.current() +
                              " | Theme: " + (darkMode_ ? "dark" : "light") +
                              " | Dropdown: " +
-                             (dropdownOpen_ ? "open" : "closed");
+                             (dropdown_.isOpen() ? "open" : "closed");
         core::Widget label = mutedLabel(std::move(status), theme);
         label.key = "gallery-footer-label";
         core::Widget row = core::makeRow(
@@ -876,26 +884,16 @@ class GalleryApp {
         selection.push_back(core::withKey(
             mutedLabel("Color: " + shell_.state().get("color"), theme),
             "color-label"));
-        std::vector<core::Widget> options;
-        for (const char* color : {"Red", "Green", "Blue"}) {
-            core::Widget option = core::makeButton(
-                std::string("Pick ") + color, core::TextStyle{},
-                core::EdgeInsets{}, 0.0F,
-                std::string("color-") + color, std::nullopt, std::nullopt,
-                std::string("pick-") + (color[0] == 'R' ? "red"
-                                         : (color[0] == 'G' ? "green"
-                                                            : "blue")));
-            options.push_back(std::move(option));
-        }
+        // M11：Dropdown 浮动菜单（收起叶子；点击值行/按钮经控制器在
+        // 框架级 overlay 上展开，键盘 Up/Down/Enter/Esc 可导航）。
         core::Widget dropdown = core::makeDropdown(
-            shell_.state().get("color"), std::move(options), dropdownOpen_,
-            "color-dropdown");
+            shell_.state().get("color"), "open-dropdown", "color-dropdown");
         dropdown.bind = "color";
         selection.push_back(
             core::withKey(std::move(dropdown), "color-dropdown"));
         selection.push_back(core::withKey(
-            buttonWidget(dropdownOpen_ ? "Close dropdown" : "Open dropdown",
-                         "toggle-dropdown", "toggle-dropdown-button",
+            buttonWidget("Open dropdown", "open-dropdown",
+                         "toggle-dropdown-button",
                          core::ButtonVariant::Outline),
             "toggle-dropdown-button"));
         std::vector<core::Widget> tabButtons;
@@ -1538,7 +1536,11 @@ class GalleryApp {
     bool dialogOpen_{false};
     bool focusRestorePending_{false};
     mutable core::VirtualListController library_{};
-    bool dropdownOpen_{true};
+    // M11：下拉浮动菜单控制器（选项 + 当前值；选中回调写状态）。
+    widgets::DropdownController dropdown_{{{"Red", "Red"},
+                                           {"Green", "Green"},
+                                           {"Blue", "Blue"}},
+                                          "Red"};
     std::shared_ptr<void> themeScopeData_{
         style::makeThemeScopeData(style::Theme::light())};
 

@@ -242,7 +242,6 @@ struct Widget {
     bool invalid{false};
     bool selected{false};
     // --- M6 集中区（小字段连续，消除 padding） ---
-    bool dropdownOpen{false};  // Dropdown：展开选项列表
     bool showScrollbar{false};  // 滚动条显隐（滚动视口）
     IconId icon{IconId::None};  // 图标语义 ID（Icon 节点/Button 图标位）
     float elevation{0.0F};  // 层级（ElevationTokens；0 = 无阴影）
@@ -643,18 +642,19 @@ inline Widget makeTooltip(std::string text, std::string key = {}) {
     return widget;
 }
 
-// Dropdown：当前值 + 选项展开。children = 选项（open 时可见；选项点击
-// 经通用 onClick）。当前值行自带 ChevronDown 图标。
-inline Widget makeDropdown(std::string value, std::vector<Widget> options,
-                           bool open, std::string key = {},
+// Dropdown：当前值行（收起叶子）。M11 起选项经框架级 overlay 浮动菜单
+//（widgets::DropdownController）呈现，不再作为 children 内嵌展开；点击
+// 值行经 openHandler 打开菜单。值行自带 ChevronDown 图标。
+inline Widget makeDropdown(std::string value, std::string openHandler,
+                           std::string key = {},
                            std::optional<float> width = std::nullopt) {
     Widget widget;
     widget.type = WidgetType::Dropdown;
     widget.text = std::move(value);  // 当前值复用 text
-    widget.dropdownOpen = open;
+    widget.onClick = std::move(openHandler);
+    widget.buttonVariant = ButtonVariant::Outline;  // 值行 = 边框控件
     widget.key = std::move(key);
     widget.width = width;
-    widget.children = std::move(options);
     return widget;
 }
 

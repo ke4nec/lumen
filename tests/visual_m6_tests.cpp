@@ -302,15 +302,9 @@ TEST_CASE("radio_toggles_through_same_path_as_checkbox", "[controls][m6]") {
     CHECK((node->flags & accessibility::kSemanticsChecked) != 0);
 }
 
-TEST_CASE("dropdown_expands_options_and_paints_value_row", "[controls][m6]") {
-    std::vector<Widget> options;
-    for (const char* label : {"Red", "Green", "Blue"}) {
-        Widget option = makeText(label);
-        option.key = std::string("opt-") + label;
-        options.push_back(std::move(option));
-    }
-    Widget dropdown =
-        makeDropdown("Green", std::move(options), true, "color");
+TEST_CASE("dropdown_collapsed_leaf_and_floating_menu_flow", "[controls][m11]") {
+    // M11：值行收起叶子（无选项子树、不挤压父布局）+ 浮动菜单流。
+    Widget dropdown = makeDropdown("Green", "open-menu", "color");
     Widget page;
     page.key = "root";
     page.children = {std::move(dropdown)};
@@ -318,9 +312,10 @@ TEST_CASE("dropdown_expands_options_and_paints_value_row", "[controls][m6]") {
 
     const RenderNode* dropdownNode = findNodeByKey(root, "color");
     REQUIRE(dropdownNode != nullptr);
-    CHECK(dropdownNode->dropdownOpen);
-    CHECK(dropdownNode->children.size() == 3);
-    CHECK(findNodeByKey(root, "opt-Red") != nullptr);
+    CHECK(dropdownNode->children.empty());
+    CHECK(dropdownNode->onClick == "open-menu");
+    // 收起高度 = 单行控件（远小于三选项高度）。
+    CHECK(dropdownNode->size.height < 60.0F);
 
     // 值行绘制带 ChevronDown 图标。
     const auto commands = render::recordScene(root);
@@ -331,7 +326,7 @@ TEST_CASE("dropdown_expands_options_and_paints_value_row", "[controls][m6]") {
         }
     }
     CHECK(sawChevron);
-    // 命令含 Dropdown 语义值。
+    // 语义值为当前值。
     const auto tree = accessibility::buildSemanticsTree(root);
     const auto* node = tree.find(dropdownNode->identity);
     REQUIRE(node != nullptr);

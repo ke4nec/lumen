@@ -98,7 +98,6 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.scrollOffset = widget.scrollOffset;
     node.imageId = widget.imageId;
     node.imageSource = widget.imageSource;
-    node.dropdownOpen = widget.dropdownOpen;
     // 值控件复用 RenderNode::text：绑定值由 applyBinds 写入，未绑定值
     // 由构建器直接放在 Widget::text 中。
     if (widget.type == WidgetType::Slider ||
@@ -332,9 +331,8 @@ RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
             return layoutScrollView(widget, constraints, styleContext,
                                     identity);
         case WidgetType::Dropdown:
-            // M6：展开式 = 纵向排布（值行 + 选项）。
-            return layoutFlex(widget, constraints, styleContext, identity,
-                              false);
+            // M11：值行叶子（收起态；选项经框架级 overlay 浮动菜单）。
+            return layoutLeaf(widget, constraints, styleContext, identity);
         case WidgetType::ThemeScope: {
             // M6：局部主题域——子树解析切换到覆盖主题。
             const auto* override =
