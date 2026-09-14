@@ -72,7 +72,8 @@ if(LUMEN_ENABLE_SKIA)
         find_package(ZLIB REQUIRED)
         target_link_libraries(lumen-text PRIVATE ZLIB::ZLIB)
     elseif(APPLE)
-        # macOS 同目录全量归档 + CoreText + 系统库（见 lumen-render）。
+        # macOS 同目录全量归档 + CoreText/CoreFoundation/CoreGraphics +
+        # 系统库（见 lumen-render；缺 CoreFoundation 即 kCF* 未定义）。
         file(GLOB LUMEN_TEXT_SKIA_BUNDLED_LIBS
             "${LUMEN_TEXT_SKIA_LIB_DIR}/lib*.a")
         list(REMOVE_ITEM LUMEN_TEXT_SKIA_BUNDLED_LIBS
@@ -80,7 +81,10 @@ if(LUMEN_ENABLE_SKIA)
         target_link_libraries(lumen-text PRIVATE
             ${LUMEN_TEXT_SKIA_LIBRARY}
             ${LUMEN_TEXT_SKIA_BUNDLED_LIBS})
-        target_link_libraries(lumen-text PRIVATE "-framework CoreText")
+        target_link_libraries(lumen-text PRIVATE
+            "-framework CoreText"
+            "-framework CoreFoundation"
+            "-framework CoreGraphics")
         find_package(Threads REQUIRED)
         target_link_libraries(lumen-text PRIVATE
             Threads::Threads ${CMAKE_DL_LIBS} m)
