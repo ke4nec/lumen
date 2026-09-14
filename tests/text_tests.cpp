@@ -1060,6 +1060,7 @@ TEST_CASE("skia_font_manager_factory_reports_backend_state",
           "[text][fonts]") {
     std::string diagnostic;
     const auto fonts = createSkiaFontManager(&diagnostic);
+    INFO("diagnostic: " << diagnostic);
     CHECK_FALSE(diagnostic.empty());
     if (fonts == nullptr) {
         // CPU-only 构建：工厂明确说明未编译，不静默。
@@ -1068,11 +1069,19 @@ TEST_CASE("skia_font_manager_factory_reports_backend_state",
         CHECK(fonts->backend() == FontBackend::Skia);
         CHECK(fonts->supportsShaping());
         CHECK(diagnostic.find("skia") != std::string::npos);
-        if (fonts->availableFamilies().empty()) {
+        const auto families = fonts->availableFamilies();
+        INFO("familyCount: " << families.size()
+                             << " diagnostic: " << fonts->diagnostic());
+        for (std::size_t i = 0; i < std::min<std::size_t>(families.size(), 5); ++i) {
+            INFO("family[" << i << "]: " << families[i]);
+        }
+        if (families.empty()) {
             // 极简容器：Skia 已编译但无系统字体，缺字状态必须明确、
             // 编辑索引不受影响（M1 缺字体可启动条款）。
             const FontFallbackStatus status = fonts->resolveWithStatus(
                 FontQuery{"", FontWeight::Normal, false, 14.0F}, 'A');
+            INFO("missing=" << status.missing
+                            << " diag=" << status.diagnostic);
             CHECK(status.missing);
             CHECK_FALSE(status.diagnostic.empty());
             return;
@@ -1080,10 +1089,13 @@ TEST_CASE("skia_font_manager_factory_reports_backend_state",
         // 拉丁字母应可解析（任何桌面系统字体环境）。
         const std::string family = fonts->resolveFamily(
             FontQuery{"", FontWeight::Normal, false, 14.0F}, 'A');
+        INFO("resolved family for 'A': " << family);
         CHECK_FALSE(family.empty());
         // shaped cluster 返回非空字形且携带 cluster 索引。
         const auto glyphs = fonts->shapeCluster(
             FontQuery{"", FontWeight::Normal, false, 14.0F}, "A", 3);
+        INFO("shaped glyphs: " << glyphs.size()
+                               << (glyphs.empty() ? 0 : glyphs[0].advancePx));
         REQUIRE(glyphs.size() == 1);
         CHECK(glyphs[0].cluster == 3);
         CHECK(glyphs[0].advancePx > 0.0F);

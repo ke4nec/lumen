@@ -287,21 +287,25 @@ lumen::core::RenderNode layoutRootOfMixedText(const std::string& text,
 TEST_CASE("skia_real_fonts_shape_layout_and_paint", "[skia][text]") {
     std::string diagnostic;
     auto fonts = lumen::text::createSkiaFontManager(&diagnostic);
+    INFO("skia diagnostic: " << diagnostic);
     if (fonts == nullptr) {
-        // 无系统字体的环境：工厂明确报告而不是静默失败（M1 出口条件）。
+        // CPU-only 构建不应编入本测试；若工厂返回空，必须明确报告。
         INFO("skia font manager unavailable: " << diagnostic);
-    REQUIRE(diagnostic.find("skia") != std::string::npos);
+        REQUIRE(diagnostic.find("skia") != std::string::npos);
+        return;
+    }
+    INFO("available families: " << fonts->availableFamilies().size());
     if (fonts->availableFamilies().empty()) {
         // Skia 已编译但极简容器无系统字体：布局走占位回退并明确诊断，
         // 应用仍可启动（M1 缺字体可启动条款），编辑索引不受影响。
         const std::string mixed = "Count: A";
         const auto layout = lumen::text::TextLayout::layout(
             mixed, TextStyle{}, 0.0F, *fonts);
+        INFO("placeholder fallback: " << layout.usedPlaceholderFallback
+                                      << " diag: " << layout.fontDiagnostic);
         CHECK(layout.usedPlaceholderFallback);
         CHECK_FALSE(layout.fontDiagnostic.empty());
         CHECK(layout.graphemeCount == 8);
-        return;
-    }
         return;
     }
     REQUIRE(diagnostic.find("skia") != std::string::npos);
@@ -312,12 +316,20 @@ TEST_CASE("skia_real_fonts_shape_layout_and_paint", "[skia][text]") {
         "Count: \xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D \xE4\xBD\xA0\xE5\xA5\xBD";
     const auto layout = lumen::text::TextLayout::layout(
         mixed, TextStyle{}, 0.0F, *fonts);
+    INFO("backend=" << static_cast<int>(layout.fontBackend)
+                    << " placeholderFallback=" << layout.usedPlaceholderFallback
+                    << " diag=" << layout.fontDiagnostic
+                    << " width=" << layout.size.width
+                    << " baseline=" << layout.baseline
+                    << " runs=" << (layout.lines.empty() ? 0 : layout.lines[0].runs.size()));
     CHECK(layout.fontBackend == lumen::text::FontBackend::Skia);
     CHECK(layout.size.width > 0.0F);
     CHECK(layout.baseline > 0.0F);
     REQUIRE(layout.lines.size() == 1);
     bool anyRealRun = false;
     for (const auto& run : layout.lines[0].runs) {
+        INFO("run family=" << run.family << " placeholder=" << run.placeholder
+                           << " glyphs=" << run.glyphs.size());
         if (!run.placeholder && !run.glyphs.empty()) {
             anyRealRun = true;
         }
