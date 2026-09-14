@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <type_traits>
 #include <variant>
 
@@ -134,6 +136,133 @@ struct ResolvedStyle {
 [[nodiscard]] inline const CommonResolvedStyle& commonStyle(
     const ResolvedStyle& style) {
     return commonStyle(style.component);
+}
+
+// --- M10：转场/状态过渡的颜色工具（只改绘制数据，不动布局几何） ---
+
+// 透明度缩放：alpha 夹取 [0,1] 后乘进颜色 alpha 通道。
+[[nodiscard]] inline Color scaleColorAlpha(const Color& color, float alpha) {
+    const float scaled =
+        static_cast<float>(color.a) * std::clamp(alpha, 0.0F, 1.0F);
+    return Color{color.r, color.g, color.b,
+                 static_cast<std::uint8_t>(std::lround(scaled))};
+}
+
+// 逐通道 RGBA 插值（t 夹取 [0,1]）。
+[[nodiscard]] inline Color lerpColor(const Color& from, const Color& to,
+                                     float t) {
+    const float clamped = std::clamp(t, 0.0F, 1.0F);
+    const auto channel = [clamped](std::uint8_t a, std::uint8_t b) {
+        const float value = static_cast<float>(a) +
+                            (static_cast<float>(b) - static_cast<float>(a)) *
+                                clamped;
+        return static_cast<std::uint8_t>(std::lround(value));
+    };
+    return Color{channel(from.r, to.r), channel(from.g, to.g),
+                 channel(from.b, to.b), channel(from.a, to.a)};
+}
+
+inline void scaleCommonStyleColors(CommonResolvedStyle& common, float alpha) {
+    common.background = scaleColorAlpha(common.background, alpha);
+    common.foreground = scaleColorAlpha(common.foreground, alpha);
+    common.border = scaleColorAlpha(common.border, alpha);
+    common.focusRing = scaleColorAlpha(common.focusRing, alpha);
+    common.selection = scaleColorAlpha(common.selection, alpha);
+    common.text.color = scaleColorAlpha(common.text.color, alpha);
+}
+
+// 整节点透明度：公共段 + 组件专有色（Button 只有公共段）。
+inline void scaleStyleColors(ResolvedStyle& style, float alpha) {
+    std::visit(
+        [alpha](auto& part) {
+            using Part = std::decay_t<decltype(part)>;
+            if constexpr (std::is_same_v<Part, CommonResolvedStyle>) {
+                scaleCommonStyleColors(part, alpha);
+            } else {
+                scaleCommonStyleColors(part.common, alpha);
+                if constexpr (std::is_same_v<Part, TextFieldResolvedStyle>) {
+                    part.placeholder =
+                        scaleColorAlpha(part.placeholder, alpha);
+                    part.caret = scaleColorAlpha(part.caret, alpha);
+                    part.preeditUnderline =
+                        scaleColorAlpha(part.preeditUnderline, alpha);
+                } else if constexpr (std::is_same_v<Part,
+                                                  CheckboxResolvedStyle>) {
+                    part.indicator = scaleColorAlpha(part.indicator, alpha);
+                    part.indicatorChecked =
+                        scaleColorAlpha(part.indicatorChecked, alpha);
+                    part.mark = scaleColorAlpha(part.mark, alpha);
+                } else if constexpr (std::is_same_v<Part,
+                                                   SwitchResolvedStyle>) {
+                    part.trackOff = scaleColorAlpha(part.trackOff, alpha);
+                    part.trackOn = scaleColorAlpha(part.trackOn, alpha);
+                    part.knob = scaleColorAlpha(part.knob, alpha);
+                }
+            }
+        },
+        style.component);
+}
+
+inline void lerpCommonStyleColors(CommonResolvedStyle& into,
+                                  const CommonResolvedStyle& from,
+                                  const CommonResolvedStyle& to, float t) {
+    into.background = lerpColor(from.background, to.background, t);
+    into.foreground = lerpColor(from.foreground, to.foreground, t);
+    into.border = lerpColor(from.border, to.border, t);
+    into.focusRing = lerpColor(from.focusRing, to.focusRing, t);
+    into.selection = lerpColor(from.selection, to.selection, t);
+    into.text.color = lerpColor(from.text.color, to.text.color, t);
+}
+
+// 状态色过渡：以 `to` 为基线（度量/标志取终态），只插值颜色通道。
+// 组件类型变化（节点复用切控件）不插值，直接取终态。
+[[nodiscard]] inline ResolvedStyle lerpStyleColors(const ResolvedStyle& from,
+                                                   const ResolvedStyle& to,
+                                                   float t) {
+    ResolvedStyle result = to;
+    if (from.component.index() != to.component.index()) {
+        return result;
+    }
+    std::visit(
+        [t, &result](const auto& fromPart, auto& toPart) {
+            using From = std::decay_t<decltype(fromPart)>;
+            using To = std::decay_t<decltype(toPart)>;
+            if constexpr (!std::is_same_v<From, To>) {
+                return;
+            } else if constexpr (std::is_same_v<To, CommonResolvedStyle>) {
+                lerpCommonStyleColors(toPart, fromPart, toPart, t);
+            } else {
+                lerpCommonStyleColors(toPart.common, fromPart.common,
+                                      toPart.common, t);
+                if constexpr (std::is_same_v<To, TextFieldResolvedStyle>) {
+                    toPart.placeholder = lerpColor(fromPart.placeholder,
+                                                   toPart.placeholder, t);
+                    toPart.caret =
+                        lerpColor(fromPart.caret, toPart.caret, t);
+                    toPart.preeditUnderline =
+                        lerpColor(fromPart.preeditUnderline,
+                                  toPart.preeditUnderline, t);
+                } else if constexpr (std::is_same_v<To,
+                                                   CheckboxResolvedStyle>) {
+                    toPart.indicator =
+                        lerpColor(fromPart.indicator, toPart.indicator, t);
+                    toPart.indicatorChecked =
+                        lerpColor(fromPart.indicatorChecked,
+                                  toPart.indicatorChecked, t);
+                    toPart.mark = lerpColor(fromPart.mark, toPart.mark, t);
+                } else if constexpr (std::is_same_v<To,
+                                                    SwitchResolvedStyle>) {
+                    toPart.trackOff =
+                        lerpColor(fromPart.trackOff, toPart.trackOff, t);
+                    toPart.trackOn =
+                        lerpColor(fromPart.trackOn, toPart.trackOn, t);
+                    toPart.knob = lerpColor(fromPart.knob, toPart.knob, t);
+                }
+            }
+            (void)result;
+        },
+        from.component, result.component);
+    return result;
 }
 
 }  // namespace lumen::core

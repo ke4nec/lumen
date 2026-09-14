@@ -79,6 +79,13 @@ struct ShellConfig {
     // caret 闪烁（输入焦点期间）；关闭时 caret 恒不透明（settings 型应用
     // 的确定性输出）。
     bool caretBlink{true};
+    // M10：动画帧回调（惯性滚动等应用侧时间驱动状态）。每次 tick 调用；
+    // 返回 true = 仍有活动动画（继续请求动画帧）。UI 线程独占。
+    std::function<bool(class AppShell&, std::uint64_t nowMs)> onAnimate{};
+    // M10：状态色过渡（hover/pressed/focused/checked 颜色按
+    // stateTransitionMs 插值）。时间源为 tick 注入时钟：不经 tick 推进的
+    // 直驱测试保持即时终态（既有确定性输出不受影响）。
+    bool motionTransitions{false};
 };
 
 class AppShell {
@@ -162,8 +169,39 @@ class AppShell {
     // paint；damage/绘制缓存同 counter 迁移前行为） ---
     void rebuildIfDirty();
     [[nodiscard]] std::uint64_t renderFrame(bool forceFullRepaint = false);
-    // 时间驱动状态（caret 闪烁）；测试传固定时间戳保持确定性。
+    // 时间驱动状态（caret 闪烁/转场/应用动画 onAnimate）；测试传固定时间
+    // 戳保持确定性。
     void tick(std::uint64_t nowMs);
+
+    // --- M10：转场驱动（MotionTokens → transitionAlpha） ---
+    // 转场只改绘制数据（整节点透明度），不改布局几何、hit test 与语义
+    // 树；reduceAnimation（时长归零）时首拍即达终态。
+    struct TransitionSpec {
+        std::string key{};  // root_ 中按 key 定位子树（延迟解析：begin 后
+                            // 的首次重建生效）
+        float from{0.0F};
+        float to{1.0F};
+        double durationMs{150.0};
+        core::Easing easing{core::Easing::EaseOut};
+        // 完成回调（UI 线程，tick 内触发）；退出转场在此真正移除子树。
+        std::function<void(class AppShell&)> onComplete{};
+    };
+    void beginTransition(TransitionSpec spec);
+    // 便捷入口：Dialog 进/出场（dialogTransitionMs）与路由页过渡
+    //（navigatorTransitionMs）；进场 EaseOut、退场 EaseIn。
+    void beginDialogTransition(const std::string& key, bool entering,
+                               std::function<void(class AppShell&)>
+                                   onComplete = {});
+    void beginRouteTransition(const std::string& key, bool entering,
+                              std::function<void(class AppShell&)>
+                                  onComplete = {});
+    [[nodiscard]] bool hasActiveTransitions() const {
+        return !transitions_.empty();
+    }
+    // 连续动画是否活跃（caret 闪烁/转场/状态过渡/onAnimate）；runApp 据此
+    // 驱动 FrameScheduler 动画帧。
+    [[nodiscard]] bool animationsActive() const { return animationsActive_; }
+
     // 热重载：替换 UI 模板（后续重建不再调用 config.build，直到再次
     // swapRoot）；状态/焦点/滚动保留。
     void swapRoot(core::Widget root);
@@ -210,6 +248,32 @@ class AppShell {
     void syncSubscriptions(const std::set<std::string>& keys);
     // M5：绘制后语义推送（树构建 + diff + 焦点；仅注册了桥时执行）。
     void pushSemantics();
+    // M10：转场推进（tick 内采样；完成项触发 onComplete）与应用
+    //（renderFrame 重建后的树上写入 alpha；damage 汇入调用方）。
+    struct ActiveTransition {
+        std::string key{};
+        std::string identity{};  // 首次应用时解析（begin 后可能尚未重建）
+        core::Tween tween{};
+        float sampledAlpha{0.0F};
+        float lastPaintedAlpha{0.0F};
+        std::uint64_t startMs{0};
+        bool paintedOnce{false};
+        bool finished{false};
+        bool retire{false};  // 完成后再活一拍，给终值一次提交机会
+        std::function<void(AppShell&)> onComplete{};
+    };
+    bool advanceTransitions(std::uint64_t nowMs);
+    bool applyTransitions(std::vector<core::Rect>& damage);
+    // M10：状态色过渡（交互快照变化时捕获旧样式，逐帧向新样式插值）。
+    void captureStateBlend();
+    bool applyStateBlend(std::vector<core::Rect>& damage);
+    std::vector<ActiveTransition> transitions_;
+    bool transitionsPaintPending_{false};
+    bool animationsActive_{false};
+    std::map<std::string, core::ResolvedStyle> blendFrom_{};
+    std::map<std::string, core::ResolvedStyle> blendTo_{};
+    std::uint64_t blendStartMs_{0};
+    bool stateBlendActive_{false};
 
     ShellConfig config_{};
     core::StateStore state_{};

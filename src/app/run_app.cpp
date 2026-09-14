@@ -255,12 +255,15 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
             }
         }
 
-        // 时间驱动状态（caret 闪烁）与 IME 会话状态。
+        // 时间驱动状态（caret 闪烁/转场/应用动画 onAnimate）与 IME 会话
+        // 状态。
         shell.tick(nowMs);
         syncTextInput();
 
-        // 输入焦点驱动的 caret 闪烁是唯一连续动画源。
-        scheduler.setAnimationsActive(shell.wantsTextInput());
+        // M10：caret 闪烁、转场与状态过渡共用动画帧调度（FrameReason::
+        // Animation deadline 循环；reduceAnimation 时 MotionTokens 归零，
+        // 无连续动画源）。
+        scheduler.setAnimationsActive(shell.animationsActive());
 
         if (scheduler.shouldSubmitFrame()) {
             // maxFrames 测量/冒烟模式强制全量重绘：damage 统计归零但像素

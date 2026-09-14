@@ -6,6 +6,7 @@
 
 #include "lumen/app/app_shell.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <set>
@@ -34,6 +35,57 @@ const core::RenderNode* findByIdentity(const core::RenderNode& node,
         }
     }
     return nullptr;
+}
+
+// M10：可变定位（转场 alpha/状态混合写回 root_）。
+core::RenderNode* findMutableByIdentity(core::RenderNode& node,
+                                        const std::string& identity) {
+    if (node.identity == identity) {
+        return &node;
+    }
+    for (auto& child : node.children) {
+        if (core::RenderNode* found =
+                findMutableByIdentity(child, identity)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// M10：状态色过渡——捕获/应用（identity → 变化前样式）。
+void collectStylesByIdentity(
+    const core::RenderNode& node,
+    std::map<std::string, core::ResolvedStyle>& out) {
+    out[node.identity] = node.style;
+    for (const auto& child : node.children) {
+        collectStylesByIdentity(child, out);
+    }
+}
+
+void applyBlendWalk(core::RenderNode& node, core::Offset absolute, float t,
+                    const std::map<std::string, core::ResolvedStyle>& from,
+                    std::map<std::string, core::ResolvedStyle>& to,
+                    std::vector<core::Rect>& damage, bool& changed,
+                    std::set<std::string>& matched) {
+    const core::Offset origin = absolute + node.offset;
+    if (const auto it = from.find(node.identity); it != from.end()) {
+        matched.insert(node.identity);
+        // 目标样式在首次应用时定格（后续帧 node.style 已被插值覆盖，
+        // 不能作为 to 端）。
+        const auto [target, inserted] = to.try_emplace(node.identity,
+                                                       node.style);
+        (void)inserted;
+        core::ResolvedStyle blended =
+            core::lerpStyleColors(it->second, target->second, t);
+        if (!(blended == node.style)) {
+            node.style = std::move(blended);
+            damage.push_back(core::Rect{origin, node.size});
+            changed = true;
+        }
+    }
+    for (auto& child : node.children) {
+        applyBlendWalk(child, origin, t, from, to, damage, changed, matched);
+    }
 }
 
 }  // namespace
@@ -288,9 +340,10 @@ void AppShell::rebuildIfDirty() {
 
 std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
     // 交互快照变化 → 重建（resolved style 折算状态，diff 产生 damage，
-    // visual-system §5 规则 6）。
+    // visual-system §5 规则 6）。M10：变化前捕获旧样式供状态色过渡插值。
     syncInteractionSnapshot();
     if (!(interactionSnapshot_ == lastInteraction_)) {
+        captureStateBlend();
         lastInteraction_ = interactionSnapshot_;
         dirty_ = true;
     }
@@ -303,6 +356,11 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
         dirty_ = true;
         rebuildIfDirty();
     }
+    // M10：转场 alpha 与状态混合写入重建后的树（damage 汇入 motionDamage；
+    // 采样值由 tick 推进，renderFrame 不自带时钟）。
+    std::vector<core::Rect> motionDamage;
+    const bool motionPaint = applyTransitions(motionDamage);
+    const bool blendPaint = applyStateBlend(motionDamage);
     render::PaintOptions options;
     options.caretGraphemes = controller_.caretGraphemes();
     options.caretAlpha = caretAlpha_;
@@ -321,7 +379,7 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
         caretAlpha_ != lastCaretAlpha_;
     const bool needPaint = forceFullRepaint || fullRepaintPending_ ||
                            !framePainted_ || rebuiltThisFrame_ ||
-                           optionsChanged;
+                           optionsChanged || motionPaint || blendPaint;
     if (!needPaint) {
         if (semanticsNeedsPush_) {
             pushSemantics();
@@ -334,6 +392,7 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
     }
 
     std::vector<core::Rect> damage = pendingDamage_;
+    damage.insert(damage.end(), motionDamage.begin(), motionDamage.end());
     if (optionsChanged) {
         // 焦点/caret/选区/preedit 变化只重绘受影响节点；identity 定位
         // 当前树中的节点。
@@ -390,8 +449,7 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
     // 新绘制让屏幕与树重新一致：全量回退后 damage 跟踪也重新武装。
     treeDamageValid_ = true;
     // M5：绘制落地后推送语义（仅注册了桥时构建；diff 含焦点变化）。
-    pushSemantics();
-    if (externalRenderer_ == nullptr) {
+    pushSemantics();    if (externalRenderer_ == nullptr) {
         lastFrameHash_ = render::frameHash(cpuRenderer_.pixels());
         return lastFrameHash_;
     }
@@ -400,35 +458,219 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
 
 void AppShell::tick(std::uint64_t nowMs) {
     lastTickMs_ = nowMs;
-    if (!config_.caretBlink) {
+    bool animating = false;
+    if (config_.caretBlink) {
+        // caret 闪烁 tween（plan 阶段6）。应用拥有时钟；测试传固定时间戳保
+        // 持确定性。无焦点帧保持 alpha 1.0（稳定 hash）。reduceAnimation 时
+        // 闪烁半周期归零（MotionTokens，visual-system §4）。
+        if (!controller_.wantsTextInput() ||
+            theme_.motion.caretBlinkHalfPeriodMs == 0) {
+            blinkAnchored_ = false;
+            caretAlpha_ = 1.0F;
+        } else {
+            animating = true;
+            if (!blinkAnchored_ || nowMs < blinkAnchorMs_) {
+                // 锚定（或非单调时间戳重新锚定）到相位起点，避免无符号回绕。
+                blinkAnchored_ = true;
+                blinkAnchorMs_ = nowMs;
+            }
+            const double kHalfPeriodMs =
+                static_cast<double>(theme_.motion.caretBlinkHalfPeriodMs);
+            const double phase =
+                std::fmod(static_cast<double>(nowMs - blinkAnchorMs_),
+                          kHalfPeriodMs * 2.0);
+            const core::Tween down{1.0, 0.0, kHalfPeriodMs,
+                                   core::Easing::EaseInOut};
+            const core::Tween up{0.0, 1.0, kHalfPeriodMs,
+                                 core::Easing::EaseInOut};
+            caretAlpha_ = static_cast<float>(
+                phase < kHalfPeriodMs ? down.sample(phase)
+                                      : up.sample(phase - kHalfPeriodMs));
+        }
+    } else {
         blinkAnchored_ = false;
         caretAlpha_ = 1.0F;
+    }
+    // M10：转场推进与应用侧动画（惯性滚动等）；存在活动动画时 runApp
+    // 请求 FrameScheduler 动画帧。
+    animating = advanceTransitions(nowMs) || animating;
+    if (config_.onAnimate) {
+        animating = config_.onAnimate(*this, nowMs) || animating;
+    }
+    animationsActive_ = animating;
+}
+
+// --- M10：转场驱动 ---
+
+void AppShell::beginTransition(TransitionSpec spec) {
+    if (spec.key.empty()) {
         return;
     }
-    // caret 闪烁 tween（plan 阶段6）。应用拥有时钟；测试传固定时间戳保
-    // 持确定性。无焦点帧保持 alpha 1.0（稳定 hash）。reduceAnimation 时
-    // 闪烁半周期归零（MotionTokens，visual-system §4）。
-    if (!controller_.wantsTextInput() ||
-        theme_.motion.caretBlinkHalfPeriodMs == 0) {
-        blinkAnchored_ = false;
-        caretAlpha_ = 1.0F;
+    ActiveTransition transition;
+    transition.key = spec.key;
+    // identity 延迟解析：begin 可能早于含该子树的首次重建（如打开 dialog
+    // 后立即 beginFadeIn）。
+    if (const core::RenderNode* node = core::findNodeByKey(root_, spec.key)) {
+        transition.identity = node->identity;
+    }
+    transition.tween = core::Tween{spec.from, spec.to, spec.durationMs,
+                                   spec.easing};
+    transition.sampledAlpha = spec.from;
+    transition.startMs = lastTickMs_;
+    transition.onComplete = std::move(spec.onComplete);
+    transitions_.push_back(std::move(transition));
+    transitionsPaintPending_ = true;
+}
+
+void AppShell::beginDialogTransition(
+    const std::string& key, bool entering,
+    std::function<void(AppShell&)> onComplete) {
+    TransitionSpec spec;
+    spec.key = key;
+    spec.from = entering ? 0.0F : 1.0F;
+    spec.to = entering ? 1.0F : 0.0F;
+    spec.durationMs = static_cast<double>(theme_.motion.dialogTransitionMs);
+    spec.easing = entering ? core::Easing::EaseOut : core::Easing::EaseIn;
+    spec.onComplete = std::move(onComplete);
+    beginTransition(std::move(spec));
+}
+
+void AppShell::beginRouteTransition(
+    const std::string& key, bool entering,
+    std::function<void(AppShell&)> onComplete) {
+    TransitionSpec spec;
+    spec.key = key;
+    spec.from = entering ? 0.0F : 1.0F;
+    spec.to = entering ? 1.0F : 0.0F;
+    spec.durationMs = static_cast<double>(theme_.motion.navigatorTransitionMs);
+    spec.easing = entering ? core::Easing::EaseOut : core::Easing::EaseIn;
+    spec.onComplete = std::move(onComplete);
+    beginTransition(std::move(spec));
+}
+
+bool AppShell::advanceTransitions(std::uint64_t nowMs) {
+    // 上一拍完成的转场本拍退休：终值已经有过一次提交机会。
+    std::erase_if(transitions_,
+                  [](const ActiveTransition& t) { return t.retire; });
+    if (transitions_.empty()) {
+        return false;
+    }
+    std::vector<std::function<void(AppShell&)>> completed;
+    for (auto& transition : transitions_) {
+        const double elapsed =
+            nowMs >= transition.startMs
+                ? static_cast<double>(nowMs - transition.startMs)
+                : 0.0;
+        transition.sampledAlpha =
+            static_cast<float>(transition.tween.sample(elapsed));
+        if (!transition.paintedOnce ||
+            transition.sampledAlpha != transition.lastPaintedAlpha) {
+            transitionsPaintPending_ = true;
+        }
+        if (transition.tween.finished(elapsed)) {
+            transition.finished = true;
+            transition.retire = true;
+            if (transition.onComplete) {
+                completed.push_back(std::move(transition.onComplete));
+            }
+        }
+    }
+    // 完成回调最后触发（可开始新转场/markDirty；不重入采样循环）。
+    for (auto& onComplete : completed) {
+        onComplete(*this);
+    }
+    return !transitions_.empty();
+}
+
+bool AppShell::applyTransitions(std::vector<core::Rect>& damage) {
+    if (transitions_.empty()) {
+        transitionsPaintPending_ = false;
+        return false;
+    }
+    for (auto it = transitions_.begin(); it != transitions_.end();) {
+        if (it->identity.empty()) {
+            const core::RenderNode* node =
+                core::findNodeByKey(root_, it->key);
+            if (node == nullptr) {
+                // 子树尚未出现（begin 早于重建）；已完成的退出转场直接
+                // 退休，避免悬挂。
+                if (it->finished) {
+                    it = transitions_.erase(it);
+                    continue;
+                }
+                ++it;
+                continue;
+            }
+            it->identity = node->identity;
+        }
+        core::RenderNode* node = findMutableByIdentity(root_, it->identity);
+        if (node == nullptr) {
+            // 子树已随重建消失（退出转场完成/应用提前移除）。
+            it = transitions_.erase(it);
+            continue;
+        }
+        if (node->transitionAlpha != it->sampledAlpha) {
+            node->transitionAlpha = it->sampledAlpha;
+            addNodeRect(damage, it->identity, "");
+        }
+        it->lastPaintedAlpha = it->sampledAlpha;
+        it->paintedOnce = true;
+        ++it;
+    }
+    const bool pending = transitionsPaintPending_;
+    transitionsPaintPending_ = false;
+    return pending;
+}
+
+// --- M10：状态色过渡 ---
+
+void AppShell::captureStateBlend() {
+    if (!config_.motionTransitions ||
+        theme_.motion.stateTransitionMs == 0) {
+        stateBlendActive_ = false;
+        blendFrom_.clear();
+        blendTo_.clear();
         return;
     }
-    if (!blinkAnchored_ || nowMs < blinkAnchorMs_) {
-        // 锚定（或非单调时间戳重新锚定）到相位起点，避免无符号回绕。
-        blinkAnchored_ = true;
-        blinkAnchorMs_ = nowMs;
+    blendFrom_.clear();
+    blendTo_.clear();
+    collectStylesByIdentity(root_, blendFrom_);
+    blendStartMs_ = lastTickMs_;
+    stateBlendActive_ = !blendFrom_.empty();
+}
+
+bool AppShell::applyStateBlend(std::vector<core::Rect>& damage) {
+    if (!stateBlendActive_ || blendFrom_.empty()) {
+        stateBlendActive_ = false;
+        return false;
     }
-    const double kHalfPeriodMs =
-        static_cast<double>(theme_.motion.caretBlinkHalfPeriodMs);
-    const double phase =
-        std::fmod(static_cast<double>(nowMs - blinkAnchorMs_),
-                  kHalfPeriodMs * 2.0);
-    const core::Tween down{1.0, 0.0, kHalfPeriodMs, core::Easing::EaseInOut};
-    const core::Tween up{0.0, 1.0, kHalfPeriodMs, core::Easing::EaseInOut};
-    caretAlpha_ = static_cast<float>(
-        phase < kHalfPeriodMs ? down.sample(phase)
-                              : up.sample(phase - kHalfPeriodMs));
+    const std::uint32_t duration = theme_.motion.stateTransitionMs;
+    const double elapsed =
+        lastTickMs_ >= blendStartMs_
+            ? static_cast<double>(lastTickMs_ - blendStartMs_)
+            : 0.0;
+    const float t =
+        duration > 0
+            ? static_cast<float>(std::clamp(
+                  elapsed / static_cast<double>(duration), 0.0, 1.0))
+            : 1.0F;
+    bool changed = false;
+    std::set<std::string> matched;
+    applyBlendWalk(root_, core::Offset{}, t, blendFrom_, blendTo_, damage,
+                   changed, matched);
+    // 已到终态或子树消失的 identity 不再等待。
+    for (auto it = blendFrom_.begin(); it != blendFrom_.end();) {
+        if (t >= 1.0F || matched.count(it->first) == 0) {
+            it = blendFrom_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (blendFrom_.empty()) {
+        blendTo_.clear();
+    }
+    stateBlendActive_ = !blendFrom_.empty();
+    return changed;
 }
 
 void AppShell::swapRoot(core::Widget root) {

@@ -279,8 +279,7 @@ void paintSurface(Sink& sink, const Rect& rect,
 template <typename Sink>
 void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
                     const core::TextFieldResolvedStyle& field,
-                    const PaintOptions& options) {
-    const Rect rect{origin, node.size};
+                    const PaintOptions& options) {    const Rect rect{origin, node.size};
     const CommonResolvedStyle& common = field.common;
     const TextStyle& style = common.text;
     paintControlSurface(sink, rect, field.common);
@@ -403,16 +402,32 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
 
 template <typename Sink>
 void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
-               const PaintOptions& options) {
+               const PaintOptions& options, float parentAlpha = 1.0F) {
+    // M10：整节点透明度（transitionAlpha 转场通道；子树继承父 alpha）。
+    // 全透明子树不产生命令；alpha<1 时对整份 resolved style 颜色缩放，
+    // CPU/Skia/GPU 消费同一份命令数据。已知限制：DrawImage 无颜色通道，
+    // 位图不参与透明度。
+    const float nodeAlpha =
+        std::clamp(parentAlpha * node.transitionAlpha, 0.0F, 1.0F);
+    if (nodeAlpha <= 0.0F) {
+        return;
+    }
     const Offset origin = absolute + node.offset;
     const Rect rect{origin, node.size};
-    const CommonResolvedStyle& common = node.commonStyle();
+    std::optional<core::ResolvedStyle> fadedStyle;
+    if (nodeAlpha < 1.0F) {
+        fadedStyle = node.style;
+        core::scaleStyleColors(*fadedStyle, nodeAlpha);
+    }
+    const core::ResolvedStyle& styleSource =
+        fadedStyle.has_value() ? *fadedStyle : node.style;
+    const CommonResolvedStyle& common = core::commonStyle(styleSource);
 
     // M6：层级阴影（布局期折算参数；命令一致地发往所有后端——CPU 的
     // 降级由后端决定）。
     if (node.elevation > 0.0F && node.shadowColor.a > 0) {
-        sink.drawShadow(rect, node.shadowColor, node.shadowOffset,
-                        node.shadowBlur);
+        sink.drawShadow(rect, core::scaleColorAlpha(node.shadowColor, nodeAlpha),
+                        node.shadowOffset, node.shadowBlur);
     }
 
     switch (node.type) {
@@ -531,7 +546,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             // M6：圆形指示 + 标签（选中画内点）。
             const auto* checkbox =
                 std::get_if<core::CheckboxResolvedStyle>(
-                    &node.style.component);
+                    &styleSource.component);
             const float indicator =
                 checkbox != nullptr ? checkbox->indicatorSize : 16.0F;
             const float cy = origin.y + (node.size.height - indicator) *
@@ -622,10 +637,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                 const std::vector<std::vector<Offset>>& polylines =
                     core::iconPolylines(iconId);
                 if (!polylines.empty()) {
-                    Color stroke = common.foreground;
-                    stroke.a = static_cast<std::uint8_t>(std::lround(
-                        static_cast<float>(stroke.a) * node.transitionAlpha));
-                    sink.drawIcon(polylines, rect, stroke,
+                    sink.drawIcon(polylines, rect, common.foreground,
                                   node.iconStrokeWidth);
                 }
             }
@@ -657,10 +669,6 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             if (buttonIcon != core::IconId::None) {
                 const auto& polylines = core::iconPolylines(buttonIcon);
                 if (!polylines.empty()) {
-                    Color stroke = common.foreground;
-                    stroke.a = static_cast<std::uint8_t>(
-                        std::lround(static_cast<float>(stroke.a) *
-                                    node.transitionAlpha));
                     const float top = origin.y +
                                       (node.size.height - iconSize) * 0.5F;
                     sink.drawIcon(
@@ -671,14 +679,15 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                                         width + iconGap,
                                     top},
                              Size{iconSize, iconSize}},
-                        stroke, iconSize * 0.1F);
+                        common.foreground, iconSize * 0.1F);
                 }
             }
             break;
         }
         case WidgetType::TextField: {
             const auto* field =
-                std::get_if<core::TextFieldResolvedStyle>(&node.style.component);
+                std::get_if<core::TextFieldResolvedStyle>(
+                    &styleSource.component);
             if (field != nullptr) {
                 paintTextField(sink, node, origin, *field, options);
             }
@@ -698,7 +707,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             // 指示框 + 选中填充；标签绘制在右侧，垂直居中。几何全部来自
             // resolved token（布局度量同源，visual-system §7.3）。
             const auto* checkbox =
-                std::get_if<core::CheckboxResolvedStyle>(&node.style.component);
+                std::get_if<core::CheckboxResolvedStyle>(&styleSource.component);
             if (checkbox == nullptr) {
                 break;
             }
@@ -744,7 +753,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         case WidgetType::Switch: {
             // 轨道（pill 圆角 = 高度一半）+ 滑块；标签绘制在右侧。
             const auto* control =
-                std::get_if<core::SwitchResolvedStyle>(&node.style.component);
+                std::get_if<core::SwitchResolvedStyle>(&styleSource.component);
             if (control == nullptr) {
                 break;
             }
@@ -796,7 +805,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
     if (node.clipContent) {
         const ScopedClip<Sink> clip{sink, rect};
         for (const auto& child : node.children) {
-            paintNode(sink, child, origin, options);
+            paintNode(sink, child, origin, options, nodeAlpha);
         }
         // M6：滚动条（ScrollbarTokens 厚度经布局折算；thumb 几何出自
         // scrollOffset/scrollExtent，色为前景半透明派生）。
@@ -829,7 +838,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         }
     } else {
         for (const auto& child : node.children) {
-            paintNode(sink, child, origin, options);
+            paintNode(sink, child, origin, options, nodeAlpha);
         }
     }
 }
