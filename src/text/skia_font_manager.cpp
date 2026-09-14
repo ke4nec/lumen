@@ -8,10 +8,12 @@
 #ifdef LUMEN_HAS_SKIA_TEXT
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
+#include <string>
 
 #include "include/core/SkFont.h"
 #include "include/core/SkFontMgr.h"
