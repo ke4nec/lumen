@@ -118,12 +118,15 @@ struct ElevationTokens {
 };
 
 // 动效 token（§8 冻结扩展）：reduceAnimation 时全部时长归零，并继续遵
-// 守 FrameScheduler 的可访问性规则。
+// 守 FrameScheduler 的可访问性规则。M11：tooltipDelayMs 为 hover 显隐
+// 去抖（reduceAnimation 归零 = 立即显示），tooltipFadeMs 为淡入淡出。
 struct MotionTokens {
     std::uint32_t stateTransitionMs{kDurationFastMs};
     std::uint32_t dialogTransitionMs{kDurationNormalMs};
     std::uint32_t navigatorTransitionMs{kDurationSlowMs};
     std::uint32_t caretBlinkHalfPeriodMs{530};
+    std::uint32_t tooltipDelayMs{400};
+    std::uint32_t tooltipFadeMs{120};
 
     void reduceAnimation();
 

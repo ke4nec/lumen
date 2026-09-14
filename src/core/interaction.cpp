@@ -58,6 +58,11 @@ const RenderNode* hoverTargetOf(const std::vector<const RenderNode*>& chain) {
 
 const RenderNode* hitTestChain(const RenderNode& node, Offset position,
                                std::vector<const RenderNode*>& chain) {
+    // M11：Tooltip 为装饰性悬浮层（无交互/无语义 action），对命中测试
+    // 透明——悬浮气泡不遮挡其下方的锚点与控件。
+    if (node.type == WidgetType::Tooltip) {
+        return nullptr;
+    }
     if (!Rect{Offset{}, node.size}.contains(position)) {
         return nullptr;
     }

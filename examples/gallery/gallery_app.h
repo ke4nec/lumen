@@ -236,6 +236,8 @@ class GalleryApp {
 
     void initialize() {
         library_.setItemCount(1000);
+        // M11：Tooltip hover 延迟驱动（anchor → tooltip 关联）。
+        shell_.registerTooltip("tooltip-anchor-button", "showcase-tip");
         library_.setEstimatedExtent(44.0F);
         library_.setItemBuilder([this](std::size_t index) {
             core::Widget item = core::makeText(
@@ -1210,16 +1212,30 @@ class GalleryApp {
         items.push_back(sectionCard(
             "Icons",
             {core::withKey(
-                core::makeRow(std::move(icons),
-                              core::MainAxisAlignment::Start,
-                              core::CrossAxisAlignment::Center,
-                              style::spaceToken(3)),
-                "icons-row"),
-             core::withKey(core::makeTooltip("Gallery showcase tip",
-                                             "showcase-tip"),
-                           "showcase-tip"),
-             core::withKey(mutedLabel("Tooltip node is resident; hover "
-                                      "reveals it.",
+                 core::makeRow(std::move(icons),
+                               core::MainAxisAlignment::Start,
+                               core::CrossAxisAlignment::Center,
+                               style::spaceToken(3)),
+                 "icons-row"),
+             // M11：Tooltip hover 延迟驱动——锚点按钮 hover 停留后气泡
+             // 淡入（Stack 悬浮定位，不再常驻占位）。
+             core::withKey(
+                 core::makeStack({
+                     core::withKey(
+                         buttonWidget("Hover me", "noop",
+                                      "tooltip-anchor-button",
+                                      core::ButtonVariant::Outline),
+                         "tooltip-anchor-button"),
+                     core::withStackPosition(
+                         core::withKey(core::makeTooltip(
+                                            "Gallery showcase tip",
+                                            "showcase-tip"),
+                                        "showcase-tip"),
+                         core::Offset{0.0F, 48.0F}),
+                 }),
+                 "tooltip-stack"),
+             core::withKey(mutedLabel("Hover the button: the tooltip "
+                                      "fades in after a short delay.",
                                       theme),
                            "tooltip-desc")},
             theme, "feedback-icons-card"));

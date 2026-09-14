@@ -210,9 +210,17 @@ class AppShell {
     [[nodiscard]] bool hasActiveTransitions() const {
         return !transitions_.empty();
     }
-    // 连续动画是否活跃（caret 闪烁/转场/状态过渡/onAnimate）；runApp 据此
-    // 驱动 FrameScheduler 动画帧。
+    // 连续动画是否活跃（caret 闪烁/转场/状态过渡/tooltip 计时/onAnimate）；
+    // runApp 据此驱动 FrameScheduler 动画帧。
     [[nodiscard]] bool animationsActive() const { return animationsActive_; }
+
+    // --- M11：Tooltip hover 延迟驱动 ---
+    // 注册 anchor→tooltip 关联：hover 停留 tooltipDelayMs 后 tooltipKey
+    // 子树淡入（tooltipFadeMs），离开淡出；Hidden 态强制 transitionAlpha 0
+    //（含重建后的新树，替代 M6 常驻显示）。锚点需为 hover 载体（Button/
+    // TextField/Checkbox/Switch）且带 key；tooltip 节点建议放 Stack +
+    // withStackPosition 悬浮定位。语义树不变（alpha 是纯绘制通道）。
+    void registerTooltip(std::string anchorKey, std::string tooltipKey);
 
     // 热重载：替换 UI 模板（后续重建不再调用 config.build，直到再次
     // swapRoot）；状态/焦点/滚动保留。
@@ -276,6 +284,19 @@ class AppShell {
     };
     bool advanceTransitions(std::uint64_t nowMs);
     bool applyTransitions(std::vector<core::Rect>& damage);
+    // M11：tooltip hover 状态机（tick 内推进）与 Hidden 态 alpha 写 0
+    //（renderFrame 重建后的树上；damage 汇入调用方）。
+    struct TooltipRegistration {
+        std::string anchorKey{};
+        std::string tooltipKey{};
+        enum class Phase : std::uint8_t { Hidden, Armed, Visible, Fading };
+        Phase phase{Phase::Hidden};
+        std::uint64_t armedAtMs{0};
+    };
+    bool advanceTooltips(std::uint64_t nowMs);
+    bool applyTooltipVisibility(std::vector<core::Rect>& damage);
+    bool hasTransitionForKey(const std::string& key) const;
+    std::vector<TooltipRegistration> tooltips_{};
     // M10：状态色过渡（交互快照变化时捕获旧样式，逐帧向新样式插值）。
     void captureStateBlend();
     bool applyStateBlend(std::vector<core::Rect>& damage);

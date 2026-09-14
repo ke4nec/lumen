@@ -370,10 +370,12 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
         rebuildIfDirty();
     }
     // M10：转场 alpha 与状态混合写入重建后的树（damage 汇入 motionDamage；
-    // 采样值由 tick 推进，renderFrame 不自带时钟）。
+    // 采样值由 tick 推进，renderFrame 不自带时钟）。M11：tooltip Hidden
+    // 态 alpha 归零（含重建后的新树）。
     std::vector<core::Rect> motionDamage;
     const bool motionPaint = applyTransitions(motionDamage);
     const bool blendPaint = applyStateBlend(motionDamage);
+    const bool tooltipPaint = applyTooltipVisibility(motionDamage);
     render::PaintOptions options;
     options.caretGraphemes = controller_.caretGraphemes();
     options.caretAlpha = caretAlpha_;
@@ -392,7 +394,8 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
         caretAlpha_ != lastCaretAlpha_;
     const bool needPaint = forceFullRepaint || fullRepaintPending_ ||
                            !framePainted_ || rebuiltThisFrame_ ||
-                           optionsChanged || motionPaint || blendPaint;
+                           optionsChanged || motionPaint || blendPaint ||
+                           tooltipPaint;
     if (!needPaint) {
         if (semanticsNeedsPush_) {
             pushSemantics();
@@ -507,6 +510,7 @@ void AppShell::tick(std::uint64_t nowMs) {
     // M10：转场推进与应用侧动画（惯性滚动等）；存在活动动画时 runApp
     // 请求 FrameScheduler 动画帧。
     animating = advanceTransitions(nowMs) || animating;
+    animating = advanceTooltips(nowMs) || animating;
     if (config_.onAnimate) {
         animating = config_.onAnimate(*this, nowMs) || animating;
     }
@@ -635,6 +639,137 @@ bool AppShell::applyTransitions(std::vector<core::Rect>& damage) {
     const bool pending = transitionsPaintPending_;
     transitionsPaintPending_ = false;
     return pending;
+}
+
+// --- M11：Tooltip hover 延迟驱动 ---
+
+void AppShell::registerTooltip(std::string anchorKey,
+                               std::string tooltipKey) {
+    if (anchorKey.empty() || tooltipKey.empty()) {
+        return;
+    }
+    // 重复注册幂等（重建装配期多次调用安全）。
+    for (const auto& tip : tooltips_) {
+        if (tip.tooltipKey == tooltipKey) {
+            return;
+        }
+    }
+    tooltips_.push_back(
+        TooltipRegistration{std::move(anchorKey), std::move(tooltipKey),
+                            TooltipRegistration::Phase::Hidden, 0});
+}
+
+bool AppShell::hasTransitionForKey(const std::string& key) const {
+    for (const auto& transition : transitions_) {
+        if (transition.key == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool AppShell::advanceTooltips(std::uint64_t nowMs) {
+    if (tooltips_.empty()) {
+        return false;
+    }
+    const std::uint64_t delay = theme_.motion.tooltipDelayMs;
+    const double fade = static_cast<double>(theme_.motion.tooltipFadeMs);
+    bool active = false;
+    const std::string& hoveredKey = controller_.hoveredKey();
+    const auto showTooltip = [&](TooltipRegistration& tip) {
+        TransitionSpec spec;
+        spec.key = tip.tooltipKey;
+        spec.from = 0.0F;
+        spec.to = 1.0F;
+        spec.durationMs = fade;
+        spec.easing = core::Easing::EaseOut;
+        beginTransition(std::move(spec));
+        tip.phase = TooltipRegistration::Phase::Visible;
+    };
+    for (auto& tip : tooltips_) {
+        const bool hovered = hoveredKey == tip.anchorKey;
+        switch (tip.phase) {
+            case TooltipRegistration::Phase::Hidden:
+                if (hovered) {
+                    tip.phase = TooltipRegistration::Phase::Armed;
+                    tip.armedAtMs = nowMs;
+                    // reduceAnimation（延迟归零）：同拍直接显示。
+                    if (nowMs - tip.armedAtMs >= delay) {
+                        showTooltip(tip);
+                        active = true;
+                    }
+                }
+                break;
+            case TooltipRegistration::Phase::Armed:
+                if (!hovered) {
+                    tip.phase = TooltipRegistration::Phase::Hidden;
+                } else if (nowMs >= tip.armedAtMs &&
+                           nowMs - tip.armedAtMs >= delay) {
+                    showTooltip(tip);
+                    active = true;
+                } else {
+                    // 等待期保持动画帧（延迟到期检查）。
+                    active = true;
+                }
+                break;
+            case TooltipRegistration::Phase::Visible:
+                if (!hovered) {
+                    TransitionSpec spec;
+                    spec.key = tip.tooltipKey;
+                    spec.from = 1.0F;
+                    spec.to = 0.0F;
+                    spec.durationMs = fade;
+                    spec.easing = core::Easing::EaseIn;
+                    beginTransition(std::move(spec));
+                    tip.phase = TooltipRegistration::Phase::Fading;
+                }
+                break;
+            case TooltipRegistration::Phase::Fading:
+                if (hovered) {
+                    // 淡出中折返：重新淡入。
+                    showTooltip(tip);
+                } else if (!hasTransitionForKey(tip.tooltipKey)) {
+                    // 淡出转场已退休：回到 Hidden（apply 保持 alpha 0）。
+                    tip.phase = TooltipRegistration::Phase::Hidden;
+                }
+                break;
+        }
+    }
+    return active;
+}
+
+bool AppShell::applyTooltipVisibility(std::vector<core::Rect>& damage) {
+    if (tooltips_.empty()) {
+        return false;
+    }
+    bool changed = false;
+    for (const auto& tip : tooltips_) {
+        // Visible 态的 alpha=1 由淡入转场落地（转场退休后树保持 1）。
+        // Hidden/Armed 强制归零——覆盖重建后的新树（Widget 默认 alpha 1）；
+        // Fading 在转场驱动期间不干预。
+        if (tip.phase == TooltipRegistration::Phase::Visible) {
+            continue;
+        }
+        if (tip.phase == TooltipRegistration::Phase::Fading &&
+            hasTransitionForKey(tip.tooltipKey)) {
+            continue;  // 淡出转场正在驱动 alpha
+        }
+        const core::RenderNode* node =
+            core::findNodeByKey(root_, tip.tooltipKey);
+        if (node == nullptr) {
+            continue;
+        }
+        if (node->transitionAlpha != 0.0F) {
+            core::RenderNode* mutableNode =
+                findMutableByIdentity(root_, node->identity);
+            if (mutableNode != nullptr) {
+                mutableNode->transitionAlpha = 0.0F;
+                addNodeRect(damage, node->identity, "");
+                changed = true;
+            }
+        }
+    }
+    return changed;
 }
 
 // --- M10：状态色过渡 ---

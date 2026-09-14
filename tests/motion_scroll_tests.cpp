@@ -633,3 +633,123 @@ TEST_CASE("slider_drag_inside_scroll_view_still_sets_value", "[motion]") {
     CHECK_FALSE(dragRouted);
     CHECK(shell.state().get("volume") != "0");
 }
+
+// --- M11：Tooltip hover 延迟驱动 ---
+
+namespace {
+
+ShellConfig tooltipConfig() {
+    ShellConfig config;
+    config.initialView = Size{200.0F, 150.0F};
+    config.caretBlink = false;
+    config.build = [] {
+        using namespace lumen::dsl;
+        namespace core = lumen::core;
+        Widget ui = core::makeStack({
+            core::withKey(container(column({core::withKey(
+                                  button("Go", onClick("go")), "go-button")}),
+                                    Color::fromRGBA(24, 24, 27)),
+                          "page"),
+            core::withStackPosition(
+                core::withKey(core::makeTooltip("tip text", "the-tip"),
+                              "the-tip"),
+                core::Offset{10.0F, 10.0F}),
+        });
+        ui.key = "root";
+        return ui;
+    };
+    return config;
+}
+
+float tipAlpha(const AppShell& shell) {
+    const RenderNode* node =
+        lumen::core::findNodeByKey(shell.root(), "the-tip");
+    REQUIRE(node != nullptr);
+    return node->transitionAlpha;
+}
+
+}  // namespace
+
+TEST_CASE("tooltip_reveals_after_hover_delay_and_hides_on_leave",
+          "[motion]") {
+    AppShell shell{tooltipConfig()};
+    shell.handlers()["go"] = [] {};
+    shell.registerTooltip("go-button", "the-tip");
+    shell.tick(0);
+    (void)shell.renderFrame();
+    CHECK(tipAlpha(shell) == 0.0F);  // 注册后默认隐藏（M6 常驻显示移除）
+
+    const core::Offset center = [] {
+        // build 布局与 shell 一致：按钮位于列首。
+        return core::Offset{32.0F, 20.0F};
+    }();
+    const RenderNode* button =
+        lumen::core::findNodeByKey(shell.root(), "go-button");
+    REQUIRE(button != nullptr);
+    const core::Offset buttonCenter =
+        lumen::core::absoluteOffset(shell.root(), "go-button") +
+        Offset{button->size.width * 0.5F, button->size.height * 0.5F};
+    (void)center;
+
+    const auto delay = shell.theme().motion.tooltipDelayMs;
+    const auto fade = shell.theme().motion.tooltipFadeMs;
+    REQUIRE(delay > 0);
+    REQUIRE(fade > 0);
+
+    shell.pointerMove(buttonCenter);
+    shell.tick(100);  // hover 进入：Armed
+    (void)shell.renderFrame();
+    CHECK(tipAlpha(shell) == 0.0F);  // 未满延迟不可见
+
+    shell.tick(100 + delay);  // 满延迟：转场开始（首拍为起点 alpha=0）
+    shell.tick(100 + delay + fade / 2);  // 淡入中
+    (void)shell.renderFrame();
+    CHECK(tipAlpha(shell) > 0.0F);
+    CHECK(tipAlpha(shell) < 1.0F);
+
+    shell.tick(100 + delay + fade);  // 淡入完成
+    (void)shell.renderFrame();
+    CHECK(tipAlpha(shell) == 1.0F);
+
+    shell.pointerMove(Offset{-50.0F, -50.0F});  // 离开锚点
+    shell.tick(100 + delay + fade + 1);  // 淡出转场开始（首拍为起点 1）
+    shell.tick(100 + delay + fade + 1 + fade / 2);
+    (void)shell.renderFrame();
+    CHECK(tipAlpha(shell) < 1.0F);
+    CHECK(tipAlpha(shell) > 0.0F);
+
+    shell.tick(100 + delay + 2 * fade + 10);  // 淡出完成 + 退休
+    (void)shell.renderFrame();
+    CHECK(tipAlpha(shell) == 0.0F);
+
+    // 回归：重建后的新树不得把 tooltip 重置为可见（Hidden 态强制 0）。
+    shell.markDirty();
+    (void)shell.renderFrame();
+    CHECK(tipAlpha(shell) == 0.0F);
+    // 退休条目在完成后的下一拍清除；随后完全静止。
+    shell.tick(100 + delay + 2 * fade + 40);
+    CHECK_FALSE(shell.animationsActive());
+}
+
+TEST_CASE("tooltip_reduce_animation_shows_immediately", "[motion]") {
+    AppShell shell{tooltipConfig()};
+    shell.handlers()["go"] = [] {};
+    shell.registerTooltip("go-button", "the-tip");
+    Theme theme = shell.theme();
+    theme.motion.reduceAnimation();
+    shell.setTheme(theme, /*forceFullRepaint=*/false);
+    shell.tick(0);
+    (void)shell.renderFrame();
+    CHECK(tipAlpha(shell) == 0.0F);
+
+    const RenderNode* button =
+        lumen::core::findNodeByKey(shell.root(), "go-button");
+    REQUIRE(button != nullptr);
+    shell.pointerMove(lumen::core::absoluteOffset(shell.root(), "go-button") +
+                      Offset{button->size.width * 0.5F,
+                             button->size.height * 0.5F});
+    shell.tick(1);   // 零延迟同拍起转场
+    shell.tick(2);   // 零时长下一拍采样即终值
+    (void)shell.renderFrame();
+    CHECK(tipAlpha(shell) == 1.0F);
+}

@@ -87,6 +87,8 @@ void MotionTokens::reduceAnimation() {
     dialogTransitionMs = 0;
     navigatorTransitionMs = 0;
     caretBlinkHalfPeriodMs = 0;
+    tooltipDelayMs = 0;
+    tooltipFadeMs = 0;
 }
 
 // --- Primitive → semantic ---

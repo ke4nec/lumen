@@ -228,15 +228,28 @@ class SettingsApp {
             items.push_back(
                 core::withKey(core::makeTabs(std::move(tabButtons), "tabs"),
                               "tabs"));
-            items.push_back(core::withKey(
-                core::makeTooltip("M6 widget showcase", "showcase-tip"),
-                "showcase-tip"));
+            items.push_back(
+                core::withKey(core::makeTabs(std::move(tabButtons), "tabs"),
+                              "tabs"));
             items.push_back(core::withKey(
                 core::makeIcon(core::IconId::Check, "icon-check"),
                 "icon-check"));
+            // M11：Tooltip hover 延迟驱动（锚点 = Add 按钮，气泡悬浮其
+            // 下方；不再常驻占位）。
             items.push_back(core::withKey(
-                core::withIcon(core::makeButton("Add"), core::IconId::Plus),
-                "icon-add-button"));
+                core::makeStack({
+                    core::withKey(
+                        core::withIcon(core::makeButton("Add"),
+                                       core::IconId::Plus),
+                        "icon-add-button"),
+                    core::withStackPosition(
+                        core::withKey(
+                            core::makeTooltip("M11 tooltip showcase",
+                                              "showcase-tip"),
+                            "showcase-tip"),
+                        core::Offset{0.0F, 44.0F}),
+                }),
+                "tooltip-stack"));
             items.push_back(core::withKey(
                 buttonWidget("Back", "back", "back-button",
                              core::ButtonVariant::Outline),
@@ -573,6 +586,8 @@ class SettingsApp {
         // M3：千项虚拟列表（稳定 key = item-<index>；高度不均匀验证
         // 实测 extent 修正与锚点稳定）。
         library_.setItemCount(1000);
+        // M11：Tooltip hover 延迟驱动（anchor → tooltip 关联）。
+        shell_.registerTooltip("icon-add-button", "showcase-tip");
         library_.setEstimatedExtent(44.0F);
         library_.setItemBuilder([this](std::size_t index) {
             core::Widget item = core::makeText(
