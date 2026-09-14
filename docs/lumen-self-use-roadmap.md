@@ -68,7 +68,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M6 | 已完成视觉系统 V3 与控件库 | 图标/阴影/滚动条 token 路径、六控件、ThemeScope、PlatformThemeAdapter、settings 控件+主题页（见 §10 M6 完成记录） |
 | 自用 M7 | 已完成 GPU 门槛与性能 | macOS GPU CI/新基准场景/partialSubmit 评估/文本性能修复/Element move 管道；性能门槛 6/6 达标（见 §10 M7 完成记录） |
 | 自用 M8 | 已完成三桌面便携发布 | install/CPack/依赖入包/RPATH/CI package job + 解包冒烟（见 §10 M8 完成记录） |
-| 增强链 M10 | 进行中 | 动效与滚动体验（转场驱动、状态过渡、惯性滚动；见 §4 M10，2026-09-14 启动） |
+| 增强链 M10 | 已完成动效与滚动体验 | 动画帧调度/整节点透明度转场/状态色过渡/惯性滚动（见 §10 M10 完成记录） |
 | 增强链 M11–M13 | 已规划未开始 | v0.4 视觉方向与控件体验 / 平台服务与发布补全 / 原生无障碍 provider（见 §4） |
 
 M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/380、GPU Release 387/387（其中 3 个硬件相关用例按环境跳过），另有历史 mobile-core 356/356。这些数量不是当前提交的复测结果，mobile-core 结果也不代表移动设备验证。Windows/macOS 对应门槛由 CI package/GPU job 负责验证。M7/M8 的跨平台 CI 与便携包 job 已纳入工作流。
@@ -86,10 +86,10 @@ M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/3
 | DSL | M2 已完成：C++ builder 补齐 stack/checkbox/switch_widget/scroll_view/list_view/focus_scope，与 `.lumen` 冻结节点集对齐（golden 对照测试）；Dialog/Navigator 经 `widgets::makeDialog`/`NavigatorController` 提供 | DSL 可编程性/脚本能力不纳入第一版 | M2 已收口 |
 | 控件库 | M6 已完成：Slider/ProgressBar/Radio/Tooltip/Dropdown/Tabs 六控件 + Scrollbar 实绘 + `FormController::compose` 组合校验器（业务规则由应用组合提供） | Dropdown 浮动菜单层（脱离树内展开）与 Tooltip hover 延迟驱动属控件体验缺口 | M11 |
 | 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 横向网格/跨行列合并留按需评估（§4） | M3 已收口 |
-| 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | 触摸拖动接线与惯性滚动属 M10 | M3 已收口，惯性 M10 |
+| 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | M10 已收口触摸拖动接线与惯性滚动；水平/嵌套滚动留按需评估 | M3+M10 已收口 |
 | 平台服务 | M4 已完成：ApplicationHost 增加文件选择（异步→FileDialogCompleted 事件）/OpenURL/通知/光标形状/窗口图标契约；PlatformCapabilities 统一报告外观（dark/accent/fontScale）与服务可用性；SDL 实现与 Fake host 记录/失败注入 | 通知在 SDL 3.2.10 无 API：能力关闭+结构化降级（真实通知待 SDL 升级或原生后端） | M4 已收口 |
 | 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| UIA/AT-SPI/NSAccessibility 原生 provider 属 M13（Recording bridge 作跨平台回归证据） | M5 已收口，provider M13 |
-| 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur/CPU 扁平面降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | Dialog/Navigator 完整转场动画驱动、MotionTokens 全量状态过渡属 M10；v0.4 视觉方向属 M11 | M6 已收口，动效 M10 |
+| 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur/CPU 扁平面降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | M10 已收口转场动画驱动（整节点透明度/Dialog/Navigator 过渡/状态色过渡 opt-in）；v0.4 视觉方向属 M11 | M6+M10 已收口 |
 | GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道（快照去子化，reconcile O(n·depth)→O(n)） | 三桌面 GPU CI 首跑为事实来源（macOS job 为本变更新增） | M7 已收口 |
 | 发布 | M8 已完成：install 规则（库/头/示例/文档）+ CPack（Linux TGZ / Windows·macOS ZIP，git 版本可追溯）+ SDL 依赖入包与平台 RPATH + 三平台 CI package job（解包 headless smoke + artifact） | AppImage、完整 .app bundle 与 Skia/GPU 包变体属 M12；Windows/macOS 包以 CI 首跑为事实来源 | M8 已收口，形态补全 M12 |
 
@@ -993,6 +993,63 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   - Skia/GPU 构建的包体积与许可归档未含（自用包 CPU-only 闭环；
     GPU 包按需在 CI 追加 `-DLUMEN_ENABLE_SKIA=ON` 变体）。
 - 回滚点：M7 合入后的提交。
+
+### M10 完成记录（动效与滚动体验）
+
+- 完成日期：2026-09-14
+- 提交号：af13461（增强链规划）/ 97c2678（转场驱动与整节点透明度）/
+  4dc85b9（惯性滚动与拖动接线）
+- 变更：
+  - 动画帧调度：`AppShell::tick` 从 caret 专用泛化为通用动画驱动器
+    （caret/转场/状态过渡/`ShellConfig.onAnimate` 共用
+    `animationsActive`）；`runApp` 以此驱动 `FrameScheduler`
+    （`FrameReason::Animation` deadline 循环，替换原
+    `wantsTextInput` 单一来源）。
+  - 整节点透明度：painter 的 `transitionAlpha` 升级为整节点通道——
+    子树乘法继承（`parentAlpha * node.transitionAlpha`），alpha<1 时
+    经 `core::scaleStyleColors`（新增于 core/style.h：公共段 + 各组件
+    专有色）统一缩放；阴影同步缩放；全透明子树零命令；CPU/Skia/GPU
+    消费同一份命令数据。已知限制：`DrawImage` 无颜色通道，位图不参与。
+  - 转场驱动：`TransitionSpec`/`beginTransition` +
+    `beginDialogTransition`/`beginRouteTransition`（时长取
+    MotionTokens；进场 EaseOut、退场 EaseIn）；key 延迟解析 identity
+    （begin 可早于含该子树的首次重建）；完成回调后一拍退休，保证终值
+    有一次提交机会。
+  - 状态色过渡：`ShellConfig.motionTransitions`（默认关）+
+    `blendFrom/blendTo` 双快照——首次应用时定格目标样式（修复插值
+    `to` 端被首拍覆盖的问题）；逐帧 `core::lerpStyleColors` 插值，
+    非颜色字段取终态。
+  - 惯性滚动：`ScrollController` 新增 `noteDragSample`/`endDrag`/
+    `stepFling`/`isFlinging`/`stopFling`（指数衰减 tau=160ms，起滑
+    150px/s、停止 50px/s，边界即停，滚轮/键盘/再次拖动立即接管；时间
+    截全注入，确定性物理）；`InteractionController` 新增
+    `ScrollDragSink`（Begin/Update/End/Cancel；起点命中滚动视口且非
+    文本选区路径才路由，identity 跨重建重定位）；pointerMove/Up 携带
+    时间戳；wheel/scrollKey 返回 sink 消费状态（收口 M5 已知限制
+    “语义滚动 sink 恒返回 true”）。
+  - settings/gallery 接入 `onScrollDrag` + `onAnimate` 惯性推进
+    （滚轮/键盘/选区路径行为不变）。
+- 测试：新增 `tests/motion_scroll_tests.cpp` 11 用例——整节点 alpha
+  命令/子树乘法继承/全透明零命令、Dialog 退场淡出+完成回调+退休、进场
+  延迟 identity、Route 时长区分、reduceAnimation 零时长首拍即终态、
+  状态色插值（起点/中点/终态逐通道夹逼）、静态场景哈希稳定零动画帧、
+  fling 物理（单调减速/确定性重放/慢速不起/滚轮接管）、shell 级拖动
+  滚动+惯性推进、TextField 拖动保持选区路径、wheel 消费回执。本地
+  Windows CPU Debug `394/394`（含既有 counter/settings headless 哈希
+  全部不变通过）。
+- 平台：本地 Windows 全部验证；Linux/macOS 与 Skia/GPU 构建以 CI 为
+  事实来源（转场走共享命令路径，后端无关性由命令同源保证）。
+- 已知限制：
+  - 转场为淡入淡出（无位移/缩放几何过渡——布局几何不变式）；退出
+    动画期间子树仍可交互且语义可见（alpha 只改绘制数据，plan §4 M10
+    接口约束）。
+  - 状态色过渡与 Dialog/Navigator 转场为框架能力 + 专用测试验证；
+    settings/gallery 既有哈希路径保持即时切换（无 tick 推进的直驱
+    测试是仓库的确定性验收模式，示例启用转场会破坏首帧断言）——随
+    M11 视觉迭代按页评估启用。
+  - fling 为矩形欧拉积分（确定性优先，非半隐式欧拉）；无水平滚动与
+    嵌套视口惯性。
+- 回滚点：`af13461 docs(roadmap): 规划 M10 起桌面增强链`（M10 前）。
 
 ### 范围调整记录（2026-09-14）
 

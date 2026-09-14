@@ -82,8 +82,9 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
   本；grapheme 边界仍是唯一编辑索引（M1 已收口，见 M1 完成记录）。
 - Skia shaping 为逐 grapheme cluster（无 HarfBuzz 连写/合字）：拉丁/
   CJK/希伯来/阿拉伯基本形正确，复杂脚本合字后续增强。
-- VirtualList 已落地（M3：可见区物化/实测 extent 修正/锚点稳定），但仅
-  纵向且惯性滚动默认关闭（动量物理属后续版本）。
+- VirtualList 已落地（M3：可见区物化/实测 extent 修正/锚点稳定），仅
+  纵向；M10 已接入触摸/指针拖动与确定性惯性滚动（fling 物理见 M10
+  完成记录），水平/嵌套滚动仍不支持。
 - Grid 为纵向网格（无横向滚动/跨行列合并）；Image 需应用侧资源管理器
   驱动加载（框架不管理异步资源生命周期）。
 - 平台原生无障碍桥（UIA/AT-SPI/NSAccessibility）的完整 provider 实现
@@ -94,8 +95,9 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
   告）；通知在 SDL 3.2.10 无 API（结构化降级，真实通知待 SDL 升级或
   原生后端）；prefersDarkMode/accentColor 为安全默认（SDL 3.2 无查询）。
 - M6 视觉系统 V3 已收口（图标/阴影/滚动条 token 路径、六控件、
-  ThemeScope、组合校验器）；完整转场动画驱动、Dropdown 浮动菜单与
-  Tooltip hover 延迟属后续增强（transitionAlpha 通道就绪）。
+  ThemeScope、组合校验器）；M10 已收口转场动画驱动（transitionAlpha
+  整节点透明度、Dialog/Navigator 淡入淡出、状态色过渡 opt-in）；
+  Dropdown 浮动菜单与 Tooltip hover 延迟属 M11。
 - M7 已收口：macOS GPU CI 已纳入（首跑为事实来源）；partialSubmit
   实测 1.16× 维持全帧提交（正确性优先）；Element move 管道完成后性能
   门槛 6/6 达标。
