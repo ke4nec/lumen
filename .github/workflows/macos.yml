@@ -24,8 +24,26 @@ jobs:
   # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
   package:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: macos-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            macos-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: macos-ccache-pkg-${{ github.sha }}
+          restore-keys: |
+            macos-ccache-pkg-
+            macos-ccache-
+      - name: Install ccache + ninja
+        run: brew install ccache ninja || brew upgrade ccache ninja || true
       - name: Configure (portable package)
         run: >
           cmake -S . -B build-pkg -G Ninja
@@ -34,6 +52,9 @@ jobs:
           -DLUMEN_BUILD_PACKAGE=ON
       - name: Build
         run: cmake --build build-pkg --config Release
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
       - name: Package (CPack)
         run: cpack --config CPackConfig.cmake
         working-directory: build-pkg
@@ -58,7 +79,12 @@ jobs:
         with:
           name: lumen-package-${{ runner.os }}
           path: build-pkg/lumen-*
-          retention-days: 14
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
+      - name: Cleanup package intermediates
+        if: always()
+        run: rm -rf unpack build-pkg/lumen-*
 
   cpu:
     runs-on: macos-15

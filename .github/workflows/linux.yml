@@ -34,8 +34,28 @@ jobs:
   # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
   package:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: linux-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            linux-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: linux-ccache-pkg-${{ github.sha }}
+          restore-keys: |
+            linux-ccache-pkg-
+            linux-ccache-
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $LUMEN_LINUX_DEPS
       - name: Configure (portable package)
         run: >
           cmake -S . -B build-pkg -G Ninja
@@ -44,6 +64,9 @@ jobs:
           -DLUMEN_BUILD_PACKAGE=ON
       - name: Build
         run: cmake --build build-pkg --config Release
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
       - name: Package (CPack)
         run: cpack --config CPackConfig.cmake
         working-directory: build-pkg
@@ -68,7 +91,13 @@ jobs:
         with:
           name: lumen-package-${{ runner.os }}
           path: build-pkg/lumen-*
-          retention-days: 14
+          # 便携包为发布件，短保留即时释放配额；正式发布请走 Release 附件。
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
+      - name: Cleanup package intermediates
+        if: always()
+        run: rm -rf unpack build-pkg/lumen-*
 
   cpu:
     runs-on: ubuntu-24.04
