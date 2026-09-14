@@ -9,6 +9,8 @@ v0.2 计划
 视觉系统设计
 [`docs/lumen-visual-system-design.md`](docs/lumen-visual-system-design.md)。
 当前只规划 Windows/Linux/macOS，暂不考虑 Android/iOS；M9 已暂缓。
+桌面自用版 M0–M8 已收口，后续按 M10–M13 桌面增强链推进（动效与滚动、
+v0.4 视觉方向、平台服务与发布补全、原生无障碍）。
 面向自用工具类应用的桌面路线图见
 [`docs/lumen-self-use-roadmap.md`](docs/lumen-self-use-roadmap.md)。
 统一构建/验证命令表见
@@ -20,7 +22,8 @@ v0.2 计划
 阶段 0–6 + v0.2 阶段 7A–7E + v0.3 阶段 8A–8E 的核心契约（跨平台宿主、
 文本/IME/编辑模型、语义树与 Recording 桥、滚动/表单/弹窗/导航组件）。历史
 SDL-free 移动 host 接缝仍保留，但不代表当前支持移动平台。三桌面便携发布已纳入
-M8；平台原生无障碍 provider、AppImage 和完整 .app bundle 仍待增强。平台能力详见
+M8；平台原生无障碍 provider（M13）、AppImage 和完整 .app bundle（M12）按增强链
+后续补齐。平台能力详见
 [`docs/support-matrix.md`](docs/support-matrix.md)。
 
 ## 结构
