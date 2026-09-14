@@ -306,6 +306,16 @@ SemanticsTree buildSemanticsTree(const core::RenderNode& root,
     return tree;
 }
 
+void appendSemanticsSubtree(SemanticsTree& tree,
+                            const core::RenderNode& subtree,
+                            const SemanticsBuildOptions& options) {
+    const std::string parentId = tree.rootId;
+    collectNodes(subtree, core::Offset{}, false, options, {}, tree);
+    if (const auto it = tree.nodes.find(parentId); it != tree.nodes.end()) {
+        it->second.children.push_back(subtree.identity);
+    }
+}
+
 SemanticsDiff diffSemanticsTrees(const SemanticsTree& previous,
                                  const SemanticsTree& current,
                                  const std::string& previousFocusedId,

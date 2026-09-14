@@ -163,6 +163,22 @@ class AppShell {
                                 const std::string& value = {},
                                 float scrollDeltaY = 0.0F);
 
+    // --- M11：框架级 overlay（浮动菜单等模态层） ---
+    // overlay 树独立布局（紧约束视口），与主树各自拥有 identity 命名空
+    // 间（路径拼接，主树 identity 不变——焦点/语义/damage 稳定）。绘制
+    // 命令后置叠加；overlay 活跃期命中/键盘换树（barrier 需全窗覆盖保
+    // 证模态，同 makeDialog 模式）；语义作为根语义节点的附加子树。打开/
+    // 关闭全量重绘；打开期间 overlay 子树独立 damage diff。
+    // 已知限制：IME 候选框查询/惯性滚动仍走主树（菜单场景无文本字段）。
+    void setOverlay(core::Widget overlay);
+    void clearOverlay();
+    [[nodiscard]] bool hasOverlay() const {
+        return overlayTemplate_.has_value();
+    }
+    [[nodiscard]] const core::RenderNode* overlayRoot() const {
+        return overlayRoot_.has_value() ? &*overlayRoot_ : nullptr;
+    }
+
     // --- 事件分发（runApp 调用；headless 测试可直接驱动） ---
     void pointerDown(core::Offset position);
     void pointerMove(core::Offset position);
@@ -259,6 +275,10 @@ class AppShell {
         return externalRenderer_ != nullptr ? *externalRenderer_
                                             : cpuRenderer_;
     }
+    // M11：overlay 活跃期的事件树（命中/键盘换树）。
+    [[nodiscard]] const core::RenderNode& eventTree() const {
+        return overlayRoot_.has_value() ? *overlayRoot_ : root_;
+    }
     void syncInteractionSnapshot();
     [[nodiscard]] const text::FontManager& textFontSource() const;
     [[nodiscard]] const core::RenderNode* findFocusedField(
@@ -324,6 +344,11 @@ class AppShell {
     std::optional<core::Widget> swapTemplate_{};
     std::optional<core::Element> element_{};
     core::RenderNode root_{};
+    // M11：框架级 overlay（独立布局/独立 identity 命名空间）。
+    std::optional<core::Widget> overlayTemplate_{};
+    std::optional<core::RenderNode> overlayRoot_{};
+    core::RenderNode previousOverlayRoot_{};
+    bool hasPreviousOverlayRoot_{false};
     // Damage/paint-cache bookkeeping（plan 阶段6）。
     core::RenderNode previousRoot_{};
     bool hasPreviousRoot_{false};

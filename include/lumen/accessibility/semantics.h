@@ -97,6 +97,13 @@ struct SemanticsBuildOptions {
 [[nodiscard]] SemanticsTree buildSemanticsTree(const core::RenderNode& root,
                                                const SemanticsBuildOptions& options = {});
 
+// M11：把 overlay 子树（浮动菜单等模态层）追加为主树根语义节点的附加
+// 子树。overlay 独立布局，identity 命名空间独立——identity diff 只增删
+// overlay 节点，主树语义 id 稳定。
+void appendSemanticsSubtree(SemanticsTree& tree,
+                            const core::RenderNode& subtree,
+                            const SemanticsBuildOptions& options = {});
+
 // identity diff：added/removed/changed（label/value/bounds/flags/actions/
 // 子节点顺序任一变化即 changed）。
 struct SemanticsDiff {

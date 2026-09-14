@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "lumen/app/app_shell.h"
+#include "lumen/accessibility/bridge.h"
+#include "lumen/accessibility/semantics.h"
 #include "lumen/core/render_node.h"
 #include "lumen/core/scroll.h"
 #include "lumen/core/state.h"
@@ -752,4 +754,136 @@ TEST_CASE("tooltip_reduce_animation_shows_immediately", "[motion]") {
     shell.tick(2);   // 零时长下一拍采样即终值
     (void)shell.renderFrame();
     CHECK(tipAlpha(shell) == 1.0F);
+}
+
+// --- M11：框架级 overlay 合成层 ---
+
+namespace {
+
+ShellConfig overlayBaseConfig() {
+    ShellConfig config;
+    config.initialView = Size{200.0F, 150.0F};
+    config.caretBlink = false;
+    config.build = [] {
+        using namespace lumen::dsl;
+        namespace core = lumen::core;
+        Widget ui = core::withKey(
+            container(column({core::withKey(
+                                 button("Under", onClick("under")), "under-button")}),
+                      Color::fromRGBA(24, 24, 27)),
+            "page");
+        ui.key = "root";
+        return ui;
+    };
+    return config;
+}
+
+// 全窗 barrier + 锚定菜单（与 makeDialog 同构的最小模态层）。
+core::Widget menuOverlay(core::Offset menuOrigin) {
+    namespace core = lumen::core;
+    core::Widget barrier = core::makeContainer(
+        core::makeText(""), std::nullopt, std::nullopt, core::EdgeInsets{},
+        core::EdgeInsets{}, core::Color{0, 0, 0, 132});
+    barrier.width = 200.0F;
+    barrier.height = 150.0F;
+    barrier.onClick = "overlay-dismiss";
+    barrier.semanticsRole = "dialog";
+    barrier.key = "overlay-barrier";
+    core::Widget menu = core::withKey(
+        core::withStackPosition(
+            core::withKey(core::withOnClick(core::makeButton("Option"),
+                                             "menu-select"),
+                          "menu-option"),
+            menuOrigin),
+        "menu-option");
+    core::Widget overlay = core::makeStack({std::move(barrier),
+                                            std::move(menu)});
+    overlay.key = "overlay-root";
+    return overlay;
+}
+
+}  // namespace
+
+TEST_CASE("overlay_composites_paint_hits_and_semantics", "[motion]") {
+    AppShell shell{overlayBaseConfig()};
+    std::string clicked;
+    shell.handlers()["under"] = [&clicked] { clicked = "under"; };
+    shell.handlers()["menu-select"] = [&clicked] { clicked = "menu"; };
+    shell.handlers()["overlay-dismiss"] = [&clicked] { clicked = "dismiss"; };
+    shell.tick(0);
+    (void)shell.renderFrame();
+    const std::string underIdentity =
+        lumen::core::findNodeByKey(shell.root(), "under-button")->identity;
+
+    // overlay 打开：主树 identity 不变（焦点/damage/语义稳定的前提）。
+    const core::Offset menuOrigin{20.0F, 40.0F};
+    shell.setOverlay(menuOverlay(menuOrigin));
+    (void)shell.renderFrame();
+    REQUIRE(shell.hasOverlay());
+    REQUIRE(shell.overlayRoot() != nullptr);
+    CHECK(lumen::core::findNodeByKey(shell.root(), "under-button")
+              ->identity == underIdentity);
+
+    // 语义：overlay 节点进入合成语义树——menu-option 的 Activate
+    // action 与键盘/指针同路径分发（RecordingBridge 可观测增量）。
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    shell.setAccessibilityBridge(&bridge);
+    (void)shell.renderFrame();
+    REQUIRE(shell.performAccessibilityAction(
+        lumen::core::findNodeByKey(*shell.overlayRoot(), "menu-option")
+            ->identity,
+        lumen::accessibility::kActionActivate) ==
+        lumen::accessibility::SemanticsActionStatus::Handled);
+    CHECK(clicked == "menu");
+
+    // 命中优先：点击菜单选项位置——同位置主树的 under-button 不得触发。
+    clicked.clear();
+    shell.pointerDown(menuOrigin + Offset{30.0F, 12.0F});
+    shell.pointerUp(menuOrigin + Offset{30.0F, 12.0F});
+    CHECK(clicked == "menu");
+
+    // barrier：点击菜单外区域触发 dismiss（模态遮挡）。
+    clicked.clear();
+    shell.pointerDown(Offset{180.0F, 140.0F});
+    shell.pointerUp(Offset{180.0F, 140.0F});
+    CHECK(clicked == "dismiss");
+
+    // 关闭：主树 identity 仍不变；事件回到主树。
+    shell.clearOverlay();
+    (void)shell.renderFrame();
+    CHECK_FALSE(shell.hasOverlay());
+    CHECK(lumen::core::findNodeByKey(shell.root(), "under-button")
+              ->identity == underIdentity);
+    clicked.clear();
+    const RenderNode* under =
+        lumen::core::findNodeByKey(shell.root(), "under-button");
+    const core::Offset underCenter =
+        lumen::core::absoluteOffset(shell.root(), "under-button") +
+        Offset{under->size.width * 0.5F, under->size.height * 0.5F};
+    shell.pointerDown(underCenter);
+    shell.pointerUp(underCenter);
+    CHECK(clicked == "under");
+}
+
+TEST_CASE("overlay_open_close_forces_full_repaint_and_partial_while_open",
+          "[motion]") {
+    AppShell shell{overlayBaseConfig()};
+    shell.tick(0);
+    (void)shell.renderFrame();
+    const std::uint32_t partialBefore = shell.partialRepaintCount();
+
+    shell.setOverlay(menuOverlay(core::Offset{20.0F, 40.0F}));
+    (void)shell.renderFrame();
+    // 打开 = 全量（partial 计数不变）。
+    CHECK(shell.partialRepaintCount() == partialBefore);
+
+    // 打开期间替换 overlay（高亮移动等）：走 overlay 子树 diff 的局部
+    // damage（计数增加）。
+    shell.setOverlay(menuOverlay(core::Offset{20.0F, 80.0F}));
+    (void)shell.renderFrame();
+    CHECK(shell.partialRepaintCount() > partialBefore);
+
+    shell.clearOverlay();
+    (void)shell.renderFrame();
+    CHECK_FALSE(shell.hasOverlay());
 }

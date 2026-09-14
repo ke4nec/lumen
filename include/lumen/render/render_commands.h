@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <vector>
@@ -163,6 +164,14 @@ class RenderCommandList {
     // 反序列化与裁剪工具的逐条追加入口；录制请走上面的 builder。
     void append(RenderCommand command) {
         commands_.push_back(std::move(command));
+    }
+    // M11：合并另一份录制（overlay 叠加）。每份录制自包含（Save/Clip
+    // 平衡），顺序拼接即遮挡语义。
+    void extend(RenderCommandList&& other) {
+        commands_.insert(commands_.end(),
+                         std::make_move_iterator(other.commands_.begin()),
+                         std::make_move_iterator(other.commands_.end()));
+        other.commands_.clear();
     }
     [[nodiscard]] bool empty() const { return commands_.empty(); }
     [[nodiscard]] std::size_t size() const { return commands_.size(); }

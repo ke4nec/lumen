@@ -169,7 +169,8 @@ accessibility::SemanticsActionStatus AppShell::performAccessibilityAction(
         return accessibility::SemanticsActionStatus::NodeMissing;
     }
     accessibility::SemanticsActionContext context;
-    context.root = &root_;
+    // M11：overlay 活跃期 action 在事件树上解析（overlay 节点可达）。
+    context.root = &eventTree();
     context.handlers = &handlers_;
     context.focus = &focus_;
     context.controller = &controller_;
@@ -209,6 +210,10 @@ void AppShell::pushSemantics() {
     options.focus = &focus_;
     accessibility::SemanticsTree tree =
         accessibility::buildSemanticsTree(root_, options);
+    if (overlayRoot_.has_value()) {
+        // M11：overlay 语义作为主树根语义节点的附加子树。
+        accessibility::appendSemanticsSubtree(tree, *overlayRoot_, options);
+    }
     const std::string focusedId = focus_.focusedIdentity();
     accessibility::SemanticsDiff diff;
     if (lastSemantics_.has_value()) {
@@ -253,28 +258,57 @@ void AppShell::setAccessibilitySettings(
     fullRepaintPending_ = true;
 }
 
+// --- M11：框架级 overlay ---
+
+void AppShell::setOverlay(core::Widget overlay) {
+    const bool replacing = overlayTemplate_.has_value() ||
+                           hasPreviousOverlayRoot_;
+    overlayTemplate_ = std::move(overlay);
+    // 打开（首次）覆盖主树像素：全量重绘；替换已打开的 overlay 走
+    // overlay 子树 diff（rebuildIfDirty 汇入 damage）。
+    dirty_ = true;
+    fullRepaintPending_ = fullRepaintPending_ || !replacing;
+}
+
+void AppShell::clearOverlay() {
+    if (!overlayTemplate_.has_value() && !overlayRoot_.has_value()) {
+        return;
+    }
+    overlayTemplate_.reset();
+    overlayRoot_.reset();
+    hasPreviousOverlayRoot_ = false;
+    // 关闭：overlay 区域需要回填主树像素。
+    dirty_ = true;
+    fullRepaintPending_ = true;
+    // 焦点可能滞留在 overlay 命名空间（identity 已无对应节点）：清焦点
+    // 与活动指针，由应用决定恢复目标（DropdownController 关闭后
+    // focusFirstFocusable）。
+    focus_.clearFocus();
+    controller_.pointerCancel();
+}
+
 // --- 事件分发 ---
 
 void AppShell::pointerDown(core::Offset position) {
     rebuildIfDirty();
-    controller_.pointerDown(root_, position, lastTickMs_);
+    controller_.pointerDown(eventTree(), position, lastTickMs_);
 }
 
 void AppShell::pointerMove(core::Offset position) {
     rebuildIfDirty();
-    controller_.pointerMove(root_, position, lastTickMs_);
+    controller_.pointerMove(eventTree(), position, lastTickMs_);
 }
 
 void AppShell::pointerUp(core::Offset position) {
     rebuildIfDirty();
-    controller_.pointerUp(root_, position, lastTickMs_);
+    controller_.pointerUp(eventTree(), position, lastTickMs_);
 }
 
 void AppShell::pointerCancel() { controller_.pointerCancel(); }
 
 bool AppShell::wheel(core::Offset position, core::Offset delta) {
     rebuildIfDirty();
-    return controller_.wheel(root_, position, delta);
+    return controller_.wheel(eventTree(), position, delta);
 }
 
 void AppShell::textInput(const std::string& text) {
@@ -294,7 +328,7 @@ void AppShell::keyDown(core::Key key, core::KeyModifiers modifiers,
     if (config_.onKey && config_.onKey(*this, key, modifiers, keyChar)) {
         return;
     }
-    controller_.keyDown(root_, key, modifiers, keyChar);
+    controller_.keyDown(eventTree(), key, modifiers, keyChar);
 }
 
 // --- 帧管线 ---
@@ -342,6 +376,24 @@ void AppShell::rebuildIfDirty() {
     root_ = fresh;
     previousRoot_ = std::move(fresh);
     hasPreviousRoot_ = true;
+    // M11：overlay 与主树同拍重建（独立布局/独立 identity 命名空间；
+    // 打开期间 overlay 子树 diff 汇入 damage，打开首帧走全量）。
+    if (overlayTemplate_.has_value()) {
+        core::RenderNode freshOverlay = layout::LayoutEngine::layout(
+            *overlayTemplate_, core::Constraints::tight(view_),
+            styleContext(), textFontSource());
+        if (hasPreviousOverlayRoot_) {
+            treeDamageValid_ =
+                treeDamageValid_ &&
+                core::collectDamage(previousOverlayRoot_, freshOverlay,
+                                    pendingDamage_);
+        } else {
+            treeDamageValid_ = false;
+        }
+        overlayRoot_ = freshOverlay;
+        previousOverlayRoot_ = std::move(freshOverlay);
+        hasPreviousOverlayRoot_ = true;
+    }
     rebuiltThisFrame_ = true;
     dirty_ = false;
     // 应用侧重建后钩子（modal 焦点规则：弹窗打开时把焦点移入 dialog
@@ -433,6 +485,11 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
     const auto buildStart = std::chrono::steady_clock::now();
     render::RenderCommandList commands =
         render::recordScene(root_, options, textFontSource());
+    if (overlayRoot_.has_value()) {
+        // M11：overlay 命令后置叠加（绘制序 = 遮挡序）。
+        commands.extend(render::recordScene(*overlayRoot_, options,
+                                             textFontSource()));
+    }
     renderer.noteCpuBuildMs(
         std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - buildStart)
