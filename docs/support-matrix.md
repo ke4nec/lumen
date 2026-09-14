@@ -90,7 +90,9 @@ accessibility tree、Metal/Graphite。
 - M6 视觉系统 V3 已收口（图标/阴影/滚动条 token 路径、六控件、
   ThemeScope、组合校验器）；完整转场动画驱动、Dropdown 浮动菜单与
   Tooltip hover 延迟属后续增强（transitionAlpha 通道就绪）。
-- M7 部分收口：macOS GPU CI 已纳入（首跑为事实来源）；partialSubmit
-  实测 1.16× 维持全帧提交（正确性优先）；性能门槛 4/6 达标
- （reconcile/layout.p95 超标为结构性，Element reconcile 优化路径明确）。
-- 无正式便携包流水线：见 M8；移动软键盘/字体策略：见 M9。
+- M7 已收口：macOS GPU CI 已纳入（首跑为事实来源）；partialSubmit
+  实测 1.16× 维持全帧提交（正确性优先）；Element move 管道完成后性能
+  门槛 6/6 达标。
+- M8 便携发布已收口（install/CPack/CI package job + 解包冒烟）；AppImage
+  与完整 .app bundle 属后续增强；Windows/macOS 包以 CI 首跑为事实来源。
+  移动软键盘/字体策略：见 M9。

@@ -5,20 +5,26 @@
 namespace lumen::core {
 
 Element::Element(Widget widget, Element* parent)
-    : widget_(std::move(widget)), parent_(parent) {
-    inflateChildren();
+    : parent_(parent) {
+    // M7：children 先移交（O(1) move），widget_ 存去子化快照。
+    std::vector<Widget> children = std::move(widget.children);
+    widget_ = std::move(widget);
+    inflateFrom(std::move(children));
 }
 
 void Element::update(Widget next) {
+    // M7：children 移交（O(1)）→ 去子化快照 → 子孙逐个 move
+    //（reconcile 全程零 Widget 拷贝）。
+    std::vector<Widget> nextChildren = std::move(next.children);
     if (!canReuse(widget_, next)) {
         widget_ = std::move(next);
         children_.clear();
-        inflateChildren();
+        inflateFrom(std::move(nextChildren));
         markDirty();
         return;
     }
     widget_ = std::move(next);
-    reconcileChildren(widget_.children);
+    reconcileChildren(std::move(nextChildren));
     markDirty();
 }
 
@@ -57,21 +63,22 @@ bool Element::canReuse(const Widget& current, const Widget& next) {
     return current.type == next.type && current.key == next.key;
 }
 
-void Element::inflateChildren() {
-    children_.reserve(widget_.children.size());
-    for (const auto& child : widget_.children) {
-        children_.push_back(std::make_unique<Element>(child, this));
+void Element::inflateFrom(std::vector<Widget>&& nextChildren) {
+    children_.reserve(nextChildren.size());
+    for (auto& child : nextChildren) {
+        children_.push_back(
+            std::make_unique<Element>(std::move(child), this));
     }
 }
 
-void Element::reconcileChildren(const std::vector<Widget>& nextChildren) {
+void Element::reconcileChildren(std::vector<Widget>&& nextChildren) {
     std::vector<std::unique_ptr<Element>> merged;
     merged.reserve(nextChildren.size());
     std::vector<bool> used(children_.size(), false);
 
     for (std::size_t nextIndex = 0; nextIndex < nextChildren.size();
          ++nextIndex) {
-        const auto& next = nextChildren[nextIndex];
+        auto& next = nextChildren[nextIndex];
         Element* reused = nullptr;
         std::size_t reusedIndex = 0;
         if (next.key.empty()) {
@@ -98,10 +105,10 @@ void Element::reconcileChildren(const std::vector<Widget>& nextChildren) {
         if (reused != nullptr) {
             used[reusedIndex] = true;
             std::unique_ptr<Element> owned = std::move(children_[reusedIndex]);
-            owned->update(next);
+            owned->update(std::move(next));
             merged.push_back(std::move(owned));
         } else {
-            merged.push_back(std::make_unique<Element>(next, this));
+            merged.push_back(std::make_unique<Element>(std::move(next), this));
         }
     }
     children_ = std::move(merged);

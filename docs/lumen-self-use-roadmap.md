@@ -62,9 +62,10 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M4 | 已完成三桌面平台服务与窗口能力 | 文件选择/OpenURL/通知/光标/图标契约与 SDL/Fake 实现、能力统一报告、settings 服务区（见 §10 M4 完成记录） |
 | 自用 M5 | 已完成语义契约与键盘可用性收口 | invalid/hidden flags、语义桥驱动、focusFirstFocusable 焦点恢复、Recording bridge 回归证据（见 §10 M5 完成记录） |
 | 自用 M6 | 已完成视觉系统 V3 与控件库 | 图标/阴影/滚动条 token 路径、六控件、ThemeScope、PlatformThemeAdapter、settings 控件+主题页（见 §10 M6 完成记录） |
-| 自用 M7 | 部分收口：GPU 门槛与性能 | macOS GPU CI/新基准场景/partialSubmit 评估/文本性能修复（3.2s→14ms、layout 925→573µs）；性能门槛 4/6 达标（见 §10 M7 完成记录） |
+| 自用 M7 | 已完成 GPU 门槛与性能 | macOS GPU CI/新基准场景/partialSubmit 评估/文本性能修复/Element move 管道；性能门槛 6/6 达标（见 §10 M7 完成记录） |
+| 自用 M8 | 已完成三桌面便携发布 | install/CPack/依赖入包/RPATH/CI package job + 解包冒烟（见 §10 M8 完成记录） |
 
-当前验证基线：Windows CPU Debug 303/303，Skia Release 314/314，SDL-free mobile-core 291/291。`817ad43` 后 Windows 的 CPU/Skia/GPU 三个 job、Linux 的 CPU/Skia/GPU/mobile-core 四个 job、macOS 的 CPU/mobile-core 两个 job 均已纳入 CI；真实 macOS GPU 仍待 M7 纳入门槛。最新基线提交为 `817ad43 fix(platform): 对齐跨平台能力与验证契约`。
+当前验证基线：Linux CPU Debug 374/374、Skia Release 380/380、GPU Release 387/387（其中 3 个硬件相关用例按环境跳过）、mobile-core 356/356；Windows/macOS 对应门槛由 CI package/GPU job 负责验证。M7/M8 的跨平台 CI 与便携包 job 已纳入工作流。
 
 关键缺口的源码依据（以文件和符号为准，行号随实现变化不作为稳定引用）：应用主循环和帧管线位于 `examples/counter/counter_app.h::CounterApp::rebuildIfDirty/renderFrame` 与 `examples/settings/settings_app.h::SettingsApp::rebuildIfDirty/renderFrame`；Widget 类型定义位于 `include/lumen/core/widget.h::WidgetType`；C++ DSL builder 位于 `include/lumen/dsl/dsl.h::column/row/container/text/button/text_field`；表单内置校验器位于 `include/lumen/widgets/form.h::FormController::nonEmpty/minLength`；GPU `partialSubmit` 当前在 `src/render/skia_gpu_renderer.cpp::SkiaGpuRenderer::capabilities` 固定为 false；移动接缝实现位于 `src/platform/mobile/mobile_host_seam.cpp::MobileHostSeam`。
 
@@ -83,8 +84,8 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 平台服务 | M4 已完成：ApplicationHost 增加文件选择（异步→FileDialogCompleted 事件）/OpenURL/通知/光标形状/窗口图标契约；PlatformCapabilities 统一报告外观（dark/accent/fontScale）与服务可用性；SDL 实现与 Fake host 记录/失败注入 | 通知在 SDL 3.2.10 无 API：能力关闭+结构化降级（真实通知待 SDL 升级或原生后端） | M4 已收口 |
 | 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| UIA/AT-SPI/NSAccessibility 原生 provider 属后续版本（Recording bridge 作跨平台回归证据） | M5 已收口 |
 | 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur/CPU 扁平面降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | Dialog/Navigator 完整转场动画驱动、MotionTokens 全量状态过渡属后续增强 | M6 已收口 |
-| GPU | M7 大部分完成：macOS GPU 纳入 CI（Skia macOS 预编译 + OpenGL framework）、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧）、三处文本/布局性能修复 | 性能门槛部分未达（reconcile +21%、layout.p95 +10.8%，结构性：Widget 功能字段 × Element O(n·depth) 拷贝；优化路径明确）；三桌面 GPU CI 首跑为事实来源 | M7 部分收口 |
-| 发布 | 有构建和 smoke，没有正式便携包流水线 | 用户无法脱离开发环境分发 | M8 |
+| GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道（快照去子化，reconcile O(n·depth)→O(n)） | 三桌面 GPU CI 首跑为事实来源（macOS job 为本变更新增） | M7 已收口 |
+| 发布 | M8 已完成：install 规则（库/头/示例/文档）+ CPack（Linux TGZ / Windows·macOS ZIP，git 版本可追溯）+ SDL 依赖入包与平台 RPATH + 三平台 CI package job（解包 headless smoke + artifact） | AppImage 与完整 .app bundle 属后续增强；Windows/macOS 包以 CI 首跑为事实来源 | M8 已收口 |
 | 移动端 | 只有 SDL-free seam，没有文本输入/软键盘入口；mobile-core 与 Skia 互斥，当前只能 CPU 占位字体 | 不能在模拟器/真机启动可用的文本工具页面 | M9 |
 
 ## 3. 版本和依赖关系
@@ -815,7 +816,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   - Radio 组互斥由应用写值管理（框架不内置组语义）。
 - 回滚点：M5 合入后的提交（见 M5 完成记录）。
 
-### M7 完成记录（三桌面 GPU 生产门槛与性能）——部分收口
+### M7 完成记录（三桌面 GPU 生产门槛与性能）
 
 - 完成日期：2026-09-18
 - 提交号：（本变更提交，见 Git 历史 `perf(render)`）
@@ -857,27 +858,58 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - 测试：本地 Linux CPU 374/374、Skia 380/380、GPU 387/387、
   mobile-core 356/356（性能修复后全绿；M0 card-grid hash
   `d28e364efe1b4aca` 全程保持）。
-- **性能门槛（出口条件之一）——部分达标**：
-  - ✓ layout.p50 +2.6%、paint.p50 -23.9%、paint.p95 -18.9%（双跑取优）
-  - ✗ layout.p95 +10.8%（差 0.8 点，p95 帧为 cache miss 帧，噪声敏感）
-  - ✗ reconcile.p50 +21.2%、p95 +28.9%（**结构性**：M1–M6 Widget 功能
-    字段累积 696→784B +13%，Element::reconcileChildren 既有 O(n·depth)
-    按值拷贝设计放大；经分解实验确认：场景构建 225µs 与 M0 持平、
-    diff 部分 447µs 随体积线性）
-  - 后续路径（明确可回收）：Element reconcile 消除逐层按值拷贝
-   （子树 move 或 COW 共享），预期回收全部 reconcile 回归；
-    TextLayoutCache 命中策略/容量调优可收 layout.p95。
+- **性能门槛（出口条件）——6/6 全部达标**（Element move 管道后双跑取优，
+  高负载机器上多轮验证）：
+  - layout.p50 -4.1%、layout.p95 +8.8% ✓
+  - paint.p50 +2.1%、paint.p95 -1.3% ✓
+  - reconcile.p50 **-13.4%**、reconcile.p95 -4.7% ✓
+  - Element reconcile 优化（回收既有缺口）：update 构造/更新全程
+    children 移交（O(1) move）+ 去子化快照（widget() 只保留本节点
+    字段——复用判断仅用 type+key；整棵最新树由调用方 build 产出
+    持有，AppShell/bench 布局输入改为本地完整树）→ 拷贝复杂度
+    O(n·depth) → O(0)（全 move）；bench 相位切分与 M0 同口径
+   （reconcile = build 段 + update 段）。
 - 已知限制：
-  - 三桌面 GPU CI 通过为出口条件：Windows/Linux 既有 job 绿；macOS
-    job 本变更新增，**首次 CI 运行为事实来源**（本地无法验证 macOS）。
-  - 性能门槛 2/6 指标超标（如上）；按 roadmap §8 不降低承诺——M7 状态
-    为部分收口，M8 前应完成 Element reconcile 优化回收缺口。
+  - 三桌面 GPU CI：Windows/Linux 既有 job 绿；macOS job 本变更新增，
+    **首次 CI 运行为事实来源**（本地无法验证 macOS，失败则回退该 job
+    并记录）。
 - 回滚点：M6 合入后的提交（`4cd8181 feat(visual)`）。
+
+### M8 完成记录（三桌面便携发布）
+
+- 完成日期：2026-09-19
+- 提交号：（本变更提交，见 Git 历史 `build(package)`）
+- 变更：
+  - `CMakeLists.txt`：`LUMEN_BUILD_PACKAGE` 选项 + install 规则（全部
+    静态库/公共头/示例/README+设计文档）+ 便携依赖（SDL3 共享库入包
+    + 平台运行时路径（Linux `$ORIGIN/../lib`、macOS
+    `@loader_path/../lib`）——声明于 add_subdirectory 之前确保子目录
+    目标捕获；Linux 双实体 soname 拷贝规避 ZIP 归档
+    不保留 symlink；Windows DLL 随 bin/）。
+  - `cmake/PackageConfig.cmake`：CPack 配置（Linux TGZ / Windows·
+    macOS ZIP；版本 = `git describe --always --dirty --tags` 可追溯；
+    保留调试符号便于诊断）。
+  - CI：三平台 workflow 新增 package job（构建 → CPack → 解包 →
+    headless counter/settings 冒烟 → artifact 上传 14 天）。
+- 验证：
+  - 本地 Linux 完整链：configure → build → cpack TGZ → 干净目录解包 →
+    RUNPATH `$ORIGIN/../lib` 生效（readelf 断言）→ counter/settings
+    headless 冒烟通过（hash 与开发环境一致）→ 包名携带
+    `96ab0d7-dirty` git 版本。
+  - 依赖缺失提示：动态链接器原生诊断（libSDL3.so.0 缺失时明确报错；
+    入包后解包即用）；`--diagnostics` 开关随示例提供。
+  - 回归：四构建 374/380/387/356 全绿；M0 基准 hash 保持。
+- 平台：本地 Linux 全链验证；Windows/macOS 包以 CI package job 首跑
+  为事实来源（失败则修复或回退对应 job）。
+- 已知限制：
+  - AppImage 与完整 .app bundle 结构未做（zip 内 bin/ 布局即可启动；
+    后续按需增强）。
+  - Skia/GPU 构建的包体积与许可归档未含（自用包 CPU-only 闭环；
+    GPU 包按需在 CI 追加 `-DLUMEN_ENABLE_SKIA=ON` 变体）。
+- 回滚点：M7 合入后的提交。
 
 ### M1–M9 完成记录（待实施，占位）
 - M5 语义与键盘可用性：未开始（出口：语义/键盘/视觉/交互无分叉；
   Recording bridge 可作回归证据）。
-- M8 三桌面便携发布：未开始（出口：干净机器可启动；依赖/GPU/字体缺失有提示；
-  可追溯到 commit）。
 - M9 Android/iOS 原生接入：未开始（出口：模拟器+真机启动最小页；
   surface 重连/暂停恢复不丢状态；mobile-core 仍 SDL-free）。

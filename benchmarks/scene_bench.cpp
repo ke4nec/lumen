@@ -426,8 +426,12 @@ class BenchApp {
                       bool uploadPerFrame = false)
         : rootAt_(std::move(rootAt)),
           semanticsPerFrame_(semanticsPerFrame),
-          uploadPerFrame_(uploadPerFrame),
-          element_(rootAt_(0)) {
+          uploadPerFrame_(uploadPerFrame) {
+        // M7：Element 快照去子化——布局输入为本地完整树。
+        Widget root0 = rootAt_(0);
+        previousRoot_ = lumen::layout::LayoutEngine::layout(
+            root0, Constraints::tight(Size{kViewportWidth, kViewportHeight}));
+        element_.emplace(std::move(root0));
 #ifdef LUMEN_BENCH_HAS_SKIA
         if (backend == "skia") {
             skia_ = std::make_unique<lumen::render::SkiaRenderer>(1.0F);
@@ -435,8 +439,6 @@ class BenchApp {
 #else
         (void)backend;
 #endif
-        previousRoot_ = lumen::layout::LayoutEngine::layout(
-            element_.widget(), Constraints::tight(Size{kViewportWidth, kViewportHeight}));
         paintFull(previousRoot_);
         hasPrevious_ = true;
     }
@@ -450,22 +452,36 @@ class BenchApp {
 
     FrameResult runFrame(int frame) {
         FrameResult result;
-        {
-            const AllocSnapshot start = AllocSnapshot{};
-            element_.update(rootAt_(frame));
-            reconcile_ = AllocSnapshot{}.elapsedSince(start);
-        }
+        // M7：对齐 AppShell 真实管线——build → layout（独立计时）→
+        // update(move)。reconcile 相 = build 段 + update 段（与 M0 基线
+        // 同口径；Element 快照去子化，update 零拷贝）。
+        const AllocSnapshot buildStart = AllocSnapshot{};
+        Widget frameTree = rootAt_(frame);
+        const PhaseSample buildSample =
+            AllocSnapshot{}.elapsedSince(buildStart);
         RenderNode fresh;
         std::vector<lumen::core::Rect> damage;
         bool damageValid = false;
         {
             const AllocSnapshot start = AllocSnapshot{};
             fresh = lumen::layout::LayoutEngine::layout(
-                element_.widget(),
+                frameTree,
                 Constraints::tight(Size{kViewportWidth, kViewportHeight}));
             damageValid = hasPrevious_ &&
                 lumen::core::collectDamage(previousRoot_, fresh, damage);
             layout_ = AllocSnapshot{}.elapsedSince(start);
+        }
+        {
+            const AllocSnapshot start = AllocSnapshot{};
+            element_->update(std::move(frameTree));
+            const PhaseSample updateSample =
+                AllocSnapshot{}.elapsedSince(start);
+            reconcile_.microseconds =
+                buildSample.microseconds + updateSample.microseconds;
+            reconcile_.allocations =
+                buildSample.allocations + updateSample.allocations;
+            reconcile_.allocBytes =
+                buildSample.allocBytes + updateSample.allocBytes;
         }
         if (uploadPerFrame_) {
             // M7：资源上传/卸载循环（UploadImage/UnloadImage 命令路径；
@@ -534,7 +550,7 @@ class BenchApp {
 #endif
             paint_ = AllocSnapshot{}.elapsedSince(start);
         }
-        element_.clearDirtyTree();
+        element_->clearDirtyTree();
         previousRoot_ = fresh;
         hasPrevious_ = true;
 #ifdef LUMEN_BENCH_HAS_SKIA
@@ -586,7 +602,7 @@ class BenchApp {
     bool uploadPerFrame_{false};
     std::vector<lumen::render::ImageId> uploadedIds_{};
     PhaseSample uploadPhase_{};
-    Element element_;
+    std::optional<Element> element_{};
     lumen::render::CpuRenderer renderer_{1.0F};
 #ifdef LUMEN_BENCH_HAS_SKIA
     std::unique_ptr<lumen::render::SkiaRenderer> skia_{};

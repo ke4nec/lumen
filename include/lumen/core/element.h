@@ -27,6 +27,10 @@ class Element {
     // Reconciles this element against a new Widget description.
     // Same type + key reuses the subtree; otherwise the subtree is rebuilt.
     // Always marks this element dirty; callers clear it after relayout.
+    //
+    // M7：快照去子化——widget() 只保留本节点字段（children 已移交子
+    // Element；复用判断仅用 type+key）。整棵最新树由调用方持有
+    //（build/layout 输入），消除逐层快照的 O(n·depth) 拷贝。
     void update(Widget next);
 
     void markDirty();
@@ -44,8 +48,8 @@ class Element {
                                        const Widget& next);
 
   private:
-    void inflateChildren();
-    void reconcileChildren(const std::vector<Widget>& nextChildren);
+    void inflateFrom(std::vector<Widget>&& nextChildren);
+    void reconcileChildren(std::vector<Widget>&& nextChildren);
 
     Widget widget_{};
     Element* parent_{nullptr};

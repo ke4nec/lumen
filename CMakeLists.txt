@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(LUMEN_BUILD_TESTS "Build Lumen tests" ON)
 option(LUMEN_BUILD_EXAMPLES "Build Lumen examples" ON)
 option(LUMEN_BUILD_BENCHMARKS "Build Lumen benchmarks" OFF)
+option(LUMEN_BUILD_PACKAGE "Enable install and CPack packaging rules" OFF)
 option(LUMEN_ENABLE_SKIA "Enable Skia renderer backend" OFF)
 # v0.2 阶段7C: Skia Ganesh GPU 后端，默认关闭；需要 LUMEN_ENABLE_SKIA。
 option(LUMEN_ENABLE_GPU "Enable the Skia Ganesh GPU backend" OFF)
@@ -54,6 +55,13 @@ endif()
 
 include(cmake/dependencies.cmake)
 
+# M8：便携包运行时路径（须在目标创建前声明——子目录作用域捕获）。
+if(APPLE)
+  set(CMAKE_INSTALL_RPATH "@loader_path/../lib")
+elseif(UNIX)
+  set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib")
+endif()
+
 add_subdirectory(src)
 
 if(LUMEN_BUILD_TESTS)
@@ -79,4 +87,40 @@ if(LUMEN_ENABLE_GPU)
 endif()
 if(LUMEN_BUILD_MOBILE_CORE)
   message(STATUS "Lumen: mobile core (SDL-free host seam) configured (8E).")
+endif()
+
+# --- M8：便携发布（install 规则 + 打包入口） ---
+# 可安装件：静态库/头（开发复用）、示例可执行（自用工具）、文档。
+if(LUMEN_BUILD_PACKAGE)
+  include(GNUInstallDirs)
+  if(NOT WIN32 AND TARGET SDL3::SDL3)
+    # 实体 + soname 别名双实体（ZIP 归档不保留 symlink；跨平台用拷贝）。
+    install(FILES $<TARGET_FILE:SDL3::SDL3>
+            DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(FILES $<TARGET_FILE:SDL3::SDL3>
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RENAME libSDL3.so.0)
+  endif()
+  install(TARGETS lumen-core lumen-style lumen-layout lumen-text
+          lumen-accessibility lumen-widgets lumen-platform lumen-dsl lumen-app
+          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  install(DIRECTORY include/lumen DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(FILES README.md docs/lumen-gui-framework-plan.md
+          docs/lumen-self-use-roadmap.md docs/build-commands.md
+          docs/support-matrix.md
+          DESTINATION ${CMAKE_INSTALL_DOCDIR})
+  if(LUMEN_BUILD_EXAMPLES AND TARGET lumen-counter)
+    install(TARGETS lumen-counter lumen-settings
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    if(WIN32)
+      # SDL3 DLL 随包（Windows 动态运行时）。
+      install(FILES $<TARGET_FILE:SDL3::SDL3>
+              DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
+    install(FILES examples/counter/counter.lumen
+            DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)
+  endif()
+  # 打包入口：cpack 配置见 cmake/PackageConfig.cmake（平台自适应：
+  # Windows zip / Linux tar.gz / macOS 一级 .app 目录结构 + zip）。
+  include(${CMAKE_CURRENT_LIST_DIR}/cmake/PackageConfig.cmake)
 endif()

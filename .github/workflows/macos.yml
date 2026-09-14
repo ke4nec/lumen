@@ -21,6 +21,45 @@ env:
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
 jobs:
+  # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
+  package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (portable package)
+        run: >
+          cmake -S . -B build-pkg -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_PACKAGE=ON
+      - name: Build
+        run: cmake --build build-pkg --config Release
+      - name: Package (CPack)
+        run: cpack --config CPackConfig.cmake
+        working-directory: build-pkg
+      - name: Unpack smoke (headless)
+        run: |
+          mkdir unpack && cd unpack
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z x ../*.zip > /dev/null
+          else
+            tar xzf ../*.tar.gz 2>/dev/null || unzip -q ../*.zip
+          fi
+          pkg=$(ls -d lumen-*)
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./$pkg/bin/lumen-counter.exe --headless
+            ./$pkg/bin/lumen-settings.exe --headless
+          else
+            ./$pkg/bin/lumen-counter --headless
+            ./$pkg/bin/lumen-settings --headless
+          fi
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-package-${{ runner.os }}
+          path: build-pkg/lumen-*
+          retention-days: 14
+
   cpu:
     runs-on: macos-15
     timeout-minutes: 30

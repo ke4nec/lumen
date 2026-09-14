@@ -243,22 +243,25 @@ void AppShell::rebuildIfDirty() {
                                                          ? config_.build()
                                                          : core::Widget{});
     core::applyBinds(next, state_);
-    // 延迟首建（见构造注释）：Element 在此首次落地。
-    if (!element_.has_value()) {
-        element_.emplace(next);
-    } else {
-        element_->update(std::move(next));
-    }
     // 订阅与树保持同步：新增 bind key 补观察者，重建丢弃的 key 清理
-    //（plan §9）。
-    auto bindKeys = core::collectBindKeys(element_->widget());
+    //（plan §9）。M7：布局输入为本地完整树（Element 快照去子化——
+    // widget() 只保留本节点字段，整树由 build 产出本地持有）。
+    std::set<std::string> bindKeys = core::collectBindKeys(next);
     core::RenderNode fresh = layout::LayoutEngine::layout(
-        element_->widget(), core::Constraints::tight(view_),
-        styleContext(), textFontSource(), [this, &bindKeys](core::Widget& item) {
+        next, core::Constraints::tight(view_),
+        styleContext(), textFontSource(),
+        [this, &bindKeys](core::Widget& item) {
             core::applyBinds(item, state_);
             const auto itemKeys = core::collectBindKeys(item);
             bindKeys.insert(itemKeys.begin(), itemKeys.end());
         });
+    // 延迟首建（见构造注释）：Element 在此首次落地（update 全程 move，
+    // reconcile 零 Widget 拷贝）。
+    if (!element_.has_value()) {
+        element_.emplace(std::move(next));
+    } else {
+        element_->update(std::move(next));
+    }
     syncSubscriptions(bindKeys);
     // 同一绘制前累计多次重建的 damage：屏幕仍显示上一次“已绘制”的树，
     // 此处丢弃更早的 rect 会留下残影。renderFrame 绘制后清空并重新武装
