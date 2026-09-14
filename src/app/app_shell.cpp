@@ -562,7 +562,9 @@ void AppShell::beginRouteTransition(
 }
 
 bool AppShell::advanceTransitions(std::uint64_t nowMs) {
-    // 上一拍完成的转场本拍退休：终值已经有过一次提交机会。
+    // 上一拍完成的转场本拍退休：进场终值由此获得一次提交机会；退场的
+    // onComplete 通常同拍移除子树（重建后 identity 缺失即清除，终值
+    // alpha≈0 与不画等价）。
     std::erase_if(transitions_,
                   [](const ActiveTransition& t) { return t.retire; });
     if (transitions_.empty()) {

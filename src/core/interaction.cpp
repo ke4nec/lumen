@@ -397,17 +397,29 @@ void InteractionController::pointerMove(const RenderNode& root,
         dragging_ = true;
         // M10：越过 slop 的拖动若不在文本选区路径上，且起点命中滚动
         // 视口 → 路由为视口拖动滚动（视口按 identity 跨重建重定位）。
+        // 例外：起点在可拖动的 Slider 上（M6 拖动释放按位置设值），
+        // 拖动属于滑块而非滚动——视口内的 Slider 不被滚动劫持。
         if (!selecting_ && scrollDragSink_) {
             std::vector<const RenderNode*> chain;
             (void)hitTestChain(root, dragAnchor_, chain);
+            bool overDraggableSlider = false;
             for (const RenderNode* node : chain) {
-                if (isScrollableWidget(node->type)) {
-                    scrollDragging_ = true;
-                    scrollDragIdentity_ = node->identity;
-                    scrollLastPoint_ = dragAnchor_;
-                    scrollDragSink_(&root, node, dragAnchor_, Offset{},
-                                    ScrollDragPhase::Begin, timestampMs);
+                if (node->type == WidgetType::Slider && node->enabled &&
+                    !node->bind.empty()) {
+                    overDraggableSlider = true;
                     break;
+                }
+            }
+            if (!overDraggableSlider) {
+                for (const RenderNode* node : chain) {
+                    if (isScrollableWidget(node->type)) {
+                        scrollDragging_ = true;
+                        scrollDragIdentity_ = node->identity;
+                        scrollLastPoint_ = dragAnchor_;
+                        scrollDragSink_(&root, node, dragAnchor_, Offset{},
+                                        ScrollDragPhase::Begin, timestampMs);
+                        break;
+                    }
                 }
             }
         }

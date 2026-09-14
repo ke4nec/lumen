@@ -82,7 +82,8 @@ class GalleryApp {
     void pointerUp(core::Offset position) { shell_.pointerUp(position); }
     void pointerCancel() { shell_.pointerCancel(); }
     void wheel(core::Offset position, core::Offset delta) {
-        shell_.wheel(position, delta);
+        // 消费状态由调用方按需读取（示例转发不区分）。
+        (void)shell_.wheel(position, delta);
     }
     void textInput(const std::string& text) { shell_.textInput(text); }
     void textEditing(const std::string& text) { shell_.textEditing(text); }

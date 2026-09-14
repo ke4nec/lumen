@@ -582,3 +582,54 @@ TEST_CASE("wheel_reports_sink_consumption", "[motion]") {
     // 视口外（无命中链上的滚动视口）：未消费。
     CHECK_FALSE(shell.wheel(Offset{-50.0F, -50.0F}, Offset{0.0F, 120.0F}));
 }
+
+// 回归（M10 review）：视口内的 Slider 拖动属于滑块（M6 拖动释放按位置
+// 设值），不得被滚动路由劫持。
+TEST_CASE("slider_drag_inside_scroll_view_still_sets_value", "[motion]") {
+    bool dragRouted = false;
+    ShellConfig config;
+    config.initialView = Size{200.0F, 300.0F};
+    config.caretBlink = false;
+    config.build = [] {
+        using namespace lumen::dsl;
+        namespace core = lumen::core;
+        std::vector<Widget> rows;
+        rows.push_back(
+            core::withKey(core::makeSlider("volume"), "volume-slider"));
+        for (int i = 0; i < 30; ++i) {
+            rows.push_back(core::withKey(text("row " + std::to_string(i)),
+                                         "row-" + std::to_string(i)));
+        }
+        Widget ui = core::withKey(
+            scroll_view(core::makeColumn(std::move(rows))), "scroll-area");
+        ui = container(std::move(ui), Color::fromRGBA(24, 24, 27));
+        ui.key = "root";
+        return ui;
+    };
+    config.onScrollDrag =
+        [&dragRouted](const RenderNode*, const RenderNode*, core::Offset,
+                      core::Offset, core::ScrollDragPhase, std::uint64_t) {
+        dragRouted = true;
+        return false;
+    };
+    AppShell shell{std::move(config)};
+    shell.state().set("volume", "0");
+    shell.tick(0);
+    (void)shell.renderFrame();
+
+    const core::Offset slider = [&shell] {
+        const RenderNode* node =
+            lumen::core::findNodeByKey(shell.root(), "volume-slider");
+        REQUIRE(node != nullptr);
+        return lumen::core::absoluteOffset(shell.root(), "volume-slider") +
+               Offset{node->size.width * 0.25F, node->size.height * 0.5F};
+    }();
+    shell.pointerDown(slider);
+    shell.tick(100);
+    shell.pointerMove(slider + Offset{60.0F, 0.0F});
+    shell.tick(110);
+    shell.pointerUp(slider + Offset{60.0F, 0.0F});
+
+    CHECK_FALSE(dragRouted);
+    CHECK(shell.state().get("volume") != "0");
+}

@@ -1029,14 +1029,27 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     “语义滚动 sink 恒返回 true”）。
   - settings/gallery 接入 `onScrollDrag` + `onAnimate` 惯性推进
     （滚轮/键盘/选区路径行为不变）。
+- review 修复（同日追记）：
+  - **拖动滚动路由不再劫持视口内可拖动 Slider**（回归：settings
+    Widgets 页与 gallery 主列表的 Slider 都在 ListView 内，路由会在
+    slop 越过后把滑块拖动转成滚动、pointerUp 提前返回，M6 的
+    `setSliderByPosition` 拖动释放设值失效）——起点命中 enabled 且带
+    bind 的 Slider 时拖动属于滑块；新增回归用例
+    `slider_drag_inside_scroll_view_still_sets_value` 并经变异测试验证
+    （强制路由开启时用例两条断言均失败）。
+  - SettingsApp/GalleryApp 的 wheel 转发显式丢弃消费状态返回值
+    （`[[nodiscard]]`，消除 MSVC C4834）。
+  - `advanceTransitions` 退休注释精确化：进场终值有一拍提交机会；退场
+    onComplete 同拍移除子树（重建后 identity 缺失即清除，终值
+    alpha≈0 与不画等价）。
 - 测试：新增 `tests/motion_scroll_tests.cpp` 11 用例——整节点 alpha
   命令/子树乘法继承/全透明零命令、Dialog 退场淡出+完成回调+退休、进场
   延迟 identity、Route 时长区分、reduceAnimation 零时长首拍即终态、
   状态色插值（起点/中点/终态逐通道夹逼）、静态场景哈希稳定零动画帧、
   fling 物理（单调减速/确定性重放/慢速不起/滚轮接管）、shell 级拖动
-  滚动+惯性推进、TextField 拖动保持选区路径、wheel 消费回执。本地
-  Windows CPU Debug `394/394`（含既有 counter/settings headless 哈希
-  全部不变通过）。
+  滚动+惯性推进、TextField 拖动保持选区路径、wheel 消费回执、视口内
+  Slider 拖动释放设值（回归）。本地 Windows CPU Debug `395/395`（含
+  既有 counter/settings headless 哈希全部不变通过）。
 - 平台：本地 Windows 全部验证；Linux/macOS 与 Skia/GPU 构建以 CI 为
   事实来源（转场走共享命令路径，后端无关性由命令同源保证）。
 - 已知限制：
