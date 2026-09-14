@@ -30,16 +30,13 @@ jobs:
           key: windows-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
           restore-keys: |
             windows-fetchcontent-
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          create-symlink: true
-          max-size: 500M
+      # Windows MSVC + ccache 尚不成熟（hendrikmuhs/ccache-action 在
+      # windows-2025 + Node24 下 restore 失败），暂只缓存 FetchContent
+      #（SDL3/Catch2/Skia 预编译包为主要下载耗时）；编译缓存待 sccache
+      # 方案验证后接入。
       - name: Configure (CPU-only)
         run: >
           cmake -S . -B build
-          -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
       - name: Build (Debug)
@@ -74,16 +71,9 @@ jobs:
           key: windows-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
           restore-keys: |
             windows-fetchcontent-
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          create-symlink: true
-          max-size: 1G
       - name: Configure (Skia)
         run: >
           cmake -S . -B build-skia
-          -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_ENABLE_SKIA=ON
@@ -118,16 +108,9 @@ jobs:
           key: windows-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
           restore-keys: |
             windows-fetchcontent-
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          create-symlink: true
-          max-size: 1G
       - name: Configure (Skia + GPU)
         run: >
           cmake -S . -B build-gpu
-          -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_ENABLE_SKIA=ON
