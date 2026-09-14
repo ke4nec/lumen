@@ -22,6 +22,22 @@ enum class ControlDensity : std::uint8_t {
     Touch,        // Large/Touch 列（触摸平台默认）
 };
 
+// M11（v0.4 视觉方向，design/gallery.html）：方向 = palette 槽位 + 方向级
+// Metrics 覆盖，经既有 primitive→semantic→component 单向链派生；每方向
+// 都可与 dark/light、high contrast、font scale、reduceAnimation 正交组合。
+// AuroraSignal 为扁平近似（玻璃/渐变/光晕不做，见 roadmap M11 已知限制）。
+enum class ThemeDirection : std::uint8_t {
+    CoreDark,        // 默认基线：neutral/blue（与 v0.3 token 等值）
+    InkLinen,        // 暖光纸张 + 紫 accent 的编辑感方向
+    AuroraSignal,    // 深蓝 + 青 accent 的渲染展示方向（扁平近似）
+    UtilityContrast  // 高对比工具台：2px 边框、紧凑圆角
+};
+
+// 方向色板（槽位法）：把方向色值填进 PrimitivePalette 的 neutral/blue
+// 槽位，darkColorScheme/lightColorScheme 映射零改动。dark/light 各一份。
+[[nodiscard]] PrimitivePalette primitivePaletteFor(ThemeDirection direction,
+                                                   bool darkMode);
+
 // Semantic color token（§3.1）：用户可理解的角色。light/dark/high
 // contrast 只改这里与派生规则，控件代码不遍历。
 struct ColorScheme {
@@ -213,15 +229,22 @@ struct Theme {
     SwitchTokens switchControl{};
     DialogTokens dialog{};
     ScrollbarTokens scrollbar{};
+    // M11：派生元数据（值语义，参与 ==）。应用直接读取，替代按色值
+    // 反推（gallery/settings 旧的 pageBackground 比较启发式）。
+    ThemeDirection direction{ThemeDirection::CoreDark};
+    bool darkMode{true};
 
     [[nodiscard]] static Theme dark(
-        ControlDensity density = ControlDensity::Comfortable);
+        ControlDensity density = ControlDensity::Comfortable,
+        ThemeDirection direction = ThemeDirection::CoreDark);
     [[nodiscard]] static Theme light(
-        ControlDensity density = ControlDensity::Comfortable);
+        ControlDensity density = ControlDensity::Comfortable,
+        ThemeDirection direction = ThemeDirection::CoreDark);
     [[nodiscard]] static Theme fromSettings(
         const accessibility::AccessibilitySettings& settings,
         bool darkMode = true,
-        ControlDensity density = ControlDensity::Comfortable);
+        ControlDensity density = ControlDensity::Comfortable,
+        ThemeDirection direction = ThemeDirection::CoreDark);
 
     bool operator==(const Theme&) const = default;
 };

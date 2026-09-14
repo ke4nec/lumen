@@ -27,7 +27,9 @@ using lumen::core::Widget;
 using lumen::style::InteractionStateSnapshot;
 using lumen::style::PrimitivePalette;
 using lumen::style::StyleContext;
+using lumen::style::ControlDensity;
 using lumen::style::Theme;
+using lumen::style::ThemeDirection;
 
 namespace {
 
@@ -519,4 +521,104 @@ TEST_CASE("style_override_padding_drives_layout_and_render_padding", "[style]") 
     REQUIRE(tree.children.size() == 1);
     CHECK(tree.padding == EdgeInsets::all(10.0F));
     CHECK(tree.children.front().offset == lumen::core::Offset{10.0F, 10.0F});
+}
+
+// --- M11：v0.4 视觉方向变体（design/gallery.html 四方向） ---
+
+TEST_CASE("theme_directions_derive_distinct_core_tokens", "[style]") {
+    const Theme core = Theme::dark();
+    const Theme ink = Theme::dark(ControlDensity::Comfortable,
+                                  ThemeDirection::InkLinen);
+    const Theme aurora = Theme::dark(ControlDensity::Comfortable,
+                                     ThemeDirection::AuroraSignal);
+    const Theme utility = Theme::dark(ControlDensity::Comfortable,
+                                      ThemeDirection::UtilityContrast);
+    // 四方向页面背景与 accent 互不相同。
+    CHECK(core.colors.pageBackground != ink.colors.pageBackground);
+    CHECK(core.colors.pageBackground != aurora.colors.pageBackground);
+    CHECK(core.colors.pageBackground != utility.colors.pageBackground);
+    CHECK(core.colors.accent != ink.colors.accent);
+    CHECK(core.colors.accent != aurora.colors.accent);
+    CHECK(core.colors.accent != utility.colors.accent);
+    // CoreDark 与 v0.3 冻结默认等值（向后兼容基线）。
+    CHECK(core.colors.pageBackground == PrimitivePalette{}.neutral950);
+    CHECK(core.colors.accent == PrimitivePalette{}.blue500);
+    // 元数据。
+    CHECK(core.direction == ThemeDirection::CoreDark);
+    CHECK(ink.direction == ThemeDirection::InkLinen);
+    CHECK((core.darkMode && ink.darkMode));
+}
+
+TEST_CASE("theme_direction_light_variants_and_metadata", "[style]") {
+    const Theme inkLight = Theme::light(ControlDensity::Comfortable,
+                                        ThemeDirection::InkLinen);
+    const Theme inkDark = Theme::dark(ControlDensity::Comfortable,
+                                      ThemeDirection::InkLinen);
+    CHECK_FALSE(inkLight.darkMode);
+    CHECK(inkLight.direction == ThemeDirection::InkLinen);
+    CHECK(inkLight.colors.pageBackground != inkDark.colors.pageBackground);
+    // 方向内 light/dark 的 accent 来自各自模式色板的 blue500 槽位
+    //（暗模式取更亮的变体保证对比度）。
+    CHECK(inkLight.colors.accent ==
+          lumen::style::primitivePaletteFor(ThemeDirection::InkLinen, false)
+              .blue500);
+    CHECK(inkDark.colors.accent ==
+          lumen::style::primitivePaletteFor(ThemeDirection::InkLinen, true)
+              .blue500);
+}
+
+TEST_CASE("theme_direction_metrics_override_radii_and_border", "[style]") {
+    const Theme core = Theme::dark();
+    CHECK(core.metrics.controlRadius[1] == 6.0F);
+    CHECK(core.metrics.cardRadius == 8.0F);
+    CHECK(core.metrics.controlBorderWidth == 1.0F);
+
+    const Theme ink = Theme::dark(ControlDensity::Comfortable,
+                                  ThemeDirection::InkLinen);
+    CHECK(ink.metrics.controlRadius[1] == 8.0F);
+    CHECK(ink.metrics.cardRadius == 12.0F);
+
+    const Theme aurora = Theme::dark(ControlDensity::Comfortable,
+                                     ThemeDirection::AuroraSignal);
+    CHECK(aurora.metrics.controlRadius[1] == 9.0F);
+    CHECK(aurora.metrics.cardRadius == 14.0F);
+
+    const Theme utility = Theme::dark(ControlDensity::Comfortable,
+                                      ThemeDirection::UtilityContrast);
+    CHECK(utility.metrics.controlRadius[1] == 5.0F);
+    CHECK(utility.metrics.cardRadius == 7.0F);
+    CHECK(utility.metrics.controlBorderWidth == 2.0F);
+}
+
+TEST_CASE("theme_high_contrast_uses_direction_accent", "[style]") {
+    AccessibilitySettings settings;
+    settings.highContrast = true;
+    const Theme ink = Theme::fromSettings(
+        settings, /*darkMode=*/true, ControlDensity::Comfortable,
+        ThemeDirection::InkLinen);
+    // HC accent 来自方向色板的 blue300 槽位（紫），不是 CoreDark 的蓝。
+    const PrimitivePalette inkPalette = lumen::style::primitivePaletteFor(
+        ThemeDirection::InkLinen, true);
+    CHECK(ink.colors.accent == inkPalette.blue300);
+    CHECK(ink.colors.accent != PrimitivePalette{}.blue300);
+    CHECK(ink.direction == ThemeDirection::InkLinen);
+}
+
+TEST_CASE("theme_from_settings_preserves_direction_across_modes", "[style]") {
+    AccessibilitySettings settings;
+    settings.highContrast = true;
+    settings.fontScale = 1.5F;
+    const Theme utilityLight = Theme::fromSettings(
+        settings, /*darkMode=*/false, ControlDensity::Comfortable,
+        ThemeDirection::UtilityContrast);
+    CHECK(utilityLight.direction == ThemeDirection::UtilityContrast);
+    CHECK_FALSE(utilityLight.darkMode);
+    // 方向 Metrics 覆盖与 font scale 共存（半径不随 font scale 缩放）。
+    CHECK(utilityLight.metrics.controlRadius[1] == 5.0F);
+    CHECK(utilityLight.metrics.minHeight[1] > 40.0F);
+    // Aurora 近似：深字压浅青 accent。
+    const Theme aurora = Theme::fromSettings(
+        AccessibilitySettings{}, true, ControlDensity::Comfortable,
+        ThemeDirection::AuroraSignal);
+    CHECK(aurora.colors.onAccent == Color{8, 19, 33, 255});
 }

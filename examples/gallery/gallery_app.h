@@ -60,16 +60,10 @@ class GalleryApp {
         return shell_.accessibilitySettings();
     }
     void setTheme(style::Theme theme, bool forceFullRepaint = true) {
-        const style::Theme lightBaseline =
-            style::Theme::light(theme.metrics.density);
-        const style::Theme darkBaseline =
-            style::Theme::dark(theme.metrics.density);
-        if (theme.colors.pageBackground == lightBaseline.colors.pageBackground) {
-            darkMode_ = false;
-        } else if (theme.colors.pageBackground ==
-                   darkBaseline.colors.pageBackground) {
-            darkMode_ = true;
-        }
+        // M11：Theme 携带派生元数据，替代按 pageBackground 色值反推的
+        // 启发式（多变体方向下色值比较会失真）。
+        darkMode_ = theme.darkMode;
+        direction_ = theme.direction;
         shell_.setTheme(std::move(theme), forceFullRepaint);
     }
     [[nodiscard]] const style::Theme& theme() const { return shell_.theme(); }
@@ -110,6 +104,9 @@ class GalleryApp {
     [[nodiscard]] bool dialogOpen() const { return dialogOpen_; }
     [[nodiscard]] bool dropdownOpen() const { return dropdownOpen_; }
     [[nodiscard]] bool darkMode() const { return darkMode_; }
+    [[nodiscard]] style::ThemeDirection direction() const {
+        return direction_;
+    }
     [[nodiscard]] core::Size view() const { return shell_.view(); }
     [[nodiscard]] const render::PixelBuffer& pixels() const {
         return shell_.pixels();
@@ -309,11 +306,12 @@ class GalleryApp {
         handlers["dismiss-dialog"] = [this] { closeDialog(); };
         handlers["toggle-dark"] = [this] {
             darkMode_ = !darkMode_;
-            // 经 fromSettings 派生：保留高对比/字体缩放/减少动画，
-            // 只切换深浅（直接用 Theme::dark/light 基线会丢弃可访问性派生）。
+            // 经 fromSettings 派生：保留方向/高对比/字体缩放/减少动画，
+            // 只切换深浅（直接用 Theme::dark/light 基线会丢弃派生）。
             shell_.setTheme(style::Theme::fromSettings(
                 shell_.accessibilitySettings(), darkMode_,
-                shell_.theme().metrics.density));
+                shell_.theme().metrics.density, direction_));
+            refreshScopePreview();
             shell_.markDirty();
         };
         handlers["cycle-density"] = [this] {
@@ -326,11 +324,26 @@ class GalleryApp {
                     : (current == ControlDensity::Comfortable
                            ? ControlDensity::Touch
                            : ControlDensity::Compact);
-            // 以当前可访问性设置重派生（字体缩放/高对比/减少动画保留）。
+            // 以当前可访问性设置重派生（方向/字体缩放/高对比/减少动画
+            // 保留）。
             style::Theme nextTheme = style::Theme::fromSettings(
-                shell_.accessibilitySettings(), darkMode_, next);
+                shell_.accessibilitySettings(), darkMode_, next, direction_);
             shell_.setTheme(std::move(nextTheme));
             shell_.markDirty();
+        };
+        // M11：v0.4 视觉方向切换（design/gallery.html 四方向；与深浅/
+        // 密度/可访问性正交组合，经 fromSettings 保留全部派生）。
+        handlers["set-direction-core"] = [this] {
+            applyDirection(style::ThemeDirection::CoreDark);
+        };
+        handlers["set-direction-ink"] = [this] {
+            applyDirection(style::ThemeDirection::InkLinen);
+        };
+        handlers["set-direction-aurora"] = [this] {
+            applyDirection(style::ThemeDirection::AuroraSignal);
+        };
+        handlers["set-direction-utility"] = [this] {
+            applyDirection(style::ThemeDirection::UtilityContrast);
         };
         handlers["toggle-contrast"] = [this] {
             auto settings = shell_.accessibilitySettings();
@@ -363,8 +376,23 @@ class GalleryApp {
                          5, "Email must have at least 5 characters"));
     }
 
-    void go(const std::string& route) {
-        if (navigator_.current() == route) {
+    // M11：切换 v0.4 视觉方向（保留深浅/密度/可访问性派生）。
+    void applyDirection(style::ThemeDirection direction) {
+        direction_ = direction;
+        shell_.setTheme(style::Theme::fromSettings(
+            shell_.accessibilitySettings(), darkMode_,
+            shell_.theme().metrics.density, direction_));
+        refreshScopePreview();
+        shell_.markDirty();
+    }
+
+    // ThemeScope 预览跟随当前方向（浅色变体对比展示）。
+    void refreshScopePreview() {
+        themeScopeData_ = style::makeThemeScopeData(style::Theme::light(
+            shell_.theme().metrics.density, direction_));
+    }
+
+    void go(const std::string& route) {        if (navigator_.current() == route) {
             return;
         }
         // 路由栈保持单层：先回根再 push，保证 Back 恒回 home。
@@ -1249,6 +1277,48 @@ class GalleryApp {
                               core::ButtonVariant::Filled),
                  "toggle-dark-button-theme"),
              core::withKey(
+                 core::makeRow(
+                     {core::withKey(
+                          buttonWidget("Core", "set-direction-core",
+                                       "direction-core-button",
+                                       direction_ ==
+                                               style::ThemeDirection::CoreDark
+                                           ? core::ButtonVariant::Filled
+                                           : core::ButtonVariant::Outline),
+                          "direction-core-button"),
+                      core::withKey(
+                          buttonWidget("Ink", "set-direction-ink",
+                                       "direction-ink-button",
+                                       direction_ ==
+                                               style::ThemeDirection::InkLinen
+                                           ? core::ButtonVariant::Filled
+                                           : core::ButtonVariant::Outline),
+                          "direction-ink-button"),
+                      core::withKey(
+                          buttonWidget("Aurora", "set-direction-aurora",
+                                       "direction-aurora-button",
+                                       direction_ ==
+                                               style::ThemeDirection::
+                                                   AuroraSignal
+                                           ? core::ButtonVariant::Filled
+                                           : core::ButtonVariant::Outline),
+                          "direction-aurora-button"),
+                      core::withKey(
+                          buttonWidget("Utility", "set-direction-utility",
+                                       "direction-utility-button",
+                                       direction_ ==
+                                               style::ThemeDirection::
+                                                   UtilityContrast
+                                           ? core::ButtonVariant::Filled
+                                           : core::ButtonVariant::Outline),
+                          "direction-utility-button")},
+                     core::MainAxisAlignment::Start,
+                     core::CrossAxisAlignment::Center, style::spaceToken(2)),
+                 "direction-row"),
+             core::withKey(
+                 mutedLabel("Direction: " + directionName(direction_), theme),
+                 "direction-label"),
+             core::withKey(
                  buttonWidget(
                      "Density: " + densityName(theme.metrics.density) +
                          " (tap to cycle)",
@@ -1429,10 +1499,26 @@ class GalleryApp {
         return "Comfortable";
     }
 
+    [[nodiscard]] static std::string directionName(
+        style::ThemeDirection direction) {
+        switch (direction) {
+            case style::ThemeDirection::CoreDark:
+                return "Core Dark";
+            case style::ThemeDirection::InkLinen:
+                return "Ink & Linen";
+            case style::ThemeDirection::AuroraSignal:
+                return "Aurora Signal";
+            case style::ThemeDirection::UtilityContrast:
+                return "Utility Contrast";
+        }
+        return "Core Dark";
+    }
+
     core::ScrollController scroll_{};
     widgets::FormController form_{};
     widgets::NavigatorController navigator_{"home"};
     bool darkMode_{true};
+    style::ThemeDirection direction_{style::ThemeDirection::CoreDark};
     bool dialogOpen_{false};
     bool focusRestorePending_{false};
     mutable core::VirtualListController library_{};

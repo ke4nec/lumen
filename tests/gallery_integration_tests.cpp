@@ -150,6 +150,41 @@ TEST_CASE("gallery_dialog_escape_keeps_route", "[gallery]") {
     CHECK(app.navigator().current() == "home");
 }
 
+TEST_CASE("gallery_direction_switch_preserves_derivation", "[gallery]") {
+    GalleryApp app;
+    app.setView(Size{1024.0F, 768.0F});
+    (void)app.renderFrame();
+    go(app, "nav-theme");
+
+    // 方向切换保留高对比/密度；方向内深浅切换保留方向（M11）。
+    clickVisible(app, "toggle-contrast-button");
+    (void)app.renderFrame();
+    REQUIRE(app.accessibilitySettings().highContrast);
+
+    clickVisible(app, "direction-ink-button");
+    (void)app.renderFrame();
+    CHECK(app.direction() == style::ThemeDirection::InkLinen);
+    CHECK(app.theme().direction == style::ThemeDirection::InkLinen);
+    CHECK(app.accessibilitySettings().highContrast);
+    CHECK(app.theme().metrics.controlRadius[1] == 8.0F);
+
+    clickVisible(app, "toggle-dark-button-theme");
+    (void)app.renderFrame();
+    CHECK(app.direction() == style::ThemeDirection::InkLinen);
+    CHECK(app.accessibilitySettings().highContrast);
+
+    clickVisible(app, "direction-aurora-button");
+    (void)app.renderFrame();
+    CHECK(app.direction() == style::ThemeDirection::AuroraSignal);
+    CHECK(app.accessibilitySettings().highContrast);
+    CHECK(app.renderFrame() != 0);
+
+    clickVisible(app, "direction-core-button");
+    (void)app.renderFrame();
+    CHECK(app.direction() == style::ThemeDirection::CoreDark);
+    CHECK(app.renderFrame() != 0);
+}
+
 TEST_CASE("gallery_theme_derivation_preserved", "[gallery]") {
     GalleryApp app;
     app.setView(Size{1024.0F, 768.0F});

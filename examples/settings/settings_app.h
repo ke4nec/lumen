@@ -70,16 +70,9 @@ class SettingsApp {
     }
 
     void setTheme(style::Theme theme, bool forceFullRepaint = true) {
-        const style::Theme lightBaseline =
-            style::Theme::light(theme.metrics.density);
-        const style::Theme darkBaseline =
-            style::Theme::dark(theme.metrics.density);
-        if (theme.colors.pageBackground == lightBaseline.colors.pageBackground) {
-            darkMode_ = false;
-        } else if (theme.colors.pageBackground ==
-                   darkBaseline.colors.pageBackground) {
-            darkMode_ = true;
-        }
+        // M11：Theme 携带派生元数据，替代按 pageBackground 色值反推的
+        // 启发式（多变体方向下色值比较会失真）。
+        darkMode_ = theme.darkMode;
         shell_.setTheme(std::move(theme), forceFullRepaint);
     }
     [[nodiscard]] const style::Theme& theme() const {
@@ -631,9 +624,10 @@ class SettingsApp {
         };
         handlers["toggle-dark"] = [this] {
             darkMode_ = !darkMode_;
+            // 经 fromSettings 派生：保留方向/高对比/字体缩放/减少动画。
             shell_.setTheme(style::Theme::fromSettings(
                 shell_.accessibilitySettings(), darkMode_,
-                shell_.theme().metrics.density));
+                shell_.theme().metrics.density, shell_.theme().direction));
             shell_.markDirty();
         };
         // M4：平台服务（动作经 main 注入；缺省时报告服务不可用）。

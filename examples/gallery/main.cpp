@@ -219,6 +219,10 @@ int runHeadless(GalleryApp& app) {
     std::printf(
         "density=%d\n",
         static_cast<int>(app.theme().metrics.density));
+    // M11：v0.4 方向切换（派生保留：高对比/密度/深浅与方向正交）。
+    clickVisible(app, "direction-ink-button");
+    (void)app.renderFrame();
+    std::printf("direction=%d\n", static_cast<int>(app.direction()));
     clickVisible(app, "toggle-contrast-button");
     (void)app.renderFrame();
     std::printf("contrast=%s\n",
@@ -233,6 +237,9 @@ int runHeadless(GalleryApp& app) {
     (void)app.renderFrame();
     std::printf("dark=%s contrast=%s\n", app.darkMode() ? "yes" : "no",
                 app.accessibilitySettings().highContrast ? "on" : "off");
+    clickVisible(app, "direction-core-button");
+    (void)app.renderFrame();
+    std::printf("direction=%d\n", static_cast<int>(app.direction()));
     std::printf("frame7 %016llx\n",
                 static_cast<unsigned long long>(app.renderFrame()));
 
