@@ -59,6 +59,7 @@ jobs:
         run: cpack --config CPackConfig.cmake
         working-directory: build-pkg
       - name: Unpack smoke (headless)
+        working-directory: build-pkg
         run: |
           mkdir unpack && cd unpack
           if [ "${{ runner.os }}" = "Windows" ]; then
@@ -84,7 +85,7 @@ jobs:
           overwrite: true
       - name: Cleanup package intermediates
         if: always()
-        run: rm -rf unpack build-pkg/lumen-*
+        run: rm -rf build-pkg/unpack build-pkg/lumen-*
 
   cpu:
     runs-on: macos-15

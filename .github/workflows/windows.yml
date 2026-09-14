@@ -45,6 +45,7 @@ jobs:
         working-directory: build-pkg
       - name: Unpack smoke (headless)
         shell: bash
+        working-directory: build-pkg
         run: |
           mkdir unpack && cd unpack
           if [ "${{ runner.os }}" = "Windows" ]; then
@@ -71,7 +72,7 @@ jobs:
       - name: Cleanup package intermediates
         if: always()
         shell: bash
-        run: rm -rf unpack build-pkg/lumen-*
+        run: rm -rf build-pkg/unpack build-pkg/lumen-*
 
   cpu:
     runs-on: windows-2025
