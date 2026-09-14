@@ -5,6 +5,9 @@
 > 编写时间：2026-09
 >
 > 适用版本：v0.3 后续维护与 v0.4+ 视觉系统演进
+>
+> 当前平台范围（2026-09-14）：Windows/Linux/macOS 桌面；Android/iOS 暂不考虑。
+> V4 按桌面适配设计，历史移动实验内容不作为当前交付或验收要求。
 
 ## 1. 文档目的
 
@@ -18,7 +21,7 @@ Lumen 是 C++20 自绘 GUI 框架。当前控件已经具备基本的布局、�
 - 控件的颜色、字体、间距、尺寸、圆角、边框和状态来自同一套语义定义。
 - 布局、绘制、命中区域、局部重绘和无障碍状态使用同一份最终样式。
 - light、dark、高对比度、字体缩放、减少动画和触摸密度可以由同一套 Theme 派生。
-- CPU、Skia 光栅、GPU、桌面 host 和移动 host 使用相同的控件视觉契约。
+- CPU、Skia 光栅、GPU 和三桌面 host 使用相同的控件视觉契约。
 - 后续增加图标、阴影、动效和响应式布局时，不需要把平台类型带入 `lumen-core`。
 
 ## 2. 当前框架基线
@@ -41,9 +44,9 @@ Lumen 是 C++20 自绘 GUI 框架。当前控件已经具备基本的布局、�
 | 示例 | counter 示例和展示滚动、表单、弹窗、导航、主题切换、无障碍的 settings 示例 |
 | 验证 | Catch2 单元测试、无窗口集成测试、CPU 像素测试、命令回放测试、文本/语义/平台测试 |
 
-已提交的稳定阶段为 0–6、7A–7E、8A–8E。8E 当前提供的是可移植的 SDL-free
-`MobileHostSeam` 接缝；Android JNI/NativeActivity 与 iOS Objective-C++ 胶水仍是
-外部集成目标，不能把它描述成已完成的原生移动端发布能力。
+阶段 0–6、7A–7E、8A–8E 的实现记录见自用路线图。历史 8E 还留下 SDL-free
+`MobileHostSeam` 接缝；它不代表原生移动端支持，Android/iOS 原生胶水也不再列为
+当前集成目标。视觉系统的后续设计和验收只面向三桌面。
 
 ### 2.2 当前视觉问题
 
@@ -74,13 +77,16 @@ Primitive Tokens
     -> RenderCommandList / Renderer
 ```
 
-控件只声明语义、变体、尺寸和行为。控件不直接读取 SDL、Windows、Linux、macOS、
-Android 或 iOS 的主题 API，也不直接依赖某一组原始颜色。
+控件只声明语义、变体、尺寸和行为。控件不直接读取 SDL、Windows、Linux、macOS
+或其他平台主题 API，也不直接依赖某一组原始颜色。
 
 Lumen 默认提供一套跨平台视觉风格。平台适配层只负责提供系统主题、系统字体、显示
 缩放、触摸能力、安全区、无障碍设置等输入。若未来需要接近某个平台的外观，应通过
 `PlatformThemeAdapter` 生成 Theme 输入或独立 Theme provider，不能在控件 painter 中
 增加平台分支。
+
+这里的触摸能力用于桌面触屏，安全区是通用窗口可用区域指标；窄窗口、Touch density
+和这些值类型的保留不构成 Android/iOS 适配要求。
 
 ### 3.1 Token 三层模型
 
@@ -160,8 +166,8 @@ dialog.scrim
 | 控件间距 | 4 | 8 | 8 |
 | 小部件圆角 | 4 | 6 | 8 |
 
-卡片默认圆角为 8，Dialog 默认圆角为 12，pill 组件的圆角取高度的一半。触摸平台
-默认使用 Large density；桌面默认使用 Medium density。应用可以明确选择 density，
+卡片默认圆角为 8，Dialog 默认圆角为 12，pill 组件的圆角取高度的一半。桌面默认
+使用 Medium density，桌面触屏或需要更大操作区域时可选择 Large/Touch。应用明确选择 density，
 不能依赖窗口平台类型隐式改变颜色或组件语义。
 
 ## 4. Theme 模型
@@ -440,14 +446,17 @@ Card 使用 surface/elevated surface 和 elevation token。ScrollView/ListView �
 - 增加 ThemeScope，用于局部子树主题覆盖。
 - 为 settings 示例增加完整的控件展示页和主题调试页。
 
-### V4：跨平台和移动端
+### V4：三桌面主题适配与窗口可用性
 
-- 保证 `LUMEN_BUILD_MOBILE_CORE=ON` 时 `lumen-style` 不依赖 SDL、Skia 或桌面会话。
-- 移动端复用同一套颜色、排版和控件语义，通过 safe area、touch density 和窗口指标
-  调整布局。
-- 8E mobile host 只提供生命周期、触摸、缩放和安全区数据。
-- 为 Windows/Linux/macOS/Android/iOS 分别提供 PlatformThemeAdapter 输入映射，禁止把
-  `#ifdef` 扩散到 core、layout、style 和 widget painter。
+- 为 Windows/Linux/macOS 提供 PlatformThemeAdapter 输入映射：系统外观、字体、
+  缩放、对比度、减少动画和桌面输入能力；不可用项按能力报告降级。
+- 验证桌面窗口 resize、DPI、窄窗口、不同 density 和窗口可用区域下的布局与命中。
+- `lumen-style` 保持不依赖 SDL、Skia 或桌面会话的公共契约，支持确定性 headless 测试。
+- 禁止把平台 `#ifdef` 扩散到 core、layout、style 和 widget painter。
+- Android/iOS 主题映射、移动安全区策略和软键盘布局不在本阶段范围；M9 暂缓。
+
+出口条件：三桌面主题输入与降级行为可验证，布局、视觉、焦点和语义一致；
+不以移动 host 或设备测试作为完成条件。
 
 ## 10. 测试和验收
 
@@ -464,7 +473,7 @@ Card 使用 surface/elevated surface 和 elevation token。ScrollView/ListView �
 ### 10.2 布局和渲染测试
 
 - Theme 指标变化后控件最小尺寸、padding、字体、圆角和布局结果正确。
-- 320px 窄窗口、连续 resize、font scale、touch density 和 safe area 下内容可用。
+- 320px 桌面窄窗口、连续 resize、font scale、桌面 Touch density 和窗口可用区域下内容可用。
 - 深色/浅色/高对比度场景的 CPU headless 像素结果稳定。
 - CPU、Skia 光栅和 GPU/CPU 回退录制相同语义样式的命令。
 - hover、pressed、focused、invalid、checked 状态变化的局部重绘与全量重绘像素一致。
@@ -494,8 +503,10 @@ ctest --test-dir build --output-on-failure -C Debug
 - `LUMEN_ENABLE_SKIA=ON` 的 CPU/Skia 一致性测试。
 - GPU 可用、GPU 初始化失败回退 CPU、surface 重建和软件呈现失败路径。
 - counter/settings 的桌面窗口 smoke 和 headless 场景。
-- `LUMEN_BUILD_MOBILE_CORE=ON` 的 SDL-free 配置、编译和 mobile host 测试。
-- 8E 提交前后分别检查 CMake 依赖、测试集合和 README/支持矩阵描述没有过期。
+- V4 变更前后检查桌面 CMake 依赖、测试集合和 README/支持矩阵描述没有过期。
+
+现有 `LUMEN_BUILD_MOBILE_CORE=ON` 配置及 CI 仍用于历史 SDL-free 实验代码的
+兼容性检查，不属于 V4 的移动产品验收，也不要求新增模拟器或真机测试。
 
 ## 11. 迁移约束和风险
 
@@ -508,7 +519,7 @@ ctest --test-dir build --output-on-failure -C Debug
 - 状态视觉变化必须进入 RenderNode diff，否则 Preserve/damage 模式会留下旧像素。
 - 颜色对比度、焦点环和 disabled 状态必须在 high contrast 下仍可区分，不能只依赖颜色。
 - 图标、阴影和动效扩展不得改变现有 `RenderCommandList` 的 CPU/Skia/GPU 回退不变量。
-- 移动核心继续保持 SDL-free；Theme 只接收 host 提供的能力和指标，不接触 native handle。
+- Theme 只接收 host 提供的能力和指标，不接触 native handle；不为暂缓的移动平台增加专属契约。
 
 ## 12. 实施状态（2026-09 追记）
 
@@ -528,6 +539,9 @@ V1（样式基础和当前控件迁移）与 V2（状态、交互和无障碍联
   `MotionTokens`（reduceAnimation 归零）已入 Theme；图标/阴影绘制、状态
   过渡动画、ThemeScope 与 `PlatformThemeAdapter` 留待 V3/V4。
 - 命令序列化升级 v2 以携带完整 TextStyle（resolved 样式带 weight/family）。
-- 验收记录：当前 Windows CPU Debug 为 303 个用例，SDL-free mobile-core 为
+- V1/V2 当时的验收记录：Windows CPU Debug 为 303 个用例，SDL-free mobile-core 为
   291 个用例；counter/settings headless 与窗口 smoke 正常。Skia Release 还需
   通过 `skia_paints_counter_frame_consistently` 后才能作为完整后端门槛。
+
+以上为历史实施记录，后续实现状态以自用路线图为准。mobile-core 数量只说明当时
+通用实验配置的验证情况，不代表 Android/iOS 支持或本次复测结果。

@@ -1,8 +1,8 @@
-# Lumen 自用跨端 GUI 里程碑路线图
+# Lumen 自用桌面 GUI 里程碑路线图
 
 > 文档状态：实施路线图（2026-09）
-> 目标：在现有 Lumen 核心之上，形成一套可供个人工具类应用长期使用的跨端 GUI。
-> 当前策略：桌面优先，Windows/Linux/macOS 先形成发布闭环；Android/iOS 在桌面稳定后接入。
+> 目标：在现有 Lumen 核心之上，形成一套可供个人工具类应用长期使用的跨平台桌面 GUI。
+> 当前策略（2026-09-14 调整）：只规划 Windows/Linux/macOS 桌面端；暂不考虑 Android/iOS。M9 已暂缓，桌面里程碑完成后不自动进入移动端开发，也不预排移动端版本。
 
 ## 1. 目标、范围和完成定义
 
@@ -13,11 +13,10 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 - 多窗口、窗口缩放、DPI、最小化/恢复和退出。
 - Button、TextField、Checkbox、Switch、Dialog、Navigator、ScrollView、ListView、Grid 和 VirtualList。
 - 中文、emoji、组合字符、RTL、IME preedit/commit、选区、剪贴板和 undo/redo。
-- 键盘焦点、鼠标/触摸、滚轮、语义树和键盘可访问操作。
+- 键盘焦点、鼠标、桌面触屏、滚轮、语义树和键盘可访问操作。
 - 由 Theme 驱动的颜色、排版、尺寸、图标、阴影、动效和响应式布局。
 - CPU、Skia 光栅和 Skia Ganesh GPU 三条渲染路径；GPU 故障可诊断并安全恢复。
 - Windows、Linux、macOS 可运行的便携包、启动说明和故障诊断。
-- 移动端共享同一套 core/layout/style/widget 语义，平台 glue 只负责 host、生命周期和系统输入。
 
 ### 1.2 明确不纳入第一版
 
@@ -27,8 +26,12 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 - 完整富文本编辑器、表格控件、3D 和 WebAssembly。
 - CSS 或 Flutter API 兼容层。
 - 第一版完整 i18n/本地化资源系统；应用可自行管理字符串和区域设置。
-- 移动端商店发布、移动端原生无障碍树和完整移动端控件套件。
+- Android/iOS 的平台接入、生命周期、软键盘、移动字体、移动页面、GPU、无障碍和发布；整个移动端方向暂不纳入当前路线图。
 - Graphite、Vulkan、Metal、D3D 专用渲染后端。第一阶段统一使用 Skia Ganesh + OpenGL。
+
+桌面触屏、`ControlDensity::Touch`、窄窗口布局和通用 `safeArea` 指标仍可用于
+桌面交互与布局，不代表移动平台支持承诺。现有移动实验代码与 headless 记录保留为
+历史资产；其存在不构成新增移动功能或模拟器/真机验收任务。
 
 ### 1.3 发布完成定义
 
@@ -54,7 +57,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | v0.3 8B | 已完成编辑模型和基础文本契约 | grapheme、UTF-8、selection/composing、IME 状态机、TextField |
 | v0.3 8C | 已完成语义契约 | `SemanticsTree`、identity diff、Recording bridge、语义 action |
 | v0.3 8D | 已完成应用基础组件 | ScrollView/ListView、Form、Dialog、Navigator、settings 示例 |
-| v0.3 8E | 已完成 SDL-free 移动接缝 | `MobileHostSeam`、生命周期、safe area、触摸归一化、返回键 |
+| v0.3 8E | macOS 桌面接入；另保留历史 SDL-free 实验接缝 | SDL3 桌面 host；`MobileHostSeam` 只代表已有通用状态机，不代表 Android/iOS 支持 |
 | 视觉 V1/V2 | 已完成主要状态样式迁移 | token、Theme、StyleResolver、ResolvedStyle、状态与 damage 联动 |
 | 自用 M1 | 已完成真实文本与编辑闭环 | SkiaFontManager、shaped TextLayout/RenderCommand、UAX#9 子集、EditingHistory（见 §10 M1 完成记录） |
 | 自用 M2 | 已完成应用框架层与 C++ DSL | `lumen-app`（AppShell/runApp）、counter/settings 迁移、C++ builder 补齐（见 §10 M2 完成记录） |
@@ -65,7 +68,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M7 | 已完成 GPU 门槛与性能 | macOS GPU CI/新基准场景/partialSubmit 评估/文本性能修复/Element move 管道；性能门槛 6/6 达标（见 §10 M7 完成记录） |
 | 自用 M8 | 已完成三桌面便携发布 | install/CPack/依赖入包/RPATH/CI package job + 解包冒烟（见 §10 M8 完成记录） |
 
-当前验证基线：Linux CPU Debug 374/374、Skia Release 380/380、GPU Release 387/387（其中 3 个硬件相关用例按环境跳过）、mobile-core 356/356；Windows/macOS 对应门槛由 CI package/GPU job 负责验证。M7/M8 的跨平台 CI 与便携包 job 已纳入工作流。
+M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/380、GPU Release 387/387（其中 3 个硬件相关用例按环境跳过），另有历史 mobile-core 356/356。这些数量不是当前提交的复测结果，mobile-core 结果也不代表移动设备验证。Windows/macOS 对应门槛由 CI package/GPU job 负责验证。M7/M8 的跨平台 CI 与便携包 job 已纳入工作流。
 
 关键缺口的源码依据（以文件和符号为准，行号随实现变化不作为稳定引用）：应用主循环和帧管线位于 `examples/counter/counter_app.h::CounterApp::rebuildIfDirty/renderFrame` 与 `examples/settings/settings_app.h::SettingsApp::rebuildIfDirty/renderFrame`；Widget 类型定义位于 `include/lumen/core/widget.h::WidgetType`；C++ DSL builder 位于 `include/lumen/dsl/dsl.h::column/row/container/text/button/text_field`；表单内置校验器位于 `include/lumen/widgets/form.h::FormController::nonEmpty/minLength`；GPU `partialSubmit` 当前在 `src/render/skia_gpu_renderer.cpp::SkiaGpuRenderer::capabilities` 固定为 false；移动接缝实现位于 `src/platform/mobile/mobile_host_seam.cpp::MobileHostSeam`。
 
@@ -73,7 +76,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 
 | 领域 | 当前实现 | 对自用版的影响 | 计划里程碑 |
 | --- | --- | --- | --- |
-| 文本 | M1 已完成：`SkiaFontManager`（字体族/weight/回退/度量/shaping，pimpl 无 Skia 类型）+ `TextLayoutResult` shaped run/glyph/cluster/baseline；CPU 占位与 Skia 共享同一契约，缺字体明确诊断 | 复杂脚本合字（HarfBuzz 级）、移动字体策略属后续版本（M9） | M1 已收口 |
+| 文本 | M1 已完成：`SkiaFontManager`（字体族/weight/回退/度量/shaping，pimpl 无 Skia 类型）+ `TextLayoutResult` shaped run/glyph/cluster/baseline；CPU 占位与 Skia 共享同一契约，缺字体明确诊断 | 复杂脚本合字（HarfBuzz 级）属桌面后续增强；默认字体栈和 Gallery 不依赖 M9 | M1 已收口 |
 | 编辑 | M1 已完成：`EditingHistory` undo/redo 栈、事务边界、连续输入合并、Ctrl+Z/Shift+Z/Y、IME 提交单事务、preedit 不进栈 | 富文本编辑不纳入第一版 | M1 已收口 |
 | 方向文本 | M1 已完成：UAX#9 确定性子集（强/弱/中性类 + L2 重排），混合方向命中测试可靠，grapheme 边界为唯一编辑索引 | 显式嵌入控制/镜像括号/数字定形属后续增强 | M1 已收口 |
 | 应用框架层 | M2 已完成：`lumen-app` 目标（`app::AppShell` + `app::runApp`）统一主循环/事件泵/重建/damage/DPI/IME 同步，支持 Fake host 与外部 renderer 注入；counter/settings 已迁移（示例只保留 build/状态/handler） | — | M2 已收口 |
@@ -86,7 +89,8 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur/CPU 扁平面降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | Dialog/Navigator 完整转场动画驱动、MotionTokens 全量状态过渡属后续增强 | M6 已收口 |
 | GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道（快照去子化，reconcile O(n·depth)→O(n)） | 三桌面 GPU CI 首跑为事实来源（macOS job 为本变更新增） | M7 已收口 |
 | 发布 | M8 已完成：install 规则（库/头/示例/文档）+ CPack（Linux TGZ / Windows·macOS ZIP，git 版本可追溯）+ SDL 依赖入包与平台 RPATH + 三平台 CI package job（解包 headless smoke + artifact） | AppImage 与完整 .app bundle 属后续增强；Windows/macOS 包以 CI 首跑为事实来源 | M8 已收口 |
-| 移动端 | 只有 SDL-free seam，没有文本输入/软键盘入口；mobile-core 与 Skia 互斥，当前只能 CPU 占位字体 | 不能在模拟器/真机启动可用的文本工具页面 | M9 |
+
+移动端不列为桌面自用版的能力缺口；已存在的实验接缝和字体代码见 §4 M9 暂缓说明。
 
 ## 3. 版本和依赖关系
 
@@ -107,11 +111,9 @@ M0 基线冻结
                          M7 GPU 与性能门槛
                                       ↓
                          M8 三桌面便携发布
-                                      ↓
-                         M9 Android/iOS 原生接入
 ```
 
-M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进入 M4；之后按 M4 → M5 → M6 → M7 → M8 合入。M9 不阻塞桌面自用版。
+M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进入 M4；之后按 M4 → M5 → M6 → M7 → M8 合入。当前实施链到 M8 为止，后续工作围绕桌面问题和能力增强展开；M9 不在实施链中。
 
 ## 4. 里程碑详细计划
 
@@ -122,7 +124,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 **任务**
 
 - 新增本路线图并链接到 README、支持矩阵和版本计划。
-- 为 CPU、Skia、GPU、mobile-core、headless、窗口 smoke 和基准建立统一命令表。
+- 为桌面 CPU、Skia、GPU、headless、窗口 smoke 和基准建立统一命令表；现有 mobile-core 命令单列为历史实验配置参考。
 - 记录三桌面 CI 的操作系统、编译器、SDL/Skia 版本和依赖安装方式。
 - 使用 `benchmarks/lumen-scene-bench` 生成并归档 v0.2 CPU 基线报告；至少固定 viewport、场景规模、warmup/测量帧数、编译配置、frame hash，以及 reconcile/layout/paint 的 p50/p95、分配次数和分配字节数。
 - 将 CPU 基线固定保存为 `docs/perf-baselines/v0.2-cpu-scene.json`，同时上传带 commit、平台和配置元数据的 CI artifact；M7 只允许引用该文件和确切生成命令。
@@ -329,21 +331,23 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 
 **出口条件**：三平台包在干净机器或干净容器中可启动；依赖缺失、GPU 不可用和字体缺失时都有清晰提示；发布产物可追溯到 Git commit。
 
-### M9：Android/iOS 原生接入
+### M9：Android/iOS 原生接入（暂缓，不在当前范围）
 
-**目标**：在桌面版稳定后，把已验证的 core/layout/style/widget 迁移到真实移动 host。
+**状态**：2026-09-14 调整为暂缓。保留编号用于解释历史记录，不安排实现任务、
+出口条件、移动预览版或后续版本接入时间；M8 完成不触发 M9。
 
-**实现**
+**已有内容的定位**：仓库保留 `MobileHostSeam`、`lumen-mobile-host`、
+`LUMEN_BUILD_MOBILE_CORE`、`createMobileFontManager` 和 `FontBackend::Mobile`。
+这些是历史实验代码；字体族枚举、默认字体栈或目录查询能力不能证明移动端文本
+输入、字形绘制、原生 host 或发布链路已经可用。桌面默认字体和 Gallery 工作按
+桌面功能验收，不作为 M9 进度。
 
-- Android 增加 NDK/CMake 工程、JNI/NativeActivity glue、surface 生命周期和返回键映射。
-- iOS 增加 Xcode/Objective-C++ 工程、UIView/CAMetalLayer 或当前选定 surface glue、生命周期和 safe area 映射。
-- 复用 `MobileHostSeam` 的 attach/detach、pause/resume、内存告警、触摸 pointer id、逻辑坐标和返回请求。
-- 为 `MobileHostSeam` 增加 TextInputSession/软键盘显示、隐藏、候选区和编辑状态转发；原生 glue 只负责把系统事件转换为平台无关事件。
-- 在移动目标中确定字体策略：优先使用 Skia/系统字体 shaping；若移动核心继续保持 SDL-free 且不引入 Skia，则必须提供可用的中文/emoji 字体后端，而不是沿用只支持 ASCII 的占位绘制。
-- 增加移动版 counter/settings 精简页面，验证旋转、暂停恢复、触摸、文本输入和滚动。
-- 移动端正式 GPU、商店发布和原生 accessibility tree 单独建立后续版本，不修改桌面发布门槛。
+**当前约束**：不新增 Android/iOS 工程、软键盘、移动字体管线、移动示例、原生
+无障碍或移动 GPU/发布任务；不要求模拟器或真机验证。已有 Linux/macOS
+`mobile-core` CI job 仍按现有工作流运行，只验证 SDL-free 通用代码的兼容性，
+不作为移动产品验收。本次范围调整不删除代码、构建目标、测试或 CI job。
 
-**出口条件**：Android 模拟器、iOS Simulator 和至少一类真机能启动最小页面；surface 重连和暂停恢复不丢状态；移动核心仍可 SDL-free 构建。
+只有用户重新提出移动端需求后才重新评估范围和架构；旧方案不作为待执行清单。
 
 ## 5. 公共接口与模块边界
 
@@ -388,8 +392,9 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 | Windows | 必达 | 必达 | 必达 | 必达 | zip |
 | Linux X11/XWayland | 必达 | 必达 | 必达 | 必达 | tar.gz/AppImage |
 | macOS | 必达 | 必达 | 必达 | 必达 | `.app` zip |
-| Android | SDL-free core | 由后续移动目标决定 | 后续移动目标 | 模拟器 | 后续 |
-| iOS | SDL-free core | 由后续移动目标决定 | 后续移动目标 | Simulator | 后续 |
+
+此表只定义三桌面发布目标。现有 Linux/macOS `mobile-core` job 属历史实验配置
+兼容性检查，继续按工作流运行；不等同 Android/iOS 编译、模拟器或真机门槛。
 
 ### 6.3 性能和稳定性门槛
 
@@ -407,16 +412,15 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 | VirtualList 状态复用 | 输入焦点或表单值串到其他项目 | stable key、Element identity 和回收测试先于性能优化 |
 | IME 时序差异 | preedit/commit 顺序不同 | 先锁定 `TextEditingValue` 状态机，再实现平台事件转译 |
 | Skia 构建约束 | Windows 预编译 Skia 使用静态 CRT 且当前只提供 Release 包 | M1/M7 明确 Skia 为桌面可选依赖；CI 固定 Release/MT 配置，CPU-only 仍可独立构建 |
-| 移动字体策略 | mobile-core 当前与 Skia 互斥，无法直接复用桌面 shaping | M9 先完成软键盘路径，再决定移动 Skia 接入或独立系统字体后端；决策前不宣称移动中文可用 |
 | 视觉命令扩展 | CPU/Skia/GPU 输出不一致 | 先扩展命令模型和序列化，再接入具体控件 |
 | 平台服务失败 | 文件选择/通知阻塞或丢状态 | 所有服务返回结构化失败，状态更新只能在 UI 线程完成 |
-| 范围膨胀 | 计划被富文本、插件、移动商店拖慢 | M8 即可形成桌面自用版，M9 与后续能力独立排期 |
+| 范围膨胀 | 桌面任务被未确认的平台扩展拖慢 | 当前范围为三桌面；M9 暂缓，不因已有移动实验代码而扩展任务 |
 
 ## 8. 版本切分和停止条件
 
 - **桌面自用版**：完成 M0–M8。M5 的语义契约和 Recording bridge 必须完成；原生桌面 accessibility provider 可以后续追加。
-- **移动预览版**：完成 M9 的模拟器和生命周期验证，不承诺商店发布或完整移动无障碍。
-- **后续增强版**：再评估 UIA/AT-SPI/NSAccessibility、移动端 Metal/Graphite、原生移动 accessibility、惯性滚动、富文本和数据库/网络辅助库。
+- **后续桌面增强版**：按实际需要评估 UIA/AT-SPI/NSAccessibility、桌面 GPU 后端、惯性滚动、富文本等；业务数据与网络仍由应用层负责。
+- **移动端**：暂不规划版本；M9 保留为暂缓记录。
 
 任何里程碑若无法满足出口条件，只能修复当前阶段或回退实现，不能通过修改文档把“接口存在”标记为“平台完成”。
 
@@ -440,7 +444,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - 提交号：
 - 变更：（模块/接口/行为，指向源码符号）
 - 测试：（单测/headless/像素/窗口 smoke/基准数量与命令）
-- 平台：（三桌面/mobile-core 覆盖与未覆盖平台）
+- 平台：（三桌面覆盖与未覆盖平台；如运行了历史实验配置，单独记录）
 - 已知限制：（与出口条件的差异）
 - 回滚点：（回退到的提交号/行为）
 ```
@@ -659,7 +663,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     收敛，布局期同帧重算覆盖绝大多数情况）。
   - Image 需应用侧 ResourceManager 驱动加载并回写 imageId（框架不
     管理异步资源生命周期；上传命令沿阶段7D 契约）。
-  - 惯性滚动不纳入 M3（默认关闭，M3/M9 后续）。
+  - 惯性滚动不纳入 M3（默认关闭，桌面后续增强按需评估）。
 - 回滚点：M2 合入后的提交（见 M2 完成记录）。
 
 ### M4 完成记录（三桌面平台服务与窗口能力闭环）
@@ -908,8 +912,10 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     GPU 包按需在 CI 追加 `-DLUMEN_ENABLE_SKIA=ON` 变体）。
 - 回滚点：M7 合入后的提交。
 
-### M1–M9 完成记录（待实施，占位）
-- M5 语义与键盘可用性：未开始（出口：语义/键盘/视觉/交互无分叉；
-  Recording bridge 可作回归证据）。
-- M9 Android/iOS 原生接入：未开始（出口：模拟器+真机启动最小页；
-  surface 重连/暂停恢复不丢状态；mobile-core 仍 SDL-free）。
+### 范围调整记录（2026-09-14）
+
+- 当前 UI 只面向 Windows/Linux/macOS；M9 暂缓，不列入待实施里程碑。
+- v0.3 8E 和视觉系统 V4 的规划统一为桌面范围，Android/iOS 不再承担版本出口条件。
+- 原有 M0–M8 完成记录中的 mobile-core 数字保留为当时的实验配置验证记录，
+  不表示移动平台已完成，也不表示本次复测通过。
+- 删除与既有 M5 完成记录冲突的“未开始”占位项；已有实现不因本次文档调整回退。

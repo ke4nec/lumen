@@ -1,8 +1,9 @@
 # Lumen 统一构建与验证命令表（M0 基线冻结）
 
-> 状态：M0 基线入口（2026-09）。本文件是 CPU、Skia、GPU、mobile-core、
-> headless、窗口 smoke 和基准的唯一可追踪验收入口。所有里程碑的验证
+> 状态：M0 基线入口（2026-09）；2026-09-14 统一为三桌面范围。本文件是桌面 CPU、Skia、GPU、
+> headless、窗口 smoke 和基准的唯一可追踪验收入口。所有当前里程碑的验证
 > 命令必须引用本表，不得使用开发者本地脚本作为门槛依据。
+> mobile-core 单列为保留的历史实验配置，不代表 Android/iOS 产品验收。
 >
 > 相关文档：[自用路线图](lumen-self-use-roadmap.md) ·
 > [平台支持矩阵](support-matrix.md) ·
@@ -31,10 +32,10 @@
 | 平台 | runner | 编译器 | 备注 |
 | --- | --- | --- | --- |
 | Windows | `windows-2025` | MSVC（VS 2025 自带，`/utf-8 /W4`） | CPU Debug / Skia Release / GPU Release |
-| Linux | `ubuntu-24.04` | GCC（系统默认，`-Wall -Wextra -Wpedantic`） | CPU Debug + 基准/Xvfb / Skia Release / GPU Release（Mesa llvmpipe）/ mobile-core Debug |
-| macOS | `macos-15` | AppleClang（Xcode CLT） | CPU Debug / mobile-core Debug；GPU 非门槛 |
+| Linux | `ubuntu-24.04` | GCC（系统默认，`-Wall -Wextra -Wpedantic`） | CPU Debug + 基准/Xvfb / Skia Release / GPU Release（Mesa llvmpipe）/ package；另保留 mobile-core 实验检查 |
+| macOS | `macos-15` | AppleClang（Xcode CLT） | CPU Debug / GPU Release / package；另保留 mobile-core 实验检查 |
 
-## 2. 统一命令表
+## 2. 桌面统一命令表
 
 | 场景 | 命令 |
 | --- | --- |
@@ -42,7 +43,6 @@
 | CPU-only + 基准 | `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON -DLUMEN_BUILD_BENCHMARKS=ON`<br>`cmake --build build --config Debug`<br>`ctest --test-dir build --output-on-failure -C Debug` |
 | Skia 光栅 | `cmake -S . -B build-skia -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON`<br>`cmake --build build-skia --config Release`（Windows 必须 Release）<br>`ctest --test-dir build-skia -C Release`（含 CPU/Skia 一致性）<br>`./build-skia/examples/counter/lumen-counter --renderer skia` |
 | Skia GPU（Ganesh+GL） | `cmake -S . -B build-gpu -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON`<br>`cmake --build build-gpu --config Release`<br>`./build-gpu/examples/counter/lumen-counter --renderer gpu --diagnostics` |
-| mobile-core（SDL-free） | `cmake -S . -B build-mobile -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_MOBILE_CORE=ON`<br>`cmake --build build-mobile --config Debug`<br>`ctest --test-dir build-mobile --output-on-failure -C Debug` |
 | headless smoke | `./build/examples/counter/lumen-counter --headless`<br>`./build/examples/settings/lumen-settings --headless`<br>`./build/examples/gallery/lumen-gallery --headless` |
 | 窗口 smoke（Linux） | `xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build/examples/settings/lumen-settings \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build/examples/gallery/lumen-gallery \|\| test $? -eq 124` |
 | 窗口 smoke（macOS 无窗口服务器） | `SDL_VIDEODRIVER=dummy ./build/examples/counter/lumen-counter & pid=$!; sleep 10; kill -0 "$pid"`（见 `macos.yml`） |
@@ -60,3 +60,16 @@
   不同场景，禁止直接比较数值（见 `perf-baselines/README.md`）。
 - M7 只允许引用 `docs/perf-baselines/v0.2-cpu-scene.json` 和上表 canonical
   命令做 CPU 对比；Skia/GPU 和新增场景以各自首次归档报告为基线。
+
+## 3. 历史 SDL-free 实验配置（保留参考）
+
+`LUMEN_BUILD_MOBILE_CORE=ON` 仍存在，Linux/macOS 工作流中的 `mobile-core`
+job 也仍会执行。以下命令只验证通用库与 headless 测试，不是 Android NDK/iOS
+工程构建，不代表模拟器、真机、移动文本输入或发布通过。M9 暂缓，不新增移动
+平台验收任务；本次范围调整不修改构建目标或 CI 行为。
+
+```sh
+cmake -S . -B build-mobile -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_MOBILE_CORE=ON
+cmake --build build-mobile --config Debug
+ctest --test-dir build-mobile --output-on-failure -C Debug
+```

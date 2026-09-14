@@ -1,6 +1,6 @@
 # Lumen
 
-C++20 自绘 GUI 框架（Flutter 式声明式 UI），详见
+C++20 自绘桌面 GUI 框架（Flutter 式声明式 UI），详见
 [`docs/lumen-gui-framework-plan.md`](docs/lumen-gui-framework-plan.md)、
 v0.2 计划
 [`docs/lumen-gui-framework-plan-v0.2.md`](docs/lumen-gui-framework-plan-v0.2.md)
@@ -8,7 +8,8 @@ v0.2 计划
 [`docs/lumen-gui-framework-plan-v0.3.md`](docs/lumen-gui-framework-plan-v0.3.md)，
 视觉系统设计
 [`docs/lumen-visual-system-design.md`](docs/lumen-visual-system-design.md)。
-面向自用工具类应用的桌面优先跨端路线图见
+当前只规划 Windows/Linux/macOS，暂不考虑 Android/iOS；M9 已暂缓。
+面向自用工具类应用的桌面路线图见
 [`docs/lumen-self-use-roadmap.md`](docs/lumen-self-use-roadmap.md)。
 统一构建/验证命令表见
 [`docs/build-commands.md`](docs/build-commands.md)，性能基线见
@@ -17,9 +18,9 @@ v0.2 计划
 当前进度：M0 基线冻结完成（统一命令表、工具链/依赖基线、四态定义、
 `docs/perf-baselines/v0.2-cpu-scene.json` CPU 归档基线）；
 阶段 0–6 + v0.2 阶段 7A–7E + v0.3 阶段 8A–8E 的核心契约（跨平台宿主、
-文本/IME/编辑模型、语义树与 Recording 桥、滚动/表单/弹窗/导航组件、SDL-free
-移动 host 接缝）。Android/iOS 原生胶水、平台原生无障碍 provider 和完整发布打包
-仍未纳入。平台能力详见
+文本/IME/编辑模型、语义树与 Recording 桥、滚动/表单/弹窗/导航组件）。历史
+SDL-free 移动 host 接缝仍保留，但不代表当前支持移动平台。三桌面便携发布已纳入
+M8；平台原生无障碍 provider、AppImage 和完整 .app bundle 仍待增强。平台能力详见
 [`docs/support-matrix.md`](docs/support-matrix.md)。
 
 ## 结构
@@ -28,10 +29,10 @@ v0.2 计划
   `widgets`、`platform`、`dsl` 公共头文件。
 - `src/`：与公共模块一一对应的实现（`render` 含 CPU 光栅器、命令管线、
   帧调度器、资源管理器、painter 与可选 Skia 光栅/GPU 适配，`platform` 含
-  SDL3 后端与 SDL-free 移动 host 接缝）。
+  SDL3 桌面后端与保留的历史 SDL-free 移动实验接缝）。
 - `tests/`：Catch2 单测与无窗口集成测试（几何、布局、Element、渲染像素、
   命令回放/序列化、调度、资源、交互、文本/图串、语义树、平台宿主、
-  移动接缝、counter/settings frame hash、gallery 集成）。
+  历史移动接缝、counter/settings frame hash、gallery 集成）。
 - `benchmarks/`：固定 1080p 场景基准（阶段耗时 p50/p95、堆分配、命令数、frame hash）。
 - `examples/counter/`：最小回归示例（窗口模式 + `--headless`）。
 - `examples/settings/`：v0.3 应用基础组件示例（滚动列表、表单校验、弹窗、
@@ -60,7 +61,7 @@ ctest --test-dir build --output-on-failure -C Debug
 | `LUMEN_ENABLE_SKIA` | OFF | Skia 光栅后端（预编译包自动拉取） |
 | `LUMEN_ENABLE_GPU` | OFF | Skia Ganesh GPU 后端（需 `LUMEN_ENABLE_SKIA`） |
 | `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` | OFF | 预留的平台原生无障碍桥开关；当前 provider 未纳入，语义树与 Recording 桥始终可用 |
-| `LUMEN_BUILD_MOBILE_CORE` | OFF | v0.3 移动核心：SDL-free 配置（跳过 SDL 与桌面示例），Android NDK / iOS Xcode 交叉编译用 |
+| `LUMEN_BUILD_MOBILE_CORE` | OFF | 保留的历史 SDL-free 实验配置（跳过 SDL 与桌面示例）；不属于当前产品范围，不代表 Android/iOS 工程或设备验证 |
 
 Linux（Ubuntu 24.04/26.04）先安装系统依赖（SDL3 窗口/输入、Skia
 FontConfig、Xvfb 冒烟）：
@@ -167,16 +168,19 @@ resolved style（无控件硬编码，CPU/Skia/GPU 命令路径不依赖 Theme�
 绘制且不影响布局尺寸；`StyleOverrides` 提供字段级品牌定制（显式黑/透明
 按字面生效）。DSL 支持 `variant/size/enabled/invalid/selected` 声明。
 
-### macOS 与移动 host 接缝（8E）
+### macOS 桌面与历史实验接缝（8E）
 
-macOS 走与 Windows/Linux 相同的 SDL3 桌面契约（CPU/Skia 光栅；GPU 可选
-非门槛）。`MobileHostSeam`（`lumen-mobile-host`，SDL-free）提供
-Android/iOS host 复用的确定性状态机：surface attach/detach/resize
-（metrics 先行）、pause/resume（surface 未重连时挂起）、内存告警 →
-Suspended、触摸归一化（pointer id + 归一化坐标 → 逻辑坐标）、返回键 →
-统一关闭请求。交叉编译用 `-DLUMEN_BUILD_MOBILE_CORE=ON`（跳过 SDL 与
-桌面示例）；CI 在 Linux/macOS 各有一个 mobile-core 门槛 job（编译 +
-headless 全测）。
+macOS 走与 Windows/Linux 相同的 SDL3 桌面契约。CPU、Skia 光栅和 GPU/CPU
+回退的支持状态及发布门槛见支持矩阵和自用路线图 M7/M8。
+
+历史 `MobileHostSeam`（`lumen-mobile-host`，SDL-free）保留 surface 生命周期、
+触摸归一化和返回请求状态机。`LUMEN_BUILD_MOBILE_CORE=ON` 与 Linux/macOS
+`mobile-core` CI job 仍用于通用实验代码的编译和 headless 兼容性检查，
+不证明 Android/iOS 可用。本轮只调整设计范围，不删除这些代码或工作流；
+原生 host、软键盘、移动字体管线、移动示例和设备验收均不列入当前规划。
+
+桌面触屏、`ControlDensity::Touch`、窄窗口与通用 `safeArea` 指标仍可服务桌面
+布局和输入；默认字体栈与 Gallery 按桌面功能验收，不作为 M9 进度。
 
 ### 支持矩阵与故障排查
 

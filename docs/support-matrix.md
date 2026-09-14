@@ -1,6 +1,7 @@
 # Lumen 平台支持矩阵（v0.3 + M0 基线）
 
 > 状态：随 v0.3 阶段 8A–8E 更新（2026-09），M0 基线冻结补充工具链与四态定义。
+> 当前产品范围（2026-09-14）：Windows/Linux/macOS 桌面；Android/iOS 暂不支持，M9 暂缓。
 > 构建命令与系统依赖的单一事实来源是
 > [`build-commands.md`](build-commands.md) 与 `.github/workflows/`。
 >
@@ -39,21 +40,26 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 | --- | --- | --- | --- | --- | --- | --- |
 | Windows | SDL3（多窗口、resize/DPI、触摸 pointer id） | SDL3 剪贴板（`platform::Clipboard`） | UTF-8 commit + IME preedit（TSF 经 SDL）；修饰键/逻辑键归一化 | 语义树 + Recording 桥；UIA 原生桥为可选目标（未编入时能力报告 false） | CPU、Skia 光栅、Skia GPU（失败回退 CPU） | `windows.yml`：cpu / skia-raster / skia-gpu |
 | Linux | SDL3（X11/Wayland） | 同上 | UTF-8 + IBus/Fcitx preedit（候选词锚点经 `SDL_SetTextInputArea`） | 语义树 + Recording 桥；AT-SPI 原生桥为可选目标 | 同上 | `linux.yml`：cpu / skia / skia-gpu（Xvfb + llvmpipe） |
-| macOS | SDL3（v0.3 新增桌面支持；菜单关闭经统一关闭规则） | 同上 | UTF-8 + 输入法 preedit（经 SDL） | 语义树 + Recording 桥；NSAccessibility 原生桥为可选目标 | CPU、Skia 光栅；GPU 可选、失败回退 CPU（非门槛） | `macos.yml`：cpu（含 settings 冒烟） |
+| macOS | SDL3（v0.3 新增桌面支持；菜单关闭经统一关闭规则） | 同上 | UTF-8 + 输入法 preedit（经 SDL） | 语义树 + Recording 桥；NSAccessibility 原生桥为可选目标 | CPU、Skia 光栅、Skia GPU（失败回退 CPU；M7 纳入桌面 GPU 验收） | `macos.yml`：cpu / skia-gpu / package（工作流已配置，运行结果以具体 CI 记录为准） |
 
 三平台共用：`ApplicationHost` 契约、归一化 `HostEvent`（时间戳/修饰键/
 逻辑与物理键/指针设备/pointer id/滚轮/取消/关闭请求）、语义树与 action
 分发、`lumen-text` 编辑模型。counter/settings 示例三平台同源。
 
-## 移动平台（实验性，v0.3 接缝门槛）
+## 历史移动实验内容（暂缓，不在当前支持范围）
 
-| 平台 | v0.3 承诺 | 实现 | 验证 |
+| 平台 | 当前范围 | 已有代码 | 验证边界 |
 | --- | --- | --- | --- |
-| Android | SDL-free host 接缝（实验性） | `lumen-mobile-host`：surface attach/detach、pause/resume、安全区、触摸归一化、返回键；Android JNI/NativeActivity 胶水尚未纳入本仓库 | `linux.yml` mobile-core 只验证通用静态库和 headless；NDK/模拟器目标待实现 |
-| iOS | SDL-free host 接缝（实验性） | 同一 `MobileHostSeam` 状态机；iOS Objective-C++ 胶水尚未纳入本仓库 | `macos.yml` mobile-core 只验证通用静态库和 headless；Xcode/模拟器目标待实现 |
+| Android | 暂不支持，未排期 | 保留 `lumen-mobile-host` 通用状态机；JNI/NativeActivity 胶水未纳入 | Linux 的 mobile-core job 只检查 SDL-free 通用代码，不是 NDK 或设备验证 |
+| iOS | 暂不支持，未排期 | 保留同一 `MobileHostSeam` 状态机；Objective-C++ 胶水未纳入 | macOS 的 mobile-core job 只检查 SDL-free 通用代码，不是 iOS 工程或 Simulator 验证 |
 
-移动端不承诺（v0.4 再评估）：商店发布、完整移动端控件、后台渲染、原生
-accessibility tree、Metal/Graphite。
+原生接入、软键盘、移动字体/绘制管线、移动页面、GPU、无障碍与发布均不在当前
+设计和验收范围，不预排到 v0.4。已有 `createMobileFontManager`、
+`FontBackend::Mobile` 和默认字体栈分支也不能作为移动端文本可用的证据。
+
+现有源码、构建开关、测试和 Linux/macOS mobile-core CI job 保留，继续按工作流
+执行兼容性检查；本次文档调整不删除或禁用这些内容。桌面触屏、Touch density、
+窄窗口和通用安全区指标仍属于桌面可用性设计。
 
 ## 后端与能力
 
@@ -95,4 +101,4 @@ accessibility tree、Metal/Graphite。
   门槛 6/6 达标。
 - M8 便携发布已收口（install/CPack/CI package job + 解包冒烟）；AppImage
   与完整 .app bundle 属后续增强；Windows/macOS 包以 CI 首跑为事实来源。
-  移动软键盘/字体策略：见 M9。
+- 移动方向暂缓；M9 只保留状态说明，不作为桌面版本的待完成项。

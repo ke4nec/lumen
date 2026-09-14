@@ -1,9 +1,10 @@
-# Lumen：C++20 自绘 GUI 框架 v0.3 跨平台产品化与应用基础计划
+# Lumen：C++20 自绘 GUI 框架 v0.3 桌面产品化与应用基础计划
 
-> 后续面向自用工具类应用的跨端路线图见
+> 后续面向自用工具类应用的桌面路线图见
 > [`lumen-self-use-roadmap.md`](lumen-self-use-roadmap.md)。
 
-> 文档状态：下一阶段提案（2026-09）
+> 文档状态：历史阶段设计，2026-09-14 按桌面范围修订；实现状态以自用路线图和支持矩阵为准。
+> 当前范围：Windows/Linux/macOS。Android/iOS 暂不考虑，原 8E 移动目标和 v0.4 移动接入承诺取消；M9 暂缓。
 > 上一版本：[v0.2 桌面 GPU 与性能工程计划](lumen-gui-framework-plan-v0.2.md)
 > 适用基线：[初始框架计划](lumen-gui-framework-plan.md)
 
@@ -24,7 +25,7 @@ v0.2 已经把 Lumen 从“能够绘制控件的原型”推进到“可测量�
 当前真正限制 Lumen 成为跨平台 GUI 工程的部分有四类：
 
 1. 平台契约仍以单窗口 SDL3 桌面循环为中心，缺少统一的应用生命周期、窗口标识、
-   剪贴板、指针设备、键盘修饰键和移动端暂停/恢复语义。
+   剪贴板、指针设备、键盘修饰键和桌面挂起/恢复语义。
 2. 文本输入已经能提交 UTF-8 和 IME preedit 事件，但编辑模型按 code point 工作，
    没有字形 shaping、字体回退、双向文字、选区、剪贴板和完整候选词定位。
 3. `RenderNode` 没有独立的语义树，因此键盘导航、屏幕阅读器、无障碍操作和高对比
@@ -45,12 +46,10 @@ v0.2 已经把 Lumen 从“能够绘制控件的原型”推进到“可测量�
 | Windows | 保持桌面支持，补齐输入、剪贴板和 UI Automation 适配 | CPU、Skia 光栅、现有 GPU 路径 | CI + 窗口 smoke + 无障碍结构测试 |
 | Linux | 保持 X11/Wayland 兼容，补齐 IBus/Fcitx、剪贴板和 AT-SPI 适配 | CPU、Skia 光栅、现有 GPU 路径 | CI/Xvfb 或 Wayland smoke + headless |
 | macOS | 新增桌面窗口、输入、剪贴板、字体和 NSAccessibility 适配 | CPU、Skia 光栅；GPU 失败时必须回退 CPU | macOS CI + counter/settings smoke |
-| Android | 建立可编译的 native host 和生命周期/触摸/安全区接缝 | CPU 或平台可用的 Skia 路径，实验性 | NDK 编译 + 模拟器 headless/启动 smoke |
-| iOS | 建立可编译的 Objective-C++ host 和生命周期/触摸接缝 | CPU 或平台可用的 Skia 路径，实验性 | Xcode 编译 + 模拟器启动 smoke |
 
-Android/iOS 在 v0.3 只承诺 host 接入和最小 counter 页面，不承诺商店发布、完整
-移动端控件、后台渲染或移动端无障碍适配。移动端发布和完整平台语义列入 v0.4，
-这样不会为了赶平台数量而把 native 类型泄漏进 `lumen-core`。
+Android/iOS 不在当前目标平台中，不安排原生 host、最小移动页面、软键盘、移动
+字体/GPU、无障碍或发布任务。已有 `MobileHostSeam` 和 SDL-free 配置保留为历史
+实验资产；其通用 headless 验证不等于移动设备支持，也不构成本版本出口条件。
 
 ### 2.2 目标
 
@@ -60,13 +59,14 @@ Android/iOS 在 v0.3 只承诺 host 接入和最小 counter 页面，不承诺�
 - 从同一棵 RenderNode/Widget 树生成平台无关的语义树，并接入 Windows、Linux、
   macOS 的最小无障碍桥接。
 - 提供 ScrollView、ListView、Form、Dialog、Navigator、Checkbox/Switch 等真实应用
-  必需的基础组件，并统一键盘、触摸、滚轮和焦点行为。
+  必需的基础组件，并统一键盘、鼠标、桌面触屏、滚轮和焦点行为。
 - 保持 v0.2 的 CPU-only、Skia 光栅、GPU 回退、确定性 headless 和性能基线。
-- 形成 Windows/Linux/macOS 的桌面发布矩阵，以及 Android/iOS 的 host 编译门槛。
+- 形成 Windows/Linux/macOS 的桌面发布矩阵。
 
 ### 2.3 非目标
 
 - 不追求 Flutter 或 CSS API 兼容，不在 v0.3 引入脚本语言、插件市场或跨线程 UI 树。
+- 暂不设计 Android/iOS 平台接入或移动专属能力，也不把它们预排到 v0.4。
 - 不同时实现 Graphite、Metal、Vulkan 和自定义合成器；macOS GPU 先保持可选，失败
   时走 CPU/Skia 光栅。
 - 不在本版本完成完整富文本编辑器、表格、虚拟化 Sliver 系统、WebAssembly 或 3D。
@@ -94,7 +94,7 @@ Android/iOS 在 v0.3 只承诺 host 接入和最小 counter 页面，不承诺�
   全局服务拥有者。
 - `WindowManager`/`PlatformWindow`：创建、销毁、显示、激活、最小化、窗口尺寸、
   drawable size、显示器/DPI、安全区和 `WindowId`。
-- `PlatformServices`：`Clipboard`、`TextInputSession`、鼠标光标、震动/触觉（可选）、
+- `PlatformServices`：`Clipboard`、桌面 `TextInputSession`、鼠标光标、
   文件选择器（先定义接口，不在 v0.3 实现完整对话框）。
 
 建议的值类型如下，具体命名可以在 8A 评审后冻结：
@@ -116,12 +116,13 @@ enum class AppLifecycle { Launching, Active, Inactive, Background,
 ```
 
 `Event` 需要补充时间戳、`WindowId`、键盘修饰键、逻辑键/物理键、指针设备类型、
-pointer id、滚轮/触摸增量、取消事件和窗口焦点变化。SDL3、macOS native host 和
-移动端 host 都只负责填充这些字段；交互控制器负责点击、拖动、滚动、焦点和激活。
+pointer id、滚轮/桌面触屏增量、取消事件和窗口焦点变化。桌面 host 只负责填充
+这些字段；交互控制器负责点击、拖动、滚动、焦点和激活。`safeArea` 保留为通用
+窗口可用区域指标，桌面触屏与此指标均不代表移动端设计目标。
 
 窗口重建、DPI 变化和应用恢复必须先更新 `WindowMetrics`，再请求 FrameScheduler；
-不能在旧 surface 上提交新尺寸的命令。移动端的 surface detach 期间不得销毁状态树，
-只暂停提交并在 attach 后调用 `Renderer::resetSurface()`。
+不能在旧 surface 上提交新尺寸的命令。桌面渲染 surface 重建期间保留状态树，
+只暂停提交并在 surface 可用后调用 `Renderer::resetSurface()`。
 
 ### 3.2 文本、字体和编辑模型
 
@@ -175,8 +176,8 @@ Widget 提供语义默认值，应用可以覆盖 label、value、role 和 actio
 箭头导航和 Button/Checkbox 的 Enter/Space 激活与语义 actions 共用 `FocusManager`。
 
 平台桥接按能力拆分：Windows UI Automation、Linux AT-SPI、macOS NSAccessibility；
-桥接失败只关闭对应能力，不影响绘制和输入。移动端语义桥接的公共契约在 v0.3 冻结，
-原生 accessibility tree 放到 v0.4。
+桥接失败只关闭对应能力，不影响绘制和输入。本设计只覆盖桌面平台，不冻结移动端
+语义桥接契约，也不安排移动原生 accessibility tree。
 
 ### 3.4 布局、滚动和应用组件
 
@@ -212,7 +213,7 @@ fake host 中能分别处理状态和帧；事件顺序、生命周期和 surfac
 
 - 实现 `lumen-text` 基础契约、字体回退、桌面 Skia shaping、CPU fallback 测量和布局缓存。
 - 将 TextField 改为 selection/composing 模型，接入 Windows TSF/SDL、Linux IBus/Fcitx、
-  macOS 输入法以及移动端 host 的 commit/preedit 转换。
+  macOS 输入法的 commit/preedit 转换。
 - 增加剪贴板、修饰键、滚轮、pointer cancel、触摸 pointer id 和键盘焦点遍历。
 - 增加多行 TextField 的滚动、选区绘制、候选词锚点和光标可见性。
 
@@ -245,24 +246,24 @@ fake host 中能分别处理状态和帧；事件顺序、生命周期和 surfac
 - 新增 `examples/settings/` 或 `examples/catalog/`，同时展示滚动列表、表单验证、
   弹窗、导航、主题和无障碍标签；counter 继续作为最小回归样例。
 
-出口条件：settings/catalog 示例可以在 320px 宽窗口、桌面缩放和移动安全区下使用；
+出口条件：settings/catalog 示例可以在 320px 宽桌面窗口、DPI 缩放和窗口可用区域内使用；
 连续 resize、滚动、导航返回、弹窗关闭和热重载不会丢失状态；列表 key 复用和局部
 重绘与 forced full repaint 像素一致。
 
-### 阶段 8E：macOS 桌面与移动端 host 验证、发布门槛
+### 阶段 8E：macOS 桌面验证与三桌面发布门槛
 
 - 在 SDL3 桌面契约之上完成 macOS window、resize/DPI、菜单关闭、文本输入、剪贴板、
   CPU/Skia 光栅和 NSAccessibility smoke。macOS GPU 不作为 v0.3 强制门槛。
-- 增加 Android NDK 和 iOS Objective-C++ host 目标：surface attach/detach、pause/resume、
-  safe area、屏幕缩放、触摸事件、返回/关闭请求和最小 counter 页面。
 - 建立 CI 矩阵：Windows/Linux/macOS 桌面 CPU + Skia 光栅，Windows/Linux 保留 GPU
-  增强 smoke；Android/iOS 至少执行静态库/host 编译和 headless 测试。
+  增强 smoke；后续三桌面 GPU 发布门槛由自用路线图 M7 定义。
 - 输出按平台分层的打包说明、系统依赖、符号文件、能力探测和已知限制；禁止把
   `#ifdef` 平台分支散落到 core/layout/widget 实现。
 
-出口条件：Windows/Linux/macOS 都能构建并运行 settings/catalog；移动端模拟器能启动
-counter、响应暂停恢复和触摸；所有平台在 Renderer 或系统服务失败时有可见诊断和安全
-回退；支持矩阵、故障排查和版本化 API 文档齐全。
+出口条件：Windows/Linux/macOS 都能构建并运行 settings/catalog；桌面平台在 Renderer
+或系统服务失败时有可见诊断和安全回退；支持矩阵、故障排查和版本化 API 文档齐全。
+
+历史 8E 的 `MobileHostSeam`、SDL-free 构建目标和 Linux/macOS `mobile-core` CI
+仍保留，验证通用代码兼容性；本计划不增加 NDK/Xcode 移动工程或模拟器/真机门槛。
 
 ## 5. 测试、基准与验收
 
@@ -285,8 +286,6 @@ counter、响应暂停恢复和触摸；所有平台在 Renderer 或系统服务
   录制的 IME 序列、文本输入、滚轮、触摸映射和退出。
 - Windows UIA、Linux AT-SPI、macOS NSAccessibility：验证节点 role、名称、边界、
   焦点和 activate/setValue/scroll action；没有桌面辅助技术时运行结构回归测试。
-- Android/iOS：模拟器启动、surface 重新连接、暂停恢复、safe area、触摸和返回行为；
-  不能以真实设备 GPU 结果作为唯一门槛。
 - counter、settings/catalog 在 CPU、Skia 光栅和可用 GPU/回退模式完成点击、输入、
   滚动、导航、resize、热重载和退出。
 
@@ -306,7 +305,7 @@ cmake --build build --config Debug
 ctest --test-dir build --output-on-failure -C Debug
 ```
 
-新增的 macOS、Android、iOS 构建命令和系统依赖必须写入 README 与 CI，不能只存在于
+新增的 Windows/Linux/macOS 构建命令和系统依赖必须写入 README 与 CI，不能只存在于
 开发者本地脚本。平台专属测试失败时要明确区分“能力未启用”“环境不可用”和“框架
 行为回归”。
 
@@ -337,23 +336,23 @@ v0.3 交付至少包括：
 - 正式桌面文本布局与 TextField 编辑能力，包含 IME、选区、字体回退和多语言测试。
 - 语义树、键盘导航、Windows/Linux/macOS 最小无障碍桥接。
 - ScrollView/ListView、Form、Dialog、Navigator、Theme 和 settings/catalog 示例。
-- macOS 桌面支持、Android/iOS host 编译与生命周期验证、更新后的 CI/README/支持矩阵。
+- macOS 桌面支持、三桌面窗口与生命周期验证、更新后的 CI/README/支持矩阵。
 
 ## 7. 风险控制与后续版本
 
 - **文本和字体差异**：系统字体、字体许可和 shaping 版本会改变像素。使用 layout
   metrics、字形位置和关键几何断言作为跨机器门槛，像素快照只在固定字体环境运行。
-- **IME 差异**：Windows TSF、IBus/Fcitx、macOS 和移动端的 preedit/commit 时序不同。
+- **IME 差异**：Windows TSF、IBus/Fcitx 和 macOS 的 preedit/commit 时序不同。
   先固定 `TextEditingValue` 状态机，再为每个平台写事件转译测试；没有 IME 时仍可用
   直接 commit 输入。
 - **无障碍 API 复杂度**：桥接库和桌面会话并非每个 CI 都有。先保证语义树 headless
   正确，再将平台桥接作为可选能力和真实 smoke；桥接异常不能阻塞渲染。
-- **移动端生命周期**：surface 可能在暂停期间销毁，窗口尺寸和安全区会反复变化。状态
-  树、资源句柄和渲染 surface 必须分离，恢复时走统一的 reset/reupload 流程。
-- **范围膨胀**：v0.3 只接受表中目标组件和平台契约；Graphite/Metal、完整移动端
-  accessibility、富文本编辑器、虚拟化列表和插件生态统一留到 v0.4 评估。
+- **桌面窗口恢复**：窗口重建、DPI 变化和 GPU 上下文丢失时，状态树、资源句柄和
+  渲染 surface 必须分离，恢复时走统一的 reset/reupload 流程。
+- **范围膨胀**：只接受当前桌面目标组件和平台契约；Android/iOS 暂缓，不因历史
+  接缝代码存在而增加移动功能。其他增强以自用路线图的实际状态和用户需求为准。
 
-v0.4 的入口条件是 v0.3 的桌面三平台行为、文本/语义契约和移动端 host 都稳定。届时
-再评估移动端正式发布、Metal/Graphite 或其他 GPU 后端、虚拟化列表、富文本编辑器、
-多窗口导航和插件式平台服务。任何新增后端仍必须消费现有 `RenderCommandList`，不能
-绕过 UI、布局、文本和语义边界。
+后续桌面版本以三平台行为和文本/语义契约稳定为入口，按需评估桌面 GPU 后端、
+富文本编辑器、多窗口导航和平台服务。移动端不作为入口条件，也不绑定后续版本；
+只有重新确认需求后才另行设计。任何新增后端仍必须消费现有 `RenderCommandList`，
+不能绕过 UI、布局、文本和语义边界。

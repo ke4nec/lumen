@@ -1,5 +1,9 @@
 # Lumen：C++20 自绘 GUI 框架渐进式实现计划
 
+> 本文保留初始阶段设计。当前产品范围为 Windows/Linux/macOS 桌面，暂不考虑
+> Android/iOS；后续实施顺序与 M9 暂缓说明见
+> [自用桌面路线图](lumen-self-use-roadmap.md)。
+
 ## 1. 项目目标
 
 Lumen 是一个用于学习和研究自绘 UI 框架的 C++20 项目，整体体验参考 Flutter：UI 使用声明式方式描述，框架负责布局、绘制、事件分发和状态更新。
