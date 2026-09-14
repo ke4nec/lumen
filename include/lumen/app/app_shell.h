@@ -58,6 +58,14 @@ using WheelSink = std::function<bool(
     const core::RenderNode& root, const core::RenderNode* hit,
     core::Offset position, core::Offset delta)>;
 
+// M10：视口拖动滚动 sink（与 core::InteractionController::ScrollDragSink
+// 同形；Cancel 时 root/viewport 为空）。应用把 Update/End 汇入
+// ScrollController（applyDrag/noteDragSample/endDrag）。
+using ScrollDragSink = std::function<bool(
+    const core::RenderNode* root, const core::RenderNode* viewport,
+    core::Offset position, core::Offset delta,
+    core::ScrollDragPhase phase, std::uint64_t timestampMs)>;
+
 // 应用壳配置：build + 应用级钩子（平台无关）。
 struct ShellConfig {
     // UI 模板构建：每次重建调用（读当前应用状态返回新 Widget 树）。
@@ -69,6 +77,9 @@ struct ShellConfig {
         onKey{};
     // 滚轮 sink（列表滚动）；为空时滚轮事件被忽略。
     WheelSink onWheel{};
+    // M10：视口拖动滚动 sink（触摸/指针拖动 → ScrollController 拖动与
+    // 惯性）；为空时拖动不路由滚动（文本选区拖动不受影响）。
+    ScrollDragSink onScrollDrag{};
     // 重建后钩子（modal 焦点规则等）：新树已落地，root()/focus() 可查。
     std::function<void(class AppShell&)> onRebuilt{};
     // 关闭请求（窗口 X / WindowCloseRequested）：返回 true = 已消费
@@ -157,7 +168,8 @@ class AppShell {
     void pointerMove(core::Offset position);
     void pointerUp(core::Offset position);
     void pointerCancel();
-    void wheel(core::Offset position, core::Offset delta);
+    // 返回 sink 消费状态（M5 收口：语义滚动回执同源）。
+    [[nodiscard]] bool wheel(core::Offset position, core::Offset delta);
     void textInput(const std::string& text);
     void textEditing(const std::string& preedit);
     void cancelComposition();

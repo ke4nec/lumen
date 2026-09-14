@@ -208,7 +208,9 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                                            event.window);
                     break;
                 case HostEventType::Wheel:
-                    shell.wheel(event.position, event.scrollDelta);
+                    // 消费状态可用于诊断/冒泡（M5 收口）；runApp 自身不
+                    // 区分（输入帧照常请求）。
+                    (void)shell.wheel(event.position, event.scrollDelta);
                     scheduler.requestFrame(render::FrameReason::Input,
                                            event.window);
                     break;

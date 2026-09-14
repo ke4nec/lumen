@@ -206,6 +206,8 @@ void InteractionController::pointerDown(const RenderNode& root,
     armedOnClick_.clear();
     armedKey_.clear();
     armedIdentity_.clear();
+    scrollDragging_ = false;
+    scrollDragIdentity_.clear();
     // Gesture anchor: every press can become a drag, clickable or not.
     pressActive_ = true;
     dragging_ = false;
@@ -372,7 +374,8 @@ bool InteractionController::setSliderValue(const RenderNode& node,
 }
 
 void InteractionController::pointerMove(const RenderNode& root,
-                                        Offset position) {
+                                        Offset position,
+                                        std::uint64_t timestampMs) {
     // hover 跟踪与按压状态独立：未按下时也更新命中（visual-system §5）。
     {
         std::vector<const RenderNode*> chain;
@@ -392,6 +395,32 @@ void InteractionController::pointerMove(const RenderNode& root,
     const Offset delta = dragCurrent_ - dragAnchor_;
     if (!dragging_ && std::abs(delta.x) + std::abs(delta.y) > kDragSlopPx) {
         dragging_ = true;
+        // M10：越过 slop 的拖动若不在文本选区路径上，且起点命中滚动
+        // 视口 → 路由为视口拖动滚动（视口按 identity 跨重建重定位）。
+        if (!selecting_ && scrollDragSink_) {
+            std::vector<const RenderNode*> chain;
+            (void)hitTestChain(root, dragAnchor_, chain);
+            for (const RenderNode* node : chain) {
+                if (isScrollableWidget(node->type)) {
+                    scrollDragging_ = true;
+                    scrollDragIdentity_ = node->identity;
+                    scrollLastPoint_ = dragAnchor_;
+                    scrollDragSink_(&root, node, dragAnchor_, Offset{},
+                                    ScrollDragPhase::Begin, timestampMs);
+                    break;
+                }
+            }
+        }
+    }
+    if (scrollDragging_) {
+        const Offset move = position - scrollLastPoint_;
+        scrollLastPoint_ = position;
+        if (const RenderNode* viewport =
+                findNodeByIdentity(root, scrollDragIdentity_)) {
+            scrollDragSink_(&root, viewport, position, move,
+                            ScrollDragPhase::Update, timestampMs);
+        }
+        return;
     }
     // 拖动扩展选区：焦点字段内移动更新 selection.extent。
     if (selecting_ && !focusedBind_.empty()) {
@@ -410,11 +439,14 @@ void InteractionController::pointerMove(const RenderNode& root,
 }
 
 void InteractionController::pointerUp(const RenderNode& root,
-                                      Offset position) {
+                                      Offset position,
+                                      std::uint64_t timestampMs) {
     const std::string armedOnClick = std::move(armedOnClick_);
     const std::string armedKey = std::move(armedKey_);
     const std::string armedIdentity = std::move(armedIdentity_);
     const bool wasDragging = dragging_;
+    const bool wasScrollDragging = scrollDragging_;
+    const std::string scrollDragIdentity = std::move(scrollDragIdentity_);
     pressedKey_.clear();
     pressedIdentity_.clear();
     armedOnClick_.clear();
@@ -423,6 +455,17 @@ void InteractionController::pointerUp(const RenderNode& root,
     pressActive_ = false;
     dragging_ = false;
     selecting_ = false;
+    scrollDragging_ = false;
+    scrollDragIdentity_.clear();
+    if (wasScrollDragging) {
+        // 拖动滚动释放：应用 sink 决定是否起惯性（End 携带释放时间戳）。
+        if (const RenderNode* viewport =
+                findNodeByIdentity(root, scrollDragIdentity)) {
+            scrollDragSink_(&root, viewport, position, Offset{},
+                            ScrollDragPhase::End, timestampMs);
+        }
+        return;
+    }
     std::vector<const RenderNode*> chain;
     const RenderNode* target = hitTestChain(root, position, chain);
     if (target == nullptr) {
@@ -485,6 +528,15 @@ void InteractionController::pointerCancel() {
     pressActive_ = false;
     dragging_ = false;
     selecting_ = false;
+    if (scrollDragging_) {
+        scrollDragging_ = false;
+        scrollDragIdentity_.clear();
+        // 取消：应用 sink 停止惯性，不触发 End（无释放速度语义）。
+        if (scrollDragSink_) {
+            scrollDragSink_(nullptr, nullptr, Offset{}, Offset{},
+                            ScrollDragPhase::Cancel, 0);
+        }
+    }
 }
 
 // --- 文本输入与 IME ---
@@ -773,7 +825,7 @@ void InteractionController::keyDown(const RenderNode& root, Key key,
     if (focusedBind_.empty() &&
         (key == Key::PageUp || key == Key::PageDown || key == Key::Up ||
          key == Key::Down || key == Key::Home || key == Key::End)) {
-        scrollKey(root, key);
+        (void)scrollKey(root, key);
         return;
     }
     keyDown(key, modifiers, keyChar);
@@ -931,15 +983,19 @@ void InteractionController::setWheelSink(WheelSink sink) {
     wheelSink_ = std::move(sink);
 }
 
-void InteractionController::wheel(const RenderNode& root, Offset position,
+void InteractionController::setScrollDragSink(ScrollDragSink sink) {
+    scrollDragSink_ = std::move(sink);
+}
+
+bool InteractionController::wheel(const RenderNode& root, Offset position,
                                   Offset delta) {
     if (!wheelSink_) {
-        return;
+        return false;
     }
     std::vector<const RenderNode*> chain;
     const RenderNode* hit = hitTestChain(root, position, chain);
     if (hit == nullptr) {
-        return;
+        return false;
     }
     // 命中链上最近的滚动视口承担滚动（plan §3.4 统一手势/焦点状态机）。
     const RenderNode* viewport = nullptr;
@@ -950,14 +1006,14 @@ void InteractionController::wheel(const RenderNode& root, Offset position,
         }
     }
     if (viewport == nullptr) {
-        return;
+        return false;
     }
-    (void)wheelSink_(root, viewport, position, delta);
+    return wheelSink_(root, viewport, position, delta);
 }
 
-void InteractionController::scrollKey(const RenderNode& root, Key key) {
+bool InteractionController::scrollKey(const RenderNode& root, Key key) {
     if (!wheelSink_) {
-        return;
+        return false;
     }
     // 键盘滚动的目标：聚焦节点；无焦点时交给 sink（默认视口）。
     const RenderNode* focused = nullptr;
@@ -981,9 +1037,9 @@ void InteractionController::scrollKey(const RenderNode& root, Key key) {
             dy = 1e9F;
             break;
         default:
-            return;
+            return false;
     }
-    (void)wheelSink_(root, focused, Offset{}, Offset{0.0F, dy});
+    return wheelSink_(root, focused, Offset{}, Offset{0.0F, dy});
 }
 
 // --- 剪贴板/编辑值 ---

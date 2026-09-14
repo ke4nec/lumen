@@ -7,9 +7,11 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "lumen/app/app_shell.h"
 #include "lumen/core/render_node.h"
+#include "lumen/core/scroll.h"
 #include "lumen/core/state.h"
 #include "lumen/core/style.h"
 #include "lumen/dsl/dsl.h"
@@ -333,4 +335,250 @@ TEST_CASE("static_scene_keeps_hash_and_has_no_animation", "[motion]") {
     CHECK(first != 0);
     CHECK_FALSE(shell.animationsActive());
     CHECK(overlayAlpha(shell) == 1.0F);
+}
+
+// --- M10：惯性滚动（ScrollController 物理 + 交互层拖动接线） ---
+
+TEST_CASE("fling_decelerates_and_stops_deterministically", "[motion]") {
+    lumen::core::ScrollController scroll;
+    scroll.updateExtents(100.0F, 1000.0F);
+
+    // 快速上滑（手指向上 = deltaY 负 = offset 增大）后释放。
+    scroll.noteDragSample(-10.0F, 100);
+    scroll.noteDragSample(-10.0F, 110);
+    REQUIRE(scroll.endDrag(120));
+    REQUIRE(scroll.isFlinging());
+
+    // 固定步长推进：offset 单调增大、渐缓，最终停止且不越界。
+    float previous = scroll.offset();
+    bool stillFlinging = true;
+    for (std::uint64_t t = 140; stillFlinging; t += 16) {
+        stillFlinging = scroll.stepFling(t);
+        CHECK(scroll.offset() >= previous);
+        previous = scroll.offset();
+        CHECK(scroll.offset() <= scroll.maxScrollOffset());
+    }
+    CHECK_FALSE(scroll.isFlinging());
+    CHECK(scroll.offset() > 0.0F);
+
+    // 同输入序列结果完全一致（确定性物理）。
+    lumen::core::ScrollController replay;
+    replay.updateExtents(100.0F, 1000.0F);
+    replay.noteDragSample(-10.0F, 100);
+    replay.noteDragSample(-10.0F, 110);
+    (void)replay.endDrag(120);
+    for (std::uint64_t t = 140; replay.isFlinging(); t += 16) {
+        (void)replay.stepFling(t);
+    }
+    CHECK(replay.offset() == scroll.offset());
+
+    // 慢速释放不起 fling（低于起滑阈值）。
+    lumen::core::ScrollController slow;
+    slow.updateExtents(100.0F, 1000.0F);
+    slow.noteDragSample(-1.0F, 100);
+    slow.noteDragSample(-1.0F, 120);
+    CHECK_FALSE(slow.endDrag(140));
+    CHECK_FALSE(slow.isFlinging());
+
+    // 新输入（滚轮）立即接管惯性。
+    lumen::core::ScrollController grab;
+    grab.updateExtents(100.0F, 1000.0F);
+    grab.noteDragSample(-10.0F, 100);
+    (void)grab.endDrag(110);
+    REQUIRE(grab.isFlinging());
+    (void)grab.stepFling(126);
+    (void)grab.applyWheel(5.0F);
+    CHECK_FALSE(grab.isFlinging());
+}
+
+namespace {
+
+// 可滚动页面：列表视口 + 应用侧 ScrollController（含拖动/惯性接线）。
+namespace core = lumen::core;
+
+struct ScrollApp {
+    lumen::core::ScrollController scroll{};
+
+    [[nodiscard]] ShellConfig config() {
+        ShellConfig config;
+        config.initialView = Size{200.0F, 300.0F};
+        config.caretBlink = false;
+        config.build = [this] {
+            using namespace lumen::dsl;
+            namespace core = lumen::core;
+            std::vector<Widget> rows;
+            for (int i = 0; i < 40; ++i) {
+                rows.push_back(core::withKey(text("row " + std::to_string(i)),
+                                             "row-" + std::to_string(i)));
+            }
+            Widget ui = core::withKey(
+                scroll_view(core::makeColumn(std::move(rows))),
+                "scroll-area");
+            ui = container(std::move(ui), Color::fromRGBA(24, 24, 27));
+            ui.key = "root";
+            return ui;
+        };
+        config.onWheel =
+            [this](const RenderNode&, const RenderNode* hit, core::Offset,
+                   core::Offset delta) {
+            if (hit == nullptr ||
+                !lumen::core::isScrollableWidget(hit->type)) {
+                return false;
+            }
+            scroll.updateExtents(hit->size.height,
+                                 hit->size.height + hit->scrollExtent);
+            return scroll.applyWheel(delta.y);
+        };
+        config.onScrollDrag =
+            [this](const RenderNode*, const RenderNode* viewport,
+                   core::Offset, core::Offset delta,
+                   core::ScrollDragPhase phase, std::uint64_t nowMs) {
+            return dragScroll(viewport, delta.y, phase, nowMs);
+        };
+        config.onAnimate = [this](AppShell& shell, std::uint64_t nowMs) {
+            if (!scroll.isFlinging()) {
+                return false;
+            }
+            const bool active = scroll.stepFling(nowMs);
+            shell.markDirty();
+            return active;
+        };
+        return config;
+    }
+
+    bool dragScroll(const RenderNode* viewport, float deltaY,
+                    core::ScrollDragPhase phase, std::uint64_t nowMs) {
+        if (viewport == nullptr) {
+            if (phase == core::ScrollDragPhase::Cancel) {
+                scroll.stopFling();
+            }
+            return false;
+        }
+        scroll.updateExtents(viewport->size.height,
+                             viewport->size.height +
+                                 viewport->scrollExtent);
+        switch (phase) {
+            case core::ScrollDragPhase::Begin:
+                break;
+            case core::ScrollDragPhase::Update:
+                scroll.noteDragSample(deltaY, nowMs);
+                if (scroll.applyDrag(deltaY)) {
+                    return true;
+                }
+                return false;
+            case core::ScrollDragPhase::End:
+                return scroll.endDrag(nowMs);
+            case core::ScrollDragPhase::Cancel:
+                scroll.stopFling();
+                return false;
+        }
+        return false;
+    }
+};
+
+}  // namespace
+
+TEST_CASE("drag_over_viewport_scrolls_and_flings_via_shell", "[motion]") {
+    ScrollApp app;
+    AppShell shell{app.config()};
+    shell.tick(0);
+    (void)shell.renderFrame();
+
+    const RenderNode* viewport =
+        lumen::core::findNodeByKey(shell.root(), "scroll-area");
+    REQUIRE(viewport != nullptr);
+    CHECK(viewport->scrollExtent > 0.0F);  // 布局事实：内容溢出视口
+    const core::Offset start = lumen::core::absoluteOffset(shell.root(),
+                                                           "scroll-area") +
+                               Offset{viewport->size.width * 0.5F, 30.0F};
+
+    // 快速上滑（手指向上移动 → 内容向上滚 → offset 增大）。
+    shell.pointerDown(start);
+    shell.tick(100);
+    shell.pointerMove(start + Offset{0.0F, -10.0F});
+    shell.tick(110);
+    shell.pointerMove(start + Offset{0.0F, -20.0F});
+    shell.tick(120);
+    const float atRelease = app.scroll.offset();
+    CHECK(atRelease > 0.0F);  // 拖动已直接滚动
+    shell.pointerUp(start + Offset{0.0F, -20.0F});
+    CHECK(app.scroll.isFlinging());  // 释放起惯性
+
+    // onAnimate 随 tick 推进惯性并置脏。
+    float advanced = atRelease;
+    for (std::uint64_t t = 140; app.scroll.isFlinging(); t += 16) {
+        shell.tick(t);
+        (void)shell.renderFrame();
+        advanced = app.scroll.offset();
+    }
+    CHECK(advanced > atRelease);
+    CHECK_FALSE((shell.animationsActive() || app.scroll.isFlinging()));
+}
+
+TEST_CASE("drag_on_text_field_keeps_selection_path", "[motion]") {
+    // 视口内的文本字段：拖动走选区扩展，不路由滚动。
+    lumen::core::ScrollController scroll;
+    ShellConfig config;
+    config.initialView = Size{200.0F, 300.0F};
+    config.caretBlink = false;
+    config.build = [] {
+        using namespace lumen::dsl;
+        namespace core = lumen::core;
+        Widget ui = core::withKey(
+            scroll_view(core::makeColumn({
+                core::withKey(text_field(bind("name"), "Name"),
+                              "name-field"),
+                text("padding row"),
+            })),
+            "scroll-area");
+        ui = container(std::move(ui), Color::fromRGBA(24, 24, 27));
+        ui.key = "root";
+        return ui;
+    };
+    bool dragReachedScroll = false;
+    config.onScrollDrag =
+        [&dragReachedScroll](const RenderNode*, const RenderNode*,
+                             core::Offset, core::Offset,
+                             core::ScrollDragPhase, std::uint64_t) {
+        dragReachedScroll = true;
+        return false;
+    };
+    AppShell shell{std::move(config)};
+    shell.state().set("name", "hello world");
+    shell.tick(0);
+    (void)shell.renderFrame();
+
+    const core::Offset field = [&shell] {
+        const RenderNode* node =
+            lumen::core::findNodeByKey(shell.root(), "name-field");
+        REQUIRE(node != nullptr);
+        return lumen::core::absoluteOffset(shell.root(), "name-field") +
+               Offset{node->size.width * 0.5F, node->size.height * 0.5F};
+    }();
+    shell.pointerDown(field);
+    shell.tick(100);
+    shell.pointerMove(field + Offset{40.0F, 0.0F});
+    shell.tick(110);
+    shell.pointerUp(field + Offset{40.0F, 0.0F});
+
+    CHECK_FALSE(dragReachedScroll);
+    CHECK(shell.controller().hasSelection());  // 拖动扩展了选区
+}
+
+TEST_CASE("wheel_reports_sink_consumption", "[motion]") {
+    ScrollApp app;
+    AppShell shell{app.config()};
+    shell.tick(0);
+    (void)shell.renderFrame();
+
+    const RenderNode* viewport =
+        lumen::core::findNodeByKey(shell.root(), "scroll-area");
+    REQUIRE(viewport != nullptr);
+    const core::Offset inside =
+        lumen::core::absoluteOffset(shell.root(), "scroll-area") +
+        Offset{viewport->size.width * 0.5F, viewport->size.height * 0.5F};
+    CHECK(shell.wheel(inside, Offset{0.0F, 120.0F}));
+    CHECK(app.scroll.offset() > 0.0F);
+    // 视口外（无命中链上的滚动视口）：未消费。
+    CHECK_FALSE(shell.wheel(Offset{-50.0F, -50.0F}, Offset{0.0F, 120.0F}));
 }

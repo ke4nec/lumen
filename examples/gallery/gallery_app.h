@@ -196,6 +196,17 @@ class GalleryApp {
                    core::Offset /*position*/, core::Offset delta) {
                 return self->scrollWheel(root, hit, delta.y);
             };
+        // M10：视口拖动滚动（触摸/指针）与惯性推进（与 settings 同形）。
+        config.onScrollDrag =
+            [self](const core::RenderNode*, const core::RenderNode* viewport,
+                   core::Offset, core::Offset delta,
+                   core::ScrollDragPhase phase, std::uint64_t nowMs) {
+                return self->scrollDrag(viewport, delta.y, phase, nowMs);
+            };
+        config.onAnimate = [self](app::AppShell& shell,
+                                  std::uint64_t nowMs) {
+            return self->advanceFling(shell, nowMs);
+        };
         config.onCloseRequested = [self](app::AppShell& shell) {
             if (self->dialogOpen_) {
                 self->closeDialog();
@@ -387,6 +398,55 @@ class GalleryApp {
         shell_.markDirty();
         shell_.requestFullRepaint();
         focusRestorePending_ = true;
+    }
+
+    // M10：视口拖动滚动与惯性推进（VirtualList 用 library 的控制器）。
+    bool scrollDrag(const core::RenderNode* viewport, float deltaY,
+                    core::ScrollDragPhase phase, std::uint64_t nowMs) {
+        core::ScrollController* scroll = &scroll_;
+        if (viewport != nullptr &&
+            viewport->type == core::WidgetType::VirtualList) {
+            scroll = &library_.scroll();
+        }
+        switch (phase) {
+            case core::ScrollDragPhase::Begin:
+                return true;
+            case core::ScrollDragPhase::Update:
+                if (viewport != nullptr) {
+                    scroll->updateExtents(
+                        viewport->size.height,
+                        viewport->size.height + viewport->scrollExtent);
+                }
+                scroll->noteDragSample(deltaY, nowMs);
+                if (scroll->applyDrag(deltaY)) {
+                    shell_.markDirty();
+                    return true;
+                }
+                return false;
+            case core::ScrollDragPhase::End:
+                if (scroll->endDrag(nowMs)) {
+                    shell_.markDirty();
+                    return true;
+                }
+                return false;
+            case core::ScrollDragPhase::Cancel:
+                scroll->stopFling();
+                return false;
+        }
+        return false;
+    }
+
+    bool advanceFling(app::AppShell& shell, std::uint64_t nowMs) {
+        bool active = false;
+        if (scroll_.isFlinging()) {
+            active = scroll_.stepFling(nowMs);
+            shell.markDirty();
+        }
+        if (library_.scroll().isFlinging()) {
+            active = library_.scroll().stepFling(nowMs) || active;
+            shell.markDirty();
+        }
+        return active;
     }
 
     bool scrollWheel(const core::RenderNode& root, const core::RenderNode* hit,

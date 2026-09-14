@@ -43,6 +43,10 @@ class FocusManager {
     std::string focusedIdentity_{};
 };
 
+// M10：视口拖动滚流的阶段（Begin/Update = 拖动中，End = 释放可起惯性，
+// Cancel = 取消只停惯性）。AppShell 的同形 sink 别名复用此类型。
+enum class ScrollDragPhase { Begin, Update, End, Cancel };
+
 // v0.3 阶段8B (plan §3.2): TextField 编辑模型升级为 selection/composing。
 // 命中定位用 TextLayout（布局与绘制同一份），光标/删除按 grapheme
 // cluster，Shift 扩展选区，Ctrl/Gui 快捷键（A/C/X/V），双击选词，拖动
@@ -55,11 +59,14 @@ class InteractionController {
     InteractionController(StateStore& store, const HandlerRegistry& handlers,
                           FocusManager& focus);
 
-    // --- 指针（root = 当前布局树；timestampMs 供双击检测） ---
+    // --- 指针（root = 当前布局树；timestampMs 供双击检测与 M10 拖动
+    // 速度采样） ---
     void pointerDown(const RenderNode& root, Offset position,
                      std::uint64_t timestampMs = 0);
-    void pointerMove(const RenderNode& root, Offset position);
-    void pointerUp(const RenderNode& root, Offset position);
+    void pointerMove(const RenderNode& root, Offset position,
+                     std::uint64_t timestampMs = 0);
+    void pointerUp(const RenderNode& root, Offset position,
+                   std::uint64_t timestampMs = 0);
     // 取消活动指针（触摸取消/窗口失焦）：解除按压与拖动，不触发点击，
     // 选区保留。
     void pointerCancel();
@@ -90,10 +97,23 @@ class InteractionController {
                                          const RenderNode* hit,
                                          Offset position, Offset delta)>;
     void setWheelSink(WheelSink sink);
-    void wheel(const RenderNode& root, Offset position, Offset delta);
+    // 返回 sink 的消费状态（M5 收口：语义滚动回执不再恒成功）。
+    [[nodiscard]] bool wheel(const RenderNode& root, Offset position,
+                             Offset delta);
     // 键盘滚动（无编辑焦点时的 PageUp/PageDown/Up/Down/Home/End）→
-    // wheelSink（hit 为聚焦节点或空）。
-    void scrollKey(const RenderNode& root, Key key);
+    // wheelSink（hit 为聚焦节点或空）；返回 sink 消费状态。
+    [[nodiscard]] bool scrollKey(const RenderNode& root, Key key);
+
+    // --- M10：触摸/指针拖动滚动（视口拖动 → 应用 sink） ---
+    // 起点（slop 前）命中滚动视口且不在文本选区路径上的拖动路由到此；
+    // 文本字段上的拖动仍走选区扩展。delta 为自上次 Update 的位移。
+    // Cancel 时 root/viewport 为空（无释放语义，应用只停止惯性）。
+    using ScrollDragSink = std::function<bool(
+        const RenderNode* root, const RenderNode* viewport, Offset position,
+        Offset delta, ScrollDragPhase phase, std::uint64_t timestampMs)>;
+    void setScrollDragSink(ScrollDragSink sink);
+    // 当前拖动是否被路由为视口滚动。
+    [[nodiscard]] bool isScrollDragging() const { return scrollDragging_; }
 
     // --- 剪贴板（可选注入；宿主 Clipboard 适配 core::ClipboardProvider） ---
     void setClipboard(ClipboardProvider* clipboard);
@@ -212,6 +232,7 @@ class InteractionController {
     FocusManager& focus_;
     ClipboardProvider* clipboard_{nullptr};
     WheelSink wheelSink_{};
+    ScrollDragSink scrollDragSink_{};
 
     std::string pressedKey_{};
     std::string pressedIdentity_{};
@@ -243,6 +264,10 @@ class InteractionController {
     bool selecting_{false};  // 指针拖动扩展选区中
     Offset dragAnchor_{};
     Offset dragCurrent_{};
+    // M10：视口拖动滚动（identity 跨重建重定位视口）。
+    bool scrollDragging_{false};
+    std::string scrollDragIdentity_{};
+    Offset scrollLastPoint_{};
     // 双击检测。
     std::uint64_t lastClickMs_{0};
     std::string lastClickIdentity_{};

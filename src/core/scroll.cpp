@@ -1,6 +1,7 @@
 #include "lumen/core/scroll.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace lumen::core {
 
@@ -30,15 +31,19 @@ void ScrollController::scrollTo(float offset) {
 }
 
 bool ScrollController::applyWheel(float deltaY) {
+    stopFling();
     return scrollBy(deltaY);
 }
 
 bool ScrollController::applyDrag(float deltaY) {
     // 内容跟随手指：手指下移（deltaY > 0）时内容向上滚回（offset 减小）。
+    // 拖动接管惯性（抓住滚动中的列表）。
+    stopFling();
     return scrollBy(-deltaY * kDragRatio);
 }
 
 bool ScrollController::applyKey(Key key, float viewportExtent) {
+    stopFling();
     const float page = viewportExtent > 0.0F ? viewportExtent * 0.9F
                                              : 120.0F;
     switch (key) {
@@ -66,8 +71,71 @@ bool ScrollController::applyKey(Key key, float viewportExtent) {
 }
 
 bool ScrollController::semanticScroll(float deltaY) {
+    stopFling();
     return scrollBy(-deltaY);
 }
+
+void ScrollController::noteDragSample(float deltaYPixels,
+                                      std::uint64_t timestampMs) {
+    if (!dragSampled_) {
+        dragSampled_ = true;
+        lastDragSampleMs_ = timestampMs;
+        pendingDragDelta_ = deltaYPixels;
+        return;
+    }
+    pendingDragDelta_ += deltaYPixels;
+    const std::uint64_t dt =
+        timestampMs >= lastDragSampleMs_ ? timestampMs - lastDragSampleMs_ : 0;
+    if (dt > 0) {
+        dragVelocityPxMs_ = pendingDragDelta_ / static_cast<float>(dt);
+        lastDragSampleMs_ = timestampMs;
+        pendingDragDelta_ = 0.0F;
+    }
+}
+
+bool ScrollController::endDrag(std::uint64_t timestampMs) {
+    // 冲洗残余样本：释放时刻的最近位移计入速度。
+    if (dragSampled_ && pendingDragDelta_ != 0.0F &&
+        timestampMs > lastDragSampleMs_) {
+        dragVelocityPxMs_ =
+            pendingDragDelta_ /
+            static_cast<float>(timestampMs - lastDragSampleMs_);
+        pendingDragDelta_ = 0.0F;
+    }
+    dragSampled_ = false;
+    // 惯性方向与手指相反（内容继续沿拖动方向滚）。
+    flingVelocityPxMs_ = -dragVelocityPxMs_;
+    if (!canScroll() ||
+        std::abs(flingVelocityPxMs_) < kFlingStartPxPerMs) {
+        flingVelocityPxMs_ = 0.0F;
+        return false;
+    }
+    flingLastMs_ = timestampMs;
+    return true;
+}
+
+bool ScrollController::stepFling(std::uint64_t nowMs) {
+    if (flingVelocityPxMs_ == 0.0F) {
+        return false;
+    }
+    const double dt =
+        nowMs >= flingLastMs_ ? static_cast<double>(nowMs - flingLastMs_)
+                              : 0.0;
+    if (dt <= 0.0) {
+        return true;
+    }
+    flingLastMs_ = nowMs;
+    const bool moved = scrollBy(flingVelocityPxMs_ * static_cast<float>(dt));
+    flingVelocityPxMs_ = static_cast<float>(
+        static_cast<double>(flingVelocityPxMs_) * std::exp(-dt / kFlingTauMs));
+    if (!moved || std::abs(flingVelocityPxMs_) < kFlingStopPxPerMs) {
+        flingVelocityPxMs_ = 0.0F;
+        return false;
+    }
+    return true;
+}
+
+void ScrollController::stopFling() { flingVelocityPxMs_ = 0.0F; }
 
 float ScrollController::visibleFraction() const {
     if (contentExtent_ <= 0.0F) {

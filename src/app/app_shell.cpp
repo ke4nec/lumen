@@ -105,6 +105,19 @@ AppShell::AppShell(ShellConfig config) : config_(std::move(config)) {
                 return sink(root, hit, position, delta);
             });
     }
+    // M10：视口拖动滚动（同形转发；Cancel 语义由 sink 解释）。
+    if (config_.onScrollDrag) {
+        controller_.setScrollDragSink(
+            [sink = config_.onScrollDrag](const core::RenderNode* root,
+                                          const core::RenderNode* viewport,
+                                          core::Offset position,
+                                          core::Offset delta,
+                                          core::ScrollDragPhase phase,
+                                          std::uint64_t timestampMs) {
+                return sink(root, viewport, position, delta, phase,
+                            timestampMs);
+            });
+    }
 }
 
 // --- 视口/渲染器/字体 ---
@@ -249,19 +262,19 @@ void AppShell::pointerDown(core::Offset position) {
 
 void AppShell::pointerMove(core::Offset position) {
     rebuildIfDirty();
-    controller_.pointerMove(root_, position);
+    controller_.pointerMove(root_, position, lastTickMs_);
 }
 
 void AppShell::pointerUp(core::Offset position) {
     rebuildIfDirty();
-    controller_.pointerUp(root_, position);
+    controller_.pointerUp(root_, position, lastTickMs_);
 }
 
 void AppShell::pointerCancel() { controller_.pointerCancel(); }
 
-void AppShell::wheel(core::Offset position, core::Offset delta) {
+bool AppShell::wheel(core::Offset position, core::Offset delta) {
     rebuildIfDirty();
-    controller_.wheel(root_, position, delta);
+    return controller_.wheel(root_, position, delta);
 }
 
 void AppShell::textInput(const std::string& text) {

@@ -527,6 +527,18 @@ class SettingsApp {
                    core::Offset /*position*/, core::Offset delta) {
                 return self->scrollWheel(root, hit, delta.y);
             };
+        // M10：视口拖动滚动（触摸/指针）→ applyDrag + 速度采样；释放起
+        // 惯性，onAnimate 逐拍推进（确定性物理，时间戳来自应用壳 tick）。
+        config.onScrollDrag =
+            [self](const core::RenderNode*, const core::RenderNode* viewport,
+                   core::Offset, core::Offset delta,
+                   core::ScrollDragPhase phase, std::uint64_t nowMs) {
+                return self->scrollDrag(viewport, delta.y, phase, nowMs);
+            };
+        config.onAnimate = [self](app::AppShell& shell,
+                                  std::uint64_t nowMs) {
+            return self->advanceFling(shell, nowMs);
+        };
         // 关闭请求：modal → 路由栈 → 退出（plan §3.4 统一关闭规则）。
         // 与 onKey 同语义但不重入按键管线（一次关闭只消费一级）。
         config.onCloseRequested = [self](app::AppShell& shell) {
@@ -721,6 +733,57 @@ class SettingsApp {
         // M5：modal 焦点恢复——弹窗关闭后原 dialog-close 焦点已随树
         // 消失，恢复到路由内首个可聚焦节点（与 Tab 顺序一致）。
         focusRestorePending_ = true;
+    }
+
+    // M10：视口拖动滚动（触摸/指针）与惯性推进（与 scrollWheel 同一
+    // ScrollController；VirtualList 用 library 的控制器）。
+    bool scrollDrag(const core::RenderNode* viewport, float deltaY,
+                    core::ScrollDragPhase phase, std::uint64_t nowMs) {
+        core::ScrollController* scroll = &scroll_;
+        if (viewport != nullptr &&
+            viewport->type == core::WidgetType::VirtualList) {
+            scroll = &library_.scroll();
+        }
+        switch (phase) {
+            case core::ScrollDragPhase::Begin:
+                return true;
+            case core::ScrollDragPhase::Update:
+                if (viewport != nullptr) {
+                    scroll->updateExtents(
+                        viewport->size.height,
+                        viewport->size.height + viewport->scrollExtent);
+                }
+                scroll->noteDragSample(deltaY, nowMs);
+                if (scroll->applyDrag(deltaY)) {
+                    shell_.markDirty();
+                    return true;
+                }
+                return false;
+            case core::ScrollDragPhase::End:
+                if (scroll->endDrag(nowMs)) {
+                    shell_.markDirty();
+                    return true;
+                }
+                return false;
+            case core::ScrollDragPhase::Cancel:
+                scroll->stopFling();
+                return false;
+        }
+        return false;
+    }
+
+    // M10：惯性逐拍推进（onAnimate 驱动；停止帧也置脏以落地终值）。
+    bool advanceFling(app::AppShell& shell, std::uint64_t nowMs) {
+        bool active = false;
+        if (scroll_.isFlinging()) {
+            active = scroll_.stepFling(nowMs);
+            shell.markDirty();
+        }
+        if (library_.scroll().isFlinging()) {
+            active = library_.scroll().stepFling(nowMs) || active;
+            shell.markDirty();
+        }
+        return active;
     }
 
     // 服务调用统一包装：不可用/失败 → 可读诊断（picked-file 位置展示）。
