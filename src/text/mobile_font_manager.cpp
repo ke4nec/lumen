@@ -178,12 +178,42 @@ class MobileFontManager final : public FontManager {
     }
 
   private:
-    // 覆盖码点的 face：请求族名（文件名近似）优先，其后 CJK/emoji
-    // 专用 face，最后任意覆盖者。粗细按文件名粗略匹配。
+    // 覆盖码点的 face：请求族名（文件名近似）优先；空请求走平台默认
+    // 栈顺序，其后 CJK/emoji 专用 face，最后任意覆盖者。粗细按文件名
+    // 粗略匹配。
     [[nodiscard]] const FaceEntry* faceFor(const FontQuery& query,
                                            char32_t codePoint) const {
         const std::string requested = lowerAscii(query.family);
-        const bool wantBold = query.weight >= 600;
+        const bool wantBold =
+            static_cast<int>(query.weight) >= 600;
+        if (requested.empty()) {
+            // 平台默认栈优先：保证空 family 就有确定、可预期的字体，
+            // 而非依赖目录 ls 顺序。
+            for (const std::string& candidate :
+                 defaultFontStackFor(codePoint)) {
+                const std::string want = lowerAscii(candidate);
+                const FaceEntry* boldMiss = nullptr;
+                for (const auto& face : faces_) {
+                    if (face.family != want) {
+                        continue;
+                    }
+                    if (stbtt_FindGlyphIndex(
+                            &face.info,
+                            static_cast<int>(codePoint)) == 0) {
+                        continue;
+                    }
+                    if (wantBold == isBoldFile(face.path)) {
+                        return &face;
+                    }
+                    if (boldMiss == nullptr) {
+                        boldMiss = &face;
+                    }
+                }
+                if (boldMiss != nullptr) {
+                    return boldMiss;
+                }
+            }
+        }
         const FaceEntry* fallback = nullptr;
         for (const auto& face : faces_) {
             const int glyph = stbtt_FindGlyphIndex(

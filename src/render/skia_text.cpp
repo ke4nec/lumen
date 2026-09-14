@@ -79,8 +79,9 @@ void drawShapedText(SkCanvas* canvas, SkFontMgr* fontMgr,
         sk_sp<SkTypeface> face =
             fontMgr->matchFamilyStyle(glyphRun.family.c_str(), fontStyle);
         if (face == nullptr) {
-            // 族名不可解析（字体在布局后被卸载）：跳过该 run，几何仍以
-            // 布局为准；调用方诊断可报告 fallback。
+            // glyph ID 只对生成它的 typeface 有意义。字体族不可解析时，
+            // 不能换一个字体继续绘制同一组 glyph ID，否则会出现乱码；
+            // 保持布局几何并跳过该 run，等待上层重新 shaping。
             continue;
         }
         SkFont font(face, fontSize * scale);

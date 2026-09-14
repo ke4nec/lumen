@@ -109,8 +109,8 @@ struct SkiaFontManager::Impl {
     }
 
     [[nodiscard]] const CharFace& typefaceForChar(const FontQuery& query,
-                                                  const std::string& family,
-                                                  char32_t cp) const {
+                                                   const std::string& family,
+                                                   char32_t cp) const {
         static const CharFace kMissing{};
         if (!mgr) {
             return kMissing;
@@ -132,6 +132,19 @@ struct SkiaFontManager::Impl {
                 requested->unicharToGlyph(
                     static_cast<SkUnichar>(cp)) != 0) {
                 resolved.typeface = std::move(requested);
+            }
+        } else {
+            // 空 family = 平台默认栈：按脚本顺序挑选首个覆盖者，
+            // 避免直接 nullptr 全交系统默认导致中英文混排割裂。
+            for (const std::string& candidate : defaultFontStackFor(cp)) {
+                sk_sp<SkTypeface> face =
+                    typefaceForFamily(query, candidate);
+                if (face &&
+                    face->unicharToGlyph(
+                        static_cast<SkUnichar>(cp)) != 0) {
+                    resolved.typeface = std::move(face);
+                    break;
+                }
             }
         }
         if (resolved.typeface == nullptr) {
@@ -255,8 +268,29 @@ bool SkiaFontManager::glyphMetrics(const FontQuery& query,
 bool SkiaFontManager::horizontalMetrics(const FontQuery& query,
                                         float* ascentPx,
                                         float* descentPx) const {
-    sk_sp<SkTypeface> face =
-        impl_->typefaceForFamily(query, query.family);
+    sk_sp<SkTypeface> face;
+    if (query.family.empty()) {
+        // 空 family：按默认栈挑首个真实命中的族，避免 nullptr 直接
+        // 落到系统默认拉丁字体导致行高与 CJK 正文不一致。
+        for (const std::string& candidate : defaultFontStackFor(U'a')) {
+            sk_sp<SkTypeface> candidateFace =
+                impl_->typefaceForFamily(query, candidate);
+            if (!candidateFace) {
+                continue;
+            }
+            SkString actual;
+            candidateFace->getFamilyName(&actual);
+            if (skStringToStd(actual) == candidate) {
+                face = std::move(candidateFace);
+                break;
+            }
+            if (!face) {
+                face = std::move(candidateFace);
+            }
+        }
+    } else {
+        face = impl_->typefaceForFamily(query, query.family);
+    }
     if (!face && impl_->mgr) {
         face = impl_->mgr->matchFamilyStyle(nullptr, toSkStyle(query));
     }
@@ -342,6 +376,7 @@ std::string SkiaFontManager::diagnostic() const {
     } else {
         out += " (unavailable, placeholder fallback in TextLayout)";
     }
+    out += " default=" + defaultFontFamily();
     return out;
 }
 

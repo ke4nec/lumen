@@ -4,8 +4,11 @@
 #include <cmath>
 #include <cstdint>
 #include <map>
+#include <string>
 
 #include "skia_text.h"
+
+#include "lumen/text/font_manager.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -90,11 +93,11 @@ struct SkiaRenderer::Impl {
     sk_sp<SkFontMgr> fontMgr{};
     // M7 review：回退逐码点路径的字形解析缓存（manager 本身也成员化
     // ——旧实现每次 drawText 重建 FontConfig + 每码点查询，1080p 文本
-    // 密集场景 ~3s/帧）。fallbackBase 按 bold 分键，避免首帧样式污染后续
-    // 不同字重（首帧 normal 会错误复用到 bold）。
+    // 密集场景 ~3s/帧）。缓存键包含字体族、字重、斜体和码点，避免
+    // 首帧样式污染后续文本。
     sk_sp<SkFontMgr> fallbackMgr{};
-    std::map<std::uint64_t, sk_sp<SkTypeface>> fallbackBaseCache{};
-    std::map<std::uint64_t, sk_sp<SkTypeface>> fallbackGlyphs{};
+    std::map<std::string, sk_sp<SkTypeface>> fallbackBaseCache{};
+    std::map<std::string, sk_sp<SkTypeface>> fallbackGlyphs{};
 };
 
 SkiaRenderer::SkiaRenderer(float deviceScale, core::Color clear)
@@ -297,20 +300,57 @@ void SkiaRenderer::drawText(TextRun run, core::TextStyle style) {
     // run，加上每码点无缓存查询，文本密集帧可达秒级）。三端统一经
     // makePlatformFontMgr 获取（Windows GDI / Linux FontConfig /
     // macOS CoreText），避免 macOS 回退路径长期走默认字体。
-    const SkFontStyle fontStyle =
-        style.bold ? SkFontStyle::Bold() : SkFontStyle::Normal();
+    const int fontWeight = std::clamp(
+        style.bold ? std::max(style.weight, 700) : style.weight, 100, 900);
+    const SkFontStyle fontStyle(
+        fontWeight, SkFontStyle::kNormal_Width,
+        style.italic ? SkFontStyle::kItalic_Slant : SkFontStyle::kUpright_Slant);
     if (impl_->fallbackMgr == nullptr) {
         impl_->fallbackMgr = skia_text::makePlatformFontMgr();
     }
     sk_sp<SkFontMgr>& fontManager = impl_->fallbackMgr;
+    const auto matchDefaultStack = [&](SkUnichar codePoint) -> sk_sp<SkTypeface> {
+        // 空 family 回退：先按平台默认栈挑覆盖者，再走系统兜底。
+        const char* requested =
+            style.family.empty() ? nullptr : style.family.c_str();
+        if (style.family.empty()) {
+            for (const std::string& candidate :
+                 text::defaultFontStackFor(
+                     static_cast<char32_t>(codePoint))) {
+                sk_sp<SkTypeface> face =
+                    fontManager->matchFamilyStyle(candidate.c_str(), fontStyle);
+                if (face && face->unicharToGlyph(codePoint) != 0) {
+                    return face;
+                }
+            }
+        } else if (requested != nullptr) {
+            sk_sp<SkTypeface> face =
+                fontManager->matchFamilyStyle(requested, fontStyle);
+            if (face && face->unicharToGlyph(codePoint) != 0) {
+                return face;
+            }
+        }
+        return fontManager->matchFamilyStyleCharacter(
+            requested, fontStyle, nullptr, 0, codePoint);
+    };
     sk_sp<SkTypeface> typeface;
     if (fontManager != nullptr) {
-        const std::uint64_t baseKey = style.bold ? 1ULL : 0ULL;
+        const std::string baseKey =
+            style.family + "|" + std::to_string(fontWeight) + "|" +
+            (style.italic ? "italic" : "upright");
         const auto baseCached = impl_->fallbackBaseCache.find(baseKey);
         if (baseCached != impl_->fallbackBaseCache.end()) {
             typeface = baseCached->second;
+        } else if (style.family.empty()) {
+            // 基线字体取拉丁默认栈首个真实命中的族。
+            typeface = matchDefaultStack(static_cast<SkUnichar>('A'));
+            if (!typeface) {
+                typeface = fontManager->matchFamilyStyle(nullptr, fontStyle);
+            }
+            impl_->fallbackBaseCache.emplace(baseKey, typeface);
         } else {
-            typeface = fontManager->matchFamilyStyle(nullptr, fontStyle);
+            typeface = fontManager->matchFamilyStyle(style.family.c_str(),
+                                                     fontStyle);
             impl_->fallbackBaseCache.emplace(baseKey, typeface);
         }
     }
@@ -324,15 +364,15 @@ void SkiaRenderer::drawText(TextRun run, core::TextStyle style) {
         if (fontManager &&
             (!glyphTypeface ||
              glyphTypeface->unicharToGlyph(codePoint) == 0)) {
-            const std::uint64_t cacheKey =
-                (static_cast<std::uint64_t>(codePoint) << 1) |
-                (style.bold ? 1ULL : 0ULL);
+            const std::string cacheKey =
+                style.family + "|" + std::to_string(fontWeight) + "|" +
+                (style.italic ? "italic" : "upright") + "|" +
+                std::to_string(codePoint);
             const auto cached = impl_->fallbackGlyphs.find(cacheKey);
             if (cached != impl_->fallbackGlyphs.end()) {
                 glyphTypeface = cached->second;
             } else {
-                glyphTypeface = fontManager->matchFamilyStyleCharacter(
-                    nullptr, fontStyle, nullptr, 0, codePoint);
+                glyphTypeface = matchDefaultStack(codePoint);
                 impl_->fallbackGlyphs.emplace(cacheKey, glyphTypeface);
             }
         }

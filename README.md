@@ -31,11 +31,14 @@ v0.2 计划
   SDL3 后端与 SDL-free 移动 host 接缝）。
 - `tests/`：Catch2 单测与无窗口集成测试（几何、布局、Element、渲染像素、
   命令回放/序列化、调度、资源、交互、文本/图串、语义树、平台宿主、
-  移动接缝、counter/settings frame hash）。
+  移动接缝、counter/settings frame hash、gallery 集成）。
 - `benchmarks/`：固定 1080p 场景基准（阶段耗时 p50/p95、堆分配、命令数、frame hash）。
 - `examples/counter/`：最小回归示例（窗口模式 + `--headless`）。
 - `examples/settings/`：v0.3 应用基础组件示例（滚动列表、表单校验、弹窗、
   导航、主题、无障碍标签；窗口模式 + `--headless`）。
+- `examples/gallery/`：控件 Gallery（按钮变体/尺寸/状态、输入控件、布局、
+  滚动与虚拟列表、进度/图标/弹窗反馈、颜色方案/排版/密度/ThemeScope；
+  窗口模式 + `--headless`）。
 - `cmake/`：FetchContent 依赖声明（SDL3、Catch2、stb，均已 pin 版本）。
 - `docs/`：架构、分阶段计划与支持矩阵。
 
@@ -52,7 +55,7 @@ ctest --test-dir build --output-on-failure -C Debug
 | 开关 | 默认 | 说明 |
 | --- | --- | --- |
 | `LUMEN_BUILD_TESTS` | ON | Catch2 单测与集成测试 |
-| `LUMEN_BUILD_EXAMPLES` | ON | counter / settings 示例 |
+| `LUMEN_BUILD_EXAMPLES` | ON | counter / settings / gallery 示例 |
 | `LUMEN_BUILD_BENCHMARKS` | OFF | `lumen-scene-bench` 固定场景基准 |
 | `LUMEN_ENABLE_SKIA` | OFF | Skia 光栅后端（预编译包自动拉取） |
 | `LUMEN_ENABLE_GPU` | OFF | Skia Ganesh GPU 后端（需 `LUMEN_ENABLE_SKIA`） |
@@ -97,6 +100,9 @@ Windows 可用 VS 自带的 CMake/Ninja，例如：
 # v0.3 settings：滚动列表、表单校验、弹窗、导航、主题、无障碍标签
 ./build/examples/settings/lumen-settings
 ./build/examples/settings/lumen-settings --headless
+# Widget Gallery：控件/布局/颜色方案/主题演示
+./build/examples/gallery/lumen-gallery
+./build/examples/gallery/lumen-gallery --headless
 ```
 
 macOS 构建与 Linux 相同（SDL3 经 FetchContent 编译，Xcode CLT 的

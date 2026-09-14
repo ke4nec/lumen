@@ -26,6 +26,7 @@ set(LUMEN_TEST_SOURCES
     text_tests.cpp
     semantics_tests.cpp
     settings_integration_tests.cpp
+    gallery_integration_tests.cpp
     mobile_host_tests.cpp
 )
 
@@ -59,6 +60,7 @@ endif()
 target_include_directories(lumen-tests PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/counter
     ${PROJECT_SOURCE_DIR}/examples/settings
+    ${PROJECT_SOURCE_DIR}/examples/gallery
     ${stb_SOURCE_DIR}
 )
 

@@ -73,6 +73,8 @@ if(LUMEN_BUILD_EXAMPLES)
   add_subdirectory(examples/counter)
   # v0.3 阶段8D：settings 示例（滚动/表单/弹窗/导航/主题/无障碍）。
   add_subdirectory(examples/settings)
+  # Widget Gallery：控件/布局/颜色方案/主题演示（与示例同级）。
+  add_subdirectory(examples/gallery)
 endif()
 
 if(LUMEN_BUILD_BENCHMARKS)
@@ -110,7 +112,7 @@ if(LUMEN_BUILD_PACKAGE)
           docs/support-matrix.md
           DESTINATION ${CMAKE_INSTALL_DOCDIR})
   if(LUMEN_BUILD_EXAMPLES AND TARGET lumen-counter)
-    install(TARGETS lumen-counter lumen-settings
+    install(TARGETS lumen-counter lumen-settings lumen-gallery
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     if(WIN32)
       # SDL3 DLL 随包（Windows 动态运行时）。

@@ -1,6 +1,19 @@
 #include "lumen/text/font_manager.h"
 
+#include <cctype>
+#include <cstdlib>
+#include <mutex>
+#include <utility>
+
 #include "lumen/text/grapheme.h"
+
+#ifdef _WIN32
+// 只取 LANGID 判定（GetUserDefaultUILanguage），不引入 GDI/窗口依赖。
+#include <windows.h>
+#elif defined(__APPLE__)
+// 系统偏好语言（Finder 启动的应用无 LANG 环境变量，必须走原生 API）。
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 namespace lumen::text {
 namespace {
@@ -20,7 +33,246 @@ bool isEmojiCodePoint(char32_t cp) {
            (cp >= 0x1F1E6 && cp <= 0x1F1FF);
 }
 
+// "zh-CN"/"zh_CN.UTF-8"/"ja-JP" 等语言标记是否为中日韩。
+bool isCjkLocaleTag(const char* value) {
+    if (value == nullptr || value[0] == '\0' || value[1] == '\0') {
+        return false;
+    }
+    const char c0 = static_cast<char>(
+        std::tolower(static_cast<unsigned char>(value[0])));
+    const char c1 = static_cast<char>(
+        std::tolower(static_cast<unsigned char>(value[1])));
+    return (c0 == 'z' && c1 == 'h') || (c0 == 'j' && c1 == 'a') ||
+           (c0 == 'k' && c1 == 'o');
+}
+
+#if defined(__APPLE__)
+
+// macOS/iOS：偏好语言列表首项（"zh-Hans-CN"/"ja-JP"/"ko-KR"）；
+// Finder 启动的应用没有 LANG，只能走 CoreFoundation。
+bool detectAppleCjkPreference() {
+    bool cjk = false;
+    CFArrayRef languages = CFLocaleCopyPreferredLanguages();
+    if (languages != nullptr) {
+        if (CFArrayGetCount(languages) > 0) {
+            const auto* top = static_cast<CFStringRef>(
+                CFArrayGetValueAtIndex(languages, 0));
+            if (top != nullptr) {
+                char tag[32] = {};
+                if (CFStringGetCString(top, tag, sizeof(tag),
+                                       kCFStringEncodingASCII)) {
+                    cjk = isCjkLocaleTag(tag);
+                }
+            }
+        }
+        CFRelease(languages);
+    }
+    return cjk;
+}
+
+#endif
+
+// 探测系统 UI 语言（进程内缓存一次；语言切换需重启进程生效）。
+bool detectSystemCjkPreference() {
+#if defined(_WIN32)
+    switch (PRIMARYLANGID(GetUserDefaultUILanguage())) {
+        case LANG_CHINESE:
+        case LANG_JAPANESE:
+        case LANG_KOREAN:
+            return true;
+        default:
+            return false;
+    }
+#elif defined(__APPLE__)
+    if (detectAppleCjkPreference()) {
+        return true;
+    }
+    // 回退环境变量（终端/测试场景）。
+    for (const char* name : {"LC_ALL", "LC_CTYPE", "LANG", "LANGUAGE"}) {
+        const char* value = std::getenv(name);
+        if (value == nullptr || value[0] == '\0') {
+            continue;
+        }
+        // "C"/"POSIX" 视为未设置，继续看下一级。
+        if ((value[0] == 'C' || value[0] == 'c') &&
+            (value[1] == '\0' || value[1] == '.' || value[1] == '_')) {
+            continue;
+        }
+        if (value[0] == 'P' && value[1] == 'O') {
+            continue;  // "POSIX"
+        }
+        return isCjkLocaleTag(value);
+    }
+    return false;
+#else
+    // POSIX 优先级 LC_ALL > LC_CTYPE > LANG；Ubuntu 中文桌面另设
+    // LANGUAGE=zh_CN:zh，一并检查。"C"/"POSIX" 跳过看下一级。
+    for (const char* name : {"LC_ALL", "LC_CTYPE", "LANG", "LANGUAGE"}) {
+        const char* value = std::getenv(name);
+        if (value == nullptr || value[0] == '\0') {
+            continue;
+        }
+        if ((value[0] == 'C' || value[0] == 'c') &&
+            (value[1] == '\0' || value[1] == '.' || value[1] == '_')) {
+            continue;
+        }
+        if (value[0] == 'P' && value[1] == 'O') {
+            continue;  // "POSIX"
+        }
+        return isCjkLocaleTag(value);
+    }
+    return false;
+#endif
+}
+
 }  // namespace
+
+bool systemUiPrefersCjkFont() {
+    static const bool cached = detectSystemCjkPreference();
+    return cached;
+}
+
+namespace {
+
+// 应用覆盖栈（空 = 未设置，走系统语言默认；读写加锁，调用方热路径
+// 有 shaped 缓存，频率低）。
+std::mutex g_overrideMutex;
+std::vector<std::string> g_overrideStack;
+
+std::vector<std::string> currentOverride() {
+    std::lock_guard<std::mutex> lock(g_overrideMutex);
+    return g_overrideStack;
+}
+
+}  // namespace
+
+void setDefaultFontStackOverride(std::vector<std::string> stack) {
+    std::lock_guard<std::mutex> lock(g_overrideMutex);
+    g_overrideStack = std::move(stack);
+}
+
+void clearDefaultFontStackOverride() {
+    std::lock_guard<std::mutex> lock(g_overrideMutex);
+    g_overrideStack.clear();
+}
+
+// --- 各平台默认字体栈（空 family 的解析依据） ---
+//
+// 顺序即优先级：拉丁码点走拉丁优先栈，CJK 走 CJK 优先栈，emoji 走
+// emoji 栈；调用方（Skia/移动/渲染回退）再按“首个覆盖码点者”挑选，
+// 避免中英文混排时全落到同一族导致字重/观感割裂。
+
+std::vector<std::string> defaultFontStack() {
+    if (std::vector<std::string> override = currentOverride();
+        !override.empty()) {
+        return override;
+    }
+#if defined(_WIN32)
+    if (systemUiPrefersCjkFont()) {
+        return {"Microsoft YaHei", "Segoe UI", "SimSun", "SimHei", "Arial",
+                "Segoe UI Emoji", "Segoe UI Symbol"};
+    }
+    return {"Segoe UI", "Microsoft YaHei", "SimSun", "SimHei", "Arial",
+            "Segoe UI Emoji", "Segoe UI Symbol"};
+#elif defined(__ANDROID__)
+    if (systemUiPrefersCjkFont()) {
+        return {"Noto Sans CJK SC", "Roboto", "Noto Sans SC", "Noto Sans",
+                "Droid Sans", "Noto Color Emoji"};
+    }
+    return {"Roboto", "Noto Sans CJK SC", "Noto Sans SC", "Noto Sans",
+            "Droid Sans", "Noto Color Emoji"};
+#elif defined(__APPLE__)
+    if (systemUiPrefersCjkFont()) {
+        return {"PingFang SC", "SF Pro Text", "Hiragino Sans GB",
+                "Helvetica Neue", "Helvetica", "Arial",
+                "Apple Color Emoji"};
+    }
+    return {"SF Pro Text", "PingFang SC", "Helvetica Neue",
+            "Hiragino Sans GB", "Helvetica", "Arial", "Apple Color Emoji"};
+#elif defined(__linux__)
+    if (systemUiPrefersCjkFont()) {
+        return {"Noto Sans CJK SC", "Noto Sans", "Noto Sans SC",
+                "WenQuanYi Micro Hei", "DejaVu Sans", "Sans",
+                "Noto Color Emoji"};
+    }
+    return {"Noto Sans", "Noto Sans CJK SC", "Noto Sans SC",
+            "WenQuanYi Micro Hei", "DejaVu Sans", "Sans",
+            "Noto Color Emoji"};
+#else
+    return {"Sans", "Arial", "DejaVu Sans", "Noto Sans",
+            "Noto Sans CJK SC"};
+#endif
+}
+
+std::vector<std::string> defaultFontStackFor(char32_t codePoint) {
+    // 应用覆盖优先：原样返回应用指定的顺序，不再按脚本拆分。
+    if (std::vector<std::string> override = currentOverride();
+        !override.empty()) {
+        return override;
+    }
+#if defined(_WIN32)
+    if (isEmojiCodePoint(codePoint)) {
+        return {"Segoe UI Emoji", "Segoe UI Symbol", "Microsoft YaHei",
+                "Segoe UI", "Arial"};
+    }
+    if (isCjkCodePoint(codePoint)) {
+        return {"Microsoft YaHei", "SimSun", "SimHei", "Segoe UI", "Arial"};
+    }
+    if (systemUiPrefersCjkFont()) {
+        // 中文系统：拉丁字母/数字也优先雅黑，与中文正文观感统一。
+        return {"Microsoft YaHei", "Segoe UI", "SimSun", "Arial"};
+    }
+    return {"Segoe UI", "Arial", "Tahoma", "Microsoft YaHei", "SimSun"};
+#elif defined(__ANDROID__)
+    if (isEmojiCodePoint(codePoint)) {
+        return {"Noto Color Emoji", "Noto Sans CJK SC", "Roboto"};
+    }
+    if (isCjkCodePoint(codePoint)) {
+        return {"Noto Sans CJK SC", "Noto Sans SC", "Roboto", "Noto Sans"};
+    }
+    if (systemUiPrefersCjkFont()) {
+        return {"Noto Sans CJK SC", "Roboto", "Noto Sans", "Droid Sans"};
+    }
+    return {"Roboto", "Noto Sans", "Noto Sans CJK SC", "Droid Sans"};
+#elif defined(__APPLE__)
+    if (isEmojiCodePoint(codePoint)) {
+        return {"Apple Color Emoji", "PingFang SC", "SF Pro Text"};
+    }
+    if (isCjkCodePoint(codePoint)) {
+        return {"PingFang SC", "Hiragino Sans GB", "STHeiti", "SF Pro Text",
+                "Helvetica Neue", "Arial"};
+    }
+    if (systemUiPrefersCjkFont()) {
+        return {"PingFang SC", "Hiragino Sans GB", "SF Pro Text",
+                "Helvetica Neue", "Arial"};
+    }
+    return {"SF Pro Text", "Helvetica Neue", "Helvetica", "Arial",
+            "PingFang SC", "Hiragino Sans GB"};
+#elif defined(__linux__)
+    if (isEmojiCodePoint(codePoint)) {
+        return {"Noto Color Emoji", "Noto Sans CJK SC", "Noto Sans",
+                "DejaVu Sans"};
+    }
+    if (isCjkCodePoint(codePoint)) {
+        return {"Noto Sans CJK SC", "Noto Sans SC", "WenQuanYi Micro Hei",
+                "Noto Sans", "DejaVu Sans", "Sans"};
+    }
+    if (systemUiPrefersCjkFont()) {
+        return {"Noto Sans CJK SC", "Noto Sans", "WenQuanYi Micro Hei",
+                "DejaVu Sans", "Sans"};
+    }
+    return {"Noto Sans", "DejaVu Sans", "Noto Sans CJK SC",
+            "WenQuanYi Micro Hei", "Sans"};
+#else
+    (void)codePoint;
+    return defaultFontStack();
+#endif
+}
+
+std::string defaultFontFamily() {
+    const std::vector<std::string> stack = defaultFontStack();
+    return stack.empty() ? std::string{} : stack.front();
+}
 
 std::string PlaceholderFontManager::resolveFamily(const FontQuery& query,
                                                   char32_t codePoint) const {

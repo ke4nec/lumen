@@ -21,11 +21,44 @@ namespace lumen::text {
 enum class FontBackend : std::uint8_t {
     Placeholder,
     Skia,
+    Mobile,
 };
 
 [[nodiscard]] inline const char* fontBackendName(FontBackend backend) {
-    return backend == FontBackend::Skia ? "skia" : "placeholder";
+    switch (backend) {
+        case FontBackend::Skia:
+            return "skia";
+        case FontBackend::Mobile:
+            return "mobile";
+        default:
+            return "placeholder";
+    }
 }
+
+// 各平台默认字体栈（空 family = 用它）。
+//
+// TextStyle::family 为空表示“平台默认”：解析时按码点脚本在该栈中
+// 挑选首个覆盖者，缺字再走系统兜底（Skia matchFamilyStyleCharacter /
+// 移动端目录扫描），保证中英文默认就有可读字体而不依赖调用方传名。
+[[nodiscard]] std::vector<std::string> defaultFontStack();
+[[nodiscard]] std::vector<std::string> defaultFontStackFor(char32_t codePoint);
+[[nodiscard]] std::string defaultFontFamily();
+// 系统 UI 语言是否偏好 CJK 字体（中文/日文/韩文系统返回 true）。
+//
+// Windows 走 GetUserDefaultUILanguage；macOS/iOS 走偏好语言列表
+// （CFLocaleCopyPreferredLanguages，环境变量做回退）；其他平台走
+// LC_ALL/LC_CTYPE/LANG/LANGUAGE 环境变量（首个有效值决定，zh/ja/ko
+// 前缀为 true）。结果进程内缓存，切换系统语言需重启进程。空 family
+// 的拉丁栈据此排序：CJK 系统连拉丁字母/数字也优先 CJK 字体，保证中文
+// 界面字重/观感统一。
+[[nodiscard]] bool systemUiPrefersCjkFont();
+// 应用层覆盖默认字体栈：设置后 `family` 为空的文本走该栈（按序取首个
+// 覆盖码点者），不再用系统语言默认。传空等价于清除。
+//
+// 优先级：TextStyle.family 显式指定 > 应用覆盖栈 > 系统语言默认。
+// 须在首帧前调用（已布局的 shaped 缓存按空 family 键复用，不会追溯）。
+void setDefaultFontStackOverride(std::vector<std::string> stack);
+void clearDefaultFontStackOverride();
 
 // 字体回退状态：明确区分“命中请求族”“回退到其他族”“缺字”。
 struct FontFallbackStatus {

@@ -51,6 +51,7 @@
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
 
 #include "skia_text.h"
+#include "lumen/text/font_manager.h"
 #include "include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "include/gpu/ganesh/gl/GrGLDirectContext.h"
 #include "include/gpu/gl/GrGLInterface.h"
@@ -459,17 +460,54 @@ class SkiaGpuRenderer final : public Renderer {
         // 缺字回退，top-left 原点 + fontSize 基线。M7 review：基础
         // typeface 与码点字形解析缓存（每码点 fontconfig 查询在文本
         // 密集帧为毫秒级 × 字符数）。
-        const SkFontStyle fontStyle =
-            style.bold ? SkFontStyle::Bold() : SkFontStyle::Normal();
-        const std::uint64_t baseKey = style.bold ? 1ULL : 0ULL;
+        const int fontWeight = std::clamp(
+            style.bold ? std::max(style.weight, 700) : style.weight, 100, 900);
+        const SkFontStyle fontStyle(
+            fontWeight, SkFontStyle::kNormal_Width,
+            style.italic ? SkFontStyle::kItalic_Slant
+                         : SkFontStyle::kUpright_Slant);
+        const std::string baseKey =
+            style.family + "|" + std::to_string(fontWeight) + "|" +
+            (style.italic ? "italic" : "upright");
+        const auto matchDefaultStack = [&](SkUnichar codePoint)
+            -> sk_sp<SkTypeface> {
+            const char* requested =
+                style.family.empty() ? nullptr : style.family.c_str();
+            if (style.family.empty()) {
+                for (const std::string& candidate :
+                     text::defaultFontStackFor(
+                         static_cast<char32_t>(codePoint))) {
+                    sk_sp<SkTypeface> face = fontMgr_->matchFamilyStyle(
+                        candidate.c_str(), fontStyle);
+                    if (face && face->unicharToGlyph(codePoint) != 0) {
+                        return face;
+                    }
+                }
+            } else {
+                sk_sp<SkTypeface> face = fontMgr_->matchFamilyStyle(
+                    requested, fontStyle);
+                if (face && face->unicharToGlyph(codePoint) != 0) {
+                    return face;
+                }
+            }
+            return fontMgr_->matchFamilyStyleCharacter(
+                requested, fontStyle, nullptr, 0, codePoint);
+        };
         sk_sp<SkTypeface> typeface;
         {
             const auto cached = fallbackGlyphs_.find(baseKey);
             if (cached != fallbackGlyphs_.end()) {
                 typeface = cached->second;
+            } else if (style.family.empty()) {
+                typeface = matchDefaultStack(static_cast<SkUnichar>('A'));
+                if (!typeface) {
+                    typeface =
+                        fontMgr_->matchFamilyStyle(nullptr, fontStyle);
+                }
+                fallbackGlyphs_.emplace(baseKey, typeface);
             } else {
-                typeface =
-                    fontMgr_->matchFamilyStyle(nullptr, fontStyle);
+                typeface = fontMgr_->matchFamilyStyle(style.family.c_str(),
+                                                      fontStyle);
                 fallbackGlyphs_.emplace(baseKey, typeface);
             }
         }
@@ -483,15 +521,15 @@ class SkiaGpuRenderer final : public Renderer {
             sk_sp<SkTypeface> glyphTypeface = typeface;
             if (!glyphTypeface ||
                 glyphTypeface->unicharToGlyph(codePoint) == 0) {
-                const std::uint64_t cacheKey =
-                    (static_cast<std::uint64_t>(codePoint) << 1) |
-                    (style.bold ? 1ULL : 0ULL);
+                const std::string cacheKey =
+                    style.family + "|" + std::to_string(fontWeight) + "|" +
+                    (style.italic ? "italic" : "upright") + "|" +
+                    std::to_string(codePoint);
                 const auto cached = fallbackGlyphs_.find(cacheKey);
                 if (cached != fallbackGlyphs_.end()) {
                     glyphTypeface = cached->second;
                 } else {
-                    glyphTypeface = fontMgr_->matchFamilyStyleCharacter(
-                        nullptr, fontStyle, nullptr, 0, codePoint);
+                    glyphTypeface = matchDefaultStack(codePoint);
                     fallbackGlyphs_.emplace(cacheKey, glyphTypeface);
                 }
             }
@@ -552,7 +590,7 @@ class SkiaGpuRenderer final : public Renderer {
     sk_sp<SkSurface> surface_{};
     sk_sp<SkFontMgr> fontMgr_{};
     // M7 review：逐码点回退路径的字形解析缓存。
-    std::map<std::uint64_t, sk_sp<SkTypeface>> fallbackGlyphs_{};
+    std::map<std::string, sk_sp<SkTypeface>> fallbackGlyphs_{};
     std::map<ImageId, sk_sp<SkImage>> images_{};
     core::Size immediateViewport_{};
     int width_{0};

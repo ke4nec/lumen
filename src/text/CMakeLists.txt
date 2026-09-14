@@ -16,6 +16,11 @@ target_include_directories(lumen-text PUBLIC
 # lumen-text 只依赖 lumen-core（plan §6：Skia 实现是可选目标，契约不含
 # 平台/Skia 类型）。
 target_link_libraries(lumen-text PUBLIC lumen-core)
+if(APPLE)
+    # 系统语言探测（CFLocaleCopyPreferredLanguages）需 CoreFoundation；
+    # PUBLIC 传递给静态库消费者（CPU-only 构建同样需要）。
+    target_link_libraries(lumen-text PUBLIC "-framework CoreFoundation")
+endif()
 # M9：移动字体后端（stb_truetype；实现侧私有依赖）。
 if(TARGET stb)
     target_compile_definitions(lumen-text PRIVATE LUMEN_HAS_STB_TRUETYPE=1)

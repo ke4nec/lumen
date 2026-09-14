@@ -1056,6 +1056,60 @@ TEST_CASE("readonly_field_rejects_undo_redo", "[text][interaction]") {
 
 // --- M1 Skia FontManager 工厂（CPU-only 与 Skia 构建都可运行） ---
 
+TEST_CASE("default_font_stack_is_platform_aware", "[text][fonts]") {
+    clearDefaultFontStackOverride();
+    const auto stack = defaultFontStack();
+    CHECK_FALSE(stack.empty());
+    CHECK_FALSE(defaultFontFamily().empty());
+    CHECK(defaultFontFamily() == stack.front());
+
+    const auto latin = defaultFontStackFor(U'A');
+    const auto cjk = defaultFontStackFor(0x4E2D);
+    const auto emoji = defaultFontStackFor(0x1F600);
+    CHECK_FALSE(latin.empty());
+    CHECK_FALSE(cjk.empty());
+    CHECK_FALSE(emoji.empty());
+    // 非 CJK 系统下拉丁与 CJK 首选不同；CJK 系统下两者统一为 CJK 族。
+    const bool preferCjk = systemUiPrefersCjkFont();
+    if (preferCjk) {
+        CHECK(latin.front() == cjk.front());
+    } else {
+        CHECK(latin.front() != cjk.front());
+    }
+#if defined(_WIN32)
+    CHECK(cjk.front() == "Microsoft YaHei");
+    CHECK(latin.front() ==
+          (preferCjk ? "Microsoft YaHei" : "Segoe UI"));
+#elif defined(__APPLE__)
+    CHECK(cjk.front() == "PingFang SC");
+    if (preferCjk) {
+        CHECK(latin.front() == "PingFang SC");
+    }
+#elif defined(__linux__) && !defined(__ANDROID__)
+    CHECK(cjk.front() == "Noto Sans CJK SC");
+    CHECK(latin.front() ==
+          (preferCjk ? "Noto Sans CJK SC" : "Noto Sans"));
+#endif
+}
+
+TEST_CASE("default_font_stack_override_wins_over_system", "[text][fonts]") {
+    clearDefaultFontStackOverride();
+    const std::string systemDefault = defaultFontFamily();
+    CHECK_FALSE(systemDefault.empty());
+
+    setDefaultFontStackOverride({"MyApp Font", "Fallback Font"});
+    CHECK(defaultFontFamily() == "MyApp Font");
+    CHECK(defaultFontStack().front() == "MyApp Font");
+    // 覆盖后不再按脚本拆分：拉丁/CJK/emoji 统一走应用顺序。
+    CHECK(defaultFontStackFor(U'A').front() == "MyApp Font");
+    CHECK(defaultFontStackFor(0x4E2D).front() == "MyApp Font");
+    CHECK(defaultFontStackFor(0x1F600).front() == "MyApp Font");
+
+    clearDefaultFontStackOverride();
+    CHECK(defaultFontFamily() == systemDefault);
+    CHECK(defaultFontStackFor(U'A').front() != "MyApp Font");
+}
+
 TEST_CASE("skia_font_manager_factory_reports_backend_state",
           "[text][fonts]") {
     std::string diagnostic;
