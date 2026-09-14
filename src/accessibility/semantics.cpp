@@ -130,10 +130,10 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
         case WidgetType::ProgressBar:
             // 值（0..100）为语义 value；label 依覆盖。
             semantic.value =
-                node.bind.empty() ? node.value : node.text;
+                node.text;
             break;
         case WidgetType::Dropdown:
-            semantic.value = node.bind.empty() ? node.value : node.text;
+            semantic.value = node.text;
             break;
         case WidgetType::Tooltip:
             semantic.label = node.text;

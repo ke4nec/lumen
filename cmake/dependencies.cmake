@@ -77,10 +77,23 @@ if(LUMEN_ENABLE_SKIA)
       FetchContent_MakeAvailable(skia_prebuilt)
       set(LUMEN_SKIA_ROOT "${skia_prebuilt_SOURCE_DIR}" CACHE INTERNAL
           "Extracted prebuilt Skia root")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      # M7：macOS 预编译（m124-08a5439a6b, universal）；包布局为根目录
+      # libskia.a（无 out/Release-x64 子目录——链接侧 APPLE 分支适配）。
+      set(LUMEN_SKIA_URL "https://github.com/aseprite/skia/releases/download/m124-08a5439a6b/Skia-macOS-Release-universal.zip"
+          CACHE STRING "Pinned prebuilt Skia archive")
+      FetchContent_Declare(
+        skia_prebuilt
+        URL ${LUMEN_SKIA_URL}
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      )
+      FetchContent_MakeAvailable(skia_prebuilt)
+      set(LUMEN_SKIA_ROOT "${skia_prebuilt_SOURCE_DIR}" CACHE INTERNAL
+          "Extracted prebuilt Skia root")
     else()
       message(FATAL_ERROR
         "LUMEN_ENABLE_SKIA requires LUMEN_SKIA_ROOT=<skia install> on this "
-        "platform (Windows/Linux fetch the pinned prebuilt archive itself).")
+        "platform (Windows/Linux/macOS fetch the pinned prebuilt archive itself).")
     endif()
   endif()
   if(WIN32)

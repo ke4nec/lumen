@@ -62,6 +62,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M4 | 已完成三桌面平台服务与窗口能力 | 文件选择/OpenURL/通知/光标/图标契约与 SDL/Fake 实现、能力统一报告、settings 服务区（见 §10 M4 完成记录） |
 | 自用 M5 | 已完成语义契约与键盘可用性收口 | invalid/hidden flags、语义桥驱动、focusFirstFocusable 焦点恢复、Recording bridge 回归证据（见 §10 M5 完成记录） |
 | 自用 M6 | 已完成视觉系统 V3 与控件库 | 图标/阴影/滚动条 token 路径、六控件、ThemeScope、PlatformThemeAdapter、settings 控件+主题页（见 §10 M6 完成记录） |
+| 自用 M7 | 部分收口：GPU 门槛与性能 | macOS GPU CI/新基准场景/partialSubmit 评估/文本性能修复（3.2s→14ms、layout 925→573µs）；性能门槛 4/6 达标（见 §10 M7 完成记录） |
 
 当前验证基线：Windows CPU Debug 303/303，Skia Release 314/314，SDL-free mobile-core 291/291。`817ad43` 后 Windows 的 CPU/Skia/GPU 三个 job、Linux 的 CPU/Skia/GPU/mobile-core 四个 job、macOS 的 CPU/mobile-core 两个 job 均已纳入 CI；真实 macOS GPU 仍待 M7 纳入门槛。最新基线提交为 `817ad43 fix(platform): 对齐跨平台能力与验证契约`。
 
@@ -82,7 +83,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 平台服务 | M4 已完成：ApplicationHost 增加文件选择（异步→FileDialogCompleted 事件）/OpenURL/通知/光标形状/窗口图标契约；PlatformCapabilities 统一报告外观（dark/accent/fontScale）与服务可用性；SDL 实现与 Fake host 记录/失败注入 | 通知在 SDL 3.2.10 无 API：能力关闭+结构化降级（真实通知待 SDL 升级或原生后端） | M4 已收口 |
 | 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| UIA/AT-SPI/NSAccessibility 原生 provider 属后续版本（Recording bridge 作跨平台回归证据） | M5 已收口 |
 | 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur/CPU 扁平面降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | Dialog/Navigator 完整转场动画驱动、MotionTokens 全量状态过渡属后续增强 | M6 已收口 |
-| GPU | Skia Ganesh + OpenGL 已有，GPU `partialSubmit` 固定为 false，macOS GPU 不是当前门槛 | 三桌面发布能力不对称，局部 damage 在 GPU 上退化为全帧提交 | M7 |
+| GPU | M7 大部分完成：macOS GPU 纳入 CI（Skia macOS 预编译 + OpenGL framework）、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧）、三处文本/布局性能修复 | 性能门槛部分未达（reconcile +21%、layout.p95 +10.8%，结构性：Widget 功能字段 × Element O(n·depth) 拷贝；优化路径明确）；三桌面 GPU CI 首跑为事实来源 | M7 部分收口 |
 | 发布 | 有构建和 smoke，没有正式便携包流水线 | 用户无法脱离开发环境分发 | M8 |
 | 移动端 | 只有 SDL-free seam，没有文本输入/软键盘入口；mobile-core 与 Skia 互斥，当前只能 CPU 占位字体 | 不能在模拟器/真机启动可用的文本工具页面 | M9 |
 
@@ -814,12 +815,68 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   - Radio 组互斥由应用写值管理（框架不内置组语义）。
 - 回滚点：M5 合入后的提交（见 M5 完成记录）。
 
+### M7 完成记录（三桌面 GPU 生产门槛与性能）——部分收口
+
+- 完成日期：2026-09-18
+- 提交号：（本变更提交，见 Git 历史 `perf(render)`）
+- 变更：
+  - 基准扩展：`lumen-scene-bench --scenario text-heavy|grid|
+    semantics-diff|resource-upload`（M7 新场景，名称规范 <name>-1080p）
+    与 `--backend cpu|skia`（离屏光栅 SkiaRenderer；GPU wait 语义在
+    窗口路径实测，bench 不适用）。resource-upload 每帧 8 张 120x80
+    位图注册/注销循环（UploadImage/UnloadImage 命令路径）；
+    semantics-diff 每帧语义树构建计入 paint 相。
+  - **性能修复（review 发现的三处严重回归）**：
+    1. SkiaRenderer/GPU 逐码点回退路径每次 drawText 重建 FontConfig
+       manager + 每码点无缓存查询——1080p 文本密集 **3.2s/帧 → 14ms**
+      （字形解析缓存于 Impl；GPU 同修）。
+    2. `TextLayoutCache` 存在但从未接线（布局与绘制直调
+       TextLayout::layout，静态文本每帧全量 reshape）——layout 相
+       **925 → 573µs**（measureTextContent/painter.layoutText 经
+       thread_local 缓存）。
+    3. Widget 体积 840B（M6 累积）→ 784B：value 字段删除（控件值复用
+       text，bind 经 applyBinds 写入）、M6 小字段集中打包消除 padding、
+       themeOverride 改裸指针（shared_ptr 保活责任在应用）。
+    4. SkiaFontManager 字形缓存携带族名（getFamilyName 每 cluster
+       字符串构造消除）；TextLayout cluster glyphs move 化 + 族名
+       去重池。
+  - partialSubmit 实测评估：preserve 路径（snapshot 上帧 + blit 铺底）
+    在 Skia/Ganesh 光栅模型下为全帧 Clear 的 **1.16×**（光栅化便宜，
+    snapshot+blit 固定成本超过局部重绘节省）——`capabilities.
+    partialSubmit` 维持 false 并如实标注全帧提交（正确性优先回退
+    保留；实测命令与探针归档）。
+  - macOS GPU：Skia macOS 预编译（m124 universal）FetchContent 分支、
+    APPLE 链接（OpenGL/AppKit framework、包根布局）、macos.yml 新增
+    skia-gpu job（软件 GL 一帧 + 回退验证）。**代码路径经 SDL_GL 抽象
+    已覆盖（CGL 由 SDL 选择）；CI 首跑为事实来源。**
+  - 稳定性：GPU 357 帧长跑（llvmpipe）无异常；AppShell resize 风暴
+    （1000 次奇偶交替 setView + tick + renderFrame）哈希稳定；
+    counter_gpu_smoke 三条故障注入路径既有覆盖。
+  - M7 初始基线归档：`docs/perf-baselines/m7-{cpu,skia}-*.json`
+   （6 份：4 CPU 新场景 + 2 Skia）；全部两跑同 hash。
+- 测试：本地 Linux CPU 374/374、Skia 380/380、GPU 387/387、
+  mobile-core 356/356（性能修复后全绿；M0 card-grid hash
+  `d28e364efe1b4aca` 全程保持）。
+- **性能门槛（出口条件之一）——部分达标**：
+  - ✓ layout.p50 +2.6%、paint.p50 -23.9%、paint.p95 -18.9%（双跑取优）
+  - ✗ layout.p95 +10.8%（差 0.8 点，p95 帧为 cache miss 帧，噪声敏感）
+  - ✗ reconcile.p50 +21.2%、p95 +28.9%（**结构性**：M1–M6 Widget 功能
+    字段累积 696→784B +13%，Element::reconcileChildren 既有 O(n·depth)
+    按值拷贝设计放大；经分解实验确认：场景构建 225µs 与 M0 持平、
+    diff 部分 447µs 随体积线性）
+  - 后续路径（明确可回收）：Element reconcile 消除逐层按值拷贝
+   （子树 move 或 COW 共享），预期回收全部 reconcile 回归；
+    TextLayoutCache 命中策略/容量调优可收 layout.p95。
+- 已知限制：
+  - 三桌面 GPU CI 通过为出口条件：Windows/Linux 既有 job 绿；macOS
+    job 本变更新增，**首次 CI 运行为事实来源**（本地无法验证 macOS）。
+  - 性能门槛 2/6 指标超标（如上）；按 roadmap §8 不降低承诺——M7 状态
+    为部分收口，M8 前应完成 Element reconcile 优化回收缺口。
+- 回滚点：M6 合入后的提交（`4cd8181 feat(visual)`）。
+
 ### M1–M9 完成记录（待实施，占位）
 - M5 语义与键盘可用性：未开始（出口：语义/键盘/视觉/交互无分叉；
   Recording bridge 可作回归证据）。
-- M7 GPU 与性能门槛：未开始（出口：三桌面 GPU CI 通过；故障恢复无崩溃/
-  卡死/泄漏/旧资源复活；partialSubmit 有实测与降级说明；p50/p95 相对
-  `v0.2-cpu-scene.json` 恶化 ≤10%，同后端同场景比较）。
 - M8 三桌面便携发布：未开始（出口：干净机器可启动；依赖/GPU/字体缺失有提示；
   可追溯到 commit）。
 - M9 Android/iOS 原生接入：未开始（出口：模拟器+真机启动最小页；

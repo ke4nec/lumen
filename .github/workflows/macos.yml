@@ -5,9 +5,10 @@ on:
     branches: [master]
   pull_request:
 
-# v0.3 阶段8E：macOS 桌面支持（plan §2.1）。CPU-only 与 Skia 光栅为门槛；
-# macOS GPU 不作为 v0.3 强制门槛（失败回退 CPU）。SDL3 桌面契约
-#（窗口/resize/DPI/文本输入/剪贴板）与 Linux 共用同一实现。
+# v0.3 阶段8E：macOS 桌面支持（plan §2.1）。CPU-only 与 Skia 光栅为门槛。
+# M7（自用路线图）：macOS GPU（Skia Ganesh + OpenGL 经 SDL/CGL）纳入
+# 门槛——runner 的软件 GL（Apple GL）驱动；真实硬件 GPU 为本地/自托管
+# 增强验证。窗口/resize/DPI/文本输入/剪贴板与 Linux 共用同一实现。
 
 jobs:
   cpu:
@@ -43,6 +44,29 @@ jobs:
             echo "counter exited early with status $?"
             exit 1
           fi
+
+  # M7：macOS GPU 门槛（Skia + Ganesh；Apple 软件 GL 渲染一帧 + 回退
+  # 路径验证）。
+  skia-gpu:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (Skia + GPU; prebuilt fetched automatically)
+        run: >
+          cmake -S . -B build-gpu -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_ENABLE_SKIA=ON
+          -DLUMEN_ENABLE_GPU=ON
+      - name: Build
+        run: cmake --build build-gpu --config Release
+      - name: Test (GPU submit + CPU fallback)
+        run: ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180
+      - name: GPU smoke (software GL)
+        run: >
+          ./build-gpu/examples/counter/lumen-counter
+          --renderer gpu --diagnostics --frames 2
 
   # 移动核心门槛（与 linux.yml 相同）：iOS host 使用的 SDL-free 目标集
   # 可编译且全部 headless 测试通过。

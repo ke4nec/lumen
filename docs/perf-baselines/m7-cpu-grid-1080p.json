@@ -1,0 +1,23 @@
+{
+  "benchmark": "lumen-scene-bench",
+  "backend": "cpu",
+  "scenario": "grid-1080p",
+  "viewport": [1920, 1080],
+  "cards": [6, 8],
+  "nodes": 98,
+  "commands_per_frame": 384,
+  "culled_commands": 94,
+  "warmup_frames": 30,
+  "measured_frames": 300,
+  "partial_repaint_frames": 204,
+  "toolchain": "15.2.0",
+  "build_type": "Release",
+  "commit": "working-tree",
+  "platform": "linux",
+  "phases": {
+    "layout": {"p50_us": 222.9, "p95_us": 500.1, "mean_us": 252.9, "allocs_p50": 1053, "alloc_bytes_p50": 94061},
+    "paint": {"p50_us": 20474.9, "p95_us": 24379.0, "mean_us": 20014.4, "allocs_p50": 5624, "alloc_bytes_p50": 180592},
+    "reconcile": {"p50_us": 111.5, "p95_us": 325.6, "mean_us": 132.4, "allocs_p50": 14, "alloc_bytes_p50": 0}
+  },
+  "frame_hash": "bd6014381863a5fc"
+}

@@ -278,7 +278,7 @@ class SettingsApp {
             });
             core::Widget scope =
                 core::makeThemeScope(std::move(scopeBody),
-                                     themeScopeData_);
+                                     themeScopeData_.get());
             items.push_back(core::withKey(std::move(scope), "theme-scope"));
             items.push_back(core::withKey(
                 buttonWidget("Back", "back", "back-button",

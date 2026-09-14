@@ -53,7 +53,13 @@ struct SkiaFontManager::Impl {
     // M4 review：按码点回退解析缓存（matchFamilyStyleCharacter 一次
     // ~1ms 的 fontconfig 查询；文本场景重复字符多，未缓存时每字符
     // 2 次 → 每次布局数十毫秒）。
-    mutable std::map<std::uint64_t, sk_sp<SkTypeface>> charFaceCache{};
+    // M7：按字符回退解析缓存（typeface + 解析族名；getFamilyName 每
+    // cluster 一次字符串构造在文本密集布局为 +70% layout 相）。
+    struct CharFace {
+        sk_sp<SkTypeface> typeface{};
+        std::string family{};
+    };
+    mutable std::map<std::uint64_t, CharFace> charFaceCache{};
     mutable std::mutex mutex{};
     // M4 review：族计数缓存（fontconfig 全量枚举 ~50ms，诊断字符串的
     // 热路径不得反复触发；构造后首次查询时计算一次）。
@@ -100,20 +106,22 @@ struct SkiaFontManager::Impl {
                1ULL;
     }
 
-    sk_sp<SkTypeface> typefaceForChar(const FontQuery& query,
-                                      const std::string& family,
-                                      char32_t cp) const {
+    [[nodiscard]] const CharFace& typefaceForChar(const FontQuery& query,
+                                                  const std::string& family,
+                                                  char32_t cp) const {
+        static const CharFace kMissing{};
         if (!mgr) {
-            return nullptr;
+            return kMissing;
         }
         const std::uint64_t key = charCacheKey(query, cp);
         {
             std::lock_guard<std::mutex> lock(mutex);
             const auto it = charFaceCache.find(key);
             if (it != charFaceCache.end()) {
-                return it->second;  // 未命中覆盖族时为空（负缓存）。
+                return it->second;
             }
         }
+        CharFace resolved;
         // 请求族优先：命中且覆盖码点则直接用。
         if (!family.empty()) {
             sk_sp<SkTypeface> requested =
@@ -121,18 +129,24 @@ struct SkiaFontManager::Impl {
             if (requested &&
                 requested->unicharToGlyph(
                     static_cast<SkUnichar>(cp)) != 0) {
-                std::lock_guard<std::mutex> lock(mutex);
-                charFaceCache.emplace(key, requested);
-                return requested;
+                resolved.typeface = std::move(requested);
             }
         }
-        const char* name = family.empty() ? nullptr : family.c_str();
-        sk_sp<SkTypeface> matched = mgr->matchFamilyStyleCharacter(
-            name, toSkStyle(query), nullptr, 0,
-            static_cast<SkUnichar>(cp));
+        if (resolved.typeface == nullptr) {
+            const char* name = family.empty() ? nullptr : family.c_str();
+            resolved.typeface = mgr->matchFamilyStyleCharacter(
+                name, toSkStyle(query), nullptr, 0,
+                static_cast<SkUnichar>(cp));
+        }
+        if (resolved.typeface != nullptr) {
+            SkString name;
+            resolved.typeface->getFamilyName(&name);
+            resolved.family = skStringToStd(name);
+        }
         std::lock_guard<std::mutex> lock(mutex);
-        charFaceCache.emplace(key, matched);  // 负缓存：缺字也记。
-        return matched;
+        const auto [it, inserted] =
+            charFaceCache.emplace(key, std::move(resolved));
+        return it->second;  // 负缓存：缺字也记（typeface 空）。
     }
 };
 
@@ -174,17 +188,15 @@ FontFallbackStatus SkiaFontManager::resolveWithStatus(
         status.diagnostic = "skia FontMgr unavailable; " + impl_->initDiagnostic;
         return status;
     }
-    sk_sp<SkTypeface> face =
+    const auto& face =
         impl_->typefaceForChar(query, query.family, codePoint);
-    if (!face) {
+    if (!face.typeface) {
         status.missing = true;
         status.diagnostic = "no system font covers U+" +
                             std::to_string(static_cast<std::uint32_t>(codePoint));
         return status;
     }
-    SkString name;
-    face->getFamilyName(&name);
-    status.resolvedFamily = skStringToStd(name);
+    status.resolvedFamily = face.family;
     status.missing = false;
     status.fallbackUsed = !query.family.empty() &&
                           status.resolvedFamily != query.family;
@@ -197,8 +209,9 @@ bool SkiaFontManager::glyphMetrics(const FontQuery& query,
     if (out == nullptr) {
         return false;
     }
-    sk_sp<SkTypeface> face =
+    const auto& faceEntry =
         impl_->typefaceForChar(query, query.family, codePoint);
+    const sk_sp<SkTypeface>& face = faceEntry.typeface;
     if (!face) {
         return false;
     }
@@ -272,8 +285,9 @@ std::vector<ShapedGlyph> SkiaFontManager::shapeCluster(
         return {};
     }
     const char32_t firstCp = decoded.front().codePoint;
-    sk_sp<SkTypeface> face =
+    const auto& faceEntry =
         impl_->typefaceForChar(query, query.family, firstCp);
+    const sk_sp<SkTypeface>& face = faceEntry.typeface;
     if (!face) {
         return {};
     }

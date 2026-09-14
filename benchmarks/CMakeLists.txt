@@ -10,9 +10,22 @@ target_link_libraries(lumen-scene-bench PRIVATE
     lumen-core
     lumen-layout
     lumen-render
+    lumen-accessibility
 )
 
+# M7：--backend skia（离屏光栅 SkiaRenderer；同场景同工具链比较）。
+if(LUMEN_ENABLE_SKIA)
+    target_compile_definitions(lumen-scene-bench PRIVATE LUMEN_BENCH_HAS_SKIA=1)
+endif()
+
 target_compile_features(lumen-scene-bench PRIVATE cxx_std_20)
+
+# The benchmark deliberately routes global new/delete through malloc/free so
+# allocation traffic can be counted. GCC's mismatched-new-delete diagnostic
+# does not account for this paired implementation.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(lumen-scene-bench PRIVATE -Wno-mismatched-new-delete)
+endif()
 
 # Use the generator's active configuration so multi-config generators
 # (Visual Studio, Xcode, Ninja Multi-Config) report the configuration selected

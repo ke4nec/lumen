@@ -86,6 +86,12 @@ struct SkiaRenderer::Impl {
     // M1：平台字体管理器缓存（FontConfig/GDI 初始化昂贵；缺失时保持
     // null 并走回退路径，见 drawText）。
     sk_sp<SkFontMgr> fontMgr{};
+    // M7 review：回退逐码点路径的字形解析缓存（manager 本身也成员化
+    // ——旧实现每次 drawText 重建 FontConfig + 每码点查询，1080p 文本
+    // 密集场景 ~3s/帧）。
+    sk_sp<SkFontMgr> fallbackMgr{};
+    sk_sp<SkTypeface> fallbackBase{};
+    std::map<std::uint64_t, sk_sp<SkTypeface>> fallbackGlyphs{};
 };
 
 SkiaRenderer::SkiaRenderer(float deviceScale, core::Color clear)
@@ -283,21 +289,24 @@ void SkiaRenderer::drawText(TextRun run, core::TextStyle style) {
 
     // Use Skia's UTF-8 text path so the optional backend provides real font
     // rasterization and fallback glyphs instead of the CPU placeholder font.
+    // M7 review：FontConfig/GDI manager 与码点字形解析全部缓存于 Impl
+    //（旧实现每次调用重建 manager —— FontConfig 初始化 ~10ms × 每文本
+    // run，加上每码点无缓存查询，文本密集帧可达秒级）。
     const SkFontStyle fontStyle =
         style.bold ? SkFontStyle::Bold() : SkFontStyle::Normal();
-    sk_sp<SkTypeface> typeface;
-    sk_sp<SkFontMgr> fontManager;
+    if (impl_->fallbackMgr == nullptr) {
 #ifdef _WIN32
-    if (const sk_sp<SkFontMgr> fontManager = SkFontMgr_New_GDI()) {
-        typeface = fontManager->matchFamilyStyle(nullptr, fontStyle);
-    }
+        impl_->fallbackMgr = SkFontMgr_New_GDI();
 #elif defined(__linux__)
-    // FontConfig enumerates system fonts (DejaVu/Noto/CJK) so CJK text
-    // resolves on Linux desktops; nullptr falls back to Skia's default.
-    if ((fontManager = SkFontMgr_New_FontConfig(nullptr))) {
-        typeface = fontManager->matchFamilyStyle(nullptr, fontStyle);
-    }
+        impl_->fallbackMgr = SkFontMgr_New_FontConfig(nullptr);
 #endif
+        if (impl_->fallbackMgr != nullptr) {
+            impl_->fallbackBase =
+                impl_->fallbackMgr->matchFamilyStyle(nullptr, fontStyle);
+        }
+    }
+    sk_sp<SkFontMgr>& fontManager = impl_->fallbackMgr;
+    sk_sp<SkTypeface> typeface = impl_->fallbackBase;
     float x = run.origin.x * scale;
     const float baseline = (run.origin.y + fontSize) * scale;
     for (std::size_t offset = 0; offset < run.text.size();) {
@@ -307,8 +316,17 @@ void SkiaRenderer::drawText(TextRun run, core::TextStyle style) {
         sk_sp<SkTypeface> glyphTypeface = typeface;
 #if defined(__linux__) || defined(_WIN32)
         if (fontManager && (!glyphTypeface || glyphTypeface->unicharToGlyph(codePoint) == 0)) {
-            glyphTypeface = fontManager->matchFamilyStyleCharacter(
-                nullptr, fontStyle, nullptr, 0, codePoint);
+            const std::uint64_t cacheKey =
+                (static_cast<std::uint64_t>(codePoint) << 1) |
+                (style.bold ? 1ULL : 0ULL);
+            const auto cached = impl_->fallbackGlyphs.find(cacheKey);
+            if (cached != impl_->fallbackGlyphs.end()) {
+                glyphTypeface = cached->second;
+            } else {
+                glyphTypeface = fontManager->matchFamilyStyleCharacter(
+                    nullptr, fontStyle, nullptr, 0, codePoint);
+                impl_->fallbackGlyphs.emplace(cacheKey, glyphTypeface);
+            }
         }
 #endif
         SkFont font(glyphTypeface, fontSize * scale);

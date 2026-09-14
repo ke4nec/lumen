@@ -45,11 +45,34 @@ struct ClusterInfo {
     std::string text{};
     float advance{0.0F};
     bool hardBreak{false};  // '\n'
-    std::string family{};
+    // M7：族名经去重池索引（M1 引入的每 cluster string 拷贝在文本密集
+    // 布局占 ~40% layout 相；池内同族共享一份）。
+    std::uint32_t familyId{0};
     BidiClass bidi{BidiClass::L};
     bool fallbackUsed{false};
     bool missing{false};
     std::vector<ShapedGlyph> glyphs{};
+};
+
+// 族名去重池（布局局部；首项保留给缺字占位）。
+class FamilyPool {
+  public:
+    std::uint32_t intern(const std::string& family) {
+        for (std::uint32_t id = 0; id < families_.size(); ++id) {
+            if (families_[id] == family) {
+                return id;
+            }
+        }
+        families_.push_back(family);
+        return static_cast<std::uint32_t>(families_.size() - 1);
+    }
+    [[nodiscard]] const std::string& name(std::uint32_t id) const {
+        return families_[id];
+    }
+    [[nodiscard]] std::uint32_t missingId() const { return 0; }
+
+  private:
+    std::vector<std::string> families_{std::string{"lumen-missing"}};
 };
 
 BidiClass clusterBidiClass(const std::string& grapheme) {
@@ -152,6 +175,7 @@ TextLayoutResult TextLayout::layout(const std::string& text,
     // 每 cluster shaping（含 letterSpacing；缺字回退到占位 advance）。
     std::size_t fallbackClusters = 0;
     std::size_t missingClusters = 0;
+    FamilyPool families;
     std::vector<ClusterInfo> clusters(count);
     for (std::size_t i = 0; i < count; ++i) {
         clusters[i].text =
@@ -172,14 +196,14 @@ TextLayoutResult TextLayout::layout(const std::string& text,
         if (!decoded.empty()) {
             const FontFallbackStatus status =
                 fonts.resolveWithStatus(query, decoded.front().codePoint);
-            clusters[i].family = status.resolvedFamily;
+            clusters[i].familyId = families.intern(status.resolvedFamily);
             clusters[i].fallbackUsed = status.fallbackUsed;
             clusters[i].missing = status.missing || shaped.empty();
         }
         if (shaped.empty()) {
             // 缺字：占位 advance + 明确 fallback，不改变 grapheme 索引。
             clusters[i].missing = true;
-            clusters[i].family = "lumen-missing";
+            clusters[i].familyId = families.missingId();
             ShapedGlyph placeholder;
             placeholder.glyphId = decoded.empty()
                                       ? 0xFFFD
@@ -375,6 +399,7 @@ TextLayoutResult TextLayout::layout(const std::string& text,
         std::vector<float> leftEdge(logicalCount, 0.0F);
         float cursor = 0.0F;
         line.visual.clear();
+        line.visual.reserve(text.size());
         for (std::size_t visualPos = 0; visualPos < logicalCount;
              ++visualPos) {
             const std::size_t logical = order[visualPos];
@@ -422,10 +447,11 @@ TextLayoutResult TextLayout::layout(const std::string& text,
                     glyphs = {placeholder};
                 }
             } else {
-                const ClusterInfo& cluster = clusters[raw.start + logical];
-                family = cluster.family.empty() ? "lumen-latin"
-                                                : cluster.family;
-                glyphs = cluster.glyphs;
+                ClusterInfo& cluster = clusters[raw.start + logical];
+                const std::string& pooled =
+                    families.name(cluster.familyId);
+                family = pooled.empty() ? "lumen-latin" : pooled;
+                glyphs = std::move(cluster.glyphs);  // 每 cluster 恰消费一次
                 clusterMissing = cluster.missing;
             }
             if (isEllipsis) {

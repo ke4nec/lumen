@@ -29,7 +29,11 @@
 #include "lumen/core/virtual_list.h"
 #include "lumen/core/widget.h"
 #include "lumen/layout/layout.h"
+#include "lumen/accessibility/semantics.h"
 #include "lumen/render/cpu_renderer.h"
+#ifdef LUMEN_BENCH_HAS_SKIA
+#include "lumen/render/skia_renderer.h"
+#endif
 #include "lumen/render/painter.h"
 
 namespace {
@@ -298,6 +302,117 @@ class VirtualListScene {
     mutable lumen::core::VirtualListController controller_{};
 };
 
+// --- M7 基准场景 -------------------------------------------------------------------
+
+// 文本密集：6x8 网格的段落卡片（CJK+拉丁+混合方向），每帧一张卡的文本
+// 变化（真实 shaping 负载）。
+class TextHeavyScene {
+  public:
+    static Widget paragraph(int index, int frame) {
+        const bool active = index == frame % 48;
+        Widget text;
+        text.type = WidgetType::Text;
+        text.multiline = true;
+        text.text =
+            (active ? std::to_string(frame) : std::to_string(index)) +
+            " 号段落：混合方向 abc\u05e9\u05dc\u05d5\u05dd 与中文文本，"
+            "grapheme 边界与 shaping 度量共同参与布局与绘制。Entry text "
+            "sample with mixed scripts \u4f60\u597d\u4e16\u754c。";
+        text.key = "para-" + std::to_string(index);
+        return text;
+    }
+
+    [[nodiscard]] Widget root(int frame) const {
+        std::vector<Widget> cards;
+        for (int i = 0; i < 48; ++i) {
+            Widget card;
+            card.type = WidgetType::Container;
+            card.color = lumen::core::Color::fromRGBA(32, 32, 38);
+            card.children.push_back(paragraph(i, frame));
+            card.key = "pcard-" + std::to_string(i);
+            card.flex = 1.0F;
+            cards.push_back(std::move(card));
+        }
+        Widget column;
+        column.type = WidgetType::Column;
+        column.key = "text-root";
+        column.children = std::move(cards);
+        return column;
+    }
+};
+
+// Grid：8 列自适应网格，每帧一格内容变化（M3 场景）。
+class GridScene {
+  public:
+    [[nodiscard]] Widget root(int frame) const {
+        std::vector<Widget> cells;
+        for (int i = 0; i < 96; ++i) {
+            Widget cell;
+            cell.type = WidgetType::Text;
+            cell.text = (i == frame % 96)
+                            ? "cell " + std::to_string(frame)
+                            : "cell " + std::to_string(i);
+            cell.key = "gcell-" + std::to_string(i);
+            cells.push_back(std::move(cell));
+        }
+        Widget grid = lumen::core::makeGrid(std::move(cells), 0, 180.0F,
+                                            8.0F, 8.0F, "bench-grid");
+        Widget column;
+        column.type = WidgetType::Column;
+        column.key = "grid-root";
+        column.children.push_back(std::move(grid));
+        return column;
+    }
+};
+
+// 语义 diff：固定树 + 每帧一处语义/文本微变（SemanticsTree 构建 +
+// identity diff 负载；对应 Recording bridge 帧成本）。
+class SemanticsDiffScene {
+  public:
+    [[nodiscard]] Widget root(int frame) const {
+        std::vector<Widget> rows;
+        for (int i = 0; i < 120; ++i) {
+            Widget row;
+            row.type = WidgetType::Text;
+            row.text = (i == frame % 120)
+                           ? "row " + std::to_string(frame)
+                           : "row " + std::to_string(i);
+            row.key = "srow-" + std::to_string(i);
+            rows.push_back(std::move(row));
+        }
+        Widget column;
+        column.type = WidgetType::Column;
+        column.key = "semantics-root";
+        column.children = std::move(rows);
+        return column;
+    }
+};
+
+// 资源上传：每帧 register/unregister 一张小位图并 drawImage（UploadImage/
+// UnloadImage 命令路径）。
+class ResourceUploadScene {
+  public:
+    [[nodiscard]] Widget root(int frame) const {
+        std::vector<Widget> items;
+        for (int i = 0; i < 8; ++i) {
+            Widget image;
+            image.type = WidgetType::Image;
+            // 每 4 帧换一批 id：上传/卸载循环。
+            image.imageId =
+                static_cast<std::uint64_t>((frame / 4) * 8 + i + 1);
+            image.width = 120.0F;
+            image.height = 80.0F;
+            image.key = "img-" + std::to_string(i);
+            items.push_back(std::move(image));
+        }
+        Widget row;
+        row.type = WidgetType::Row;
+        row.key = "upload-root";
+        row.children = std::move(items);
+        return row;
+    }
+};
+
 // --- Benchmark app ----------------------------------------------------------------
 
 // Minimal frame pipeline mirroring CounterApp: reconcile a changed template,
@@ -306,8 +421,20 @@ class BenchApp {
   public:
     using RootBuilder = std::function<Widget(int)>;
 
-    explicit BenchApp(RootBuilder rootAt)
-        : rootAt_(std::move(rootAt)), element_(rootAt_(0)) {
+    explicit BenchApp(RootBuilder rootAt, const std::string& backend,
+                      bool semanticsPerFrame = false,
+                      bool uploadPerFrame = false)
+        : rootAt_(std::move(rootAt)),
+          semanticsPerFrame_(semanticsPerFrame),
+          uploadPerFrame_(uploadPerFrame),
+          element_(rootAt_(0)) {
+#ifdef LUMEN_BENCH_HAS_SKIA
+        if (backend == "skia") {
+            skia_ = std::make_unique<lumen::render::SkiaRenderer>(1.0F);
+        }
+#else
+        (void)backend;
+#endif
         previousRoot_ = lumen::layout::LayoutEngine::layout(
             element_.widget(), Constraints::tight(Size{kViewportWidth, kViewportHeight}));
         paintFull(previousRoot_);
@@ -340,6 +467,46 @@ class BenchApp {
                 lumen::core::collectDamage(previousRoot_, fresh, damage);
             layout_ = AllocSnapshot{}.elapsedSince(start);
         }
+        if (uploadPerFrame_) {
+            // M7：资源上传/卸载循环（UploadImage/UnloadImage 命令路径；
+            // 每帧一批 8 张 120x80 RGBA，旧批注销）。
+            const AllocSnapshot start = AllocSnapshot{};
+            for (const auto id : uploadedIds_) {
+#ifdef LUMEN_BENCH_HAS_SKIA
+                if (skia_ != nullptr) {
+                    skia_->unregisterImage(id);
+                } else {
+                    renderer_.unregisterImage(id);
+                }
+#else
+                renderer_.unregisterImage(id);
+#endif
+            }
+            uploadedIds_.clear();
+            for (int i = 0; i < 8; ++i) {
+                lumen::render::PixelBuffer buffer;
+                buffer.width = 120;
+                buffer.height = 80;
+                buffer.rgba.assign(
+                    static_cast<std::size_t>(120) * 80 * 4, 0x80);
+#ifdef LUMEN_BENCH_HAS_SKIA
+                const auto id = skia_ != nullptr
+                                    ? skia_->registerImage(std::move(buffer))
+                                    : renderer_.registerImage(std::move(buffer));
+#else
+                const auto id = renderer_.registerImage(std::move(buffer));
+#endif
+                uploadedIds_.push_back(id);
+            }
+            uploadPhase_ = AllocSnapshot{}.elapsedSince(start);
+        }
+        if (semanticsPerFrame_) {
+            // M7：语义 diff 负载计入 paint 相（Recording bridge 帧成本）。
+            lumen::accessibility::SemanticsBuildOptions options2;
+            auto tree = lumen::accessibility::buildSemanticsTree(fresh,
+                                                                 options2);
+            (void)tree;
+        }
         {
             const AllocSnapshot start = AllocSnapshot{};
             const auto bounds = lumen::core::damageBounds(damage,
@@ -356,19 +523,39 @@ class BenchApp {
                 info.preservePrevious = true;
                 result.partial = true;
             }
+#ifdef LUMEN_BENCH_HAS_SKIA
+            activeRenderer().submit(commands, info);
+            commandCount_ = activeRenderer().stats().commandCount;
+            culledCount_ = activeRenderer().stats().culledCommands;
+#else
             renderer_.submit(commands, info);
             commandCount_ = renderer_.stats().commandCount;
             culledCount_ = renderer_.stats().culledCommands;
+#endif
             paint_ = AllocSnapshot{}.elapsedSince(start);
         }
         element_.clearDirtyTree();
         previousRoot_ = fresh;
         hasPrevious_ = true;
+#ifdef LUMEN_BENCH_HAS_SKIA
+        result.frameHash = skia_ != nullptr
+                               ? lumen::render::frameHash(skia_->pixels())
+                               : lumen::render::frameHash(renderer_.pixels());
+#else
         result.frameHash = lumen::render::frameHash(renderer_.pixels());
+#endif
         result.nodeCount = countNodes(fresh);
         return result;
     }
 
+    [[nodiscard]] lumen::render::Renderer& activeRenderer() {
+#ifdef LUMEN_BENCH_HAS_SKIA
+        return skia_ != nullptr ? static_cast<lumen::render::Renderer&>(*skia_)
+                                : renderer_;
+#else
+        return renderer_;
+#endif
+    }
     [[nodiscard]] const PhaseSample& reconcileSample() const { return reconcile_; }
     [[nodiscard]] const PhaseSample& layoutSample() const { return layout_; }
     [[nodiscard]] const PhaseSample& paintSample() const { return paint_; }
@@ -379,7 +566,11 @@ class BenchApp {
     void paintFull(const RenderNode& root) {
         lumen::render::FrameInfo info;
         info.viewport = Size{kViewportWidth, kViewportHeight};
+#ifdef LUMEN_BENCH_HAS_SKIA
+        activeRenderer().submit(lumen::render::recordScene(root, {}), info);
+#else
         renderer_.submit(lumen::render::recordScene(root, {}), info);
+#endif
     }
 
     static std::size_t countNodes(const RenderNode& node) {
@@ -391,8 +582,15 @@ class BenchApp {
     }
 
     RootBuilder rootAt_;
+    bool semanticsPerFrame_{false};
+    bool uploadPerFrame_{false};
+    std::vector<lumen::render::ImageId> uploadedIds_{};
+    PhaseSample uploadPhase_{};
     Element element_;
     lumen::render::CpuRenderer renderer_{1.0F};
+#ifdef LUMEN_BENCH_HAS_SKIA
+    std::unique_ptr<lumen::render::SkiaRenderer> skia_{};
+#endif
     RenderNode previousRoot_{};
     bool hasPrevious_{false};
     PhaseSample reconcile_{};
@@ -414,6 +612,9 @@ struct Options {
     int items{1000};
     // 非 0 = 当前为 virtual-list 场景（--items 更新场景名）。
     int scenarioItems{0};
+    // M7：后端选择（cpu = CpuRenderer；skia = 离屏光栅 SkiaRenderer；
+    // gpu 不适用 bench——GPU wait 语义在窗口路径实测）。
+    std::string backend{"cpu"};
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -437,6 +638,12 @@ Options parseOptions(int argc, char** argv) {
             options.warmupFrames = std::max(0, std::atoi(argv[++i]));
         } else if (flag == "--json") {
             options.json = true;
+        } else if (flag == "--backend" && i + 1 < argc) {
+            options.backend = argv[++i];
+            if (options.backend != "cpu" && options.backend != "skia") {
+                std::fprintf(stderr, "--backend expects cpu|skia\n");
+                std::exit(2);
+            }
         } else if (flag == "--scenario" && i + 1 < argc) {
             const std::string value = argv[++i];
             if (value == "virtual-list") {
@@ -452,6 +659,12 @@ Options parseOptions(int argc, char** argv) {
             } else if (value == "card-grid-6x8-1080p") {
                 options.scenario = value;
                 options.scenarioItems = 0;
+            } else if (value == "text-heavy" || value == "grid" ||
+                       value == "semantics-diff" ||
+                       value == "resource-upload") {
+                // M7 新场景：名称规范为 <name>-1080p。
+                options.scenario = value + "-1080p";
+                options.scenarioItems = 0;
             } else {
                 std::fprintf(stderr, "unknown scenario: %s\n", value.c_str());
                 std::exit(2);
@@ -465,14 +678,14 @@ Options parseOptions(int argc, char** argv) {
         } else {
             std::fprintf(stderr,
                          "usage: lumen-scene-bench [--frames N] [--warmup N] [--json] "
-                         "[--scenario card-grid-6x8-1080p|virtual-list[-N]] [--items N]\n");
+                         "[--scenario card-grid-6x8-1080p|virtual-list[-N]|text-heavy|"
+                         "grid|semantics-diff|resource-upload] [--items N] "
+                         "[--backend cpu|skia]\n");
             std::exit(2);
         }
     }
     return options;
 }
-
-const char* kPhaseNames[] = {"reconcile", "layout", "paint"};
 
 // M0 基线冻结：基线 JSON 必须携带 backend/scenario/viewport/warmup/
 // measured/toolchain/build_type/frame_hash/各阶段 p50/p95/分配统计，
@@ -569,9 +782,9 @@ void reportText(const Options& options, const std::map<std::string, PhaseStats>&
                 std::uint64_t commandCount, std::uint64_t culledCount,
                 int partialFrames) {
     std::printf("lumen-scene-bench (v0.2 stage 7A CPU baseline, 7B command path)\n");
-    std::printf("scenario: %s  backend: cpu  toolchain: %s  build_type: %s\n",
-                options.scenario.c_str(), benchToolchain().c_str(),
-                benchBuildType().c_str());
+    std::printf("scenario: %s  backend: %s  toolchain: %s  build_type: %s\n",
+                options.scenario.c_str(), options.backend.c_str(),
+                benchToolchain().c_str(), benchBuildType().c_str());
     std::printf("commit: %s  platform: %s\n", benchCommit().c_str(),
                 benchPlatform().c_str());
     std::printf("viewport: %.0fx%.0f  cards: %dx%d  nodes: %zu  commands/frame: %llu  culled/partial-frame: %llu\n",
@@ -595,7 +808,7 @@ void reportJson(const Options& options, const std::map<std::string, PhaseStats>&
                 int partialFrames) {
     std::printf("{\n");
     std::printf("  \"benchmark\": \"lumen-scene-bench\",\n");
-    std::printf("  \"backend\": \"cpu\",\n");
+    std::printf("  \"backend\": \"%s\",\n", options.backend.c_str());
     std::printf("  \"scenario\": \"%s\",\n", options.scenario.c_str());
     std::printf("  \"viewport\": [%.0f, %.0f],\n", kViewportWidth, kViewportHeight);
     std::printf("  \"cards\": [%d, %d],\n", kGridColumns, kGridRows);
@@ -631,15 +844,47 @@ void reportJson(const Options& options, const std::map<std::string, PhaseStats>&
 int main(int argc, char** argv) {
     Options options = parseOptions(argc, argv);
     std::unique_ptr<VirtualListScene> listScene;
+    std::unique_ptr<TextHeavyScene> textScene;
+    std::unique_ptr<GridScene> gridScene;
+    std::unique_ptr<SemanticsDiffScene> semanticsScene;
+    std::unique_ptr<ResourceUploadScene> uploadScene;
     BenchApp::RootBuilder rootAt;
     if (options.scenario.rfind("virtual-list", 0) == 0) {
         listScene = std::make_unique<VirtualListScene>(options.items);
         rootAt = [&listScene](int frame) { return listScene->root(frame); };
+    } else if (options.scenario.rfind("text-heavy", 0) == 0) {
+        textScene = std::make_unique<TextHeavyScene>();
+        rootAt = [textScene = textScene.get()](int frame) {
+            return textScene->root(frame);
+        };
+    } else if (options.scenario.rfind("grid-", 0) == 0) {
+        gridScene = std::make_unique<GridScene>();
+        rootAt = [gridScene = gridScene.get()](int frame) {
+            return gridScene->root(frame);
+        };
+    } else if (options.scenario.rfind("semantics-diff", 0) == 0) {
+        semanticsScene = std::make_unique<SemanticsDiffScene>();
+        rootAt = [semanticsScene = semanticsScene.get()](int frame) {
+            return semanticsScene->root(frame);
+        };
+    } else if (options.scenario.rfind("resource-upload", 0) == 0) {
+        uploadScene = std::make_unique<ResourceUploadScene>();
+        rootAt = [uploadScene = uploadScene.get()](int frame) {
+            return uploadScene->root(frame);
+        };
     } else {
         rootAt = [](int frame) { return BenchScene::root(frame); };
     }
 
-    BenchApp app{std::move(rootAt)};
+    if (std::getenv("LUMEN_BENCH_CACHE_TREE") != nullptr) {
+        // 诊断开关（M7）：构建一次后每帧深拷贝——分离“场景构建”与
+        // “Element diff”成本（见 M7 完成记录的 reconcile 分解）。
+        static const Widget cached = BenchScene::root(0);
+        rootAt = [](int) { return cached; };
+    }
+    BenchApp app{std::move(rootAt), options.backend,
+                 options.scenario.rfind("semantics-diff", 0) == 0,
+                 options.scenario.rfind("resource-upload", 0) == 0};
     std::map<std::string, PhaseStats> phases;
     std::vector<PhaseSample> reconcileSamples;
     std::vector<PhaseSample> layoutSamples;

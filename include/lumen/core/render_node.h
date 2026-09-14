@@ -58,11 +58,9 @@ struct RenderNode {
     // M3 Image：已就绪资源 id（0 = 占位）与资源路径（诊断/语义）。
     std::uint64_t imageId{0};
     std::string imageSource{};
-    // M6：Dropdown 展开态。
+    // M6：Dropdown 展开态（控件值复用 text：bind 经 applyBinds 写入，
+    // 未绑定由构建器写入——不另设 value 字段）。
     bool dropdownOpen{false};
-    // M6：控件值（Slider/ProgressBar 0..100；Dropdown 当前值）。
-    // bind 控件经 applyBinds 把 store 值写入 text，未绑定控件用 value。
-    std::string value{};
     // M6：图标语义 ID、控件转场透明度与滚动条显隐。
     std::uint8_t icon{0};  // core::IconId 数值（core 层避免样式依赖）
     float transitionAlpha{1.0F};

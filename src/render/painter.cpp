@@ -49,7 +49,8 @@ struct ScopedPaintFonts {
 
 text::TextLayoutResult layoutText(const std::string& text,
                                   const TextStyle& style, float maxWidth) {
-    return text::TextLayout::layout(text, style, maxWidth, paintFonts());
+    static thread_local text::TextLayoutCache cache;
+    return cache.compute(text, style, maxWidth, paintFonts());
 }
 
 float textWidth(const std::string& text, const TextStyle& style) {
@@ -480,8 +481,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         case WidgetType::ProgressBar: {
             // M6：轨道 + 填充/滑块（0..100；bind 控件经 text，未绑定用
             // value；夹取 [0,100]）。色由前景派生（token 链）。
-            const std::string& raw =
-                node.bind.empty() ? node.value : node.text;
+            const std::string& raw = node.text;
             const float position = std::clamp(
                 static_cast<float>(std::atoi(raw.c_str())), 0.0F, 100.0F);
             const float trackHeight =
@@ -596,9 +596,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             paintControlSurface(sink, valueRow, common);
             {
                 const ScopedClip<Sink> clip{sink, valueRow};
-                paintTextAt(sink,
-                            node.bind.empty() ? node.value : node.text,
-                            common.text,
+                paintTextAt(sink, node.text, common.text,
                             Offset{origin.x + 8.0F, origin.y});
                 const float iconSize = lineHeight;
                 const auto& polylines =

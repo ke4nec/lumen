@@ -99,7 +99,13 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.imageId = widget.imageId;
     node.imageSource = widget.imageSource;
     node.dropdownOpen = widget.dropdownOpen;
-    node.value = widget.value;
+    // 值控件复用 RenderNode::text：绑定值由 applyBinds 写入，未绑定值
+    // 由构建器直接放在 Widget::text 中。
+    if (widget.type == WidgetType::Slider ||
+        widget.type == WidgetType::ProgressBar ||
+        widget.type == WidgetType::Dropdown) {
+        node.text = widget.text;
+    }
     node.iconStrokeWidth = styleContext.theme.icons.strokeWidth;
     node.icon = static_cast<std::uint8_t>(widget.icon);
     node.transitionAlpha = widget.transitionAlpha;
@@ -133,8 +139,12 @@ Size measureTextContent(const std::string& content, const TextStyle& style,
         effective.maxLines = 1;
         maxWidth = 0.0F;
     }
-    const text::TextLayoutResult layout = text::TextLayout::layout(
-        content, effective, maxWidth, activeFonts());
+    // M7：经布局缓存（同文本/样式/宽度/字体后端的重复度量直接命中；
+    // plan 阶段2 布局缓存契约，此前未接线——静态文本场景每帧全量
+    // reshape）。UI 线程独占；缓存实例按线程隔离（字体源亦线程局部）。
+    static thread_local text::TextLayoutCache cache;
+    const text::TextLayoutResult& layout =
+        cache.compute(content, effective, maxWidth, activeFonts());
     return layout.size;
 }
 
@@ -328,8 +338,7 @@ RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
         case WidgetType::ThemeScope: {
             // M6：局部主题域——子树解析切换到覆盖主题。
             const auto* override =
-            static_cast<const style::Theme*>(
-                    widget.themeOverride.get());
+                static_cast<const style::Theme*>(widget.themeOverride);
             if (override != nullptr) {
                 const style::StyleContext scopedContext{
                     *override, styleContext.interaction,

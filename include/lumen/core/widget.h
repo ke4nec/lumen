@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -219,25 +218,15 @@ struct Widget {
     std::uint64_t imageId{0};
     std::string imageSource{};
 
-    // M6：图标（Icon/IconBox 节点与 Button 图标位；语义 ID，几何出自
-    // core::iconPolylines，颜色继承前景、线宽来自 IconTheme）。
-    IconId icon{IconId::None};
-    // 控件转场透明度（MotionTokens 驱动；reduceAnimation 时恒 1.0）。
-    float transitionAlpha{1.0F};
-    // M6：滚动条显隐（ScrollView/ListView/VirtualList 视口；thumb 几何
-    // 出自布局的 scrollOffset/scrollExtent + ScrollbarTokens）。
-    bool showScrollbar{false};
-    // M6：层级（0 = 无阴影；值来自 ElevationTokens，如 dialogLevel=3）。
-    // 阴影参数在布局期由 Theme 折算进 RenderNode（后端不依赖 Theme）。
-    float elevation{0.0F};
+    // M6 小字段（icon/transitionAlpha/showScrollbar/elevation/
+    // dropdownOpen）集中声明于尾部 packed 区（消除中段 padding，
+    // M7 性能门槛：Widget 体积直接影响 reconcile 构建/比较成本）。
 
-    // M6 控件：Slider/ProgressBar 值（0..100，字符串或 bind 值解析）；
-    // Dropdown 展开态；Tooltip 常驻（应用控制显隐）。
-    std::string value{};       // Slider/ProgressBar/未绑定的直接值
-    bool dropdownOpen{false};  // Dropdown：展开选项列表
-    // M6 ThemeScope：局部主题（shared_ptr<void> 持有 style::Theme 拷贝，
-    // 避免核心依赖样式头；布局层还原为 Theme 并覆盖子树解析）。
-    std::shared_ptr<void> themeOverride{};
+
+    // M6 ThemeScope：局部主题指针（指向 style::Theme 拷贝，由
+    // style::makeThemeScopeData 的 shared_ptr 保活；核心不接触样式类型，
+    // 裸指针省去每节点拷贝的控件引用计数——M7 体积门槛）。
+    const void* themeOverride{};
 
     // M3 VirtualList：数据源（应用拥有；空 = 空列表）与视口前后缓存
     //（像素）。children 必须为空——布局期按可见区物化。
@@ -252,6 +241,12 @@ struct Widget {
     bool enabled{true};
     bool invalid{false};
     bool selected{false};
+    // --- M6 集中区（小字段连续，消除 padding） ---
+    bool dropdownOpen{false};  // Dropdown：展开选项列表
+    bool showScrollbar{false};  // 滚动条显隐（滚动视口）
+    IconId icon{IconId::None};  // 图标语义 ID（Icon 节点/Button 图标位）
+    float elevation{0.0F};  // 层级（ElevationTokens；0 = 无阴影）
+    float transitionAlpha{1.0F};  // 控件转场透明度（reduceAnimation 恒 1）
     StyleOverrides styleOverrides{};
 
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
@@ -620,7 +615,7 @@ inline Widget makeProgressBar(std::string value, std::string key = {},
                               std::optional<float> width = std::nullopt) {
     Widget widget;
     widget.type = WidgetType::ProgressBar;
-    widget.value = std::move(value);
+    widget.text = std::move(value);  // 值复用 text（bind 时 applyBinds 覆盖）
     widget.key = std::move(key);
     widget.width = width;
     return widget;
@@ -655,7 +650,7 @@ inline Widget makeDropdown(std::string value, std::vector<Widget> options,
                            std::optional<float> width = std::nullopt) {
     Widget widget;
     widget.type = WidgetType::Dropdown;
-    widget.value = std::move(value);
+    widget.text = std::move(value);  // 当前值复用 text
     widget.dropdownOpen = open;
     widget.key = std::move(key);
     widget.width = width;
@@ -675,12 +670,13 @@ inline Widget makeTabs(std::vector<Widget> tabButtons, std::string key = {},
     return widget;
 }
 
-// M6：ThemeScope —— 子树主题覆盖（单子容器；shared_ptr<void> 实参由
-// style::makeThemeScope 产生，核心不接触 Theme 类型）。
-inline Widget makeThemeScope(Widget child, std::shared_ptr<void> theme) {
+// M6：ThemeScope —— 子树主题覆盖（单子容器）。theme 为
+// style::makeThemeScopeData 返回的 shared_ptr 的裸指针；调用方必须保持
+// shared_ptr 存活（重建期间 UI 线程持有，如应用成员）。
+inline Widget makeThemeScope(Widget child, const void* theme) {
     Widget widget;
     widget.type = WidgetType::ThemeScope;
-    widget.themeOverride = std::move(theme);
+    widget.themeOverride = theme;
     widget.children.push_back(std::move(child));
     return widget;
 }
