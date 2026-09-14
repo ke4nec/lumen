@@ -69,7 +69,8 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M7 | 已完成 GPU 门槛与性能 | macOS GPU CI/新基准场景/partialSubmit 评估/文本性能修复/Element move 管道；性能门槛 6/6 达标（见 §10 M7 完成记录） |
 | 自用 M8 | 已完成三桌面便携发布 | install/CPack/依赖入包/RPATH/CI package job + 解包冒烟（见 §10 M8 完成记录） |
 | 增强链 M10 | 已完成动效与滚动体验 | 动画帧调度/整节点透明度转场/状态色过渡/惯性滚动（见 §10 M10 完成记录） |
-| 增强链 M11–M13 | 已规划未开始 | v0.4 视觉方向与控件体验 / 平台服务与发布补全 / 原生无障碍 provider（见 §4） |
+| 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
+| 增强链 M12–M13 | 已规划未开始 | 平台服务与发布补全 / 原生无障碍 provider（见 §4） |
 
 M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/380、GPU Release 387/387（其中 3 个硬件相关用例按环境跳过），另有历史 mobile-core 356/356。这些数量不是当前提交的复测结果，mobile-core 结果也不代表移动设备验证。Windows/macOS 对应门槛由 CI package/GPU job 负责验证。M7/M8 的跨平台 CI 与便携包 job 已纳入工作流。
 
@@ -84,7 +85,7 @@ M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/3
 | 方向文本 | M1 已完成：UAX#9 确定性子集（强/弱/中性类 + L2 重排），混合方向命中测试可靠，grapheme 边界为唯一编辑索引 | 显式嵌入控制/镜像括号/数字定形属按需评估池（§4） | M1 已收口 |
 | 应用框架层 | M2 已完成：`lumen-app` 目标（`app::AppShell` + `app::runApp`）统一主循环/事件泵/重建/damage/DPI/IME 同步，支持 Fake host 与外部 renderer 注入；counter/settings 已迁移（示例只保留 build/状态/handler） | — | M2 已收口 |
 | DSL | M2 已完成：C++ builder 补齐 stack/checkbox/switch_widget/scroll_view/list_view/focus_scope，与 `.lumen` 冻结节点集对齐（golden 对照测试）；Dialog/Navigator 经 `widgets::makeDialog`/`NavigatorController` 提供 | DSL 可编程性/脚本能力不纳入第一版 | M2 已收口 |
-| 控件库 | M6 已完成：Slider/ProgressBar/Radio/Tooltip/Dropdown/Tabs 六控件 + Scrollbar 实绘 + `FormController::compose` 组合校验器（业务规则由应用组合提供） | Dropdown 浮动菜单层（脱离树内展开）与 Tooltip hover 延迟驱动属控件体验缺口 | M11 |
+| 控件库 | M6+M11 已完成：Slider/ProgressBar/Radio/Tooltip/Dropdown/Tabs 六控件 + Scrollbar 实绘 + `FormController::compose`；M11 收口 Dropdown 浮动菜单（overlay + 键盘导航）与 Tooltip hover 延迟显隐 | — | M6+M11 已收口 |
 | 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 横向网格/跨行列合并留按需评估（§4） | M3 已收口 |
 | 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | M10 已收口触摸拖动接线与惯性滚动；水平/嵌套滚动留按需评估 | M3+M10 已收口 |
 | 平台服务 | M4 已完成：ApplicationHost 增加文件选择（异步→FileDialogCompleted 事件）/OpenURL/通知/光标形状/窗口图标契约；PlatformCapabilities 统一报告外观（dark/accent/fontScale）与服务可用性；SDL 实现与 Fake host 记录/失败注入 | 通知在 SDL 3.2.10 无 API：能力关闭+结构化降级（真实通知待 SDL 升级或原生后端） | M4 已收口 |
@@ -1063,6 +1064,60 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   - fling 为矩形欧拉积分（确定性优先，非半隐式欧拉）；无水平滚动与
     嵌套视口惯性。
 - 回滚点：`af13461 docs(roadmap): 规划 M10 起桌面增强链`（M10 前）。
+
+### M11 完成记录（v0.4 视觉方向与控件体验）
+
+- 完成日期：2026-09-14
+- 提交号：d1889f7（四方向变体化）/ b227873（Tooltip）/ d5d8e3f（overlay）/
+  393ecb6（Dropdown）；设计输入 `design/gallery.html`（v0.4 concept
+  四方向评审稿）随本里程碑收编入库。
+- 变更：
+  - **四方向 Theme 变体化**：`style::ThemeDirection`（CoreDark 默认/
+    InkLinen/AuroraSignal/UtilityContrast）经 palette 槽位法接入——
+    `primitivePaletteFor(direction, darkMode)` 填 PrimitivePalette，
+    dark/lightColorScheme 与组件 token 派生零改动；`applyHighContrast`
+    的 blue300/700 硬引用改为方向色板（修非蓝方向 HC 错色）；方向级
+    Metrics 覆盖（controlRadius/cardRadius/controlBorderWidth，Utility
+    =2px 边框）；Theme 携带 direction/darkMode 元数据，gallery/settings
+    的 pageBackground 色值反推启发式删除；gallery Theme 页四方向切换
+    （fromSettings 保留全部 a11y 派生），ThemeScope 预览跟随方向。
+  - **Tooltip hover 延迟驱动**：MotionTokens 新增 tooltipDelayMs{400}/
+    tooltipFadeMs{120}（reduceAnimation 归零=立即显示）；
+    `AppShell::registerTooltip` 状态机（Hidden→Armed→Visible→Fading，
+    复用 M10 转场驱动）；Hidden/Armed 态 alpha 强制 0（覆盖重建后的
+    新树，替代 M6 常驻显示）；Tooltip 节点对命中测试透明。
+  - **框架级 overlay**：`AppShell::setOverlay/clearOverlay`——overlay
+    独立布局、与主树各自拥有 identity 命名空间（主树 identity/焦点/
+    语义 id 稳定）；绘制经 `RenderCommandList::extend` 后置叠加；命中/
+    键盘/语义 action 换事件树（barrier 全窗模态）；语义经
+    `appendSemanticsSubtree` 挂根语义节点；打开全量、期间子树 diff、
+    替换走 diff；关闭清焦点与活动指针。
+  - **Dropdown 浮动菜单**：makeDropdown 收起叶子化（值行走 Button
+    解析获得 hover/焦点态；dropdownOpen 字段删除，选项不再内嵌展开）；
+    `widgets::DropdownController`——锚定菜单（下方不足翻上、视口
+    钳制、FocusScope 键域）、Up/Down/Enter/Esc 键盘导航（应用 onKey
+    modal 优先接线）、onSelected 回调 + 值行焦点恢复；gallery/settings
+    迁移。
+- 测试：新增/迁移——style 方向变体 5 用例（四方向 token 互异/CoreDark
+  与 v0.3 等值/Metrics 覆盖/HC 方向 accent/元数据）；gallery 方向派生
+  保持 1 用例；tooltip 2 用例（延迟显隐全时序 + 重建保持隐藏 +
+  reduceAnimation）；overlay 2 用例（命中优先/barrier 模态/语义 action/
+  主树 identity 稳定 + 开关全量/期间局部）；dropdown 2 用例（收起叶子
+  几何/命令 + gallery 集成：点击选择/键盘 Down+Enter/Esc 不改值）。
+  本地 Windows CPU Debug `405/405`；gallery headless 冒烟输出方向切换
+  与下拉浮动菜单演示。
+- 平台：本地 Windows 全部验证；Linux/macOS 与 Skia/GPU 构建以 CI 为
+  事实来源（overlay/tooltip 走共享命令与转场路径，后端无关性由命令
+  同源保证）。
+- 已知限制：
+  - Aurora 为扁平近似：rgba 表面取实底；玻璃/渐变/光晕/blur 不做；
+    InkLinen 的 serif display 排版不做（跨平台字体确定性优先）。
+  - overlay 的 IME 候选框查询与惯性滚动仍走主树（菜单场景无文本
+    字段）；Dropdown expanded flag 不进语义契约（M5 冻结）。
+  - 状态色过渡与 Dialog/Navigator 转场仍为框架能力 + 测试验证，
+    示例哈希路径保持即时切换（M10 限制延续，随应用侧确定性测试
+    演进启用）。
+- 回滚点：`7978adb docs(roadmap): M10 完成记录与状态收口`（M11 前）。
 
 ### 范围调整记录（2026-09-14）
 

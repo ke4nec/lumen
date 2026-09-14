@@ -9,8 +9,9 @@ v0.2 计划
 视觉系统设计
 [`docs/lumen-visual-system-design.md`](docs/lumen-visual-system-design.md)。
 当前只规划 Windows/Linux/macOS，暂不考虑 Android/iOS；M9 已暂缓。
-桌面自用版 M0–M8 已收口，后续按 M10–M13 桌面增强链推进（动效与滚动、
-v0.4 视觉方向、平台服务与发布补全、原生无障碍）。
+桌面自用版 M0–M8 已收口，后续按 M10–M13 桌面增强链推进（M10 动效与
+滚动、M11 v0.4 视觉方向与控件体验已完成；M12 平台服务与发布补全、
+M13 原生无障碍待启动）。
 面向自用工具类应用的桌面路线图见
 [`docs/lumen-self-use-roadmap.md`](docs/lumen-self-use-roadmap.md)。
 统一构建/验证命令表见

@@ -97,7 +97,12 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 - M6 视觉系统 V3 已收口（图标/阴影/滚动条 token 路径、六控件、
   ThemeScope、组合校验器）；M10 已收口转场动画驱动（transitionAlpha
   整节点透明度、Dialog/Navigator 淡入淡出、状态色过渡 opt-in）；
-  Dropdown 浮动菜单与 Tooltip hover 延迟属 M11。
+  M11 已收口 Tooltip hover 延迟显隐与 Dropdown 浮动菜单
+  （框架级 overlay + Up/Down/Enter/Esc 键盘导航）。
+- M11 v0.4 视觉方向已收口：ThemeDirection 四方向（CoreDark 默认 /
+  InkLinen / AuroraSignal / UtilityContrast），方向与深浅/高对比/字体
+  缩放/密度正交组合经 fromSettings 派生；Aurora 为扁平近似（玻璃/
+  渐变/光晕不做，见 roadmap M11 已知限制）。
 - M7 已收口：macOS GPU CI 已纳入（首跑为事实来源）；partialSubmit
   实测 1.16× 维持全帧提交（正确性优先）；Element move 管道完成后性能
   门槛 6/6 达标。
