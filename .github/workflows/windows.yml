@@ -5,18 +5,41 @@ on:
     branches: [master]
   pull_request:
 
+# 同分支新提交取消旧运行，节省 Windows 分钟数。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # v0.2 阶段7E：Windows CI 矩阵 —— CPU-only 与 Skia 光栅为强制门槛；
 # Skia GPU 在 runner 上通常无硬件 GL，gpu smoke 验证探测失败时的
 # CPU 自动回退（回退行为是强制门槛，硬件加速是增强项）。
 
+env:
+  FETCHCONTENT_BASE_DIR: ${{ github.workspace }}/.fetchcontent-cache
+
 jobs:
   cpu:
     runs-on: windows-2025
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/zlib)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: windows-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            windows-fetchcontent-
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          create-symlink: true
+          max-size: 500M
       - name: Configure (CPU-only)
         run: >
           cmake -S . -B build
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
       - name: Build (Debug)
@@ -28,14 +51,39 @@ jobs:
       # v0.3 阶段8D：settings 示例（滚动/表单/弹窗/导航）headless 冒烟。
       - name: Headless settings smoke
         run: ./build/examples/settings/Debug/lumen-settings.exe --headless
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-cpu-test-logs
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/Testing/Temporary/LastTestsFailed.log
+          retention-days: 3
+          overwrite: true
 
   skia-raster:
     runs-on: windows-2025
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: windows-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            windows-fetchcontent-
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          create-symlink: true
+          max-size: 1G
       - name: Configure (Skia)
         run: >
           cmake -S . -B build-skia
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_ENABLE_SKIA=ON
@@ -45,16 +93,41 @@ jobs:
         run: cmake --build build-skia --config Release
       - name: Test (Release, incl. CPU/Skia consistency)
         run: ctest --test-dir build-skia --output-on-failure -C Release --timeout 120
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-skia-test-logs
+          path: |
+            build-skia/Testing/Temporary/LastTest.log
+            build-skia/Testing/Temporary/LastTestsFailed.log
+          retention-days: 3
+          overwrite: true
 
   # counter_gpu_fallback 用 dummy 驱动强制探测失败，验证示例回退 CPU、
   # 成功呈现一帧并退出；GPU 可用时，其他 smoke 额外验证真实提交。
   skia-gpu:
     runs-on: windows-2025
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: windows-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            windows-fetchcontent-
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          create-symlink: true
+          max-size: 1G
       - name: Configure (Skia + GPU)
         run: >
           cmake -S . -B build-gpu
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_ENABLE_SKIA=ON
@@ -63,3 +136,13 @@ jobs:
         run: cmake --build build-gpu --config Release
       - name: Test (includes forced CPU fallback and presentation)
         run: ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-gpu-test-logs
+          path: |
+            build-gpu/Testing/Temporary/LastTest.log
+            build-gpu/Testing/Temporary/LastTestsFailed.log
+          retention-days: 3
+          overwrite: true

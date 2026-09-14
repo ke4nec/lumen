@@ -47,10 +47,15 @@ if(LUMEN_ENABLE_SKIA)
         ${LUMEN_SKIA_ROOT}/include/config
     )
     find_library(LUMEN_SKIA_LIBRARY NAMES skia
-        PATHS ${LUMEN_SKIA_ROOT}/out/Release-x64
+        PATHS
+            ${LUMEN_SKIA_ROOT}/out/Release-x64
+            ${LUMEN_SKIA_ROOT}/out/Release-arm64
+            ${LUMEN_SKIA_ROOT}
         NO_DEFAULT_PATH
         REQUIRED
     )
+    # 预编译包的 lib 目录（Linux x64 / macOS arm64/x64 按包不同）。
+    get_filename_component(LUMEN_SKIA_LIB_DIR "${LUMEN_SKIA_LIBRARY}" DIRECTORY)
     if(WIN32)
         # skia.lib's bundled freetype references zlib symbols (both plain and
         # Chrome-prefixed); the package zlib.lib covers Cr_z_*, the in-tree
@@ -74,7 +79,7 @@ if(LUMEN_ENABLE_SKIA)
         # a system Skia install. System libs cover FontConfig (Linux font
         # discovery) and threading.
         file(GLOB LUMEN_SKIA_BUNDLED_LIBS
-            "${LUMEN_SKIA_ROOT}/out/Release-x64/lib*.a")
+            "${LUMEN_SKIA_LIB_DIR}/lib*.a")
         # The glob above already contains libskia.a; drop the duplicate so
         # it is listed once inside the group below.
         list(REMOVE_ITEM LUMEN_SKIA_BUNDLED_LIBS "${LUMEN_SKIA_LIBRARY}")
@@ -104,12 +109,23 @@ if(LUMEN_ENABLE_SKIA)
         # satisfy the trailing shared objects.
         find_package(ZLIB REQUIRED)
         target_link_libraries(lumen-render PRIVATE ZLIB::ZLIB)
+    elseif(APPLE)
+        # macOS 预编译同目录附带 skunicode/skshaper/harfbuzz/icu 等归档；
+        # ld64 无 --start-group，全量列出即可（libskia 置首）。
+        file(GLOB LUMEN_SKIA_BUNDLED_LIBS
+            "${LUMEN_SKIA_LIB_DIR}/lib*.a")
+        list(REMOVE_ITEM LUMEN_SKIA_BUNDLED_LIBS "${LUMEN_SKIA_LIBRARY}")
+        target_link_libraries(lumen-render PRIVATE
+            ${LUMEN_SKIA_LIBRARY}
+            ${LUMEN_SKIA_BUNDLED_LIBS})
+        # skia_text CoreText 端口（SkFontMgr_New_CoreText）。
+        target_link_libraries(lumen-render PRIVATE "-framework CoreText")
+        find_package(Threads REQUIRED)
+        target_link_libraries(lumen-render PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
+        find_package(ZLIB REQUIRED)
+        target_link_libraries(lumen-render PRIVATE ZLIB::ZLIB)
     else()
         target_link_libraries(lumen-render PRIVATE ${LUMEN_SKIA_LIBRARY})
-        if(APPLE)
-            # skia_text CoreText 端口（SkFontMgr_New_CoreText）。
-            target_link_libraries(lumen-render PRIVATE "-framework CoreText")
-        endif()
     endif()
 endif()
 

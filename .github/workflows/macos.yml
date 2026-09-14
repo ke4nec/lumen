@@ -5,23 +5,55 @@ on:
     branches: [master]
   pull_request:
 
+# 同分支新提交取消旧运行，节省 macOS 分钟数（单价高于 Linux）。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # v0.3 阶段8E：macOS 桌面支持（plan §2.1）。CPU-only 与 Skia 光栅为门槛。
 # M7（自用路线图）：macOS GPU（Skia Ganesh + OpenGL 经 SDL/CGL）纳入
 # 门槛——runner 的软件 GL（Apple GL）驱动；真实硬件 GPU 为本地/自托管
 # 增强验证。窗口/resize/DPI/文本输入/剪贴板与 Linux 共用同一实现。
 
+env:
+  FETCHCONTENT_BASE_DIR: ${{ github.workspace }}/.fetchcontent-cache
+  CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+
 jobs:
   cpu:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: macos-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            macos-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: macos-ccache-cpu-${{ github.sha }}
+          restore-keys: |
+            macos-ccache-cpu-
+            macos-ccache-
+      - name: Install ccache + ninja
+        run: brew install ccache ninja || brew upgrade ccache ninja || true
       - name: Configure (CPU-only)
         run: >
-          cmake -S . -B build
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
       - name: Build (Debug)
         run: cmake --build build --config Debug
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
       - name: Test (Debug)
         run: ctest --test-dir build --output-on-failure -C Debug --timeout 120
       - name: Headless counter smoke
@@ -44,13 +76,41 @@ jobs:
             echo "counter exited early with status $?"
             exit 1
           fi
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-cpu-test-logs
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/Testing/Temporary/LastTestsFailed.log
+          retention-days: 3
+          overwrite: true
 
   # M7：macOS GPU 门槛（Skia + Ganesh；Apple 软件 GL 渲染一帧 + 回退
   # 路径验证）。
   skia-gpu:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/Skia arm64)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: macos-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            macos-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: macos-ccache-gpu-${{ github.sha }}
+          restore-keys: |
+            macos-ccache-gpu-
+            macos-ccache-
+      - name: Install ccache + ninja
+        run: brew install ccache ninja || brew upgrade ccache ninja || true
       - name: Configure (Skia + GPU; prebuilt fetched automatically)
         run: >
           cmake -S . -B build-gpu -G Ninja
@@ -61,25 +121,70 @@ jobs:
           -DLUMEN_ENABLE_GPU=ON
       - name: Build
         run: cmake --build build-gpu --config Release
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
       - name: Test (GPU submit + CPU fallback)
         run: ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180
       - name: GPU smoke (software GL)
         run: >
           ./build-gpu/examples/counter/lumen-counter
           --renderer gpu --diagnostics --frames 2
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-gpu-test-logs
+          path: |
+            build-gpu/Testing/Temporary/LastTest.log
+            build-gpu/Testing/Temporary/LastTestsFailed.log
+          retention-days: 3
+          overwrite: true
 
   # 移动核心门槛（与 linux.yml 相同）：iOS host 使用的 SDL-free 目标集
   # 可编译且全部 headless 测试通过。
   mobile-core:
     runs-on: macos-15
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (Catch2 only, SDL-free)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: macos-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            macos-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: macos-ccache-mobile-${{ github.sha }}
+          restore-keys: |
+            macos-ccache-mobile-
+            macos-ccache-
+      - name: Install ccache + ninja
+        run: brew install ccache ninja || brew upgrade ccache ninja || true
       - name: Configure (SDL-free mobile core)
         run: >
-          cmake -S . -B build-mobile
+          cmake -S . -B build-mobile -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_MOBILE_CORE=ON
       - name: Build (Debug)
         run: cmake --build build-mobile --config Debug
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
       - name: Test (headless)
         run: ctest --test-dir build-mobile --output-on-failure -C Debug --timeout 120
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-mobile-test-logs
+          path: |
+            build-mobile/Testing/Temporary/LastTest.log
+            build-mobile/Testing/Temporary/LastTestsFailed.log
+          retention-days: 3
+          overwrite: true

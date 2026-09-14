@@ -27,10 +27,14 @@ if(LUMEN_ENABLE_SKIA)
         ${LUMEN_SKIA_ROOT}/include/config
     )
     find_library(LUMEN_TEXT_SKIA_LIBRARY NAMES skia
-        PATHS ${LUMEN_SKIA_ROOT}/out/Release-x64
+        PATHS
+            ${LUMEN_SKIA_ROOT}/out/Release-x64
+            ${LUMEN_SKIA_ROOT}/out/Release-arm64
+            ${LUMEN_SKIA_ROOT}
         NO_DEFAULT_PATH
         REQUIRED
     )
+    get_filename_component(LUMEN_TEXT_SKIA_LIB_DIR "${LUMEN_TEXT_SKIA_LIBRARY}" DIRECTORY)
     if(WIN32)
         find_library(LUMEN_TEXT_SKIA_ZLIB NAMES zlib
             PATHS ${LUMEN_SKIA_ROOT}/out/Release-x64
@@ -45,7 +49,7 @@ if(LUMEN_ENABLE_SKIA)
         endif()
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         file(GLOB LUMEN_TEXT_SKIA_BUNDLED_LIBS
-            "${LUMEN_SKIA_ROOT}/out/Release-x64/lib*.a")
+            "${LUMEN_TEXT_SKIA_LIB_DIR}/lib*.a")
         list(REMOVE_ITEM LUMEN_TEXT_SKIA_BUNDLED_LIBS
             "${LUMEN_TEXT_SKIA_LIBRARY}")
         target_link_libraries(lumen-text PRIVATE
@@ -67,11 +71,22 @@ if(LUMEN_ENABLE_SKIA)
         endif()
         find_package(ZLIB REQUIRED)
         target_link_libraries(lumen-text PRIVATE ZLIB::ZLIB)
+    elseif(APPLE)
+        # macOS 同目录全量归档 + CoreText + 系统库（见 lumen-render）。
+        file(GLOB LUMEN_TEXT_SKIA_BUNDLED_LIBS
+            "${LUMEN_TEXT_SKIA_LIB_DIR}/lib*.a")
+        list(REMOVE_ITEM LUMEN_TEXT_SKIA_BUNDLED_LIBS
+            "${LUMEN_TEXT_SKIA_LIBRARY}")
+        target_link_libraries(lumen-text PRIVATE
+            ${LUMEN_TEXT_SKIA_LIBRARY}
+            ${LUMEN_TEXT_SKIA_BUNDLED_LIBS})
+        target_link_libraries(lumen-text PRIVATE "-framework CoreText")
+        find_package(Threads REQUIRED)
+        target_link_libraries(lumen-text PRIVATE
+            Threads::Threads ${CMAKE_DL_LIBS} m)
+        find_package(ZLIB REQUIRED)
+        target_link_libraries(lumen-text PRIVATE ZLIB::ZLIB)
     else()
         target_link_libraries(lumen-text PRIVATE ${LUMEN_TEXT_SKIA_LIBRARY})
-        if(APPLE)
-            # SkiaFontManager CoreText 端口。
-            target_link_libraries(lumen-text PRIVATE "-framework CoreText")
-        endif()
     endif()
 endif()

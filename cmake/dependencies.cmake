@@ -46,10 +46,10 @@ if(LUMEN_BUILD_TESTS)
 endif()
 
 # Optional Skia backend (plan 阶段5): default OFF so CPU-only builds stay
-# fast and dependency-free. On Windows/Linux a pinned prebuilt archive is
-# fetched automatically; other platforms require LUMEN_SKIA_ROOT pointing at
-# a Skia install with include/ and out/Release-x64/libskia.a (Linux) or
-# skia.lib (Windows).
+# fast and dependency-free. On Windows/Linux/macOS a pinned prebuilt archive
+# is fetched automatically; other platforms require LUMEN_SKIA_ROOT pointing
+# at a Skia install with include/ and out/Release-x64/libskia.a (Linux),
+# skia.lib (Windows) or out/Release-{arm64,x64}/libskia.a (macOS).
 if(LUMEN_ENABLE_SKIA)
   if(NOT DEFINED LUMEN_SKIA_ROOT)
     if(WIN32)
@@ -78,9 +78,23 @@ if(LUMEN_ENABLE_SKIA)
       set(LUMEN_SKIA_ROOT "${skia_prebuilt_SOURCE_DIR}" CACHE INTERNAL
           "Extracted prebuilt Skia root")
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-      # M7：macOS 预编译（m124-08a5439a6b, universal）；包布局为根目录
-      # libskia.a（无 out/Release-x64 子目录——链接侧 APPLE 分支适配）。
-      set(LUMEN_SKIA_URL "https://github.com/aseprite/skia/releases/download/m124-08a5439a6b/Skia-macOS-Release-universal.zip"
+      # M7：macOS 预编译（m124-08a5439a6b，按架构分包，无 universal 包；
+      # 实测布局为 out/Release-arm64/libskia.a 或 out/Release-x64/libskia.a，
+      # 见 src/render/CMakeLists 与 src/text/CMakeLists 的 APPLE 查找）。
+      # macos-14/15 runner 为 arm64；Intel 自托管走 x64 包。
+      # LUMEN_SKIA_URL 允许外部覆盖（CACHE），默认按宿主架构选择。
+      if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+        set(LUMEN_SKIA_MACOS_ARCH "arm64")
+      else()
+        set(LUMEN_SKIA_MACOS_ARCH "x64")
+      endif()
+      # CMAKE_OSX_ARCHITECTURES 显式指定时优先（Xcode 通用构建等）。
+      if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64" AND NOT CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+        set(LUMEN_SKIA_MACOS_ARCH "arm64")
+      elseif(CMAKE_OSX_ARCHITECTURES MATCHES "x86_64" AND NOT CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+        set(LUMEN_SKIA_MACOS_ARCH "x64")
+      endif()
+      set(LUMEN_SKIA_URL "https://github.com/aseprite/skia/releases/download/m124-08a5439a6b/Skia-macOS-Release-${LUMEN_SKIA_MACOS_ARCH}.zip"
           CACHE STRING "Pinned prebuilt Skia archive")
       FetchContent_Declare(
         skia_prebuilt
