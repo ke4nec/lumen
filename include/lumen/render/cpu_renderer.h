@@ -1,9 +1,11 @@
 #pragma once
 
 #include <map>
+#include <memory>
 
 #include "lumen/render/render_commands.h"
 #include "lumen/render/renderer.h"
+#include "lumen/text/system_font_manager.h"
 
 namespace lumen::render {
 
@@ -26,6 +28,19 @@ class CpuRenderer final : public Renderer {
                          core::Color clear = core::Color::fromRGBA(24, 24, 27));
 
     void setDeviceScale(float scale);
+
+    // 系统字体光栅（窗口路径经 AppShell::setFontManager 转发；空 = 占
+    // 位 5x7 点阵字）。注入后 drawText 使用 SystemFontManager 的系统字
+    // 形位图（Windows 优先 GDI 雅黑，其他平台回退 stb），排版
+    // advance/baseline 与同一管理器的度量一致；headless/测试不注入，
+    // 保持帧哈希确定性。
+    void setSystemFonts(
+        std::shared_ptr<const text::SystemFontManager> fonts) {
+        systemFonts_ = std::move(fonts);
+    }
+    [[nodiscard]] bool hasSystemFonts() const {
+        return systemFonts_ != nullptr;
+    }
 
     // Framebuffer of the last beginFrame(); present() consumes it directly.
     [[nodiscard]] const PixelBuffer& pixels() const { return buffer_; }
@@ -75,6 +90,14 @@ class CpuRenderer final : public Renderer {
 
     [[nodiscard]] int toPixel(float logical) const;
     void blendPixel(int px, int py, core::Color color);
+    // 灰度 coverage 混合（字形抗锯齿）：coverage 折进 alpha 后走同一
+    // source-over 路径。
+    void blendCoveragePixel(int px, int py, core::Color color,
+                            std::uint8_t coverage);
+    // 系统字体字形光栅（false = 无位图，调用方回退占位/留白）。
+    bool drawSystemGlyph(std::uint32_t codePoint, const std::string& family,
+                         float penX, float baselineY, float fontSize,
+                         core::TextStyle style);
     void fillLogicalRect(const core::Rect& rect, core::Color color,
                          const core::CornerRadius& radius);
     // M1：单个占位字形盒（glyphId = 码点；advance/位置来自布局）。
@@ -90,6 +113,7 @@ class CpuRenderer final : public Renderer {
     std::vector<ClipRects> clip_{};
     std::map<ImageId, PixelBuffer> images_{};
     ImageId nextImageId_{1};
+    std::shared_ptr<const text::SystemFontManager> systemFonts_{};
 };
 
 }  // namespace lumen::render

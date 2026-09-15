@@ -10,7 +10,6 @@
 #include <unordered_map>
 
 #ifdef LUMEN_HAS_STB_TRUETYPE
-#define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 #endif
 
@@ -288,8 +287,13 @@ std::vector<FaceEntry> loadDirectory(const std::string& dir) {
     std::vector<FaceEntry> faces;
     std::string listing;
     // POSIX 目录扫描（无 <filesystem> 依赖歧义；Android Bionic 支持）。
+    // Windows 桌面构建同样编译本文件（未使用），_popen 保证可编译。
     std::string cmd = "ls -1 '" + dir + "' 2>/dev/null";
+#ifdef _WIN32
+    std::FILE* pipe = _popen(cmd.c_str(), "r");
+#else
     std::FILE* pipe = popen(cmd.c_str(), "r");
+#endif
     if (pipe == nullptr) {
         return faces;
     }
@@ -344,19 +348,31 @@ std::vector<FaceEntry> loadDirectory(const std::string& dir) {
                                fontOffset) == 0) {
                 break;
             }
-            // 家族名：name 表的 family（id=1）优先，回退文件名。
+            // 家族名：name 表的 family（id=1，Windows UCS-2）优先，
+            // 回退文件名。
+            int nameLength = 0;
             const char* name1 = stbtt_GetFontNameString(
-                &entry.info, nullptr, nullptr, 1, 3, 1, 0x409);
-            if (name1 != nullptr) {
-                // UTF-16BE 简化转 ASCII（CJK 家族名取 ASCII 前缀或空）。
+                &entry.info, &nameLength, 3, 1, 0x409, 1);
+            if (name1 != nullptr && nameLength > 0 && nameLength <= 512) {
+                // UTF-16BE：高位为 0 的 ASCII 对半取低字节（CJK 族名无
+                // ASCII 覆盖时留空，调用方回退文件名）。
                 std::string family;
-                for (int c = 0; name1[c] != '\0' && c < 256; ++c) {
-                    const char ch = name1[c];
-                    if (ch >= ' ' && ch < '\x7F') {
-                        family.push_back(
-                            static_cast<char>(std::tolower(
-                                static_cast<unsigned char>(ch)));
+                for (int c = 0; c + 1 < nameLength && family.size() < 64;
+                     c += 2) {
+                    const auto hi =
+                        static_cast<unsigned char>(name1[c]);
+                    const auto lo =
+                        static_cast<unsigned char>(name1[c + 1]);
+                    if (hi == 0 && lo >= ' ' && lo < '\x7F') {
+                        family.push_back(static_cast<char>(std::tolower(
+                            static_cast<unsigned char>(lo))));
                     }
+                }
+                while (!family.empty() && family.front() == ' ') {
+                    family.erase(family.begin());
+                }
+                while (!family.empty() && family.back() == ' ') {
+                    family.pop_back();
                 }
                 if (!family.empty()) {
                     entry.family = family;
@@ -365,9 +381,17 @@ std::vector<FaceEntry> loadDirectory(const std::string& dir) {
             if (entry.family.empty()) {
                 entry.family = familyFromFile(name);
             }
-            entry.unitsPerEm = entry.info.unitsPerEm > 0
-                                   ? entry.info.unitsPerEm
-                                   : 1000;
+            // head 表 unitsPerEm（stbtt_fontinfo 无该成员，手动大端读）。
+            entry.unitsPerEm = 1000;
+            if (entry.info.head > 0) {
+                const unsigned char* head =
+                    entry.info.data + entry.info.head;
+                entry.unitsPerEm =
+                    (static_cast<int>(head[18]) << 8) | head[19];
+                if (entry.unitsPerEm <= 0) {
+                    entry.unitsPerEm = 1000;
+                }
+            }
             int ascent = 0;
             int descent = 0;
             int lineGap = 0;
@@ -378,7 +402,11 @@ std::vector<FaceEntry> loadDirectory(const std::string& dir) {
             faces.push_back(std::move(entry));
         }
     }
+#ifdef _WIN32
+    _pclose(pipe);
+#else
     pclose(pipe);
+#endif
     return faces;
 }
 

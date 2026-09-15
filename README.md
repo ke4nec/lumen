@@ -42,8 +42,10 @@ M8；平台原生无障碍 provider（M13）、AppImage 和完整 .app bundle（
 - `examples/settings/`：v0.3 应用基础组件示例（滚动列表、表单校验、弹窗、
   导航、主题、无障碍标签；窗口模式 + `--headless`）。
 - `examples/gallery/`：控件 Gallery（按钮变体/尺寸/状态、输入控件、布局、
-  滚动与虚拟列表、进度/图标/弹窗反馈、颜色方案/排版/密度/ThemeScope；
-  窗口模式 + `--headless`）。
+  滚动与虚拟列表、进度/图标/弹窗反馈、颜色方案/排版/密度/ThemeScope）。
+  壳层与 Overview 首屏对齐 `design/gallery.html` v1「Core Dark」设计稿
+  （窗口顶栏/侧栏 Live state/指标卡/双栏面板；`--headless --dump-frame
+  <path>` 可导出首帧 RGBA 供视觉核对）。
 - `cmake/`：FetchContent 依赖声明（SDL3、Catch2、stb，均已 pin 版本）。
 - `docs/`：架构、分阶段计划与支持矩阵。
 
@@ -132,7 +134,9 @@ clock/clipboard/text-input、可注入事件源、多窗口）；`Sdl3Applicatio
 
 `lumen-text`：grapheme cluster 分段（组合标记/ZWJ emoji/旗帜/肤色/变体
 选择符/Hangul）、严格 UTF-8 校验、`FontManager` 回退链（latin/cjk/emoji
-确定性占位实现）、`TextLayout`（换行/ellipsis/maxLines/baseline/字形
+确定性占位实现；窗口 CPU 路径另有 `SystemFontManager` 使用系统字形（Windows
+优先 GDI 雅黑，其他平台或 GDI 回退直读系统字体，仍经 stb_truetype），
+`TextLayout`（换行/ellipsis/maxLines/baseline/字形
 位置/命中测试/RTL 视觉逆序/布局缓存）。`TextEditingValue` 状态机以
 grapheme 索引承载 text/selection/composing。TextField 支持 Shift 选区、
 Ctrl/Gui+A/C/X/V、双击选词、拖动扩选、点击定位、IME preedit

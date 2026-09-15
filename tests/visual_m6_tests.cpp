@@ -49,8 +49,10 @@ Offset centerOf(const RenderNode& root, const std::string& key) {
 
 TEST_CASE("icon_catalog_provides_normalized_polylines", "[visual][m6]") {
     for (IconId id :
-         {IconId::Check, IconId::Close, IconId::ChevronDown, IconId::Plus,
-          IconId::Search, IconId::Info}) {
+         {IconId::Check, IconId::Close, IconId::ChevronDown,
+          IconId::ChevronRight, IconId::ChevronLeft, IconId::ChevronUp,
+          IconId::Alert, IconId::Plus, IconId::Minus, IconId::Search,
+          IconId::Info, IconId::Maximize}) {
         const auto& polylines = iconPolylines(id);
         REQUIRE_FALSE(polylines.empty());
         for (const auto& polyline : polylines) {

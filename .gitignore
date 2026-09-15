@@ -1,7 +1,80 @@
+# --- 构建目录（out-of-source 构建，见 AGENTS.md/ README.md） ---
 build*/
 out/
-.vs/
-.idea/
-*.user
+
+# --- CMake 生成物（散落在源码树时，如 VS 直接打开文件夹） ---
 CMakeCache.txt
 CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+CMakeScripts/
+Testing/
+install_manifest.txt
+compile_commands.json
+.ninja_deps
+.ninja_log
+*.ninja
+_CPack_Packages/
+CPackConfig.cmake
+CPackSourceConfig.cmake
+
+# --- 编译产物（C++20） ---
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app/
+*.dSYM/
+*.pdb
+*.ilk
+*.exp
+*.map
+
+# --- 打包产物（CPack：zip / tar.gz / dmg） ---
+*.zip
+*.tar.gz
+*.tgz
+*.dmg
+
+# --- 覆盖率/性能分析 ---
+*.gcda
+*.gcno
+*.gcov
+*.profdata
+*.profraw
+gmon.out
+
+# --- IDE 与编辑器 ---
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.cbp
+*.clangd/
+.cache/clangd/
+
+# --- 操作系统 ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- 编辑器备份 ---
+*~
+*.swp
+*.swo
+*.orig
+*.rej
+
+# --- 本地视觉核对/探测脚本（个人工具目录，不进仓库） ---
+.zcode/

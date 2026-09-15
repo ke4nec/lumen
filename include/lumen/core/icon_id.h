@@ -28,6 +28,7 @@ enum class IconId : std::uint8_t {
     Minus,
     Search,
     Info,
+    Maximize,  // 窗口操作方框（最小化=Minus、关闭=Close 同目录）
 };
 
 // 图标的归一化折线组（0..1 坐标；stroke 绘制，无填充）。

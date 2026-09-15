@@ -26,6 +26,8 @@ set(LUMEN_TEST_SOURCES
     platform_smoke_tests.cpp
     platform_host_tests.cpp
     text_tests.cpp
+    # 桌面系统字体（Windows 雅黑 / CPU 真实字形光栅）。
+    system_font_tests.cpp
     semantics_tests.cpp
     settings_integration_tests.cpp
     gallery_integration_tests.cpp

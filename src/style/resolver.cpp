@@ -83,6 +83,9 @@ void applyOverrides(const Widget& widget, CommonResolvedStyle& common) {
     if (overrides.border.has_value()) {
         common.border = *overrides.border;
     }
+    if (overrides.borderWidth.has_value()) {
+        common.borderWidth = *overrides.borderWidth;
+    }
     if (overrides.radius.has_value()) {
         common.radius = *overrides.radius;
     }

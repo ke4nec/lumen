@@ -92,14 +92,17 @@ struct StyleOverrides {
     std::optional<Color> background{};
     std::optional<Color> foreground{};
     std::optional<Color> border{};
+    // 边框线宽（>0 时 painter 双层绘制边框；容器卡片用，控件按 token）。
+    std::optional<float> borderWidth{};
     std::optional<CornerRadius> radius{};
     std::optional<EdgeInsets> padding{};
     std::optional<TextStyle> text{};
 
     [[nodiscard]] bool empty() const {
         return !background.has_value() && !foreground.has_value() &&
-               !border.has_value() && !radius.has_value() &&
-               !padding.has_value() && !text.has_value();
+               !border.has_value() && !borderWidth.has_value() &&
+               !radius.has_value() && !padding.has_value() &&
+               !text.has_value();
     }
 
     bool operator==(const StyleOverrides&) const = default;

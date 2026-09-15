@@ -230,9 +230,24 @@ ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors) {
 namespace {
 
 // M11：方向色板（design/gallery.html 四方向，槽位法填入 PrimitivePalette；
-// 映射函数 dark/lightColorScheme 零改动）。CoreDark 与默认调色板等值。
+// 映射函数 dark/lightColorScheme 零改动）。CoreDark 以 v0.3 默认调色板为
+// 基线，dark 侧对齐设计稿 v1 的 ink/muted/line/line-strong 槽位。
 // AuroraSignal 为扁平近似：rgba 表面取实底（合成到页面色），玻璃/渐变/
 // 光晕不做；InkLinen 的 serif display 排版不做（跨平台字体确定性优先）。
+PrimitivePalette coreDarkPalette(bool darkMode) {
+    PrimitivePalette palette;
+    if (darkMode) {
+        // design/gallery.html v1 Core Dark：--app-ink/#f1f1f4、
+        // --app-muted/#a1a1aa、--app-line/#3b3b45、--app-line-strong/#555562。
+        // 其余槽位（950/900/800、blue、green）与 v0.3 基线本就等值。
+        palette.neutral200 = {241, 241, 244, 255};
+        palette.neutral400 = {85, 85, 98, 255};
+        palette.neutral500 = {161, 161, 170, 255};
+        palette.neutral600 = {59, 59, 69, 255};
+    }
+    return palette;
+}
+
 PrimitivePalette inkLinenPalette(bool darkMode) {
     PrimitivePalette palette;
     if (darkMode) {
@@ -480,7 +495,7 @@ PrimitivePalette primitivePaletteFor(ThemeDirection direction,
                                      bool darkMode) {
     switch (direction) {
         case ThemeDirection::CoreDark:
-            return PrimitivePalette{};
+            return coreDarkPalette(darkMode);
         case ThemeDirection::InkLinen:
             return inkLinenPalette(darkMode);
         case ThemeDirection::AuroraSignal:

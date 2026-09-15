@@ -1,14 +1,19 @@
 // Widget Gallery 示例：控件/布局/颜色方案/主题演示。
 // 窗口主循环由 app::runApp 驱动（ApplicationHost 事件泵 + FrameScheduler）；
-// `--headless` 输出确定性帧哈希并遍历各分区做最小交互冒烟。
+// `--headless` 输出确定性帧哈希并遍历各分区做最小交互冒烟；
+// `--dump-frame <path>` 额外把首帧像素写为 RGBA 原始数据（视觉核对用）；
+// `--max-frames N` 用于窗口级短跑验证后自动退出。
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <string>
 
 #include "gallery_app.h"
 #include "lumen/app/app_shell.h"
 #include "lumen/platform/sdl3_host.h"
+#include "lumen/text/system_font_manager.h"
 
 namespace {
 
@@ -17,6 +22,8 @@ using lumen::examples::GalleryApp;
 struct Options {
     bool headless{false};
     bool diagnostics{false};
+    std::string dumpFrame{};
+    std::uint64_t maxFrames{0};
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -27,6 +34,10 @@ Options parseOptions(int argc, char** argv) {
             options.headless = true;
         } else if (flag == "--diagnostics") {
             options.diagnostics = true;
+        } else if (flag == "--dump-frame" && i + 1 < argc) {
+            options.dumpFrame = argv[++i];
+        } else if (flag == "--max-frames" && i + 1 < argc) {
+            options.maxFrames = std::strtoull(argv[++i], nullptr, 10);
         }
     }
     return options;
@@ -91,11 +102,31 @@ void clickVisible(GalleryApp& app, const char* key) {
     app.pointerUp(point);
 }
 
-int runHeadless(GalleryApp& app) {
+int runHeadless(GalleryApp& app, const std::string& dumpFrame) {
     app.setView(lumen::core::Size{1024.0F, 768.0F});
     std::printf("frame0 %016llx route=%s\n",
                 static_cast<unsigned long long>(app.renderFrame()),
                 app.navigator().current().c_str());
+    if (!dumpFrame.empty()) {
+        // 首帧原始 RGBA（宽高固定 1024×768；转换 PNG 由外部脚本完成）。
+        std::ofstream out(dumpFrame, std::ios::binary);
+        if (!out) {
+            std::fprintf(stderr, "dump-frame: cannot open '%s' for writing\n",
+                         dumpFrame.c_str());
+        } else {
+            const lumen::render::PixelBuffer& pixels = app.pixels();
+            out.write(reinterpret_cast<const char*>(pixels.rgba.data()),
+                      static_cast<std::streamsize>(pixels.rgba.size()));
+            out.close();
+            if (!out) {
+                std::fprintf(stderr, "dump-frame: short write to '%s'\n",
+                             dumpFrame.c_str());
+            } else {
+                std::printf("dump %s %dx%d\n", dumpFrame.c_str(),
+                            pixels.width, pixels.height);
+            }
+        }
+    }
 
     // Buttons：点击变体按钮，计数 +1。
     click(app, "goto-buttons-button");
@@ -256,7 +287,10 @@ int runHeadless(GalleryApp& app) {
     std::printf("frame7 %016llx\n",
                 static_cast<unsigned long long>(app.renderFrame()));
 
-    // 弹窗 Escape：关闭弹窗但不弹出路由。
+    // 弹窗 Escape：主操作位于 Overview 内容头，先回根路由再打开弹窗。
+    click(app, "nav-home");
+    (void)app.renderFrame();
+    std::printf("route %s\n", app.navigator().current().c_str());
     click(app, "show-dialog-button");
     (void)app.renderFrame();
     std::printf("dialog=%s\n", app.dialogOpen() ? "yes" : "no");
@@ -280,6 +314,24 @@ int runWindowed(GalleryApp& app, const Options& options) {
     runOptions.windowDesc.width = 1024;
     runOptions.windowDesc.height = 768;
     runOptions.diagnostics = options.diagnostics;
+    runOptions.maxFrames = options.maxFrames;
+    // 桌面系统字体：窗口路径注入真实字形（Windows 雅黑优先），CPU 光
+    // 栅经同一管理器排版+绘制；失败回退占位并诊断（headless 不注入，
+    // 保持帧哈希确定性）。
+    runOptions.fontFactory = []()
+        -> std::shared_ptr<lumen::text::FontManager> {
+        std::string fontDiagnostics;
+        auto fonts =
+            lumen::text::createSystemFontManager(&fontDiagnostics);
+        if (fonts != nullptr) {
+            std::printf("[diag] fonts: %s\n", fontDiagnostics.c_str());
+            return std::shared_ptr<lumen::text::FontManager>(
+                std::move(fonts));
+        }
+        std::printf("[diag] fonts: %s — keeping placeholder metrics\n",
+                    fontDiagnostics.c_str());
+        return {};
+    };
     // M12：系统主题切换 → 注入偏好（开启"跟随系统"时重派生主题）。
     runOptions.onEvent = [&app, &host](lumen::app::AppShell&,
                                        const lumen::core::HostEvent& event) {
@@ -298,7 +350,7 @@ int main(int argc, char** argv) {
     GalleryApp app;
     try {
         if (options.headless) {
-            return runHeadless(app);
+            return runHeadless(app, options.dumpFrame);
         }
         return runWindowed(app, options);
     } catch (const std::exception& error) {

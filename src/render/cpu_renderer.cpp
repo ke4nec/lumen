@@ -265,6 +265,62 @@ void CpuRenderer::drawRect(core::Rect rect, core::Color color,
     fillLogicalRect(rect, color, radius);
 }
 
+void CpuRenderer::blendCoveragePixel(int px, int py, core::Color color,
+                                       std::uint8_t coverage) {
+    if (coverage == 0 || color.a == 0) {
+        return;
+    }
+    if (coverage == 255) {
+        blendPixel(px, py, color);
+        return;
+    }
+    color.a = static_cast<std::uint8_t>(
+        (static_cast<unsigned>(color.a) * coverage + 127U) / 255U);
+    blendPixel(px, py, color);
+}
+
+// 系统字体字形：penX/baselineY 为逻辑坐标（advance 定位与 TextLayout
+// 同源），位图为 device 像素 coverage。返回 false 表示无位图（空白字
+// 形/缺字），调用方回退占位盒或留白。
+bool CpuRenderer::drawSystemGlyph(std::uint32_t codePoint,
+                                  const std::string& family, float penX,
+                                  float baselineY, float fontSize,
+                                  core::TextStyle style) {
+    text::FontQuery query;
+    query.family = !family.empty() ? family : style.family;
+    query.weight = static_cast<text::FontWeight>(
+        style.bold ? std::max(style.weight, 700) : style.weight);
+    query.italic = style.italic;
+    query.sizePx = fontSize > 0.0F ? fontSize : 14.0F;
+    text::GlyphBitmap bitmap;
+    if (!systemFonts_->bitmapFor(static_cast<char32_t>(codePoint), query,
+                                 deviceScale_, &bitmap)) {
+        // 空白字形（空格）或缺字：不绘制（调用方已按 advance 留白）。
+        return false;
+    }
+    const int penDeviceX = toPixel(penX);
+    const int baselineDeviceY = toPixel(baselineY);
+    for (int row = 0; row < bitmap.height; ++row) {
+        for (int col = 0; col < bitmap.width; ++col) {
+            const std::uint8_t coverage =
+                bitmap.coverage[static_cast<std::size_t>(row) *
+                                    static_cast<std::size_t>(bitmap.width) +
+                                static_cast<std::size_t>(col)];
+            if (coverage == 0) {
+                continue;
+            }
+            const int px = penDeviceX + bitmap.bearingX + col;
+            const int py = baselineDeviceY - bitmap.bearingTop + row;
+            blendCoveragePixel(px, py, style.color, coverage);
+            if (style.bold) {
+                // 合成粗体：1px 右移涂抹（与占位路径同策略）。
+                blendCoveragePixel(px + 1, py, style.color, coverage);
+            }
+        }
+    }
+    return true;
+}
+
 void CpuRenderer::drawText(TextRun run, core::TextStyle style) {
     if (run.text.empty() || style.color.a == 0) {
         return;
@@ -272,6 +328,53 @@ void CpuRenderer::drawText(TextRun run, core::TextStyle style) {
     const float fontSize = style.fontSize > 0.0F ? style.fontSize : 14.0F;
     const float glyphScale = fontSize / 14.0F;
     const float lineHeight = fontSize * 1.2F;
+
+    // 系统字体路径：shaped advance 定位 + 真实基线（TextLayout 已用同
+    // 一管理器算出 baselinePx），字形逐码点光栅。失败逐字形回退占位。
+    if (systemFonts_ != nullptr) {
+        const float baseline =
+            run.baselinePx > 0.0F ? run.origin.y + run.baselinePx
+                                  : run.origin.y + fontSize * 0.8F;
+        if (!run.shapedRuns.empty()) {
+            for (const TextGlyphRun& glyphRun : run.shapedRuns) {
+                for (const text::ShapedGlyph& glyph : glyphRun.glyphs) {
+                    if (glyph.glyphId == 0) {
+                        continue;
+                    }
+                    const float penX = run.origin.x + glyph.xOffsetPx;
+                    if (glyphRun.placeholder) {
+                        drawPlaceholderGlyph(glyph.glyphId, penX,
+                                             run.origin.y, lineHeight,
+                                             glyphScale, glyph.advancePx,
+                                             style);
+                        continue;
+                    }
+                    if (!drawSystemGlyph(glyph.glyphId, glyphRun.family,
+                                         penX, baseline, fontSize, style)) {
+                        drawPlaceholderGlyph(glyph.glyphId, penX,
+                                             run.origin.y, lineHeight,
+                                             glyphScale, glyph.advancePx,
+                                             style);
+                    }
+                }
+            }
+            return;
+        }
+        const float advance = fontSize * 0.6F;
+        std::size_t glyphIndex = 0;
+        for (std::size_t i = 0; i < run.text.size();) {
+            const std::uint32_t codePoint = decodeCodePoint(run.text, i);
+            const float penX =
+                run.origin.x + advance * static_cast<float>(glyphIndex);
+            if (!drawSystemGlyph(codePoint, style.family, penX, baseline,
+                                 fontSize, style)) {
+                drawPlaceholderGlyph(codePoint, penX, run.origin.y,
+                                     lineHeight, glyphScale, advance, style);
+            }
+            ++glyphIndex;
+        }
+        return;
+    }
 
     // M1：占位 shaped 数据（glyphId = 码点）按布局 xOffsetPx 定位，
     // 字形位置/advance 与 TextLayout 完全一致（letterSpacing、多码点
@@ -517,6 +620,19 @@ void CpuRenderer::submit(const RenderCommandList& commands,
                 break;
             case CommandType::DrawImage:
                 drawImage(command.image, command.rect);
+                break;
+            // 与基类适配路径（renderer.cpp）同集：图标/阴影命令必须在
+            // 原生 submit 中同样执行，否则 CPU 后端静默丢失矢量图标与
+            // 层级阴影（paintScene 直绘路径不经过命令分发，掩盖过该缺陷）。
+            case CommandType::DrawIcon:
+                drawIcon(command.polylines, command.rect, command.color,
+                         command.strokeWidth);
+                break;
+            case CommandType::DrawShadow:
+                drawShadow(command.rect, command.color,
+                           core::Offset{command.transform.tx,
+                                        command.transform.ty},
+                           command.strokeWidth);
                 break;
             case CommandType::UploadImage:
                 // 资源管理器分配的显式 id；覆盖同 id 旧数据（设备重建

@@ -15,6 +15,7 @@
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/damage.h"
 #include "lumen/core/tween.h"
+#include "lumen/text/system_font_manager.h"
 
 namespace lumen::app {
 namespace {
@@ -240,6 +241,12 @@ void AppShell::pushSemantics() {
 void AppShell::setFontManager(std::shared_ptr<const text::FontManager> fonts) {
     textFonts_ = std::move(fonts);
     controller_.setTextFonts(textFonts_ ? textFonts_.get() : nullptr);
+    // 系统字体同时驱动内部 CPU 光栅的字形位图（排版与绘制同源）；
+    // 非系统管理器（占位/Skia）保持原绘制路径。
+    cpuRenderer_.setSystemFonts(
+        textFonts_ ? std::dynamic_pointer_cast<const text::SystemFontManager>(
+                         textFonts_)
+                   : nullptr);
     dirty_ = true;
     fullRepaintPending_ = true;
 }

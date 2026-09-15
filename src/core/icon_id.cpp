@@ -13,7 +13,7 @@ using Catalog = std::vector<Line>;
 
 const std::vector<Catalog>& catalog() {
     static const std::vector<Catalog> kCatalog = [] {
-        std::vector<Catalog> table(static_cast<std::size_t>(IconId::Info) + 1);
+        std::vector<Catalog> table(static_cast<std::size_t>(IconId::Maximize) + 1);
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
@@ -53,6 +53,10 @@ const std::vector<Catalog>& catalog() {
         table[static_cast<std::size_t>(IconId::Info)] =
             Catalog{Line{{Offset{0.50F, 0.26F}, Offset{0.50F, 0.28F}}},
                     Line{{Offset{0.50F, 0.42F}, Offset{0.50F, 0.78F}}}};
+        table[static_cast<std::size_t>(IconId::Maximize)] =
+            Catalog{Line{{Offset{0.28F, 0.28F}, Offset{0.72F, 0.28F},
+                          Offset{0.72F, 0.72F}, Offset{0.28F, 0.72F},
+                          Offset{0.28F, 0.28F}}}};
         return table;
     }();
     return kCatalog;

@@ -12,6 +12,7 @@
 #include "settings_app.h"
 #include "lumen/app/app_shell.h"
 #include "lumen/platform/sdl3_host.h"
+#include "lumen/text/system_font_manager.h"
 
 namespace {
 
@@ -214,6 +215,22 @@ int runWindowed(SettingsApp& app, const Options& options) {
     runOptions.windowDesc.width = 800;
     runOptions.windowDesc.height = 600;
     runOptions.diagnostics = options.diagnostics;
+
+    // 桌面系统字体（与 gallery 同口径：Windows 雅黑优先；失败回退占位）。
+    runOptions.fontFactory = []()
+        -> std::shared_ptr<lumen::text::FontManager> {
+        std::string fontDiagnostics;
+        auto fonts =
+            lumen::text::createSystemFontManager(&fontDiagnostics);
+        if (fonts != nullptr) {
+            std::printf("[diag] fonts: %s\n", fontDiagnostics.c_str());
+            return std::shared_ptr<lumen::text::FontManager>(
+                std::move(fonts));
+        }
+        std::printf("[diag] fonts: %s — keeping placeholder metrics\n",
+                    fontDiagnostics.c_str());
+        return {};
+    };
 
     // M4：文件选择完成事件 → 应用状态（UI 线程内同步落地）。
     // M12：系统主题切换 → 注入偏好（开启"跟随系统"时重派生主题）。

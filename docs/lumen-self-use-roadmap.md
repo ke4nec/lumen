@@ -1188,6 +1188,34 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     后不得解引用 chain/root"约定注释；gallery 注册 noop handler。
   本地 Windows CPU Debug `406/406`（含调度器 deadline 新用例）。
 
+### Gallery 对齐 Core Dark 设计稿（2026-09-15）
+
+- **壳层与首屏对齐 `design/gallery.html` v1「Core Dark」**：
+  - 窗口顶栏（品牌标/标题 + Desktop preview 状态胶囊 + 视口尺寸 +
+    最小化/最大化/关闭装饰图标）；侧栏 214px（SECTIONS 标签、导航、
+    分隔线、Live state 注记）；双侧页脚（渲染器状态 | 路由/主题/下拉）。
+  - Overview 首屏改为设计稿仪表盘：kicker/hero/主操作、指标卡三联
+    （点击数/物化节点/主题与密度）、双栏面板（Control inventory 六格
+    迷你控件预览 + C++ DSL 快照 | Resolved tokens 实况 token 行 +
+    Theme controls）。分区卡片统一为面板样式（panel head + 1px 边框）。
+  - CoreDark 方向 dark 侧色板对齐设计稿槽位：ink #f1f1f4、muted
+    #a1a1aa、line #3b3b45、line-strong #555562（经 coreDarkPalette
+    槽位法，映射函数零改动；浅色侧保持 v0.3 基线）。
+- **框架侧最小扩展**：StyleOverrides 新增 borderWidth（容器卡片边框，
+  painter 双层绘制既有契约）；IconId 新增 Maximize（窗口操作方框）。
+- **缺陷修复：CPU 后端 submit 丢失 DrawIcon/DrawShadow 命令**——
+  CpuRenderer::submit 的原生命令分发缺两条 case（基类适配路径有、原生
+  路径无），图标/阴影仅在 paintScene 直绘路径可见、经 submit 静默丢失；
+  补齐分发并新增命令回放回归测试（cpu_submit_replays_icon_commands）。
+- **验证**：gallery `--headless --dump-frame` 导出首帧 RGBA（新增调试
+  选项），像素采样核对设计稿 token（顶栏/页面底/分隔线/卡片/状态胶囊/
+  图标描边）；本地 Windows CPU Debug `412/412` 全过、headless 冒烟
+  全链路输出正常。
+- 已知限制：侧栏 Live state 注记的虚线边框以实线近似（框架暂无虚线）；
+  headless 帧文本仍为占位字体（确定性帧哈希）；窗口 CPU 路径经
+  SystemFontManager 绘制真实字形（Windows 优先 GDI 雅黑，其他平台或 GDI
+  回退经 stb_truetype，无 Skia 依赖）。
+
 ### 范围调整记录（2026-09-14）
 
 - 当前 UI 只面向 Windows/Linux/macOS；M9 暂缓，不列入待实施里程碑。

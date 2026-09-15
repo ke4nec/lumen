@@ -22,6 +22,9 @@ enum class FontBackend : std::uint8_t {
     Placeholder,
     Skia,
     Mobile,
+    // 桌面系统字体（stb_truetype 光栅化 C:/Windows/Fonts 等系统目录；
+    // 度量/回退与 Mobile 同源，另提供 CPU 光栅用的字形覆盖位图）。
+    System,
 };
 
 [[nodiscard]] inline const char* fontBackendName(FontBackend backend) {
@@ -30,6 +33,8 @@ enum class FontBackend : std::uint8_t {
             return "skia";
         case FontBackend::Mobile:
             return "mobile";
+        case FontBackend::System:
+            return "system";
         default:
             return "placeholder";
     }

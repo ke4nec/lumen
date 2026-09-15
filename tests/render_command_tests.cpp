@@ -132,6 +132,39 @@ TEST_CASE("cpu_submit_matches_immediate_paint_pixels", "[render][commands]") {
     CHECK(frameHash(immediate.pixels()) == frameHash(submitted.pixels()));
 }
 
+TEST_CASE("cpu_submit_replays_icon_commands", "[render][commands]") {
+    // 回归：CpuRenderer::submit 的原生命令分发曾漏掉 DrawIcon（DrawShadow
+    // 同批补齐）——图标在 paintScene 直绘路径可见、经 submit 静默丢失。
+    Widget icon = lumen::core::makeIcon(lumen::core::IconId::Close, "close",
+                                        32.0F, 32.0F);
+    Widget page;
+    page.type = lumen::core::WidgetType::Container;
+    page.color = Color::fromRGBA(24, 24, 27);
+    page.padding = lumen::core::EdgeInsets::all(16.0F);
+    page.children = {icon};
+
+    const auto root = laidOutScene(page);
+    const RenderCommandList commands = recordScene(root);
+    bool hasIconCommand = false;
+    for (const auto& command : commands.commands()) {
+        hasIconCommand = hasIconCommand ||
+                         command.type == CommandType::DrawIcon;
+    }
+    REQUIRE(hasIconCommand);
+
+    CpuRenderer immediate;
+    immediate.beginFrame(Size{400.0F, 300.0F});
+    lumen::render::paintScene(immediate, root, {});
+    immediate.endFrame();
+
+    CpuRenderer submitted;
+    FrameInfo info;
+    info.viewport = Size{400.0F, 300.0F};
+    submitted.submit(commands, info);
+
+    CHECK(frameHash(immediate.pixels()) == frameHash(submitted.pixels()));
+}
+
 TEST_CASE("cpu_partial_submit_preserves_previous_frame", "[render][commands]") {
     // Frame 1 renders the initial scene; frame 2 changes the button text and
     // submits only the button's damaged area with preserve — pixels must

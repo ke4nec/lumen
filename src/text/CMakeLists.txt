@@ -1,4 +1,4 @@
-add_library(lumen-text STATIC
+set(LUMEN_TEXT_SOURCES
     grapheme.cpp
     font_manager.cpp
     bidi.cpp
@@ -7,7 +7,14 @@ add_library(lumen-text STATIC
     editing_history.cpp
     skia_font_manager.cpp
     mobile_font_manager.cpp
+    system_font_manager.cpp
 )
+
+if(DEFINED stb_SOURCE_DIR)
+    list(APPEND LUMEN_TEXT_SOURCES stb_truetype_impl.cpp)
+endif()
+
+add_library(lumen-text STATIC ${LUMEN_TEXT_SOURCES})
 
 target_include_directories(lumen-text PUBLIC
     ${PROJECT_SOURCE_DIR}/include
@@ -16,13 +23,20 @@ target_include_directories(lumen-text PUBLIC
 # lumen-text 只依赖 lumen-core（plan §6：Skia 实现是可选目标，契约不含
 # 平台/Skia 类型）。
 target_link_libraries(lumen-text PUBLIC lumen-core)
+if(WIN32)
+    # SystemFontManager uses GDI's gray glyph bitmap on the CPU window path;
+    # the stb path remains the portable fallback for non-Windows platforms.
+    target_link_libraries(lumen-text PRIVATE gdi32)
+endif()
 if(APPLE)
     # 系统语言探测（CFLocaleCopyPreferredLanguages）需 CoreFoundation；
     # PUBLIC 传递给静态库消费者（CPU-only 构建同样需要）。
     target_link_libraries(lumen-text PUBLIC "-framework CoreFoundation")
 endif()
-# M9：移动字体后端（stb_truetype；实现侧私有依赖）。
-if(TARGET stb)
+# M9：移动字体后端（stb_truetype；实现侧私有依赖）。stb 为 header-only
+# 无 CMake 目标（无 add_library），以 stb_SOURCE_DIR 是否就绪为准
+#（旧 TARGET stb 守卫恒为假，导致后端静默不可用，见系统字体 review）。
+if(DEFINED stb_SOURCE_DIR)
     target_compile_definitions(lumen-text PRIVATE LUMEN_HAS_STB_TRUETYPE=1)
     target_include_directories(lumen-text PRIVATE ${stb_SOURCE_DIR})
 endif()

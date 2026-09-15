@@ -24,6 +24,7 @@
 #include "lumen/dsl/text_dsl.h"
 #include "lumen/platform/sdl3_host.h"
 #include "lumen/text/skia_font_manager.h"
+#include "lumen/text/system_font_manager.h"
 
 #ifdef LUMEN_HAVE_SKIA
 #include "lumen/render/skia_renderer.h"
@@ -343,11 +344,22 @@ int runWindowed(CounterApp& app, const Options& options) {
     }
 #endif
 
-    // M1：Skia 度量激活时注入正式字体；工厂失败保持占位并诊断。
+    // M1：Skia 度量激活时注入正式字体；CPU 窗口注入系统字体（雅黑
+    // 优先）；工厂失败保持占位并诊断。
 #if defined(LUMEN_HAVE_SKIA) || defined(LUMEN_HAVE_GPU)
     runOptions.fontFactory = [&skiaMetricsActive]()
         -> std::shared_ptr<lumen::text::FontManager> {
         if (!skiaMetricsActive) {
+            std::string fontDiagnostics;
+            auto systemFonts =
+                lumen::text::createSystemFontManager(&fontDiagnostics);
+            if (systemFonts != nullptr) {
+                std::printf("[diag] fonts: %s\n", fontDiagnostics.c_str());
+                return std::shared_ptr<lumen::text::FontManager>(
+                    std::move(systemFonts));
+            }
+            std::printf("[diag] fonts: %s — keeping placeholder metrics\n",
+                        fontDiagnostics.c_str());
             return {};
         }
         std::string fontDiagnostics;
@@ -357,6 +369,21 @@ int runWindowed(CounterApp& app, const Options& options) {
             std::printf("[diag] fonts: %s\n", fontDiagnostics.c_str());
             return std::shared_ptr<lumen::text::FontManager>(
                 std::move(fonts));
+        }
+        std::printf("[diag] fonts: %s — keeping placeholder metrics\n",
+                    fontDiagnostics.c_str());
+        return {};
+    };
+#else
+    runOptions.fontFactory = []()
+        -> std::shared_ptr<lumen::text::FontManager> {
+        std::string fontDiagnostics;
+        auto systemFonts =
+            lumen::text::createSystemFontManager(&fontDiagnostics);
+        if (systemFonts != nullptr) {
+            std::printf("[diag] fonts: %s\n", fontDiagnostics.c_str());
+            return std::shared_ptr<lumen::text::FontManager>(
+                std::move(systemFonts));
         }
         std::printf("[diag] fonts: %s — keeping placeholder metrics\n",
                     fontDiagnostics.c_str());

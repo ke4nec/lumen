@@ -3,13 +3,19 @@
 // Widget Gallery（与 counter/settings 同级示例）：演示当前已完成控件、
 // 布局、颜色方案/主题。窗口主循环由 app::runApp 驱动；本文件只保留
 // 应用层职责：build 函数、状态 key 与业务 handler（plan §6.1）。
+// 壳层与 Overview 首屏对齐 design/gallery.html v1「Core Dark」设计稿：
+// 窗口顶栏（品牌标/状态胶囊/窗口操作）、214px 侧栏（导航 + Live state
+// 注记）、kicker/hero/指标卡/双栏面板（Control inventory、DSL 快照、
+// Resolved tokens、Theme controls）、双侧页脚。视觉全部来自 Theme token。
 // 覆盖：Button 变体/尺寸/状态、TextField/Checkbox/Switch/Radio/Slider/
 // Dropdown/Tabs/ProgressBar/Icon/Tooltip/Dialog、Row/Column(flex)/Stack/
 // Container/Grid、ListView/VirtualList、Theme 深浅/密度/强调色/局部
 // ThemeScope/排版/语义色板。
 
+#include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <optional>
 #include <string>
@@ -143,8 +149,12 @@ class GalleryApp {
         core::Widget nav = buildNav(theme);
         core::Widget content = buildContent(theme);
         content.flex = 1.0F;
+        core::Widget divider = core::makeContainerLeaf(
+            1.0F, std::nullopt, core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.borderDefault, "gallery-body-divider");
         core::Widget body =
-            core::makeRow({std::move(nav), std::move(content)},
+            core::makeRow({std::move(nav), std::move(divider),
+                           std::move(content)},
                           core::MainAxisAlignment::Start,
                           core::CrossAxisAlignment::Stretch, 0.0F);
         body.flex = 1.0F;
@@ -332,16 +342,11 @@ class GalleryApp {
             shell_.requestFullRepaint();
         };
         handlers["dismiss-dialog"] = [this] { closeDialog(); };
-        handlers["toggle-dark"] = [this] {
-            darkMode_ = !darkMode_;
-            // 经 fromSettings 派生：保留方向/高对比/字体缩放/减少动画，
-            // 只切换深浅（直接用 Theme::dark/light 基线会丢弃派生）。
-            shell_.setTheme(style::Theme::fromSettings(
-                shell_.accessibilitySettings(), darkMode_,
-                shell_.theme().metrics.density, direction_));
-            refreshScopePreview();
-            shell_.markDirty();
-        };
+        handlers["toggle-dark"] = [this] { setDarkMode(!darkMode_); };
+        // Overview 的 Theme controls 面板：Dark/Light 为显式目标态（点击
+        // 当前态无操作），复用与 toggle 相同的派生链。
+        handlers["set-dark"] = [this] { setDarkMode(true); };
+        handlers["set-light"] = [this] { setDarkMode(false); };
         handlers["cycle-density"] = [this] {
             using style::ControlDensity;
             const ControlDensity current =
@@ -422,6 +427,20 @@ class GalleryApp {
         shell_.markDirty();
     }
 
+    // 深浅切换统一入口：经 fromSettings 派生，保留方向/高对比/字体缩放/
+    // 减少动画（直接用 Theme::dark/light 基线会丢弃派生）。
+    void setDarkMode(bool dark) {
+        if (darkMode_ == dark) {
+            return;
+        }
+        darkMode_ = dark;
+        shell_.setTheme(style::Theme::fromSettings(
+            shell_.accessibilitySettings(), darkMode_,
+            shell_.theme().metrics.density, direction_));
+        refreshScopePreview();
+        shell_.markDirty();
+    }
+
     // M12：跟随系统主题（adaptPlatformTheme：深浅切换保留全部派生）。
     void applySystemTheme() {
         shell_.setTheme(style::adaptPlatformTheme(
@@ -436,7 +455,8 @@ class GalleryApp {
             shell_.theme().metrics.density, direction_));
     }
 
-    void go(const std::string& route) {        if (navigator_.current() == route) {
+    void go(const std::string& route) {
+        if (navigator_.current() == route) {
             return;
         }
         // 路由栈保持单层：先回根再 push，保证 Back 恒回 home。
@@ -565,45 +585,83 @@ class GalleryApp {
         return changed;
     }
 
-    // --- 页面骨架 ---
+    // --- 页面骨架（design/gallery.html v1 Core Dark 壳层） ---
 
+    // 窗口顶栏：品牌标 + 标题 | 状态胶囊 + 视口尺寸 | 窗口操作（装饰性
+    // 图标——真实窗口控件由 OS 标题栏提供）。
     [[nodiscard]] core::Widget buildHeader(const style::Theme& theme) const {
-        core::Widget title = titleText("Lumen Widget Gallery", theme);
+        core::Widget mark = core::makeRow(
+            {core::makeText("L", brandMarkStyle(theme))},
+            core::MainAxisAlignment::Center, core::CrossAxisAlignment::Center,
+            0.0F, core::EdgeInsets{}, core::EdgeInsets{},
+            "gallery-brand-mark", 26.0F, 26.0F);
+        mark.color = theme.colors.accent;
+        mark.radius = core::CornerRadius::all(7.0F);
+        core::Widget title = core::makeText("Lumen Widget Gallery",
+                                            headerTitleStyle(theme));
         title.key = "gallery-header-title";
-        core::Widget modeLabel = mutedLabel(
-            darkMode_ ? "Dark" : "Light", theme);
-        modeLabel.key = "gallery-mode-label";
-        core::Widget toggle = buttonWidget(
-            darkMode_ ? "Switch to light" : "Switch to dark", "toggle-dark",
-            "toggle-dark-button", core::ButtonVariant::Outline);
-        core::Widget dialogButton = buttonWidget(
-            "Show dialog", "show-dialog", "show-dialog-button",
-            core::ButtonVariant::Tonal);
-        core::Widget actions = core::makeRow(
-            {std::move(modeLabel), core::withKey(std::move(toggle),
-                                                 "toggle-dark-button"),
-             core::withKey(std::move(dialogButton), "show-dialog-button")},
-            core::MainAxisAlignment::End, core::CrossAxisAlignment::Center,
-            style::spaceToken(2));
-        actions.flex = 1.0F;
-        core::Widget row = core::makeRow(
-            {std::move(title), std::move(actions)},
+        core::Widget brand = core::makeRow(
+            {std::move(mark), std::move(title)},
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-            style::spaceToken(4), core::EdgeInsets::all(style::spaceToken(4)));
+            10.0F);
+        brand.key = "gallery-brand";
+
+        core::Widget pill = core::makeRow(
+            {core::makeText("Desktop preview", statusPillStyle(theme))},
+            core::MainAxisAlignment::Center, core::CrossAxisAlignment::Center,
+            0.0F, core::EdgeInsets::symmetric(9.0F, 4.0F), core::EdgeInsets{},
+            "gallery-status-pill", std::nullopt, 24.0F);
+        pill.color = theme.colors.accentContainer;
+        pill.radius = core::CornerRadius::all(12.0F);
+        const core::Size view = shell_.view();
+        core::Widget viewLabel = smallLabel(
+            std::to_string(static_cast<int>(view.width)) + " × " +
+                std::to_string(static_cast<int>(view.height)),
+            theme);
+        core::Widget status = core::makeRow(
+            {std::move(pill), std::move(viewLabel)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            9.0F);
+        status.key = "gallery-status";
+
+        core::Widget actions = core::makeRow(
+            {windowAction(core::IconId::Minus, "window-minimize", theme),
+             windowAction(core::IconId::Maximize, "window-maximize", theme),
+             windowAction(core::IconId::Close, "window-close", theme)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            5.0F);
+        actions.key = "gallery-window-actions";
+
+        core::Widget spacer;
+        spacer.flex = 1.0F;
+        core::Widget row = core::makeRow(
+            {std::move(brand), std::move(spacer), std::move(status),
+             std::move(actions)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            style::spaceToken(4),
+            core::EdgeInsets::symmetric(style::spaceToken(5), 14.0F));
         row.key = "gallery-header-row";
+        core::Widget bottom = core::makeContainerLeaf(
+            std::nullopt, 1.0F, core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.borderDefault, "gallery-header-divider");
+        core::Widget header = core::makeColumn(
+            {std::move(row), std::move(bottom)}, core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Stretch, 0.0F);
         return core::withKey(
-            core::makeContainer(std::move(row), std::nullopt, std::nullopt,
+            core::makeContainer(std::move(header), std::nullopt, std::nullopt,
                                 core::EdgeInsets{}, core::EdgeInsets{},
                                 theme.colors.surface),
             "gallery-header");
     }
 
+    // 侧栏：分区标签 + 路由导航（当前项 Tonal 强调）+ 分隔线 + Live state
+    // 注记（设计稿虚线边框以实线近似）。背景即页面底色。
     [[nodiscard]] core::Widget buildNav(const style::Theme& theme) const {
         std::vector<core::Widget> items;
-        items.push_back(core::withKey(mutedLabel("Sections", theme),
+        items.push_back(core::withKey(smallCapsLabel("SECTIONS", theme),
                                       "nav-caption"));
         const std::pair<const char*, const char*> sections[] = {
-            {"Home", "home"},       {"Buttons", "buttons"},
+            {"Overview", "home"}, {"Buttons", "buttons"},
             {"Inputs", "inputs"},   {"Layout", "layout"},
             {"Lists", "lists"},     {"Feedback", "feedback"},
             {"Theme", "theme"},
@@ -613,7 +671,7 @@ class GalleryApp {
             core::Widget button = buttonWidget(
                 label, std::string("goto-") + route,
                 std::string("nav-") + route,
-                active ? core::ButtonVariant::Filled
+                active ? core::ButtonVariant::Tonal
                        : core::ButtonVariant::Ghost);
             if (active) {
                 button = core::withSelected(std::move(button), true);
@@ -621,14 +679,22 @@ class GalleryApp {
             items.push_back(
                 core::withKey(std::move(button), std::string("nav-") + route));
         }
+        core::Widget divider = core::makeContainerLeaf(
+            std::nullopt, 1.0F, core::EdgeInsets{},
+            core::EdgeInsets::symmetric(10.0F, style::spaceToken(5)),
+            theme.colors.borderDefault, "nav-divider");
+        items.push_back(std::move(divider));
+        items.push_back(liveStateNote(theme));
+
         core::Widget column = core::makeColumn(
             std::move(items), core::MainAxisAlignment::Start,
-            core::CrossAxisAlignment::Start, style::spaceToken(2),
-            core::EdgeInsets::all(style::spaceToken(4)));
+            core::CrossAxisAlignment::Stretch, style::spaceToken(1),
+            core::EdgeInsets::only(14.0F, style::spaceToken(5), 14.0F,
+                                   style::spaceToken(5)));
         column.key = "gallery-nav-column";
         core::Widget nav = core::makeContainer(
-            std::move(column), 200.0F, std::nullopt, core::EdgeInsets{},
-            core::EdgeInsets{}, theme.colors.surface);
+            std::move(column), 214.0F, std::nullopt, core::EdgeInsets{},
+            core::EdgeInsets{}, theme.colors.pageBackground);
         nav.key = "gallery-nav";
         return nav;
     }
@@ -666,64 +732,392 @@ class GalleryApp {
             "gallery-list");
     }
 
+    // 页脚：渲染器状态（左）+ 路由/主题/下拉状态（右）。
     [[nodiscard]] core::Widget buildFooter(const style::Theme& theme) const {
-        std::string status = "Route: " + navigator_.current() +
+        core::Widget dot = core::makeContainerLeaf(
+            6.0F, 6.0F, core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.statusSuccess, "footer-dot");
+        dot.radius = core::CornerRadius::all(3.0F);
+        core::Widget left = core::makeRow(
+            {std::move(dot),
+             smallLabel("Renderer ready · CPU fallback available", theme)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            7.0F);
+        left.key = "gallery-footer-status";
+        std::string status = "Route: " + routeDisplayName(navigator_.current()) +
                              " | Theme: " + (darkMode_ ? "dark" : "light") +
                              " | Dropdown: " +
                              (dropdown_.isOpen() ? "open" : "closed");
-        core::Widget label = mutedLabel(std::move(status), theme);
-        label.key = "gallery-footer-label";
+        core::Widget right = smallLabel(std::move(status), theme);
+        right.key = "gallery-footer-label";
+        core::Widget spacer;
+        spacer.flex = 1.0F;
+        core::Widget top = core::makeContainerLeaf(
+            std::nullopt, 1.0F, core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.borderDefault, "gallery-footer-divider");
         core::Widget row = core::makeRow(
-            {std::move(label)}, core::MainAxisAlignment::Start,
-            core::CrossAxisAlignment::Center, 0.0F,
-            core::EdgeInsets::all(style::spaceToken(3)));
+            {std::move(left), std::move(spacer), std::move(right)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            style::spaceToken(3),
+            core::EdgeInsets::symmetric(style::spaceToken(5), 12.0F));
         row.key = "gallery-footer-row";
+        core::Widget footer = core::makeColumn(
+            {std::move(top), std::move(row)}, core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Stretch, 0.0F);
         return core::withKey(
-            core::makeContainer(std::move(row), std::nullopt, std::nullopt,
+            core::makeContainer(std::move(footer), std::nullopt, std::nullopt,
                                 core::EdgeInsets{}, core::EdgeInsets{},
-                                theme.colors.surface),
+                                theme.colors.pageBackground),
             "gallery-footer");
     }
 
     // --- 各分区内容 ---
 
+    // Overview 首屏（design v1 Core Dark）：kicker/hero/主操作 + 指标卡三联
+    // + 双栏面板（Control inventory / DSL 快照 | Resolved tokens / Theme
+    // controls）。全部为真控件：点击与 StateStore 联动。
     [[nodiscard]] std::vector<core::Widget> buildHomeItems(
         const style::Theme& theme) const {
         std::vector<core::Widget> items;
-        items.push_back(core::withKey(titleText("Overview", theme),
-                                      "home-title"));
+
+        // 内容头：kicker + hero + 副文案 | 主操作（+ Show dialog）。
+        core::Widget primary = core::withIcon(
+            buttonWidget("Show dialog", "show-dialog", "show-dialog-button",
+                         core::ButtonVariant::Filled),
+            core::IconId::Plus);
+        core::Widget headText = core::makeColumn(
+            {core::withKey(
+                 kickerText("WIDGET SYSTEM / " +
+                                toUpper(routeDisplayName(
+                                    navigator_.current())),
+                            theme),
+                 "home-kicker"),
+             core::withKey(
+                 heroText("Build a clear UI language", theme), "home-hero"),
+             core::withKey(
+                 heroDescription(
+                     "Every control below is live. The same StateStore, "
+                     "layout and paint pipeline powers the desktop sample.",
+                     theme),
+                 "home-desc")},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Start,
+            style::spaceToken(2));
+        headText.flex = 1.0F;
+        core::Widget head = core::makeRow(
+            {std::move(headText), std::move(primary)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            style::spaceToken(5));
+        items.push_back(core::withKey(std::move(head), "home-head"));
+
+        // 指标卡三联：点击计数 / 物化窗口 / 主题与密度。
         items.push_back(core::withKey(
-            mutedLabel("Pick a section on the left. Every control below is "
-                       "live: clicks, text input, sliders and scrolling all "
-                       "run through the same state/layout/paint pipeline.",
-                       theme),
-            "home-desc"));
-        std::vector<core::Widget> cards;
-        const std::pair<const char*, const char*> sections[] = {
-            {"Buttons", "buttons"}, {"Inputs", "inputs"},
-            {"Layout", "layout"},   {"Lists", "lists"},
-            {"Feedback", "feedback"}, {"Theme", "theme"},
-        };
-        for (const auto& [label, route] : sections) {
-            core::Widget button = buttonWidget(
-                label, std::string("goto-") + route,
-                std::string("goto-") + route + "-button",
-                core::ButtonVariant::Filled);
-            cards.push_back(core::withKey(
-                std::move(button), std::string("goto-") + route + "-button"));
-        }
-        core::Widget grid =
-            core::makeGrid(std::move(cards), 0, 160.0F, 8.0F, 8.0F,
-                           "home-grid");
-        items.push_back(core::withKey(std::move(grid), "home-grid"));
-        items.push_back(sectionCard(
-            "Live state", {core::withKey(mutedLabel("Button clicks: " +
-                                                        shell_.state().get(
-                                                            "button-clicks"),
-                                                    theme),
-                                         "home-clicks")},
-            theme, "home-state-card"));
+            core::makeRow(
+                {metricCard("Button clicks",
+                            shell_.state().get("button-clicks"),
+                            "+12% this session", theme, "metric-clicks"),
+                 metricCard("Visible nodes", "1,000", "VirtualList ready",
+                            theme, "metric-nodes"),
+                 metricCard("Theme", darkMode_ ? "Dark" : "Light",
+                            densityName(theme.metrics.density) + " density",
+                            theme, "metric-theme")},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch, style::spaceToken(3)),
+            "metric-grid"));
+
+        // 双栏：左 = 控件清单 + DSL 快照；右 = 语义 token + 主题控制。
+        core::Widget left = core::makeColumn(
+            {inventoryPanel(theme), codePanel(theme)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+            style::spaceToken(3));
+        left.flex = 1.14F;
+        core::Widget right = core::makeColumn(
+            {tokensPanel(theme), themeControlsPanel(theme)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+            style::spaceToken(3));
+        right.flex = 0.86F;
+        items.push_back(core::withKey(
+            core::makeRow({std::move(left), std::move(right)},
+                          core::MainAxisAlignment::Start,
+                          core::CrossAxisAlignment::Stretch,
+                          style::spaceToken(3)),
+            "home-content-grid"));
         return items;
+    }
+
+    // Control inventory：六个分区瓷砖（预览即真控件，点击整格跳转分区）。
+    [[nodiscard]] core::Widget inventoryPanel(
+        const style::Theme& theme) const {
+        std::vector<core::Widget> tiles;
+        tiles.push_back(buttonsTile(theme));
+        tiles.push_back(inputsTile(theme));
+        tiles.push_back(togglesTile(theme));
+        tiles.push_back(layoutTile(theme));
+        tiles.push_back(listsTile(theme));
+        tiles.push_back(feedbackTile(theme));
+        std::vector<core::Widget> body;
+        body.push_back(panelHead("Control inventory", "6 sections", theme));
+        // 窄窗口 2 列、宽窗口 3 列（同设计稿响应式行为）：保证瓦片内
+        // 迷你控件（双按钮/输入框）不被压缩裁字。
+        body.push_back(core::withKey(
+            core::makeGrid(std::move(tiles), 0, 180.0F, 10.0F, 10.0F,
+                           "inventory-grid"),
+            "inventory-grid"));
+        return panelCard(std::move(body), theme, "inventory-panel");
+    }
+
+    // C++ DSL 快照（设计稿只读代码面板；行号 + 代码为静态展示）。
+    [[nodiscard]] core::Widget codePanel(const style::Theme& theme) const {
+        static const char* kLines[] = {
+            "auto gallery = makeColumn({",
+            "  button(\"Filled\", variant::filled),",
+            "  textField(\"username\"),",
+            "  virtualList(1000),",
+            "});",
+        };
+        std::vector<core::Widget> rows;
+        for (std::size_t i = 0;
+             i < sizeof(kLines) / sizeof(kLines[0]); ++i) {
+            core::Widget number = codeText(std::to_string(i + 1), theme,
+                                            theme.colors.contentSecondary);
+            number.width = 17.0F;
+            rows.push_back(core::withKey(
+                core::makeRow({std::move(number),
+                               codeText(kLines[i], theme,
+                                        theme.colors.contentPrimary)},
+                              core::MainAxisAlignment::Start,
+                              core::CrossAxisAlignment::Center, 12.0F),
+                "code-line-" + std::to_string(i + 1)));
+        }
+        std::vector<core::Widget> body;
+        body.push_back(panelHead("C++ DSL snapshot", "read-only", theme));
+        body.push_back(core::withKey(
+            core::makeColumn(std::move(rows), core::MainAxisAlignment::Start,
+                             core::CrossAxisAlignment::Start, 8.0F),
+            "code-lines"));
+        return panelCard(std::move(body), theme, "code-panel");
+    }
+
+    // Resolved tokens：当前 Theme 的语义色实况（切方向/强调色即联动）。
+    [[nodiscard]] core::Widget tokensPanel(const style::Theme& theme) const {
+        const std::tuple<core::Color, std::string, std::string> tokens[] = {
+            {theme.colors.pageBackground, "pageBackground",
+             hexColor(theme.colors.pageBackground)},
+            {theme.colors.accent, "accent", hexColor(theme.colors.accent)},
+            {theme.colors.statusSuccess, "status.success",
+             hexColor(theme.colors.statusSuccess)},
+            {theme.colors.borderStrong, "border.strong", "1 px"},
+        };
+        std::vector<core::Widget> rows;
+        for (const auto& [color, name, value] : tokens) {
+            if (!rows.empty()) {
+                rows.push_back(core::makeContainerLeaf(
+                    std::nullopt, 1.0F, core::EdgeInsets{},
+                    core::EdgeInsets{}, theme.colors.borderDefault, ""));
+            }
+            core::Widget swatch = core::makeContainerLeaf(
+                11.0F, 11.0F, core::EdgeInsets{}, core::EdgeInsets{}, color,
+                "token-swatch-" + name);
+            swatch.radius = core::CornerRadius::all(4.0F);
+            core::Widget nameLabel = smallLabel(name, theme);
+            nameLabel.flex = 1.0F;
+            rows.push_back(core::withKey(
+                core::makeRow({std::move(swatch), std::move(nameLabel),
+                               codeText(value, theme,
+                                        theme.colors.contentSecondary)},
+                              core::MainAxisAlignment::Start,
+                              core::CrossAxisAlignment::Center, 9.0F,
+                              core::EdgeInsets::symmetric(0.0F, 9.0F)),
+                "token-row-" + name));
+        }
+        std::vector<core::Widget> body;
+        body.push_back(
+            panelHead("Resolved tokens", "Theme.light / dark", theme));
+        body.push_back(core::withKey(
+            core::makeColumn(std::move(rows), core::MainAxisAlignment::Start,
+                             core::CrossAxisAlignment::Start, 0.0F),
+            "token-rows"));
+        return panelCard(std::move(body), theme, "token-panel");
+    }
+
+    // Theme controls：深浅/高对比快捷开关 + 主题色点。
+    [[nodiscard]] core::Widget themeControlsPanel(
+        const style::Theme& theme) const {
+        core::Widget dark = buttonWidget("Dark", "set-dark",
+                                         "home-toggle-dark",
+                                         darkMode_
+                                             ? core::ButtonVariant::Filled
+                                             : core::ButtonVariant::Outline);
+        core::Widget light = buttonWidget("Light", "set-light",
+                                          "home-toggle-light",
+                                          !darkMode_
+                                              ? core::ButtonVariant::Filled
+                                              : core::ButtonVariant::Outline);
+        core::Widget contrast =
+            buttonWidget("High contrast", "toggle-contrast",
+                         "home-toggle-contrast",
+                         core::ButtonVariant::Ghost);
+        core::Widget controls = core::makeRow(
+            {std::move(dark), std::move(light), std::move(contrast)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            style::spaceToken(2));
+        controls.key = "theme-controls-row";
+        core::Widget bgDot = core::makeContainerLeaf(
+            20.0F, 20.0F, core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.pageBackground, "theme-dot-bg");
+        bgDot.radius = core::CornerRadius::all(10.0F);
+        core::StyleOverrides bgDotBorder;
+        bgDotBorder.border = theme.colors.borderDefault;
+        bgDotBorder.borderWidth = 1.0F;
+        core::Widget accentDot = core::makeContainerLeaf(
+            20.0F, 20.0F, core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.accent, "theme-dot-accent");
+        accentDot.radius = core::CornerRadius::all(10.0F);
+        core::Widget successDot = core::makeContainerLeaf(
+            20.0F, 20.0F, core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.statusSuccess, "theme-dot-success");
+        successDot.radius = core::CornerRadius::all(10.0F);
+        core::Widget dots = core::makeRow(
+            {core::withStyleOverrides(std::move(bgDot),
+                                      std::move(bgDotBorder)),
+             std::move(accentDot), std::move(successDot)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            6.0F);
+        dots.key = "theme-dots";
+        std::vector<core::Widget> body;
+        body.push_back(panelHead("Theme controls", "interactive", theme));
+        body.push_back(core::withKey(std::move(controls),
+                                     "theme-controls-row"));
+        body.push_back(core::withKey(std::move(dots), "theme-dots"));
+        return panelCard(std::move(body), theme, "theme-controls-panel");
+    }
+
+    [[nodiscard]] core::Widget buttonsTile(const style::Theme& theme) const {
+        // Filled = 分区入口（语义 Button）；Outline = 计数器直连。
+        core::Widget filled = core::withControlSize(
+            buttonWidget("Filled", "goto-buttons", "goto-buttons-button",
+                         core::ButtonVariant::Filled),
+            core::ControlSize::Small);
+        core::Widget outline = core::withControlSize(
+            buttonWidget("Outline", "bump-clicks", "btn-tile-outline",
+                         core::ButtonVariant::Outline),
+            core::ControlSize::Small);
+        return tileShell(core::makeRow({core::withKey(std::move(filled),
+                                                      "goto-buttons-button"),
+                                        core::withKey(std::move(outline),
+                                                      "btn-tile-outline")},
+                                       core::MainAxisAlignment::Start,
+                                       core::CrossAxisAlignment::Center,
+                                       style::spaceToken(2)),
+                         "Buttons", theme, "tile-buttons", "goto-buttons");
+    }
+
+    [[nodiscard]] core::Widget inputsTile(const style::Theme& theme) const {
+        core::Widget field = core::makeTextField("", "TextField",
+                                                 core::TextStyle{},
+                                                 core::EdgeInsets{}, 0.0F,
+                                                 "tile-input-field");
+        field.bind = "search";
+        field = core::withControlSize(std::move(field),
+                                      core::ControlSize::Small);
+        field.flex = 1.0F;
+        return tileShell(
+            core::makeRow({core::withKey(std::move(field), "tile-input-field")},
+                          core::MainAxisAlignment::Start,
+                          core::CrossAxisAlignment::Center, 0.0F),
+            "Inputs", theme, "tile-inputs", "goto-inputs");
+    }
+
+    [[nodiscard]] core::Widget togglesTile(const style::Theme& theme) const {
+        // 同一 bind 的 Checkbox/Switch 对（默认 true = 设计稿选中态）。
+        core::Widget check = core::makeCheckbox("", "notifications",
+                                                "tile-notifications");
+        check.semanticsLabel = "Preview notifications";
+        core::Widget toggle = core::makeSwitch("", "notifications",
+                                               "tile-notifications-switch");
+        toggle.semanticsLabel = "Preview notifications";
+        return tileShell(
+            core::makeRow({core::withKey(std::move(check),
+                                         "tile-notifications"),
+                           core::withKey(std::move(toggle),
+                                         "tile-notifications-switch")},
+                          core::MainAxisAlignment::Start,
+                          core::CrossAxisAlignment::Center,
+                          style::spaceToken(2)),
+            "Toggles", theme, "tile-toggles", "goto-inputs");
+    }
+
+    [[nodiscard]] core::Widget layoutTile(const style::Theme& theme) const {
+        auto bar = [&theme](core::Color color, const std::string& key,
+                            bool bordered) {
+            core::Widget leaf = core::makeContainerLeaf(
+                std::nullopt, 25.0F, core::EdgeInsets{}, core::EdgeInsets{},
+                color, key);
+            leaf.flex = 1.0F;
+            leaf.radius = core::CornerRadius::all(5.0F);
+            if (bordered) {
+                // 设计稿第三根条：surface-alt 底 + line-strong 描边。
+                core::StyleOverrides overrides;
+                overrides.border = theme.colors.borderStrong;
+                overrides.borderWidth = 1.0F;
+                return core::withKey(
+                    core::withStyleOverrides(std::move(leaf),
+                                             std::move(overrides)),
+                    key);
+            }
+            return core::withKey(std::move(leaf), key);
+        };
+        return tileShell(
+            core::makeRow({bar(theme.colors.accentContainer, "tile-layout-a",
+                               false),
+                           bar(theme.colors.accent, "tile-layout-b", false),
+                           bar(theme.colors.surfaceElevated, "tile-layout-c",
+                               true)},
+                          core::MainAxisAlignment::Start,
+                          core::CrossAxisAlignment::Center, 5.0F),
+            "Layout", theme, "tile-layout", "goto-layout");
+    }
+
+    [[nodiscard]] core::Widget listsTile(const style::Theme& theme) const {
+        auto row = [&theme](const char* number, const std::string& key) {
+            core::Widget dot = core::makeContainerLeaf(
+                6.0F, 6.0F, core::EdgeInsets{}, core::EdgeInsets{},
+                theme.colors.accent, key + "-dot");
+            dot.radius = core::CornerRadius::all(3.0F);
+            return core::makeRow(
+                {core::withKey(std::move(dot), key + "-dot"),
+                 smallLabel("Virtual row " + std::string(number), theme)},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Center, 6.0F);
+        };
+        return tileShell(
+            core::makeColumn(
+                {core::withKey(row("001", "tile-list-row-1"), "tile-list-row-1"),
+                 core::withKey(row("002", "tile-list-row-2"), "tile-list-row-2")},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Start, 5.0F),
+            "Lists", theme, "tile-lists", "goto-lists");
+    }
+
+    [[nodiscard]] core::Widget feedbackTile(const style::Theme& theme) const {
+        core::Widget bar = core::makeProgressBar(
+            shell_.state().get("demo-progress"), "tile-progress-bar");
+        bar.bind = "demo-progress";
+        core::Widget label = smallLabel("Progress", theme);
+        label.flex = 1.0F;
+        core::Widget value = smallStrong(
+            shell_.state().get("demo-progress") + "%", theme);
+        core::Widget header = core::makeRow(
+            {std::move(label), std::move(value)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            7.0F);
+        return tileShell(
+            core::makeColumn({core::withKey(std::move(header),
+                                            "tile-progress-label"),
+                              core::withKey(std::move(bar),
+                                            "tile-progress-bar")},
+                             core::MainAxisAlignment::Start,
+                             core::CrossAxisAlignment::Start, 7.0F),
+            "Feedback", theme, "tile-feedback", "goto-feedback");
     }
 
     [[nodiscard]] std::vector<core::Widget> buildButtonsItems(
@@ -1472,20 +1866,140 @@ class GalleryApp {
 
     // --- 小组件辅助（与 settings 同风格：视觉全部来自 Theme token） ---
 
+    // 分区卡片 = 面板（design panel）：面板头（标题 + 右侧 meta）+ 内容列，
+    // 表面 + 1px 边框 + 卡片圆角。Overview 的四个面板复用同一容器。
     [[nodiscard]] core::Widget sectionCard(
         const std::string& title, std::vector<core::Widget> children,
-        const style::Theme& theme, const std::string& key) const {
-        children.insert(children.begin(),
-                        core::withKey(mutedLabel(title, theme), key + "-cap"));
+        const style::Theme& theme, const std::string& key,
+        const std::string& meta = "") const {
+        std::vector<core::Widget> body;
+        body.push_back(
+            core::withKey(panelHead(title, meta, theme), key + "-cap"));
+        for (core::Widget& child : children) {
+            body.push_back(std::move(child));
+        }
+        return panelCard(std::move(body), theme, key);
+    }
+
+    // 面板容器：surface 背景 + borderDefault 1px + cardRadius。
+    [[nodiscard]] core::Widget panelCard(std::vector<core::Widget> children,
+                                         const style::Theme& theme,
+                                         const std::string& key) const {
         core::Widget column = core::makeColumn(
             std::move(children), core::MainAxisAlignment::Start,
-            core::CrossAxisAlignment::Start, style::spaceToken(3),
+            core::CrossAxisAlignment::Stretch, style::spaceToken(3),
             core::EdgeInsets::all(style::spaceToken(4)));
-        core::Widget card = core::makeContainer(
-            std::move(column), std::nullopt, std::nullopt, core::EdgeInsets{},
-            core::EdgeInsets{}, theme.colors.surface,
-            core::CornerRadius::all(theme.metrics.cardRadius), key);
-        return core::withKey(std::move(card), key);
+        core::StyleOverrides overrides;
+        overrides.background = theme.colors.surface;
+        overrides.border = theme.colors.borderDefault;
+        overrides.borderWidth = 1.0F;
+        overrides.radius = core::CornerRadius::all(theme.metrics.cardRadius);
+        return core::withKey(
+            core::withStyleOverrides(std::move(column), std::move(overrides)),
+            key);
+    }
+
+    // 面板头：标题（12px/800）+ 弹性空隙 + meta（11px muted）。
+    [[nodiscard]] core::Widget panelHead(const std::string& title,
+                                         const std::string& meta,
+                                         const style::Theme& theme) const {
+        std::vector<core::Widget> row{smallStrong(title, theme)};
+        if (!meta.empty()) {
+            core::Widget spacer;
+            spacer.flex = 1.0F;
+            row.push_back(std::move(spacer));
+            row.push_back(smallLabel(meta, theme));
+        }
+        return core::makeRow(std::move(row), core::MainAxisAlignment::Start,
+                             core::CrossAxisAlignment::Center,
+                             style::spaceToken(3));
+    }
+
+    // 指标卡：label / value / delta 三行（delta 为正向状态色）。
+    [[nodiscard]] core::Widget metricCard(const std::string& label,
+                                          const std::string& value,
+                                          const std::string& delta,
+                                          const style::Theme& theme,
+                                          const std::string& key) const {
+        core::Widget column = core::makeColumn(
+            {core::withKey(smallLabel(label, theme), key + "-label"),
+             core::withKey(metricValueText(value, theme), key + "-value"),
+             core::withKey(deltaText(delta, theme), key + "-delta")},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Start,
+            6.0F, core::EdgeInsets::only(16.0F, 15.0F, 16.0F, 15.0F));
+        column.flex = 1.0F;
+        core::StyleOverrides overrides;
+        overrides.background = theme.colors.surface;
+        overrides.border = theme.colors.borderDefault;
+        overrides.borderWidth = 1.0F;
+        overrides.radius = core::CornerRadius::all(theme.metrics.cardRadius);
+        return core::withKey(
+            core::withStyleOverrides(std::move(column), std::move(overrides)),
+            key);
+    }
+
+    // 清单瓷砖：surface-alt 背景 + 1px 边框 + (cardRadius-2) 圆角；
+    // 整格可点（onClick 跳转分区），内部预览为真控件优先命中。
+    [[nodiscard]] core::Widget tileShell(core::Widget preview,
+                                         const std::string& title,
+                                         const style::Theme& theme,
+                                         const std::string& key,
+                                         const std::string& onClick) const {
+        core::Widget body = core::makeColumn(
+            {core::withKey(tileTitleText(title, theme), key + "-title"),
+             std::move(preview)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Start,
+            8.0F, core::EdgeInsets::all(style::spaceToken(3)));
+        body.onClick = onClick;
+        core::StyleOverrides overrides;
+        overrides.background = theme.colors.surfaceElevated;
+        overrides.border = theme.colors.borderDefault;
+        overrides.borderWidth = 1.0F;
+        const float radius =
+            theme.metrics.cardRadius > 2.0F ? theme.metrics.cardRadius - 2.0F
+                                            : 0.0F;
+        overrides.radius = core::CornerRadius::all(radius);
+        return core::withKey(
+            core::withStyleOverrides(std::move(body), std::move(overrides)),
+            key);
+    }
+
+    // 侧栏 Live state 注记（设计稿虚线边框以实线近似）。
+    [[nodiscard]] core::Widget liveStateNote(
+        const style::Theme& theme) const {
+        core::Widget column = core::makeColumn(
+            {core::withKey(smallStrong("Live state", theme),
+                           "nav-note-title"),
+             core::withKey(
+                 smallLabel("Button clicks · " +
+                                shell_.state().get("button-clicks"),
+                            theme),
+                 "nav-note-clicks"),
+             core::withKey(smallLabel(
+                               "Density · " +
+                                   densityName(theme.metrics.density),
+                               theme),
+                           "nav-note-density")},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Start,
+            4.0F, core::EdgeInsets::all(style::spaceToken(3)));
+        core::StyleOverrides overrides;
+        overrides.background = theme.colors.surfaceElevated;
+        overrides.border = theme.colors.borderDefault;
+        overrides.borderWidth = 1.0F;
+        overrides.radius = core::CornerRadius::all(9.0F);
+        return core::withKey(
+            core::withStyleOverrides(std::move(column), std::move(overrides)),
+            "nav-note");
+    }
+
+    // 窗口操作图标（装饰性；真实窗口控件由 OS 标题栏提供）。
+    [[nodiscard]] static core::Widget windowAction(
+        core::IconId icon, const std::string& key,
+        const style::Theme& theme) {
+        core::StyleOverrides overrides;
+        overrides.foreground = theme.colors.contentSecondary;
+        return core::withStyleOverrides(
+            core::makeIcon(icon, key, 30.0F, 30.0F), std::move(overrides));
     }
 
     [[nodiscard]] core::Widget swatch(core::Color color,
@@ -1513,6 +2027,125 @@ class GalleryApp {
         overrides.foreground = theme.colors.contentSecondary;
         return core::withStyleOverrides(core::makeText(std::move(text)),
                                         std::move(overrides));
+    }
+
+    // --- 排版辅助（design v1 尺度；随 fontScale 同步缩放） ---
+
+    // 显式字号基线 14px 对齐 typography.body，缩放比例保持可访问性一致。
+    [[nodiscard]] static core::TextStyle scaledStyle(
+        float size, int weight, const style::Theme& theme) {
+        const float scale = theme.typography.body.fontSize / 14.0F;
+        core::TextStyle style;
+        style.fontSize = size * scale;
+        style.weight = weight;
+        return style;
+    }
+    [[nodiscard]] static core::Widget smallLabel(std::string text,
+                                                 const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(11.0F, 500, theme);
+        style.color = theme.colors.contentSecondary;
+        return core::makeText(std::move(text), style);
+    }
+    // 内容头 kicker（accent/大写/字距）与 hero 标题。
+    [[nodiscard]] static core::Widget kickerText(std::string text,
+                                                 const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(10.0F, 800, theme);
+        style.letterSpacing = 1.2F;
+        style.color = theme.colors.accent;
+        return core::makeText(std::move(text), style);
+    }
+    [[nodiscard]] static core::Widget heroText(std::string text,
+                                               const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(36.0F, 800, theme);
+        style.letterSpacing = -1.98F;
+        style.lineHeight = 1.03F;
+        return core::makeText(std::move(text), style);
+    }
+    [[nodiscard]] static core::Widget heroDescription(
+        std::string text, const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(12.0F, 400, theme);
+        style.color = theme.colors.contentSecondary;
+        style.lineHeight = 1.6F;
+        return core::makeText(std::move(text), style);
+    }
+    [[nodiscard]] static core::Widget smallCapsLabel(
+        std::string text, const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(9.0F, 800, theme);
+        style.letterSpacing = 1.2F;
+        style.color = theme.colors.contentSecondary;
+        return core::makeText(std::move(text), style);
+    }
+    [[nodiscard]] static core::Widget smallStrong(std::string text,
+                                                  const style::Theme& theme) {
+        return core::makeText(std::move(text),
+                              scaledStyle(12.0F, 800, theme));
+    }
+    [[nodiscard]] static core::Widget tileTitleText(
+        std::string text, const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(10.0F, 800, theme);
+        style.color = theme.colors.contentSecondary;
+        return core::makeText(std::move(text), style);
+    }
+    [[nodiscard]] static core::Widget metricValueText(
+        std::string text, const style::Theme& theme) {
+        return core::makeText(std::move(text), scaledStyle(23.0F, 800, theme));
+    }
+    [[nodiscard]] static core::Widget deltaText(std::string text,
+                                                const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(10.0F, 700, theme);
+        style.color = theme.colors.statusSuccess;
+        return core::makeText(std::move(text), style);
+    }
+    [[nodiscard]] static core::Widget codeText(std::string text,
+                                               const style::Theme& theme,
+                                               core::Color color) {
+        core::TextStyle style = scaledStyle(11.0F, 400, theme);
+        style.color = color;
+        return core::makeText(std::move(text), style);
+    }
+    [[nodiscard]] static core::TextStyle brandMarkStyle(
+        const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(13.0F, 900, theme);
+        style.color = theme.colors.onAccent;
+        return style;
+    }
+    [[nodiscard]] static core::TextStyle headerTitleStyle(
+        const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(13.0F, 800, theme);
+        style.letterSpacing = -0.26F;
+        return style;
+    }
+    [[nodiscard]] static core::TextStyle statusPillStyle(
+        const style::Theme& theme) {
+        core::TextStyle style = scaledStyle(11.0F, 800, theme);
+        style.color = theme.colors.accent;
+        return style;
+    }
+
+    [[nodiscard]] static std::string hexColor(core::Color color) {
+        char buffer[16];
+        std::snprintf(buffer, sizeof(buffer), "#%02x%02x%02x", color.r,
+                      color.g, color.b);
+        return std::string(buffer);
+    }
+    [[nodiscard]] static std::string routeDisplayName(
+        const std::string& route) {
+        if (route == "home") {
+            return "Overview";
+        }
+        if (route.empty()) {
+            return route;
+        }
+        std::string name = route;
+        name[0] = static_cast<char>(
+            std::toupper(static_cast<unsigned char>(name[0])));
+        return name;
+    }
+    [[nodiscard]] static std::string toUpper(std::string text) {
+        for (char& c : text) {
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        }
+        return text;
     }
     [[nodiscard]] static core::Widget errorText(
         std::string text, const style::Theme& theme) {

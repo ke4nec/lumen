@@ -65,10 +65,10 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 
 | 能力 | 提供方 | 降级行为 |
 | --- | --- | --- |
-| CPU 光栅 | `CpuRenderer`（确定性占位字体） | 无需降级；CPU-only 构建不依赖 SDL 实现库与桌面会话 |
+| CPU 光栅 | `CpuRenderer`（窗口经系统字体绘制真实字形，headless/无字体时确定性占位） | 无需降级；CPU-only 构建不依赖 SDL 实现库与桌面会话 |
 | Skia 光栅 | `SkiaRenderer`（可选 `LUMEN_ENABLE_SKIA`） | 未编入时能力报告 `backendName=cpu`，应用安全运行 |
 | Skia GPU | `SkiaGpuRenderer`（可选 `LUMEN_ENABLE_GPU`） | 探测/初始化失败自动回退 CPU，诊断记录原因（v0.2 §7C） |
-| 文本 shaping | `lumen-text` + `SkiaFontManager`（可选 `LUMEN_ENABLE_SKIA`，封装字体族/回退/度量/shaping；公共接口无 Skia 类型） | CPU-only 构建或无系统字体时回退 `PlaceholderFontManager`，布局/编辑照常（`fontDiagnostic`/工厂诊断明确报告）；布局与绘制共享同一份 shaped 结果，光标/选区不跨后端漂移 |
+| 文本 shaping | `lumen-text` + `SkiaFontManager`（可选 `LUMEN_ENABLE_SKIA`，封装字体族/回退/度量/shaping；公共接口无 Skia 类型）或 `SystemFontManager`（CPU 窗口默认：Windows 优先 GDI 系统字形，其他平台及 GDI 回退经 stb_truetype 读取系统字体，Windows 雅黑优先） | CPU-only 构建或无系统字体时回退 `PlaceholderFontManager`，布局/编辑照常（`fontDiagnostic`/工厂诊断明确报告）；布局与绘制共享同一份 shaped 结果，光标/选区不跨后端漂移 |
 | 编辑撤销 | `text::EditingHistory` + `InteractionController`（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y；连续单字输入/删除合并，IME 提交为单事务，preedit 不进栈） | 只读字段与 preedit 期间拒绝撤销；栈按字段 bind 隔离，容量 100 |
 | 应用壳 | `lumen-app`（`app::AppShell` 帧管线 + `app::runApp` 主循环；M2） | 示例只保留 build/状态/handler；支持 Fake host 与外部测试 renderer 注入；GPU 失效经回退钩子重建软件窗口回到 CPU |
 | 剪贴板 | `platform::Clipboard` / `core::ClipboardProvider` | runApp 启动时接入宿主剪贴板（Ctrl+C/V；宿主不可用保持未注入）；`setText` 失败返回 false，编辑状态不丢 |
