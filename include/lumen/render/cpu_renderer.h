@@ -61,6 +61,10 @@ class CpuRenderer final : public Renderer {
     void clipRect(core::Rect rect) override;
     void drawRect(core::Rect rect, core::Color color,
                   core::CornerRadius radius = {}) override;
+    // S1：圆角描边（环带）——外圆角矩形包含且内圆角矩形（内缩 width）
+    // 不包含的像素才混合，内部保持透明（§9.2）。
+    void drawRectStroke(core::Rect rect, core::Color color,
+                        core::CornerRadius radius, float width) override;
     void drawText(TextRun run, core::TextStyle style) override;
     void drawImage(ImageId id, core::Rect destination) override;
     // M6：矢量图标 —— 软件线条光栅（粗线 = 垂直/水平/对角微偏移多遍）。

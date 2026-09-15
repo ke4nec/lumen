@@ -366,9 +366,10 @@ TEST_CASE("row_main_axis_end_alignment", "[layout]") {
 
 TEST_CASE("text_measures_cjk_by_code_points", "[layout]") {
     // "你好世界" is 4 glyphs / 12 UTF-8 bytes; measurement counts glyphs.
+    // S1：body 行高倍数 20/14（§4.5），高度 = 14 * 20/14 = 20。
     const RenderNode node = LayoutEngine::layout(
         makeText("\xe4\xbd\xa0\xe5\xa5\xbd\xe4\xb8\x96\xe7\x95\x8c"),
         Constraints::unbounded());
     CHECK_THAT(node.size.width, WithinAbs(33.6F, 0.01F));
-    CHECK_THAT(node.size.height, WithinAbs(16.8F, 0.01F));
+    CHECK_THAT(node.size.height, WithinAbs(20.0F, 0.01F));
 }

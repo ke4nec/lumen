@@ -51,6 +51,9 @@ class SkiaRenderer final : public Renderer {
     void clipRect(core::Rect rect) override;
     void drawRect(core::Rect rect, core::Color color,
                   core::CornerRadius radius = {}) override;
+    // S1：圆角描边（SkPaint stroke；内部透明，§9.2）。
+    void drawRectStroke(core::Rect rect, core::Color color,
+                        core::CornerRadius radius, float width) override;
     void drawText(TextRun run, core::TextStyle style) override;
     void drawImage(ImageId id, core::Rect destination) override;
     // M6：矢量图标（SkPath stroke）与阴影（blur mask filter）。

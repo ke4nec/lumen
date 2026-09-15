@@ -75,3 +75,34 @@
 - 兼容性或视觉基准变更：无。
 - 未验证事项与预留能力：真实桌面截图与跨后端验证按 §10.3 推迟到 S5 收敛；§11 预留项不在本轮。
 - 下一阶段及前置条件：S1（token 与通用绘制）——新增四个 ColorScheme 字段并全链派生（dark/light/四方向/高对比/系统强调色）、对齐 §4.2 值表、阴影分级 token、透明描边与焦点/圆角契约复核；跨后端契约（CPU 命令路径）先行验证。
+
+---
+
+## S1 token 与通用绘制
+
+- 阶段 / 日期 / 源码提交：S1 / 2026-09-15 / 基线 `313ba03`（S0 记录提交）
+- 已完成控件与规格章节：§4.2 目标调色板（CoreDark 深浅全表）、§4.3 对比度门槛、§4.4 行内图标档位、§4.5 排版行高与阴影分级、§9.2 透明描边。
+- 新增或调整的 token / ResolvedStyle / 公共 API：
+  - `ColorScheme` 新增 `surfaceSunken` / `accentContent` / `onError` / `errorContent`；dark `onAccent`→黑、`pressedOverlay` alpha 72→26、`disabledContent` 实色化（n400 槽）；light `accentContainer`→blue100、`selectionBackground` alpha→64。
+  - CoreDark 槽位/精化对齐 §4.2 全表（`applyCoreDarkTargets` 精化 6 项槽位冲突值；`style_core_dark_matches_palette_targets` 逐项断言）。
+  - 四方向可读性修正（§4.3，保留色相调明度）：Aurora dark n400 提亮、light blue500/blue700/green/amber 加深；InkLinen n500 深/浅两侧、light green/amber 加深；Utility light amber 加深；Aurora dark 选区 alpha 130→96。
+  - `ElevationTokens` 改为三级查表（L1 (0,2)/6/32、L2 (0,4)/12/64、L3 (0,8)/24/80；`paramsFor` 夹取 [1,3]）；layout 折叠消费；高对比各级 alpha=0。
+  - `Typography` 行高倍数按 §4.5（title 1.4、body/label 20/14、caption 1.5）；`Metrics.inlineIconSize[3]{16,16,20}` 参与 fontScale。
+  - 组件 token：outline/ghost 文字→`accentContent`、danger 文字→`onError`、TextField 背景→`surfaceSunken`/边框→`borderStrong`。
+  - 渲染契约：`Renderer::drawRectStroke`（圆角描边环带；默认降级为填充）+ `CommandType::DrawRectStroke` + 序列化 v5；CPU（外/内圆角矩形包含差）/Skia 光栅/Skia GPU 三后端原生实现；painter 的边框与全部焦点环（控件表面/Checkbox/Switch/Radio 指示器）改用描边命令。
+  - `adaptPlatformTheme`：accent 覆盖后重派生 `accentContent`（高对比直接取 accent）。
+  - 移除 AuroraSignal dark `onAccent` 特判（并入通用"深色 Filled 深色文字"规则）。
+- 源码审查发现、修复与仍存缺口：
+  - 发现：透明背景控件（Outline/Ghost、聚焦透明变体）此前被"边框色整块填充"渲染成实心块（§9.2 点名的实现缺陷）；`paintSurface`/`paintControlSurface` 双层填充表达是该缺陷根源。已用描边命令修复并以像素测试锁定。
+  - 发现：四方向若仅对齐 CoreDark 数值，多处状态文字（浅色 amber ≈2.3:1、Aurora light accent 白字 3.48:1 等）不达 §4.3；按"保留色相调明度"修正并纳入对比度测试。
+  - 仍存缺口：ScrollbarTokens 三态色仍未被 painter 消费（S3）；Slider/ProgressBar/Radio 等 painter 局部常量未动（S2/S3）；焦点环与填充相近时的 1px 隔离带（§6.1）未实现（S2 Button 细节）。
+- 状态/主题/尺寸样本及截图链接：Gallery headless 帧哈希已按预期变化（frame0 `68f176c9…`）；逐像素样本由本阶段新增渲染测试承担（描边透明性/圆角不越界/Outline 内部=页面色）。
+- 验证命令、测试结果、真实平台/后端/字体：
+  - CPU Debug `ctest`：429/429 通过（新增 13 个测试：对比度×4 方向、§4.2 值表、阴影分级、行高、描边命令契约、透明像素）。
+  - Skia 光栅 Release：441/441 通过；GPU（Ganesh+GL）Release：441/441 通过（含 CPU/Skia 一致性与 smoke）。
+  - 平台：Windows 11 / VS 2026；Linux/macOS 未运行（CI 补充）；字体：headless 占位字体。
+- 兼容性或视觉基准变更：
+  - 命令序列化 v4→v5（新增 DrawRectStroke）；旧 blob 拒绝（版本校验），回放侧无兼容负担。
+  - 视觉变更：深色 Filled/Tonal/Danger 按钮文字改深色、Outline/Ghost 文字色改 accentContent、TextField 底色/边框变体、边框/焦点环 1px 内缩几何（描边环带）、行高 1.2→1.43 倍（正文排版变高）、Aurora/InkLinen/Utility 若干状态色明度调整。Gallery 帧哈希基线随之更新。
+- 未验证事项与预留能力：真实窗口人工视觉验收与 Linux/macOS 平台证据推迟至 S5 收敛；§11 预留项未动。
+- 下一阶段及前置条件：S2 基础控件（Text/Icon/Container/Button/TextField/Checkbox/Switch/Radio）——勾号替换内方块（IconId::Check）、Radio 空心环+内点、Switch knobOff/knobOn、指示器焦点槽位预留、Button 图标/文字对齐与隔离带；直接消费本阶段 token 与描边命令。

@@ -16,8 +16,9 @@ namespace {
 // 字段，v1 只存 fontSize/color 会丢失语义）。
 // v3：TextRun 增加 baselinePx 与 shapedRuns（M1 布局/绘制共享 shaping）。
 // v4：DrawIcon/DrawShadow（M6 视觉系统 V3：折线组 + 线宽）。
+// v5：DrawRectStroke（S1 控件视觉系统 §9.2：圆角描边环带）。
 constexpr char kMagic[] = "LUMENCMD";
-constexpr std::uint32_t kVersion = 4;
+constexpr std::uint32_t kVersion = 5;
 
 void putU8(std::string& out, std::uint8_t value) {
     out.push_back(static_cast<char>(value));
@@ -198,6 +199,7 @@ bool deserializeCommand(Reader& reader, RenderCommand& command) {
         case CommandType::UnloadImage:
         case CommandType::DrawIcon:
         case CommandType::DrawShadow:
+        case CommandType::DrawRectStroke:
             break;
         default:
             reader.failed = true;
@@ -368,6 +370,7 @@ RenderCommandList cullCommandsOutside(const RenderCommandList& list,
     for (const auto& command : list.commands()) {
         switch (command.type) {
             case CommandType::DrawRect:
+            case CommandType::DrawRectStroke:
             case CommandType::DrawText:
             case CommandType::DrawImage:
             case CommandType::DrawIcon:
@@ -393,6 +396,7 @@ std::optional<core::Rect> commandDrawBounds(const RenderCommandList& list) {
         if (!command.hasBounds) {
             switch (command.type) {
                 case CommandType::DrawRect:
+                case CommandType::DrawRectStroke:
                 case CommandType::DrawText:
                 case CommandType::DrawImage:
                 case CommandType::DrawIcon:
@@ -405,6 +409,7 @@ std::optional<core::Rect> commandDrawBounds(const RenderCommandList& list) {
         }
         switch (command.type) {
             case CommandType::DrawRect:
+            case CommandType::DrawRectStroke:
             case CommandType::DrawText:
             case CommandType::DrawImage:
             case CommandType::DrawIcon:

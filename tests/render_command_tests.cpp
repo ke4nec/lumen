@@ -373,6 +373,50 @@ TEST_CASE("serialized_commands_replay_to_identical_pixels",
     CHECK(frameHash(direct.pixels()) == frameHash(replayed.pixels()));
 }
 
+// --- S1（gui-control-visual-system-task §9.2）：DrawRectStroke 命令契约 ---
+
+TEST_CASE("rect_stroke_command_records_replays_and_serializes",
+          "[render][commands]") {
+    RenderCommandList list;
+    list.drawRectStroke(Rect::fromXYWH(5.0F, 6.0F, 40.0F, 20.0F),
+                        Color::fromRGBA(10, 20, 30, 255),
+                        CornerRadius::all(4.0F), 2.0F);
+    REQUIRE(list.size() == 1);
+    const auto& command = list.commands().front();
+    CHECK(command.type == CommandType::DrawRectStroke);
+    CHECK(command.strokeWidth == 2.0F);
+    CHECK(command.hasBounds);
+    CHECK(command.bounds == command.rect);
+    CHECK(list.drawCount() == 1);
+
+    // 序列化 roundtrip（v5）保留全部字段。
+    const std::string blob = lumen::render::serializeCommands(list);
+    RenderCommandList parsed;
+    REQUIRE(lumen::render::deserializeCommands(blob, parsed));
+    CHECK(parsed == list);
+
+    // damage 裁剪：bounds 不相交时丢弃，drawBounds 计入并集。
+    const RenderCommandList culled = lumen::render::cullCommandsOutside(
+        list, Rect::fromXYWH(100.0F, 100.0F, 10.0F, 10.0F));
+    CHECK(culled.empty());  // 唯一的描边命令在 damage 外，被丢弃
+    const auto bounds = lumen::render::commandDrawBounds(list);
+    REQUIRE(bounds.has_value());
+    CHECK(*bounds == command.rect);
+
+    // CPU 回放与即时路径像素一致。
+    CpuRenderer direct;
+    direct.beginFrame(Size{100.0F, 80.0F});
+    direct.drawRectStroke(Rect::fromXYWH(5.0F, 6.0F, 40.0F, 20.0F),
+                          Color::fromRGBA(10, 20, 30, 255),
+                          CornerRadius::all(4.0F), 2.0F);
+    direct.endFrame();
+    CpuRenderer replayed;
+    FrameInfo info;
+    info.viewport = Size{100.0F, 80.0F};
+    replayed.submit(list, info);
+    CHECK(frameHash(direct.pixels()) == frameHash(replayed.pixels()));
+}
+
 TEST_CASE("upload_and_unload_commands_drive_image_lifecycle",
           "[render][commands]") {
     RenderCommandList list;

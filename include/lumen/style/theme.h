@@ -41,14 +41,19 @@ enum class ThemeDirection : std::uint8_t {
 
 // Semantic color token（§3.1）：用户可理解的角色。light/dark/high
 // contrast 只改这里与派生规则，控件代码不遍历。
+// S1（gui-control-visual-system-task §4.2）：surfaceSunken/accentContent/
+// onError/errorContent 为新增角色；disabledContent 使用实色（避免多次
+// 降透明叠加）。
 struct ColorScheme {
     core::Color pageBackground{24, 24, 27, 255};
     core::Color surface{39, 39, 46, 255};
     core::Color surfaceElevated{52, 52, 62, 255};
+    core::Color surfaceSunken{46, 46, 54, 255};
     core::Color contentPrimary{228, 228, 231, 255};
     core::Color contentSecondary{140, 140, 152, 255};
     core::Color accent{86, 140, 240, 255};
-    core::Color onAccent{240, 244, 255, 255};
+    core::Color onAccent{0, 0, 0, 255};
+    core::Color accentContent{168, 197, 250, 255};
     // Tonal 变体的低饱和容器。
     core::Color accentContainer{46, 60, 96, 255};
     core::Color onAccentContainer{198, 214, 255, 255};
@@ -57,14 +62,16 @@ struct ColorScheme {
     core::Color focusRing{150, 185, 250, 255};
     core::Color selectionBackground{86, 140, 240, 130};
     core::Color statusError{224, 90, 96, 255};
+    core::Color onError{0, 0, 0, 255};
+    core::Color errorContent{240, 150, 154, 255};
     core::Color statusSuccess{74, 160, 106, 255};
     core::Color statusWarning{204, 152, 64, 255};
     core::Color disabledBackground{46, 46, 54, 255};
-    core::Color disabledContent{140, 140, 152, 170};
+    core::Color disabledContent{140, 140, 152, 255};
     core::Color scrim{0, 0, 0, 132};
     // 状态叠加层（hover/pressed 用 blendOver 派生，保持状态可辨识）。
     core::Color hoverOverlay{255, 255, 255, 26};
-    core::Color pressedOverlay{0, 0, 0, 72};
+    core::Color pressedOverlay{0, 0, 0, 26};
 
     bool operator==(const ColorScheme&) const = default;
 };
@@ -99,6 +106,8 @@ struct Metrics {
     float dialogRadius{12.0F};
     float focusRingWidth{2.0F};
     float controlBorderWidth{1.0F};
+    // 行内图标边长档位（§4.4：Button 尾随图标/Dropdown Chevron 的槽位）。
+    float inlineIconSize[3]{16.0F, 16.0F, 20.0F};
 
     // 等比放大（font scale 派生）：最小高度、内边距、间距与最小宽度。
     void scaleBy(float factor);
@@ -106,14 +115,28 @@ struct Metrics {
     bool operator==(const Metrics&) const = default;
 };
 
-// 阴影/层级 token（§8 冻结扩展）：当前 Renderer 不支持阴影时组件用边框
-// 与表面层级表达，不得在控件中散落阴影常量。
+// 阴影/层级 token（§4.5 分级目标）：三级抬升各自的 offset/blur/alpha；
+// 颜色恒为黑色（shadowColor）。CPU 后端维持扁平降级；高对比模式把各级
+// alpha 置 0（阴影不承担唯一层级信息）。
+struct ElevationShadowParams {
+    core::Offset offset{0.0F, 0.0F};
+    float blur{0.0F};
+    std::uint8_t alpha{0};
+
+    bool operator==(const ElevationShadowParams&) const = default;
+};
+
 struct ElevationTokens {
-    core::Color shadowColor{0, 0, 0, 96};
-    core::Offset shadowOffset{0.0F, 4.0F};
-    float shadowBlur{12.0F};
+    core::Color shadowColor{0, 0, 0, 255};
+    // levels[0] 保留（无阴影）；Widget.elevation 的层级数（1..3）索引。
+    // §4.5：L1 (0,2)/6/32，L2 (0,4)/12/64，L3 (0,8)/24/80。
+    ElevationShadowParams levels[4]{};
+    // 兼容旧 API：单级阴影参数（L2 等值）。
     float dialogLevel{3.0F};
     float cardLevel{1.0F};
+
+    [[nodiscard]] const ElevationShadowParams& paramsFor(
+        float level) const;
 
     bool operator==(const ElevationTokens&) const = default;
 };

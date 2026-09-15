@@ -107,6 +107,10 @@ class CommandRecorder {
     void drawRect(Rect rect, Color color, CornerRadius radius = {}) {
         list_.drawRect(rect, color, radius);
     }
+    void drawRectStroke(Rect rect, Color color, CornerRadius radius,
+                        float width) {
+        list_.drawRectStroke(rect, color, radius, width);
+    }
     void drawText(TextRun run, TextStyle style) {
         list_.drawText(std::move(run), style, currentClip_);
     }
@@ -204,56 +208,61 @@ struct ScopedClip {
     ScopedClip& operator=(const ScopedClip&) = delete;
 };
 
-// 控件表面 + 焦点环 + 边框（visual-system §7/§11）。
+// 控件表面 + 焦点环 + 边框（visual-system §7/§11；S1 §9.2 描边命令）。
 //
-// damage 不变量：控件的所有绘制都落在节点矩形内。焦点环因此内嵌绘制
-//（环 = 节点矩形外圈，表面按 focusWidth 内缩），不影响布局尺寸也不产
-// 生矩形外的脏像素。只支持填充矩形的渲染契约下边框用双层绘制表达
-//（外层边框色，内层背景色按 borderWidth 内缩）。
+// damage 不变量：控件的所有绘制都落在节点矩形内。焦点环与边框使用描
+// 边命令绘制（环带贴外缘，内部不再被边框/焦点色填充），透明背景的
+// Outline/Ghost/Tooltip 因此保持真透明；背景按剩余内缩区域填充。
 template <typename Sink>
 void paintControlSurface(Sink& sink, const Rect& rect,
                          const CommonResolvedStyle& common) {
-    Rect surfaceRect = rect;
+    if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
+        sink.drawRectStroke(rect, common.focusRing, common.radius,
+                            common.focusWidth);
+    }
+    Rect contentRect = rect;
     float radiusShrink = 0.0F;
     if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
-        sink.drawRect(rect, common.focusRing, common.radius);
         const float w = common.focusWidth;
-        surfaceRect =
+        contentRect =
             Rect{Offset{rect.origin.x + w, rect.origin.y + w},
                  Size{std::max(0.0F, rect.size.width - 2.0F * w),
                       std::max(0.0F, rect.size.height - 2.0F * w)}};
         radiusShrink = w;
     }
-    const CornerRadius surfaceRadius =
-        insetCorners(common.radius, radiusShrink);
     if (common.borderWidth > 0.0F && common.border.a > 0) {
-        sink.drawRect(surfaceRect, common.border, surfaceRadius);
+        sink.drawRectStroke(contentRect, common.border,
+                            insetCorners(common.radius, radiusShrink),
+                            common.borderWidth);
         const float inset = common.borderWidth;
         const Size innerSize{
-            std::max(0.0F, surfaceRect.size.width - 2.0F * inset),
-            std::max(0.0F, surfaceRect.size.height - 2.0F * inset)};
+            std::max(0.0F, contentRect.size.width - 2.0F * inset),
+            std::max(0.0F, contentRect.size.height - 2.0F * inset)};
         if (innerSize.width > 0.0F && innerSize.height > 0.0F &&
             common.background.a > 0) {
             sink.drawRect(
-                Rect{Offset{surfaceRect.origin.x + inset,
-                            surfaceRect.origin.y + inset},
+                Rect{Offset{contentRect.origin.x + inset,
+                            contentRect.origin.y + inset},
                      innerSize},
                 common.background,
-                insetCorners(surfaceRadius, inset));
+                insetCorners(common.radius, radiusShrink + inset));
         }
         return;
     }
     if (common.background.a > 0) {
-        sink.drawRect(surfaceRect, common.background, surfaceRadius);
+        sink.drawRect(contentRect, common.background,
+                      insetCorners(common.radius, radiusShrink));
     }
 }
 
-// 容器表面（无焦点环；卡片/页面背景）。
+// 容器表面（无焦点环；卡片/页面背景）。边框同样走描边命令，透明背景
+// 不被边框色填充（§9.2）。
 template <typename Sink>
 void paintSurface(Sink& sink, const Rect& rect,
                   const CommonResolvedStyle& common) {
     if (common.borderWidth > 0.0F && common.border.a > 0) {
-        sink.drawRect(rect, common.border, common.radius);
+        sink.drawRectStroke(rect, common.border, common.radius,
+                            common.borderWidth);
         const float inset = common.borderWidth;
         const Size innerSize{
             std::max(0.0F, rect.size.width - 2.0F * inset),
@@ -553,8 +562,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                                             0.5F;
             Rect ring{Offset{origin.x, cy}, Size{indicator, indicator}};
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
-                sink.drawRect(ring, common.focusRing,
-                              CornerRadius::all(indicator));
+                sink.drawRectStroke(ring, common.focusRing,
+                                    CornerRadius::all(indicator),
+                                    common.focusWidth);
                 const float w = common.focusWidth;
                 ring = Rect{Offset{ring.origin.x + w, ring.origin.y + w},
                             Size{indicator - 2.0F * w,
@@ -712,10 +722,12 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                        origin.y + (node.size.height - indicator) * 0.5F},
                 Size{indicator, indicator}};
             float indicatorRadius = checkbox->indicatorRadius;
-            // 焦点环内嵌在指示框外圈（damage 不变量：绘制不越出节点）。
+            // 焦点环：描边命令（环带贴指示框外缘；damage 不变量：绘制
+            // 不越出节点）。
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
-                sink.drawRect(indicatorRect, common.focusRing,
-                              CornerRadius::all(indicatorRadius));
+                sink.drawRectStroke(indicatorRect, common.focusRing,
+                                    CornerRadius::all(indicatorRadius),
+                                    common.focusWidth);
                 const float w = common.focusWidth;
                 indicatorRect =
                     Rect{Offset{indicatorRect.origin.x + w,
@@ -757,10 +769,11 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             Rect trackRect{Offset{origin.x, trackTop},
                            Size{control->trackWidth, control->trackHeight}};
             float trackRadius = control->trackHeight * 0.5F;
-            // 焦点环内嵌在轨道外圈。
+            // 焦点环：描边命令（环带贴轨道外缘）。
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
-                sink.drawRect(trackRect, common.focusRing,
-                              CornerRadius::all(trackRadius));
+                sink.drawRectStroke(trackRect, common.focusRing,
+                                    CornerRadius::all(trackRadius),
+                                    common.focusWidth);
                 const float w = common.focusWidth;
                 trackRect = Rect{
                     Offset{trackRect.origin.x + w, trackRect.origin.y + w},

@@ -80,6 +80,17 @@ void Metrics::scaleBy(float factor) {
     for (float& value : controlGap) {
         scale(value);
     }
+    for (float& value : inlineIconSize) {
+        scale(value);
+    }
+}
+
+const ElevationShadowParams& ElevationTokens::paramsFor(float level) const {
+    // 层级数夹取到 [1, 3]；0（无阴影）不经此路径（painter 先判断
+    // elevation > 0）。
+    const auto index = static_cast<std::size_t>(
+        std::clamp(level, 1.0F, 3.0F));
+    return levels[index];
 }
 
 void MotionTokens::reduceAnimation() {
@@ -92,6 +103,9 @@ void MotionTokens::reduceAnimation() {
 }
 
 // --- Primitive → semantic ---
+// S1（gui-control-visual-system-task §4.2）：深色 Filled 使用深色文字
+//（旧 onAccent ≈#EBF1FF 对 accent 约 2.90:1，不达标）；pressed 叠加减
+// 轻；disabledContent 实色化。四方向共用这些可读性修正。
 
 ColorScheme darkColorScheme(const PrimitivePalette& palette) {
     ColorScheme colors;
@@ -99,10 +113,12 @@ ColorScheme darkColorScheme(const PrimitivePalette& palette) {
     colors.surface = palette.neutral900;
     colors.surfaceElevated = mixColors(palette.neutral800,
                                         palette.neutral200, 0.06F);
+    colors.surfaceSunken = palette.neutral800;
     colors.contentPrimary = palette.neutral200;
     colors.contentSecondary = palette.neutral500;
     colors.accent = palette.blue500;
-    colors.onAccent = mixColors(palette.blue100, palette.white, 0.35F);
+    colors.onAccent = palette.black;
+    colors.accentContent = mixColors(palette.blue300, palette.blue100, 0.25F);
     colors.accentContainer = mixColors(palette.neutral900, palette.blue500,
                                        0.24F);
     colors.onAccentContainer = palette.blue100;
@@ -113,15 +129,15 @@ ColorScheme darkColorScheme(const PrimitivePalette& palette) {
         core::Color{palette.blue500.r, palette.blue500.g, palette.blue500.b,
                     130};
     colors.statusError = palette.red500;
+    colors.onError = palette.black;
+    colors.errorContent = palette.red300;
     colors.statusSuccess = palette.green500;
     colors.statusWarning = palette.amber500;
     colors.disabledBackground = palette.neutral800;
-    colors.disabledContent =
-        core::Color{palette.neutral500.r, palette.neutral500.g,
-                    palette.neutral500.b, 170};
+    colors.disabledContent = palette.neutral400;
     colors.scrim = core::Color{0, 0, 0, 132};
     colors.hoverOverlay = core::Color{255, 255, 255, 26};
-    colors.pressedOverlay = core::Color{0, 0, 0, 72};
+    colors.pressedOverlay = core::Color{0, 0, 0, 26};
     return colors;
 }
 
@@ -130,26 +146,27 @@ ColorScheme lightColorScheme(const PrimitivePalette& palette) {
     colors.pageBackground = palette.neutral100;
     colors.surface = palette.neutral200;
     colors.surfaceElevated = palette.neutral050;
+    colors.surfaceSunken = palette.neutral100;
     colors.contentPrimary = palette.neutral950;
     colors.contentSecondary = palette.neutral500;
     colors.accent = palette.blue500;
     colors.onAccent = palette.white;
-    colors.accentContainer = mixColors(palette.neutral050, palette.blue500,
-                                       0.22F);
+    colors.accentContent = palette.blue700;
+    colors.accentContainer = palette.blue100;
     colors.onAccentContainer = palette.blue700;
     colors.borderDefault = palette.neutral300;
     colors.borderStrong = palette.neutral500;
     colors.focusRing = palette.blue700;
     colors.selectionBackground =
         core::Color{palette.blue500.r, palette.blue500.g, palette.blue500.b,
-                    130};
+                    64};
     colors.statusError = palette.red700;
+    colors.onError = palette.white;
+    colors.errorContent = palette.red700;
     colors.statusSuccess = palette.green500;
     colors.statusWarning = palette.amber500;
     colors.disabledBackground = palette.neutral200;
-    colors.disabledContent =
-        core::Color{palette.neutral500.r, palette.neutral500.g,
-                    palette.neutral500.b, 170};
+    colors.disabledContent = palette.neutral500;
     colors.scrim = core::Color{0, 0, 0, 96};
     colors.hoverOverlay = core::Color{0, 0, 0, 16};
     colors.pressedOverlay = core::Color{0, 0, 0, 42};
@@ -165,19 +182,19 @@ ButtonTokens buttonTokensFrom(const ColorScheme& colors) {
     tokens.tonal.background = colors.accentContainer;
     tokens.tonal.content = colors.onAccentContainer;
     tokens.outline.background = core::Color::transparent();
-    tokens.outline.content = colors.accent;
+    tokens.outline.content = colors.accentContent;
     tokens.outline.border = colors.borderStrong;
     tokens.ghost.background = core::Color::transparent();
-    tokens.ghost.content = colors.accent;
+    tokens.ghost.content = colors.accentContent;
     tokens.danger.background = colors.statusError;
-    tokens.danger.content = colors.onAccent;
+    tokens.danger.content = colors.onError;
     return tokens;
 }
 
 TextFieldTokens textFieldTokensFrom(const ColorScheme& colors) {
     TextFieldTokens tokens;
-    tokens.background = colors.surfaceElevated;
-    tokens.border = colors.borderDefault;
+    tokens.background = colors.surfaceSunken;
+    tokens.border = colors.borderStrong;
     tokens.borderFocused = colors.focusRing;
     tokens.borderInvalid = colors.statusError;
     tokens.placeholder = colors.contentSecondary;
@@ -232,20 +249,50 @@ namespace {
 // M11：方向色板（design/gallery.html 四方向，槽位法填入 PrimitivePalette；
 // 映射函数 dark/lightColorScheme 零改动）。CoreDark 以 v0.3 默认调色板为
 // 基线，dark 侧对齐设计稿 v1 的 ink/muted/line/line-strong 槽位。
+// S1（§4.2 目标调色板）：dark 补 borderStrong/success/warning 槽位；
+// light 侧新增表面/文字/强调/状态槽位覆盖。
 // AuroraSignal 为扁平近似：rgba 表面取实底（合成到页面色），玻璃/渐变/
 // 光晕不做；InkLinen 的 serif display 排版不做（跨平台字体确定性优先）。
 PrimitivePalette coreDarkPalette(bool darkMode) {
     PrimitivePalette palette;
     if (darkMode) {
         // design/gallery.html v1 Core Dark：--app-ink/#f1f1f4、
-        // --app-muted/#a1a1aa、--app-line/#3b3b45、--app-line-strong/#555562。
-        // 其余槽位（950/900/800、blue、green）与 v0.3 基线本就等值。
+        // --app-muted/#a1a1aa、--app-line/#3b3b45；§4.2 line-strong/
+        // success/warning 目标值。
         palette.neutral200 = {241, 241, 244, 255};
-        palette.neutral400 = {85, 85, 98, 255};
+        palette.neutral400 = {140, 140, 152, 255};
         palette.neutral500 = {161, 161, 170, 255};
         palette.neutral600 = {59, 59, 69, 255};
+        palette.green500 = {115, 201, 145, 255};
+        palette.amber500 = {226, 181, 102, 255};
+    } else {
+        // §4.2 light：纯白表面、深 accent #3460BE、深辅助文字与
+        // focusRing/onAccentContainer/accentContent #234A91、状态色加深。
+        palette.neutral050 = {255, 255, 255, 255};
+        palette.neutral200 = {255, 255, 255, 255};
+        palette.neutral500 = {82, 82, 91, 255};
+        palette.blue500 = {52, 96, 190, 255};
+        palette.blue700 = {35, 74, 145, 255};
+        palette.green500 = {37, 111, 70, 255};
+        palette.amber500 = {138, 87, 0, 255};
     }
     return palette;
+}
+
+// §4.2 Core Dark 目标调色板中无法由槽位映射精确表达的语义值（槽位冲
+// 突或非线性派生）；在组件 token 重建之前应用。原始色值只存在于主题
+// 工厂（§4.1）。
+void applyCoreDarkTargets(ColorScheme& colors, bool darkMode) {
+    if (darkMode) {
+        colors.surfaceElevated = core::Color{52, 52, 63, 255};   // #34343F
+        colors.accentContainer = core::Color{46, 60, 96, 255};   // #2E3C60
+        colors.accentContent = core::Color{168, 197, 250, 255};  // #A8C5FA
+    } else {
+        colors.borderStrong = core::Color{113, 113, 122, 255};  // #71717A
+        colors.disabledBackground =
+            core::Color{228, 228, 231, 255};                    // #E4E4E7
+        colors.disabledContent = colors.borderStrong;
+    }
 }
 
 PrimitivePalette inkLinenPalette(bool darkMode) {
@@ -256,7 +303,8 @@ PrimitivePalette inkLinenPalette(bool darkMode) {
         palette.neutral200 = {233, 229, 222, 255};
         palette.neutral300 = {196, 190, 180, 255};
         palette.neutral400 = {168, 161, 150, 255};
-        palette.neutral500 = {122, 116, 108, 255};
+        // S1（§4.3）：辅助文字/浅色 borderStrong 槽位加深，满足 4.5:1/3:1。
+        palette.neutral500 = {150, 144, 136, 255};
         palette.neutral600 = {75, 70, 63, 255};
         palette.neutral700 = {56, 52, 47, 255};
         palette.neutral800 = {42, 39, 35, 255};
@@ -274,7 +322,8 @@ PrimitivePalette inkLinenPalette(bool darkMode) {
     palette.neutral200 = {240, 236, 228, 255};
     palette.neutral300 = {223, 217, 206, 255};
     palette.neutral400 = {190, 182, 167, 255};
-    palette.neutral500 = {119, 115, 109, 255};
+    // S1（§4.3）：辅助文字/浅色 borderStrong 槽位加深，满足 4.5:1/3:1。
+    palette.neutral500 = {100, 96, 90, 255};
     palette.neutral600 = {101, 97, 90, 255};
     palette.neutral700 = {80, 76, 70, 255};
     palette.neutral800 = {58, 55, 50, 255};
@@ -284,7 +333,9 @@ PrimitivePalette inkLinenPalette(bool darkMode) {
     palette.blue300 = {166, 152, 235, 255};
     palette.blue500 = {99, 87, 200, 255};
     palette.blue700 = {74, 61, 158, 255};
-    palette.green500 = {61, 137, 100, 255};
+    // S1（§4.3）：状态文字在暖色浅底上加深。
+    palette.green500 = {48, 112, 80, 255};
+    palette.amber500 = {140, 88, 0, 255};
     return palette;
 }
 
@@ -295,7 +346,9 @@ PrimitivePalette auroraPalette(bool darkMode) {
         palette.neutral100 = {228, 235, 250, 255};
         palette.neutral200 = {240, 245, 255, 255};
         palette.neutral300 = {198, 210, 232, 255};
-        palette.neutral400 = {75, 93, 126, 255};   // 边框 .42 实底
+        // S1（§4.3）：borderStrong/禁用文字槽位提亮（旧 (75,93,126) 对
+        // 本方向表面仅约 2.4:1，不满足轮廓/禁用可辨认门槛）。
+        palette.neutral400 = {150, 165, 195, 255};
         palette.neutral500 = {141, 161, 196, 255};
         palette.neutral600 = {40, 51, 75, 255};    // 边框 .18 实底
         palette.neutral700 = {34, 44, 66, 255};
@@ -322,9 +375,10 @@ PrimitivePalette auroraPalette(bool darkMode) {
     palette.neutral950 = {16, 27, 48, 255};
     palette.blue100 = {214, 240, 250, 255};
     palette.blue300 = {124, 224, 248, 255};
-    palette.blue500 = {26, 148, 192, 255};  // 浅底加深青
-    palette.blue700 = {18, 110, 148, 255};
-    palette.green500 = {26, 142, 96, 255};
+    palette.blue500 = {20, 114, 154, 255};  // S1（§4.3）：浅底白字 ≥4.5:1
+    palette.blue700 = {10, 80, 112, 255};   // S1（§4.3）：accentContent/Tonal 文字
+    palette.green500 = {18, 110, 74, 255};  // S1（§4.3）：状态文字加深
+    palette.amber500 = {140, 88, 0, 255};   // S1（§4.3）：状态文字加深
     return palette;
 }
 
@@ -365,18 +419,37 @@ PrimitivePalette utilityPalette(bool darkMode) {
     palette.blue500 = {29, 85, 165, 255};
     palette.blue700 = {23, 68, 133, 255};
     palette.green500 = {20, 119, 68, 255};
+    palette.amber500 = {140, 88, 0, 255};  // S1（§4.3）：状态文字加深
     return palette;
 }
 
 Typography defaultTypography() {
     Typography typography;
+    // §4.5：行高列为逻辑高度（title 28 / body·label 20 / caption 18），
+    // TextStyle.lineHeight 是倍数（行高/字号）。
     typography.title.fontSize = 20.0F;
     typography.title.weight = 600;
+    typography.title.lineHeight = 28.0F / 20.0F;
     typography.label.fontSize = 14.0F;
     typography.label.weight = 500;
+    typography.label.lineHeight = 20.0F / 14.0F;
     typography.body.fontSize = 14.0F;
+    typography.body.lineHeight = 20.0F / 14.0F;
     typography.caption.fontSize = 12.0F;
+    typography.caption.lineHeight = 18.0F / 12.0F;
     return typography;
+}
+
+// §4.5 阴影分级：L1 (0,2)/6/32，L2 (0,4)/12/64，L3 (0,8)/24/80（黑色）。
+ElevationTokens defaultElevation() {
+    ElevationTokens tokens;
+    tokens.levels[1] = ElevationShadowParams{core::Offset{0.0F, 2.0F},
+                                             6.0F, 32};
+    tokens.levels[2] = ElevationShadowParams{core::Offset{0.0F, 4.0F},
+                                             12.0F, 64};
+    tokens.levels[3] = ElevationShadowParams{core::Offset{0.0F, 8.0F},
+                                             24.0F, 80};
+    return tokens;
 }
 
 // 方向级 Metrics 覆盖（design/gallery.html 半径/边框差异；CoreDark 为
@@ -417,15 +490,22 @@ Theme baseTheme(bool darkMode, ControlDensity density,
     Theme theme;
     theme.colors = darkMode ? darkColorScheme(palette)
                             : lightColorScheme(palette);
-    // Aurora 近似修正：浅青 accent 上压深字（映射函数的 onAccent 派生
-    // 不适用于高明度 accent）。
+    // CoreDark 的 §4.2 目标值精化（槽位映射无法表达的少数项）。
+    if (direction == ThemeDirection::CoreDark) {
+        applyCoreDarkTargets(theme.colors, darkMode);
+    }
+    // AuroraSignal dark 的浅青 accent 作为选区底（alpha 130）会把亮色正文
+    // 洗到 4.5 以下；降低选区 alpha 保持文字可读（方向 accent 本身不变）。
     if (direction == ThemeDirection::AuroraSignal && darkMode) {
-        theme.colors.onAccent = core::Color{8, 19, 33, 255};
+        theme.colors.selectionBackground =
+            core::Color{palette.blue500.r, palette.blue500.g,
+                        palette.blue500.b, 96};
     }
     theme.typography = defaultTypography();
     theme.metrics.density = density;
     theme.metrics.baseIndex = densityBaseIndex(density);
     applyDirectionMetrics(theme.metrics, direction);
+    theme.elevation = defaultElevation();
     theme.button = buttonTokensFrom(theme.colors);
     theme.textField = textFieldTokensFrom(theme.colors);
     theme.checkbox = checkboxTokensFrom(theme.colors);
@@ -439,6 +519,7 @@ Theme baseTheme(bool darkMode, ControlDensity density,
 
 // 高对比度：纯色正文、更强边框/焦点环，同时保留状态可辨识性（§4）。
 // M11：accent 按方向色板取（blue300/700 槽位），非蓝方向不再错色。
+// S1：新增语义角色同步派生；阴影不承担层级信息（§4.3），各级 alpha 置 0。
 void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     const PrimitivePalette palette =
         primitivePaletteFor(direction, darkMode);
@@ -449,6 +530,8 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     theme.colors.accent = darkMode ? palette.blue300 : palette.blue700;
     theme.colors.focusRing = theme.colors.accent;
     theme.colors.onAccent = darkMode ? palette.black : palette.white;
+    // accent 直接承担强调文字（HC 下 accent 本身已满足对比）。
+    theme.colors.accentContent = theme.colors.accent;
     theme.colors.disabledContent =
         core::Color{theme.colors.contentPrimary.r,
                     theme.colors.contentPrimary.g,
@@ -458,6 +541,9 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
                                          : core::Color{0, 0, 0, 32};
     theme.colors.pressedOverlay = darkMode ? core::Color{0, 0, 0, 110}
                                            : core::Color{0, 0, 0, 64};
+    for (auto& level : theme.elevation.levels) {
+        level.alpha = 0;
+    }
     // 组件 token 同步重建（semantic → component 单向映射）。
     theme.button = buttonTokensFrom(theme.colors);
     theme.textField = textFieldTokensFrom(theme.colors);
@@ -554,6 +640,13 @@ Theme adaptPlatformTheme(const Theme& base,
         //（filled 背景/勾选指示/开关轨道一致；onAccent 等派生色保持
         // 基线，与 gallery applyAccent 同口径）。
         adapted.colors.accent = *accentColor;
+        // S1：透明按钮文字 accentContent 随 accent 重派生（高对比下
+        // accent 自身已满足对比，直接采用）。
+        adapted.colors.accentContent =
+            settings.highContrast
+                ? *accentColor
+                : (darkMode ? mixColors(*accentColor, core::Color{255, 255, 255, 255}, 0.45F)
+                            : mixColors(*accentColor, core::Color{0, 0, 0, 255}, 0.30F));
         adapted.button = buttonTokensFrom(adapted.colors);
         adapted.checkbox = checkboxTokensFrom(adapted.colors);
         adapted.switchControl = switchTokensFrom(adapted.colors);

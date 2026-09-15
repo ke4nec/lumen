@@ -1,6 +1,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
+#include <string>
 #include <vector>
 
 #include "lumen/accessibility/bridge.h"
@@ -22,11 +25,13 @@ using lumen::accessibility::AccessibilitySettings;
 using lumen::core::Color;
 using lumen::core::ControlSize;
 using lumen::core::EdgeInsets;
+using lumen::core::Offset;
 using lumen::core::TextStyle;
 using lumen::core::Widget;
 using lumen::style::InteractionStateSnapshot;
 using lumen::style::PrimitivePalette;
 using lumen::style::StyleContext;
+using lumen::style::Typography;
 using lumen::style::ControlDensity;
 using lumen::style::Theme;
 using lumen::style::ThemeDirection;
@@ -109,7 +114,13 @@ TEST_CASE("style_maps_semantic_colors_to_component_tokens", "[style]") {
     CHECK(theme.button.filled.background == colors.accent);
     CHECK(theme.button.filled.content == colors.onAccent);
     CHECK(theme.button.outline.border == colors.borderStrong);
-    CHECK(theme.textField.background == colors.surfaceElevated);
+    // S1：透明按钮文字与 Danger 文字使用专属角色（§6.1）。
+    CHECK(theme.button.outline.content == colors.accentContent);
+    CHECK(theme.button.ghost.content == colors.accentContent);
+    CHECK(theme.button.danger.content == colors.onError);
+    // S1：字段底色 surfaceSunken、常态边框 borderStrong（§6.3）。
+    CHECK(theme.textField.background == colors.surfaceSunken);
+    CHECK(theme.textField.border == colors.borderStrong);
     CHECK(theme.textField.borderFocused == colors.focusRing);
     CHECK(theme.textField.borderInvalid == colors.statusError);
     CHECK(theme.checkbox.indicatorChecked == colors.accent);
@@ -125,9 +136,13 @@ TEST_CASE("style_theme_light_and_dark_differ", "[style]") {
     const Theme light = Theme::light();
     CHECK(dark.colors.pageBackground != light.colors.pageBackground);
     CHECK(dark.colors.contentPrimary != light.colors.contentPrimary);
-    // 组件 token 引用 semantic token，主题切换无需遍历控件代码。
-    CHECK(dark.button.filled.background == light.button.filled.background);
+    // 组件 token 引用 semantic token，主题切换无需遍历控件代码。S1 起
+    // 浅色 accent 加深（#3460BE），Filled 背景深浅不同。
+    CHECK(dark.button.filled.background != light.button.filled.background);
     CHECK(dark.textField.background != light.textField.background);
+    // 深色 Filled 压深色文字、浅色压白字（§4.2 可读性修正）。
+    CHECK(dark.button.filled.content == dark.colors.onAccent);
+    CHECK(light.button.filled.content == light.colors.onAccent);
 }
 
 TEST_CASE("style_theme_high_contrast_boosts_contrast", "[style]") {
@@ -616,11 +631,12 @@ TEST_CASE("theme_from_settings_preserves_direction_across_modes", "[style]") {
     // 方向 Metrics 覆盖与 font scale 共存（半径不随 font scale 缩放）。
     CHECK(utilityLight.metrics.controlRadius[1] == 5.0F);
     CHECK(utilityLight.metrics.minHeight[1] > 40.0F);
-    // Aurora 近似：深字压浅青 accent。
+    // S1：深色 onAccent 统一为黑（Aurora 浅青 accent 上的旧特判已并入
+    // 通用可读性修正，§4.2）。
     const Theme aurora = Theme::fromSettings(
         AccessibilitySettings{}, true, ControlDensity::Comfortable,
         ThemeDirection::AuroraSignal);
-    CHECK(aurora.colors.onAccent == Color{8, 19, 33, 255});
+    CHECK(aurora.colors.onAccent == Color{0, 0, 0, 255});
 }
 
 // --- M12：平台主题适配（保留派生 + accent token 链） ---
@@ -653,4 +669,272 @@ TEST_CASE("adapt_platform_theme_preserves_derivation", "[style]") {
     CHECK(kept.colors.accent ==
           lumen::style::primitivePaletteFor(ThemeDirection::InkLinen, false)
               .blue700);
+}
+
+// --- S1（gui-control-visual-system-task §4.2/§4.3）：调色板目标值与对比度验收 ---
+
+namespace {
+
+// WCAG 2.x 相对亮度与对比度（§4.3 借鉴的验算口径）。
+double contrastChannel(double value) {
+    value /= 255.0;
+    return value <= 0.04045 ? value / 12.92
+                            : std::pow((value + 0.055) / 1.055, 2.4);
+}
+
+double relativeLuminance(Color color) {
+    return 0.2126 * contrastChannel(color.r) +
+           0.7152 * contrastChannel(color.g) +
+           0.0722 * contrastChannel(color.b);
+}
+
+double contrastRatio(Color a, Color b) {
+    const double la = relativeLuminance(a);
+    const double lb = relativeLuminance(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
+const char* directionName(ThemeDirection direction) {
+    switch (direction) {
+        case ThemeDirection::CoreDark: return "CoreDark";
+        case ThemeDirection::InkLinen: return "InkLinen";
+        case ThemeDirection::AuroraSignal: return "AuroraSignal";
+        case ThemeDirection::UtilityContrast: return "UtilityContrast";
+    }
+    return "?";
+}
+
+}  // namespace
+
+TEST_CASE("style_core_dark_matches_palette_targets", "[style]") {
+    // §4.2 Core Dark 目标调色板逐项断言（dark / light）。
+    const Theme dark = Theme::dark();
+    CHECK(dark.colors.pageBackground == Color{24, 24, 27, 255});
+    CHECK(dark.colors.surface == Color{39, 39, 46, 255});
+    CHECK(dark.colors.surfaceElevated == Color{52, 52, 63, 255});
+    CHECK(dark.colors.surfaceSunken == Color{46, 46, 54, 255});
+    CHECK(dark.colors.contentPrimary == Color{241, 241, 244, 255});
+    CHECK(dark.colors.contentSecondary == Color{161, 161, 170, 255});
+    CHECK(dark.colors.accent == Color{86, 140, 240, 255});
+    CHECK(dark.colors.onAccent == Color{0, 0, 0, 255});
+    CHECK(dark.colors.accentContent == Color{168, 197, 250, 255});
+    CHECK(dark.colors.accentContainer == Color{46, 60, 96, 255});
+    CHECK(dark.colors.onAccentContainer == Color{224, 234, 255, 255});
+    CHECK(dark.colors.borderDefault == Color{59, 59, 69, 255});
+    CHECK(dark.colors.borderStrong == Color{140, 140, 152, 255});
+    CHECK(dark.colors.focusRing == Color{150, 185, 250, 255});
+    CHECK(dark.colors.selectionBackground == Color{86, 140, 240, 130});
+    CHECK(dark.colors.statusError == Color{224, 90, 96, 255});
+    CHECK(dark.colors.onError == Color{0, 0, 0, 255});
+    CHECK(dark.colors.errorContent == Color{240, 150, 154, 255});
+    CHECK(dark.colors.statusSuccess == Color{115, 201, 145, 255});
+    CHECK(dark.colors.statusWarning == Color{226, 181, 102, 255});
+    CHECK(dark.colors.disabledBackground == Color{46, 46, 54, 255});
+    CHECK(dark.colors.disabledContent == Color{140, 140, 152, 255});
+    CHECK(dark.colors.scrim == Color{0, 0, 0, 132});
+    CHECK(dark.colors.hoverOverlay == Color{255, 255, 255, 26});
+    CHECK(dark.colors.pressedOverlay == Color{0, 0, 0, 26});
+
+    const Theme light = Theme::light();
+    CHECK(light.colors.pageBackground == Color{244, 244, 245, 255});
+    CHECK(light.colors.surface == Color{255, 255, 255, 255});
+    CHECK(light.colors.surfaceElevated == Color{255, 255, 255, 255});
+    CHECK(light.colors.surfaceSunken == Color{244, 244, 245, 255});
+    CHECK(light.colors.contentPrimary == Color{24, 24, 27, 255});
+    CHECK(light.colors.contentSecondary == Color{82, 82, 91, 255});
+    CHECK(light.colors.accent == Color{52, 96, 190, 255});
+    CHECK(light.colors.onAccent == Color{255, 255, 255, 255});
+    CHECK(light.colors.accentContent == Color{35, 74, 145, 255});
+    CHECK(light.colors.accentContainer == Color{224, 234, 255, 255});
+    CHECK(light.colors.onAccentContainer == Color{35, 74, 145, 255});
+    CHECK(light.colors.borderDefault == Color{212, 212, 216, 255});
+    CHECK(light.colors.borderStrong == Color{113, 113, 122, 255});
+    CHECK(light.colors.focusRing == Color{35, 74, 145, 255});
+    CHECK(light.colors.selectionBackground == Color{52, 96, 190, 64});
+    CHECK(light.colors.statusError == Color{170, 52, 58, 255});
+    CHECK(light.colors.onError == Color{255, 255, 255, 255});
+    CHECK(light.colors.errorContent == Color{170, 52, 58, 255});
+    CHECK(light.colors.statusSuccess == Color{37, 111, 70, 255});
+    CHECK(light.colors.statusWarning == Color{138, 87, 0, 255});
+    CHECK(light.colors.disabledBackground == Color{228, 228, 231, 255});
+    CHECK(light.colors.disabledContent == Color{113, 113, 122, 255});
+    CHECK(light.colors.scrim == Color{0, 0, 0, 96});
+    CHECK(light.colors.hoverOverlay == Color{0, 0, 0, 16});
+    CHECK(light.colors.pressedOverlay == Color{0, 0, 0, 42});
+}
+
+TEST_CASE("style_contrast_text_pairs_meet_4_5_all_directions", "[style]") {
+    using lumen::style::blendOver;
+    const ThemeDirection directions[] = {
+        ThemeDirection::CoreDark, ThemeDirection::InkLinen,
+        ThemeDirection::AuroraSignal, ThemeDirection::UtilityContrast};
+    for (const ThemeDirection direction : directions) {
+        for (const bool darkMode : {true, false}) {
+            const Theme theme =
+                Theme::fromSettings(AccessibilitySettings{}, darkMode,
+                                    ControlDensity::Comfortable, direction);
+            const auto& colors = theme.colors;
+            const std::string label = std::string(directionName(direction)) +
+                                      (darkMode ? "/dark" : "/light");
+            const Color surfaces[] = {
+                colors.pageBackground, colors.surface,
+                colors.surfaceElevated, colors.surfaceSunken};
+            for (const Color surface : surfaces) {
+                CHECK(contrastRatio(colors.contentPrimary, surface) >= 4.5);
+            }
+            // placeholder / 辅助说明所在表面（字段 surfaceSunken、面板 surface）。
+            CHECK(contrastRatio(colors.contentSecondary,
+                                colors.surfaceSunken) >= 4.5);
+            CHECK(contrastRatio(colors.contentSecondary, colors.surface) >=
+                  4.5);
+            // Filled/Danger/Tonal 标签（含 hover/pressed 中间帧）。
+            CHECK(contrastRatio(colors.onAccent, colors.accent) >= 4.5);
+            CHECK(contrastRatio(
+                      colors.onAccent,
+                      blendOver(colors.accent, colors.hoverOverlay)) >= 4.5);
+            CHECK(contrastRatio(
+                      colors.onAccent,
+                      blendOver(colors.accent, colors.pressedOverlay)) >= 4.5);
+            CHECK(contrastRatio(colors.onError, colors.statusError) >= 4.5);
+            CHECK(contrastRatio(
+                      colors.onError,
+                      blendOver(colors.statusError, colors.hoverOverlay)) >=
+                  4.5);
+            CHECK(contrastRatio(
+                      colors.onError,
+                      blendOver(colors.statusError, colors.pressedOverlay)) >=
+                  4.5);
+            CHECK(contrastRatio(colors.onAccentContainer,
+                                colors.accentContainer) >= 4.5);
+            CHECK(contrastRatio(colors.onAccentContainer,
+                                blendOver(colors.accentContainer,
+                                          colors.hoverOverlay)) >= 4.5);
+            CHECK(contrastRatio(colors.onAccentContainer,
+                                blendOver(colors.accentContainer,
+                                          colors.pressedOverlay)) >= 4.5);
+            // Outline/Ghost 标签（页面与卡片表面）。
+            CHECK(contrastRatio(colors.accentContent,
+                                colors.pageBackground) >= 4.5);
+            CHECK(contrastRatio(colors.accentContent, colors.surface) >= 4.5);
+            // 错误/成功/警告文案（页面表面）。
+            CHECK(contrastRatio(colors.errorContent, colors.surface) >= 4.5);
+            CHECK(contrastRatio(colors.statusSuccess,
+                                colors.pageBackground) >= 4.5);
+            CHECK(contrastRatio(colors.statusWarning,
+                                colors.pageBackground) >= 4.5);
+            // 选区上的正文（合成后再验算，§4.2 alpha 说明）。
+            CHECK(contrastRatio(colors.contentPrimary,
+                                blendOver(colors.surfaceSunken,
+                                          colors.selectionBackground)) >=
+                  4.5);
+            INFO("direction=" << label);
+        }
+    }
+}
+
+TEST_CASE("style_contrast_non_text_marks_meet_3_to_1", "[style]") {
+    const ThemeDirection directions[] = {
+        ThemeDirection::CoreDark, ThemeDirection::InkLinen,
+        ThemeDirection::AuroraSignal, ThemeDirection::UtilityContrast};
+    for (const ThemeDirection direction : directions) {
+        for (const bool darkMode : {true, false}) {
+            const Theme theme =
+                Theme::fromSettings(AccessibilitySettings{}, darkMode,
+                                    ControlDensity::Comfortable, direction);
+            const auto& colors = theme.colors;
+            // 必须靠形状识别的轮廓：字段/Outline/未选框（borderStrong）。
+            CHECK(contrastRatio(colors.borderStrong, colors.surface) >= 3.0);
+            CHECK(contrastRatio(colors.borderStrong, colors.surfaceSunken) >=
+                  3.0);
+            // 焦点标识（页面/卡片表面相邻）。
+            CHECK(contrastRatio(colors.focusRing, colors.pageBackground) >=
+                  3.0);
+            CHECK(contrastRatio(colors.focusRing, colors.surface) >= 3.0);
+            // 勾选标记 / Radio 内点（onAccent 对 accent 填充）。
+            CHECK(contrastRatio(colors.onAccent, colors.accent) >= 3.0);
+        }
+    }
+}
+
+TEST_CASE("style_disabled_states_stay_identifiable", "[style]") {
+    const Theme dark = Theme::dark();
+    CHECK(contrastRatio(dark.colors.disabledContent,
+                        dark.colors.disabledBackground) >= 3.0);
+    const Theme light = Theme::light();
+    CHECK(contrastRatio(light.colors.disabledContent,
+                        light.colors.disabledBackground) >= 3.0);
+}
+
+TEST_CASE("style_high_contrast_text_meets_7_to_1_and_drops_shadows",
+          "[style]") {
+    AccessibilitySettings settings;
+    settings.highContrast = true;
+    const Theme dark = Theme::fromSettings(settings, true);
+    CHECK(contrastRatio(dark.colors.contentPrimary,
+                        dark.colors.pageBackground) >= 7.0);
+    const Theme light = Theme::fromSettings(settings, false);
+    CHECK(contrastRatio(light.colors.contentPrimary,
+                        light.colors.pageBackground) >= 7.0);
+    // 边框/焦点环宽度按高对比档派生（§4.3）。
+    CHECK(dark.metrics.controlBorderWidth == 2.0F);
+    CHECK(dark.metrics.focusRingWidth == 3.0F);
+    // 阴影不承担层级信息。
+    for (const auto& level : dark.elevation.levels) {
+        CHECK(level.alpha == 0);
+    }
+    // 新增语义角色在高对比下仍参与派生（accentContent 跟随 accent）。
+    CHECK(dark.colors.accentContent == dark.colors.accent);
+    CHECK(light.colors.accentContent == light.colors.accent);
+}
+
+TEST_CASE("style_elevation_levels_match_spec", "[style]") {
+    const Theme theme = Theme::dark();
+    const auto& levels = theme.elevation.levels;
+    CHECK(levels[1].offset == Offset{0.0F, 2.0F});
+    CHECK(levels[1].blur == 6.0F);
+    CHECK(levels[1].alpha == 32);
+    CHECK(levels[2].offset == Offset{0.0F, 4.0F});
+    CHECK(levels[2].blur == 12.0F);
+    CHECK(levels[2].alpha == 64);
+    CHECK(levels[3].offset == Offset{0.0F, 8.0F});
+    CHECK(levels[3].blur == 24.0F);
+    CHECK(levels[3].alpha == 80);
+    // 层级数夹取到 [1,3]；0 不经此路径。
+    CHECK(theme.elevation.paramsFor(0.5F).blur == 6.0F);
+    CHECK(theme.elevation.paramsFor(99.0F).blur == 24.0F);
+}
+
+TEST_CASE("style_typography_line_heights_match_spec", "[style]") {
+    const Typography typography = Theme::dark().typography;
+    CHECK(typography.title.fontSize == 20.0F);
+    CHECK(typography.title.lineHeight == Approx(28.0F / 20.0F));
+    CHECK(typography.body.lineHeight == Approx(20.0F / 14.0F));
+    CHECK(typography.label.lineHeight == Approx(20.0F / 14.0F));
+    CHECK(typography.caption.fontSize == 12.0F);
+    CHECK(typography.caption.lineHeight == Approx(18.0F / 12.0F));
+}
+
+TEST_CASE("style_metrics_inline_icon_size_scales_with_font", "[style]") {
+    const Theme theme = Theme::dark();
+    CHECK(theme.metrics.inlineIconSize[0] == 16.0F);
+    CHECK(theme.metrics.inlineIconSize[1] == 16.0F);
+    CHECK(theme.metrics.inlineIconSize[2] == 20.0F);
+    AccessibilitySettings settings;
+    settings.fontScale = 2.0F;
+    const Theme scaled = Theme::fromSettings(settings, true);
+    CHECK(scaled.metrics.inlineIconSize[1] == Approx(32.0F));
+}
+
+TEST_CASE("adapt_platform_theme_rederives_accent_content", "[style]") {
+    const Theme base = Theme::dark();
+    const Theme adapted = lumen::style::adaptPlatformTheme(
+        base, AccessibilitySettings{}, true, Color{74, 160, 106});
+    CHECK(adapted.colors.accent == Color{74, 160, 106});
+    // 透明按钮文字随 accent 重派生（混合方向按模式）。
+    CHECK(adapted.colors.accentContent != base.colors.accentContent);
+    CHECK(adapted.button.outline.content == adapted.colors.accentContent);
+    CHECK(adapted.button.ghost.content == adapted.colors.accentContent);
+    // 重派生后的 accentContent 在页面表面上仍可读。
+    CHECK(contrastRatio(adapted.colors.accentContent,
+                        adapted.colors.pageBackground) >= 4.5);
 }

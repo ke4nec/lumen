@@ -119,6 +119,15 @@ class Renderer {
     virtual void clipRect(core::Rect rect) = 0;
     virtual void drawRect(core::Rect rect, core::Color color,
                           core::CornerRadius radius = {}) = 0;
+    // S1（gui-control-visual-system-task §9.2）：圆角矩形描边——只绘制
+    // 宽度为 width 的环带，内部保持透明（不能以“外矩形填充 + 内矩形
+    // 覆盖”近似，透明背景会得到实心块）。默认降级为整块填充，仅作旧
+    // 后端兼容；CPU/Skia 光栅/GPU 均原生实现。
+    virtual void drawRectStroke(core::Rect rect, core::Color color,
+                                core::CornerRadius radius, float width) {
+        drawRect(rect, color, radius);
+        (void)width;
+    }
     virtual void drawText(TextRun run, core::TextStyle style) = 0;
     virtual void drawImage(ImageId id, core::Rect destination) = 0;
     // M6：矢量图标（归一化折线，stroke）与阴影（Skia blur；CPU 后端

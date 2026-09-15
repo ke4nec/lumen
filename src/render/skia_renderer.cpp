@@ -258,6 +258,45 @@ void SkiaRenderer::drawRect(core::Rect rect, core::Color color,
     impl_->canvas->drawRRect(rounded, impl_->paint);
 }
 
+void SkiaRenderer::drawRectStroke(core::Rect rect, core::Color color,
+                                  core::CornerRadius radius, float width) {
+    if (impl_->canvas == nullptr || color.a == 0 || width <= 0.0F) {
+        return;
+    }
+    const float scale = impl_->deviceScale;
+    // Skia stroke 以路径中心线外扩/内收各 width/2；这里希望环带整体落在
+    // 矩形内部（与 CPU 后端的“内缩内缘”一致），故对矩形内缩 width/2。
+    const float inset = width * 0.5F;
+    const SkRect skRect = SkRect::MakeXYWH(
+        (rect.left() + inset) * scale, (rect.top() + inset) * scale,
+        std::max(0.0F, rect.size.width - 2.0F * inset) * scale,
+        std::max(0.0F, rect.size.height - 2.0F * inset) * scale);
+    impl_->paint.setStyle(SkPaint::kStroke_Style);
+    impl_->paint.setAntiAlias(true);
+    impl_->paint.setColor(toSkColor(color));
+    impl_->paint.setStrokeWidth(width * scale);
+    // 圆角同步内缩 width/2，使环带外缘贴近原始形状（与 CPU 内缩几何
+    // 的中心线一致）。
+    const float minSide = std::min(skRect.width(), skRect.height()) * 0.5F;
+    const float rTL = std::clamp(radius.topLeft - inset, 0.0F, minSide);
+    const float rTR = std::clamp(radius.topRight - inset, 0.0F, minSide);
+    const float rBR = std::clamp(radius.bottomRight - inset, 0.0F, minSide);
+    const float rBL = std::clamp(radius.bottomLeft - inset, 0.0F, minSide);
+    if (rTL <= 0.0F && rTR <= 0.0F && rBR <= 0.0F && rBL <= 0.0F) {
+        impl_->canvas->drawRect(skRect, impl_->paint);
+        return;
+    }
+    const SkVector radii[4] = {
+        SkVector::Make(rTL * scale, rTL * scale),
+        SkVector::Make(rTR * scale, rTR * scale),
+        SkVector::Make(rBR * scale, rBR * scale),
+        SkVector::Make(rBL * scale, rBL * scale),
+    };
+    SkRRect rounded;
+    rounded.setRectRadii(skRect, radii);
+    impl_->canvas->drawRRect(rounded, impl_->paint);
+}
+
 void SkiaRenderer::drawText(TextRun run, core::TextStyle style) {
     if (impl_->canvas == nullptr || run.text.empty() || style.color.a == 0) {
         return;

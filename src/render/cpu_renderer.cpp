@@ -199,18 +199,78 @@ void CpuRenderer::blendPixel(int px, int py, core::Color color) {
     d[3] = static_cast<std::uint8_t>(outA);
 }
 
+namespace {
+
+// 圆角矩形的逻辑空间形状（半径已夹取到半边长）。fill 与 stroke 共用同
+// 一包含判定，边缘/拐角语义一致（像素中心采样）。
+struct RoundedRectShape {
+    core::Rect rect{};
+    float rTL{0.0F};
+    float rTR{0.0F};
+    float rBL{0.0F};
+    float rBR{0.0F};
+    bool round{false};
+};
+
+RoundedRectShape shapeFor(const core::Rect& rect,
+                          const core::CornerRadius& radius) {
+    const float minSide = std::min(rect.size.width, rect.size.height) * 0.5F;
+    RoundedRectShape shape;
+    shape.rect = rect;
+    shape.rTL = std::clamp(radius.topLeft, 0.0F, minSide);
+    shape.rTR = std::clamp(radius.topRight, 0.0F, minSide);
+    shape.rBL = std::clamp(radius.bottomLeft, 0.0F, minSide);
+    shape.rBR = std::clamp(radius.bottomRight, 0.0F, minSide);
+    shape.round = shape.rTL > 0.0F || shape.rTR > 0.0F || shape.rBL > 0.0F ||
+                  shape.rBR > 0.0F;
+    return shape;
+}
+
+bool insideShape(const RoundedRectShape& shape, float lx, float ly) {
+    if (lx < shape.rect.left() || lx >= shape.rect.right() ||
+        ly < shape.rect.top() || ly >= shape.rect.bottom()) {
+        return false;
+    }
+    if (!shape.round) {
+        return true;
+    }
+    float dx = 0.0F;
+    float dy = 0.0F;
+    float r = 0.0F;
+    if (lx < shape.rect.left() + shape.rTL && ly < shape.rect.top() + shape.rTL) {
+        r = shape.rTL;
+        dx = lx - (shape.rect.left() + r);
+        dy = ly - (shape.rect.top() + r);
+    } else if (lx >= shape.rect.right() - shape.rTR &&
+               ly < shape.rect.top() + shape.rTR) {
+        r = shape.rTR;
+        dx = lx - (shape.rect.right() - r);
+        dy = ly - (shape.rect.top() + r);
+    } else if (lx < shape.rect.left() + shape.rBL &&
+               ly >= shape.rect.bottom() - shape.rBL) {
+        r = shape.rBL;
+        dx = lx - (shape.rect.left() + r);
+        dy = ly - (shape.rect.bottom() - r);
+    } else if (lx >= shape.rect.right() - shape.rBR &&
+               ly >= shape.rect.bottom() - shape.rBR) {
+        r = shape.rBR;
+        dx = lx - (shape.rect.right() - r);
+        dy = ly - (shape.rect.bottom() - r);
+    }
+    if (r > 0.0F && dx * dx + dy * dy > r * r) {
+        return false;
+    }
+    return true;
+}
+
+}  // namespace
+
 void CpuRenderer::fillLogicalRect(const core::Rect& rect, core::Color color,
                                   const core::CornerRadius& radius) {
     if (color.a == 0 || rect.size.width <= 0.0F || rect.size.height <= 0.0F) {
         return;
     }
-    const float minSide =
-        std::min(rect.size.width, rect.size.height) * 0.5F;
-    const float rTL = std::clamp(radius.topLeft, 0.0F, minSide);
-    const float rTR = std::clamp(radius.topRight, 0.0F, minSide);
-    const float rBL = std::clamp(radius.bottomLeft, 0.0F, minSide);
-    const float rBR = std::clamp(radius.bottomRight, 0.0F, minSide);
-    const bool round = rTL > 0.0F || rTR > 0.0F || rBL > 0.0F || rBR > 0.0F;
+    const RoundedRectShape shape = shapeFor(rect, radius);
 
     int x0 = std::max(0, toPixel(rect.left()));
     int y0 = std::max(0, toPixel(rect.top()));
@@ -224,38 +284,9 @@ void CpuRenderer::fillLogicalRect(const core::Rect& rect, core::Color color,
             // consistent with the half-open hit-test geometry.
             const float lx = (static_cast<float>(px) + 0.5F) * inv;
             const float ly = (static_cast<float>(py) + 0.5F) * inv;
-            if (lx < rect.left() || lx >= rect.right() || ly < rect.top() ||
-                ly >= rect.bottom()) {
-                continue;
+            if (insideShape(shape, lx, ly)) {
+                blendPixel(px, py, color);
             }
-            if (round) {
-                float dx = 0.0F;
-                float dy = 0.0F;
-                float r = 0.0F;
-                if (lx < rect.left() + rTL && ly < rect.top() + rTL) {
-                    r = rTL;
-                    dx = lx - (rect.left() + r);
-                    dy = ly - (rect.top() + r);
-                } else if (lx >= rect.right() - rTR && ly < rect.top() + rTR) {
-                    r = rTR;
-                    dx = lx - (rect.right() - r);
-                    dy = ly - (rect.top() + r);
-                } else if (lx < rect.left() + rBL &&
-                           ly >= rect.bottom() - rBL) {
-                    r = rBL;
-                    dx = lx - (rect.left() + r);
-                    dy = ly - (rect.bottom() - r);
-                } else if (lx >= rect.right() - rBR &&
-                           ly >= rect.bottom() - rBR) {
-                    r = rBR;
-                    dx = lx - (rect.right() - r);
-                    dy = ly - (rect.bottom() - r);
-                }
-                if (r > 0.0F && dx * dx + dy * dy > r * r) {
-                    continue;
-                }
-            }
-            blendPixel(px, py, color);
         }
     }
 }
@@ -263,6 +294,58 @@ void CpuRenderer::fillLogicalRect(const core::Rect& rect, core::Color color,
 void CpuRenderer::drawRect(core::Rect rect, core::Color color,
                            core::CornerRadius radius) {
     fillLogicalRect(rect, color, radius);
+}
+
+void CpuRenderer::drawRectStroke(core::Rect rect, core::Color color,
+                                 core::CornerRadius radius, float width) {
+    if (color.a == 0 || rect.size.width <= 0.0F || rect.size.height <= 0.0F ||
+        width <= 0.0F) {
+        return;
+    }
+    const RoundedRectShape outer = shapeFor(rect, radius);
+    // 内缘 = 外形内缩 width（圆角同步内缩；与 Skia stroke 几何一致）。
+    // 内缩退化（width ≥ 半边长）时整个外矩形都是环带。
+    const float innerW = rect.size.width - 2.0F * width;
+    const float innerH = rect.size.height - 2.0F * width;
+    bool hasInner = innerW > 0.0F && innerH > 0.0F;
+    RoundedRectShape inner{};
+    if (hasInner) {
+        inner.rect = core::Rect{
+            core::Offset{rect.origin.x + width, rect.origin.y + width},
+            core::Size{innerW, innerH}};
+        core::CornerRadius innerRadius{
+            std::max(0.0F, outer.rTL - width),
+            std::max(0.0F, outer.rTR - width),
+            std::max(0.0F, outer.rBL - width),
+            std::max(0.0F, outer.rBR - width)};
+        const float innerMinSide = std::min(innerW, innerH) * 0.5F;
+        inner.rTL = std::clamp(innerRadius.topLeft, 0.0F, innerMinSide);
+        inner.rTR = std::clamp(innerRadius.topRight, 0.0F, innerMinSide);
+        inner.rBL = std::clamp(innerRadius.bottomLeft, 0.0F, innerMinSide);
+        inner.rBR = std::clamp(innerRadius.bottomRight, 0.0F, innerMinSide);
+        inner.round = inner.rTL > 0.0F || inner.rTR > 0.0F ||
+                      inner.rBL > 0.0F || inner.rBR > 0.0F;
+    }
+
+    int x0 = std::max(0, toPixel(rect.left()));
+    int y0 = std::max(0, toPixel(rect.top()));
+    int x1 = std::min(buffer_.width, toPixel(rect.right()));
+    int y1 = std::min(buffer_.height, toPixel(rect.bottom()));
+    const float inv = 1.0F / deviceScale_;
+
+    for (int py = y0; py < y1; ++py) {
+        for (int px = x0; px < x1; ++px) {
+            const float lx = (static_cast<float>(px) + 0.5F) * inv;
+            const float ly = (static_cast<float>(py) + 0.5F) * inv;
+            if (!insideShape(outer, lx, ly)) {
+                continue;
+            }
+            if (hasInner && insideShape(inner, lx, ly)) {
+                continue;
+            }
+            blendPixel(px, py, color);
+        }
+    }
 }
 
 void CpuRenderer::blendCoveragePixel(int px, int py, core::Color color,
@@ -614,6 +697,10 @@ void CpuRenderer::submit(const RenderCommandList& commands,
                 break;
             case CommandType::DrawRect:
                 drawRect(command.rect, command.color, command.radius);
+                break;
+            case CommandType::DrawRectStroke:
+                drawRectStroke(command.rect, command.color, command.radius,
+                               command.strokeWidth);
                 break;
             case CommandType::DrawText:
                 drawText(command.textRun, command.textStyle);

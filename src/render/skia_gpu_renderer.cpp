@@ -258,6 +258,12 @@ class SkiaGpuRenderer final : public Renderer {
             paintRect(immediateCanvas(), rect, color, radius);
         }
     }
+    void drawRectStroke(core::Rect rect, core::Color color,
+                        core::CornerRadius radius, float width) override {
+        if (immediateCanvas() != nullptr) {
+            paintRectStroke(immediateCanvas(), rect, color, radius, width);
+        }
+    }
     void drawText(TextRun run, core::TextStyle style) override {
         if (immediateCanvas() != nullptr) {
             paintText(immediateCanvas(), run, style);
@@ -383,6 +389,10 @@ class SkiaGpuRenderer final : public Renderer {
             case CommandType::DrawRect:
                 paintRect(canvas, command.rect, command.color, command.radius);
                 break;
+            case CommandType::DrawRectStroke:
+                paintRectStroke(canvas, command.rect, command.color,
+                                command.radius, command.strokeWidth);
+                break;
             case CommandType::DrawText:
                 paintText(canvas, command.textRun, command.textStyle);
                 break;
@@ -414,6 +424,45 @@ class SkiaGpuRenderer final : public Renderer {
         const float rTR = std::clamp(radius.topRight, 0.0F, minSide);
         const float rBR = std::clamp(radius.bottomRight, 0.0F, minSide);
         const float rBL = std::clamp(radius.bottomLeft, 0.0F, minSide);
+        if (rTL <= 0.0F && rTR <= 0.0F && rBR <= 0.0F && rBL <= 0.0F) {
+            canvas->drawRect(skRect, paint);
+            return;
+        }
+        const SkVector radii[4] = {
+            SkVector::Make(rTL * scale, rTL * scale),
+            SkVector::Make(rTR * scale, rTR * scale),
+            SkVector::Make(rBR * scale, rBR * scale),
+            SkVector::Make(rBL * scale, rBL * scale),
+        };
+        SkRRect rounded;
+        rounded.setRectRadii(skRect, radii);
+        canvas->drawRRect(rounded, paint);
+    }
+
+    // S1：圆角描边（与 SkiaRenderer 光栅后端同几何：矩形/圆角内缩
+    // width/2，环带落在原矩形内部）。
+    void paintRectStroke(SkCanvas* canvas, const core::Rect& rect,
+                         core::Color color, const core::CornerRadius& radius,
+                         float width) {
+        if (color.a == 0 || width <= 0.0F) {
+            return;
+        }
+        const float scale = deviceScale_;
+        const float inset = width * 0.5F;
+        const SkRect skRect = SkRect::MakeXYWH(
+            (rect.left() + inset) * scale, (rect.top() + inset) * scale,
+            std::max(0.0F, rect.size.width - 2.0F * inset) * scale,
+            std::max(0.0F, rect.size.height - 2.0F * inset) * scale);
+        SkPaint paint;
+        paint.setStyle(SkPaint::kStroke_Style);
+        paint.setAntiAlias(true);
+        paint.setColor(toSkColor(color));
+        paint.setStrokeWidth(width * scale);
+        const float minSide = std::min(skRect.width(), skRect.height()) * 0.5F;
+        const float rTL = std::clamp(radius.topLeft - inset, 0.0F, minSide);
+        const float rTR = std::clamp(radius.topRight - inset, 0.0F, minSide);
+        const float rBR = std::clamp(radius.bottomRight - inset, 0.0F, minSide);
+        const float rBL = std::clamp(radius.bottomLeft - inset, 0.0F, minSide);
         if (rTL <= 0.0F && rTR <= 0.0F && rBR <= 0.0F && rBL <= 0.0F) {
             canvas->drawRect(skRect, paint);
             return;

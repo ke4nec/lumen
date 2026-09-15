@@ -119,7 +119,8 @@ TEST_CASE("layout_engine_intrinsic_size_and_baseline", "[widgets][layout]") {
     const Size intrinsic =
         LayoutEngine::intrinsicSize(makeText("hello"), Constraints::unbounded());
     CHECK(intrinsic.width == 14.0F * 0.6F * 5.0F);
-    CHECK(intrinsic.height == 14.0F * 1.2F);
+    // S1：body 行高倍数 20/14（§4.5）。
+    CHECK(intrinsic.height == 20.0F);
 
     // Column 内第一个文本提供 baseline。
     Widget ui = makeColumn({

@@ -111,10 +111,17 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.showScrollbar = widget.showScrollbar;
     node.elevation = widget.elevation;
     if (widget.elevation > 0.0F) {
+        // §4.5 阴影分级：层级数（1..3）查表得到 offset/blur/alpha；
+        // 高对比模式各级 alpha 为 0（不产生阴影命令）。
         const style::ElevationTokens& elevation = styleContext.theme.elevation;
-        node.shadowColor = elevation.shadowColor;
-        node.shadowOffset = elevation.shadowOffset;
-        node.shadowBlur = elevation.shadowBlur;
+        const style::ElevationShadowParams& params =
+            elevation.paramsFor(widget.elevation);
+        node.shadowColor = core::Color{elevation.shadowColor.r,
+                                       elevation.shadowColor.g,
+                                       elevation.shadowColor.b,
+                                       params.alpha};
+        node.shadowOffset = params.offset;
+        node.shadowBlur = params.blur;
     }
     if (widget.showScrollbar &&
         (widget.type == WidgetType::ScrollView ||

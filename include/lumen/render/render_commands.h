@@ -43,6 +43,8 @@ enum class CommandType : std::uint8_t {
     // M6（自用路线图）：视觉系统 V3 扩展。
     DrawIcon,    // 矢量图标（归一化折线组，stroke）
     DrawShadow,  // 阴影（Skia blur；CPU 后端以 token 边框降级）
+    // S1（控件视觉系统 §9.2）：圆角描边（环带；内部透明）。
+    DrawRectStroke,
 };
 
 // 单条绘制命令。字段并集避免堆分配 variant；`bounds` 是命令影响的逻辑
@@ -94,6 +96,18 @@ class RenderCommandList {
         command.rect = rect;
         command.color = color;
         command.radius = radius;
+        command.bounds = rect;
+        command.hasBounds = true;
+    }
+
+    // S1：圆角描边命令（§9.2）。影响区域仍是整个 rect（环带在矩形内）。
+    void drawRectStroke(core::Rect rect, core::Color color,
+                        core::CornerRadius radius, float width) {
+        RenderCommand& command = push(CommandType::DrawRectStroke);
+        command.rect = rect;
+        command.color = color;
+        command.radius = radius;
+        command.strokeWidth = width;
         command.bounds = rect;
         command.hasBounds = true;
     }
@@ -183,6 +197,7 @@ class RenderCommandList {
         for (const auto& command : commands_) {
             switch (command.type) {
                 case CommandType::DrawRect:
+                case CommandType::DrawRectStroke:
                 case CommandType::DrawText:
                 case CommandType::DrawImage:
                 case CommandType::DrawIcon:

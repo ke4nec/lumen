@@ -51,6 +51,10 @@ void Renderer::submit(const RenderCommandList& commands, const FrameInfo& info) 
             case CommandType::DrawRect:
                 drawRect(command.rect, command.color, command.radius);
                 break;
+            case CommandType::DrawRectStroke:
+                drawRectStroke(command.rect, command.color, command.radius,
+                               command.strokeWidth);
+                break;
             case CommandType::DrawText:
                 drawText(command.textRun, command.textStyle);
                 break;

@@ -438,3 +438,70 @@ TEST_CASE("cpu_preserve_erases_inside_damage_to_clear_color", "[render]") {
     CHECK(isClearColor(renderer.pixels(), 25, 20));
     CHECK(pixelAt(renderer.pixels(), 75, 40) == Color::fromRGBA(0, 0, 255));
 }
+
+// --- S1（gui-control-visual-system-task §9.2）：描边命令与透明表面 ---
+
+TEST_CASE("cpu_renderer_rect_stroke_leaves_interior_transparent", "[render]") {
+    CpuRenderer renderer;
+    renderer.beginFrame(Size{100.0F, 80.0F});
+    // 红色页面底，其上画 4 px 蓝色描边；内部必须保持页面底色（不是蓝色
+    // 实心块），矩形外也不受影响。
+    renderer.drawRect(Rect::fromXYWH(0.0F, 0.0F, 100.0F, 80.0F),
+                      Color::fromRGBA(255, 0, 0));
+    renderer.drawRectStroke(Rect::fromXYWH(10.0F, 10.0F, 40.0F, 30.0F),
+                            Color::fromRGBA(0, 0, 255), CornerRadius::zero(),
+                            4.0F);
+    renderer.endFrame();
+    const auto& px = renderer.pixels();
+    CHECK(pixelAt(px, 30, 25) == Color::fromRGBA(255, 0, 0));   // 内部
+    CHECK(pixelAt(px, 11, 11) == Color::fromRGBA(0, 0, 255));   // 左上环带
+    CHECK(pixelAt(px, 49, 39) == Color::fromRGBA(0, 0, 255));   // 右下环带
+    CHECK(pixelAt(px, 5, 5) == Color::fromRGBA(255, 0, 0));     // 外部
+}
+
+TEST_CASE("cpu_renderer_rect_stroke_rounded_corners_stay_inside", "[render]") {
+    CpuRenderer renderer;
+    renderer.beginFrame(Size{100.0F, 80.0F});
+    renderer.drawRect(Rect::fromXYWH(0.0F, 0.0F, 100.0F, 80.0F),
+                      Color::fromRGBA(255, 0, 0));
+    // 圆角描边：拐角外部的页面底色不受影响（不越界）。
+    renderer.drawRectStroke(Rect::fromXYWH(20.0F, 20.0F, 40.0F, 40.0F),
+                            Color::fromRGBA(0, 0, 255),
+                            CornerRadius::all(10.0F), 2.0F);
+    renderer.endFrame();
+    const auto& px = renderer.pixels();
+    CHECK(pixelAt(px, 21, 21) == Color::fromRGBA(255, 0, 0));  // 圆角挖空区
+    CHECK(pixelAt(px, 40, 20) == Color::fromRGBA(0, 0, 255));  // 顶边直段环带
+    CHECK(pixelAt(px, 40, 40) == Color::fromRGBA(255, 0, 0));  // 内部
+}
+
+TEST_CASE("painter_outline_button_stays_transparent_over_page", "[render]") {
+    // Outline 变体按钮放在有色页面上：内部保持页面颜色，不被 borderStrong
+    // 填充（§9.2 实心块回归）。
+    lumen::core::Widget button;
+    button.type = lumen::core::WidgetType::Button;
+    button.text = "";
+    button.buttonVariant = lumen::core::ButtonVariant::Outline;
+    button.width = 40.0F;
+    button.height = 20.0F;
+
+    lumen::core::Widget page;
+    page.type = lumen::core::WidgetType::Container;
+    page.color = Color::fromRGBA(255, 0, 0);
+    page.width = 100.0F;
+    page.height = 80.0F;
+    page.children = {button};
+
+    const auto root = lumen::layout::LayoutEngine::layout(
+        page, lumen::core::Constraints::unbounded());
+    CpuRenderer renderer;
+    renderer.beginFrame(Size{100.0F, 80.0F});
+    lumen::render::paintScene(renderer, root, {});
+    renderer.endFrame();
+    const auto& px = renderer.pixels();
+    // 按钮内部中心 = 页面红；顶边直段 = borderStrong 描边（角部被圆角
+    // 挖空，取 x=20 避开半径 6 的拐角）。
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    CHECK(pixelAt(px, 20, 10) == Color::fromRGBA(255, 0, 0));
+    CHECK(pixelAt(px, 20, 0) == theme.colors.borderStrong);
+}
