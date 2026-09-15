@@ -237,6 +237,33 @@ RadioTokens radioTokensFrom(const ColorScheme& colors) {
     return tokens;
 }
 
+SliderTokens sliderTokensFrom(const ColorScheme& colors) {
+    SliderTokens tokens;
+    // §6.5：未完成轨道 borderStrong、完成轨道 accent；Thumb 表面 +
+    // accent 轮廓。
+    tokens.trackRemaining = colors.borderStrong;
+    tokens.trackActive = colors.accent;
+    tokens.thumbFill = colors.surfaceElevated;
+    tokens.thumbOutline = colors.accent;
+    return tokens;
+}
+
+ProgressBarTokens progressBarTokensFrom(const ColorScheme& colors) {
+    ProgressBarTokens tokens;
+    tokens.track = colors.borderDefault;
+    tokens.fill = colors.accent;
+    return tokens;
+}
+
+TabsTokens tabsTokensFrom(const ColorScheme& colors) {
+    TabsTokens tokens;
+    tokens.indicator = colors.accent;
+    tokens.selectedContent = colors.accentContent;
+    tokens.unselectedContent = colors.contentSecondary;
+    tokens.separator = colors.borderDefault;
+    return tokens;
+}
+
 DialogTokens dialogTokensFrom(const ColorScheme& colors,
                               const Metrics& metrics) {
     DialogTokens tokens;
@@ -247,16 +274,11 @@ DialogTokens dialogTokensFrom(const ColorScheme& colors,
 }
 
 ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors) {
+    // S3（§7.2）：rest 取 borderStrong 实色。
     ScrollbarTokens tokens;
-    tokens.rest = core::Color{colors.contentSecondary.r,
-                              colors.contentSecondary.g,
-                              colors.contentSecondary.b, 120};
-    tokens.hovered = core::Color{colors.borderStrong.r,
-                                 colors.borderStrong.g,
-                                 colors.borderStrong.b, 180};
-    tokens.dragged = core::Color{colors.borderStrong.r,
-                                 colors.borderStrong.g,
-                                 colors.borderStrong.b, 230};
+    tokens.rest = colors.borderStrong;
+    tokens.hovered = colors.borderStrong;
+    tokens.dragged = colors.borderStrong;
     return tokens;
 }
 
@@ -529,6 +551,9 @@ Theme baseTheme(bool darkMode, ControlDensity density,
     theme.checkbox = checkboxTokensFrom(theme.colors);
     theme.switchControl = switchTokensFrom(theme.colors);
     theme.radio = radioTokensFrom(theme.colors);
+    theme.slider = sliderTokensFrom(theme.colors);
+    theme.progressBar = progressBarTokensFrom(theme.colors);
+    theme.tabs = tabsTokensFrom(theme.colors);
     theme.dialog = dialogTokensFrom(theme.colors, theme.metrics);
     theme.scrollbar = scrollbarTokensFrom(theme.colors);
     theme.direction = direction;
@@ -569,6 +594,10 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     theme.checkbox = checkboxTokensFrom(theme.colors);
     theme.switchControl = switchTokensFrom(theme.colors);
     theme.radio = radioTokensFrom(theme.colors);
+    theme.slider = sliderTokensFrom(theme.colors);
+    theme.progressBar = progressBarTokensFrom(theme.colors);
+    theme.tabs = tabsTokensFrom(theme.colors);
+    theme.scrollbar = scrollbarTokensFrom(theme.colors);
     theme.metrics.focusRingWidth = 3.0F;
     theme.metrics.controlBorderWidth = 2.0F;
 }

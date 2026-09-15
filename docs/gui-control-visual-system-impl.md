@@ -135,3 +135,30 @@
 - 兼容性或视觉基准变更：Checkbox/Radio/Switch 几何与外观显著变化（槽位预留使行宽 +3~5px）；Radio 深浅色从前景色改 accent/borderStrong；Button 图标盒 14→16、线宽 1.4→1.5；TextField hover/ReadOnly 表面变化；Gallery 帧哈希基线更新。
 - 未验证事项与预留能力：真实窗口人工视觉验收推迟至 S5；Checkbox 三态、Switch knob 动画、控件标签换行未做（见缺口）。
 - 下一阶段及前置条件：S3 选择、导航与滚动——Slider/ProgressBar 专用 token 与端点预留、Dropdown 值行与字段同源、Tabs 上下文样式、ScrollView/ListView/VirtualList 行规格与 Scrollbar token 消费。
+
+---
+
+## S3 选择、导航与滚动
+
+- 阶段 / 日期 / 源码提交：S3 / 2026-09-15 / 基线 `8945cfa`（S2 提交）
+- 已完成控件与规格章节：§6.5 Slider、§6.6 ProgressBar、§6.7 Dropdown（值行 + 浮层菜单）、§6.8 Tabs、§7.2 ScrollView/ListView/VirtualList 与 Scrollbar。
+- 新增或调整的 token / ResolvedStyle / 公共 API：
+  - 新增 `SliderTokens` / `ProgressBarTokens` / `TabsTokens`；`ScrollbarTokens` 重定义（rest=borderStrong 实色、+thumbWidth 4/minLength 24/inset 4；hovered/dragged 占位为预留交互）；全部接入 baseTheme/HC/adaptPlatformTheme/scaleComponentSizes 重建链。
+  - 新增 `SliderResolvedStyle`（trackHeight 4、thumbDiameter 16/18/22、thumbBorderWidth 2、trackInset=r+focusRingWidth+1）、`ProgressBarResolvedStyle`（trackHeight 4/6/8）、`TabsResolvedStyle`（indicator/separator/两态文字色）；Dropdown 值行复用 `ButtonResolvedStyle`（chrome=字段同源 + Chevron 槽位字段）。
+  - resolver 新增 Slider/ProgressBar/Tabs/Dropdown 专用分支（§2.4 缺口 2 消除：Radio(S2)/Slider/ProgressBar/Dropdown/Tabs 全部脱离容器回退）。
+  - `RenderNode` +`scrollbarColor/scrollbarThumbWidth/scrollbarMinLength`（布局折叠，painter 不再乘 alpha）。
+- 行为变更：
+  - Slider：端点恒定预留 r+f（值 0/100 时 Thumb 与焦点环均在节点内；可用宽不足时轨道长度 0 并居中）；未完成 borderStrong/完成 accent；Thumb=surfaceElevated+accent 轮廓（hover/focused 轮廓→focusRing、pressed 叠加、disabled 全链禁用色）；**指针→值与绘制共用 trackInset 区间**（interaction.cpp 同步改）。
+  - ProgressBar：高度分档 4/6/8、圆角=高一半、填充夹取在轨道内（小于圆角直径时圆角同步收缩）；无交互状态。
+  - Dropdown 值行：surfaceSunken + borderStrong + 同高/圆角/padding/最小宽；尾随 Chevron 取 inlineIconSize 档位、单独预留；展开方向由应用经 icon 声明（Gallery 已接 ChevronUp 翻转）。
+  - Dropdown 菜单：L2 阴影 + 1px borderDefault + radius 8；窗口安全边距 8、锚点间隔 4、内部 padding 4；选项全部 Ghost（hover 状态面/键盘焦点环表达活动项），当前值 Tonal + 尾随 Check；菜单高度 min(320, 可用)，超长进入 ScrollView 且键盘高亮滚入可见区。
+  - Tabs：布局期上下文解析（子按钮改写为 Ghost + 选中 accentContent/未选 contentSecondary + 水平 padding 12 + 行间 gap 4）；painter 绘制底部分隔线与选中项 2px accent 指示条；Gallery 不再需要手写页签颜色。
+  - Scrollbar：Thumb 实色 borderStrong、可视宽 4、最小长 24（短视口夹取不越界）、上下 inset 4、圆角=可视宽一半。
+- 源码审查发现、修复与仍存缺口：
+  - 发现并修复：ProgressBar 测试最初假设 tight 约束下显式 120 宽生效，实际按盒模型被 tight 夹取到 200（既有行为，测试期望修正）；Slider Thumb 描边宽最初硬编码 2，改为携带 `thumbBorderWidth`。
+  - 仍存缺口：Scrollbar hovered/dragged/auto-hide 为 §11 预留（常显 rest）；列表双行 56 等行规格属应用组合（Gallery 演示）；Dropdown 菜单滚动偏移按统一行高推导（行高可变时需按实测 extent 修正——当前选项行等高，记录为已知近似）。
+- 状态/主题/尺寸样本及截图链接：Gallery headless 全路由冒烟通过（下拉/页签/滑杆联动路径全绿）；新增端点/区间映射、Tier 高度、分隔线+指示条、值行 chrome、长菜单滚动/边界共 6 个测试。
+- 验证命令、测试结果、真实平台/后端/字体：CPU Debug 444/444；Skia Release 456/456；GPU Release 456/456；Windows 11 / VS 2026。
+- 兼容性或视觉基准变更：Slider/ProgressBar/Tabs/Dropdown/滚动条外观全部按 §6.5–§6.8/§7.2 重制（旧 painter 局部常量 8.0/0.35/0.25/0.75/1.6/24/1.4/16/0.9/6.0/8.0 全部移除）；Gallery 帧哈希基线更新。
+- 未验证事项与预留能力：真实窗口人工验收推迟至 S5；Scrollbar 交互态、Radio 组、Dropdown 禁用项/分组/搜索为 §11 预留。
+- 下一阶段及前置条件：S4 浮层与组合——Tooltip（caption/surfaceElevated/边界避让）、Image 占位（surfaceSunken + IconId::Image）、Form/Dialog/Navigator 外观与生命周期、ThemeScope/FocusScope 核对。

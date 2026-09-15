@@ -470,10 +470,38 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         case WidgetType::ScrollView:
         case WidgetType::ListView:
         case WidgetType::VirtualList:  // M3：滚动视口同源绘制（裁剪/表面）
-        case WidgetType::Tabs:
         case WidgetType::ThemeScope:
             paintSurface(sink, rect, common);
             break;
+        case WidgetType::Tabs: {
+            // S3（§6.8）：平面页签行——底部分隔线 + 选中项 2px 指示条；
+            // 子按钮（Ghost + 两态前景）经 children 正常绘制。
+            const auto* tabs =
+                std::get_if<core::TabsResolvedStyle>(
+                    &styleSource.component);
+            if (tabs != nullptr && tabs->separator.a > 0) {
+                sink.drawRect(
+                    Rect{Offset{origin.x,
+                                origin.y + node.size.height -
+                                    tabs->separatorHeight},
+                         Size{node.size.width, tabs->separatorHeight}},
+                    tabs->separator);
+            }
+            if (tabs != nullptr && tabs->indicator.a > 0) {
+                for (const auto& child : node.children) {
+                    if (!child.selected) {
+                        continue;
+                    }
+                    sink.drawRect(
+                        Rect{Offset{origin.x + child.offset.x,
+                                    origin.y + node.size.height -
+                                        tabs->indicatorHeight},
+                             Size{child.size.width, tabs->indicatorHeight}},
+                        tabs->indicator);
+                }
+            }
+            break;
+        }
         case WidgetType::Grid:
             paintSurface(sink, rect, common);
             break;
@@ -523,53 +551,112 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             }
             break;
         }
-        case WidgetType::Slider:
-        case WidgetType::ProgressBar: {
-            // M6：轨道 + 填充/滑块（0..100；bind 控件经 text，未绑定用
-            // value；夹取 [0,100]）。色由前景派生（token 链）。
+        case WidgetType::Slider: {
+            // S3（§6.5）：细轨道（4px）+ 独立 Thumb（surfaceElevated +
+            // accent 轮廓）；端点恒定预留 r+f，值 0/100 时 Thumb 与焦点
+            // 环都在节点内；不足以容纳预留时轨道长度夹取为 0 并居中。
+            const auto* slider =
+                std::get_if<core::SliderResolvedStyle>(
+                    &styleSource.component);
+            if (slider == nullptr) {
+                break;
+            }
             const std::string& raw = node.text;
             const float position = std::clamp(
                 static_cast<float>(std::atoi(raw.c_str())), 0.0F, 100.0F);
-            const float trackHeight =
-                std::max(8.0F, node.size.height * 0.35F);
+            const float r = slider->thumbDiameter * 0.5F;
+            const float trackHeight = slider->trackHeight;
             const float trackY =
                 origin.y + (node.size.height - trackHeight) * 0.5F;
-            Color track = common.foreground;
-            track.a = static_cast<std::uint8_t>(
-                std::lround(static_cast<float>(track.a) * 0.25F));
-            Color fill = common.foreground;
-            fill.a = static_cast<std::uint8_t>(
-                std::lround(static_cast<float>(fill.a) * 0.75F));
-            const float fillWidth =
-                node.size.width * position / 100.0F;
-            sink.drawRect(Rect{Offset{origin.x, trackY},
-                               Size{node.size.width, trackHeight}},
-                          track, CornerRadius::all(trackHeight * 0.5F));
-            if (node.type == WidgetType::ProgressBar) {
-                if (fillWidth > 0.5F) {
+            const float usable =
+                node.size.width - 2.0F * slider->trackInset;
+            const float trackStart = origin.x + slider->trackInset;
+            const float trackLength = std::max(0.0F, usable);
+            // 不足以容纳两侧预留时轨道长度为 0，Thumb 居中（§6.5）。
+            const float centerX =
+                usable > 0.0F
+                    ? trackStart + trackLength * position / 100.0F
+                    : origin.x + node.size.width * 0.5F;
+            // 未完成/完成轨道（可用宽为 0 时只画 Thumb，居中不越界）。
+            if (trackLength > 0.0F) {
+                sink.drawRect(
+                    Rect{Offset{trackStart, trackY},
+                         Size{trackLength, trackHeight}},
+                    slider->trackRemaining,
+                    CornerRadius::all(trackHeight * 0.5F));
+                const float fillWidth = std::max(
+                    0.0F, centerX - r - trackStart);
+                if (fillWidth > 0.0F) {
                     sink.drawRect(
-                        Rect{Offset{origin.x, trackY},
-                             Size{fillWidth, trackHeight}}, fill,
+                        Rect{Offset{trackStart, trackY},
+                             Size{fillWidth, trackHeight}},
+                        slider->trackActive,
                         CornerRadius::all(trackHeight * 0.5F));
                 }
-            } else {
-                // Slider：填充到 thumb + 圆形 thumb。
-                const float thumb = trackHeight * 1.6F;
-                const float thumbX =
-                    origin.x + fillWidth - thumb * 0.5F;
-                if (fillWidth > 0.5F) {
-                    sink.drawRect(
-                        Rect{Offset{origin.x, trackY},
-                             Size{std::max(0.0F, thumbX - origin.x),
-                                  trackHeight}},
-                        fill, CornerRadius::all(trackHeight * 0.5F));
-                }
+            }
+            // Thumb：焦点环（预留区内）→ 轮廓 → 内部表面。
+            const float thumbTop =
+                origin.y + (node.size.height - slider->thumbDiameter) * 0.5F;
+            if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
+                const float ringBox =
+                    slider->thumbDiameter + 2.0F * common.focusWidth;
+                const float ringTop =
+                    origin.y + (node.size.height - ringBox) * 0.5F;
+                sink.drawRectStroke(
+                    Rect{Offset{centerX - ringBox * 0.5F, ringTop},
+                         Size{ringBox, ringBox}},
+                    common.focusRing, CornerRadius::all(ringBox * 0.5F),
+                    common.focusWidth);
+            }
+            if (slider->thumbOutline.a > 0) {
+                sink.drawRectStroke(
+                    Rect{Offset{centerX - r, thumbTop},
+                         Size{slider->thumbDiameter, slider->thumbDiameter}},
+                    slider->thumbOutline, CornerRadius::all(r),
+                    slider->thumbBorderWidth);
+            }
+            const float fillInset = slider->thumbBorderWidth;
+            const float fillBox =
+                std::max(0.0F, slider->thumbDiameter - 2.0F * fillInset);
+            if (fillBox > 0.0F) {
                 sink.drawRect(
-                    Rect{Offset{std::max(origin.x, thumbX),
-                                origin.y +
-                                    (node.size.height - thumb) * 0.5F},
-                         Size{thumb, thumb}},
-                    common.foreground, CornerRadius::all(thumb * 0.5F));
+                    Rect{
+                        Offset{centerX - fillBox * 0.5F, thumbTop + fillInset},
+                        Size{fillBox, fillBox}},
+                    slider->thumbFill,
+                    CornerRadius::all(fillBox * 0.5F));
+            }
+            break;
+        }
+        case WidgetType::ProgressBar: {
+            // S3（§6.6）：高度分档（4/6/8），圆角 = 高度一半；填充不超过
+            // 轨道（小于圆角直径时圆角同步夹取）。无交互状态。
+            const auto* bar = std::get_if<core::ProgressBarResolvedStyle>(
+                &styleSource.component);
+            if (bar == nullptr) {
+                break;
+            }
+            const std::string& raw = node.text;
+            const float position = std::clamp(
+                static_cast<float>(std::atoi(raw.c_str())), 0.0F, 100.0F);
+            const float trackHeight = bar->trackHeight;
+            const float trackY =
+                origin.y + (node.size.height - trackHeight) * 0.5F;
+            sink.drawRect(
+                Rect{Offset{origin.x, trackY},
+                     Size{node.size.width, trackHeight}},
+                bar->track, CornerRadius::all(trackHeight * 0.5F));
+            const float fillWidth =
+                node.size.width * position / 100.0F;
+            if (fillWidth > 0.5F) {
+                // 小于圆角直径的填充也画不到轨道外。
+                const float fillRadius =
+                    std::min(trackHeight * 0.5F, fillWidth * 0.5F);
+                sink.drawRect(
+                    Rect{Offset{origin.x, trackY},
+                         Size{std::min(fillWidth, node.size.width),
+                              trackHeight}},
+                    bar->fill, CornerRadius::all(fillRadius));
             }
             break;
         }
@@ -643,26 +730,56 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             break;
         }
         case WidgetType::Dropdown: {
-            // M11：值行（按钮表面 + 文本 + ChevronDown 图标）；收起叶子，
-            // 选项经框架级 overlay 浮动菜单呈现（不再内嵌展开）。
-            const float lineHeight = lineHeightOf(common.text);
+            // S3（§6.7）：值行与字段同源 chrome（surfaceSunken +
+            // borderStrong 轮廓、同高/圆角/padding）；尾随 Chevron 使用
+            // inlineIconSize 档位并单独预留空间（不与文字重叠）；展开
+            // 方向由应用经 icon 声明（默认 ChevronDown，可设 ChevronUp）。
+            const auto* dropdown =
+                std::get_if<core::ButtonResolvedStyle>(
+                    &styleSource.component);
             const Rect valueRow{origin, node.size};
             paintControlSurface(sink, valueRow, common);
             {
                 const ScopedClip<Sink> clip{sink, valueRow};
-                paintTextAt(sink, node.text, common.text,
-                            Offset{origin.x + 8.0F, origin.y});
-                const float iconSize = lineHeight;
-                const auto& polylines =
-                    core::iconPolylines(core::IconId::ChevronDown);
+                const float chevron =
+                    dropdown != nullptr ? dropdown->iconSize : 16.0F;
+                const float stroke =
+                    dropdown != nullptr ? dropdown->iconStroke
+                                        : node.iconStrokeWidth;
+                const float chevronGap =
+                    dropdown != nullptr ? dropdown->iconGap : 6.0F;
+                // 文本可用区 = 值行 - padding×2 - Chevron 槽位。
+                const float padX = common.padding.left;
+                const float textMax = std::max(
+                    0.0F, node.size.width - 2.0F * padX - chevron -
+                              chevronGap);
+                TextStyle valueStyle = common.text;
+                valueStyle.maxLines = 1;
+                valueStyle.overflow = core::TextOverflow::Ellipsis;
+                const auto layout =
+                    node.text.empty()
+                        ? text::TextLayoutResult{}
+                        : layoutText(node.text, valueStyle, textMax);
+                const float lineHeight = lineHeightOf(common.text);
+                paintLines(sink, layout, common.text,
+                           Offset{origin.x + padX,
+                                  origin.y + (node.size.height - lineHeight) *
+                                                 0.5F});
+                const auto chevronId =
+                    static_cast<core::IconId>(node.icon) ==
+                            core::IconId::None
+                        ? core::IconId::ChevronDown
+                        : static_cast<core::IconId>(node.icon);
+                const auto& polylines = core::iconPolylines(chevronId);
                 if (!polylines.empty()) {
                     sink.drawIcon(
                         polylines,
-                        Rect{Offset{origin.x + node.size.width -
-                                        iconSize - 6.0F,
-                                    origin.y},
-                             Size{iconSize, iconSize}},
-                        common.foreground, node.iconStrokeWidth);
+                        Rect{Offset{origin.x + node.size.width - padX -
+                                        chevron,
+                                    origin.y +
+                                        (node.size.height - chevron) * 0.5F},
+                             Size{chevron, chevron}},
+                        common.foreground, stroke);
                 }
             }
             break;
@@ -895,34 +1012,40 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         for (const auto& child : node.children) {
             paintNode(sink, child, origin, options, nodeAlpha);
         }
-        // M6：滚动条（ScrollbarTokens 厚度经布局折算；thumb 几何出自
-        // scrollOffset/scrollExtent，色为前景半透明派生）。
+        // S3（§7.2）：滚动条——Thumb 实色经 RenderNode 传递（专用 token，
+        // 不再对前景乘 alpha）；可视宽 4、最小长 24、上下 inset 4、圆角
+        // = 可视宽一半；长度按 viewport/content 比例并在
+        // [minLength, trackLength] 夹取（短视口不越界）。
         if (node.scrollbarThickness > 0.0F &&
-            node.scrollExtent > 0.0F) {
-            const float trackHeight =
-                node.size.height - node.scrollbarThickness;
+            node.scrollExtent > 0.0F && node.scrollbarColor.a > 0) {
+            const float inset = node.scrollbarThickness -
+                                        node.scrollbarThumbWidth;
+            const float trackTop = origin.y + inset;
+            const float trackLength = std::max(
+                0.0F, node.size.height - 2.0F * inset);
             const float fraction =
                 node.size.height / (node.size.height + node.scrollExtent);
-            const float thumbHeight = std::max(
-                node.scrollbarThickness * 3.0F, trackHeight * fraction);
-            const float scrollable = std::max(
-                0.0F, trackHeight - thumbHeight);
-            const float progress = node.scrollExtent > 0.0F
-                                       ? node.scrollOffset /
-                                             node.scrollExtent
-                                       : 0.0F;
-            const float thumbY =
-                node.scrollbarThickness * 0.5F + progress * scrollable;
-            Color thumb = common.foreground;
-            thumb.a = static_cast<std::uint8_t>(std::lround(
-                static_cast<float>(thumb.a) * 0.45F));
-            sink.drawRect(Rect{Offset{origin.x + node.size.width -
-                                          node.scrollbarThickness,
-                                      origin.y + thumbY},
-                               Size{node.scrollbarThickness * 0.5F,
-                                    thumbHeight}},
-                          thumb,
-                          CornerRadius::all(node.scrollbarThickness * 0.25F));
+            // [minLength, trackLength] 夹取：短视口时最小值不越界。
+            const float thumbHeight = std::min(
+                std::max(trackLength * fraction, node.scrollbarMinLength),
+                trackLength);
+            if (thumbHeight > 0.0F && trackLength > 0.0F) {
+                const float scrollable = trackLength - thumbHeight;
+                const float progress = node.scrollExtent > 0.0F
+                                           ? node.scrollOffset /
+                                                 node.scrollExtent
+                                           : 0.0F;
+                const float thumbY = trackTop + progress * scrollable;
+                sink.drawRect(
+                    Rect{Offset{origin.x + node.size.width -
+                                    node.scrollbarThickness +
+                                    (node.scrollbarThickness -
+                                     node.scrollbarThumbWidth) * 0.5F,
+                                thumbY},
+                         Size{node.scrollbarThumbWidth, thumbHeight}},
+                    node.scrollbarColor,
+                    CornerRadius::all(node.scrollbarThumbWidth * 0.5F));
+            }
         }
     } else {
         for (const auto& child : node.children) {

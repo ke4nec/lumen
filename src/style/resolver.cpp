@@ -386,6 +386,157 @@ ResolvedStyle resolveSwitch(const Widget& widget, const StyleContext& context,
     return resolved;
 }
 
+ResolvedStyle resolveSlider(const Widget& widget, const StyleContext& context,
+                            const WidgetState& state) {
+    const Theme& theme = context.theme;
+    const std::uint8_t index = sizeIndexFor(theme, widget.controlSize);
+    const SliderTokens& tokens = theme.slider;
+
+    core::SliderResolvedStyle slider;
+    CommonResolvedStyle& common = slider.common;
+    common.background = Color::transparent();
+    common.foreground = theme.colors.contentPrimary;
+    common.focusRing = theme.colors.focusRing;
+    common.selection = theme.colors.selectionBackground;
+    common.text = theme.typography.label;
+    common.text.color = common.foreground;
+    slider.trackRemaining = tokens.trackRemaining;
+    slider.trackActive = tokens.trackActive;
+    slider.thumbFill = tokens.thumbFill;
+    slider.thumbOutline = tokens.thumbOutline;
+    slider.trackHeight = tokens.trackHeight;
+    slider.thumbDiameter = tokens.thumbDiameter[index];
+    slider.thumbBorderWidth = tokens.thumbBorderWidth;
+    // 端点预留（§6.5）：thumb 半径 + 焦点保护宽，是否聚焦不重定位。
+    slider.trackInset =
+        slider.thumbDiameter * 0.5F + theme.metrics.focusRingWidth + 1.0F;
+
+    if (state.disabled) {
+        slider.trackRemaining = theme.colors.disabledContent;
+        slider.trackActive = theme.colors.disabledContent;
+        slider.thumbFill = theme.colors.disabledBackground;
+        slider.thumbOutline = theme.colors.disabledContent;
+        common.foreground = theme.colors.disabledContent;
+        common.text.color = common.foreground;
+    } else {
+        if (state.pressed) {
+            slider.thumbFill =
+                blendOver(slider.thumbFill, theme.colors.pressedOverlay);
+        } else if (state.hovered || state.focused) {
+            // hover/拖动时 Thumb 轮廓取 focusRing（§6.5）。
+            slider.thumbOutline = theme.colors.focusRing;
+        }
+    }
+    common.focusWidth = focusWidthFor(state, theme);
+
+    ResolvedStyle resolved;
+    resolved.component = slider;
+    resolved.minHeight = theme.metrics.minHeight[index];
+    resolved.controlGap = theme.metrics.controlGap[index];
+    applyOverrides(widget, commonStyle(resolved.component));
+    return resolved;
+}
+
+ResolvedStyle resolveProgressBar(const Widget& widget,
+                                 const StyleContext& context,
+                                 const WidgetState& state) {
+    (void)state;  // ProgressBar 无交互状态（§6.6）。
+    const Theme& theme = context.theme;
+    const std::uint8_t index = sizeIndexFor(theme, widget.controlSize);
+    const ProgressBarTokens& tokens = theme.progressBar;
+
+    core::ProgressBarResolvedStyle bar;
+    CommonResolvedStyle& common = bar.common;
+    common.background = Color::transparent();
+    common.foreground = theme.colors.contentPrimary;
+    bar.track = tokens.track;
+    bar.fill = tokens.fill;
+    bar.trackHeight = tokens.trackHeight[index];
+    common.text = theme.typography.caption;
+    common.text.color = common.foreground;
+
+    ResolvedStyle resolved;
+    resolved.component = bar;
+    resolved.controlGap = theme.metrics.controlGap[index];
+    applyOverrides(widget, commonStyle(resolved.component));
+    return resolved;
+}
+
+ResolvedStyle resolveTabs(const Widget& widget, const StyleContext& context,
+                          const WidgetState& state) {
+    (void)state;  // 页签行为无自身状态；选中态在子节点。
+    const Theme& theme = context.theme;
+    const TabsTokens& tokens = theme.tabs;
+
+    core::TabsResolvedStyle tabs;
+    CommonResolvedStyle& common = tabs.common;
+    common.background = Color::transparent();
+    common.foreground = theme.colors.contentPrimary;
+    common.text = theme.typography.label;
+    common.text.color = common.foreground;
+    tabs.indicator = tokens.indicator;
+    tabs.separator = tokens.separator;
+    tabs.selectedContent = tokens.selectedContent;
+    tabs.unselectedContent = tokens.unselectedContent;
+    tabs.indicatorHeight = tokens.indicatorHeight;
+    tabs.separatorHeight = tokens.separatorHeight;
+
+    ResolvedStyle resolved;
+    resolved.component = tabs;
+    applyOverrides(widget, commonStyle(resolved.component));
+    return resolved;
+}
+
+// Dropdown 值行（§6.7）：与字段同源 chrome（surfaceSunken 底 +
+// borderStrong 轮廓、同高/圆角/padding/最小宽度）；复用
+// ButtonResolvedStyle 的图标部件字段承载尾随 Chevron。
+ResolvedStyle resolveDropdown(const Widget& widget,
+                              const StyleContext& context,
+                              const WidgetState& state) {
+    const Theme& theme = context.theme;
+    const std::uint8_t index = sizeIndexFor(theme, widget.controlSize);
+
+    core::ButtonResolvedStyle dropdown;
+    CommonResolvedStyle& common = dropdown.common;
+    dropdown.iconSize = theme.metrics.inlineIconSize[index];
+    dropdown.iconGap = theme.metrics.controlGap[index];
+    dropdown.iconStroke =
+        theme.icons.strokeWidth * dropdown.iconSize / theme.icons.defaultSize;
+    common.background = theme.colors.surfaceSunken;
+    common.foreground = theme.colors.contentPrimary;
+    common.border = theme.colors.borderStrong;
+    common.focusRing = theme.colors.focusRing;
+    common.selection = theme.colors.selectionBackground;
+    common.radius =
+        core::CornerRadius::all(theme.metrics.controlRadius[index]);
+    common.padding = EdgeInsets::symmetric(theme.metrics.controlPaddingX[index],
+                                           theme.metrics.controlPaddingY[index]);
+    common.borderWidth = theme.metrics.controlBorderWidth;
+
+    if (state.disabled) {
+        common.background = theme.colors.disabledBackground;
+        common.foreground = theme.colors.disabledContent;
+        common.border = theme.colors.borderDefault;
+    } else if (state.pressed) {
+        common.background =
+            blendOver(common.background, theme.colors.pressedOverlay);
+    } else if (state.hovered) {
+        common.background =
+            blendOver(common.background, theme.colors.hoverOverlay);
+    }
+    common.focusWidth = focusWidthFor(state, theme);
+    common.text = resolveTextStyle(widget, theme.typography.label,
+                                   common.foreground);
+
+    ResolvedStyle resolved;
+    resolved.component = dropdown;
+    resolved.minWidth = theme.metrics.textFieldMinWidth[index];
+    resolved.minHeight = theme.metrics.minHeight[index];
+    resolved.controlGap = theme.metrics.controlGap[index];
+    applyOverrides(widget, commonStyle(resolved.component));
+    return resolved;
+}
+
 ResolvedStyle resolveRadio(const Widget& widget, const StyleContext& context,
                            const WidgetState& state) {
     const Theme& theme = context.theme;
@@ -470,6 +621,14 @@ ResolvedStyle resolveStyleImpl(const Widget& widget,
             return resolveSwitch(widget, context, state);
         case WidgetType::Radio:
             return resolveRadio(widget, context, state);
+        case WidgetType::Slider:
+            return resolveSlider(widget, context, state);
+        case WidgetType::ProgressBar:
+            return resolveProgressBar(widget, context, state);
+        case WidgetType::Tabs:
+            return resolveTabs(widget, context, state);
+        case WidgetType::Dropdown:
+            return resolveDropdown(widget, context, state);
         case WidgetType::Text:
             return resolveText(widget, context.theme);
         default:

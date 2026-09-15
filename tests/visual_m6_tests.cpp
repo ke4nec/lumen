@@ -16,11 +16,13 @@
 #include "lumen/core/render_node.h"
 #include "lumen/core/state.h"
 #include "lumen/accessibility/semantics.h"
+#include "lumen/app/app_shell.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
 #include "lumen/render/render_commands.h"
 #include "lumen/style/theme.h"
+#include "lumen/widgets/dropdown.h"
 
 using namespace lumen;
 using namespace lumen::core;
@@ -565,4 +567,259 @@ TEST_CASE("button_icon_uses_inline_tier_and_scales_stroke", "[visual][s2]") {
     REQUIRE(largeStyle != nullptr);
     CHECK(largeStyle->iconSize == theme.metrics.inlineIconSize[2]);
     CHECK(largeStyle->iconStroke == Approx(1.875F));  // 1.5 × 20/16
+}
+
+// --- S3（gui-control-visual-system-task §6.5–§6.8、§7.2） ---
+
+TEST_CASE("slider_reserves_endpoints_and_maps_pointer_to_same_interval",
+          "[visual][s3]") {
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    const RenderNode root =
+        layoutOf(withKey(makeSlider("v", "sl"), "sl"), 200.0F, 40.0F);
+    const RenderNode* node = findNodeByKey(root, "sl");
+    REQUIRE(node != nullptr);
+    const auto* slider =
+        std::get_if<SliderResolvedStyle>(&node->style.component);
+    REQUIRE(slider != nullptr);
+    // 端点预留 r + focusRingWidth + 1（§6.5），聚焦与否不重定位。
+    const float expectInset = slider->thumbDiameter * 0.5F +
+                              theme.metrics.focusRingWidth + 1.0F;
+    CHECK(slider->trackInset == Approx(expectInset));
+    // 行高 = 档位 minHeight。
+    CHECK(node->size.height == Approx(theme.metrics.minHeight[1]));
+
+    // 指针映射与绘制共用同一区间：中心点击 → 50；两端 → 0/100。
+    lumen::core::StateStore store;
+    store.set("v", "0");
+    lumen::core::HandlerRegistry handlers;
+    lumen::core::FocusManager focus;
+    lumen::core::InteractionController controller{store, handlers, focus};
+    controller.pointerDown(root, centerOf(root, "sl"));
+    controller.pointerUp(root, centerOf(root, "sl"));
+    CHECK(store.get("v") == "50");
+    controller.pointerDown(root, Offset{2.0F, 20.0F});
+    controller.pointerUp(root, Offset{2.0F, 20.0F});
+    CHECK(store.get("v") == "0");
+    controller.pointerDown(root, Offset{198.0F, 20.0F});
+    controller.pointerUp(root, Offset{198.0F, 20.0F});
+    CHECK(store.get("v") == "100");
+
+    // 命令层：Thumb 描边（accent）在节点内（值 100 不越界）。
+    store.set("v", "100");
+    const RenderNode full = LayoutEngine::layout(
+        withBind(withKey(makeSlider("v", "sl"), "sl"), "v"),
+        tightView(200.0F, 40.0F));
+    const auto commands = render::recordScene(full);
+    const auto* fullNode = findNodeByKey(full, "sl");
+    REQUIRE(fullNode != nullptr);
+    bool sawThumbStroke = false;
+    for (const auto& command : commands.commands()) {
+        if (command.type == render::CommandType::DrawRectStroke &&
+            command.color == theme.colors.accent) {
+            sawThumbStroke = true;
+            // Thumb 环带整体落在节点矩形内。
+            CHECK(command.rect.right() <=
+                  fullNode->offset.x + fullNode->size.width + 0.01F);
+            CHECK(command.rect.left() >= fullNode->offset.x - 0.01F);
+        }
+    }
+    CHECK(sawThumbStroke);
+}
+
+TEST_CASE("progress_bar_uses_tier_height_and_clamped_fill", "[visual][s3]") {
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    Widget bar = makeProgressBar("100", "pb");
+    bar.width = 120.0F;
+    const RenderNode root = layoutOf(bar, 200.0F, 40.0F);
+    const RenderNode* node = findNodeByKey(root, "pb");
+    REQUIRE(node != nullptr);
+    const auto* barStyle =
+        std::get_if<ProgressBarResolvedStyle>(&node->style.component);
+    REQUIRE(barStyle != nullptr);
+    CHECK(barStyle->trackHeight == theme.progressBar.trackHeight[1]);
+    CHECK(barStyle->track == theme.colors.borderDefault);
+    CHECK(barStyle->fill == theme.colors.accent);
+
+    const auto commands = render::recordScene(root);
+    bool sawTrack = false;
+    bool sawFill = false;
+    for (const auto& command : commands.commands()) {
+        if (command.type == render::CommandType::DrawRect) {
+            if (command.color == theme.colors.borderDefault &&
+                command.rect.size.height == barStyle->trackHeight) {
+                sawTrack = true;
+            }
+            if (command.color == theme.colors.accent &&
+                command.rect.size.height == barStyle->trackHeight) {
+                sawFill = true;
+                // 100% 填充封顶在轨道宽内（tight 视口下显式宽被夹取）。
+                CHECK(command.rect.size.width <=
+                      node->size.width + 0.01F);
+            }
+        }
+    }
+    CHECK(sawTrack);
+    CHECK(sawFill);
+}
+
+TEST_CASE("tabs_paint_separator_and_selected_indicator", "[visual][s3]") {
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    Widget tabA = withKey(makeButton("General"), "tab-a");
+    tabA.selected = true;
+    Widget tabB = withKey(makeButton("More"), "tab-b");
+    const RenderNode root = layoutOf(
+        withKey(makeTabs({tabA, tabB}, "tabs"), "tabs"), 400.0F, 60.0F);
+    const RenderNode* tabs = findNodeByKey(root, "tabs");
+    REQUIRE(tabs != nullptr);
+
+    const auto commands = render::recordScene(root);
+    bool sawSeparator = false;
+    bool sawIndicator = false;
+    for (const auto& command : commands.commands()) {
+        if (command.type == render::CommandType::DrawRect &&
+            command.color == theme.tabs.separator &&
+            command.rect.size.height == theme.tabs.separatorHeight) {
+            sawSeparator = true;
+        }
+        if (command.type == render::CommandType::DrawRect &&
+            command.color == theme.tabs.indicator &&
+            command.rect.size.height == theme.tabs.indicatorHeight) {
+            sawIndicator = true;
+            // 指示条归属选中项：宽度 = 选中子项宽。
+            const RenderNode* selected = findNodeByKey(root, "tab-a");
+            REQUIRE(selected != nullptr);
+            CHECK(command.rect.size.width ==
+                  Approx(selected->size.width));
+        }
+    }
+    CHECK(sawSeparator);
+    CHECK(sawIndicator);
+
+    // 子按钮由 Tabs 上下文解析：选中 accentContent、未选 contentSecondary
+    //（不是 Gallery 手写的颜色）。
+    const RenderNode* a = findNodeByKey(root, "tab-a");
+    const RenderNode* b = findNodeByKey(root, "tab-b");
+    REQUIRE(a != nullptr);
+    REQUIRE(b != nullptr);
+    CHECK(a->textStyle().color == theme.tabs.selectedContent);
+    CHECK(b->textStyle().color == theme.tabs.unselectedContent);
+}
+
+TEST_CASE("dropdown_value_row_shares_field_chrome", "[visual][s3]") {
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    const RenderNode root =
+        layoutOf(makeDropdown("Blue", "open", "dd", 160.0F), 200.0F, 60.0F);
+    const RenderNode* node = findNodeByKey(root, "dd");
+    REQUIRE(node != nullptr);
+    const auto& common = node->commonStyle();
+    // §6.7：与字段同源——surfaceSunken 底 + borderStrong 轮廓 + 同高。
+    CHECK(common.background == theme.colors.surfaceSunken);
+    CHECK(common.border == theme.colors.borderStrong);
+    CHECK(common.borderWidth == theme.metrics.controlBorderWidth);
+    CHECK(node->size.height >= theme.metrics.minHeight[1] - 0.01F);
+    // 尾随 Chevron 来自 inlineIconSize 档位。
+    const auto* dropdown =
+        std::get_if<ButtonResolvedStyle>(&node->style.component);
+    REQUIRE(dropdown != nullptr);
+    CHECK(dropdown->iconSize == theme.metrics.inlineIconSize[1]);
+}
+
+TEST_CASE("scrollbar_consumes_borderstrong_token_without_alpha_fudge",
+          "[visual][s3]") {
+    // §7.2：rest 取 borderStrong 实色经 RenderNode 传递——不再对前景乘
+    // alpha；长度在 [minLength, trackLength] 夹取（短视口不越界）。
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    Widget column;
+    column.type = WidgetType::Column;
+    for (int i = 0; i < 40; ++i) {
+        Widget row = makeText("row");
+        row.height = 20.0F;
+        column.children.push_back(row);
+    }
+    Widget viewport =
+        withScrollbar(withKey(makeScrollView(column, "list"), "list"));
+    viewport.height = 100.0F;
+    viewport.width = 120.0F;
+    const RenderNode root = layoutOf(viewport, 200.0F, 100.0F);
+    const auto commands = render::recordScene(root);
+    const RenderNode* list = findNodeByKey(root, "list");
+    REQUIRE(list != nullptr);
+    bool sawThumb = false;
+    for (const auto& command : commands.commands()) {
+        if (command.type == render::CommandType::DrawRect &&
+            command.color == theme.scrollbar.rest &&
+            command.color.a == 255) {
+            sawThumb = true;
+            CHECK(command.rect.size.width ==
+                  Approx(theme.scrollbar.thumbWidth));
+            CHECK(command.rect.size.height >=
+                  theme.scrollbar.minLength - 0.01F);
+            // Thumb 不越出视口。
+            CHECK(command.rect.bottom() <=
+                  list->offset.y + list->size.height + 0.01F);
+        }
+    }
+    CHECK(sawThumb);
+}
+
+TEST_CASE("dropdown_long_menu_scrolls_and_stays_inside_window",
+          "[controls][s3]") {
+    // §6.7：项目过多时菜单最大高度 = min(320, 可用高度)，内容进入垂直
+    // 滚动；键盘高亮项滚入可见区；菜单整体留在窗口安全边距 8 内。
+    app::ShellConfig config;
+    config.caretBlink = false;
+    config.build = [] {
+        Widget page;
+        page.key = "page";
+        page.children = {makeDropdown("Option 0", "open", "dd", 160.0F)};
+        return page;
+    };
+    app::AppShell shell{config};
+    shell.setView(Size{300.0F, 240.0F});
+    (void)shell.renderFrame();
+
+    std::vector<lumen::widgets::DropdownController::Option> options;
+    for (int i = 0; i < 40; ++i) {
+        options.push_back({"Option " + std::to_string(i),
+                           "Option " + std::to_string(i)});
+    }
+    lumen::widgets::DropdownController controller{std::move(options),
+                                                  "Option 0"};
+    controller.open(shell, "dd");
+    REQUIRE(controller.isOpen());
+    shell.rebuildIfDirty();
+    REQUIRE(shell.overlayRoot() != nullptr);
+
+    const RenderNode* menu = findNodeByKey(*shell.overlayRoot(), "dd-menu");
+    REQUIRE(menu != nullptr);
+    // 高度封顶：min(320, 240 - 2×8) = 224；窗口安全边距内。
+    CHECK(menu->size.height <= 224.0F + 0.01F);
+    const Offset menuOrigin = absoluteOffset(*shell.overlayRoot(), "dd-menu");
+    CHECK(menu->size.height >= 100.0F);  // 内容多时不是塌缩
+    CHECK(menuOrigin.y >= 8.0F - 0.01F);
+    CHECK(menuOrigin.y + menu->size.height <= 240.0F - 8.0F + 0.01F);
+    // 超长内容进入垂直滚动。
+    REQUIRE(findNodeByKey(*shell.overlayRoot(), "dd-menu-scroll") !=
+            nullptr);
+
+    // 键盘移到最后一项：高亮项滚入可见区（选项在菜单矩形内）。
+    for (int i = 0; i < 39; ++i) {
+        REQUIRE(controller.handleKey(shell, Key::Down));
+    }
+    const RenderNode* last = findNodeByKey(*shell.overlayRoot(),
+                                           "dd-opt-39");
+    REQUIRE(last != nullptr);
+    const Offset lastOrigin =
+        absoluteOffset(*shell.overlayRoot(), "dd-opt-39");
+    CHECK(lastOrigin.y >= menuOrigin.y - 0.01F);
+    CHECK(lastOrigin.y + last->size.height <=
+          menuOrigin.y + menu->size.height + 0.01F);
+
+    // Escape 关闭并恢复值行焦点。
+    REQUIRE(controller.handleKey(shell, Key::Escape));
+    CHECK_FALSE(controller.isOpen());
+    shell.rebuildIfDirty();
+    const RenderNode* row = findNodeByKey(shell.root(), "dd");
+    REQUIRE(row != nullptr);
+    CHECK(shell.focus().focusedIdentity() == row->identity);
 }

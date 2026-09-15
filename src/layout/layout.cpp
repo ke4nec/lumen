@@ -135,6 +135,9 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
          widget.type == WidgetType::ListView ||
          widget.type == WidgetType::VirtualList)) {
         node.scrollbarThickness = styleContext.theme.scrollbar.thickness;
+        node.scrollbarThumbWidth = styleContext.theme.scrollbar.thumbWidth;
+        node.scrollbarMinLength = styleContext.theme.scrollbar.minLength;
+        node.scrollbarColor = styleContext.theme.scrollbar.rest;
     }
     node.enabled = widget.enabled;
     node.invalid = widget.invalid;
@@ -215,13 +218,25 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
                         styleContext.theme.icons.defaultSize};
         }
         case WidgetType::Slider: {
-            // M6：轨道高度按行高派生；宽度默认填充（无 intrinsic 宽）。
-            const float track = std::max(24.0F, textStyle.fontSize * 1.4F);
-            return Size{0.0F, track};
+            // S3（§6.5）：可操作整行高度 = 档位 minHeight（≥ thumb + 焦点
+            // 预留）；宽度默认填充（无 intrinsic 宽）。
+            const auto* slider =
+                std::get_if<core::SliderResolvedStyle>(&resolved.component);
+            const float minHeight =
+                slider != nullptr
+                    ? std::max(resolved.minHeight,
+                               slider->thumbDiameter +
+                                   2.0F * (slider->trackInset -
+                                           slider->thumbDiameter * 0.5F))
+                    : 24.0F;
+            return Size{0.0F, minHeight};
         }
         case WidgetType::ProgressBar: {
-            const float track = std::max(16.0F, textStyle.fontSize * 0.9F);
-            return Size{0.0F, track};
+            // S3（§6.6）：可视高度 = 档位 trackHeight（4/6/8）。
+            const auto* bar = std::get_if<core::ProgressBarResolvedStyle>(
+                &resolved.component);
+            return Size{0.0F,
+                        bar != nullptr ? bar->trackHeight : 6.0F};
         }
         case WidgetType::Radio: {
             // S2：Radio 专用解析（§6.4）——槽位（指示器 + 焦点环 + 1px
@@ -235,6 +250,26 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
                                                   false);
             return Size{radio->slotSize + radio->labelGap + label.width,
                         std::max(radio->slotSize, label.height)};
+        }
+        case WidgetType::Dropdown: {
+            // S3（§6.7）：值行与字段同源——chrome/最小尺寸来自 resolved
+            // style（Button 路径同构）+ 尾随 Chevron 槽位。
+            const EdgeInsets& chrome = core::commonStyle(resolved).padding;
+            const Size textSize = measureTextContent(content, textStyle, 0.0F,
+                                                     false);
+            const auto* dropdown =
+                std::get_if<core::ButtonResolvedStyle>(&resolved.component);
+            const float chevron =
+                dropdown != nullptr
+                    ? dropdown->iconSize +
+                          (content.empty() ? 0.0F : dropdown->iconGap)
+                    : 0.0F;
+            const float width = std::max(
+                textSize.width + chevron + chrome.horizontal(),
+                resolved.minWidth);
+            const float height = std::max(textSize.height + chrome.vertical(),
+                                          resolved.minHeight);
+            return Size{width, height};
         }
         case WidgetType::Tooltip: {
             const Size text = measureTextContent(content, textStyle, maxWidth,
@@ -280,10 +315,11 @@ RenderNode layoutLeaf(const Widget& widget, const Constraints& constraints,
     Size intrinsic = measureLeafIntrinsic(
         widget, resolved, styleContext,
         outer.isBoundedWidth() ? outer.maxWidth : 0.0F);
-    // Button/TextField intrinsic measurement already includes their chrome
-    // padding; text and generic leaves use the resolved box padding here.
+    // Button/TextField/Dropdown intrinsic measurement already includes their
+    // chrome padding; text and generic leaves use the resolved box padding here.
     if (widget.type != WidgetType::Button &&
-        widget.type != WidgetType::TextField) {
+        widget.type != WidgetType::TextField &&
+        widget.type != WidgetType::Dropdown) {
         intrinsic.width += core::commonStyle(resolved).padding.horizontal();
         intrinsic.height += core::commonStyle(resolved).padding.vertical();
     }
@@ -313,6 +349,14 @@ RenderNode layoutContainer(const Widget& widget, const Constraints& constraints,
 RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
                       const style::StyleContext& styleContext,
                       const std::string& identity, bool isRow);
+
+// S3（§6.8）：Tabs 上下文解析——子按钮改写为 Ghost + 两态前景覆盖
+//（选中 accentContent / 未选 contentSecondary）+ 页签水平 padding 与
+// 行间距；页签行 chrome（分隔线/指示条）由 painter 从 TabsResolvedStyle
+// 绘制。应用侧不需要给每个按钮手写颜色。
+RenderNode layoutTabs(const Widget& widget, const Constraints& constraints,
+                      const style::StyleContext& styleContext,
+                      const std::string& identity);
 
 RenderNode layoutStack(const Widget& widget, const Constraints& constraints,
                        const style::StyleContext& styleContext,
@@ -373,8 +417,7 @@ RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
                                    identity);
         }
         case WidgetType::Tabs:
-            return layoutFlex(widget, constraints, styleContext, identity,
-                              true);
+            return layoutTabs(widget, constraints, styleContext, identity);
         case WidgetType::Grid:
             return layoutGrid(widget, constraints, styleContext, identity);
         case WidgetType::VirtualList:
@@ -1100,6 +1143,34 @@ void stackAlignmentFactors(core::StackAlignment alignment, float& xFactor,
             yFactor = 1.0F;
             break;
     }
+}
+
+// S3（§6.8）：Tabs 布局——先解析行样式，再改写子按钮（Ghost + 前景
+/// padding 覆盖），最后按 Row 布局。子节点 selected 声明原样保留。
+RenderNode layoutTabs(const Widget& widget, const Constraints& constraints,
+                      const style::StyleContext& styleContext,
+                      const std::string& identity) {
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
+    const auto* tabs =
+        std::get_if<core::TabsResolvedStyle>(&resolved.component);
+    Widget row = widget;
+    if (tabs != nullptr) {
+        row.spacing = styleContext.theme.tabs.tabGap;
+        for (Widget& child : row.children) {
+            if (child.type != WidgetType::Button) {
+                continue;
+            }
+            child.buttonVariant = core::ButtonVariant::Ghost;
+            child.styleOverrides.foreground =
+                child.selected ? tabs->selectedContent
+                               : tabs->unselectedContent;
+            child.styleOverrides.padding = core::EdgeInsets::symmetric(
+                styleContext.theme.tabs.tabPaddingX, 0.0F);
+        }
+    }
+    return layoutFlex(row, constraints, styleContext, identity,
+                      /*isRow=*/true);
 }
 
 RenderNode layoutStack(const Widget& widget, const Constraints& constraints,

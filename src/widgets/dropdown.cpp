@@ -8,19 +8,21 @@ namespace lumen::widgets {
 
 namespace {
 
-// 菜单与锚点的间隙 / 选项行间距。
+// 菜单与锚点的间隙 / 窗口安全边距 / 菜单最大高度（§6.7）。
 constexpr float kMenuGapPx = 4.0F;
-constexpr float kOptionGapPx = 4.0F;
+constexpr float kWindowMarginPx = 8.0F;
+constexpr float kMenuMaxHeightPx = 320.0F;
+constexpr float kMenuInnerPaddingPx = 4.0F;
 
-// 菜单估算高度（向上翻折判断；实际高度由布局决定，钳制到视口内）。
-// M11 review：行高取 metrics 与排版字号的最大值——fontScale 极端时
-// 文本行高可超过控件最小高度。
-float estimateMenuHeight(const style::Theme& theme,
-                         std::size_t optionCount) {
+// 选项行高：metrics 最小高度与排版行高的最大值（fontScale 极端时文本
+// 行高可超过控件最小高度；M11 review 保留）。
+float optionRowHeight(const style::Theme& theme) {
     const float minHeight = theme.metrics.minHeight[theme.metrics.baseIndex];
-    const float textRow = theme.typography.label.fontSize * 1.2F + 8.0F;
-    const float row = std::max(minHeight, textRow) + kOptionGapPx;
-    return static_cast<float>(optionCount) * row + kMenuGapPx * 2.0F;
+    const float textRow = theme.typography.label.lineHeight > 0.0F
+                             ? theme.typography.label.fontSize *
+                                   theme.typography.label.lineHeight
+                             : theme.typography.label.fontSize * 1.2F;
+    return std::max(minHeight, textRow);
 }
 
 }  // namespace
@@ -168,29 +170,44 @@ core::Widget DropdownController::buildOverlay(const style::Theme& theme,
     barrier.semanticsActions = accessibility::kActionDismiss;
     barrier.key = dropdownKey_ + "-menu-barrier";
 
-    // 菜单定位：值行下方；视口不足翻向上方；水平/垂直钳制在视口内。
-    const float menuWidth = std::max(anchor_.size.width, 120.0F);
+    // 菜单定位（§6.7）：值行下方、间隔 4；窗口安全边距 8 内钳制；下方
+    // 不足翻向上方。宽度至少覆盖值行且不超过窗口可用宽。
+    const float rowHeight = optionRowHeight(theme);
+    const float menuWidth = std::clamp(
+        std::max(anchor_.size.width, 120.0F), 0.0F,
+        std::max(0.0F, view.width - 2.0F * kWindowMarginPx));
+    const float contentHeight =
+        static_cast<float>(options_.size()) * rowHeight;
     const float menuHeight =
-        estimateMenuHeight(theme, options_.size());
+        std::min({contentHeight + 2.0F * kMenuInnerPaddingPx,
+                  kMenuMaxHeightPx,
+                  std::max(0.0F, view.height - 2.0F * kWindowMarginPx)});
     core::Offset menuOrigin{anchor_.origin.x, anchor_.origin.y +
                                                    anchor_.size.height +
                                                    kMenuGapPx};
-    if (menuOrigin.y + menuHeight > view.height) {
+    if (menuOrigin.y + menuHeight > view.height - kWindowMarginPx) {
         menuOrigin.y = std::max(
-            0.0F, anchor_.origin.y - kMenuGapPx - menuHeight);
+            kWindowMarginPx,
+            anchor_.origin.y - kMenuGapPx - menuHeight);
     }
-    menuOrigin.x =
-        std::clamp(menuOrigin.x, 0.0F, std::max(0.0F, view.width - menuWidth));
+    menuOrigin.x = std::clamp(menuOrigin.x, kWindowMarginPx,
+                              std::max(kWindowMarginPx,
+                                       view.width - kWindowMarginPx -
+                                           menuWidth));
 
+    // 选项（§6.7）：全部 Ghost（hover 状态面/键盘焦点环由交互态表达）；
+    // 当前值 Tonal + 尾随 Check（16px 勾选列）。移动高亮不立即改值。
     std::vector<core::Widget> buttons;
     buttons.reserve(options_.size());
     for (std::size_t i = 0; i < options_.size(); ++i) {
+        const bool isCurrent = options_[i].value == value_;
         core::Widget option = core::makeButton(options_[i].label);
-        option.buttonVariant = i == highlight_
-                                   ? core::ButtonVariant::Filled
-                                   : (options_[i].value == value_
-                                          ? core::ButtonVariant::Tonal
-                                          : core::ButtonVariant::Ghost);
+        option.buttonVariant = isCurrent
+                                   ? core::ButtonVariant::Tonal
+                                   : core::ButtonVariant::Ghost;
+        if (isCurrent) {
+            option.icon = core::IconId::Check;
+        }
         option.onClick = optionKey(i);
         option.key = optionKey(i);
         option.width = menuWidth;
@@ -198,14 +215,38 @@ core::Widget DropdownController::buildOverlay(const style::Theme& theme,
     }
     core::Widget menuColumn = core::makeColumn(
         std::move(buttons), core::MainAxisAlignment::Start,
-        core::CrossAxisAlignment::Start, kOptionGapPx,
-        core::EdgeInsets{kMenuGapPx, kMenuGapPx, kMenuGapPx, kMenuGapPx});
+        core::CrossAxisAlignment::Stretch, 0.0F,
+        core::EdgeInsets::all(kMenuInnerPaddingPx));
+    // 项目过多：菜单高度封顶，内容进入垂直滚动；键盘高亮项滚入可见区
+    //（§6.7——按行高推导目标偏移，行高统一使偏移确定）。
+    const bool needsScroll =
+        contentHeight + 2.0F * kMenuInnerPaddingPx > menuHeight + 0.5F;
+    if (needsScroll) {
+        const float highlightTop =
+            static_cast<float>(highlight_) * rowHeight;
+        const float maxOffset =
+            std::max(0.0F, contentHeight + 2.0F * kMenuInnerPaddingPx -
+                              menuHeight);
+        const float scrollTarget = std::clamp(
+            highlightTop - kMenuInnerPaddingPx, 0.0F, maxOffset);
+        menuColumn = core::withScrollOffset(
+            core::makeScrollView(std::move(menuColumn),
+                                 dropdownKey_ + "-menu-scroll",
+                                 std::nullopt, menuHeight),
+            scrollTarget);
+    }
     core::Widget menu;
     menu.type = core::WidgetType::Container;
     menu.color = theme.colors.surfaceElevated;
     menu.radius = core::CornerRadius::all(theme.metrics.cardRadius);
-    menu.elevation = theme.dialog.elevation;
+    menu.elevation = 2.0F;  // §4.5：L2（Dropdown/Tooltip）
+    // 1px borderDefault 轮廓。
+    menu.styleOverrides.border = theme.colors.borderDefault;
+    menu.styleOverrides.borderWidth = theme.metrics.controlBorderWidth;
     menu.width = menuWidth;
+    if (!needsScroll) {
+        menu.height = menuHeight;
+    }
     menu.children.push_back(std::move(menuColumn));
     menu = core::withStackPosition(std::move(menu), menuOrigin);
     menu.key = dropdownKey_ + "-menu";

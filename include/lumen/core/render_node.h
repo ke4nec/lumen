@@ -70,6 +70,11 @@ struct RenderNode {
     Offset shadowOffset{};
     float shadowBlur{0.0F};
     float scrollbarThickness{0.0F};
+    // S3（§7.2）：滚动条 Thumb 的实色（ScrollbarTokens.rest）与可视宽
+    //（区别于轨道厚度）。
+    Color scrollbarColor{};
+    float scrollbarThumbWidth{0.0F};
+    float scrollbarMinLength{24.0F};
     // M6：图标线宽（IconTheme 折算）。
     float iconStrokeWidth{1.5F};
 

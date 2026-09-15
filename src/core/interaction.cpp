@@ -355,8 +355,16 @@ void InteractionController::setSliderByPosition(const RenderNode& root,
     if (!absoluteOffsetOf(root, node, Offset{}, origin)) {
         return;
     }
-    const float clamped = std::clamp(
-        (rootPosition.x - origin.x) / node.size.width, 0.0F, 1.0F);
+    // S3（§6.5）：指针位置到值使用与绘制相同的预留轨道区间
+    //（trackInset..width-trackInset）；不足以容纳预留时整行居中映射。
+    const auto* slider =
+        std::get_if<SliderResolvedStyle>(&node.style.component);
+    const float inset = slider != nullptr ? slider->trackInset : 0.0F;
+    const float usable = node.size.width - 2.0F * inset;
+    const float ratio = usable > 0.0F
+                            ? (rootPosition.x - origin.x - inset) / usable
+                            : 0.5F;
+    const float clamped = std::clamp(ratio, 0.0F, 1.0F);
     const int value = static_cast<int>(std::lround(clamped * 100.0F));
     store_.set(node.bind, std::to_string(value));
 }

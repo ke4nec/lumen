@@ -237,6 +237,46 @@ struct RadioTokens {
     bool operator==(const RadioTokens&) const = default;
 };
 
+// S3（§6.5）：Slider 部件 token——细轨道 + 独立 Thumb（表面 + accent
+// 轮廓）；端点预留 r+f（thumb 半径 + 焦点保护宽）。
+struct SliderTokens {
+    core::Color trackRemaining{161, 161, 170, 255};   // borderStrong
+    core::Color trackActive{86, 140, 240, 255};       // accent
+    core::Color thumbFill{52, 52, 63, 255};           // surfaceElevated
+    core::Color thumbOutline{86, 140, 240, 255};      // accent
+    float trackHeight{4.0F};
+    float thumbDiameter[3]{16.0F, 18.0F, 22.0F};
+    float thumbBorderWidth{2.0F};
+
+    bool operator==(const SliderTokens&) const = default;
+};
+
+// S3（§6.6）：ProgressBar——高度分档 4/6/8，背景 borderDefault、填充
+// accent；无交互状态。
+struct ProgressBarTokens {
+    core::Color track{82, 82, 91, 255};          // borderDefault
+    core::Color fill{86, 140, 240, 255};         // accent
+    float trackHeight[3]{4.0F, 6.0F, 8.0F};
+
+    bool operator==(const ProgressBarTokens&) const = default;
+};
+
+// S3（§6.8）：Tabs——平面页签行；选中指示条 + 分隔线 + 两态文字色。
+// 子按钮外观由布局期 Tabs 上下文注入（Ghost + 前景覆盖），不在 Gallery
+// 手写颜色。
+struct TabsTokens {
+    core::Color indicator{86, 140, 240, 255};         // accent
+    core::Color selectedContent{168, 197, 250, 255};  // accentContent
+    core::Color unselectedContent{161, 161, 170, 255};
+    core::Color separator{82, 82, 91, 255};           // borderDefault
+    float indicatorHeight{2.0F};
+    float separatorHeight{1.0F};
+    float tabPaddingX{12.0F};
+    float tabGap{4.0F};
+
+    bool operator==(const TabsTokens&) const = default;
+};
+
 struct DialogTokens {
     core::Color scrim{0, 0, 0, 132};
     core::Color surface{52, 52, 62, 255};
@@ -253,11 +293,16 @@ struct DialogTokens {
 };
 
 struct ScrollbarTokens {
-    core::Color rest{140, 140, 152, 120};
-    core::Color hovered{161, 161, 170, 180};
-    core::Color dragged{161, 161, 170, 230};
-    float thickness{8.0F};
+    // S3（§7.2）：rest 取 borderStrong 实色（专用 token 传递，painter 不
+    // 再对前景乘 alpha）；hovered/dragged 为预留交互（未接线前常显 rest）。
+    core::Color rest{161, 161, 170, 255};
+    core::Color hovered{161, 161, 170, 255};
+    core::Color dragged{161, 161, 170, 255};
+    float thickness{8.0F};     // 轨道宽（命中预留）
+    float thumbWidth{4.0F};    // 可视 Thumb 宽
     float minLength{24.0F};
+    float inset{4.0F};         // 上下内距
+    // 圆角 = 可视宽度一半（painter 推导）。
 
     bool operator==(const ScrollbarTokens&) const = default;
 };
@@ -276,6 +321,9 @@ struct Theme {
     CheckboxTokens checkbox{};
     SwitchTokens switchControl{};
     RadioTokens radio{};
+    SliderTokens slider{};
+    ProgressBarTokens progressBar{};
+    TabsTokens tabs{};
     DialogTokens dialog{};
     ScrollbarTokens scrollbar{};
     // M11：派生元数据（值语义，参与 ==）。应用直接读取，替代按色值
@@ -322,6 +370,10 @@ struct Theme {
 [[nodiscard]] CheckboxTokens checkboxTokensFrom(const ColorScheme& colors);
 [[nodiscard]] SwitchTokens switchTokensFrom(const ColorScheme& colors);
 [[nodiscard]] RadioTokens radioTokensFrom(const ColorScheme& colors);
+[[nodiscard]] SliderTokens sliderTokensFrom(const ColorScheme& colors);
+[[nodiscard]] ProgressBarTokens progressBarTokensFrom(
+    const ColorScheme& colors);
+[[nodiscard]] TabsTokens tabsTokensFrom(const ColorScheme& colors);
 [[nodiscard]] DialogTokens dialogTokensFrom(const ColorScheme& colors,
                                             const Metrics& metrics);
 [[nodiscard]] ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors);

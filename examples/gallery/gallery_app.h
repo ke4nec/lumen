@@ -1312,9 +1312,13 @@ class GalleryApp {
             "color-label"));
         // M11：Dropdown 浮动菜单（收起叶子；点击值行/按钮经控制器在
         // 框架级 overlay 上展开，键盘 Up/Down/Enter/Esc 可导航）。
+        // S3（§6.7）：展开时值行 Chevron 换向 ChevronUp。
         core::Widget dropdown = core::makeDropdown(
             shell_.state().get("color"), "open-dropdown", "color-dropdown");
         dropdown.bind = "color";
+        if (dropdown_.isOpen()) {
+            dropdown.icon = core::IconId::ChevronUp;
+        }
         selection.push_back(
             core::withKey(std::move(dropdown), "color-dropdown"));
         selection.push_back(core::withKey(

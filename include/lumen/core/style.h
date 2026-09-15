@@ -120,12 +120,54 @@ struct RadioResolvedStyle {
     bool operator==(const RadioResolvedStyle&) const = default;
 };
 
+// S3（§6.5）：Slider——细轨道 + 独立 Thumb；端点恒定预留
+// trackInset = thumb 半径 + 焦点保护宽（focusRingWidth+1），值/指针/
+// 绘制共用同一轨道区间（interaction 从本样式读取）。
+struct SliderResolvedStyle {
+    CommonResolvedStyle common{};
+    Color trackRemaining{Color::transparent()};
+    Color trackActive{Color::transparent()};
+    Color thumbFill{Color::transparent()};
+    Color thumbOutline{Color::transparent()};
+    float trackHeight{4.0F};
+    float thumbDiameter{18.0F};
+    float thumbBorderWidth{2.0F};
+    float trackInset{12.0F};
+    bool operator==(const SliderResolvedStyle&) const = default;
+};
+
+// S3（§6.6）：ProgressBar——无交互状态；高度分档。
+struct ProgressBarResolvedStyle {
+    CommonResolvedStyle common{};
+    Color track{Color::transparent()};
+    Color fill{Color::transparent()};
+    float trackHeight{6.0F};
+    bool operator==(const ProgressBarResolvedStyle&) const = default;
+};
+
+// S3（§6.8）：Tabs——页签行 chrome（分隔线 + 选中指示条）与两态文字
+// 色；子按钮外观由布局期注入（Ghost + 前景覆盖），本样式只承载行级
+// 部件。
+struct TabsResolvedStyle {
+    CommonResolvedStyle common{};
+    Color indicator{Color::transparent()};
+    Color separator{Color::transparent()};
+    Color selectedContent{Color::transparent()};
+    Color unselectedContent{Color::transparent()};
+    float indicatorHeight{2.0F};
+    float separatorHeight{1.0F};
+    bool operator==(const TabsResolvedStyle&) const = default;
+};
+
 using ComponentResolvedStyle = std::variant<CommonResolvedStyle,
                                             ButtonResolvedStyle,
                                             TextFieldResolvedStyle,
                                             CheckboxResolvedStyle,
                                             SwitchResolvedStyle,
-                                            RadioResolvedStyle>;
+                                            RadioResolvedStyle,
+                                            SliderResolvedStyle,
+                                            ProgressBarResolvedStyle,
+                                            TabsResolvedStyle>;
 
 struct ResolvedStyle {
     ComponentResolvedStyle component{CommonResolvedStyle{}};
@@ -246,6 +288,23 @@ inline void scaleStyleColors(ResolvedStyle& style, float alpha) {
                     part.indicatorChecked =
                         scaleColorAlpha(part.indicatorChecked, alpha);
                     part.dot = scaleColorAlpha(part.dot, alpha);
+                } else if constexpr (std::is_same_v<Part,
+                                                    SliderResolvedStyle>) {
+                    part.trackRemaining =
+                        scaleColorAlpha(part.trackRemaining, alpha);
+                    part.trackActive =
+                        scaleColorAlpha(part.trackActive, alpha);
+                    part.thumbFill = scaleColorAlpha(part.thumbFill, alpha);
+                    part.thumbOutline =
+                        scaleColorAlpha(part.thumbOutline, alpha);
+                } else if constexpr (std::is_same_v<
+                                         Part, ProgressBarResolvedStyle>) {
+                    part.track = scaleColorAlpha(part.track, alpha);
+                    part.fill = scaleColorAlpha(part.fill, alpha);
+                } else if constexpr (std::is_same_v<Part,
+                                                    TabsResolvedStyle>) {
+                    part.indicator = scaleColorAlpha(part.indicator, alpha);
+                    part.separator = scaleColorAlpha(part.separator, alpha);
                 }
             }
         },
@@ -326,6 +385,27 @@ inline void lerpCommonStyleColors(CommonResolvedStyle& into,
                         lerpColor(fromPart.indicatorChecked,
                                   toPart.indicatorChecked, t);
                     toPart.dot = lerpColor(fromPart.dot, toPart.dot, t);
+                } else if constexpr (std::is_same_v<To,
+                                                    SliderResolvedStyle>) {
+                    toPart.trackRemaining =
+                        lerpColor(fromPart.trackRemaining,
+                                  toPart.trackRemaining, t);
+                    toPart.trackActive =
+                        lerpColor(fromPart.trackActive, toPart.trackActive, t);
+                    toPart.thumbFill =
+                        lerpColor(fromPart.thumbFill, toPart.thumbFill, t);
+                    toPart.thumbOutline =
+                        lerpColor(fromPart.thumbOutline, toPart.thumbOutline, t);
+                } else if constexpr (std::is_same_v<
+                                         To, ProgressBarResolvedStyle>) {
+                    toPart.track = lerpColor(fromPart.track, toPart.track, t);
+                    toPart.fill = lerpColor(fromPart.fill, toPart.fill, t);
+                } else if constexpr (std::is_same_v<To,
+                                                    TabsResolvedStyle>) {
+                    toPart.indicator =
+                        lerpColor(fromPart.indicator, toPart.indicator, t);
+                    toPart.separator =
+                        lerpColor(fromPart.separator, toPart.separator, t);
                 }
             }
             (void)result;
