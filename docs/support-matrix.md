@@ -92,8 +92,9 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 - 应用主循环/damage 管线已收敛到 `lumen-app` 应用壳（M2）：新工具页只需
   提供 build/状态逻辑；runApp 为单窗口主循环（多窗口属后续里程碑）。
 - 平台服务已统一接口（M4：文件选择/OpenURL/通知/光标/图标 + 能力报
-  告）；通知在 SDL 3.2.10 无 API（结构化降级，真实通知待 SDL 升级或
-  原生后端）；prefersDarkMode/accentColor 为安全默认（SDL 3.2 无查询）。
+  告）；M12 已收口原生后端——通知与强调色走 native seam（Win32/
+  DBus/AppKit），prefersDarkMode 经 SDL_GetSystemTheme +
+  SystemThemeChanged 事件；Linux/macOS 以 CI 首跑为事实来源。
 - M6 视觉系统 V3 已收口（图标/阴影/滚动条 token 路径、六控件、
   ThemeScope、组合校验器）；M10 已收口转场动画驱动（transitionAlpha
   整节点透明度、Dialog/Navigator 淡入淡出、状态色过渡 opt-in）；
@@ -106,6 +107,8 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 - M7 已收口：macOS GPU CI 已纳入（首跑为事实来源）；partialSubmit
   实测 1.16× 维持全帧提交（正确性优先）；Element move 管道完成后性能
   门槛 6/6 达标。
-- M8 便携发布已收口（install/CPack/CI package job + 解包冒烟）；AppImage
-  与完整 .app bundle 属后续增强；Windows/macOS 包以 CI 首跑为事实来源。
+- M8+M12 便携发布已收口：install/CPack/CI package job + 解包冒烟 +
+  Linux AppImage（linuxdeploy）与 macOS Lumen.app 骨架 + package-skia
+  （三平台）/package-skia-gpu（Linux llvmpipe）变体；新形态以 CI 首跑
+  为事实来源，Windows/macOS GPU 包与 CPack Bundle 留后续。
 - 移动方向暂缓；M9 只保留状态说明，不作为桌面版本的待完成项。

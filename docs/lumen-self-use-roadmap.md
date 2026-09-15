@@ -70,7 +70,8 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M8 | 已完成三桌面便携发布 | install/CPack/依赖入包/RPATH/CI package job + 解包冒烟（见 §10 M8 完成记录） |
 | 增强链 M10 | 已完成动效与滚动体验 | 动画帧调度/整节点透明度转场/状态色过渡/惯性滚动（见 §10 M10 完成记录） |
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
-| 增强链 M12–M13 | 已规划未开始 | 平台服务与发布补全 / 原生无障碍 provider（见 §4） |
+| 增强链 M12 | 已完成平台服务与发布补全 | 系统主题查询/事件、三平台原生通知与强调色、AppImage/.app/包变体（见 §10 M12 完成记录） |
+| 增强链 M13 | 已规划未开始 | 原生无障碍 provider（UIA/AT-SPI/NSAccessibility，见 §4） |
 
 M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/380、GPU Release 387/387（其中 3 个硬件相关用例按环境跳过），另有历史 mobile-core 356/356。这些数量不是当前提交的复测结果，mobile-core 结果也不代表移动设备验证。Windows/macOS 对应门槛由 CI package/GPU job 负责验证。M7/M8 的跨平台 CI 与便携包 job 已纳入工作流。
 
@@ -88,11 +89,11 @@ M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/3
 | 控件库 | M6+M11 已完成：Slider/ProgressBar/Radio/Tooltip/Dropdown/Tabs 六控件 + Scrollbar 实绘 + `FormController::compose`；M11 收口 Dropdown 浮动菜单（overlay + 键盘导航）与 Tooltip hover 延迟显隐 | — | M6+M11 已收口 |
 | 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 横向网格/跨行列合并留按需评估（§4） | M3 已收口 |
 | 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | M10 已收口触摸拖动接线与惯性滚动；水平/嵌套滚动留按需评估 | M3+M10 已收口 |
-| 平台服务 | M4 已完成：ApplicationHost 增加文件选择（异步→FileDialogCompleted 事件）/OpenURL/通知/光标形状/窗口图标契约；PlatformCapabilities 统一报告外观（dark/accent/fontScale）与服务可用性；SDL 实现与 Fake host 记录/失败注入 | 通知在 SDL 3.2.10 无 API：能力关闭+结构化降级（真实通知待 SDL 升级或原生后端） | M4 已收口 |
+| 平台服务 | M4+M12 已完成：文件选择/OpenURL/光标/图标（SDL）+ 通知与强调色（M12 原生 seam：Win32/DBus/AppKit）+ 系统主题查询（SDL_GetSystemTheme）与 SystemThemeChanged 事件 + adaptPlatformTheme 保留派生 | Linux/macOS 原生代码以 CI 首跑为事实来源 | M4+M12 已收口 |
 | 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| UIA/AT-SPI/NSAccessibility 原生 provider 属 M13（Recording bridge 作跨平台回归证据） | M5 已收口，provider M13 |
 | 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur/CPU 扁平面降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | M10 已收口转场动画驱动（整节点透明度/Dialog/Navigator 过渡/状态色过渡 opt-in）；v0.4 视觉方向属 M11 | M6+M10 已收口 |
 | GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道（快照去子化，reconcile O(n·depth)→O(n)） | 三桌面 GPU CI 首跑为事实来源（macOS job 为本变更新增） | M7 已收口 |
-| 发布 | M8 已完成：install 规则（库/头/示例/文档）+ CPack（Linux TGZ / Windows·macOS ZIP，git 版本可追溯）+ SDL 依赖入包与平台 RPATH + 三平台 CI package job（解包 headless smoke + artifact） | AppImage、完整 .app bundle 与 Skia/GPU 包变体属 M12；Windows/macOS 包以 CI 首跑为事实来源 | M8 已收口，形态补全 M12 |
+| 发布 | M8+M12 已完成：install/CPack/RPATH/package job + Linux 桌面集成（desktop/icon）与 linuxdeploy AppImage + macOS Lumen.app 骨架 + package-skia（三平台）与 package-skia-gpu（Linux llvmpipe）变体 | Windows/macOS GPU 包与 CPack Bundle 生成器留后续；新形态以 CI 首跑为事实来源 | M8+M12 已收口 |
 
 移动端不列为桌面自用版的能力缺口；已存在的实验接缝和字体代码见 §4 M9 暂缓说明。
 
@@ -1118,6 +1119,60 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     示例哈希路径保持即时切换（M10 限制延续，随应用侧确定性测试
     演进启用）。
 - 回滚点：`7978adb docs(roadmap): M10 完成记录与状态收口`（M11 前）。
+
+### M12 完成记录（平台服务与发布补全）
+
+- 完成日期：2026-09-15
+- 提交号：c0d232a（系统主题与适配）/ d943eac（原生通知与强调色）/
+  971c1cb（发布形态与包变体）
+- 变更：
+  - **系统主题查询与事件**：capabilities.prefersDarkMode 经
+    `SDL_GetSystemTheme` 填充（修正 sdl3_host 过时的"SDL 3.2 无查询"
+    注释——3.2.0 起可用，零原生代码）；新 `HostEventType::
+    SystemThemeChanged`（SDL 事件翻译 + 能力位刷新 + fake host
+    pushSystemThemeChanged 同语义注入），runApp 经 onEvent 转发；
+    窗口级光标近似——FOCUS_GAINED 重放该窗口缓存形状（进程级原语
+    实现窗口级语义）。
+  - **adaptPlatformTheme 重做**：签名携带完整 AccessibilitySettings
+    （方向/高对比/fontScale/reduceAnimation 全保留，修旧实现丢弃
+    base 派生的缺陷）；accent 覆盖经 button/checkbox/switch token
+    重建（token 链派生）。settings/gallery Theme 页"跟随系统"开关
+    （默认关，保 headless 确定性）+ main onEvent 消费。
+  - **三平台原生服务 seam**（src/platform/native_services.*，公共
+    契约无平台类型，按平台条件编译）：Windows（Shell_NotifyIcon 气泡
+    + DwmGetColorizationColor，链接 dwmapi）/ Linux（libdbus 会话
+    总线：Notifications.Notify + appearance accent，缺 dbus 编译空
+    seam）/ macOS（AppKit NSColor.controlAccentColor +
+    NSUserNotification，OBJC++）/ 其余平台空 seam。
+    postNotification/能力位/accentColor 接线；真发送不进 ctest
+    （避免测试弹真实系统通知）。
+  - **发布形态**：install 补 Linux 桌面集成（desktop + hicolor 图标，
+    perl+zlib 生成简易占位资产）；linux package job 追加 linuxdeploy
+    AppImage；macos package job 追加 Lumen.app Contents 骨架
+    （Info.plist + bundle 内冒烟）；新 package-skia（三平台）与
+    package-skia-gpu（Linux llvmpipe 真验 --renderer gpu）CI job。
+- 测试：adaptPlatformTheme 派生保留（方向/密度/HC/fontScale +
+  accent token 链 + 无 accent 走方向派生）；fake SystemThemeChanged
+  能力刷新+事件；gallery 跟随系统主题开关/偏好重派生/关闭后不受
+  影响；native seam 能力位与结构化断言（dummy 驱动）；M4 通知降级
+  用例更新为平台条件断言。本地 Windows 真验：DwmGetColorizationColor
+  取到本机强调色、通知真实送达（ok）；本地包链全通（configure→
+  Release→CPack→解包冒烟哈希与基线一致）。本地 Windows CPU Debug
+  `410/410`。
+- 平台：本地 Windows 全部真验；Linux/macOS 原生代码与 AppImage/
+  .app/包变体以 CI 首跑为事实来源（失败则修复或回退对应 seam）。
+- 已知限制：
+  - Windows 通知为 Shell_NotifyIcon 气泡（Win10+ 显示为 Toast）；
+    托盘图标常驻进程生命期。macOS NSUserNotification 已弃用（未签名
+    二进制可能被通知中心拒绝→结构化失败）；正式 Toast 需签名证书后
+    迁 UserNotifications 框架。
+  - accentColor 近似：Windows 取 DWM 着色、Linux 读 appearance
+    accent（规范较新，桌面支持不一）——查询失败保持安全默认。
+  - 窗口级光标为获焦重放近似（SDL 无 per-window API；Wayland 原生
+    per-surface 光标留后续）。
+  - 图标为简易占位资产；Windows/macOS GPU 包与 CPack Bundle 生成器
+    留后续；AppImage 仅 CPU 主发布件（Skia 变体 TGZ/ZIP）。
+- 回滚点：`6e4d2f0 fix(app): M11 review 修复`（M12 前）。
 - review 修复（同日追记）：
   - **Tooltip 等待期空转帧消除**：FrameScheduler 新增一次性
     `setAnimationDeadline`（空闲等待到时刻、到达按 Animation 提交一帧、
