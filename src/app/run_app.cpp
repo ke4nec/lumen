@@ -245,7 +245,7 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                     if (options.onEvent) {
                         options.onEvent(shell, event);
                         scheduler.requestFrame(render::FrameReason::Input,
-                                               event.window);
+                                               *windowId);
                     }
                     break;
                 default:

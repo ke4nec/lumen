@@ -285,6 +285,26 @@ TEST_CASE("app_shell_rebuilds_on_view_and_scale_changes", "[app]") {
     CHECK(shell.renderFrame() == scaled);
 }
 
+TEST_CASE("app_shell_accessibility_settings_preserve_theme_direction", "[app]") {
+    AppShell shell{counterConfig()};
+    wireCounter(shell);
+    shell.setTheme(lumen::style::Theme::light(
+        lumen::style::ControlDensity::Comfortable,
+        lumen::style::ThemeDirection::InkLinen));
+
+    lumen::accessibility::AccessibilitySettings settings;
+    settings.fontScale = 1.15F;
+    shell.setAccessibilitySettings(settings, false);
+
+    CHECK(shell.theme().direction == lumen::style::ThemeDirection::InkLinen);
+    CHECK(shell.theme().darkMode == false);
+    CHECK(shell.theme().typography.body.fontSize >
+          lumen::style::Theme::light(
+              lumen::style::ControlDensity::Comfortable,
+              lumen::style::ThemeDirection::InkLinen)
+              .typography.body.fontSize);
+}
+
 // --- renderer 替换（外部测试 renderer 注入 + 回退 CPU） ---
 
 namespace {

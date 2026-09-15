@@ -255,7 +255,8 @@ void AppShell::setAccessibilitySettings(
     std::optional<bool> darkMode) {
     accessibility_ = settings;
     theme_ = style::Theme::fromSettings(
-        accessibility_, darkMode.value_or(true), theme_.metrics.density);
+        accessibility_, darkMode.value_or(theme_.darkMode),
+        theme_.metrics.density, theme_.direction);
     dirty_ = true;
     fullRepaintPending_ = true;
 }

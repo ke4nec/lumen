@@ -41,7 +41,9 @@ jobs:
       - name: Build
         run: cmake --build build-pkg --config Release
       - name: Package (CPack)
-        run: cpack --config CPackConfig.cmake
+        # VS 为多配置生成器；明确打包已构建的 Release，避免 CPack
+        # 默认配置随 runner/环境落到未构建的 Debug。
+        run: cpack --config CPackConfig.cmake -C Release
         working-directory: build-pkg
       - name: Unpack smoke (headless)
         shell: bash

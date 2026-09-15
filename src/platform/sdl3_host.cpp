@@ -520,6 +520,12 @@ std::size_t Sdl3ApplicationHost::translateEvent(
             // M12：刷新能力位并广播（应用经 onEvent 重派生主题）。
             capabilities_.prefersDarkMode =
                 SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
+            // 系统主题事件也覆盖强调色变化；重新查询避免能力快照停留
+            // 在初始化时的颜色。
+            if (const std::optional<core::Color> accent =
+                    native::systemAccentColor()) {
+                capabilities_.accentColor = *accent;
+            }
             core::HostEvent event;
             event.type = core::HostEventType::SystemThemeChanged;
             push(std::move(event));

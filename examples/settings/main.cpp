@@ -228,7 +228,8 @@ int runWindowed(SettingsApp& app, const Options& options) {
                                   : event.filePaths.front());
         } else if (event.type ==
                    lumen::core::HostEventType::SystemThemeChanged) {
-            app.setSystemThemePreference(host.capabilities().prefersDarkMode);
+            app.setSystemThemePreference(host.capabilities().prefersDarkMode,
+                                         host.capabilities().accentColor);
         }
     };
 

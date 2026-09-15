@@ -284,7 +284,8 @@ int runWindowed(GalleryApp& app, const Options& options) {
     runOptions.onEvent = [&app, &host](lumen::app::AppShell&,
                                        const lumen::core::HostEvent& event) {
         if (event.type == lumen::core::HostEventType::SystemThemeChanged) {
-            app.setSystemThemePreference(host.capabilities().prefersDarkMode);
+            app.setSystemThemePreference(host.capabilities().prefersDarkMode,
+                                         host.capabilities().accentColor);
         }
     };
     return lumen::app::runApp(app.shell(), host, runOptions);

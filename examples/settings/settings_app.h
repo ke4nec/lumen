@@ -148,8 +148,11 @@ class SettingsApp {
     }
     // M12：系统主题偏好（SystemThemeChanged 时由装配层注入；仅开启
     // "跟随系统"时重派生——方向/高对比/密度/字体缩放全保留）。
-    void setSystemThemePreference(bool prefersDark) {
+    void setSystemThemePreference(
+        bool prefersDark,
+        std::optional<core::Color> accentColor = std::nullopt) {
         systemPrefersDark_ = prefersDark;
+        systemAccent_ = accentColor;
         if (followSystemTheme_) {
             applySystemTheme();
         }
@@ -769,7 +772,7 @@ class SettingsApp {
     void applySystemTheme() {
         shell_.setTheme(style::adaptPlatformTheme(
             shell_.theme(), shell_.accessibilitySettings(),
-            systemPrefersDark_));
+            systemPrefersDark_, systemAccent_));
         darkMode_ = shell_.theme().darkMode;
     }
 
@@ -895,6 +898,7 @@ class SettingsApp {
     bool darkMode_{true};
     bool followSystemTheme_{false};
     bool systemPrefersDark_{false};
+    std::optional<core::Color> systemAccent_{};
     bool dialogOpen_{false};
     // M5：路由切换后的焦点恢复请求。
     bool focusRestorePending_{false};

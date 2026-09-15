@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -114,8 +115,11 @@ class GalleryApp {
     }
     /// M12：系统主题偏好（SystemThemeChanged 时由装配层注入 host 能力；
     /// 仅开启"跟随系统"时重派生——方向/高对比/密度/字体缩放全保留）。
-    void setSystemThemePreference(bool prefersDark) {
+    void setSystemThemePreference(
+        bool prefersDark,
+        std::optional<core::Color> accentColor = std::nullopt) {
         systemPrefersDark_ = prefersDark;
+        systemAccent_ = accentColor;
         if (followSystemTheme_) {
             applySystemTheme();
         }
@@ -422,7 +426,7 @@ class GalleryApp {
     void applySystemTheme() {
         shell_.setTheme(style::adaptPlatformTheme(
             shell_.theme(), shell_.accessibilitySettings(),
-            systemPrefersDark_));
+            systemPrefersDark_, systemAccent_));
         darkMode_ = shell_.theme().darkMode;
     }
 
@@ -451,13 +455,12 @@ class GalleryApp {
     }
 
     void applyAccent(core::Color accent) {
-        // 强调色切换：只覆盖当前主题的 accent 相关 token，保留深浅/密度/
-        // 高对比等全部派生。刻意不用 adaptPlatformTheme——它只取
-        // (density, fontScale) 重建基线，会丢弃已开启的高对比派生。
-        style::Theme theme = shell_.theme();
-        theme.colors.accent = accent;
-        theme.button.filled.background = accent;
-        shell_.setTheme(std::move(theme));
+        // 强调色切换沿同一 semantic→component 链重建，确保 Button、
+        // Checkbox、Switch 等所有依赖 accent 的组件保持一致，并保留
+        // 当前方向、深浅与可访问性派生。
+        shell_.setTheme(style::adaptPlatformTheme(
+            shell_.theme(), shell_.accessibilitySettings(),
+            shell_.theme().darkMode, accent));
         shell_.markDirty();
     }
 
@@ -1571,6 +1574,7 @@ class GalleryApp {
     style::ThemeDirection direction_{style::ThemeDirection::CoreDark};
     bool followSystemTheme_{false};
     bool systemPrefersDark_{false};
+    std::optional<core::Color> systemAccent_{};
     bool dialogOpen_{false};
     bool focusRestorePending_{false};
     mutable core::VirtualListController library_{};
