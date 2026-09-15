@@ -121,6 +121,14 @@ if(LUMEN_BUILD_PACKAGE)
     endif()
     install(FILES examples/counter/counter.lumen
             DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)
+    if(UNIX AND NOT APPLE)
+      # M12：Linux 桌面集成（AppImage 的 linuxdeploy 消费同一布局）。
+      install(FILES assets/lumen-settings.desktop
+              DESTINATION share/applications)
+      install(FILES assets/lumen.png
+              DESTINATION share/icons/hicolor/128x128/apps
+              RENAME lumen.png)
+    endif()
   endif()
   # 打包入口：cpack 配置见 cmake/PackageConfig.cmake（平台自适应：
   # Windows zip / Linux tar.gz / macOS 一级 .app 目录结构 + zip）。

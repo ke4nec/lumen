@@ -87,18 +87,37 @@ jobs:
             ./$pkg/bin/lumen-counter --headless
             ./$pkg/bin/lumen-settings --headless
           fi
+      - name: Build AppImage (linuxdeploy)
+        # M12：Linux 发布形态——TGZ 解包为 AppDir（usr/ 前缀布局），
+        # linuxdeploy 组装（desktop/icon 来自 install 规则；RPATH
+        # $ORIGIN/../lib 在 usr/bin↔usr/lib 相对布局下不变）。
+        working-directory: build-pkg
+        run: |
+          mkdir -p appimage/AppDir/usr
+          tar xzf lumen-*.tar.gz -C appimage/AppDir/usr --strip-components=1
+          cd appimage
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          OUTPUT=lumen-settings-x86_64.AppImage ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --desktop-file AppDir/usr/share/applications/lumen-settings.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/128x128/apps/lumen.png \
+            --output appimage
+          test -f lumen-settings-x86_64.AppImage
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
           name: lumen-package-${{ runner.os }}
-          path: build-pkg/lumen-*
+          path: |
+            build-pkg/lumen-*.tar.gz
+            build-pkg/appimage/*.AppImage
           # 便携包为发布件，短保留即时释放配额；正式发布请走 Release 附件。
           retention-days: 3
           compression-level: 9
           overwrite: true
       - name: Cleanup package intermediates
         if: always()
-        run: rm -rf build-pkg/unpack build-pkg/lumen-*
+        run: rm -rf build-pkg/unpack build-pkg/lumen-* build-pkg/appimage
 
   cpu:
     runs-on: ubuntu-24.04
@@ -345,3 +364,129 @@ jobs:
             build-mobile/Testing/Temporary/LastTestsFailed.log
           retention-days: 3
           overwrite: true
+
+  # M12：Skia 光栅便携包（Release；解包冒烟同 CPU 变体）。
+  package-skia:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/Skia)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: linux-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            linux-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: linux-ccache-pkg-skia-${{ github.sha }}
+          restore-keys: |
+            linux-ccache-pkg-skia-
+            linux-ccache-pkg-
+            linux-ccache-
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $LUMEN_LINUX_DEPS
+      - name: Configure (portable package + Skia)
+        run: >
+          cmake -S . -B build-pkg -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_PACKAGE=ON
+          -DLUMEN_ENABLE_SKIA=ON
+      - name: Build
+        run: cmake --build build-pkg --config Release
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
+      - name: Package (CPack)
+        run: cpack --config CPackConfig.cmake
+        working-directory: build-pkg
+      - name: Unpack smoke (headless)
+        working-directory: build-pkg
+        run: |
+          mkdir unpack && cd unpack
+          tar xzf ../*.tar.gz 2>/dev/null || unzip -q ../*.zip
+          pkg=$(ls -d lumen-*)
+          ./$pkg/bin/lumen-counter --headless
+          ./$pkg/bin/lumen-settings --headless
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-package-skia-${{ runner.os }}
+          path: build-pkg/lumen-*
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
+      - name: Cleanup package intermediates
+        if: always()
+        run: rm -rf build-pkg/unpack build-pkg/lumen-*
+
+  # M12：Skia+GPU 便携包（Linux llvmpipe 软件适配器真验 GPU 路径；
+  # Windows/macOS GPU 包留待后续——runner 无 GPU）。
+  package-skia-gpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/Skia)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: linux-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            linux-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: linux-ccache-pkg-gpu-${{ github.sha }}
+          restore-keys: |
+            linux-ccache-pkg-gpu-
+            linux-ccache-pkg-
+            linux-ccache-
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $LUMEN_LINUX_DEPS
+      - name: Configure (portable package + Skia + GPU)
+        run: >
+          cmake -S . -B build-pkg -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_PACKAGE=ON
+          -DLUMEN_ENABLE_SKIA=ON
+          -DLUMEN_ENABLE_GPU=ON
+      - name: Build
+        run: cmake --build build-pkg --config Release
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
+      - name: Package (CPack)
+        run: cpack --config CPackConfig.cmake
+        working-directory: build-pkg
+      - name: Unpack smoke (headless + llvmpipe GPU)
+        working-directory: build-pkg
+        run: |
+          mkdir unpack && cd unpack
+          tar xzf ../*.tar.gz 2>/dev/null || unzip -q ../*.zip
+          pkg=$(ls -d lumen-*)
+          ./$pkg/bin/lumen-counter --headless
+          ./$pkg/bin/lumen-settings --headless
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a \
+            ./$pkg/bin/lumen-counter --renderer gpu --diagnostics --frames 2
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-package-skia-gpu-${{ runner.os }}
+          path: build-pkg/lumen-*
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
+      - name: Cleanup package intermediates
+        if: always()
+        run: rm -rf build-pkg/unpack build-pkg/lumen-*

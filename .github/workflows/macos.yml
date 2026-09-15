@@ -75,17 +75,50 @@ jobs:
             ./$pkg/bin/lumen-counter --headless
             ./$pkg/bin/lumen-settings --headless
           fi
+      - name: Bundle .app (Contents skeleton)
+        # M12：macOS 发布形态——zip 包组 Lumen.app（Contents/MacOS + lib；
+        # 可执行 RPATH @loader_path/../lib 相对布局不变），Info.plist
+        # 骨架 + bundle 内 headless 冒烟。CPack Bundle 生成器需重排
+        # prefix 布局，留作后续增强。
+        working-directory: build-pkg
+        run: |
+          mkdir bundle && cd bundle
+          unzip -q ../*.zip
+          pkg=$(ls -d lumen-*)
+          app="Lumen.app/Contents"
+          mkdir -p "$app/MacOS" "$app/Resources" "$app/lib"
+          cp "$pkg/bin/"lumen-* "$app/MacOS/"
+          cp "$pkg/lib/"*.dylib "$app/lib/" 2>/dev/null || true
+          cat > "$app/Info.plist" << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key><string>lumen-settings</string>
+            <key>CFBundleIdentifier</key><string>dev.lumen.settings</string>
+            <key>CFBundleName</key><string>Lumen Settings</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>0.4</string>
+          </dict>
+          </plist>
+          PLIST
+          # bundle 冒烟：RPATH 相对布局一致（MacOS/../lib）。
+          "$app/MacOS/lumen-settings" --headless
+          cd ..
+          ditto -c -k --keepParent bundle/Lumen.app Lumen.app.zip
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
           name: lumen-package-${{ runner.os }}
-          path: build-pkg/lumen-*
+          path: |
+            build-pkg/lumen-*
+            build-pkg/Lumen.app.zip
           retention-days: 3
           compression-level: 9
           overwrite: true
       - name: Cleanup package intermediates
         if: always()
-        run: rm -rf build-pkg/unpack build-pkg/lumen-*
+        run: rm -rf build-pkg/unpack build-pkg/lumen-* build-pkg/bundle build-pkg/Lumen.app.zip
 
   cpu:
     runs-on: macos-15
@@ -254,3 +287,63 @@ jobs:
             build-mobile/Testing/Temporary/LastTestsFailed.log
           retention-days: 3
           overwrite: true
+
+  # M12：Skia 光栅便携包（Release；解包冒烟同 CPU 变体，zip 布局即可
+  # 启动——.app 组装暂限 CPU 主发布件）。
+  package-skia:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/Skia)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: macos-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            macos-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: macos-ccache-pkg-skia-${{ github.sha }}
+          restore-keys: |
+            macos-ccache-pkg-skia-
+            macos-ccache-pkg-
+            macos-ccache-
+      - name: Install ccache + ninja
+        run: brew install ccache ninja || brew upgrade ccache ninja || true
+      - name: Configure (portable package + Skia)
+        run: >
+          cmake -S . -B build-pkg -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_PACKAGE=ON
+          -DLUMEN_ENABLE_SKIA=ON
+      - name: Build
+        run: cmake --build build-pkg --config Release
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
+      - name: Package (CPack)
+        run: cpack --config CPackConfig.cmake
+        working-directory: build-pkg
+      - name: Unpack smoke (headless)
+        working-directory: build-pkg
+        run: |
+          mkdir unpack && cd unpack
+          tar xzf ../*.tar.gz 2>/dev/null || unzip -q ../*.zip
+          pkg=$(ls -d lumen-*)
+          ./$pkg/bin/lumen-counter --headless
+          ./$pkg/bin/lumen-settings --headless
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-package-skia-${{ runner.os }}
+          path: build-pkg/lumen-*
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
+      - name: Cleanup package intermediates
+        if: always()
+        run: rm -rf build-pkg/unpack build-pkg/lumen-*

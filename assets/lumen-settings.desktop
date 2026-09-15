@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Lumen Settings
+GenericName=Lumen Settings Demo
+Comment=Lumen self-use desktop GUI framework — settings showcase (forms, dialogs, navigation, theming)
+Exec=lumen-settings
+Icon=lumen
+Terminal=false
+Categories=Development;Utility;

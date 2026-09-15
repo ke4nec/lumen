@@ -185,3 +185,50 @@ jobs:
             build-gpu/Testing/Temporary/LastTestsFailed.log
           retention-days: 3
           overwrite: true
+
+  # M12：Skia 光栅便携包（Release-only——预编译 skia.lib 为静态 CRT，
+  # Windows 上 Skia 只支持 Release 配置；解包冒烟同 CPU 变体）。
+  package-skia:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: windows-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            windows-fetchcontent-
+      - name: Configure (portable package + Skia)
+        run: >
+          cmake -S . -B build-pkg
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_PACKAGE=ON
+          -DLUMEN_ENABLE_SKIA=ON
+      - name: Build (Release)
+        run: cmake --build build-pkg --config Release
+      - name: Package (CPack)
+        run: cpack --config CPackConfig.cmake -C Release
+        working-directory: build-pkg
+      - name: Unpack smoke (headless)
+        shell: bash
+        working-directory: build-pkg
+        run: |
+          mkdir unpack && cd unpack
+          7z x ../*.zip > /dev/null
+          pkg=$(ls -d lumen-*)
+          ./$pkg/bin/lumen-counter.exe --headless
+          ./$pkg/bin/lumen-settings.exe --headless
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-package-skia-${{ runner.os }}
+          path: build-pkg/lumen-*
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
+      - name: Cleanup package intermediates
+        if: always()
+        shell: bash
+        run: rm -rf build-pkg/unpack build-pkg/lumen-*
