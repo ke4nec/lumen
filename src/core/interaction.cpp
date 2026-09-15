@@ -519,6 +519,9 @@ void InteractionController::pointerUp(const RenderNode& root,
     // The first onClick node on the release chain decides: firing only when
     // it is the same node armed at pointer down (plan §5.3: the event goes
     // to the target first, then bubbles to the nearest ancestor handler).
+    // 约定：handler 内可能同步触发整树重建（M11 DropdownController::open
+    // 经 rebuildIfDirty 落地 overlay）——handler 返回后不得再解引用
+    // chain/root 中的节点指针。
     for (const RenderNode* node : chain) {
         if (node->onClick.empty()) {
             continue;

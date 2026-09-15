@@ -303,6 +303,8 @@ class GalleryApp {
             // onSelected 回调写状态）。
             dropdown_.open(shell_, "color-dropdown");
         };
+        // Tooltip 锚点演示按钮（hover 显示气泡；点击无操作）。
+        handlers["noop"] = [] {};
         handlers["switch-tab-basic"] = [this] {
             shell_.state().set("gallery-tab", "Basic");
         };

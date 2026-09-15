@@ -266,6 +266,9 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
         // Animation deadline 循环；reduceAnimation 时 MotionTokens 归零，
         // 无连续动画源）。
         scheduler.setAnimationsActive(shell.animationsActive());
+        // M11 review：离散定时唤醒（tooltip 延迟到期）——空闲等待到
+        // 时刻，不占用连续动画帧。
+        scheduler.setAnimationDeadline(shell.animationWakeMs());
 
         if (scheduler.shouldSubmitFrame()) {
             // maxFrames 测量/冒烟模式强制全量重绘：damage 统计归零但像素

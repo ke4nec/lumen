@@ -38,6 +38,10 @@ void FrameScheduler::setAnimationsActive(bool active) {
     animationsActive_ = active;
 }
 
+void FrameScheduler::setAnimationDeadline(std::optional<std::uint64_t> deadlineMs) {
+    animationDeadlineMs_ = deadlineMs;
+}
+
 void FrameScheduler::setWindowVisible(bool visible) {
     windowVisible_ = visible;
 }
@@ -102,10 +106,16 @@ FrameScheduler::FrameDecision FrameScheduler::evaluateFrame() const {
         if (sinceSubmit < interval) {
             const std::uint32_t remaining =
                 static_cast<std::uint32_t>(interval - sinceSubmit);
-            // 帧预算未到：有原因或动画在跑就等到 deadline，否则空闲等待。
+            // 帧预算未到：有原因或动画在跑就等到 deadline；离散唤醒
+            //（tooltip 延迟）等到 min(预算, 时刻)；否则空闲等待。
             if (hasPending || animationsEffective) {
                 decision.reasons = pending_;
                 decision.waitMs = remaining;
+            } else if (animationDeadlineMs_.has_value() &&
+                       nowMs < *animationDeadlineMs_) {
+                decision.waitMs = static_cast<std::uint32_t>(
+                    std::min<std::uint64_t>(remaining,
+                                            *animationDeadlineMs_ - nowMs));
             } else {
                 decision.waitMs = std::nullopt;
             }
@@ -129,6 +139,19 @@ FrameScheduler::FrameDecision FrameScheduler::evaluateFrame() const {
         return decision;
     }
 
+    // 离散唤醒：到达即按 Animation 提交一帧；未到期空闲等待到时刻。
+    if (animationDeadlineMs_.has_value()) {
+        if (nowMs >= *animationDeadlineMs_) {
+            decision.submit = true;
+            decision.reasons = kReasonBit(FrameReason::Animation);
+            decision.waitMs = 0;
+            return decision;
+        }
+        decision.waitMs =
+            static_cast<std::uint32_t>(*animationDeadlineMs_ - nowMs);
+        return decision;
+    }
+
     // 空闲：无 dirty、无动画、无资源完成 → 不提交。
     decision.waitMs = std::nullopt;
     return decision;
@@ -142,6 +165,8 @@ bool FrameScheduler::shouldSubmitFrame() {
     // 消费：pending 移入当前帧；turn 中途的新请求落在 pending（下一帧）。
     active_ = pending_;
     pending_ = 0;
+    // 离散唤醒一次性消费（应用每轮按最新状态重设）。
+    animationDeadlineMs_.reset();
     if (active_ & kReasonBit(FrameReason::Resize)) {
         hasResizeRequest_ = false;
     }

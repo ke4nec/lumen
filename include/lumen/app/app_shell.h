@@ -229,6 +229,10 @@ class AppShell {
     // 连续动画是否活跃（caret 闪烁/转场/状态过渡/tooltip 计时/onAnimate）；
     // runApp 据此驱动 FrameScheduler 动画帧。
     [[nodiscard]] bool animationsActive() const { return animationsActive_; }
+    // M11 review：最早的离散动画唤醒时刻（Armed tooltip 延迟到期；
+    // 时钟与 tick 同源）。runApp 注入 FrameScheduler 空闲定时唤醒，
+    // 等待期不占用连续动画帧。
+    [[nodiscard]] std::optional<std::uint64_t> animationWakeMs() const;
 
     // --- M11：Tooltip hover 延迟驱动 ---
     // 注册 anchor→tooltip 关联：hover 停留 tooltipDelayMs 后 tooltipKey

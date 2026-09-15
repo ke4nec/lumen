@@ -70,6 +70,10 @@ class FrameScheduler {
 
     // 持续动画是否活跃（tween/blink 等）。活跃时按 deadline 循环提交。
     void setAnimationsActive(bool active);
+    // M11 review：一次性动画唤醒时刻（绝对毫秒，时钟与 FrameClock 同源；
+    // tooltip 延迟到期等离散定时）。到达时按 Animation 原因提交一帧，
+    // 期间空闲等待到时刻而非连续动画帧；应用每轮重设（nullopt 清除）。
+    void setAnimationDeadline(std::optional<std::uint64_t> deadlineMs);
     // 窗口可见性（最小化/还原）。
     void setWindowVisible(bool visible);
     // VSync 开关：开 = 按 targetFps 节流；关 = 有原因立即提交。
@@ -123,6 +127,7 @@ class FrameScheduler {
     std::uint32_t pending_{0};
     std::uint32_t active_{0};
     bool animationsActive_{false};
+    std::optional<std::uint64_t> animationDeadlineMs_{};
     bool reduceAnimation_{false};
     bool windowVisible_{true};
     bool vsync_{true};

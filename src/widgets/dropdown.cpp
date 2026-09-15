@@ -13,10 +13,13 @@ constexpr float kMenuGapPx = 4.0F;
 constexpr float kOptionGapPx = 4.0F;
 
 // 菜单估算高度（向上翻折判断；实际高度由布局决定，钳制到视口内）。
+// M11 review：行高取 metrics 与排版字号的最大值——fontScale 极端时
+// 文本行高可超过控件最小高度。
 float estimateMenuHeight(const style::Theme& theme,
                          std::size_t optionCount) {
-    const float row =
-        theme.metrics.minHeight[theme.metrics.baseIndex] + kOptionGapPx;
+    const float minHeight = theme.metrics.minHeight[theme.metrics.baseIndex];
+    const float textRow = theme.typography.label.fontSize * 1.2F + 8.0F;
+    const float row = std::max(minHeight, textRow) + kOptionGapPx;
     return static_cast<float>(optionCount) * row + kMenuGapPx * 2.0F;
 }
 
@@ -57,7 +60,9 @@ void DropdownController::open(app::AppShell& shell,
     }
     anchor_ = core::Rect{core::absoluteOffset(shell.root(), dropdownKey_),
                          row->size};
-    setValue(value_);  // 高亮当前值
+    // M11 review：值同步以渲染值行文本为准（bind 值经 applyBinds 写入；
+    // 控制器内部 value_ 只是打开时的高亮依据，消除双源漂移）。
+    setValue(row->text.empty() ? value_ : row->text);
     open_ = true;
     registerHandlers(shell);
     shell.setOverlay(buildOverlay(shell.theme(), shell.view()));
@@ -91,8 +96,7 @@ void DropdownController::close(app::AppShell& shell) {
 }
 
 void DropdownController::registerHandlers(app::AppShell& shell) {
-    shell.handlers()[dropdownKey_ + "-dismiss"] = [this,
-                                                   &shell]( ) {
+    shell.handlers()[dropdownKey_ + "-dismiss"] = [this, &shell]() {
         close(shell);
     };
     for (std::size_t i = 0; i < options_.size(); ++i) {

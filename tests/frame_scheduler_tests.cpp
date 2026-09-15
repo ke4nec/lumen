@@ -212,3 +212,31 @@ TEST_CASE("realtime_clock_is_monotonic", "[scheduler]") {
     const std::uint64_t second = clock.nowMs();
     CHECK(second >= first);
 }
+
+// M11 review：离散动画唤醒（tooltip 延迟到期）——空闲等待到时刻、到达
+// 按 Animation 提交一帧、一次性消费；不占用连续动画帧。
+TEST_CASE("scheduler_animation_deadline_wakes_idle_loop", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 60;
+    FrameScheduler scheduler{config, &clock};
+
+    // 空闲：无 deadline 不提交、可无限等待。
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    CHECK_FALSE(scheduler.msUntilNextFrame().has_value());
+
+    // 未来 deadline：等待到时刻，期间不提交。
+    scheduler.setAnimationDeadline(500);
+    REQUIRE(scheduler.msUntilNextFrame().has_value());
+    CHECK(*scheduler.msUntilNextFrame() == 500);
+    clock.advance(400);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    REQUIRE(scheduler.msUntilNextFrame().has_value());
+    CHECK(*scheduler.msUntilNextFrame() == 100);
+
+    // 到达：按 Animation 提交；一次性消费后回到空闲。
+    clock.advance(100);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK_FALSE(scheduler.msUntilNextFrame().has_value());
+}

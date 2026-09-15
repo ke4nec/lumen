@@ -1118,6 +1118,20 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     示例哈希路径保持即时切换（M10 限制延续，随应用侧确定性测试
     演进启用）。
 - 回滚点：`7978adb docs(roadmap): M10 完成记录与状态收口`（M11 前）。
+- review 修复（同日追记）：
+  - **Tooltip 等待期空转帧消除**：FrameScheduler 新增一次性
+    `setAnimationDeadline`（空闲等待到时刻、到达按 Animation 提交一帧、
+    一次性消费）；AppShell 暴露 `animationWakeMs`（Armed tooltip 最早
+    到期），runApp 每轮注入；Armed 等待期不再请求连续动画帧（原
+    ~400ms 内 60fps 空转）。
+  - **语义模态边界统一**：performAccessibilityAction 的 scrollSink 与
+    action 派发一致走事件树——overlay 活跃期主树节点激活/滚动均
+    NotHandled（集成断言）。
+  - 菜单高度估算计入排版行高（fontScale 极端时文本行高超过控件最小
+    高度）；DropdownController::open 以渲染值行文本同步 value（消除
+    控制器/StateStore 双源漂移）；pointerUp 分发处固化"handler 返回
+    后不得解引用 chain/root"约定注释；gallery 注册 noop handler。
+  本地 Windows CPU Debug `406/406`（含调度器 deadline 新用例）。
 
 ### 范围调整记录（2026-09-14）
 

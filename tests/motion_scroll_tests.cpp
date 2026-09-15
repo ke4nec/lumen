@@ -702,6 +702,10 @@ TEST_CASE("tooltip_reveals_after_hover_delay_and_hides_on_leave",
     shell.tick(100);  // hover 进入：Armed
     (void)shell.renderFrame();
     CHECK(tipAlpha(shell) == 0.0F);  // 未满延迟不可见
+    // 等待期不占用连续动画帧（M11 review：定时唤醒替代空转帧）。
+    CHECK_FALSE(shell.animationsActive());
+    CHECK(shell.animationWakeMs().has_value());
+    CHECK(*shell.animationWakeMs() == 100 + delay);
 
     shell.tick(100 + delay);  // 满延迟：转场开始（首拍为起点 alpha=0）
     shell.tick(100 + delay + fade / 2);  // 淡入中
@@ -835,6 +839,12 @@ TEST_CASE("overlay_composites_paint_hits_and_semantics", "[motion]") {
         lumen::accessibility::kActionActivate) ==
         lumen::accessibility::SemanticsActionStatus::Handled);
     CHECK(clicked == "menu");
+
+    // 模态语义边界（M11 review）：overlay 活跃期主树节点不可激活/
+    // 滚动（事件树统一，NotHandled）。
+    CHECK(shell.performAccessibilityAction(
+              underIdentity, lumen::accessibility::kActionActivate) ==
+          lumen::accessibility::SemanticsActionStatus::NotHandled);
 
     // 命中优先：点击菜单选项位置——同位置主树的 under-button 不得触发。
     clicked.clear();

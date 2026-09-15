@@ -175,7 +175,9 @@ accessibility::SemanticsActionStatus AppShell::performAccessibilityAction(
     context.focus = &focus_;
     context.controller = &controller_;
     // 滚动 sink：经控制器已注册的 wheelSink（虚拟列表/ScrollView 同
-    // 源；hit 为空 = 键盘/语义触发的回退视口路径）。
+    // 源；hit 为空 = 键盘/语义触发的回退视口路径）。M11 review：overlay
+    // 活跃期与 action 派发一致走事件树（模态边界统一，主树滚动/激活
+    // 不可达）。
     context.scrollSink = [this](const std::string& nodeId, float deltaX,
                                 float deltaY) {
         if (!config_.onWheel) {
@@ -183,7 +185,7 @@ accessibility::SemanticsActionStatus AppShell::performAccessibilityAction(
         }
         core::Offset origin{};
         const core::RenderNode* viewport =
-            findByIdentity(root_, nodeId, origin);
+            findByIdentity(eventTree(), nodeId, origin);
         if (viewport == nullptr ||
             !core::isScrollableWidget(viewport->type)) {
             return false;
@@ -191,7 +193,7 @@ accessibility::SemanticsActionStatus AppShell::performAccessibilityAction(
         const core::Offset center =
             origin + core::Offset{viewport->size.width * 0.5F,
                                   viewport->size.height * 0.5F};
-        return config_.onWheel(root_, viewport, center,
+        return config_.onWheel(eventTree(), viewport, center,
                                core::Offset{deltaX, deltaY});
     };
     const auto status = accessibility::performSemanticsAction(
@@ -698,6 +700,18 @@ bool AppShell::applyTransitions(std::vector<core::Rect>& damage) {
     return pending;
 }
 
+std::optional<std::uint64_t> AppShell::animationWakeMs() const {
+    const std::uint64_t delay = theme_.motion.tooltipDelayMs;
+    std::optional<std::uint64_t> wake;
+    for (const auto& tip : tooltips_) {
+        if (tip.phase == TooltipRegistration::Phase::Armed) {
+            const std::uint64_t at = tip.armedAtMs + delay;
+            wake = wake.has_value() ? std::min(*wake, at) : at;
+        }
+    }
+    return wake;
+}
+
 // --- M11：Tooltip hover 延迟驱动 ---
 
 void AppShell::registerTooltip(std::string anchorKey,
@@ -764,10 +778,9 @@ bool AppShell::advanceTooltips(std::uint64_t nowMs) {
                            nowMs - tip.armedAtMs >= delay) {
                     showTooltip(tip);
                     active = true;
-                } else {
-                    // 等待期保持动画帧（延迟到期检查）。
-                    active = true;
                 }
+                // 等待期不请求连续帧：由 animationWakeMs 经 FrameScheduler
+                // 空闲定时唤醒（M11 review：消除 ~400ms 的空转动画帧）。
                 break;
             case TooltipRegistration::Phase::Visible:
                 if (!hovered) {
