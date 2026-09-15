@@ -20,9 +20,11 @@
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
 #include "lumen/render/render_commands.h"
+#include "lumen/style/theme.h"
 
 using namespace lumen;
 using namespace lumen::core;
+using Catch::Approx;
 using lumen::layout::LayoutEngine;
 
 namespace {
@@ -370,4 +372,197 @@ TEST_CASE("tooltip_paints_text_and_surface", "[controls][m6]") {
     const auto* node = tree.find(tipNode->identity);
     REQUIRE(node != nullptr);
     CHECK(node->label == "Save changes (Ctrl+S)");
+}
+
+// --- S2（gui-control-visual-system-task §6.4）：指示器几何与部件 ---
+
+TEST_CASE("checkbox_checked_draws_check_icon_not_inner_block", "[visual][s2]") {
+    // 选中 = accent 填充 + IconId::Check 折线勾号（旧实现是内方块）。
+    const RenderNode checkedRoot =
+        layoutOf(makeCheckbox("A", "a", "cb", true));
+    const auto checkedCommands = render::recordScene(checkedRoot);
+    bool sawCheckIcon = false;
+    for (const auto& command : checkedCommands.commands()) {
+        if (command.type == render::CommandType::DrawIcon) {
+            sawCheckIcon = command.polylines == iconPolylines(IconId::Check);
+        }
+    }
+    CHECK(sawCheckIcon);
+
+    // 未选 = surfaceSunken 内部 + borderStrong 描边轮廓（空心框）。
+    const RenderNode offRoot = layoutOf(makeCheckbox("A", "a", "cb", false));
+    const auto offCommands = render::recordScene(offRoot);
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    bool sawOutlineStroke = false;
+    bool sawSunkenInterior = false;
+    for (const auto& command : offCommands.commands()) {
+        if (command.type == render::CommandType::DrawRectStroke &&
+            command.color == theme.colors.borderStrong) {
+            sawOutlineStroke = true;
+        }
+        if (command.type == render::CommandType::DrawRect &&
+            command.color == theme.colors.surfaceSunken) {
+            sawSunkenInterior = true;
+        }
+    }
+    CHECK(sawOutlineStroke);
+    CHECK(sawSunkenInterior);
+}
+
+TEST_CASE("checkbox_slot_reserves_focus_ring_space", "[visual][s2]") {
+    // §4.4：槽位 = 指示器 + focusRingWidth + 1px；标签从槽位边缘起算。
+    const RenderNode root = layoutOf(makeCheckbox("Label", "a", "cb"));
+    const RenderNode* node = findNodeByKey(root, "cb");
+    REQUIRE(node != nullptr);
+    const auto* checkbox =
+        std::get_if<CheckboxResolvedStyle>(&node->style.component);
+    REQUIRE(checkbox != nullptr);
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    const float ring = theme.metrics.focusRingWidth + 1.0F;
+    CHECK(checkbox->slotSize ==
+          checkbox->indicatorSize + ring);
+    // 固有宽度 = 槽位 + labelGap + 标签宽（不再是裸指示器宽）。
+    CHECK(node->size.width > checkbox->slotSize + checkbox->labelGap);
+}
+
+TEST_CASE("radio_resolves_dedicated_style_with_hollow_ring", "[visual][s2]") {
+    // §6.4：Radio 专用解析——不再回落通用容器；外环为描边（空心）+
+    // surfaceSunken 内部 + 独立 accent 内点。
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    const RenderNode checkedRoot =
+        layoutOf(makeRadio("R", "r", "radio", true));
+    const RenderNode* node = findNodeByKey(checkedRoot, "radio");
+    REQUIRE(node != nullptr);
+    const auto* radio =
+        std::get_if<RadioResolvedStyle>(&node->style.component);
+    REQUIRE(radio != nullptr);
+    CHECK(radio->checked);
+    CHECK(radio->indicator == theme.colors.surfaceSunken);
+    CHECK(radio->indicatorChecked == theme.colors.accent);
+    CHECK(radio->dot == theme.colors.accent);
+    CHECK(radio->dotRatio == 0.45F);
+
+    // 命令层：内点前有环描边（DrawRectStroke）与环内填充。
+    const auto commands = render::recordScene(checkedRoot);
+    bool sawRingStroke = false;
+    bool sawInterior = false;
+    bool sawDot = false;
+    for (const auto& command : commands.commands()) {
+        if (command.type == render::CommandType::DrawRectStroke &&
+            command.color == theme.colors.accent) {
+            sawRingStroke = true;
+        }
+        if (command.type == render::CommandType::DrawRect &&
+            command.color == theme.colors.surfaceSunken) {
+            sawInterior = true;
+        }
+        // 内点：以 accent 填充的小圆（宽 = 外径 × 0.45）。
+        if (command.type == render::CommandType::DrawRect &&
+            command.color == theme.colors.accent &&
+            command.rect.size.width < 12.0F) {
+            sawDot = true;
+        }
+    }
+    CHECK(sawRingStroke);
+    CHECK(sawInterior);
+    CHECK(sawDot);
+
+    // 像素层：勾选态环与内点之间的空隙 = surfaceSunken（非 accent 实心）。
+    // 布局视口与帧缓冲一致（200×60），采样才落在缓冲内。
+    const RenderNode pixelRoot =
+        layoutOf(makeRadio("R", "r", "radio", true), 200.0F, 60.0F);
+    render::CpuRenderer renderer;
+    renderer.beginFrame(Size{200.0F, 60.0F});
+    render::paintScene(renderer, pixelRoot);
+    renderer.endFrame();
+    const auto origin = absoluteOffset(pixelRoot, "radio");
+    const auto* radioNode = findNodeByKey(pixelRoot, "radio");
+    const auto& radioStyle =
+        std::get<RadioResolvedStyle>(radioNode->style.component);
+    const float cx =
+        origin.x + (radioStyle.slotSize - radioStyle.indicatorSize) * 0.5F +
+        radioStyle.indicatorSize * 0.5F;
+    const float cy = origin.y + radioNode->size.height * 0.5F;
+    const auto pixel = [&](float x, float y) {
+        const int px = static_cast<int>(x);
+        const int py = static_cast<int>(y);
+        REQUIRE(px >= 0);
+        REQUIRE(px < 200);
+        REQUIRE(py >= 0);
+        REQUIRE(py < 60);
+        const std::size_t offset =
+            (static_cast<std::size_t>(py) * 200 + static_cast<std::size_t>(px)) *
+            4;
+        return Color::fromRGBA(renderer.pixels().rgba[offset],
+                               renderer.pixels().rgba[offset + 1],
+                               renderer.pixels().rgba[offset + 2],
+                               renderer.pixels().rgba[offset + 3]);
+    };
+    // 内点中心 = accent；环内空隙（约 0.35 外径处）= surfaceSunken。
+    CHECK(pixel(cx, cy) == theme.colors.accent);
+    const float gap = radioStyle.indicatorSize * 0.35F;
+    CHECK(pixel(cx + gap, cy) == theme.colors.surfaceSunken);
+}
+
+TEST_CASE("switch_derives_knob_inset_and_two_knob_colors", "[visual][s2]") {
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    const RenderNode offRoot = layoutOf(makeSwitch("S", "s", "sw", false));
+    const RenderNode* off = findNodeByKey(offRoot, "sw");
+    REQUIRE(off != nullptr);
+    const auto* offStyle =
+        std::get_if<SwitchResolvedStyle>(&off->style.component);
+    REQUIRE(offStyle != nullptr);
+    // 左右内距 = (trackHeight - knobSize) / 2（§6.4，非固定 3px）。
+    CHECK(offStyle->knobInset ==
+          (offStyle->trackHeight - offStyle->knobSize) * 0.5F);
+    CHECK(offStyle->knobOff == theme.colors.contentPrimary);
+    CHECK(offStyle->knobOn == theme.colors.onAccent);
+    // 档位 2（Touch）：trackHeight 24、knob 16 → 内距 4（≠3）。
+    Widget touch = withControlSize(makeSwitch("S", "s", "sw2", false),
+                                   ControlSize::Large);
+    const RenderNode touchRoot = layoutOf(std::move(touch));
+    const RenderNode* touchNode = findNodeByKey(touchRoot, "sw2");
+    REQUIRE(touchNode != nullptr);
+    const auto* touchStyle =
+        std::get_if<SwitchResolvedStyle>(&touchNode->style.component);
+    REQUIRE(touchStyle != nullptr);
+    CHECK(touchStyle->knobInset == 4.0F);
+    // 轨道轮廓描边存在。
+    const auto commands = render::recordScene(offRoot);
+    bool sawTrackOutline = false;
+    for (const auto& command : commands.commands()) {
+        if (command.type == render::CommandType::DrawRectStroke &&
+            command.color == theme.colors.borderStrong) {
+            sawTrackOutline = true;
+        }
+    }
+    CHECK(sawTrackOutline);
+}
+
+TEST_CASE("button_icon_uses_inline_tier_and_scales_stroke", "[visual][s2]") {
+    // §6.1/§4.4：图标盒取 inlineIconSize 档位（16/16/20），线宽按 16px→
+    // 1.5 基准比例。
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    const RenderNode mediumRoot =
+        layoutOf(withIcon(makeButton("Add", {}, {}, 0, "b"), IconId::Plus));
+    const RenderNode* medium = findNodeByKey(mediumRoot, "b");
+    REQUIRE(medium != nullptr);
+    const auto* mediumStyle =
+        std::get_if<ButtonResolvedStyle>(&medium->style.component);
+    REQUIRE(mediumStyle != nullptr);
+    CHECK(mediumStyle->iconSize == theme.metrics.inlineIconSize[1]);
+    CHECK(mediumStyle->iconGap == theme.metrics.controlGap[1]);
+    CHECK(mediumStyle->iconStroke == 1.5F);
+
+    Widget large = withControlSize(
+        withIcon(makeButton("Add", {}, {}, 0, "b2"), IconId::Plus),
+        ControlSize::Large);
+    const RenderNode largeRoot = layoutOf(std::move(large));
+    const RenderNode* largeNode = findNodeByKey(largeRoot, "b2");
+    REQUIRE(largeNode != nullptr);
+    const auto* largeStyle =
+        std::get_if<ButtonResolvedStyle>(&largeNode->style.component);
+    REQUIRE(largeStyle != nullptr);
+    CHECK(largeStyle->iconSize == theme.metrics.inlineIconSize[2]);
+    CHECK(largeStyle->iconStroke == Approx(1.875F));  // 1.5 × 20/16
 }

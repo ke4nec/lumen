@@ -205,7 +205,10 @@ TextFieldTokens textFieldTokensFrom(const ColorScheme& colors) {
 
 CheckboxTokens checkboxTokensFrom(const ColorScheme& colors) {
     CheckboxTokens tokens;
-    tokens.indicator = colors.borderDefault;
+    // §6.4：Off = surfaceSunken 内部 + borderStrong 轮廓；On = accent +
+    // onAccent 勾号。
+    tokens.indicator = colors.surfaceSunken;
+    tokens.indicatorOutline = colors.borderStrong;
     tokens.indicatorChecked = colors.accent;
     tokens.mark = colors.onAccent;
     return tokens;
@@ -213,9 +216,24 @@ CheckboxTokens checkboxTokensFrom(const ColorScheme& colors) {
 
 SwitchTokens switchTokensFrom(const ColorScheme& colors) {
     SwitchTokens tokens;
-    tokens.trackOff = colors.borderDefault;
+    // §6.4：Off 轨道 surfaceSunken + borderStrong 轮廓；On 轨道 accent；
+    // knobOff=contentPrimary、knobOn=onAccent（两态对比独立保证）。
+    tokens.trackOff = colors.surfaceSunken;
+    tokens.trackOutline = colors.borderStrong;
     tokens.trackOn = colors.accent;
-    tokens.knob = colors.contentPrimary;
+    tokens.knobOff = colors.contentPrimary;
+    tokens.knobOn = colors.onAccent;
+    return tokens;
+}
+
+RadioTokens radioTokensFrom(const ColorScheme& colors) {
+    RadioTokens tokens;
+    // §6.4：Off 空心环 surfaceSunken + borderStrong；On 外环 accent、内点
+    // accent（环内保留表面空隙，不用两次同色填充冒充空心环）。
+    tokens.indicator = colors.surfaceSunken;
+    tokens.indicatorOutline = colors.borderStrong;
+    tokens.indicatorChecked = colors.accent;
+    tokens.dot = colors.accent;
     return tokens;
 }
 
@@ -510,6 +528,7 @@ Theme baseTheme(bool darkMode, ControlDensity density,
     theme.textField = textFieldTokensFrom(theme.colors);
     theme.checkbox = checkboxTokensFrom(theme.colors);
     theme.switchControl = switchTokensFrom(theme.colors);
+    theme.radio = radioTokensFrom(theme.colors);
     theme.dialog = dialogTokensFrom(theme.colors, theme.metrics);
     theme.scrollbar = scrollbarTokensFrom(theme.colors);
     theme.direction = direction;
@@ -549,6 +568,7 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     theme.textField = textFieldTokensFrom(theme.colors);
     theme.checkbox = checkboxTokensFrom(theme.colors);
     theme.switchControl = switchTokensFrom(theme.colors);
+    theme.radio = radioTokensFrom(theme.colors);
     theme.metrics.focusRingWidth = 3.0F;
     theme.metrics.controlBorderWidth = 2.0F;
 }
@@ -570,6 +590,9 @@ void scaleComponentSizes(Theme& theme, float factor) {
         value *= factor;
     }
     for (float& value : theme.switchControl.knobSize) {
+        value *= factor;
+    }
+    for (float& value : theme.radio.indicatorSize) {
         value *= factor;
     }
     theme.icons.defaultSize *= factor;
@@ -650,6 +673,7 @@ Theme adaptPlatformTheme(const Theme& base,
         adapted.button = buttonTokensFrom(adapted.colors);
         adapted.checkbox = checkboxTokensFrom(adapted.colors);
         adapted.switchControl = switchTokensFrom(adapted.colors);
+        adapted.radio = radioTokensFrom(adapted.colors);
     }
     return adapted;
 }

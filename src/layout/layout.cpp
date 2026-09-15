@@ -105,7 +105,14 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
         widget.type == WidgetType::Dropdown) {
         node.text = widget.text;
     }
-    node.iconStrokeWidth = styleContext.theme.icons.strokeWidth;
+    // §4.5：16px 图标基准描边 1.5，按图标盒尺寸比例缩放（iconSize 缺省
+    // 时取 token 默认尺寸）。
+    const float iconBoxSize =
+        widget.width.has_value() ? *widget.width
+                                 : styleContext.theme.icons.defaultSize;
+    node.iconStrokeWidth =
+        styleContext.theme.icons.strokeWidth *
+        (iconBoxSize / std::max(0.01F, styleContext.theme.icons.defaultSize));
     node.icon = static_cast<std::uint8_t>(widget.icon);
     node.transitionAlpha = widget.transitionAlpha;
     node.showScrollbar = widget.showScrollbar;
@@ -168,12 +175,22 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
                 /*wrap=*/widget.multiline || textStyle.maxLines != 1);
         case WidgetType::Button: {
             // chrome（padding/最小尺寸）来自 resolved style——布局与
-            // painter 同源（visual-system §7.1）。
+            // painter 同源（visual-system §7.1）。图标计入内容组宽度
+            //（§6.1：文本+尾随图标作为居中内容组）。
             const EdgeInsets& chrome = core::commonStyle(resolved).padding;
             const Size textSize = measureTextContent(content, textStyle, 0.0F,
                                                      false);
+            float contentWidth = textSize.width;
+            const auto* buttonStyle =
+                std::get_if<core::ButtonResolvedStyle>(&resolved.component);
+            if (buttonStyle != nullptr &&
+                widget.icon != core::IconId::None) {
+                contentWidth +=
+                    buttonStyle->iconSize +
+                    (content.empty() ? 0.0F : buttonStyle->iconGap);
+            }
             const float width =
-                std::max(textSize.width + chrome.horizontal(),
+                std::max(contentWidth + chrome.horizontal(),
                          resolved.minWidth);
             const float height = std::max(textSize.height + chrome.vertical(),
                                           resolved.minHeight);
@@ -207,17 +224,17 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             return Size{0.0F, track};
         }
         case WidgetType::Radio: {
-            // 同 Checkbox 度量（圆形指示）。
-            const auto* checkbox =
-                std::get_if<core::CheckboxResolvedStyle>(&resolved.component);
-            if (checkbox == nullptr) {
+            // S2：Radio 专用解析（§6.4）——槽位（指示器 + 焦点环 + 1px
+            // 隔离带）+ 标签。
+            const auto* radio =
+                std::get_if<core::RadioResolvedStyle>(&resolved.component);
+            if (radio == nullptr) {
                 return measureTextContent(content, textStyle, 0.0F, false);
             }
             const Size label = measureTextContent(content, textStyle, 0.0F,
                                                   false);
-            return Size{checkbox->indicatorSize + checkbox->labelGap +
-                            label.width,
-                        std::max(checkbox->indicatorSize, label.height)};
+            return Size{radio->slotSize + radio->labelGap + label.width,
+                        std::max(radio->slotSize, label.height)};
         }
         case WidgetType::Tooltip: {
             const Size text = measureTextContent(content, textStyle, maxWidth,
@@ -234,9 +251,9 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             }
             const Size label = measureTextContent(content, textStyle, 0.0F,
                                                   false);
-            return Size{checkbox->indicatorSize + checkbox->labelGap +
-                            label.width,
-                        std::max(checkbox->indicatorSize, label.height)};
+            // 槽位含焦点环预留（§4.4）：是否聚焦不改变标签起点。
+            return Size{checkbox->slotSize + checkbox->labelGap + label.width,
+                        std::max(checkbox->slotSize, label.height)};
         }
         case WidgetType::Switch: {
             const auto* control =
@@ -246,7 +263,7 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             }
             const Size label = measureTextContent(content, textStyle, 0.0F,
                                                   false);
-            return Size{control->trackWidth + control->labelGap + label.width,
+            return Size{control->slotSize + control->labelGap + label.width,
                         std::max(control->trackHeight, label.height)};
         }
         default:

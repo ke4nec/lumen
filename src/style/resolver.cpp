@@ -151,6 +151,12 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
 
     core::ButtonResolvedStyle button;
     CommonResolvedStyle& common = button.common;
+    // 图标部件（§6.1/§4.5）：槽位尺寸与 gap 按档位，线宽按 16px→1.5
+    // 基准比例缩放。
+    button.iconSize = theme.metrics.inlineIconSize[index];
+    button.iconGap = theme.metrics.controlGap[index];
+    button.iconStroke =
+        theme.icons.strokeWidth * button.iconSize / theme.icons.defaultSize;
     common.background = base.background;
     common.foreground = base.content;
     common.border = base.border;
@@ -177,6 +183,11 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
             blendOver(common.background, theme.colors.hoverOverlay);
     }
     common.focusWidth = focusWidthFor(state, theme);
+    // §6.1：不透明填充与焦点环颜色接近时，环内侧预留 1 px 表面隔离带
+    //（几何不受聚焦影响——文字按节点居中，不随环带位移）。
+    if (common.focusWidth > 0.0F && common.background.a == 255) {
+        common.focusIsolation = theme.colors.surface;
+    }
     common.text = resolveTextStyle(widget, theme.typography.label,
                                    common.foreground);
 
@@ -222,12 +233,18 @@ ResolvedStyle resolveTextField(const Widget& widget,
         field.placeholder = theme.colors.disabledContent;
         field.caret = theme.colors.disabledContent;
     } else {
-        // invalid 影响边框但不覆盖可用性（§5 规则 2）；focused 提供焦点
-        // 环与输入光标，边框色 invalid 优先保留校验反馈。
+        // invalid 影响边框但不覆盖可用性（§5 规则 2）；hover 增强轮廓到
+        // focusRing、表面不变（§6.3）；focused 提供焦点环与输入光标。
         if (state.invalid) {
             common.border = tokens.borderInvalid;
         } else if (state.focused) {
             common.border = tokens.borderFocused;
+        } else if (state.hovered) {
+            common.border = tokens.borderFocused;
+        }
+        // ReadOnly 保留正常文字与选择/复制，底色用 surface（§6.3）。
+        if (widget.readOnly) {
+            common.background = theme.colors.surface;
         }
     }
     field.focused = state.focused && !state.disabled;
@@ -243,6 +260,12 @@ ResolvedStyle resolveTextField(const Widget& widget,
     applyOverrides(widget,
                    commonStyle(resolved.component));
     return resolved;
+}
+
+// 指示器/轨道类控件的槽位：指示器边长 + 焦点环宽度 + 1 px 隔离带
+//（§4.4；是否聚焦不改变槽位与标签起点）。
+float indicatorSlot(const Theme& theme, float indicatorSize) {
+    return indicatorSize + theme.metrics.focusRingWidth + 1.0F;
 }
 
 ResolvedStyle resolveCheckbox(const Widget& widget,
@@ -261,21 +284,35 @@ ResolvedStyle resolveCheckbox(const Widget& widget,
     common.selection = theme.colors.selectionBackground;
     common.radius = core::CornerRadius::zero();
     checkbox.indicator = tokens.indicator;
+    checkbox.indicatorOutline = tokens.indicatorOutline;
     checkbox.indicatorChecked = tokens.indicatorChecked;
     checkbox.mark = tokens.mark;
     checkbox.indicatorSize = tokens.indicatorSize[index];
+    checkbox.indicatorRadius = theme.metrics.controlRadius[0];
     checkbox.markInset = tokens.markInset[index];
-    checkbox.markRadius = checkbox.markInset * 0.5F;
     checkbox.labelGap = tokens.labelGap;
+    checkbox.slotSize = indicatorSlot(theme, checkbox.indicatorSize);
     checkbox.checked = state.checked || state.selected;
 
     if (state.disabled) {
+        // 禁用仍可辨认 checked：填充降级为禁用面，勾号/轮廓/文字取
+        // disabledContent（§5.2、§6.4）。
         checkbox.indicator = theme.colors.disabledBackground;
+        checkbox.indicatorOutline = theme.colors.disabledContent;
         checkbox.indicatorChecked = theme.colors.disabledBackground;
         checkbox.mark = theme.colors.disabledContent;
         common.foreground = theme.colors.disabledContent;
     } else if (state.invalid && !checkbox.checked) {
-        checkbox.indicator = theme.colors.statusError;
+        checkbox.indicatorOutline = theme.colors.statusError;
+    } else if (state.pressed) {
+        // pressed 对当前指示器表面叠加（§6.4）。
+        checkbox.indicator = blendOver(checkbox.indicator,
+                                       theme.colors.pressedOverlay);
+        checkbox.indicatorChecked = blendOver(checkbox.indicatorChecked,
+                                              theme.colors.pressedOverlay);
+    } else if (state.hovered) {
+        // hover 轮廓取 focusRing（§6.4）。
+        checkbox.indicatorOutline = theme.colors.focusRing;
     }
     common.focusWidth = focusWidthFor(state, theme);
     common.text = resolveTextStyle(widget, theme.typography.label,
@@ -283,6 +320,7 @@ ResolvedStyle resolveCheckbox(const Widget& widget,
 
     ResolvedStyle resolved;
     resolved.component = checkbox;
+    resolved.minHeight = theme.metrics.minHeight[index];
     resolved.controlGap = theme.metrics.controlGap[index];
     applyOverrides(widget,
                    commonStyle(resolved.component));
@@ -304,22 +342,36 @@ ResolvedStyle resolveSwitch(const Widget& widget, const StyleContext& context,
     common.selection = theme.colors.selectionBackground;
     common.radius = core::CornerRadius::zero();
     control.trackOff = tokens.trackOff;
+    control.trackOutline = tokens.trackOutline;
     control.trackOn = tokens.trackOn;
-    control.knob = tokens.knob;
+    control.knobOff = tokens.knobOff;
+    control.knobOn = tokens.knobOn;
     control.trackWidth = tokens.trackWidth[index];
     control.trackHeight = tokens.trackHeight[index];
     control.knobSize = tokens.knobSize[index];
-    control.knobInset = tokens.knobInset;
+    // 左右内距由 (trackHeight - knobSize) / 2 推导（§6.4），不套固定值。
+    control.knobInset = std::max(
+        0.0F, (control.trackHeight - control.knobSize) * 0.5F);
     control.labelGap = tokens.labelGap;
+    control.slotSize = indicatorSlot(theme, control.trackWidth);
     control.checked = state.checked || state.selected;
 
     if (state.disabled) {
         control.trackOff = theme.colors.disabledBackground;
+        control.trackOutline = theme.colors.disabledContent;
         control.trackOn = theme.colors.disabledBackground;
-        control.knob = theme.colors.disabledContent;
+        control.knobOff = theme.colors.disabledContent;
+        control.knobOn = theme.colors.disabledContent;
         common.foreground = theme.colors.disabledContent;
     } else if (state.invalid && !control.checked) {
-        control.trackOff = theme.colors.statusError;
+        control.trackOutline = theme.colors.statusError;
+    } else if (state.pressed) {
+        control.trackOff = blendOver(control.trackOff,
+                                     theme.colors.pressedOverlay);
+        control.trackOn = blendOver(control.trackOn,
+                                    theme.colors.pressedOverlay);
+    } else if (state.hovered) {
+        control.trackOutline = theme.colors.focusRing;
     }
     common.focusWidth = focusWidthFor(state, theme);
     common.text = resolveTextStyle(widget, theme.typography.label,
@@ -327,6 +379,58 @@ ResolvedStyle resolveSwitch(const Widget& widget, const StyleContext& context,
 
     ResolvedStyle resolved;
     resolved.component = control;
+    resolved.minHeight = theme.metrics.minHeight[index];
+    resolved.controlGap = theme.metrics.controlGap[index];
+    applyOverrides(widget,
+                   commonStyle(resolved.component));
+    return resolved;
+}
+
+ResolvedStyle resolveRadio(const Widget& widget, const StyleContext& context,
+                           const WidgetState& state) {
+    const Theme& theme = context.theme;
+    const std::uint8_t index = sizeIndexFor(theme, widget.controlSize);
+    const RadioTokens& tokens = theme.radio;
+
+    core::RadioResolvedStyle radio;
+    CommonResolvedStyle& common = radio.common;
+    common.background = Color::transparent();
+    common.foreground = theme.colors.contentPrimary;
+    common.border = Color::transparent();
+    common.focusRing = theme.colors.focusRing;
+    common.selection = theme.colors.selectionBackground;
+    common.radius = core::CornerRadius::zero();
+    radio.indicator = tokens.indicator;
+    radio.indicatorOutline = tokens.indicatorOutline;
+    radio.indicatorChecked = tokens.indicatorChecked;
+    radio.dot = tokens.dot;
+    radio.indicatorSize = tokens.indicatorSize[index];
+    radio.dotRatio = tokens.dotRatio;
+    radio.labelGap = tokens.labelGap;
+    radio.slotSize = indicatorSlot(theme, radio.indicatorSize);
+    radio.checked = state.checked || state.selected;
+
+    if (state.disabled) {
+        radio.indicator = theme.colors.disabledBackground;
+        radio.indicatorOutline = theme.colors.disabledContent;
+        radio.indicatorChecked = theme.colors.disabledBackground;
+        radio.dot = theme.colors.disabledContent;
+        common.foreground = theme.colors.disabledContent;
+    } else if (state.invalid && !radio.checked) {
+        radio.indicatorOutline = theme.colors.statusError;
+    } else if (state.pressed) {
+        radio.indicator = blendOver(radio.indicator,
+                                    theme.colors.pressedOverlay);
+    } else if (state.hovered) {
+        radio.indicatorOutline = theme.colors.focusRing;
+    }
+    common.focusWidth = focusWidthFor(state, theme);
+    common.text = resolveTextStyle(widget, theme.typography.label,
+                                   common.foreground);
+
+    ResolvedStyle resolved;
+    resolved.component = radio;
+    resolved.minHeight = theme.metrics.minHeight[index];
     resolved.controlGap = theme.metrics.controlGap[index];
     applyOverrides(widget,
                    commonStyle(resolved.component));
@@ -364,6 +468,8 @@ ResolvedStyle resolveStyleImpl(const Widget& widget,
             return resolveCheckbox(widget, context, state);
         case WidgetType::Switch:
             return resolveSwitch(widget, context, state);
+        case WidgetType::Radio:
+            return resolveRadio(widget, context, state);
         case WidgetType::Text:
             return resolveText(widget, context.theme);
         default:

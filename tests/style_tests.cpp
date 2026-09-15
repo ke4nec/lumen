@@ -64,13 +64,18 @@ lumen::core::TextFieldResolvedStyle fieldPart(
 }
 
 lumen::core::CheckboxResolvedStyle checkboxPart(
-    const lumen::core::ResolvedStyle& style) {
-    return std::get<lumen::core::CheckboxResolvedStyle>(style.component);
+    const lumen::core::ResolvedStyle& resolved) {
+    return std::get<lumen::core::CheckboxResolvedStyle>(resolved.component);
 }
 
 lumen::core::SwitchResolvedStyle switchPart(
     const lumen::core::ResolvedStyle& style) {
     return std::get<lumen::core::SwitchResolvedStyle>(style.component);
+}
+
+lumen::core::RadioResolvedStyle radioPart(
+    const lumen::core::ResolvedStyle& style) {
+    return std::get<lumen::core::RadioResolvedStyle>(style.component);
 }
 
 }  // namespace
@@ -335,6 +340,17 @@ TEST_CASE("style_checkbox_states_resolve", "[style]") {
     CHECK(disabledStyle.indicator ==
           fixture.theme.colors.disabledBackground);
     CHECK(disabledStyle.mark == fixture.theme.colors.disabledContent);
+    // S2（§6.4）：Off 轮廓 borderStrong；hover 轮廓取 focusRing。
+    CHECK(rest.indicatorOutline == fixture.theme.colors.borderStrong);
+    CHECK(rest.indicator == fixture.theme.colors.surfaceSunken);
+    Fixture hoverFixture;
+    hoverFixture.interaction.hoveredIdentity = "k:x";
+    const auto& hovered =
+        checkboxPart(hoverFixture.resolve(lumen::core::makeCheckbox("A", "a")));
+    CHECK(hovered.indicatorOutline == fixture.theme.colors.focusRing);
+    // 槽位预留焦点环宽度 + 1px 隔离带（§4.4）。
+    CHECK(rest.slotSize ==
+          rest.indicatorSize + fixture.theme.metrics.focusRingWidth + 1.0F);
 }
 
 TEST_CASE("style_switch_states_resolve", "[style]") {
@@ -353,7 +369,10 @@ TEST_CASE("style_switch_states_resolve", "[style]") {
         lumen::core::makeSwitch("Sync", "sync"), false);
     const auto& disabledStyle = switchPart(fixture.resolve(disabled));
     CHECK(disabledStyle.trackOn == fixture.theme.colors.disabledBackground);
-    CHECK(disabledStyle.knob == fixture.theme.colors.disabledContent);
+    // S2：滑块两态独立（knobOff/knobOn），禁用时都取 disabledContent。
+    CHECK(disabledStyle.knobOff == fixture.theme.colors.disabledContent);
+    CHECK(disabledStyle.knobOn == fixture.theme.colors.disabledContent);
+    CHECK(disabledStyle.trackOutline == fixture.theme.colors.disabledContent);
 }
 
 TEST_CASE("style_control_size_scales_component_parts", "[style]") {
@@ -937,4 +956,133 @@ TEST_CASE("adapt_platform_theme_rederives_accent_content", "[style]") {
     // 重派生后的 accentContent 在页面表面上仍可读。
     CHECK(contrastRatio(adapted.colors.accentContent,
                         adapted.colors.pageBackground) >= 4.5);
+}
+
+// --- S2（§6.3/§6.4）：基础控件状态合成 ---
+
+TEST_CASE("style_radio_resolves_dedicated_states", "[style]") {
+    Fixture fixture;
+    const auto& rest = radioPart(fixture.resolve(
+        lumen::core::makeRadio("Pick", "r")));
+    CHECK(!rest.checked);
+    CHECK(rest.indicator == fixture.theme.colors.surfaceSunken);
+    CHECK(rest.indicatorOutline == fixture.theme.colors.borderStrong);
+    CHECK(rest.dot == fixture.theme.colors.accent);
+    CHECK(rest.dotRatio == 0.45F);
+
+    const auto& on = radioPart(fixture.resolve(
+        lumen::core::makeRadio("Pick", "r", "", true)));
+    CHECK(on.checked);
+    CHECK(on.indicatorChecked == fixture.theme.colors.accent);
+
+    // hover 轮廓取 focusRing；disabled 保留内点/勾选可辨认。
+    Fixture hoverFixture;
+    hoverFixture.interaction.hoveredIdentity = "k:x";
+    const auto& hovered = radioPart(hoverFixture.resolve(
+        lumen::core::makeRadio("Pick", "r")));
+    CHECK(hovered.indicatorOutline == fixture.theme.colors.focusRing);
+
+    const auto& disabled = radioPart(fixture.resolve(
+        lumen::core::withEnabled(
+            lumen::core::makeRadio("Pick", "r", "", true), false)));
+    CHECK(disabled.checked);
+    CHECK(disabled.dot == fixture.theme.colors.disabledContent);
+    CHECK(disabled.indicatorChecked ==
+          fixture.theme.colors.disabledBackground);
+
+    // invalid（未选）轮廓取错误色。
+    const auto& invalid = radioPart(fixture.resolve(
+        lumen::core::withInvalid(lumen::core::makeRadio("Pick", "r"))));
+    CHECK(invalid.indicatorOutline == fixture.theme.colors.statusError);
+}
+
+TEST_CASE("style_textfield_hover_strengthens_border_readonly_uses_surface",
+          "[style]") {
+    Fixture fixture;
+    Widget field = lumen::core::makeTextField("value", "hint");
+    const auto& rest = fieldPart(fixture.resolve(field));
+    CHECK(rest.common.background == fixture.theme.colors.surfaceSunken);
+    CHECK(rest.common.border == fixture.theme.colors.borderStrong);
+
+    // hover：轮廓增强到 focusRing，表面不变（§6.3）。
+    Fixture hoverFixture;
+    hoverFixture.interaction.hoveredIdentity = "k:x";
+    const auto& hovered = fieldPart(hoverFixture.resolve(
+        lumen::core::makeTextField("value", "hint")));
+    CHECK(hovered.common.border == fixture.theme.colors.focusRing);
+    CHECK(hovered.common.background == rest.common.background);
+
+    // ReadOnly：底色 surface，边框维持常态（§6.3）。
+    const auto& readOnly = fieldPart(fixture.resolve(
+        lumen::core::withReadOnly(
+            lumen::core::makeTextField("value", "hint"))));
+    CHECK(readOnly.common.background == fixture.theme.colors.surface);
+    CHECK(readOnly.common.border == fixture.theme.colors.borderStrong);
+}
+
+TEST_CASE("style_button_focus_isolation_band_on_opaque_fill", "[style]") {
+    // §6.1：不透明填充 + 焦点环时预留 1px 表面隔离带；透明变体不需要。
+    Fixture fixture;
+    fixture.interaction.focusedIdentity = "k:x";
+    const auto& filled = buttonPart(fixture.resolve(
+        lumen::core::makeButton("OK")));
+    CHECK(filled.common.focusWidth > 0.0F);
+    CHECK(filled.common.focusIsolation == fixture.theme.colors.surface);
+
+    const auto& ghost = buttonPart(fixture.resolve(
+        lumen::core::withVariant(lumen::core::makeButton("OK"),
+                                 lumen::core::ButtonVariant::Ghost)));
+    CHECK(ghost.common.focusIsolation == Color::transparent());
+
+    // 未聚焦时不出现隔离带。
+    Fixture plain;
+    const auto& rest = buttonPart(plain.resolve(
+        lumen::core::makeButton("OK")));
+    CHECK(rest.common.focusIsolation == Color::transparent());
+}
+
+TEST_CASE("style_key_state_combinations_stay_distinguishable", "[style]") {
+    // §5.2 必须出现的组合样本（S2 控件范围）。
+    // Checked + Hovered：原选中标记保留，轮廓取 hover 增强。
+    Fixture hoverFixture;
+    hoverFixture.interaction.hoveredIdentity = "k:x";
+    const auto& checkedHovered = checkboxPart(hoverFixture.resolve(
+        lumen::core::makeCheckbox("A", "a", "", true)));
+    CHECK(checkedHovered.checked);
+    CHECK(checkedHovered.indicatorChecked ==
+          hoverFixture.theme.checkbox.indicatorChecked);
+    CHECK(checkedHovered.indicatorOutline ==
+          hoverFixture.theme.colors.focusRing);
+
+    // Invalid + Focused：错误边框 + 独立焦点环并存（不互相覆盖）。
+    Fixture focusFixture;
+    focusFixture.interaction.focusedIdentity = "k:x";
+    const auto& invalidFocused = fieldPart(focusFixture.resolve(
+        lumen::core::withInvalid(
+            lumen::core::makeTextField("x", "hint"))));
+    CHECK(invalidFocused.common.border ==
+          focusFixture.theme.textField.borderInvalid);
+    CHECK(invalidFocused.common.focusWidth ==
+          focusFixture.theme.metrics.focusRingWidth);
+    CHECK(invalidFocused.focused);
+
+    // Focused + Pressed：pressed 表面 + 独立焦点环（按钮）。
+    Fixture pressFixture;
+    pressFixture.interaction.focusedIdentity = "k:x";
+    pressFixture.interaction.pressedIdentity = "k:x";
+    const auto& pressedFocused = buttonPart(pressFixture.resolve(
+        lumen::core::makeButton("OK")));
+    CHECK(pressedFocused.common.focusWidth > 0.0F);
+    CHECK(pressedFocused.common.background ==
+          lumen::style::blendOver(
+              pressFixture.theme.button.filled.background,
+              pressFixture.theme.colors.pressedOverlay));
+
+    // Checked + Disabled：弱化表面仍看得出勾选状态。
+    const auto& checkedDisabled = checkboxPart(Fixture{}.resolve(
+        lumen::core::withEnabled(
+            lumen::core::makeCheckbox("A", "a", "", true), false)));
+    CHECK(checkedDisabled.checked);
+    CHECK(checkedDisabled.mark ==
+          Fixture{}.theme.colors.disabledContent);
 }

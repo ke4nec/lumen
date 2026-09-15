@@ -53,10 +53,6 @@ text::TextLayoutResult layoutText(const std::string& text,
     return cache.compute(text, style, maxWidth, paintFonts());
 }
 
-float textWidth(const std::string& text, const TextStyle& style) {
-    return layoutText(text, style, 0.0F).size.width;
-}
-
 float lineHeightOf(const TextStyle& style) {
     return style.fontSize > 0.0F ? style.fontSize * 1.2F : 16.8F;
 }
@@ -224,11 +220,22 @@ void paintControlSurface(Sink& sink, const Rect& rect,
     float radiusShrink = 0.0F;
     if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
         const float w = common.focusWidth;
+        // §6.1 隔离带：不透明填充与环色接近时，环内侧 1 px 表面色环带。
+        if (common.focusIsolation.a > 0) {
+            const Rect bandRect{
+                Offset{rect.origin.x + w, rect.origin.y + w},
+                Size{std::max(0.0F, rect.size.width - 2.0F * w),
+                     std::max(0.0F, rect.size.height - 2.0F * w)}};
+            sink.drawRectStroke(bandRect, common.focusIsolation,
+                                insetCorners(common.radius, w), 1.0F);
+        }
+        const float isolation =
+            common.focusIsolation.a > 0 ? w + 1.0F : w;
         contentRect =
-            Rect{Offset{rect.origin.x + w, rect.origin.y + w},
-                 Size{std::max(0.0F, rect.size.width - 2.0F * w),
-                      std::max(0.0F, rect.size.height - 2.0F * w)}};
-        radiusShrink = w;
+            Rect{Offset{rect.origin.x + isolation, rect.origin.y + isolation},
+                 Size{std::max(0.0F, rect.size.width - 2.0F * isolation),
+                      std::max(0.0F, rect.size.height - 2.0F * isolation)}};
+        radiusShrink = isolation;
     }
     if (common.borderWidth > 0.0F && common.border.a > 0) {
         sink.drawRectStroke(contentRect, common.border,
@@ -330,8 +337,21 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
     }
     const auto layout = layoutText(
         display, layoutStyle, node.multiline ? availableWidth : 0.0F);
+    // 单行视口跟随（§6.3）：长内容时光标保持在字段内（文本整体平移，
+    // selection/preedit 共享同一偏移，不漂移）。
+    float viewportShiftX = 0.0F;
+    if (!node.multiline && field.focused) {
+        std::size_t caretLine = 0;
+        const float caretOffset =
+            layout.graphemeToX(options.caretGraphemes, &caretLine);
+        const float right = caretOffset + padX + 1.0F;
+        if (right > node.size.width - padX) {
+            viewportShiftX =
+                node.size.width - padX - right;
+        }
+    }
     const Offset textOrigin{
-        origin.x + padX,
+        origin.x + padX + viewportShiftX,
         origin.y + (node.size.height - layout.size.height) * 0.5F};
 
     if (field.focused && options.hasSelection && !showingPlaceholder) {
@@ -386,13 +406,15 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
     }
 
     if (field.focused) {
-        // 光标：显示文本中的 grapheme 位置（preedit 已计入）。
+        // 光标：显示文本中的 grapheme 位置（preedit 已计入）。宽度 1
+        // logical px（§6.3），0.5 逻辑偏移使其在 deviceScale=1 时对齐像素
+        // 边界不消失。
         std::size_t lineIndex = 0;
         const float caretOffset =
             layout.graphemeToX(options.caretGraphemes, &lineIndex);
         const float caretX =
             textOrigin.x + caretOffset + 0.5F;
-        const float caretWidth = std::max(1.5F, style.fontSize * 0.08F);
+        const float caretWidth = 1.0F;
         const float alpha = std::clamp(options.caretAlpha, 0.0F, 1.0F);
         if (alpha <= 0.0F) {
             return;
@@ -552,45 +574,57 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             break;
         }
         case WidgetType::Radio: {
-            // M6：圆形指示 + 标签（选中画内点）。
-            const auto* checkbox =
-                std::get_if<core::CheckboxResolvedStyle>(
-                    &styleSource.component);
-            const float indicator =
-                checkbox != nullptr ? checkbox->indicatorSize : 16.0F;
-            const float cy = origin.y + (node.size.height - indicator) *
-                                            0.5F;
-            Rect ring{Offset{origin.x, cy}, Size{indicator, indicator}};
+            // S2（§6.4）：空心外环（描边）+ 独立内点；点与环之间保留表面
+            // 空隙，不用两次同色填充冒充空心环。专用 RadioResolvedStyle
+            //（resolver 不再回落通用容器）。
+            const auto* radio =
+                std::get_if<core::RadioResolvedStyle>(&styleSource.component);
+            if (radio == nullptr) {
+                break;
+            }
+            const float indicator = radio->indicatorSize;
+            const float indicatorOrigin =
+                origin.x + (radio->slotSize - indicator) * 0.5F;
+            const float cy =
+                origin.y + (node.size.height - indicator) * 0.5F;
+            Rect ring{Offset{indicatorOrigin, cy},
+                      Size{indicator, indicator}};
+            const float ringRadius = indicator * 0.5F;
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
                 sink.drawRectStroke(ring, common.focusRing,
-                                    CornerRadius::all(indicator),
+                                    CornerRadius::all(ringRadius),
                                     common.focusWidth);
                 const float w = common.focusWidth;
                 ring = Rect{Offset{ring.origin.x + w, ring.origin.y + w},
                             Size{indicator - 2.0F * w,
                                  indicator - 2.0F * w}};
             }
-            sink.drawRect(ring, common.foreground,
-                          CornerRadius::all(indicator * 0.5F));
-            if (node.checked || node.selected) {
-                const float inset = indicator * 0.28F;
+            // 环内表面 + 空心描边（Off=borderStrong，On=accent）。
+            sink.drawRect(ring, radio->indicator,
+                          CornerRadius::all(ring.size.width * 0.5F));
+            sink.drawRectStroke(
+                ring, radio->checked ? radio->indicatorChecked
+                                     : radio->indicatorOutline,
+                CornerRadius::all(ring.size.width * 0.5F), 1.0F);
+            if (radio->checked) {
+                // 独立内点（直径 = 外径 × dotRatio），与环之间保留
+                // 表面空隙；相对环盒居中（含焦点环内缩后的几何）。
+                const float dot = indicator * radio->dotRatio;
+                const float dotInset =
+                    (ring.size.width - dot) * 0.5F;
                 sink.drawRect(
-                    Rect{Offset{ring.origin.x + inset,
-                                ring.origin.y + inset},
-                         Size{indicator - 2.0F * inset,
-                              indicator - 2.0F * inset}},
-                    common.foreground,
-                    CornerRadius::all((indicator - 2.0F * inset) * 0.5F));
+                    Rect{Offset{ring.origin.x + dotInset,
+                                ring.origin.y + dotInset},
+                         Size{dot, dot}},
+                    radio->dot, CornerRadius::all(dot * 0.5F));
             }
             if (!node.text.empty()) {
                 const float lineHeight = lineHeightOf(common.text);
                 paintTextAt(
                     sink, node.text, common.text,
-                    Offset{origin.x + indicator +
-                               (checkbox != nullptr ? checkbox->labelGap
-                                                    : 8.0F),
-                           origin.y + (node.size.height - lineHeight) *
-                                          0.5F});
+                    Offset{origin.x + radio->slotSize + radio->labelGap,
+                           origin.y +
+                               (node.size.height - lineHeight) * 0.5F});
             }
             break;
         }
@@ -650,42 +684,59 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         }
         case WidgetType::Button: {
             paintControlSurface(sink, rect, common);
-            const float width = textWidth(node.text, common.text);
-            const float lineHeight = lineHeightOf(common.text);
+            const auto buttonStyle =
+                std::get_if<core::ButtonResolvedStyle>(
+                    &styleSource.component);
+            const float iconSize =
+                buttonStyle != nullptr ? buttonStyle->iconSize : 16.0F;
+            const float iconGap =
+                buttonStyle != nullptr ? buttonStyle->iconGap : 6.0F;
+            const float iconStroke =
+                buttonStyle != nullptr ? buttonStyle->iconStroke : 1.5F;
             const auto buttonIcon =
                 static_cast<core::IconId>(node.icon);
-            const float iconSize = common.text.fontSize > 0.0F
-                                       ? common.text.fontSize
-                                       : 16.0F;
-            const float iconGap =
-                buttonIcon != core::IconId::None && !node.text.empty()
-                    ? iconSize * 0.35F
-                    : 0.0F;
-            const float totalWidth =
-                width + (buttonIcon != core::IconId::None
-                             ? iconSize + iconGap
-                             : 0.0F);
+            const bool hasIcon =
+                buttonIcon != core::IconId::None &&
+                !core::iconPolylines(buttonIcon).empty();
+            // 单行省略（§6.1）：可用宽度不足时省略，图标不盖文字。
+            TextStyle labelStyle = common.text;
+            labelStyle.maxLines = 1;
+            labelStyle.overflow = core::TextOverflow::Ellipsis;
+            const float iconExtent =
+                hasIcon ? iconSize + (node.text.empty() ? 0.0F : iconGap)
+                        : 0.0F;
+            const float availableWidth = std::max(
+                0.0F, node.size.width - iconExtent -
+                          2.0F * std::max(common.padding.left,
+                                          common.padding.right));
+            const auto textLayout =
+                node.text.empty()
+                    ? text::TextLayoutResult{}
+                    : layoutText(node.text, labelStyle, availableWidth);
+            const float textWidth = textLayout.size.width;
+            const float lineHeight = lineHeightOf(common.text);
+            const float totalWidth = textWidth + iconExtent;
+            const float contentTop =
+                origin.y + (node.size.height - lineHeight) * 0.5F;
             const ScopedClip<Sink> clip{sink, rect};
-            paintTextAt(sink, node.text, common.text,
-                        Offset{origin.x + (node.size.width - totalWidth) *
-                                               0.5F,
-                               origin.y + (node.size.height - lineHeight) *
-                                              0.5F});
-            if (buttonIcon != core::IconId::None) {
+            if (!node.text.empty()) {
+                paintLines(sink, textLayout, common.text,
+                           Offset{origin.x + (node.size.width - totalWidth) *
+                                                  0.5F,
+                                  contentTop});
+            }
+            if (hasIcon) {
                 const auto& polylines = core::iconPolylines(buttonIcon);
-                if (!polylines.empty()) {
-                    const float top = origin.y +
-                                      (node.size.height - iconSize) * 0.5F;
-                    sink.drawIcon(
-                        polylines,
-                        Rect{Offset{origin.x +
-                                        (node.size.width - totalWidth) *
-                                            0.5F +
-                                        width + iconGap,
-                                    top},
-                             Size{iconSize, iconSize}},
-                        common.foreground, iconSize * 0.1F);
-                }
+                sink.drawIcon(
+                    polylines,
+                    Rect{Offset{origin.x +
+                                    (node.size.width - totalWidth) * 0.5F +
+                                    textWidth +
+                                    (node.text.empty() ? 0.0F : iconGap),
+                                origin.y +
+                                    (node.size.height - iconSize) * 0.5F},
+                         Size{iconSize, iconSize}},
+                    common.foreground, iconStroke);
             }
             break;
         }
@@ -709,22 +760,27 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             break;
         }
         case WidgetType::Checkbox: {
-            // 指示框 + 选中填充；标签绘制在右侧，垂直居中。几何全部来自
-            // resolved token（布局度量同源，visual-system §7.3）。
+            // §6.4：Off = surfaceSunken 内部 + borderStrong 描边轮廓；
+            // On = accent 填充 + onAccent 勾号（IconId::Check 折线，替代
+            // 旧内方块）。指示器画在槽位内的焦点环预留区之内。
             const auto* checkbox =
                 std::get_if<core::CheckboxResolvedStyle>(&styleSource.component);
             if (checkbox == nullptr) {
                 break;
             }
             const float indicator = checkbox->indicatorSize;
+            // 槽位 = indicator + focusRingWidth + 1px 隔离带；指示器在槽
+            // 位内居中（聚焦时环围绕指示器，不改变槽位/标签起点）。
+            const float indicatorOrigin =
+                origin.x + (checkbox->slotSize - indicator) * 0.5F;
             Rect indicatorRect{
-                Offset{origin.x,
+                Offset{indicatorOrigin,
                        origin.y + (node.size.height - indicator) * 0.5F},
                 Size{indicator, indicator}};
             float indicatorRadius = checkbox->indicatorRadius;
-            // 焦点环：描边命令（环带贴指示框外缘；damage 不变量：绘制
-            // 不越出节点）。
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
+                // 焦点环围绕指示器（描边环带；damage 不变量：绘制不越出
+                // 节点）。
                 sink.drawRectStroke(indicatorRect, common.focusRing,
                                     CornerRadius::all(indicatorRadius),
                                     common.focusWidth);
@@ -739,37 +795,57 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                           checkbox->checked ? checkbox->indicatorChecked
                                             : checkbox->indicator,
                           CornerRadius::all(indicatorRadius));
-            if (checkbox->checked) {
-                const float inset = checkbox->markInset;
-                sink.drawRect(
-                    Rect{Offset{indicatorRect.origin.x + inset,
-                                indicatorRect.origin.y + inset},
-                         Size{indicatorRect.size.width - 2.0F * inset,
-                              indicatorRect.size.height - 2.0F * inset}},
-                    checkbox->mark, CornerRadius::all(checkbox->markRadius));
+            if (!checkbox->checked) {
+                // Off：空心框——轮廓描边 + surfaceSunken 内部。
+                sink.drawRectStroke(indicatorRect, checkbox->indicatorOutline,
+                                    CornerRadius::all(indicatorRadius),
+                                    1.0F);
+            } else {
+                // On：accent 填充 + 勾号（目录折线按 markInset 内缩）。
+                const auto& polylines =
+                    core::iconPolylines(core::IconId::Check);
+                if (!polylines.empty()) {
+                    const float inset = checkbox->markInset;
+                    const Rect markBox{
+                        Offset{indicatorRect.origin.x + inset,
+                               indicatorRect.origin.y + inset},
+                        Size{std::max(0.0F, indicatorRect.size.width -
+                                                2.0F * inset),
+                             std::max(0.0F, indicatorRect.size.height -
+                                               2.0F * inset)}};
+                    if (markBox.size.width > 1.0F) {
+                        sink.drawIcon(polylines, markBox, checkbox->mark,
+                                      node.iconStrokeWidth);
+                    }
+                }
             }
             if (!node.text.empty()) {
                 const float lineHeight = lineHeightOf(common.text);
                 paintTextAt(sink, node.text, common.text,
-                            Offset{origin.x + indicator + checkbox->labelGap,
+                            Offset{origin.x + checkbox->slotSize +
+                                       checkbox->labelGap,
                                    origin.y + (node.size.height - lineHeight) *
                                                   0.5F});
             }
             break;
         }
         case WidgetType::Switch: {
-            // 轨道（pill 圆角 = 高度一半）+ 滑块；标签绘制在右侧。
+            // §6.4：轨道（pill 圆角 = 高度一半）+ 描边轮廓 + 两态滑块
+            //（knobOff/knobOn 独立对比）；左右内距由 resolver 按
+            //(trackHeight - knobSize)/2 推导。轨道画在槽位内。
             const auto* control =
                 std::get_if<core::SwitchResolvedStyle>(&styleSource.component);
             if (control == nullptr) {
                 break;
             }
+            const float trackOrigin =
+                origin.x + (control->slotSize - control->trackWidth) * 0.5F;
             const float trackTop =
                 origin.y + (node.size.height - control->trackHeight) * 0.5F;
-            Rect trackRect{Offset{origin.x, trackTop},
+            Rect trackRect{Offset{trackOrigin, trackTop},
                            Size{control->trackWidth, control->trackHeight}};
             float trackRadius = control->trackHeight * 0.5F;
-            // 焦点环：描边命令（环带贴轨道外缘）。
+            // 焦点环围绕轨道（描边环带）。
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
                 sink.drawRectStroke(trackRect, common.focusRing,
                                     CornerRadius::all(trackRadius),
@@ -785,6 +861,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                           control->checked ? control->trackOn
                                            : control->trackOff,
                           CornerRadius::all(trackRadius));
+            // 轨道轮廓（Off 必要轮廓；On 保持轮廓一致性）。
+            sink.drawRectStroke(trackRect, control->trackOutline,
+                                CornerRadius::all(trackRadius), 1.0F);
             const float knobX =
                 control->checked
                     ? trackRect.origin.x + trackRect.size.width -
@@ -796,11 +875,12 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                                 (trackRect.size.height - control->knobSize) *
                                     0.5F},
                      Size{control->knobSize, control->knobSize}},
-                control->knob, CornerRadius::all(control->knobSize * 0.5F));
+                control->checked ? control->knobOn : control->knobOff,
+                CornerRadius::all(control->knobSize * 0.5F));
             if (!node.text.empty()) {
                 const float lineHeight = lineHeightOf(common.text);
                 paintTextAt(sink, node.text, common.text,
-                            Offset{origin.x + control->trackWidth +
+                            Offset{origin.x + control->slotSize +
                                        control->labelGap,
                                    origin.y + (node.size.height - lineHeight) *
                                                   0.5F});

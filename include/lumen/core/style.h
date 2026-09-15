@@ -33,8 +33,11 @@ struct CommonResolvedStyle {
     TextStyle text{};
     float borderWidth{0.0F};
     // 焦点环宽度；>0 表示该节点在本帧携带可见键盘焦点环（不影响布局
-    // 尺寸，painter 在控件外扩绘制）。
+    // 尺寸，painter 在节点内描边绘制）。
     float focusWidth{0.0F};
+    // 焦点隔离带（§6.1）：不透明填充与焦点环色接近时，环内侧的 1 px 表
+    // 面色环带（透明 = 无隔离带）。不影响布局尺寸。
+    Color focusIsolation{Color::transparent()};
     float elevation{0.0F};
 
     bool operator==(const CommonResolvedStyle&) const = default;
@@ -42,6 +45,12 @@ struct CommonResolvedStyle {
 
 struct ButtonResolvedStyle {
     CommonResolvedStyle common{};
+    // 尾随图标部件（§6.1）：尺寸取 metrics.inlineIconSize 档位、间距取
+    // 档位 gap、线宽按 16px→1.5 基准比例缩放（§4.5）。IconId::None 时
+    // 不参与测量与绘制。
+    float iconSize{16.0F};
+    float iconGap{8.0F};
+    float iconStroke{1.5F};
     bool operator==(const ButtonResolvedStyle&) const = default;
 };
 
@@ -60,14 +69,19 @@ struct TextFieldResolvedStyle {
 
 struct CheckboxResolvedStyle {
     CommonResolvedStyle common{};
+    // Off：indicator（surfaceSunken 内部）+ indicatorOutline（轮廓描边）；
+    // On：indicatorChecked 填充 + mark 勾号（IconId::Check）。
     Color indicator{Color::transparent()};
+    Color indicatorOutline{Color::transparent()};
     Color indicatorChecked{Color::transparent()};
     Color mark{Color::transparent()};
     float indicatorSize{18.0F};
     float indicatorRadius{4.0F};
     float markInset{4.0F};
-    float markRadius{2.0F};
     float labelGap{8.0F};
+    // 指示器槽位（§4.4）：indicatorSize + focusRingWidth + 1px 隔离带；
+    // 是否聚焦不改变槽位与标签起点。
+    float slotSize{0.0F};
     bool checked{false};
     bool operator==(const CheckboxResolvedStyle&) const = default;
 };
@@ -75,22 +89,43 @@ struct CheckboxResolvedStyle {
 struct SwitchResolvedStyle {
     CommonResolvedStyle common{};
     Color trackOff{Color::transparent()};
+    Color trackOutline{Color::transparent()};
     Color trackOn{Color::transparent()};
-    Color knob{Color::transparent()};
+    Color knobOff{Color::transparent()};
+    Color knobOn{Color::transparent()};
     float trackWidth{36.0F};
     float trackHeight{20.0F};
     float knobSize{14.0F};
+    // 由 (trackHeight - knobSize) / 2 推导（§6.4），随档位变化。
     float knobInset{3.0F};
     float labelGap{8.0F};
+    // 轨道槽位（§4.4）：trackWidth + focusRingWidth + 1px 隔离带。
+    float slotSize{0.0F};
     bool checked{false};
     bool operator==(const SwitchResolvedStyle&) const = default;
+};
+
+// S2（§6.4）：Radio——空心外环 + 独立内点；dotRatio 为内点/外径比。
+struct RadioResolvedStyle {
+    CommonResolvedStyle common{};
+    Color indicator{Color::transparent()};
+    Color indicatorOutline{Color::transparent()};
+    Color indicatorChecked{Color::transparent()};
+    Color dot{Color::transparent()};
+    float indicatorSize{18.0F};
+    float dotRatio{0.45F};
+    float labelGap{8.0F};
+    float slotSize{0.0F};
+    bool checked{false};
+    bool operator==(const RadioResolvedStyle&) const = default;
 };
 
 using ComponentResolvedStyle = std::variant<CommonResolvedStyle,
                                             ButtonResolvedStyle,
                                             TextFieldResolvedStyle,
                                             CheckboxResolvedStyle,
-                                            SwitchResolvedStyle>;
+                                            SwitchResolvedStyle,
+                                            RadioResolvedStyle>;
 
 struct ResolvedStyle {
     ComponentResolvedStyle component{CommonResolvedStyle{}};
@@ -167,6 +202,7 @@ inline void scaleCommonStyleColors(CommonResolvedStyle& common, float alpha) {
     common.foreground = scaleColorAlpha(common.foreground, alpha);
     common.border = scaleColorAlpha(common.border, alpha);
     common.focusRing = scaleColorAlpha(common.focusRing, alpha);
+    common.focusIsolation = scaleColorAlpha(common.focusIsolation, alpha);
     common.selection = scaleColorAlpha(common.selection, alpha);
     common.text.color = scaleColorAlpha(common.text.color, alpha);
 }
@@ -189,14 +225,27 @@ inline void scaleStyleColors(ResolvedStyle& style, float alpha) {
                 } else if constexpr (std::is_same_v<Part,
                                                   CheckboxResolvedStyle>) {
                     part.indicator = scaleColorAlpha(part.indicator, alpha);
+                    part.indicatorOutline =
+                        scaleColorAlpha(part.indicatorOutline, alpha);
                     part.indicatorChecked =
                         scaleColorAlpha(part.indicatorChecked, alpha);
                     part.mark = scaleColorAlpha(part.mark, alpha);
                 } else if constexpr (std::is_same_v<Part,
                                                    SwitchResolvedStyle>) {
                     part.trackOff = scaleColorAlpha(part.trackOff, alpha);
+                    part.trackOutline =
+                        scaleColorAlpha(part.trackOutline, alpha);
                     part.trackOn = scaleColorAlpha(part.trackOn, alpha);
-                    part.knob = scaleColorAlpha(part.knob, alpha);
+                    part.knobOff = scaleColorAlpha(part.knobOff, alpha);
+                    part.knobOn = scaleColorAlpha(part.knobOn, alpha);
+                } else if constexpr (std::is_same_v<Part,
+                                                    RadioResolvedStyle>) {
+                    part.indicator = scaleColorAlpha(part.indicator, alpha);
+                    part.indicatorOutline =
+                        scaleColorAlpha(part.indicatorOutline, alpha);
+                    part.indicatorChecked =
+                        scaleColorAlpha(part.indicatorChecked, alpha);
+                    part.dot = scaleColorAlpha(part.dot, alpha);
                 }
             }
         },
@@ -210,6 +259,7 @@ inline void lerpCommonStyleColors(CommonResolvedStyle& into,
     into.foreground = lerpColor(from.foreground, to.foreground, t);
     into.border = lerpColor(from.border, to.border, t);
     into.focusRing = lerpColor(from.focusRing, to.focusRing, t);
+    into.focusIsolation = lerpColor(from.focusIsolation, to.focusIsolation, t);
     into.selection = lerpColor(from.selection, to.selection, t);
     into.text.color = lerpColor(from.text.color, to.text.color, t);
 }
@@ -246,6 +296,9 @@ inline void lerpCommonStyleColors(CommonResolvedStyle& into,
                                                    CheckboxResolvedStyle>) {
                     toPart.indicator =
                         lerpColor(fromPart.indicator, toPart.indicator, t);
+                    toPart.indicatorOutline =
+                        lerpColor(fromPart.indicatorOutline,
+                                  toPart.indicatorOutline, t);
                     toPart.indicatorChecked =
                         lerpColor(fromPart.indicatorChecked,
                                   toPart.indicatorChecked, t);
@@ -254,9 +307,25 @@ inline void lerpCommonStyleColors(CommonResolvedStyle& into,
                                                     SwitchResolvedStyle>) {
                     toPart.trackOff =
                         lerpColor(fromPart.trackOff, toPart.trackOff, t);
+                    toPart.trackOutline =
+                        lerpColor(fromPart.trackOutline, toPart.trackOutline, t);
                     toPart.trackOn =
                         lerpColor(fromPart.trackOn, toPart.trackOn, t);
-                    toPart.knob = lerpColor(fromPart.knob, toPart.knob, t);
+                    toPart.knobOff =
+                        lerpColor(fromPart.knobOff, toPart.knobOff, t);
+                    toPart.knobOn =
+                        lerpColor(fromPart.knobOn, toPart.knobOn, t);
+                } else if constexpr (std::is_same_v<To,
+                                                    RadioResolvedStyle>) {
+                    toPart.indicator =
+                        lerpColor(fromPart.indicator, toPart.indicator, t);
+                    toPart.indicatorOutline =
+                        lerpColor(fromPart.indicatorOutline,
+                                  toPart.indicatorOutline, t);
+                    toPart.indicatorChecked =
+                        lerpColor(fromPart.indicatorChecked,
+                                  toPart.indicatorChecked, t);
+                    toPart.dot = lerpColor(fromPart.dot, toPart.dot, t);
                 }
             }
             (void)result;

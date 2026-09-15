@@ -191,29 +191,50 @@ struct TextFieldTokens {
 };
 
 struct CheckboxTokens {
-    core::Color indicator{60, 60, 70, 255};
+    // S2（§6.4）：Off = surfaceSunken 内部 + borderStrong 轮廓；On = accent
+    // 填充 + onAccent 勾号（IconId::Check）。
+    core::Color indicator{46, 46, 54, 255};
+    core::Color indicatorOutline{161, 161, 170, 255};
     core::Color indicatorChecked{86, 140, 240, 255};
-    core::Color mark{240, 244, 255, 255};
+    core::Color mark{0, 0, 0, 255};
     // [Small, Medium, Large]；随 density/font scale 派生。
     float indicatorSize[3]{16.0F, 18.0F, 22.0F};
-    float markInset[3]{4.0F, 4.0F, 5.0F};
+    float markInset[3]{3.0F, 4.0F, 5.0F};
     float labelGap{8.0F};
 
     bool operator==(const CheckboxTokens&) const = default;
 };
 
 struct SwitchTokens {
-    core::Color trackOff{60, 60, 70, 255};
+    // S2（§6.4）：轨道 Off = surfaceSunken + borderStrong 轮廓；On = accent；
+    // knob 两态独立（knobOff=contentPrimary、knobOn=onAccent）。
+    core::Color trackOff{46, 46, 54, 255};
+    core::Color trackOutline{161, 161, 170, 255};
     core::Color trackOn{86, 140, 240, 255};
-    core::Color knob{228, 228, 231, 255};
-    // [Small, Medium, Large]：宽×高 / 滑块边长。
+    core::Color knobOff{228, 228, 231, 255};
+    core::Color knobOn{0, 0, 0, 255};
+    // [Small, Medium, Large]：宽×高 / 滑块边长。左右内距由
+    // (trackHeight - knobSize) / 2 推导（§6.4），不再是固定值。
     float trackWidth[3]{32.0F, 36.0F, 44.0F};
     float trackHeight[3]{18.0F, 20.0F, 24.0F};
     float knobSize[3]{12.0F, 14.0F, 16.0F};
-    float knobInset{3.0F};
     float labelGap{8.0F};
 
     bool operator==(const SwitchTokens&) const = default;
+};
+
+// S2（§6.4）：Radio 专用部件 token——空心外环 + 独立内点（内点直径为
+// 外径 0.45，点与环之间保留表面空隙）。
+struct RadioTokens {
+    core::Color indicator{46, 46, 54, 255};      // 环内表面（surfaceSunken）
+    core::Color indicatorOutline{161, 161, 170, 255};  // Off 外环
+    core::Color indicatorChecked{86, 140, 240, 255};   // On 外环
+    core::Color dot{86, 140, 240, 255};          // On 内点（accent）
+    float dotRatio{0.45F};
+    float indicatorSize[3]{16.0F, 18.0F, 22.0F};
+    float labelGap{8.0F};
+
+    bool operator==(const RadioTokens&) const = default;
 };
 
 struct DialogTokens {
@@ -254,6 +275,7 @@ struct Theme {
     TextFieldTokens textField{};
     CheckboxTokens checkbox{};
     SwitchTokens switchControl{};
+    RadioTokens radio{};
     DialogTokens dialog{};
     ScrollbarTokens scrollbar{};
     // M11：派生元数据（值语义，参与 ==）。应用直接读取，替代按色值
@@ -299,6 +321,7 @@ struct Theme {
 [[nodiscard]] TextFieldTokens textFieldTokensFrom(const ColorScheme& colors);
 [[nodiscard]] CheckboxTokens checkboxTokensFrom(const ColorScheme& colors);
 [[nodiscard]] SwitchTokens switchTokensFrom(const ColorScheme& colors);
+[[nodiscard]] RadioTokens radioTokensFrom(const ColorScheme& colors);
 [[nodiscard]] DialogTokens dialogTokensFrom(const ColorScheme& colors,
                                             const Metrics& metrics);
 [[nodiscard]] ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors);

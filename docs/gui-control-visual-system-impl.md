@@ -106,3 +106,32 @@
   - 视觉变更：深色 Filled/Tonal/Danger 按钮文字改深色、Outline/Ghost 文字色改 accentContent、TextField 底色/边框变体、边框/焦点环 1px 内缩几何（描边环带）、行高 1.2→1.43 倍（正文排版变高）、Aurora/InkLinen/Utility 若干状态色明度调整。Gallery 帧哈希基线随之更新。
 - 未验证事项与预留能力：真实窗口人工视觉验收与 Linux/macOS 平台证据推迟至 S5 收敛；§11 预留项未动。
 - 下一阶段及前置条件：S2 基础控件（Text/Icon/Container/Button/TextField/Checkbox/Switch/Radio）——勾号替换内方块（IconId::Check）、Radio 空心环+内点、Switch knobOff/knobOn、指示器焦点槽位预留、Button 图标/文字对齐与隔离带；直接消费本阶段 token 与描边命令。
+
+---
+
+## S2 基础控件
+
+- 阶段 / 日期 / 源码提交：S2 / 2026-09-15 / 基线 `fcdc80d`（S1 提交）
+- 已完成控件与规格章节：§6.1 Button、§6.2 Text/Icon、§6.3 TextField、§6.4 Checkbox/Switch/Radio、§5.2 关键组合状态、§4.4 指示器槽位、§4.5 图标线宽比例。
+- 新增或调整的 token / ResolvedStyle / 公共 API：
+  - `CheckboxTokens`：+`indicatorOutline`（Off 轮廓 borderStrong）；indicator→surfaceSunken；markInset 3/4/5；`markRadius` 删除（勾号折线不需要）。
+  - `SwitchTokens`：+`trackOutline`/`knobOff`/`knobOn`；`knobInset` token 删除（resolver 按 (trackHeight-knobSize)/2 推导：3/3/4）。
+  - 新增 `RadioTokens` + `RadioResolvedStyle`（indicator/indicatorOutline/indicatorChecked/dot/dotRatio 0.45/indicatorSize[3]）；resolver 增加 Radio 专用分支（不再容器回退），全 rebuild 链（baseTheme/applyHighContrast/adaptPlatformTheme/scaleComponentSizes）接入。
+  - `CheckboxResolvedStyle`/`SwitchResolvedStyle`/`RadioResolvedStyle` +`slotSize`（指示器/轨道 + focusRingWidth + 1px 隔离带，§4.4；聚焦不改变槽位与标签起点）；`CommonResolvedStyle` +`focusIsolation`（Button 不透明填充聚焦时的 1px 表面隔离带）。
+  - `ButtonResolvedStyle` +`iconSize/iconGap/iconStroke`（inlineIconSize 档位、controlGap、线宽 1.5×尺寸/16）。
+  - 图标节点线宽按盒尺寸比例缩放（layout 折算）。
+- 行为变更（painter/layout/resolver）：
+  - Checkbox：Off = surfaceSunken 内部 + borderStrong 描边（空心框）；On = accent 填充 + `IconId::Check` 折线勾号（替换旧内方块）；hover 轮廓→focusRing、pressed 叠加、invalid 轮廓→statusError、disabled 保留勾选可辨认。
+  - Radio：空心外环（描边）+ surfaceSunken 环内 + 独立 accent 内点（0.45×外径，环与点之间保留表面空隙）；删除 painter 局部常量（16.0F/8.0F/0.28F 内缩与"两次同色填充"）。
+  - Switch：轨道 surfaceSunken + borderStrong 轮廓；knobOff=contentPrimary / knobOn=onAccent；内距按档位推导。
+  - Button：图标盒取 inlineIconSize 档位、gap 取档位 gap、线宽按比例；文本+图标内容组居中；可用宽度不足时单行省略（maxLines=1 + Ellipsis，不再是纯裁剪）；不透明填充聚焦时绘制 1px 隔离带。
+  - TextField：hover 轮廓增强到 focusRing（表面不变）；ReadOnly 底色 surface；caret 宽 1 logical px（+0.5 偏移对齐像素边界）；单行字段光标超出右缘时内容平移跟随（选区/preedit 共享同一偏移）。
+  - 布局测量：Checkbox/Radio/Switch 用槽位宽度；Button 图标计入内容组宽度。
+- 源码审查发现、修复与仍存缺口：
+  - 发现并修复：radio 像素测试最初以 400×300 布局采样 200×60 缓冲导致越界崩溃（测试缺陷，改为一致视口并加边界断言）；删除 painter 中不再可达的 Radio 兼容分支与未用的 `textWidth` 助手。
+  - 仍存缺口：控件标签仍为单行（§6.4 长标签换行未做，需标签宽度约束流经叶子测量，推迟并记录）；Switch knob 100ms 位移动画属 S5；隔离带用 `colors.surface` 近似宿主表面（无法感知父表面，§6.1 允许的部件几何近似）。
+- 状态/主题/尺寸样本及截图链接：Gallery headless 全路由冒烟通过（frame0 `5c5e67bd…`）；新增命令/像素级样本（勾号 DrawIcon、Radio 空心像素断言、Switch 轮廓描边、Button 图标档位）。
+- 验证命令、测试结果、真实平台/后端/字体：CPU Debug 438/438；Skia Release 450/450；GPU Release 450/450；Windows 11 / VS 2026；headless 占位字体（真实字体路径由 system_font_tests 与窗口路径覆盖）。
+- 兼容性或视觉基准变更：Checkbox/Radio/Switch 几何与外观显著变化（槽位预留使行宽 +3~5px）；Radio 深浅色从前景色改 accent/borderStrong；Button 图标盒 14→16、线宽 1.4→1.5；TextField hover/ReadOnly 表面变化；Gallery 帧哈希基线更新。
+- 未验证事项与预留能力：真实窗口人工视觉验收推迟至 S5；Checkbox 三态、Switch knob 动画、控件标签换行未做（见缺口）。
+- 下一阶段及前置条件：S3 选择、导航与滚动——Slider/ProgressBar 专用 token 与端点预留、Dropdown 值行与字段同源、Tabs 上下文样式、ScrollView/ListView/VirtualList 行规格与 Scrollbar token 消费。
