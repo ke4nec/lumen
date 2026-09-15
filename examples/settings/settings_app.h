@@ -142,6 +142,18 @@ class SettingsApp {
     }
     [[nodiscard]] widgets::FormController& form() { return form_; }
     [[nodiscard]] bool dialogOpen() const { return dialogOpen_; }
+    [[nodiscard]] bool darkMode() const { return darkMode_; }
+    [[nodiscard]] bool followSystemTheme() const {
+        return followSystemTheme_;
+    }
+    // M12：系统主题偏好（SystemThemeChanged 时由装配层注入；仅开启
+    // "跟随系统"时重派生——方向/高对比/密度/字体缩放全保留）。
+    void setSystemThemePreference(bool prefersDark) {
+        systemPrefersDark_ = prefersDark;
+        if (followSystemTheme_) {
+            applySystemTheme();
+        }
+    }
     [[nodiscard]] core::Size view() const { return shell_.view(); }
     [[nodiscard]] render::RendererCapabilities capabilities() {
         return shell_.capabilities();
@@ -268,6 +280,13 @@ class SettingsApp {
                              "toggle-dark", "toggle-dark-button",
                              core::ButtonVariant::Filled),
                 "toggle-dark-button"));
+            // M12：跟随系统主题开关（默认关，保 headless 确定性）。
+            items.push_back(core::withKey(
+                buttonWidget(followSystemTheme_ ? "Follow system: on"
+                                                : "Follow system: off",
+                             "toggle-follow-system", "follow-system-button",
+                             core::ButtonVariant::Outline),
+                "follow-system-button"));
             // 局部主题域：对比预览（light scope 内的按钮/文本）。
             core::Widget scopeBody = core::makeColumn({
                 core::withKey(mutedLabel("Inside light scope", theme),
@@ -640,6 +659,13 @@ class SettingsApp {
         handlers["switch-tab"] = [this] {
             shell_.markDirty();
         };
+        handlers["toggle-follow-system"] = [this] {
+            followSystemTheme_ = !followSystemTheme_;
+            if (followSystemTheme_) {
+                applySystemTheme();
+            }
+            shell_.markDirty();
+        };
         handlers["toggle-dark"] = [this] {
             darkMode_ = !darkMode_;
             // 经 fromSettings 派生：保留方向/高对比/字体缩放/减少动画。
@@ -737,6 +763,14 @@ class SettingsApp {
             shell_.markDirty();
         }
         return changed;
+    }
+
+    // M12：跟随系统主题（adaptPlatformTheme：深浅切换保留全部派生）。
+    void applySystemTheme() {
+        shell_.setTheme(style::adaptPlatformTheme(
+            shell_.theme(), shell_.accessibilitySettings(),
+            systemPrefersDark_));
+        darkMode_ = shell_.theme().darkMode;
     }
 
     void closeDialog() {
@@ -859,6 +893,8 @@ class SettingsApp {
     widgets::FormController form_{};
     widgets::NavigatorController navigator_{"home"};
     bool darkMode_{true};
+    bool followSystemTheme_{false};
+    bool systemPrefersDark_{false};
     bool dialogOpen_{false};
     // M5：路由切换后的焦点恢复请求。
     bool focusRestorePending_{false};

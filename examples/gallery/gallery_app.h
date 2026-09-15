@@ -109,6 +109,17 @@ class GalleryApp {
     [[nodiscard]] style::ThemeDirection direction() const {
         return direction_;
     }
+    [[nodiscard]] bool followSystemTheme() const {
+        return followSystemTheme_;
+    }
+    /// M12：系统主题偏好（SystemThemeChanged 时由装配层注入 host 能力；
+    /// 仅开启"跟随系统"时重派生——方向/高对比/密度/字体缩放全保留）。
+    void setSystemThemePreference(bool prefersDark) {
+        systemPrefersDark_ = prefersDark;
+        if (followSystemTheme_) {
+            applySystemTheme();
+        }
+    }
     [[nodiscard]] core::Size view() const { return shell_.view(); }
     [[nodiscard]] const render::PixelBuffer& pixels() const {
         return shell_.pixels();
@@ -358,6 +369,14 @@ class GalleryApp {
         handlers["set-direction-utility"] = [this] {
             applyDirection(style::ThemeDirection::UtilityContrast);
         };
+        // M12：跟随系统主题开关（默认关，保 headless 确定性）。
+        handlers["toggle-follow-system"] = [this] {
+            followSystemTheme_ = !followSystemTheme_;
+            if (followSystemTheme_) {
+                applySystemTheme();
+            }
+            shell_.markDirty();
+        };
         handlers["toggle-contrast"] = [this] {
             auto settings = shell_.accessibilitySettings();
             settings.highContrast = !settings.highContrast;
@@ -397,6 +416,14 @@ class GalleryApp {
             shell_.theme().metrics.density, direction_));
         refreshScopePreview();
         shell_.markDirty();
+    }
+
+    // M12：跟随系统主题（adaptPlatformTheme：深浅切换保留全部派生）。
+    void applySystemTheme() {
+        shell_.setTheme(style::adaptPlatformTheme(
+            shell_.theme(), shell_.accessibilitySettings(),
+            systemPrefersDark_));
+        darkMode_ = shell_.theme().darkMode;
     }
 
     // ThemeScope 预览跟随当前方向（浅色变体对比展示）。
@@ -1293,6 +1320,13 @@ class GalleryApp {
                               core::ButtonVariant::Filled),
                  "toggle-dark-button-theme"),
              core::withKey(
+                 buttonWidget(followSystemTheme_ ? "Follow system: on"
+                                                 : "Follow system: off",
+                              "toggle-follow-system",
+                              "follow-system-button",
+                              core::ButtonVariant::Outline),
+                 "follow-system-button"),
+             core::withKey(
                  core::makeRow(
                      {core::withKey(
                           buttonWidget("Core", "set-direction-core",
@@ -1535,6 +1569,8 @@ class GalleryApp {
     widgets::NavigatorController navigator_{"home"};
     bool darkMode_{true};
     style::ThemeDirection direction_{style::ThemeDirection::CoreDark};
+    bool followSystemTheme_{false};
+    bool systemPrefersDark_{false};
     bool dialogOpen_{false};
     bool focusRestorePending_{false};
     mutable core::VirtualListController library_{};

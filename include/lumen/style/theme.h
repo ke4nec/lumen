@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "lumen/accessibility/bridge.h"
 #include "lumen/core/geometry.h"
@@ -258,9 +259,13 @@ struct Theme {
 
 // M6：平台主题适配器——只转换系统主题输入（dark mode/accent/字体缩放）
 // 到 Theme 派生，不返回平台控件对象。base 为应用当前主题。
-[[nodiscard]] Theme adaptPlatformTheme(const Theme& base, bool darkMode,
-                                       core::Color accentColor,
-                                       float fontScale);
+// M12 修复：settings 携带应用当前可访问性输入（高对比/减少动画/字体
+// 缩放），darkMode/accent 只切换对应维度——不再丢弃 base 的派生；方向
+// 继承 base.direction。accentColor 为空时保持 base 的强调色。accent
+// 覆盖后经组件 token 重建（button/checkbox/switch 链一致派生）。
+[[nodiscard]] Theme adaptPlatformTheme(
+    const Theme& base, const accessibility::AccessibilitySettings& settings,
+    bool darkMode, std::optional<core::Color> accentColor = std::nullopt);
 
 // Primitive → semantic 映射（测试契约 §10.1）。
 [[nodiscard]] ColorScheme darkColorScheme(const PrimitivePalette& palette);

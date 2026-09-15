@@ -191,6 +191,12 @@ void FakeApplicationHost::pushCloseRequest(core::WindowId id) {
     queue_.push_back(makeEvent(core::HostEventType::WindowCloseRequested, id));
 }
 
+void FakeApplicationHost::pushSystemThemeChanged(bool prefersDarkMode) {
+    // 与 SDL host 同语义：能力位刷新 + 事件广播（应用经 onEvent 消费）。
+    capabilities_.prefersDarkMode = prefersDarkMode;
+    queue_.push_back(makeEvent(core::HostEventType::SystemThemeChanged, {}));
+}
+
 void FakeApplicationHost::setLifecycle(core::AppLifecycle next) {
     if (next == lifecycle_) {
         return;

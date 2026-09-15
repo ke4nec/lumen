@@ -239,6 +239,15 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                                                event.window);
                     }
                     break;
+                case HostEventType::SystemThemeChanged:
+                    // M12：系统主题切换——转给应用钩子重派生主题
+                    //（adaptPlatformTheme / setTheme）；无钩子则忽略。
+                    if (options.onEvent) {
+                        options.onEvent(shell, event);
+                        scheduler.requestFrame(render::FrameReason::Input,
+                                               event.window);
+                    }
+                    break;
                 default:
                     break;
             }

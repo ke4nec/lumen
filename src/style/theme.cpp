@@ -526,19 +526,23 @@ std::shared_ptr<void> makeThemeScopeData(Theme theme) {
     return std::make_shared<Theme>(std::move(theme));
 }
 
-Theme adaptPlatformTheme(const Theme& base, bool darkMode,
-                         core::Color accentColor, float fontScale) {
-    accessibility::AccessibilitySettings settings;
-    settings.fontScale = fontScale;
+Theme adaptPlatformTheme(const Theme& base,
+                         const accessibility::AccessibilitySettings& settings,
+                         bool darkMode, std::optional<core::Color> accentColor) {
+    // M12：以应用的完整可访问性输入重派生——高对比/减少动画/字体缩放
+    // 与方向全部保留（旧实现只带 fontScale，会丢弃 base 的派生）。
     Theme adapted = Theme::fromSettings(settings, darkMode,
                                         base.metrics.density,
                                         base.direction);
-    // 强调色：filled 按钮与焦点环随平台 accent（token 链派生）。
-    adapted.button.filled.background = accentColor;
-    adapted.colors.accent = accentColor;
-    // 字体缩放：经 accessibility 派生（typography 由 fromSettings 派生，
-    // 这里保留 metrics 供后续 fromSettings 重派生）。
-    (void)fontScale;
+    if (accentColor.has_value()) {
+        // 强调色覆盖走 token 链：semantic accent → 组件 token 重建
+        //（filled 背景/勾选指示/开关轨道一致；onAccent 等派生色保持
+        // 基线，与 gallery applyAccent 同口径）。
+        adapted.colors.accent = *accentColor;
+        adapted.button = buttonTokensFrom(adapted.colors);
+        adapted.checkbox = checkboxTokensFrom(adapted.colors);
+        adapted.switchControl = switchTokensFrom(adapted.colors);
+    }
     return adapted;
 }
 

@@ -605,3 +605,23 @@ TEST_CASE("platform_capabilities_report_services_and_appearance",
     CHECK(updated.accentColor == lumen::core::Color::fromRGBA(10, 20, 30));
     CHECK(updated.fontScale == 1.25F);
 }
+
+// M12：系统主题切换事件（fake：能力位刷新 + 事件广播同 SDL 语义）。
+TEST_CASE("fake_host_system_theme_changed_updates_caps_and_events",
+          "[platform]") {
+    FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    CHECK_FALSE(host.capabilities().prefersDarkMode);
+    core::HostEvent event;
+    host.createWindow({});
+    // 清空 createWindow 的窗口广播积压（测试惯例）。
+    while (host.pollEvent(event)) {
+    }
+    host.pushSystemThemeChanged(true);
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::SystemThemeChanged);
+    CHECK(host.capabilities().prefersDarkMode);
+    host.pushSystemThemeChanged(false);
+    REQUIRE(host.pollEvent(event));
+    CHECK_FALSE(host.capabilities().prefersDarkMode);
+}

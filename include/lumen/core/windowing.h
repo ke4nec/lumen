@@ -131,6 +131,9 @@ enum class HostEventType : std::uint8_t {
     SurfaceReattached,
     // M4：平台服务异步完成（文件选择等）。
     FileDialogCompleted,
+    // M12：系统主题切换（dark/light；SDL_SYSTEM_THEME_CHANGED 翻译，
+    // fake host 可注入）。经 RunOptions.onEvent 转发给应用。
+    SystemThemeChanged,
 };
 
 struct HostEvent {

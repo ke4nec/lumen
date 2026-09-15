@@ -280,6 +280,13 @@ int runWindowed(GalleryApp& app, const Options& options) {
     runOptions.windowDesc.width = 1024;
     runOptions.windowDesc.height = 768;
     runOptions.diagnostics = options.diagnostics;
+    // M12：系统主题切换 → 注入偏好（开启"跟随系统"时重派生主题）。
+    runOptions.onEvent = [&app, &host](lumen::app::AppShell&,
+                                       const lumen::core::HostEvent& event) {
+        if (event.type == lumen::core::HostEventType::SystemThemeChanged) {
+            app.setSystemThemePreference(host.capabilities().prefersDarkMode);
+        }
+    };
     return lumen::app::runApp(app.shell(), host, runOptions);
 }
 

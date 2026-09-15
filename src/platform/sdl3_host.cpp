@@ -236,7 +236,10 @@ bool Sdl3ApplicationHost::initialize() {
     capabilities_.openUrl = true;
     capabilities_.cursorShape = true;
     capabilities_.windowIcon = true;
-    capabilities_.prefersDarkMode = false;  // SDL 3.2 无系统主题查询
+    // M12：系统主题查询（SDL_GetSystemTheme，3.2.0 起可用；此前
+    // "SDL 3.2 无查询"注释有误）。UNKNOWN 保持安全默认 false。
+    capabilities_.prefersDarkMode =
+        SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
     refreshLifecycle();
     return true;
 }
@@ -472,6 +475,14 @@ std::size_t Sdl3ApplicationHost::translateEvent(
             if (windows_.count(sdlEvent.window.windowID) == 0) {
                 break;
             }
+            // M12：窗口级光标近似——SDL_SetCursor 是进程级原语，多窗口
+            // 各自设形后切换焦点会停留在"最后设置"的形状；获焦时重放
+            // 该窗口缓存的形状恢复窗口级语义（未设置过则用系统默认）。
+            if (WindowEntry* entry =
+                    find(windowIdOf(sdlEvent.window.windowID));
+                entry != nullptr && entry->cursor != nullptr) {
+                SDL_SetCursor(static_cast<SDL_Cursor*>(entry->cursor));
+            }
             core::HostEvent event;
             event.type = core::HostEventType::WindowFocusGained;
             event.window = windowIdOf(sdlEvent.window.windowID);
@@ -496,6 +507,15 @@ std::size_t Sdl3ApplicationHost::translateEvent(
             core::HostEvent event;
             event.type = core::HostEventType::WindowCloseRequested;
             event.window = windowIdOf(sdlEvent.window.windowID);
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_SYSTEM_THEME_CHANGED: {
+            // M12：刷新能力位并广播（应用经 onEvent 重派生主题）。
+            capabilities_.prefersDarkMode =
+                SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
+            core::HostEvent event;
+            event.type = core::HostEventType::SystemThemeChanged;
             push(std::move(event));
             break;
         }

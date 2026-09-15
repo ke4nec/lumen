@@ -216,8 +216,9 @@ int runWindowed(SettingsApp& app, const Options& options) {
     runOptions.diagnostics = options.diagnostics;
 
     // M4：文件选择完成事件 → 应用状态（UI 线程内同步落地）。
-    runOptions.onEvent = [&app](lumen::app::AppShell&,
-                                const lumen::core::HostEvent& event) {
+    // M12：系统主题切换 → 注入偏好（开启"跟随系统"时重派生主题）。
+    runOptions.onEvent = [&app, &host](lumen::app::AppShell&,
+                                       const lumen::core::HostEvent& event) {
         if (event.type ==
             lumen::core::HostEventType::FileDialogCompleted) {
             app.setPickedFile(event.filePaths.empty()
@@ -225,6 +226,9 @@ int runWindowed(SettingsApp& app, const Options& options) {
                                         ? "(cancelled)"
                                         : event.text
                                   : event.filePaths.front());
+        } else if (event.type ==
+                   lumen::core::HostEventType::SystemThemeChanged) {
+            app.setSystemThemePreference(host.capabilities().prefersDarkMode);
         }
     };
 

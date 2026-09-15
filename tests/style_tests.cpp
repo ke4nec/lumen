@@ -622,3 +622,35 @@ TEST_CASE("theme_from_settings_preserves_direction_across_modes", "[style]") {
         ThemeDirection::AuroraSignal);
     CHECK(aurora.colors.onAccent == Color{8, 19, 33, 255});
 }
+
+// --- M12：平台主题适配（保留派生 + accent token 链） ---
+
+TEST_CASE("adapt_platform_theme_preserves_derivation", "[style]") {
+    AccessibilitySettings settings;
+    settings.highContrast = true;
+    settings.fontScale = 1.5F;
+    const Theme base = Theme::fromSettings(
+        settings, /*darkMode=*/true, ControlDensity::Compact,
+        ThemeDirection::InkLinen);
+    const Theme adapted = lumen::style::adaptPlatformTheme(
+        base, settings, /*darkMode=*/false, Color{200, 100, 50});
+    CHECK_FALSE(adapted.darkMode);
+    // 方向/密度/高对比/字体缩放全部保留（旧实现只带 fontScale 会丢弃）。
+    CHECK(adapted.direction == ThemeDirection::InkLinen);
+    CHECK(adapted.metrics.density == ControlDensity::Compact);
+    CHECK(adapted.colors.contentPrimary == Color{0, 0, 0, 255});
+    CHECK(adapted.typography.body.fontSize == Approx(14.0F * 1.5F));
+    // accent 覆盖走 token 链（filled 背景/勾选指示一致派生）。
+    CHECK(adapted.colors.accent == Color{200, 100, 50});
+    CHECK(adapted.button.filled.background == Color{200, 100, 50});
+    CHECK(adapted.checkbox.indicatorChecked == Color{200, 100, 50});
+    CHECK(adapted.switchControl.trackOn == Color{200, 100, 50});
+    // 不带 accent：强调色来自方向的 light 派生（dark 与 light 色板按模式
+    // 取对比度变体，非 base 字面值）。
+    const Theme kept = lumen::style::adaptPlatformTheme(base, settings,
+                                                        false);
+    // 高对比 light 的方向派生强调色（blue700 槽位，非 blue500 基线）。
+    CHECK(kept.colors.accent ==
+          lumen::style::primitivePaletteFor(ThemeDirection::InkLinen, false)
+              .blue700);
+}

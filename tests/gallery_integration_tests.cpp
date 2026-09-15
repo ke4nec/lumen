@@ -312,3 +312,31 @@ TEST_CASE("gallery_semantics_covers_controls", "[gallery]") {
     CHECK(checkNode->role == accessibility::SemanticsRole::Checkbox);
     CHECK(checkNode->label == "Autosave drafts");
 }
+
+// M12：跟随系统主题——开关启用后按偏好重派生（方向/对比保留）。
+TEST_CASE("gallery_follow_system_theme_rederives", "[gallery]") {
+    GalleryApp app;
+    app.setView(Size{1024.0F, 768.0F});
+    (void)app.renderFrame();
+    go(app, "nav-theme");
+
+    // 开启跟随：偏好为浅色（默认 false）→ 立即重派生为浅色。
+    clickVisible(app, "follow-system-button");
+    (void)app.renderFrame();
+    CHECK(app.followSystemTheme());
+    CHECK_FALSE(app.darkMode());
+
+    // 系统切深色：事件注入 → 重派生回深色。
+    app.setSystemThemePreference(true);
+    (void)app.renderFrame();
+    CHECK(app.darkMode());
+
+    // 关闭跟随后偏好变化不再影响主题。
+    clickVisible(app, "follow-system-button");
+    (void)app.renderFrame();
+    CHECK_FALSE(app.followSystemTheme());
+    const auto pageBefore = app.theme().colors.pageBackground;
+    app.setSystemThemePreference(false);
+    (void)app.renderFrame();
+    CHECK(app.theme().colors.pageBackground == pageBefore);
+}

@@ -134,6 +134,9 @@ class FakeApplicationHost final : public ApplicationHost {
                          int length);
     void pushQuit();
     void pushCloseRequest(core::WindowId id);
+    // M12：系统主题切换事件（同时覆写能力位 prefersDarkMode，模拟
+    // SDL host 的"刷新能力 + 广播"语义）。
+    void pushSystemThemeChanged(bool prefersDarkMode);
 
     // --- 状态驱动：先更新 WindowMetrics，再入队事件（plan §3.1） ---
     void setLifecycle(core::AppLifecycle next);
