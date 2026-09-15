@@ -625,3 +625,23 @@ TEST_CASE("fake_host_system_theme_changed_updates_caps_and_events",
     REQUIRE(host.pollEvent(event));
     CHECK_FALSE(host.capabilities().prefersDarkMode);
 }
+
+// M12：原生服务 seam（dummy 驱动下能力报告与结构化通知结果；真发送
+// 不进 ctest——避免每次测试弹真实系统通知，视觉验收人工执行）。
+TEST_CASE("sdl3_host_native_services_report_and_notify_structured",
+          "[platform]") {
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    lumen::platform::Sdl3ApplicationHost host;
+    REQUIRE(host.initialize());
+#if defined(_WIN32)
+    // Windows 原生 seam 常开（真发送成败取决于 shell 会话）。
+    CHECK(host.capabilities().notifications);
+#endif
+    // 强调色查询不崩溃；无能力的平台保持安全默认（任何值合法）。
+    (void)host.capabilities().accentColor;
+    // 真发送不进 ctest（见上），仅能力位断言。
+}

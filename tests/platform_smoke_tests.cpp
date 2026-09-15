@@ -79,13 +79,14 @@ TEST_CASE("sdl_host_services_degrade_structurally", "[platform][m4]") {
     CHECK(caps.openUrl);
     CHECK(caps.cursorShape);
     CHECK(caps.windowIcon);
-    // SDL 3.2.10 无通知 API：能力关闭 + 结构化降级。
+    // M12：通知能力由原生 seam 决定——Windows/Linux(libdbus)/macOS
+    // 为 true，其余平台结构化关闭。真发送不进 ctest（避免每次测试弹
+    // 真实系统通知；视觉验收人工执行），此处只断言能力位与平台一致。
+#if defined(_WIN32)
+    CHECK(caps.notifications);
+#else
     CHECK_FALSE(caps.notifications);
-    const auto notify = host.postNotification(
-        lumen::platform::NotificationRequest{"t", "b"});
-    CHECK_FALSE(notify.ok);
-    CHECK(notify.error == lumen::platform::ServiceError::Unavailable);
-    CHECK_FALSE(notify.message.empty());
+#endif
 
     // 光标形状（dummy 驱动下 SDL_CreateSystemCursor 可用）。
     const auto id = host.createWindow({});

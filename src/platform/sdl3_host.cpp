@@ -11,6 +11,7 @@
 #include <SDL3/SDL.h>
 
 #include "lumen/platform/sdl3_window.h"
+#include "native_services.h"
 
 namespace lumen::platform {
 namespace {
@@ -232,7 +233,8 @@ bool Sdl3ApplicationHost::initialize() {
     // M4：桌面服务可用性（SDL 3.2.10：对话框/URL/光标/图标可用；
     // 通知无 API）。
     capabilities_.fileDialogs = true;
-    capabilities_.notifications = false;
+    // M12：原生通知 seam（Win32 气泡 / DBus / AppKit；SDL 3.2 无 API）。
+    capabilities_.notifications = native::notificationsAvailable();
     capabilities_.openUrl = true;
     capabilities_.cursorShape = true;
     capabilities_.windowIcon = true;
@@ -240,6 +242,10 @@ bool Sdl3ApplicationHost::initialize() {
     // "SDL 3.2 无查询"注释有误）。UNKNOWN 保持安全默认 false。
     capabilities_.prefersDarkMode =
         SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
+    if (const std::optional<core::Color> accent =
+            native::systemAccentColor()) {
+        capabilities_.accentColor = *accent;
+    }
     refreshLifecycle();
     return true;
 }
@@ -770,11 +776,9 @@ ServiceResult Sdl3ApplicationHost::requestFileDialog(
 
 ServiceResult Sdl3ApplicationHost::postNotification(
     const NotificationRequest& request) {
-    (void)request;
-    // SDL 3.2.10 无通知 API：结构化降级（能力报告 notifications=false，
-    // 调用方按可用性规避；误用时给出可读原因）。
-    return ServiceResult::unavailable(
-        "notifications unsupported by SDL 3.2.10");
+    // M12：原生通知 seam（Win32 气泡 / DBus / AppKit）。失败为结构化
+    // 结果（无 shell 会话/通知守护等），不阻塞 UI 线程。
+    return native::showNotification(request);
 }
 
 void Sdl3ApplicationHost::setCursor(core::WindowId id, SystemCursor cursor) {
