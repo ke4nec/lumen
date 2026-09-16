@@ -29,6 +29,9 @@ enum class IconId : std::uint8_t {
     Search,
     Info,
     Maximize,  // 窗口操作方框（最小化=Minus、关闭=Close 同目录）
+    // S4（gui-control-visual-system-task §6.10）：Image 未就绪占位的居中
+    // 图片图标（追加在尾部，保持既有 ID 值不变）。
+    Image,
 };
 
 // 图标的归一化折线组（0..1 坐标；stroke 绘制，无填充）。

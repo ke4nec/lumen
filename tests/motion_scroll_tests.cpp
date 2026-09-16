@@ -207,9 +207,11 @@ TEST_CASE("route_transition_uses_navigator_duration", "[motion]") {
     AppShell shell{app.config()};
     shell.tick(0);
     (void)shell.renderFrame();
+    // S4（§9.1）：Navigator Fade 200ms（旧 350 按规格调整；与 dialog
+    // 时长同值，规格一致）。
     const auto duration =
         static_cast<std::uint64_t>(shell.theme().motion.navigatorTransitionMs);
-    CHECK(duration != shell.theme().motion.dialogTransitionMs);
+    CHECK(duration == 200);
 
     shell.beginRouteTransition("overlay-card", /*entering=*/false);
     shell.tick(duration - 1);

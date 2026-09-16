@@ -272,11 +272,13 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             return Size{width, height};
         }
         case WidgetType::Tooltip: {
-            const Size text = measureTextContent(content, textStyle, maxWidth,
-                                                 false);
-            const EdgeInsets frame = EdgeInsets::all(6.0F);
-            return Size{text.width + frame.horizontal(),
-                        text.height + frame.vertical()};
+            // S4（§6.9）：文本换行（最大宽 280）；表面 padding 由
+            // layoutLeaf 统一追加（与其他叶子一致，不重复叠加）。
+            const float wrapWidth =
+                std::min(maxWidth > 0.0F ? maxWidth
+                                         : styleContext.theme.tooltip.maxWidth,
+                         styleContext.theme.tooltip.maxWidth);
+            return measureTextContent(content, textStyle, wrapWidth, true);
         }
         case WidgetType::Checkbox: {
             const auto* checkbox =

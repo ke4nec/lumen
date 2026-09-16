@@ -537,6 +537,47 @@ ResolvedStyle resolveDropdown(const Widget& widget,
     return resolved;
 }
 
+// Tooltip（§6.9）：caption + surfaceElevated + borderDefault 轮廓的紧凑
+// 提示表面；不可聚焦、无交互状态。
+ResolvedStyle resolveTooltip(const Widget& widget,
+                             const StyleContext& context) {
+    const Theme& theme = context.theme;
+    const TooltipTokens& tokens = theme.tooltip;
+
+    ResolvedStyle resolved;
+    CommonResolvedStyle& common = commonStyle(resolved.component);
+    common.background = tokens.surface;
+    common.foreground = tokens.content;
+    common.border = tokens.border;
+    common.borderWidth = theme.metrics.controlBorderWidth;
+    common.radius =
+        core::CornerRadius::all(theme.metrics.controlRadius[1]);
+    common.padding = EdgeInsets::symmetric(tokens.paddingX, tokens.paddingY);
+    common.text = theme.typography.caption;
+    common.text.color = common.foreground;
+    applyOverrides(widget, common);
+    return resolved;
+}
+
+// Image（§6.10）：未就绪占位 = surfaceSunken + 1px borderDefault 轮廓 +
+// 居中图片图标（contentSecondary，最大 24px）；就绪位图覆盖整个盒子。
+ResolvedStyle resolveImage(const Widget& widget,
+                           const StyleContext& context) {
+    const Theme& theme = context.theme;
+
+    ResolvedStyle resolved;
+    CommonResolvedStyle& common = commonStyle(resolved.component);
+    common.background = theme.colors.surfaceSunken;
+    common.foreground = theme.colors.contentSecondary;
+    common.border = theme.colors.borderDefault;
+    common.borderWidth = theme.metrics.controlBorderWidth;
+    common.radius = widget.radius;
+    common.text = theme.typography.caption;
+    common.text.color = common.foreground;
+    applyOverrides(widget, common);
+    return resolved;
+}
+
 ResolvedStyle resolveRadio(const Widget& widget, const StyleContext& context,
                            const WidgetState& state) {
     const Theme& theme = context.theme;
@@ -629,6 +670,10 @@ ResolvedStyle resolveStyleImpl(const Widget& widget,
             return resolveTabs(widget, context, state);
         case WidgetType::Dropdown:
             return resolveDropdown(widget, context, state);
+        case WidgetType::Tooltip:
+            return resolveTooltip(widget, context);
+        case WidgetType::Image:
+            return resolveImage(widget, context);
         case WidgetType::Text:
             return resolveText(widget, context.theme);
         default:

@@ -147,7 +147,8 @@ struct ElevationTokens {
 struct MotionTokens {
     std::uint32_t stateTransitionMs{kDurationFastMs};
     std::uint32_t dialogTransitionMs{kDurationNormalMs};
-    std::uint32_t navigatorTransitionMs{kDurationSlowMs};
+    // S4（§9.1）：Navigator Fade 200ms（旧值 350 按本规格调整）。
+    std::uint32_t navigatorTransitionMs{kDurationNormalMs};
     std::uint32_t caretBlinkHalfPeriodMs{530};
     std::uint32_t tooltipDelayMs{400};
     std::uint32_t tooltipFadeMs{120};
@@ -277,6 +278,20 @@ struct TabsTokens {
     bool operator==(const TabsTokens&) const = default;
 };
 
+// S4（§6.9）：Tooltip——caption 文本的紧凑提示表面（surfaceElevated +
+// borderDefault 轮廓，L2 阴影由 elevation 表达）。
+struct TooltipTokens {
+    core::Color surface{52, 52, 62, 255};       // surfaceElevated
+    core::Color border{82, 82, 91, 255};        // borderDefault
+    core::Color content{241, 241, 244, 255};    // contentPrimary
+    float paddingX{8.0F};
+    float paddingY{6.0F};
+    float maxWidth{280.0F};
+    float elevation{2.0F};  // §4.5 L2（Dropdown/Tooltip）
+
+    bool operator==(const TooltipTokens&) const = default;
+};
+
 struct DialogTokens {
     core::Color scrim{0, 0, 0, 132};
     core::Color surface{52, 52, 62, 255};
@@ -324,6 +339,7 @@ struct Theme {
     SliderTokens slider{};
     ProgressBarTokens progressBar{};
     TabsTokens tabs{};
+    TooltipTokens tooltip{};
     DialogTokens dialog{};
     ScrollbarTokens scrollbar{};
     // M11：派生元数据（值语义，参与 ==）。应用直接读取，替代按色值
@@ -374,6 +390,7 @@ struct Theme {
 [[nodiscard]] ProgressBarTokens progressBarTokensFrom(
     const ColorScheme& colors);
 [[nodiscard]] TabsTokens tabsTokensFrom(const ColorScheme& colors);
+[[nodiscard]] TooltipTokens tooltipTokensFrom(const ColorScheme& colors);
 [[nodiscard]] DialogTokens dialogTokensFrom(const ColorScheme& colors,
                                             const Metrics& metrics);
 [[nodiscard]] ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors);

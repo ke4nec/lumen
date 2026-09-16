@@ -49,7 +49,8 @@ std::string DropdownController::optionKey(std::size_t index) const {
 }
 
 void DropdownController::open(app::AppShell& shell,
-                              const std::string& dropdownKey) {
+                              const std::string& dropdownKey,
+                              const style::Theme* anchorTheme) {
     if (options_.empty() || open_) {
         return;
     }
@@ -66,8 +67,15 @@ void DropdownController::open(app::AppShell& shell,
     // 控制器内部 value_ 只是打开时的高亮依据，消除双源漂移）。
     setValue(row->text.empty() ? value_ : row->text);
     open_ = true;
+    overlayTheme_ =
+        anchorTheme != nullptr
+            ? std::optional<style::Theme>(*anchorTheme)
+            : std::nullopt;
     registerHandlers(shell);
-    shell.setOverlay(buildOverlay(shell.theme(), shell.view()));
+    shell.setOverlay(buildOverlay(overlayTheme_.has_value()
+                                      ? *overlayTheme_
+                                      : shell.theme(),
+                                  shell.view()));
     shell.rebuildIfDirty();  // overlay 布局落地，供焦点定位。
     if (shell.overlayRoot() != nullptr) {
         if (const core::RenderNode* option =
@@ -112,7 +120,10 @@ void DropdownController::refreshOverlay(app::AppShell& shell) {
     if (!open_) {
         return;
     }
-    shell.setOverlay(buildOverlay(shell.theme(), shell.view()));
+    shell.setOverlay(buildOverlay(overlayTheme_.has_value()
+                                      ? *overlayTheme_
+                                      : shell.theme(),
+                                  shell.view()));
     shell.rebuildIfDirty();
     if (shell.overlayRoot() != nullptr) {
         if (const core::RenderNode* option =

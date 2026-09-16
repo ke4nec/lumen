@@ -287,19 +287,22 @@ TextLayoutResult TextLayout::layout(const std::string& text,
                 if (lastBreak > lineStart) {
                     rawLines.push_back(RawLine{lineStart, lastBreak - lineStart});
                     lineStart = lastBreak;
-                    width = 0.0F;
                     // 丢弃行首空白（软换行标准行为）。
                     while (lineStart < start + length &&
                            isWhitespaceCluster(clusters[lineStart].text) &&
                            !clusters[lineStart].hardBreak) {
                         ++lineStart;
                     }
-                    if (lineStart > i) {
-                        // 宽 cluster 单独成行后仍超出：继续累积。
-                        width = 0.0F;
-                        for (std::size_t k = i; k < lineStart; ++k) {
+                    // 重算新行 [lineStart, i) 的已累积宽度：断行点回退到
+                    // lastBreak 后溢出判断必须覆盖整行，否则行宽可以超过
+                    // maxWidth（S4 修复：此前跳过的 cluster 未计入）。
+                    width = 0.0F;
+                    if (lineStart <= i) {
+                        for (std::size_t k = lineStart; k < i; ++k) {
                             width += clusters[k].advance;
                         }
+                    } else {
+                        // i 本身是被丢弃的行首空白：行从其后开始。
                         continue;
                     }
                 } else {

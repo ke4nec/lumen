@@ -13,7 +13,7 @@ using Catalog = std::vector<Line>;
 
 const std::vector<Catalog>& catalog() {
     static const std::vector<Catalog> kCatalog = [] {
-        std::vector<Catalog> table(static_cast<std::size_t>(IconId::Maximize) + 1);
+        std::vector<Catalog> table(static_cast<std::size_t>(IconId::Image) + 1);
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
@@ -57,6 +57,14 @@ const std::vector<Catalog>& catalog() {
             Catalog{Line{{Offset{0.28F, 0.28F}, Offset{0.72F, 0.28F},
                           Offset{0.72F, 0.72F}, Offset{0.28F, 0.72F},
                           Offset{0.28F, 0.28F}}}};
+        // S4（§6.10）：图片占位——外框 + 山形折线（描边风格与目录一致）。
+        table[static_cast<std::size_t>(IconId::Image)] =
+            Catalog{Line{{Offset{0.18F, 0.22F}, Offset{0.82F, 0.22F},
+                          Offset{0.82F, 0.78F}, Offset{0.18F, 0.78F},
+                          Offset{0.18F, 0.22F}}},
+                    Line{{Offset{0.18F, 0.68F}, Offset{0.38F, 0.46F},
+                          Offset{0.52F, 0.60F}, Offset{0.66F, 0.42F},
+                          Offset{0.82F, 0.58F}}}};
         return table;
     }();
     return kCatalog;

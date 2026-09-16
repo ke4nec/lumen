@@ -171,20 +171,24 @@ class GalleryApp {
         ui.key = "root";
 
         if (dialogOpen_) {
+            // S4（§8.2）：整体 padding 24 由 makeDialog 施加；标题到正文
+            // 12、正文到操作区 24（spacing 12 + margin 12）。
+            core::Widget body = core::withKey(
+                core::makeText("All widgets share one Theme.",
+                               theme.typography.body),
+                "dialog-body");
+            body.margin.top = style::spaceToken(3);
+            core::Widget close = core::withKey(
+                buttonWidget("Close", "dismiss-dialog", "dialog-close",
+                             core::ButtonVariant::Tonal),
+                "dialog-close");
+            close.margin.top = style::spaceToken(3);
             core::Widget contentDialog = core::makeColumn(
                 {core::withKey(titleText("Gallery dialog", theme),
                                "dialog-title"),
-                 core::withKey(
-                     core::makeText("All widgets share one Theme.",
-                                    theme.typography.body),
-                     "dialog-body"),
-                 core::withKey(
-                     buttonWidget("Close", "dismiss-dialog", "dialog-close",
-                                  core::ButtonVariant::Tonal),
-                     "dialog-close")},
+                 std::move(body), std::move(close)},
                 core::MainAxisAlignment::Start,
-                core::CrossAxisAlignment::Start, style::spaceToken(4),
-                core::EdgeInsets::all(style::spaceToken(6)));
+                core::CrossAxisAlignment::Start, style::spaceToken(3));
             core::Widget dialog = widgets::makeDialog(
                 std::move(contentDialog), shell_.theme(), "dismiss-dialog",
                 kDialogKey, shell_.view());

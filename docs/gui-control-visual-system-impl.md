@@ -162,3 +162,26 @@
 - 兼容性或视觉基准变更：Slider/ProgressBar/Tabs/Dropdown/滚动条外观全部按 §6.5–§6.8/§7.2 重制（旧 painter 局部常量 8.0/0.35/0.25/0.75/1.6/24/1.4/16/0.9/6.0/8.0 全部移除）；Gallery 帧哈希基线更新。
 - 未验证事项与预留能力：真实窗口人工验收推迟至 S5；Scrollbar 交互态、Radio 组、Dropdown 禁用项/分组/搜索为 §11 预留。
 - 下一阶段及前置条件：S4 浮层与组合——Tooltip（caption/surfaceElevated/边界避让）、Image 占位（surfaceSunken + IconId::Image）、Form/Dialog/Navigator 外观与生命周期、ThemeScope/FocusScope 核对。
+
+---
+
+## S4 浮层与组合
+
+- 阶段 / 日期 / 源码提交：S4 / 2026-09-16 / 基线 `ee5a16b`（S3 提交）
+- 已完成控件与规格章节：§6.9 Tooltip、§6.10 Image、§8.1 Form（核对）、§8.2 Dialog、§8.3 Navigator、§7.3 ThemeScope/FocusScope（浮层主题继承）。
+- 新增或调整的 token / ResolvedStyle / 公共 API：
+  - 新增 `TooltipTokens`（surfaceElevated/borderDefault/contentPrimary、padding 8/6、maxWidth 280、L2）+ resolver `resolveTooltip`；Tooltip 布局改为换行测量（maxWidth 280 夹取）+ 样式 padding，painter 按节点宽换行绘制（移除 6.0F 局部常量）。
+  - resolver `resolveImage`：占位 chrome = surfaceSunken + 1px borderDefault + contentSecondary 前景；painter 占位重写为“表面 + 描边轮廓 + 居中 `IconId::Image`（最大 24px）”，移除 (39,39,42)/(82,82,91)/h×0.04/叉臂 0.25 全部局部常量；就绪位图覆盖盒子（默认拉伸契约不变）。
+  - `IconId::Image` 目录项追加在枚举尾（既有 ID 值不变）。
+  - `MotionTokens.navigatorTransitionMs` 350→200（§9.1）。
+  - `DropdownController::open` 增加可选 `anchorTheme`（§7.3 浮层继承触发器主题；ThemeScope 内打开的菜单不回落窗口根主题；刷新沿用打开时的拷贝，主题切换期间保持打开的菜单需应用重开——已注释说明）。
+  - `makeDialog`（§8.2）：+1px borderDefault 轮廓、L3 阴影（tokens.elevation）、宽度 240–420 且窗口可用宽（边距 16）优先、卡片改经 StackAlignment::Center 布局期真实居中（旧实现按估算尺寸定位但从未给卡片设置尺寸——发现的既有缺陷）、整体 padding 24 由 helper 统一施加；gallery/settings 对话框内容改为“标题→正文 12、正文→操作区 24”结构并去掉自带边距。
+- 源码审查发现、修复与仍存缺口：
+  - **发现并修复通用缺陷**：`TextLayout` 贪心换行在断行点回退后未把 [lineStart, i) 的 cluster 宽度计入累积，行宽可超过 maxWidth（此前无断言覆盖；Tooltip 的 280 上限测试暴露）。修复后行宽 ≤ maxWidth，全量测试无回归。
+  - 发现并修复：makeDialog 旧实现的居中错位（见上）；Tooltip 测量的 padding 双重叠加风险（改为 layoutLeaf 统一追加）。
+  - 仍存缺口：Dialog 超长正文进入内部滚动区未实现（当前受根约束压缩，记录）；Tooltip 键盘焦点触发接线未新增（hover 路径已有，§6.9 允许声明式记录）；Form 的 18px SupportingText 预留行属应用组合（gallery 表单已有错误文案行）。
+- 状态/主题/尺寸样本及截图链接：Gallery headless 全路由冒烟通过；新增 Tooltip 换行/表面、Dialog 卡片 chrome/居中/边距、浮层主题继承、Image 占位（更新既有测试为命令级断言）共 4 个测试。
+- 验证命令、测试结果、真实平台/后端/字体：CPU Debug 447/447；Skia Release 459/459；GPU Release 459/459；Windows 11 / VS 2026。
+- 兼容性或视觉基准变更：Tooltip/Image/Dialog 外观重制（§6.9/§6.10/§8.2）；换行行宽修复可能使既有多行文本换行点略提前（正确性修复）；Navigator 过渡 350→200；Gallery 帧哈希基线更新。
+- 未验证事项与预留能力：真实窗口人工验收推迟至 S5；Image fit/圆角裁剪/加载失败区分（§11 预留）；Tooltip reduceAnimation 已有归零策略。
+- 下一阶段及前置条件：S5 动效与质量收敛——§9.1 动效表核对（状态色过渡/Switch knob 位移/Dropdown 淡入/中断与 reduceAnimation）、Gallery 状态矩阵样本、完整矩阵与门槛核对。

@@ -506,47 +506,33 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             paintSurface(sink, rect, common);
             break;
         case WidgetType::Image: {
-            // M3：已就绪 → 位图拉满盒子（与 DrawImage 语义一致）；
-            // 未就绪 → 固定占位（表面 + 边框 + 中心叉），语义名称保留。
-            paintSurface(sink, rect, common);
+            // S4（§6.10）：已就绪 → 位图拉满盒子（默认拉伸契约不变）；
+            // 未就绪 → surfaceSunken + 1px borderDefault + 居中图片图标
+            //（contentSecondary，最大 24px；chrome 全部来自 resolved
+            // style，不再有 painter 局部常量）。
             if (node.imageId != 0) {
                 sink.drawImage(node.imageId, rect);
             } else {
-                const Color placeholderFill =
-                    common.background.a > 0 ? common.background
-                                            : Color::fromRGBA(39, 39, 42);
-                sink.drawRect(rect, placeholderFill);
-                const Color border = Color::fromRGBA(82, 82, 91);
-                const float thickness = std::max(1.0F, node.size.height * 0.04F);
-                // 边框（四条薄矩形）+ 中心叉（占位语义，确定性几何）。
-                sink.drawRect(Rect{origin, Size{node.size.width, thickness}},
-                              border);
-                sink.drawRect(Rect{Offset{origin.x,
-                                          origin.y + node.size.height -
-                                              thickness},
-                                   Size{node.size.width, thickness}},
-                              border);
-                sink.drawRect(Rect{origin, Size{thickness, node.size.height}},
-                              border);
-                sink.drawRect(Rect{Offset{origin.x + node.size.width -
-                                              thickness,
-                                          origin.y},
-                                   Size{thickness, node.size.height}},
-                              border);
-                const float arm = std::min(node.size.width, node.size.height) *
-                                  0.25F;
-                if (arm > 1.0F) {
-                    const float cx = origin.x + node.size.width * 0.5F;
-                    const float cy = origin.y + node.size.height * 0.5F;
-                    const float ct = std::max(1.0F, thickness);
-                    sink.drawRect(
-                        Rect{Offset{cx - arm * 0.5F, cy - ct * 0.5F},
-                             Size{arm, ct}},
-                        border);
-                    sink.drawRect(
-                        Rect{Offset{cx - ct * 0.5F, cy - arm * 0.5F},
-                             Size{ct, arm}},
-                        border);
+                paintSurface(sink, rect, common);
+                const auto& polylines =
+                    core::iconPolylines(core::IconId::Image);
+                if (!polylines.empty()) {
+                    const float iconBox = std::min(
+                        24.0F, std::min(node.size.width,
+                                        node.size.height) *
+                                       0.6F);
+                    if (iconBox > 1.0F) {
+                        sink.drawIcon(
+                            polylines,
+                            Rect{Offset{origin.x +
+                                            (node.size.width - iconBox) *
+                                                0.5F,
+                                        origin.y +
+                                            (node.size.height - iconBox) *
+                                                0.5F},
+                                 Size{iconBox, iconBox}},
+                            common.foreground, node.iconStrokeWidth);
+                    }
                 }
             }
             break;
@@ -716,16 +702,22 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             break;
         }
         case WidgetType::Tooltip: {
-            // M6：提示气泡（表面 + 边框 + 文本；token 链派生色）。
+            // S4（§6.9）：caption + surfaceElevated + borderDefault 轮廓；
+            // padding 来自 resolved style，文本按节点宽换行。
             paintSurface(sink, rect, common);
             {
                 const ScopedClip<Sink> clip{sink, rect};
-                const float lineHeight = lineHeightOf(common.text);
-                paintTextAt(sink, node.text, common.text,
-                            Offset{origin.x + 6.0F,
-                                   origin.y +
-                                       (node.size.height - lineHeight) *
-                                           0.5F});
+                const bool wrap =
+                    node.multiline || common.text.maxLines != 1;
+                const auto layout =
+                    layoutText(node.text, common.text,
+                               wrap ? std::max(
+                                          0.0F, node.size.width -
+                                                    common.padding.horizontal())
+                                    : 0.0F);
+                paintLines(sink, layout, common.text,
+                           origin + Offset{common.padding.left,
+                                           common.padding.top});
             }
             break;
         }

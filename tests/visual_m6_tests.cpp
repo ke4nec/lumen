@@ -23,6 +23,7 @@
 #include "lumen/render/render_commands.h"
 #include "lumen/style/theme.h"
 #include "lumen/widgets/dropdown.h"
+#include "lumen/widgets/navigator.h"
 
 using namespace lumen;
 using namespace lumen::core;
@@ -822,4 +823,85 @@ TEST_CASE("dropdown_long_menu_scrolls_and_stays_inside_window",
     const RenderNode* row = findNodeByKey(shell.root(), "dd");
     REQUIRE(row != nullptr);
     CHECK(shell.focus().focusedIdentity() == row->identity);
+}
+
+// --- S4（gui-control-visual-system-task §6.9/§8.2/§7.3） ---
+
+TEST_CASE("tooltip_resolves_compact_surface_and_wraps_text", "[visual][s4]") {
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    // 长文本：换行受 maxWidth 280 限制（§6.9）。loose 约束让 intrinsic
+    // 生效（tight 会把叶子拉满视口）。
+    const std::string longText =
+        "A rather long tooltip line that should wrap instead of running "
+        "past the maximum width of two hundred eighty logical pixels.";
+    const RenderNode root = LayoutEngine::layout(
+        makeContainer(makeTooltip(longText, "tip")),
+        Constraints::loose(Size{300.0F, 200.0F}));
+    const RenderNode* node = findNodeByKey(root, "tip");
+    REQUIRE(node != nullptr);
+    const auto& common = node->commonStyle();
+    CHECK(common.background == theme.colors.surfaceElevated);
+    CHECK(common.border == theme.colors.borderDefault);
+    CHECK(common.borderWidth == theme.metrics.controlBorderWidth);
+    CHECK(common.text.fontSize == theme.typography.caption.fontSize);
+    // 宽度 ≤ 280 + 水平 padding。
+    CHECK(node->size.width <=
+          theme.tooltip.maxWidth + 2.0F * theme.tooltip.paddingX + 0.01F);
+    CHECK(node->size.width > theme.tooltip.maxWidth * 0.5F);
+    // 高度 > 单行（发生了换行）。
+    CHECK(node->size.height > theme.typography.caption.fontSize * 2.0F);
+}
+
+TEST_CASE("dialog_card_uses_border_elevation_and_padding", "[visual][s4]") {
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    Widget body = makeText("Body");
+    const Widget dialog = lumen::widgets::makeDialog(
+        std::move(body), theme, "dismiss", "dlg", Size{400.0F, 300.0F});
+    // 经布局落地后核对卡片 chrome（§8.2 真实 RenderNode，不是只看 token）。
+    const RenderNode root = layoutOf(dialog, 400.0F, 300.0F);
+    const RenderNode* card = findNodeByKey(root, "dlg-card");
+    REQUIRE(card != nullptr);
+    CHECK(card->commonStyle().background == theme.colors.surfaceElevated);
+    CHECK(card->commonStyle().border == theme.colors.borderDefault);
+    CHECK(card->elevation ==
+          Approx(theme.dialog.elevation));
+    // 宽度落在 240–420 且不越窗口边距 16。
+    CHECK(card->size.width <= 420.0F + 0.01F);
+    CHECK(card->size.width >= 240.0F - 0.01F);
+    const Offset cardOrigin = absoluteOffset(root, "dlg-card");
+    CHECK(cardOrigin.x >= 16.0F - 0.01F);
+    CHECK(cardOrigin.y >= 16.0F - 0.01F);
+    CHECK(cardOrigin.y + card->size.height <= 300.0F - 16.0F + 0.01F);
+    // 整体 padding 24 由 helper 施加（内容容器）。
+    REQUIRE(card->children.size() == 1);
+    CHECK(card->children[0].padding.left ==
+          Approx(theme.dialog.padding.left));
+}
+
+TEST_CASE("dropdown_overlay_inherits_anchor_scope_theme", "[visual][s4]") {
+    // §7.3：浮层继承触发器有效主题（ThemeScope 内的浅色主题），不回落
+    // 窗口根主题（shell 为深色）。
+    app::ShellConfig config;
+    config.caretBlink = false;
+    config.build = [] {
+        Widget page;
+        page.key = "page";
+        page.children = {makeDropdown("A", "open", "dd", 160.0F)};
+        return page;
+    };
+    app::AppShell shell{config};
+    shell.setView(Size{300.0F, 200.0F});
+    (void)shell.renderFrame();
+    REQUIRE(shell.theme().darkMode);
+
+    const style::Theme lightScope = style::Theme::light();
+    lumen::widgets::DropdownController controller{
+        {{"A", "A"}, {"B", "B"}}, "A"};
+    controller.open(shell, "dd", &lightScope);
+    shell.rebuildIfDirty();
+    const RenderNode* menu =
+        findNodeByKey(*shell.overlayRoot(), "dd-menu");
+    REQUIRE(menu != nullptr);
+    CHECK(menu->commonStyle().background == lightScope.colors.surfaceElevated);
+    controller.close(shell);
 }

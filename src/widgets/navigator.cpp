@@ -54,18 +54,19 @@ bool NavigatorController::handleBack(bool modalOpen) {
 core::Widget makeDialog(core::Widget content, const style::Theme& theme,
                         std::string onDismiss, std::string key,
                         core::Size windowSize) {
-    // 全屏 barrier：点击关闭；内容卡居中。尺寸/颜色/圆角全部来自
-    // DialogTokens（visual-system §7.4；elevation 渲染能力冻结，先用表
-    // 面层级表达）。
+    // 全屏 barrier：点击关闭；内容卡居中。§8.2：surfaceElevated +
+    // radius 12 + 1px borderDefault + L3 阴影；宽度 240–420（窗口可用宽
+    // 优先），高度受窗口可用高度约束（边距 ≥16）；整体 padding 24 由
+    // helper 统一施加（内容不再自带边距，避免双重 padding）。
     const style::DialogTokens& tokens = theme.dialog;
+    const float windowMargin = 16.0F;
+    const float maxCardWidth =
+        std::max(tokens.minWidth, windowSize.width - 2.0F * windowMargin);
     const float cardWidth =
         std::min(tokens.maxWidth,
                  std::max(tokens.minWidth,
-                          windowSize.width * tokens.widthRatio));
-    const core::Size cardSize{cardWidth, windowSize.height * tokens.heightRatio};
-    const core::Offset cardOrigin{
-        (windowSize.width - cardSize.width) * 0.5F,
-        (windowSize.height - cardSize.height) * 0.5F};
+                          std::min(windowSize.width * tokens.widthRatio,
+                                   maxCardWidth)));
 
     core::Widget barrier = core::makeContainerLeaf(
         windowSize.width, windowSize.height, core::EdgeInsets{},
@@ -75,18 +76,26 @@ core::Widget makeDialog(core::Widget content, const style::Theme& theme,
     barrier.semanticsActions = accessibility::kActionDismiss;
     barrier.key = key.empty() ? key : key + "-barrier";
 
+    // 内容统一 padding（tokens.padding = 24）。
+    core::Widget padded = core::makeContainer(
+        std::move(content), std::nullopt, std::nullopt, tokens.padding);
     core::Widget card;
     card.type = core::WidgetType::Container;
     card.color = tokens.surface;
     card.radius = core::CornerRadius::all(tokens.radius);
-    // 内容自带内边距（DialogTokens.padding 供应用侧组合使用，避免双重
-    // padding）。
-    card.children.push_back(std::move(content));
-    card = core::withStackPosition(std::move(card), cardOrigin);
+    card.styleOverrides.border = theme.colors.borderDefault;
+    card.styleOverrides.borderWidth = theme.metrics.controlBorderWidth;
+    card.elevation = tokens.elevation;
+    // 宽度显式（240–420 / 窗口可用宽优先）；高度内容驱动（Stack 居中
+    // 按实际高度对齐，超长内容受根约束压缩）。
+    card.width = cardWidth;
+    card.children.push_back(std::move(padded));
     card.key = key.empty() ? key : key + "-card";
 
-    // FocusScope 包住 dialog：Tab 遍历不逃出（plan §3.4）。
-    core::Widget dialog = core::makeStack({std::move(barrier), std::move(card)});
+    // FocusScope 包住 dialog：Tab 遍历不逃出（plan §3.4）。卡片经
+    // StackAlignment::Center 居中（布局期真实居中，不再按估算尺寸定位）。
+    core::Widget dialog = core::makeStack({std::move(barrier), std::move(card)},
+                                          core::StackAlignment::Center);
     dialog.key = std::move(key);
     dialog.width = windowSize.width;
     dialog.height = windowSize.height;

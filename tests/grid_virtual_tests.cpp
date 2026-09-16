@@ -22,6 +22,7 @@
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
 #include "lumen/render/render_commands.h"
+#include "lumen/style/theme.h"
 
 using namespace lumen;
 using namespace lumen::core;
@@ -592,22 +593,40 @@ TEST_CASE("image_widget_draws_placeholder_then_bitmap", "[image]") {
         return LayoutEngine::layout(column, tightView(300.0F, 200.0F));
     };
 
-    // 未就绪：占位绘制产生 DrawRect 命令（占位表面 + 边框 + 中心叉）。
+    // 未就绪：S4（§6.10）占位 = surfaceSunken 表面 + borderDefault 描边
+    // 轮廓 + 居中 IconId::Image 图标（不再按图片高度比例生成粗边框）。
     const RenderNode pending = layoutImage(0);
     const RenderNode* node = findNodeByKey(pending, "logo");
     REQUIRE(node != nullptr);
     CHECK(node->size.width == Catch::Approx(120.0F).margin(0.01F));
     CHECK(node->imageId == 0);
     CHECK(node->imageSource == "asset://logo");
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    CHECK(node->commonStyle().background ==
+          theme.colors.surfaceSunken);
+    CHECK(node->commonStyle().border == theme.colors.borderDefault);
     render::RenderCommandList pendingCommands =
         render::recordScene(pending);
-    std::size_t rects = 0;
+    bool sawPlaceholderFill = false;
+    bool sawPlaceholderStroke = false;
+    bool sawImageIcon = false;
     for (const auto& command : pendingCommands.commands()) {
-        if (command.type == render::CommandType::DrawRect) {
-            ++rects;
+        if (command.type == render::CommandType::DrawRect &&
+            command.color == theme.colors.surfaceSunken) {
+            sawPlaceholderFill = true;
+        }
+        if (command.type == render::CommandType::DrawRectStroke &&
+            command.color == theme.colors.borderDefault) {
+            sawPlaceholderStroke = true;
+        }
+        if (command.type == render::CommandType::DrawIcon &&
+            command.polylines == iconPolylines(core::IconId::Image)) {
+            sawImageIcon = true;
         }
     }
-    CHECK(rects >= 5);  // 表面 + 四边 + 叉。
+    CHECK(sawPlaceholderFill);
+    CHECK(sawPlaceholderStroke);
+    CHECK(sawImageIcon);
 
     // 已就绪：DrawImage 命令携带稳定 id 与节点盒子。
     const RenderNode ready = layoutImage(77);

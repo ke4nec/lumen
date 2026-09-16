@@ -264,6 +264,14 @@ TabsTokens tabsTokensFrom(const ColorScheme& colors) {
     return tokens;
 }
 
+TooltipTokens tooltipTokensFrom(const ColorScheme& colors) {
+    TooltipTokens tokens;
+    tokens.surface = colors.surfaceElevated;
+    tokens.border = colors.borderDefault;
+    tokens.content = colors.contentPrimary;
+    return tokens;
+}
+
 DialogTokens dialogTokensFrom(const ColorScheme& colors,
                               const Metrics& metrics) {
     DialogTokens tokens;
@@ -554,6 +562,7 @@ Theme baseTheme(bool darkMode, ControlDensity density,
     theme.slider = sliderTokensFrom(theme.colors);
     theme.progressBar = progressBarTokensFrom(theme.colors);
     theme.tabs = tabsTokensFrom(theme.colors);
+    theme.tooltip = tooltipTokensFrom(theme.colors);
     theme.dialog = dialogTokensFrom(theme.colors, theme.metrics);
     theme.scrollbar = scrollbarTokensFrom(theme.colors);
     theme.direction = direction;
@@ -597,6 +606,7 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     theme.slider = sliderTokensFrom(theme.colors);
     theme.progressBar = progressBarTokensFrom(theme.colors);
     theme.tabs = tabsTokensFrom(theme.colors);
+    theme.tooltip = tooltipTokensFrom(theme.colors);
     theme.scrollbar = scrollbarTokensFrom(theme.colors);
     theme.metrics.focusRingWidth = 3.0F;
     theme.metrics.controlBorderWidth = 2.0F;
