@@ -18,6 +18,11 @@ RendererCapabilities Renderer::capabilities() const {
 
 void Renderer::submit(const RenderCommandList& commands, const FrameInfo& info) {
     const auto start = std::chrono::steady_clock::now();
+    // 默认适配器无法在 beginFrame 携带 deviceScale：经 setter 注入，使
+    // 即时路径后端（Skia 光栅等）与原生 submit 后端（CPU/GPU）同尺度。
+    if (info.deviceScale > 0.0F) {
+        setDeviceScale(info.deviceScale);
+    }
     // 局部提交的前提是命令与缓存能证明覆盖完整（plan §2.3）；默认适配
     // 无法保留上一帧，preserve 请求只能退回全帧并记录原因。
     const bool wantsPartial = info.damage.has_value() && info.preservePrevious;

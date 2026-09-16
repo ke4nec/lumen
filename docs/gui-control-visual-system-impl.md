@@ -247,3 +247,30 @@
   - Gallery 全路由 `--headless` 冒烟通过；Windows `--max-frames 20 --diagnostics` 窗口运行退出码 0，CPU 后端、系统字体 256 faces、gdi+stb 光栅；[窗口日志](../build/review-fix/gallery-window.log)。
   - 使用同一 Windows 系统字体离屏导出并核对状态矩阵：[600px / fontScale 1](../build/review-fix/gallery-600-fs1.png)、[600px / fontScale 2](../build/review-fix/gallery-600-fs2.png)。核对范围为矩阵区域；Gallery 顶部/底部固定栏在 200% 下的文本裁剪不属于本轮 12 项。
 - 未验证事项：Linux/macOS 本机运行、完整人工视觉清单及性能对照未执行。上述窗口冒烟与矩阵截图不替代完整人工验收；S5 已记录的动画、Dialog 长正文滚动及 §11 预留能力保持原完成边界。
+
+---
+
+## S6 全绘制抗锯齿与双缓冲（2026-09-16）
+
+> 目标：CPU 后端所有几何绘制抗锯齿（圆角矩形填充/描边、图标线条）；绘制效率优化采用双缓冲（交换替代每帧全帧拷贝）。三层缓冲不适用：软件光栅 + 同步呈现没有异步呈现队列可消费第三张缓冲，双缓冲已消除逐帧拷贝。
+
+- 阶段 / 日期 / 源码提交：S6 / 2026-09-16 / 基线 `e0dde59` + 工作区进行中的视觉几何/固定样本改造（见上一节）
+- 抗锯齿实现（`src/render/cpu_renderer.cpp`）：
+  - 圆角矩形填充/描边改用**设备像素空间的圆角矩形 SDF**（象限取半径的 rounded-box 距离场）：覆盖率 = `clamp(0.5 - d, 0, 1)`，经既有 `blendCoveragePixel` 混合（与字形 AA 同一通道）。描边 = 外形覆盖 − 内形覆盖（饱和相减）。
+  - 整数对齐几何保持锐利（边界恰在像素网格时不引入模糊）；分数边界/圆角弧线产生 1px 过渡带——正是 1/1.25/1.5/2 DPI 与 4/6/8 小圆角的主要观感问题来源。
+  - 性能防护：内部区域（边界内缩 1px 的盒+角测试）直通整像素填充，只有边界带付出距离场成本；大面积背景近似零开销。
+  - 图标线条：删除"数值步进 + 方形笔刷多遍"旧光栅，改为逐像素点到线段距离（覆盖率 max 累积后单次混合；端点距离自然形成圆帽/圆角，与 Skia Round_Cap/Join 一致，跨后端观感更接近）。
+  - 文本：系统字体路径本就有 coverage AA；5x7 占位字形保持确定性位图（headless 哈希稳定），不计入本轮 AA 范围。
+- 双缓冲（`CpuRenderer`）：
+  - `endFrame` 由全帧拷贝（`previous_ = buffer_`）改为 **back/front 指针交换**（O(1)）；`pixels()` 返回最近完成帧（present 读到稳定帧，不再与绘制竞争），首帧完成前的帧中读取回退绘制缓冲保持旧语义。
+  - Preserve 帧零拷贝：beginFrame 先交换使绘制缓冲携带上一完成帧；damage 场景只把损坏区带清成底色（旧的"四周拷贝整帧"删除）。
+  - 顺带修复（跨后端契约）：`Renderer::submit` 默认适配器此前丢弃 `FrameInfo.deviceScale`（仅 CpuRenderer 原生 submit 处理）——新增基类虚 `setDeviceScale` 并在默认适配器注入；Skia 光栅在 submit 路径下各 DPI 现在与 CPU 同尺度（`skia_and_cpu_strokes_keep_transparent_interiors_at_fractional_dpi` 由红转绿）。
+- 测试：
+  - 新增 `[render][aa]` 3 例：分数边界混合带/角弧中间值/整数对齐锐利；描边与图标线条的部分覆盖；双缓冲完成帧隔离与多帧稳定。
+  - `visual_scope_theme_changes_snap_motion_and_refresh_tooltip` 的气泡采样点移到内部（原采样点位于 AA 圆角弧线上，恰为混合值——不是回归）。
+  - 基线重冻结：Gallery headless frame0=`d352b4fd72889f7a`…；基准 frame_hash 变化且两次运行一致（AA 确定性）。
+- 性能对照（Windows 11 / VS 2026 / Debug / `lumen-scene-bench --frames 120 --warmup 10`，同机同场景）：
+  - paint p50：140.6ms → **96.7ms（-31%）**；mean 149.4ms → 110.4ms；p95 223.7ms → 217.6ms。双缓冲消除的逐帧拷贝显著超过 AA 距离场新增成本。
+  - 两次 `--frames 60` 运行 frame_hash 一致（`2982e8a3d392b612`）。
+- 验证：CPU Debug 476/476；Skia Release 490/490；GPU Release 490/490；Gallery `--headless` 全路由与 `--max-frames` 窗口（系统字体）冒烟通过；固定样本导出（600×700@1.25DPI → 750×875，hash 确定性）通过。
+- 未验证事项：Linux/macOS 本机运行（CI 覆盖）；人工观感验收（圆角平滑度需真人确认，命令级证据为角弧中间值像素）；占位字形 AA 未做（保持 headless 确定性）。

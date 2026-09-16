@@ -149,6 +149,11 @@ class Renderer {
     }
     virtual void endFrame() = 0;
 
+    // 提交路径的 DPI 注入：FrameInfo.deviceScale 经此传给即时路径后端
+    //（默认适配器 submit 无法携带 scale——各后端在此更新自身缩放并使
+    // 缓存的前一帧失效）。默认 no-op（无缩放语义的后端）。
+    virtual void setDeviceScale(float scale) { (void)scale; }
+
     // --- v0.2 command path ---
 
     // 后端能力报告。
