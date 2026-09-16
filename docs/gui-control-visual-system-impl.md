@@ -185,3 +185,36 @@
 - 兼容性或视觉基准变更：Tooltip/Image/Dialog 外观重制（§6.9/§6.10/§8.2）；换行行宽修复可能使既有多行文本换行点略提前（正确性修复）；Navigator 过渡 350→200；Gallery 帧哈希基线更新。
 - 未验证事项与预留能力：真实窗口人工验收推迟至 S5；Image fit/圆角裁剪/加载失败区分（§11 预留）；Tooltip reduceAnimation 已有归零策略。
 - 下一阶段及前置条件：S5 动效与质量收敛——§9.1 动效表核对（状态色过渡/Switch knob 位移/Dropdown 淡入/中断与 reduceAnimation）、Gallery 状态矩阵样本、完整矩阵与门槛核对。
+
+---
+
+## S5 动效与质量收敛
+
+- 阶段 / 日期 / 源码提交：S5 / 2026-09-16 / 基线 `d653ac1`（S4 提交）
+- 已完成规格章节：§9.1 动效表核对、§10.1/§10.2 Gallery 样本接入、§13 门槛核对与证据归档。
+- 动效表逐行核对结果（§9.1）：
+  - Hover/Pressed/Checked 颜色 100ms EaseOut：`motionTransitions` opt-in + tick 时钟（既有）；中间帧/中断/reduceAnimation 归零由既有 motion 测试覆盖。
+  - 键盘焦点出现 0ms：**新增测试锁定**（`focus_ring_appears_full_width_on_first_blend_frame`——环宽度不参与状态色插值，过渡中途帧即完整环宽）。
+  - 主题/密度切换、disabled、ProgressBar 值、Slider 拖动 0ms：**新增测试锁定**（`theme_switch_converges_immediately_with_transitions_on`——状态过渡仅由交互快照触发，主题切换首帧即终值）；Slider/进度即时性由交互测试覆盖。
+  - Tooltip 400/120、reduceAnimation 立即显示：既有测试覆盖。
+  - Dialog 200ms / Navigator Fade 200ms（S4 调整）/ caret 530：既有测试覆盖。
+  - Switch knob 位移 100ms：**未完成**（按 §6.4 约定交付正确即时位置，部件数值动画未打通，记录为遗留项）。
+  - Dropdown 打开/关闭 120ms alpha：**未实现**（§9.1 标注"可选"，当前即时开合）。
+- Gallery 样本（§10.1/§10.2）：
+  - Buttons 页新增"State matrix (forced previews)"卡：五变体 × Normal/Hover/Pressed/Focused/Focused+Pressed/Disabled；强制状态经 `resolveStyle` 在合成交互快照下解析后写入 StyleOverrides（预览单元格 disabled 保持快照稳定、不触发业务回调；Focused 列的环以边框槽近似）。
+  - 新增中英文长标签窄按钮样本（单行省略路径）。
+  - Sizes 三档、Enabled/Disabled/Selected/图标行、主题页四方向 × 深浅 × 高对比 × 强调色、Inputs 表单/下拉/页签/滑杆交互样本：既有。
+- 新增或调整的 token / ResolvedStyle / 公共 API：无框架 API 变更（本阶段为核对、测试与 Gallery 样本）。
+- 源码审查发现、修复与仍存缺口：
+  - 发现并修复：Gallery 长标签按钮被 Stretch 列拉宽（包 Row 使显式 200 宽生效）。
+  - 仍存缺口（本轮明确单列）：Switch knob 位移动画未做；Dropdown 打开淡入未做；Dialog 超长正文内部滚动未做；控件标签多行换行未做（单行）；Scrollbar hovered/dragged/auto-hide（§11 预留）；Tooltip 键盘焦点触发未接线。
+- 验证命令、测试结果、真实平台/后端/字体：
+  - CPU Debug `ctest`：450/450（新增 3 个测试：焦点 0ms、主题切换即时、Gallery 状态矩阵）。
+  - Skia 光栅 Release：462/462；GPU（Ganesh+GL）Release：462/462。
+  - 真实窗口冒烟：`lumen-gallery --max-frames 20`（Windows 系统字体 256 faces、gdi+stb 光栅，退出码 0）。
+  - 可重复样本：`--headless --dump-frame` 导出 1024×768 RGBA 成功；帧哈希 frame0=`5e93f6ff…`。
+  - 平台：Windows 11 / VS 2026 为主机证据；Linux/macOS 由 CI 覆盖（本阶段未在本地运行，明确为未验证项）。
+- 人工视觉与交互清单（§13.3）：自动化/命令级证据覆盖的条目如上；**真实桌面人工逐条目验收未执行**（需要人工在真实窗口核对三档尺寸、200% 缩放、非整数 DPI、IME 等观感项）——单列为未完成事项，不冒充通过。
+- 性能对照：本阶段未引入每帧分配或新文本整形路径（状态过渡复用既有机制）；未跑基准对照（无既有基线可比场景变化，按 §9.3 记录为未执行）。
+- 兼容性或视觉基准变更：Gallery Buttons 页新增矩阵卡（帧哈希更新）；无框架行为变更。
+- 完成边界：S0–S5 全部阶段已按 §12 顺序执行并逐阶段 review+提交；§11 预留项与本记录"仍存缺口"单列，不计入完成范围。真实桌面人工验收与 Linux/macOS 主机证据为后续补充项。

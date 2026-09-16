@@ -340,3 +340,66 @@ TEST_CASE("gallery_follow_system_theme_rederives", "[gallery]") {
     (void)app.renderFrame();
     CHECK(app.theme().colors.pageBackground == pageBefore);
 }
+
+// --- S5（gui-control-visual-system-task §10.2）：强制状态矩阵样本 ---
+
+TEST_CASE("gallery_buttons_state_matrix_forces_previews", "[gallery]") {
+    GalleryApp app;
+    (void)app.renderFrame();
+    click(app, "goto-buttons-button");
+    (void)app.renderFrame();
+
+    const style::Theme& theme = app.theme();
+    // 矩阵落地：五变体 × 六列。
+    const RenderNode* matrix = findNodeByKey(app.root(), "buttons-matrix");
+    REQUIRE(matrix != nullptr);
+    REQUIRE(matrix->children.size() == 6);  // 表头 + 5 变体行
+    for (const char* variant : {"Filled", "Tonal", "Outline", "Ghost",
+                                "Danger"}) {
+        REQUIRE(findNodeByKey(app.root(),
+                              std::string("matrix-") + variant + "-Normal") !=
+                nullptr);
+    }
+
+    // Hover 快照 = blendOver(accent, hoverOverlay)（不触发业务回调的
+    // 预览：单元格 disabled，颜色来自 resolved 覆盖）。
+    const RenderNode* hover =
+        findNodeByKey(app.root(), "matrix-Filled-Hover");
+    REQUIRE(hover != nullptr);
+    CHECK(hover->commonStyle().background ==
+          style::blendOver(theme.colors.accent, theme.colors.hoverOverlay));
+    CHECK_FALSE(hover->enabled);
+
+    // Press 快照只有 pressed 叠加（不累计 hover，§5.2）。
+    const RenderNode* press =
+        findNodeByKey(app.root(), "matrix-Filled-Press");
+    REQUIRE(press != nullptr);
+    CHECK(press->commonStyle().background ==
+          style::blendOver(theme.colors.accent, theme.colors.pressedOverlay));
+
+    // Focus 快照的边框槽 = focusRing；Focused+Pressed 并存。
+    const RenderNode* focus =
+        findNodeByKey(app.root(), "matrix-Filled-Focus");
+    REQUIRE(focus != nullptr);
+    CHECK(focus->commonStyle().border == theme.colors.focusRing);
+    const RenderNode* focusPress =
+        findNodeByKey(app.root(), "matrix-Filled-Foc+Prs");
+    REQUIRE(focusPress != nullptr);
+    CHECK(focusPress->commonStyle().border == theme.colors.focusRing);
+    CHECK(focusPress->commonStyle().background ==
+          style::blendOver(theme.colors.accent, theme.colors.pressedOverlay));
+
+    // Disabled 列为真实禁用控件（非覆盖近似）。
+    const RenderNode* disabled =
+        findNodeByKey(app.root(), "matrix-Filled-Disabled");
+    REQUIRE(disabled != nullptr);
+    CHECK_FALSE(disabled->enabled);
+    CHECK(disabled->commonStyle().background ==
+          theme.colors.disabledBackground);
+
+    // 长标签样本存在且宽度受限（单行省略路径）。
+    const RenderNode* longLabel =
+        findNodeByKey(app.root(), "btn-long-label");
+    REQUIRE(longLabel != nullptr);
+    CHECK(longLabel->size.width <= 200.0F + 0.01F);
+}

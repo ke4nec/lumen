@@ -899,3 +899,50 @@ TEST_CASE("overlay_open_close_forces_full_repaint_and_partial_while_open",
     (void)shell.renderFrame();
     CHECK_FALSE(shell.hasOverlay());
 }
+
+// --- S5（gui-control-visual-system-task §9.1）：焦点/主题切换的即时性 ---
+
+TEST_CASE("focus_ring_appears_full_width_on_first_blend_frame", "[motion]") {
+    // 键盘焦点出现 0ms：首帧即完整焦点标识（环宽度不参与状态色插值，
+    // 度量取终态）。
+    bool goFlag = false;
+    AppShell shell{hoverConfig(&goFlag)};
+    shell.handlers()["go"] = [] {};
+    shell.tick(0);
+    (void)shell.renderFrame();
+
+    const RenderNode* node =
+        lumen::core::findNodeByKey(shell.root(), "go-button");
+    REQUIRE(node != nullptr);
+    CHECK(node->commonStyle().focusWidth == 0.0F);
+
+    shell.controller().focusNode(*node);
+    // 中途时刻（非 0 非 T）渲染：环宽必须是完整终值，不是渐变中间值。
+    shell.tick(shell.theme().motion.stateTransitionMs / 2);
+    (void)shell.renderFrame();
+    const RenderNode* focused =
+        lumen::core::findNodeByKey(shell.root(), "go-button");
+    REQUIRE(focused != nullptr);
+    CHECK(focused->commonStyle().focusWidth ==
+          shell.theme().metrics.focusRingWidth);
+}
+
+TEST_CASE("theme_switch_converges_immediately_with_transitions_on",
+          "[motion]") {
+    // §9.1：主题切换 0ms——即使 motionTransitions 开启也不产生中间色
+    //（状态过渡只由交互快照变化触发，主题/density 切换直接收敛）。
+    bool goFlag = false;
+    AppShell shell{hoverConfig(&goFlag)};
+    shell.handlers()["go"] = [] {};
+    shell.tick(0);
+    (void)shell.renderFrame();
+    const Color darkBase = buttonBackground(shell);
+    CHECK(darkBase == shell.theme().button.filled.background);
+
+    lumen::style::Theme light = lumen::style::Theme::light();
+    shell.setTheme(light);
+    (void)shell.renderFrame();
+    // 首帧即浅色主题终值，无插值中间色。
+    CHECK(buttonBackground(shell) == light.button.filled.background);
+    CHECK(buttonBackground(shell) != darkBase);
+}

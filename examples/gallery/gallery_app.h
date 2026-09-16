@@ -32,6 +32,7 @@
 #include "lumen/core/widget.h"
 #include "lumen/render/renderer.h"
 #include "lumen/style/theme.h"
+#include "lumen/style/resolver.h"
 #include "lumen/text/font_manager.h"
 #include "lumen/widgets/form.h"
 #include "lumen/widgets/navigator.h"
@@ -1228,6 +1229,118 @@ class GalleryApp {
                                         core::ButtonVariant::Outline),
                            "back-button")},
             theme, "buttons-states-card"));
+
+        // S5（§10.2）：强制状态矩阵——五变体 × Normal/Hovered/Pressed/
+        // Focused/Focused+Pressed/Disabled。预览快照经 resolveStyle 在
+        // 合成交互快照下解析后写入 StyleOverrides（不触发业务回调；单
+        // 元格 enabled=false 保持快照稳定）。
+        auto statePreviewCell = [&](core::ButtonVariant variant,
+                                    const char* label, bool hovered,
+                                    bool pressed, bool focused) {
+            core::Widget probe = core::makeButton(label);
+            probe.buttonVariant = variant;
+            style::InteractionStateSnapshot snapshot;
+            if (hovered) {
+                snapshot.hoveredIdentity = "preview";
+            }
+            if (pressed) {
+                snapshot.pressedIdentity = "preview";
+            }
+            if (focused) {
+                snapshot.focusedIdentity = "preview";
+            }
+            const style::StyleContext context{
+                theme, snapshot, shell_.accessibilitySettings(), 1.0F};
+            const core::ResolvedStyle resolved =
+                style::resolveStyle(probe, context, "preview");
+            const auto& common = core::commonStyle(resolved);
+            probe.enabled = false;  // 快照稳定：预览不参与交互
+            probe.styleOverrides.background = common.background;
+            probe.styleOverrides.foreground = common.foreground;
+            if (focused) {
+                // 焦点环快照以边框槽表达（真控件的环在 focusWidth 通道，
+                // 预览单元格不接入交互）。
+                probe.styleOverrides.border = common.focusRing;
+                probe.styleOverrides.borderWidth =
+                    theme.metrics.focusRingWidth;
+            } else {
+                probe.styleOverrides.border = common.border;
+                probe.styleOverrides.borderWidth = common.borderWidth;
+            }
+            return probe;
+        };
+        struct MatrixColumn {
+            const char* label;
+            bool hovered;
+            bool pressed;
+            bool focused;
+        };
+        const MatrixColumn matrixColumns[] = {
+            {"Normal", false, false, false},   {"Hover", true, false, false},
+            {"Press", false, true, false},     {"Focus", false, false, true},
+            {"Foc+Prs", false, true, true},
+            {"Disabled", false, false, false},
+        };
+        std::vector<core::Widget> headerCells;
+        headerCells.push_back(core::withKey(
+            mutedLabel("Variant", theme), "matrix-header-variant"));
+        for (const auto& column : matrixColumns) {
+            headerCells.push_back(core::withKey(
+                mutedLabel(column.label, theme),
+                std::string("matrix-header-") + column.label));
+        }
+        std::vector<core::Widget> matrixRows;
+        matrixRows.push_back(core::makeRow(
+            std::move(headerCells), core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Center, style::spaceToken(1)));
+        for (const auto& [label, variant] : variantList) {
+            std::vector<core::Widget> row;
+            row.push_back(core::withKey(
+                mutedLabel(label, theme),
+                std::string("matrix-") + label + "-label"));
+            for (const auto& column : matrixColumns) {
+                const std::string key = std::string("matrix-") + label +
+                                        "-" + column.label;
+                if (std::string(column.label) == "Disabled") {
+                    core::Widget cell = core::withEnabled(
+                        core::makeButton(label), false);
+                    cell.buttonVariant = variant;
+                    row.push_back(core::withKey(std::move(cell), key));
+                } else {
+                    row.push_back(core::withKey(
+                        statePreviewCell(variant, label, column.hovered,
+                                         column.pressed, column.focused),
+                        key));
+                }
+            }
+            matrixRows.push_back(core::makeRow(
+                std::move(row), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Center, style::spaceToken(1)));
+        }
+        // 长标签：中英文混排在窄按钮内单行省略（§10.2 布局维度样本）；
+        // 包一层 Row 避免被 Stretch 列拉宽（显式 200 宽生效）。
+        core::Widget longLabel = buttonWidget(
+            "很长的按钮标签会单行省略 Long labels ellipsize", "bump-clicks",
+            "btn-long-label", core::ButtonVariant::Outline);
+        longLabel.width = 200.0F;
+        items.push_back(sectionCard(
+            "State matrix (forced previews)",
+            {core::withKey(
+                 core::makeColumn(std::move(matrixRows),
+                                  core::MainAxisAlignment::Start,
+                                  core::CrossAxisAlignment::Start,
+                                  style::spaceToken(1)),
+                 "buttons-matrix"),
+             core::withKey(
+                 core::makeRow({std::move(longLabel)},
+                               core::MainAxisAlignment::Start,
+                               core::CrossAxisAlignment::Start),
+                 "btn-long-label-row"),
+             core::withKey(mutedLabel(
+                               "窄容器内的长标签单行省略（中英文混排）",
+                               theme),
+                           "buttons-long-label-note")},
+            theme, "buttons-matrix-card"));
         return items;
     }
 
