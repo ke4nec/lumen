@@ -283,6 +283,8 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
             // maxFrames 测量/冒烟模式强制全量重绘：damage 统计归零但像素
             // 与局部路径一致（局部/全量像素等价由测试断言），保证帧间可比。
             (void)shell.renderFrame(options.maxFrames != 0);
+            // Rebuild may start a checked/hover blend on this very frame.
+            scheduler.setAnimationsActive(shell.animationsActive());
             // 渲染器失效（GPU 上下文丢失等）：回退策略替换渲染器（可
             // 重建窗口）；诊断文本由回退钩子（应用层）负责——后端原因
             // 属于装配层知识。失败则退出。

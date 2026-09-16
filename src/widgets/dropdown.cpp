@@ -22,7 +22,7 @@ float optionRowHeight(const style::Theme& theme) {
                              ? theme.typography.label.fontSize *
                                    theme.typography.label.lineHeight
                              : theme.typography.label.fontSize * 1.2F;
-    return std::max(minHeight, textRow);
+    return std::max(minHeight, textRow + 2.0F * theme.metrics.controlPaddingY[theme.metrics.baseIndex]);
 }
 
 }  // namespace
@@ -65,17 +65,56 @@ void DropdownController::open(app::AppShell& shell,
                          row->size};
     // M11 review：值同步以渲染值行文本为准（bind 值经 applyBinds 写入；
     // 控制器内部 value_ 只是打开时的高亮依据，消除双源漂移）。
-    setValue(row->text.empty() ? value_ : row->text);
+    if (!row->text.empty()) {
+        for (const auto& option : options_) {
+            if (option.value == row->text || option.label == row->text) {
+                setValue(option.value);
+                break;
+            }
+        }
+    }
     open_ = true;
+    explicitTheme_ = anchorTheme != nullptr;
     overlayTheme_ =
         anchorTheme != nullptr
             ? std::optional<style::Theme>(*anchorTheme)
             : std::nullopt;
     registerHandlers(shell);
-    shell.setOverlay(buildOverlay(overlayTheme_.has_value()
-                                      ? *overlayTheme_
-                                      : shell.theme(),
-                                  shell.view()));
+    scrollOffset_.reset();
+    const auto scroll = [this, &shell](const core::RenderNode& root,
+                                       const core::RenderNode* hit, float deltaY) {
+        if (!hit || hit->key != dropdownKey_ + "-menu-scroll") return false;
+        const auto* viewport = core::findNodeByKey(root, hit->key);
+        if (!viewport) return false;
+        const float next = std::clamp(viewport->scrollOffset + deltaY,
+                                     0.0F, viewport->scrollExtent);
+        if (next == viewport->scrollOffset) return false;
+        scrollOffset_ = next;
+        shell.markDirty();
+        return true;
+    };
+    shell.setOverlayBuilder([this, &shell]() -> std::optional<core::Widget> {
+        const auto* current = core::findNodeByKey(shell.root(), dropdownKey_);
+        if (!open_ || !current || !current->enabled) {
+            open_ = false;
+            shell.handlers().erase(dropdownKey_ + "-dismiss");
+            for (std::size_t i = 0; i < options_.size(); ++i) {
+                shell.handlers().erase(optionKey(i));
+            }
+            return std::nullopt;
+        }
+        anchor_ = {core::absoluteOffset(shell.root(), dropdownKey_), current->size};
+        if (!explicitTheme_) overlayTheme_ = shell.effectiveThemeForKey(dropdownKey_);
+        return buildOverlay(overlayTheme_ ? *overlayTheme_ : shell.theme(), shell.view());
+    }, [scroll](const core::RenderNode& root, const core::RenderNode* hit,
+                core::Offset, core::Offset delta) {
+        return scroll(root, hit, delta.y);
+    }, [scroll](const core::RenderNode* root, const core::RenderNode* viewport,
+                core::Offset, core::Offset delta, core::ScrollDragPhase phase,
+                std::uint64_t) {
+        return phase == core::ScrollDragPhase::Update && root && viewport
+                   ? scroll(*root, viewport, -delta.y) : false;
+    });
     shell.rebuildIfDirty();  // overlay 布局落地，供焦点定位。
     if (shell.overlayRoot() != nullptr) {
         if (const core::RenderNode* option =
@@ -120,10 +159,8 @@ void DropdownController::refreshOverlay(app::AppShell& shell) {
     if (!open_) {
         return;
     }
-    shell.setOverlay(buildOverlay(overlayTheme_.has_value()
-                                      ? *overlayTheme_
-                                      : shell.theme(),
-                                  shell.view()));
+    scrollOffset_.reset();
+    shell.markDirty();
     shell.rebuildIfDirty();
     if (shell.overlayRoot() != nullptr) {
         if (const core::RenderNode* option =
@@ -189,18 +226,15 @@ core::Widget DropdownController::buildOverlay(const style::Theme& theme,
         std::max(0.0F, view.width - 2.0F * kWindowMarginPx));
     const float contentHeight =
         static_cast<float>(options_.size()) * rowHeight;
-    const float menuHeight =
-        std::min({contentHeight + 2.0F * kMenuInnerPaddingPx,
-                  kMenuMaxHeightPx,
-                  std::max(0.0F, view.height - 2.0F * kWindowMarginPx)});
-    core::Offset menuOrigin{anchor_.origin.x, anchor_.origin.y +
-                                                   anchor_.size.height +
-                                                   kMenuGapPx};
-    if (menuOrigin.y + menuHeight > view.height - kWindowMarginPx) {
-        menuOrigin.y = std::max(
-            kWindowMarginPx,
-            anchor_.origin.y - kMenuGapPx - menuHeight);
-    }
+    const float below = std::max(0.0F, view.height - kWindowMarginPx -
+        anchor_.origin.y - anchor_.size.height - kMenuGapPx);
+    const float above = std::max(0.0F, anchor_.origin.y - kMenuGapPx - kWindowMarginPx);
+    const float wanted = std::min(contentHeight + 2.0F * kMenuInnerPaddingPx, kMenuMaxHeightPx);
+    const bool placeBelow = below >= wanted || below >= above;
+    const float menuHeight = std::min(wanted, placeBelow ? below : above);
+    core::Offset menuOrigin{anchor_.origin.x,
+        placeBelow ? anchor_.origin.y + anchor_.size.height + kMenuGapPx
+                   : std::max(kWindowMarginPx, anchor_.origin.y - kMenuGapPx - menuHeight)};
     menuOrigin.x = std::clamp(menuOrigin.x, kWindowMarginPx,
                               std::max(kWindowMarginPx,
                                        view.width - kWindowMarginPx -
@@ -221,7 +255,10 @@ core::Widget DropdownController::buildOverlay(const style::Theme& theme,
         }
         option.onClick = optionKey(i);
         option.key = optionKey(i);
-        option.width = menuWidth;
+        option.width = std::max(0.0F, menuWidth - 2.0F * kMenuInnerPaddingPx);
+        option.height = rowHeight;
+        option.alignContentStart = true;
+        option.reserveIconSpace = true;
         buttons.push_back(std::move(option));
     }
     core::Widget menuColumn = core::makeColumn(
@@ -244,7 +281,8 @@ core::Widget DropdownController::buildOverlay(const style::Theme& theme,
             core::makeScrollView(std::move(menuColumn),
                                  dropdownKey_ + "-menu-scroll",
                                  std::nullopt, menuHeight),
-            scrollTarget);
+            scrollOffset_.value_or(scrollTarget));
+        menuColumn.showScrollbar = true;
     }
     core::Widget menu;
     menu.type = core::WidgetType::Container;

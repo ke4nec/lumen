@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <map>
 
 #include "lumen/accessibility/bridge.h"
 #include "lumen/core/style.h"
@@ -34,6 +35,9 @@ struct StyleContext {
     const InteractionStateSnapshot& interaction;
     const accessibility::AccessibilitySettings& accessibility;
     float deviceScale{1.0F};
+    // Optional preview-only states keyed by Widget.key. Input/semantics remain
+    // governed by the actual Widget; previews do not synthesize events.
+    const std::map<std::string, WidgetState>* previewStates{nullptr};
 };
 
 // 解析 Widget 在 (Theme × 交互状态 × 可访问性) 下的最终样式。

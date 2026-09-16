@@ -42,8 +42,13 @@ class CpuRenderer final : public Renderer {
         return systemFonts_ != nullptr;
     }
 
-    // Framebuffer of the last beginFrame(); present() consumes it directly.
-    [[nodiscard]] const PixelBuffer& pixels() const { return buffer_; }
+    // Framebuffer of the last completed frame; endFrame() swaps it with the
+    // drawing buffer (double buffering, no per-frame copy). Mid-frame reads
+    // see the previous completed frame; before the first completed frame the
+    // drawing buffer itself is returned (legacy mid-frame read semantics).
+    [[nodiscard]] const PixelBuffer& pixels() const {
+        return hasFront_ ? front_ : buffer_;
+    }
 
     // Uploads an image for drawImage(); ids are stable and opaque. Buffers
     // use straight (non-premultiplied) RGBA, matching SkiaRenderer.
@@ -111,9 +116,12 @@ class CpuRenderer final : public Renderer {
 
     float deviceScale_;
     core::Color clearColor_;
+    // 双缓冲：buffer_ = 绘制目标（back），front_ = 最近完成帧（present/
+    // pixels() 读取）。endFrame 只交换指针（O(1)，无全帧拷贝）；Preserve
+    // 帧在 beginFrame 先交换使 buffer_ 携带上一帧内容，损坏区就地清底。
     PixelBuffer buffer_{};
-    PixelBuffer previous_{};
-    bool hasPrevious_{false};
+    PixelBuffer front_{};
+    bool hasFront_{false};
     std::vector<ClipRects> clip_{};
     std::map<ImageId, PixelBuffer> images_{};
     ImageId nextImageId_{1};

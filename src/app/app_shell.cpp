@@ -55,40 +55,22 @@ core::RenderNode* findMutableByIdentity(core::RenderNode& node,
     return nullptr;
 }
 
-// M10：状态色过渡——捕获/应用（identity → 变化前样式）。
-void collectStylesByIdentity(
-    const core::RenderNode& node,
-    std::map<std::string, core::ResolvedStyle>& out) {
-    out[node.identity] = node.style;
+bool visibleAnchor(const core::RenderNode& node, const std::string& key,
+                   core::Offset parent, core::Rect clip) {
+    const auto origin = parent + node.offset;
+    const core::Rect bounds{origin, node.size};
+    if (node.key == key) return bounds.intersects(clip) && node.transitionAlpha > 0;
+    if (node.clipContent) {
+        const float left = std::max(bounds.left(), clip.left());
+        const float top = std::max(bounds.top(), clip.top());
+        clip = core::Rect::fromXYWH(left, top, std::max(0.0F, std::min(bounds.right(), clip.right()) - left),
+                                   std::max(0.0F, std::min(bounds.bottom(), clip.bottom()) - top));
+    }
+    if (clip.size.width <= 0 || clip.size.height <= 0 || node.transitionAlpha <= 0) return false;
     for (const auto& child : node.children) {
-        collectStylesByIdentity(child, out);
+        if (visibleAnchor(child, key, origin, clip)) return true;
     }
-}
-
-void applyBlendWalk(core::RenderNode& node, core::Offset absolute, float t,
-                    const std::map<std::string, core::ResolvedStyle>& from,
-                    std::map<std::string, core::ResolvedStyle>& to,
-                    std::vector<core::Rect>& damage, bool& changed,
-                    std::set<std::string>& matched) {
-    const core::Offset origin = absolute + node.offset;
-    if (const auto it = from.find(node.identity); it != from.end()) {
-        matched.insert(node.identity);
-        // 目标样式在首次应用时定格（后续帧 node.style 已被插值覆盖，
-        // 不能作为 to 端）。
-        const auto [target, inserted] = to.try_emplace(node.identity,
-                                                       node.style);
-        (void)inserted;
-        core::ResolvedStyle blended =
-            core::lerpStyleColors(it->second, target->second, t);
-        if (!(blended == node.style)) {
-            node.style = std::move(blended);
-            damage.push_back(core::Rect{origin, node.size});
-            changed = true;
-        }
-    }
-    for (auto& child : node.children) {
-        applyBlendWalk(child, origin, t, from, to, damage, changed, matched);
-    }
+    return false;
 }
 
 }  // namespace
@@ -99,28 +81,19 @@ AppShell::AppShell(ShellConfig config) : config_(std::move(config)) {
     // 构造期求值 config_.build 会重入尚未构造完成的应用对象（如
     // SettingsApp 的 buildUi 读自身后声明成员），属 UB；dirty_ 初始为
     // true 保证首帧前必重建，行为与 eager 落地一致。
-    if (config_.onWheel) {
-        controller_.setWheelSink(
-            [sink = config_.onWheel](const core::RenderNode& root,
-                                     const core::RenderNode* hit,
-                                     core::Offset position,
-                                     core::Offset delta) {
-                return sink(root, hit, position, delta);
-            });
-    }
-    // M10：视口拖动滚动（同形转发；Cancel 语义由 sink 解释）。
-    if (config_.onScrollDrag) {
-        controller_.setScrollDragSink(
-            [sink = config_.onScrollDrag](const core::RenderNode* root,
-                                          const core::RenderNode* viewport,
-                                          core::Offset position,
-                                          core::Offset delta,
-                                          core::ScrollDragPhase phase,
-                                          std::uint64_t timestampMs) {
-                return sink(root, viewport, position, delta, phase,
-                            timestampMs);
-            });
-    }
+    controller_.setWheelSink([this](const core::RenderNode& root,
+                                    const core::RenderNode* hit,
+                                    core::Offset position, core::Offset delta) {
+        if (overlayRoot_) return overlayWheel_ ? overlayWheel_(root, hit, position, delta) : false;
+        return config_.onWheel ? config_.onWheel(root, hit, position, delta) : false;
+    });
+    controller_.setScrollDragSink(
+        [this](const core::RenderNode* root, const core::RenderNode* viewport,
+               core::Offset position, core::Offset delta,
+               core::ScrollDragPhase phase, std::uint64_t timestampMs) {
+            const auto& sink = overlayRoot_ ? overlayDrag_ : config_.onScrollDrag;
+            return sink ? sink(root, viewport, position, delta, phase, timestampMs) : false;
+        });
 }
 
 // --- 视口/渲染器/字体 ---
@@ -241,6 +214,8 @@ void AppShell::pushSemantics() {
 }
 
 void AppShell::setFontManager(std::shared_ptr<const text::FontManager> fonts) {
+    stateBlends_.clear();
+    suppressStateBlend_ = true;
     textFonts_ = std::move(fonts);
     controller_.setTextFonts(textFonts_ ? textFonts_.get() : nullptr);
     // 系统字体同时驱动内部 CPU 光栅的字形位图（排版与绘制同源）；
@@ -254,7 +229,14 @@ void AppShell::setFontManager(std::shared_ptr<const text::FontManager> fonts) {
 }
 
 void AppShell::setTheme(style::Theme theme, bool forceFullRepaint) {
+    stateBlends_.clear();
+    suppressStateBlend_ = true;
     theme_ = std::move(theme);
+    for (auto& transition : transitions_) {
+        transition.tween.durationMs = 0;
+        transition.sampledAlpha = static_cast<float>(transition.tween.to);
+    }
+    transitionsPaintPending_ = !transitions_.empty();
     dirty_ = true;
     fullRepaintPending_ = fullRepaintPending_ || forceFullRepaint;
 }
@@ -262,10 +244,31 @@ void AppShell::setTheme(style::Theme theme, bool forceFullRepaint) {
 void AppShell::setAccessibilitySettings(
     accessibility::AccessibilitySettings settings,
     std::optional<bool> darkMode) {
+    stateBlends_.clear();
+    suppressStateBlend_ = true;
     accessibility_ = settings;
     theme_ = style::Theme::fromSettings(
         accessibility_, darkMode.value_or(theme_.darkMode),
         theme_.metrics.density, theme_.direction);
+    if (settings.reduceAnimation) {
+        for (auto& transition : transitions_) {
+            transition.tween.durationMs = 0;
+            transition.sampledAlpha = static_cast<float>(transition.tween.to);
+            transition.finished = true;
+            transition.retire = true;
+        }
+        transitionsPaintPending_ = !transitions_.empty();
+    } else {
+        for (auto& transition : transitions_) {
+            if (transition.finished || transition.retire ||
+                transition.baseDurationMs <= 0.0) {
+                continue;
+            }
+            transition.tween.from = transition.sampledAlpha;
+            transition.tween.durationMs = transition.baseDurationMs;
+            transition.startMs = lastTickMs_;
+        }
+    }
     dirty_ = true;
     fullRepaintPending_ = true;
 }
@@ -275,6 +278,10 @@ void AppShell::setAccessibilitySettings(
 void AppShell::setOverlay(core::Widget overlay) {
     const bool replacing = overlayTemplate_.has_value() ||
                            hasPreviousOverlayRoot_;
+    controller_.pointerCancel();
+    overlayBuilder_ = {};
+    overlayWheel_ = {};
+    overlayDrag_ = {};
     overlayTemplate_ = std::move(overlay);
     // 打开（首次）覆盖主树像素：全量重绘；替换已打开的 overlay 走
     // overlay 子树 diff（rebuildIfDirty 汇入 damage）。
@@ -282,7 +289,20 @@ void AppShell::setOverlay(core::Widget overlay) {
     fullRepaintPending_ = fullRepaintPending_ || !replacing;
 }
 
+void AppShell::setOverlayBuilder(
+    std::function<std::optional<core::Widget>()> builder, WheelSink wheel, ScrollDragSink drag) {
+    overlayBuilder_ = std::move(builder);
+    overlayWheel_ = std::move(wheel);
+    overlayDrag_ = std::move(drag);
+    dirty_ = true;
+    fullRepaintPending_ = true;
+}
+
 void AppShell::clearOverlay() {
+    controller_.pointerCancel();
+    overlayBuilder_ = {};
+    overlayWheel_ = {};
+    overlayDrag_ = {};
     if (!overlayTemplate_.has_value() && !overlayRoot_.has_value()) {
         return;
     }
@@ -302,6 +322,7 @@ void AppShell::clearOverlay() {
 // --- 事件分发 ---
 
 void AppShell::pointerDown(core::Offset position) {
+    dismissTooltips();
     rebuildIfDirty();
     controller_.pointerDown(eventTree(), position, lastTickMs_);
 }
@@ -316,9 +337,13 @@ void AppShell::pointerUp(core::Offset position) {
     controller_.pointerUp(eventTree(), position, lastTickMs_);
 }
 
-void AppShell::pointerCancel() { controller_.pointerCancel(); }
+void AppShell::pointerCancel() {
+    dismissTooltips();
+    controller_.pointerCancel();
+}
 
 bool AppShell::wheel(core::Offset position, core::Offset delta) {
+    dismissTooltips();
     rebuildIfDirty();
     return controller_.wheel(eventTree(), position, delta);
 }
@@ -385,11 +410,26 @@ void AppShell::rebuildIfDirty() {
         treeDamageValid_ = false;
         pendingDamage_.clear();
     }
+    retargetStateBlends(fresh);
     root_ = fresh;
     previousRoot_ = std::move(fresh);
     hasPreviousRoot_ = true;
+    rebuildTooltipTemplates();
     // M11：overlay 与主树同拍重建（独立布局/独立 identity 命名空间；
     // 打开期间 overlay 子树 diff 汇入 damage，打开首帧走全量）。
+    if (overlayBuilder_) {
+        overlayTemplate_ = overlayBuilder_();
+        if (!overlayTemplate_) {
+            controller_.pointerCancel();
+            focus_.clearFocus();
+            overlayBuilder_ = {};
+            overlayWheel_ = {};
+            overlayDrag_ = {};
+            overlayRoot_.reset();
+            hasPreviousOverlayRoot_ = false;
+            fullRepaintPending_ = true;
+        }
+    }
     if (overlayTemplate_.has_value()) {
         core::RenderNode freshOverlay = layout::LayoutEngine::layout(
             *overlayTemplate_, core::Constraints::tight(view_),
@@ -420,7 +460,6 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
     // visual-system §5 规则 6）。M10：变化前捕获旧样式供状态色过渡插值。
     syncInteractionSnapshot();
     if (!(interactionSnapshot_ == lastInteraction_)) {
-        captureStateBlend();
         lastInteraction_ = interactionSnapshot_;
         dirty_ = true;
     }
@@ -440,7 +479,9 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
     const bool motionPaint = applyTransitions(motionDamage);
     const bool blendPaint = applyStateBlend(motionDamage);
     const bool tooltipPaint = applyTooltipVisibility(motionDamage);
+    const bool portalPaint = updateTooltipPaintNodes(motionDamage);
     render::PaintOptions options;
+    options.suppressedIdentities = tooltipSourceIdentities_;
     options.caretGraphemes = controller_.caretGraphemes();
     options.caretAlpha = caretAlpha_;
     options.selectionStart = controller_.selectionStart();
@@ -459,7 +500,7 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
     const bool needPaint = forceFullRepaint || fullRepaintPending_ ||
                            !framePainted_ || rebuiltThisFrame_ ||
                            optionsChanged || motionPaint || blendPaint ||
-                           tooltipPaint;
+                           tooltipPaint || portalPaint;
     if (!needPaint) {
         if (semanticsNeedsPush_) {
             pushSemantics();
@@ -502,6 +543,10 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
         commands.extend(render::recordScene(*overlayRoot_, options,
                                              textFontSource()));
     }
+    options.suppressedIdentities = {};
+    for (const auto& tooltip : tooltipPaintNodes_) {
+        commands.extend(render::recordScene(tooltip, options, textFontSource()));
+    }
     renderer.noteCpuBuildMs(
         std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - buildStart)
@@ -542,6 +587,7 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
 }
 
 void AppShell::tick(std::uint64_t nowMs) {
+    hasTicked_ = true;
     lastTickMs_ = nowMs;
     bool animating = false;
     if (config_.caretBlink) {
@@ -583,7 +629,7 @@ void AppShell::tick(std::uint64_t nowMs) {
     if (config_.onAnimate) {
         animating = config_.onAnimate(*this, nowMs) || animating;
     }
-    animationsActive_ = animating;
+    animationsActive_ = animating || !stateBlends_.empty();
 }
 
 // --- M10：转场驱动 ---
@@ -592,7 +638,22 @@ void AppShell::beginTransition(TransitionSpec spec) {
     if (spec.key.empty()) {
         return;
     }
+    // A key owns one alpha channel. Reversal starts at the visible sample;
+    // replacing the record also cancels its obsolete completion callback.
+    for (const auto& current : transitions_) {
+        if (current.key == spec.key) {
+            spec.from = current.sampledAlpha;
+            break;
+        }
+    }
+    std::erase_if(transitions_, [&](const ActiveTransition& current) {
+        return current.key == spec.key;
+    });
     ActiveTransition transition;
+    transition.baseDurationMs = spec.durationMs;
+    if (accessibility_.reduceAnimation) {
+        spec.durationMs = 0.0;
+    }
     transition.key = spec.key;
     // identity 延迟解析：begin 可能早于含该子树的首次重建（如打开 dialog
     // 后立即 beginFadeIn）。
@@ -601,7 +662,7 @@ void AppShell::beginTransition(TransitionSpec spec) {
     }
     transition.tween = core::Tween{spec.from, spec.to, spec.durationMs,
                                    spec.easing};
-    transition.sampledAlpha = spec.from;
+    transition.sampledAlpha = static_cast<float>(transition.tween.sample(0.0));
     transition.startMs = lastTickMs_;
     transition.onComplete = std::move(spec.onComplete);
     transitions_.push_back(std::move(transition));
@@ -629,7 +690,7 @@ void AppShell::beginRouteTransition(
     spec.from = entering ? 0.0F : 1.0F;
     spec.to = entering ? 1.0F : 0.0F;
     spec.durationMs = static_cast<double>(theme_.motion.navigatorTransitionMs);
-    spec.easing = entering ? core::Easing::EaseOut : core::Easing::EaseIn;
+    spec.easing = core::Easing::EaseInOut;
     spec.onComplete = std::move(onComplete);
     beginTransition(std::move(spec));
 }
@@ -738,6 +799,7 @@ void AppShell::registerTooltip(std::string anchorKey,
     tooltips_.push_back(
         TooltipRegistration{std::move(anchorKey), std::move(tooltipKey),
                             TooltipRegistration::Phase::Hidden, 0});
+    dirty_ = true;
 }
 
 bool AppShell::hasTransitionForKey(const std::string& key) const {
@@ -747,6 +809,86 @@ bool AppShell::hasTransitionForKey(const std::string& key) const {
         }
     }
     return false;
+}
+
+void AppShell::rebuildTooltipTemplates() {
+    tooltipTemplates_.clear();
+    if (!element_) return;
+    const auto find = [&](const auto& self, const core::Element& element,
+                          const std::string& key) -> const core::Widget* {
+        if (element.widget().key == key) return &element.widget();
+        for (const auto& child : element.children()) {
+            if (const auto* found = self(self, *child, key)) return found;
+        }
+        return nullptr;
+    };
+    for (const auto& tip : tooltips_) {
+        const auto* widget = find(find, *element_, tip.tooltipKey);
+        if (!widget || widget->type != core::WidgetType::Tooltip) continue;
+        const auto theme = effectiveThemeForKey(tip.anchorKey);
+        const style::StyleContext context{theme, interactionSnapshot_, accessibility_, deviceScale_};
+        auto paint = layout::LayoutEngine::layout(*widget,
+            core::Constraints::loose({std::max(0.0F, std::min(280.0F, view_.width - 16.0F)),
+                                      std::max(0.0F, view_.height - 16.0F)}),
+            context, textFontSource());
+        tooltipTemplates_.emplace(tip.tooltipKey, std::move(paint));
+    }
+}
+
+void AppShell::dismissTooltips() {
+    for (auto& tip : tooltips_) {
+        tip.phase = TooltipRegistration::Phase::Hidden;
+        tip.suppressed = true;
+        std::erase_if(transitions_, [&](const ActiveTransition& transition) {
+            return transition.key == tip.tooltipKey;
+        });
+    }
+}
+
+bool AppShell::updateTooltipPaintNodes(std::vector<core::Rect>& damage) {
+    std::vector<core::RenderNode> next;
+    tooltipSourceIdentities_.clear();
+    for (auto& tip : tooltips_) {
+        const auto* source = core::findNodeByKey(root_, tip.tooltipKey);
+        const auto* anchor = core::findNodeByKey(root_, tip.anchorKey);
+        if (source) tooltipSourceIdentities_.push_back(source->identity);
+        if (!source || !anchor || !anchor->enabled || hasOverlay() ||
+            !visibleAnchor(root_, tip.anchorKey, {}, core::Rect{{}, view_})) {
+            tip.phase = TooltipRegistration::Phase::Hidden;
+            std::erase_if(transitions_, [&](const ActiveTransition& t) { return t.key == tip.tooltipKey; });
+            continue;
+        }
+        if (source->transitionAlpha <= 0.0F) continue;
+        const auto anchorOrigin = core::absoluteOffset(root_, tip.anchorKey);
+        if (!core::Rect{anchorOrigin, anchor->size}.intersects(core::Rect{{}, view_})) continue;
+        const auto cached = tooltipTemplates_.find(tip.tooltipKey);
+        auto paint = cached == tooltipTemplates_.end() ? *source : cached->second;
+        paint.identity = source->identity;
+        paint.transitionAlpha = source->transitionAlpha;
+        const float margin = 8.0F;
+        paint.offset.x = std::clamp(anchorOrigin.x, std::min(margin, view_.width),
+            std::max(std::min(margin, view_.width), view_.width - margin - paint.size.width));
+        const float below = anchorOrigin.y + anchor->size.height + margin;
+        const float y = below + paint.size.height <= view_.height - margin
+                            ? below : anchorOrigin.y - margin - paint.size.height;
+        paint.offset.y = std::clamp(y, std::min(margin, view_.height),
+            std::max(std::min(margin, view_.height), view_.height - margin - paint.size.height));
+        next.push_back(std::move(paint));
+    }
+    if (next == tooltipPaintNodes_) return false;
+    // Include shadow extents through the same damage walker as ordinary nodes.
+    for (const auto& old : tooltipPaintNodes_) {
+        auto empty = old;
+        empty.transitionAlpha = 0;
+        (void)core::collectDamage(old, empty, damage);
+    }
+    for (const auto& node : next) {
+        auto empty = node;
+        empty.transitionAlpha = 0;
+        (void)core::collectDamage(empty, node, damage);
+    }
+    tooltipPaintNodes_ = std::move(next);
+    return true;
 }
 
 bool AppShell::advanceTooltips(std::uint64_t nowMs) {
@@ -768,7 +910,12 @@ bool AppShell::advanceTooltips(std::uint64_t nowMs) {
         tip.phase = TooltipRegistration::Phase::Visible;
     };
     for (auto& tip : tooltips_) {
-        const bool hovered = hoveredKey == tip.anchorKey;
+        const auto* anchor = core::findNodeByKey(root_, tip.anchorKey);
+        const bool triggered = anchor && anchor->enabled && !hasOverlay() &&
+            visibleAnchor(root_, tip.anchorKey, {}, core::Rect{{}, view_}) &&
+            (hoveredKey == tip.anchorKey || focus_.focusedKey() == tip.anchorKey);
+        if (!triggered) tip.suppressed = false;
+        const bool hovered = triggered && !tip.suppressed;
         switch (tip.phase) {
             case TooltipRegistration::Phase::Hidden:
                 if (hovered) {
@@ -799,7 +946,7 @@ bool AppShell::advanceTooltips(std::uint64_t nowMs) {
                     spec.from = 1.0F;
                     spec.to = 0.0F;
                     spec.durationMs = fade;
-                    spec.easing = core::Easing::EaseIn;
+                    spec.easing = core::Easing::EaseOut;
                     beginTransition(std::move(spec));
                     tip.phase = TooltipRegistration::Phase::Fading;
                 }
@@ -854,52 +1001,82 @@ bool AppShell::applyTooltipVisibility(std::vector<core::Rect>& damage) {
 
 // --- M10：状态色过渡 ---
 
-void AppShell::captureStateBlend() {
-    if (!config_.motionTransitions ||
+void AppShell::retargetStateBlends(const core::RenderNode& fresh) {
+    // Scope themes are value snapshots: mutation through the same pointer must
+    // invalidate active colors just like replacing the window theme does.
+    std::map<const core::Element*, style::Theme> scopes;
+    const auto collectScopes = [&](const auto& self, const core::Element& element) -> void {
+        const auto& widget = element.widget();
+        if (widget.type == core::WidgetType::ThemeScope && widget.themeOverride) {
+            scopes.emplace(&element, *static_cast<const style::Theme*>(widget.themeOverride));
+        }
+        for (const auto& child : element.children()) self(self, *child);
+    };
+    if (element_) collectScopes(collectScopes, *element_);
+    suppressStateBlend_ = suppressStateBlend_ || scopes != scopeThemes_;
+    scopeThemes_ = std::move(scopes);
+    if (!motionEnabled() || suppressStateBlend_ ||
         theme_.motion.stateTransitionMs == 0) {
-        stateBlendActive_ = false;
-        blendFrom_.clear();
-        blendTo_.clear();
+        stateBlends_.clear();
+        suppressStateBlend_ = false;
         return;
     }
-    blendFrom_.clear();
-    blendTo_.clear();
-    collectStylesByIdentity(root_, blendFrom_);
-    blendStartMs_ = lastTickMs_;
-    stateBlendActive_ = !blendFrom_.empty();
+    std::map<std::string, const core::RenderNode*> previous;
+    const auto collect = [&](const auto& self, const core::RenderNode& node) -> void {
+        previous.emplace(node.identity, &node);
+        for (const auto& child : node.children) self(self, child);
+    };
+    collect(collect, root_);
+    std::set<std::string> live;
+    const auto visit = [&](const auto& self, const core::RenderNode& node) -> void {
+        live.insert(node.identity);
+        const auto found = previous.find(node.identity);
+        const auto* old = found == previous.end() ? nullptr : found->second;
+        auto active = stateBlends_.find(node.identity);
+        if (!node.enabled || old == nullptr || old->type != node.type) {
+            stateBlends_.erase(node.identity);
+        } else {
+            const auto& target = active == stateBlends_.end()
+                                     ? old->style : active->second.to;
+            if (!(target == node.style) &&
+                !(core::lerpStyleColors(old->style, node.style, 0.0F) == node.style)) {
+                stateBlends_.insert_or_assign(node.identity,
+                    StateBlend{old->style, node.style, lastTickMs_});
+            } else if (!(target == node.style)) {
+                stateBlends_.erase(node.identity);
+            }
+        }
+        for (const auto& child : node.children) self(self, child);
+    };
+    visit(visit, fresh);
+    std::erase_if(stateBlends_, [&](const auto& item) {
+        return !live.contains(item.first);
+    });
 }
 
 bool AppShell::applyStateBlend(std::vector<core::Rect>& damage) {
-    if (!stateBlendActive_ || blendFrom_.empty()) {
-        stateBlendActive_ = false;
-        return false;
-    }
-    const std::uint32_t duration = theme_.motion.stateTransitionMs;
-    const double elapsed =
-        lastTickMs_ >= blendStartMs_
-            ? static_cast<double>(lastTickMs_ - blendStartMs_)
-            : 0.0;
-    const float t =
-        duration > 0
-            ? static_cast<float>(std::clamp(
-                  elapsed / static_cast<double>(duration), 0.0, 1.0))
-            : 1.0F;
     bool changed = false;
-    std::set<std::string> matched;
-    applyBlendWalk(root_, core::Offset{}, t, blendFrom_, blendTo_, damage,
-                   changed, matched);
-    // 已到终态或子树消失的 identity 不再等待。
-    for (auto it = blendFrom_.begin(); it != blendFrom_.end();) {
-        if (t >= 1.0F || matched.count(it->first) == 0) {
-            it = blendFrom_.erase(it);
-        } else {
-            ++it;
+    for (auto it = stateBlends_.begin(); it != stateBlends_.end();) {
+        auto* node = findMutableByIdentity(root_, it->first);
+        auto& blend = it->second;
+        const auto duration = node && node->type == core::WidgetType::Switch
+                                  ? theme_.motion.switchTransitionMs
+                                  : theme_.motion.stateTransitionMs;
+        const double elapsed = lastTickMs_ >= blend.startMs
+                                   ? double(lastTickMs_ - blend.startMs) : 0.0;
+        const core::Tween tween{0.0, 1.0, double(duration), core::Easing::EaseOut};
+        const float t = float(tween.sample(elapsed));
+        if (node) {
+            auto style = core::lerpStyleColors(blend.from, blend.to, t);
+            if (!(node->style == style)) {
+                node->style = std::move(style);
+                addNodeRect(damage, node->identity, "");
+                changed = true;
+            }
         }
+        if (!node || tween.finished(elapsed)) it = stateBlends_.erase(it);
+        else ++it;
     }
-    if (blendFrom_.empty()) {
-        blendTo_.clear();
-    }
-    stateBlendActive_ = !blendFrom_.empty();
     return changed;
 }
 
@@ -909,6 +1086,23 @@ void AppShell::swapRoot(core::Widget root) {
 }
 
 // --- 查询 ---
+
+style::Theme AppShell::effectiveThemeForKey(const std::string& key) const {
+    const style::Theme* result = &theme_;
+    const auto visit = [&](const auto& self, const core::Element& element,
+                           const style::Theme* inherited) -> bool {
+        const auto& widget = element.widget();
+        const auto* effective = widget.type == core::WidgetType::ThemeScope && widget.themeOverride
+                                    ? static_cast<const style::Theme*>(widget.themeOverride) : inherited;
+        if (widget.key == key) { result = effective; return true; }
+        for (const auto& child : element.children()) {
+            if (self(self, *child, effective)) return true;
+        }
+        return false;
+    };
+    if (element_) visit(visit, *element_, &theme_);
+    return *result;
+}
 
 core::Rect AppShell::focusedTextRect() const {
     core::Offset origin{};
@@ -981,7 +1175,7 @@ void AppShell::addNodeRect(std::vector<core::Rect>& damage,
         }
     }
     if (node != nullptr) {
-        damage.push_back(core::Rect{origin, node->size});
+        core::addPaintDamage(*node, origin, damage);
     }
 }
 

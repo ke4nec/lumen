@@ -24,6 +24,12 @@ struct Options {
     bool diagnostics{false};
     std::string dumpFrame{};
     std::uint64_t maxFrames{0};
+    std::string sampleRoute{};
+    std::string sampleKey{};
+    float width{1024}, height{768}, fontScale{1}, dpi{1};
+    int direction{0}, density{1};
+    bool light{false}, highContrast{false}, reduceAnimation{false}, systemFonts{false};
+    std::uint64_t sampleTime{0};
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -36,6 +42,32 @@ Options parseOptions(int argc, char** argv) {
             options.diagnostics = true;
         } else if (flag == "--dump-frame" && i + 1 < argc) {
             options.dumpFrame = argv[++i];
+        } else if (flag == "--sample-route" && i + 1 < argc) {
+            options.sampleRoute = argv[++i];
+        } else if (flag == "--sample-key" && i + 1 < argc) {
+            options.sampleKey = argv[++i];
+        } else if (flag == "--width" && i + 1 < argc) {
+            options.width = std::strtof(argv[++i], nullptr);
+        } else if (flag == "--height" && i + 1 < argc) {
+            options.height = std::strtof(argv[++i], nullptr);
+        } else if (flag == "--font-scale" && i + 1 < argc) {
+            options.fontScale = std::strtof(argv[++i], nullptr);
+        } else if (flag == "--dpi" && i + 1 < argc) {
+            options.dpi = std::strtof(argv[++i], nullptr);
+        } else if (flag == "--direction" && i + 1 < argc) {
+            options.direction = std::atoi(argv[++i]);
+        } else if (flag == "--density" && i + 1 < argc) {
+            options.density = std::atoi(argv[++i]);
+        } else if (flag == "--sample-time" && i + 1 < argc) {
+            options.sampleTime = std::strtoull(argv[++i], nullptr, 10);
+        } else if (flag == "--light") {
+            options.light = true;
+        } else if (flag == "--high-contrast") {
+            options.highContrast = true;
+        } else if (flag == "--reduce-animation") {
+            options.reduceAnimation = true;
+        } else if (flag == "--system-fonts") {
+            options.systemFonts = true;
         } else if (flag == "--max-frames" && i + 1 < argc) {
             options.maxFrames = std::strtoull(argv[++i], nullptr, 10);
         }
@@ -307,12 +339,69 @@ int runHeadless(GalleryApp& app, const std::string& dumpFrame) {
     return 0;
 }
 
+int runSample(GalleryApp& app, const Options& options) {
+    const std::vector<std::string> routes{"home", "buttons", "inputs", "layout", "lists", "feedback", "theme"};
+    if (std::find(routes.begin(), routes.end(), options.sampleRoute) == routes.end()) return 2;
+    if (!(options.width >= 200 && options.width <= 4096 &&
+          options.height >= 200 && options.height <= 4096 &&
+          options.dpi >= 1 && options.dpi <= 2 &&
+          options.fontScale >= 1 && options.fontScale <= 2 &&
+          options.direction >= 0 && options.direction <= 3 &&
+          options.density >= 0 && options.density <= 2)) {
+        std::fprintf(stderr, "Invalid sample dimensions, scale, direction or density\n");
+        return 2;
+    }
+    lumen::accessibility::AccessibilitySettings settings;
+    settings.fontScale = options.fontScale;
+    settings.highContrast = options.highContrast;
+    settings.reduceAnimation = options.reduceAnimation;
+    app.setAccessibilitySettings(settings);
+    app.setTheme(lumen::style::Theme::fromSettings(settings, !options.light,
+        static_cast<lumen::style::ControlDensity>(options.density),
+        static_cast<lumen::style::ThemeDirection>(options.direction)));
+    app.setView({options.width, options.height});
+    app.setDeviceScale(options.dpi);
+    std::string fonts = "placeholder";
+    if (options.systemFonts) {
+        auto manager = lumen::text::createSystemFontManager(&fonts);
+        if (!manager) return 3; // A requested real-font sample may not silently fall back.
+        app.setFontManager(std::shared_ptr<lumen::text::FontManager>(std::move(manager)));
+    }
+    if (!app.showSample(options.sampleRoute, options.sampleKey)) {
+        std::fprintf(stderr, "Sample key not found: %s\n", options.sampleKey.c_str());
+        return 4;
+    }
+    app.shell().tick(options.sampleTime);
+    const auto hash = app.renderFrame();
+    const auto& pixels = app.pixels();
+    if (!options.dumpFrame.empty()) {
+        std::ofstream out(options.dumpFrame, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(pixels.rgba.data()),
+                  static_cast<std::streamsize>(pixels.rgba.size()));
+        if (!out) return 5;
+        std::ofstream metadata(options.dumpFrame + ".txt");
+        metadata << "route=" << options.sampleRoute << "\nkey=" << options.sampleKey
+                 << "\nlogical=" << options.width << 'x' << options.height
+                 << "\npixels=" << pixels.width << 'x' << pixels.height
+                 << "\nfontScale=" << options.fontScale << "\ndpi=" << options.dpi
+                 << "\ndirection=" << options.direction << "\nlight=" << options.light
+                 << "\ndensity=" << options.density << "\nhighContrast=" << options.highContrast
+                 << "\nreduceAnimation=" << options.reduceAnimation << "\ntimeMs=" << options.sampleTime
+                 << "\nbackend=CPU\nfonts=" << fonts << '\n';
+        if (!metadata) return 5;
+    }
+    std::printf("sample route=%s key=%s pixels=%dx%d hash=%016llx fonts=%s\n",
+        options.sampleRoute.c_str(), options.sampleKey.c_str(), pixels.width, pixels.height,
+        static_cast<unsigned long long>(hash), fonts.c_str());
+    return 0;
+}
+
 int runWindowed(GalleryApp& app, const Options& options) {
     lumen::platform::Sdl3ApplicationHost host;
     lumen::app::RunOptions runOptions;
     runOptions.windowDesc.title = "Lumen Gallery";
-    runOptions.windowDesc.width = 1024;
-    runOptions.windowDesc.height = 768;
+    runOptions.windowDesc.width = static_cast<int>(options.width);
+    runOptions.windowDesc.height = static_cast<int>(options.height);
     runOptions.diagnostics = options.diagnostics;
     runOptions.maxFrames = options.maxFrames;
     // 桌面系统字体：窗口路径注入真实字形（Windows 雅黑优先），CPU 光
@@ -349,6 +438,10 @@ int main(int argc, char** argv) {
     const Options options = parseOptions(argc, argv);
     GalleryApp app;
     try {
+        if (!options.sampleRoute.empty()) {
+            const int result = runSample(app, options);
+            if (result != 0 || options.headless) return result;
+        }
         if (options.headless) {
             return runHeadless(app, options.dumpFrame);
         }

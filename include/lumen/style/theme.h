@@ -146,6 +146,7 @@ struct ElevationTokens {
 // 去抖（reduceAnimation 归零 = 立即显示），tooltipFadeMs 为淡入淡出。
 struct MotionTokens {
     std::uint32_t stateTransitionMs{kDurationFastMs};
+    std::uint32_t switchTransitionMs{100};
     std::uint32_t dialogTransitionMs{kDurationNormalMs};
     // S4（§9.1）：Navigator Fade 200ms（旧值 350 按本规格调整）。
     std::uint32_t navigatorTransitionMs{kDurationNormalMs};

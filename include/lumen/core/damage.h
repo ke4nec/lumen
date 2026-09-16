@@ -23,6 +23,11 @@ namespace lumen::core {
                                  const RenderNode& current,
                                  std::vector<Rect>& damage);
 
+// Add the node and descendant paint extents (including shadows). absoluteOrigin
+// is the node's already accumulated window origin, including its own offset.
+void addPaintDamage(const RenderNode& node, Offset absoluteOrigin,
+                    std::vector<Rect>& damage);
+
 // Union of `rects` intersected with the viewport; nullopt when empty.
 [[nodiscard]] std::optional<Rect> damageBounds(const std::vector<Rect>& rects,
                                                Size viewport);

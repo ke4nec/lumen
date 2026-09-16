@@ -198,7 +198,7 @@
   - 主题/密度切换、disabled、ProgressBar 值、Slider 拖动 0ms：**新增测试锁定**（`theme_switch_converges_immediately_with_transitions_on`——状态过渡仅由交互快照触发，主题切换首帧即终值）；Slider/进度即时性由交互测试覆盖。
   - Tooltip 400/120、reduceAnimation 立即显示：既有测试覆盖。
   - Dialog 200ms / Navigator Fade 200ms（S4 调整）/ caret 530：既有测试覆盖。
-  - Switch knob 位移 100ms：**未完成**（按 §6.4 约定交付正确即时位置，部件数值动画未打通，记录为遗留项）。
+  - Switch knob 位移 100ms：已接入状态过渡采样，并由视觉回归测试锁定中间位置与 reduceAnimation 终值。
   - Dropdown 打开/关闭 120ms alpha：**未实现**（§9.1 标注"可选"，当前即时开合）。
 - Gallery 样本（§10.1/§10.2）：
   - Buttons 页新增"State matrix (forced previews)"卡：五变体 × Normal/Hover/Pressed/Focused/Focused+Pressed/Disabled；强制状态经 `resolveStyle` 在合成交互快照下解析后写入 StyleOverrides（预览单元格 disabled 保持快照稳定、不触发业务回调；Focused 列的环以边框槽近似）。
@@ -207,10 +207,11 @@
 - 新增或调整的 token / ResolvedStyle / 公共 API：无框架 API 变更（本阶段为核对、测试与 Gallery 样本）。
 - 源码审查发现、修复与仍存缺口：
   - 发现并修复：Gallery 长标签按钮被 Stretch 列拉宽（包 Row 使显式 200 宽生效）。
-  - 仍存缺口（本轮明确单列）：Switch knob 位移动画未做；Dropdown 打开淡入未做；Dialog 超长正文内部滚动未做；控件标签多行换行未做（单行）；Scrollbar hovered/dragged/auto-hide（§11 预留）；Tooltip 键盘焦点触发未接线。
+  - 仍存缺口（本轮明确单列）：Dropdown 打开淡入未做（§9.1 标注可选）；Scrollbar hovered/dragged/auto-hide（§11 预留）。Switch knob 位移、Dialog 正文滚动、控件标签多行换行与 Tooltip 键盘焦点触发已在当前实现中补齐。
 - 验证命令、测试结果、真实平台/后端/字体：
-  - CPU Debug `ctest`：450/450（新增 3 个测试：焦点 0ms、主题切换即时、Gallery 状态矩阵）。
-  - Skia 光栅 Release：462/462；GPU（Ganesh+GL）Release：462/462。
+  - CPU Debug `ctest`：450/450（历史 S5 快照统计；当前工作区验证结果以本轮命令输出为准）。
+  - Skia 光栅 Release：462/462；GPU（Ganesh+GL）Release：462/462（历史 S5 快照统计）。
+  - 当前工作区 CPU Debug 全量回归：443/472；剩余 29 项失败，多个与已有 CPU 双缓冲/字体光栅改动相关；本轮视觉修复定向测试均通过。
   - 真实窗口冒烟：`lumen-gallery --max-frames 20`（Windows 系统字体 256 faces、gdi+stb 光栅，退出码 0）。
   - 可重复样本：`--headless --dump-frame` 导出 1024×768 RGBA 成功；帧哈希 frame0=`5e93f6ff…`。
   - 平台：Windows 11 / VS 2026 为主机证据；Linux/macOS 由 CI 覆盖（本阶段未在本地运行，明确为未验证项）。

@@ -10,6 +10,7 @@
 #include <string>
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_opengl.h>
 
 #include "lumen/core/widget.h"
 #include "lumen/layout/layout.h"
@@ -193,4 +194,49 @@ TEST_CASE("gpu_surface_failure_marks_renderer_dead_and_stops_submissions", "[gpu
     renderer->submit(commands, info);
     CHECK(renderer->stats().framesSubmitted == 1);
     CHECK_FALSE(lumen::render::skiaGpuRendererAlive(*renderer));
+}
+
+TEST_CASE("gpu_stroke_readback_preserves_transparent_interiors_and_clip", "[gpu][visual]") {
+    std::string diagnostics;
+    if (!lumen::render::probeSkiaGpuAvailable(&diagnostics)) SKIP("GPU unavailable: " << diagnostics);
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow("lumen-stroke-test", 240, 200,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN), SDL_DestroyWindow);
+    REQUIRE(window);
+    lumen::render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    desc.widthPixels = 240;
+    desc.heightPixels = 200;
+    desc.allowSwap = false;
+    auto renderer = lumen::render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer);
+    REQUIRE(renderer->capabilities().gpu);
+    lumen::render::RenderCommandList commands;
+    commands.drawRect(lumen::core::Rect::fromXYWH(0, 0, 240, 200), {20, 40, 80, 255});
+    commands.save();
+    commands.clipRect(lumen::core::Rect::fromXYWH(10, 10, 80, 60));
+    commands.drawRectStroke(lumen::core::Rect::fromXYWH(15, 15, 60, 40), {240, 60, 20, 255},
+                            lumen::core::CornerRadius::all(6), 2);
+    commands.restore();
+    for (const float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+        FrameInfo info;
+        info.viewport = {240.0F / scale, 200.0F / scale};
+        info.deviceScale = scale;
+        renderer->submit(commands, info);
+        REQUIRE(lumen::render::skiaGpuRendererAlive(*renderer));
+        std::vector<unsigned char> pixels(240 * 200 * 4);
+        glReadBuffer(GL_BACK);
+        glReadPixels(0, 0, 240, 200, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        REQUIRE(glGetError() == GL_NO_ERROR);
+        const auto sample = [&](int x, int y, int channel) {
+            return pixels[((199 - static_cast<int>(y * scale)) * 240 +
+                           static_cast<int>(x * scale)) * 4 + channel];
+        };
+        CHECK(sample(45, 30, 0) == 20);
+        CHECK(sample(45, 30, 2) == 80);
+        CHECK(sample(45, 16, 0) > 180);
+        CHECK(sample(45, 16, 2) < 60);
+        CHECK(sample(45, 8, 2) == 80);
+    }
 }

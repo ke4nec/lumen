@@ -238,9 +238,9 @@ TEST_CASE("gallery_theme_derivation_preserved", "[gallery]") {
 
     clickVisible(app, "accent-green-button");
     (void)app.renderFrame();
-    CHECK(app.theme().colors.accent == Color::fromRGBA(74, 160, 106));
-    CHECK(app.theme().button.filled.background ==
-          Color::fromRGBA(74, 160, 106));
+    CHECK(app.theme().colors.accent.g > app.theme().colors.accent.r);
+    CHECK(app.theme().colors.accent.g > app.theme().colors.accent.b);
+    CHECK(app.theme().button.filled.background == app.theme().colors.accent);
     CHECK(app.accessibilitySettings().highContrast);
 
     clickVisible(app, "toggle-dark-button-theme");
@@ -377,15 +377,17 @@ TEST_CASE("gallery_buttons_state_matrix_forces_previews", "[gallery]") {
     CHECK(press->commonStyle().background ==
           style::blendOver(theme.colors.accent, theme.colors.pressedOverlay));
 
-    // Focus 快照的边框槽 = focusRing；Focused+Pressed 并存。
+    // Focus uses the real ring channel; the filled button border remains transparent.
     const RenderNode* focus =
         findNodeByKey(app.root(), "matrix-Filled-Focus");
     REQUIRE(focus != nullptr);
-    CHECK(focus->commonStyle().border == theme.colors.focusRing);
+    CHECK(focus->commonStyle().focusRing == theme.colors.focusRing);
+    CHECK(focus->commonStyle().focusWidth == theme.metrics.focusRingWidth);
     const RenderNode* focusPress =
         findNodeByKey(app.root(), "matrix-Filled-Foc+Prs");
     REQUIRE(focusPress != nullptr);
-    CHECK(focusPress->commonStyle().border == theme.colors.focusRing);
+    CHECK(focusPress->commonStyle().focusRing == theme.colors.focusRing);
+    CHECK(focusPress->commonStyle().focusWidth == theme.metrics.focusRingWidth);
     CHECK(focusPress->commonStyle().background ==
           style::blendOver(theme.colors.accent, theme.colors.pressedOverlay));
 

@@ -119,13 +119,13 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.icon = static_cast<std::uint8_t>(widget.icon);
     node.transitionAlpha = widget.transitionAlpha;
     node.showScrollbar = widget.showScrollbar;
-    node.elevation = widget.elevation;
-    if (widget.elevation > 0.0F) {
+    node.elevation = widget.elevation > 0.0F ? widget.elevation : core::commonStyle(node.style).elevation;
+    if (node.elevation > 0.0F) {
         // §4.5 阴影分级：层级数（1..3）查表得到 offset/blur/alpha；
         // 高对比模式各级 alpha 为 0（不产生阴影命令）。
         const style::ElevationTokens& elevation = styleContext.theme.elevation;
         const style::ElevationShadowParams& params =
-            elevation.paramsFor(widget.elevation);
+            elevation.paramsFor(node.elevation);
         node.shadowColor = core::Color{elevation.shadowColor.r,
                                        elevation.shadowColor.g,
                                        elevation.shadowColor.b,
@@ -190,7 +190,7 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             const auto* buttonStyle =
                 std::get_if<core::ButtonResolvedStyle>(&resolved.component);
             if (buttonStyle != nullptr &&
-                widget.icon != core::IconId::None) {
+                (widget.icon != core::IconId::None || buttonStyle->reserveIconSpace)) {
                 contentWidth +=
                     buttonStyle->iconSize +
                     (content.empty() ? 0.0F : buttonStyle->iconGap);
@@ -249,10 +249,14 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             if (radio == nullptr) {
                 return measureTextContent(content, textStyle, 0.0F, false);
             }
-            const Size label = measureTextContent(content, textStyle, 0.0F,
-                                                  false);
+            const float available = std::min(widget.width.value_or(maxWidth), maxWidth);
+            const float labelWidth = available > 0.0F
+                ? std::max(0.01F, available - radio->slotSize - radio->labelGap -
+                    core::commonStyle(resolved).padding.horizontal()) : 0.0F;
+            const Size label = measureTextContent(content, textStyle, labelWidth, true);
             return Size{radio->slotSize + radio->labelGap + label.width,
-                        std::max({radio->slotSize, label.height,
+                        std::max({radio->slotSize, label.height + std::max(0.0F,
+                                      radio->slotSize - measureTextContent("M", textStyle, 0, false).height),
                                   resolved.minHeight})};
         }
         case WidgetType::Dropdown: {
@@ -294,11 +298,15 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             if (checkbox == nullptr) {
                 return measureTextContent(content, textStyle, 0.0F, false);
             }
-            const Size label = measureTextContent(content, textStyle, 0.0F,
-                                                  false);
+            const float available = std::min(widget.width.value_or(maxWidth), maxWidth);
+            const float labelWidth = available > 0.0F
+                ? std::max(0.01F, available - checkbox->slotSize - checkbox->labelGap -
+                    core::commonStyle(resolved).padding.horizontal()) : 0.0F;
+            const Size label = measureTextContent(content, textStyle, labelWidth, true);
             // 槽位含焦点环预留（§4.4）：是否聚焦不改变标签起点。
             return Size{checkbox->slotSize + checkbox->labelGap + label.width,
-                        std::max({checkbox->slotSize, label.height,
+                        std::max({checkbox->slotSize, label.height + std::max(0.0F,
+                                      checkbox->slotSize - measureTextContent("M", textStyle, 0, false).height),
                                   resolved.minHeight})};
         }
         case WidgetType::Switch: {
@@ -307,12 +315,18 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             if (control == nullptr) {
                 return measureTextContent(content, textStyle, 0.0F, false);
             }
-            const Size label = measureTextContent(content, textStyle, 0.0F,
-                                                  false);
+            const float available = std::min(widget.width.value_or(maxWidth), maxWidth);
+            const float labelWidth = available > 0.0F
+                ? std::max(0.01F, available - control->slotSize - control->labelGap -
+                    core::commonStyle(resolved).padding.horizontal()) : 0.0F;
+            const Size label = measureTextContent(content, textStyle, labelWidth, true);
             return Size{control->slotSize + control->labelGap + label.width,
                         std::max({control->trackHeight + control->slotSize -
                                       control->trackWidth,
-                                  label.height, resolved.minHeight})};
+                                  label.height + std::max(0.0F, control->trackHeight +
+                                      control->slotSize - control->trackWidth -
+                                      measureTextContent("M", textStyle, 0, false).height),
+                                  resolved.minHeight})};
         }
         default:
             return measureTextContent(content, textStyle, 0.0F, false);
@@ -421,7 +435,8 @@ RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
             if (override != nullptr) {
                 const style::StyleContext scopedContext{
                     *override, styleContext.interaction,
-                    styleContext.accessibility, styleContext.deviceScale};
+                    styleContext.accessibility, styleContext.deviceScale,
+                    styleContext.previewStates};
                 const style::ScopedThemeOverride guard{*override};
                 return layoutContainer(widget, constraints, scopedContext,
                                        identity);
@@ -706,11 +721,11 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
             if (isRow) {
                 const float budget = std::max(0.0F, allocated);
                 childConstraints =
-                    Constraints{budget, budget, 0.0F, contentMaxCross};
+                    Constraints{child.shrinkWrap ? 0.0F : budget, budget, 0.0F, contentMaxCross};
             } else {
                 const float budget = std::max(0.0F, allocated);
                 childConstraints =
-                    Constraints{0.0F, contentMaxCross, budget, budget};
+                    Constraints{0.0F, contentMaxCross, child.shrinkWrap ? 0.0F : budget, budget};
             }
             measured[i] = layoutSingle(child, childConstraints, styleContext,
                                        childIdentity(identity, child, i));
@@ -908,6 +923,10 @@ RenderNode layoutScrollView(const Widget& widget,
     const float contentHeight = childNode.size.height +
                                 child.margin.vertical() +
                                 padding.vertical();
+    if (widget.shrinkWrap && !widget.height.has_value()) {
+        viewportHeight = clampFloat(contentHeight, outer.minHeight, outer.maxHeight);
+        node.size.height = viewportHeight;
+    }
     const float scrollExtent =
         std::max(0.0F, contentHeight - viewportHeight);
     const float offset = std::clamp(widget.scrollOffset, 0.0F, scrollExtent);
@@ -1175,9 +1194,14 @@ RenderNode layoutTabs(const Widget& widget, const Constraints& constraints,
                 continue;
             }
             child.buttonVariant = core::ButtonVariant::Ghost;
+            bool disabled = !child.enabled;
+            if (styleContext.previewStates) {
+                const auto preview = styleContext.previewStates->find(child.key);
+                if (preview != styleContext.previewStates->end()) disabled = preview->second.disabled;
+            }
             if (!child.styleOverrides.foreground.has_value()) {
                 child.styleOverrides.foreground =
-                    !child.enabled ? styleContext.theme.colors.disabledContent
+                    disabled ? styleContext.theme.colors.disabledContent
                     : child.selected ? tabs->selectedContent
                                      : tabs->unselectedContent;
             }
@@ -1187,8 +1211,35 @@ RenderNode layoutTabs(const Widget& widget, const Constraints& constraints,
             }
         }
     }
-    return layoutFlex(row, constraints, styleContext, identity,
-                      /*isRow=*/true);
+    const auto outer = constraints.deflate(widget.margin);
+    const float width = widget.width.has_value()
+        ? clampFloat(*widget.width, outer.minWidth, outer.maxWidth) : outer.maxWidth;
+    RenderNode node = makeNode(widget, {}, {}, styleContext, identity);
+    const float contentWidth = std::max(0.0F, width - node.padding.horizontal());
+    const float contentHeight = std::max(0.0F, outer.maxHeight - node.padding.vertical());
+    float x = 0.0F, y = 0.0F, lineHeight = 0.0F, usedWidth = 0.0F;
+    const float indicatorSpace = tabs ? tabs->indicatorHeight + 2.0F : 0.0F;
+    for (std::size_t i = 0; i < row.children.size(); ++i) {
+        const auto& child = row.children[i];
+        auto item = layoutSingle(child, Constraints{0.0F, contentWidth, 0.0F, contentHeight},
+                                 styleContext, childIdentity(identity, child, i));
+        const float itemWidth = item.size.width + child.margin.horizontal();
+        if (x > 0.0F && x + itemWidth > contentWidth) {
+            y += lineHeight + row.spacing;
+            x = 0.0F;
+            lineHeight = 0.0F;
+        }
+        item.offset = Offset{node.padding.left + x + child.margin.left,
+                             node.padding.top + y + child.margin.top};
+        lineHeight = std::max(lineHeight, item.size.height + child.margin.vertical() + indicatorSpace);
+        usedWidth = std::max(usedWidth, x + itemWidth);
+        x += itemWidth + row.spacing;
+        node.children.push_back(std::move(item));
+    }
+    node.size = outer.constrain(Size{widget.width.has_value() ? width : usedWidth + node.padding.horizontal(),
+        widget.height.value_or(y + lineHeight + node.padding.vertical())});
+    node.clipContent = true;
+    return node;
 }
 
 RenderNode layoutStack(const Widget& widget, const Constraints& constraints,

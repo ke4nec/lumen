@@ -167,6 +167,10 @@ struct Widget {
     // Flex factor when this widget is a direct child of Row/Column.
     // 0 means inflexible; >0 participates in free-space distribution.
     float flex{0.0F};
+    // Loose flex / content-sized ScrollView, bounded by the available viewport.
+    bool shrinkWrap{false};
+    bool alignContentStart{false}; // Button: left label, trailing icon column.
+    bool reserveIconSpace{false};  // Button: keep that column when no icon is set.
     EdgeInsets padding{};
     EdgeInsets margin{};
 

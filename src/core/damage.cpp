@@ -30,7 +30,11 @@ bool sameNodeFields(const RenderNode& a, const RenderNode& b) {
            a.scrollbarColor == b.scrollbarColor &&
            a.scrollbarThumbWidth == b.scrollbarThumbWidth &&
            a.scrollbarMinLength == b.scrollbarMinLength &&
-           a.iconStrokeWidth == b.iconStrokeWidth;
+           a.iconStrokeWidth == b.iconStrokeWidth && a.icon == b.icon &&
+           a.transitionAlpha == b.transitionAlpha && a.elevation == b.elevation &&
+           a.shadowColor == b.shadowColor && a.shadowOffset == b.shadowOffset &&
+           a.shadowBlur == b.shadowBlur && a.showScrollbar == b.showScrollbar &&
+           a.scrollbarThickness == b.scrollbarThickness;
 }
 
 // Conservative bounds of a subtree: the node rect union every descendant, so
@@ -38,6 +42,13 @@ bool sameNodeFields(const RenderNode& a, const RenderNode& b) {
 void addSubtreeBounds(const RenderNode& node, Offset absolute,
                       std::vector<Rect>& out) {
     out.push_back(Rect{absolute, node.size});
+    if (node.elevation > 0 && node.shadowColor.a > 0) {
+        // Skia uses sigma = blur / 2; cover its kernel and antialiased edge.
+        const float outset = std::max(0.0F, node.shadowBlur) * 2.0F + 1.0F;
+        out.push_back(Rect::fromXYWH(absolute.x + node.shadowOffset.x - outset,
+            absolute.y + node.shadowOffset.y - outset,
+            node.size.width + 2.0F * outset, node.size.height + 2.0F * outset));
+    }
     for (const auto& child : node.children) {
         addSubtreeBounds(child, absolute + child.offset, out);
     }
@@ -107,7 +118,19 @@ void collectNodeDamage(const RenderNode& previous, const RenderNode& current,
     // it — field changes like padding also move children within it, and
     // children are walked below only when nothing changed on this node.
     if (!sameNodeFields(previous, current)) {
+        const std::size_t start = damage.size();
+        addSubtreeBounds(previous, previousOrigin, damage);
         addSubtreeBounds(current, currentOrigin, damage);
+        float left = currentRect.left(), top = currentRect.top();
+        float right = currentRect.right(), bottom = currentRect.bottom();
+        for (std::size_t i = start; i < damage.size(); ++i) {
+            left = std::min(left, damage[i].left());
+            top = std::min(top, damage[i].top());
+            right = std::max(right, damage[i].right());
+            bottom = std::max(bottom, damage[i].bottom());
+        }
+        damage.resize(start);
+        damage.push_back(Rect::fromXYWH(left, top, right - left, bottom - top));
         return;
     }
 
@@ -143,6 +166,11 @@ void collectNodeDamage(const RenderNode& previous, const RenderNode& current,
 
 bool sameNode(const RenderNode& a, const RenderNode& b) {
     return sameNodeFields(a, b);
+}
+
+void addPaintDamage(const RenderNode& node, Offset absoluteOrigin,
+                    std::vector<Rect>& damage) {
+    addSubtreeBounds(node, absoluteOrigin, damage);
 }
 
 const RenderNode* findNodeByIdentity(const RenderNode& root,

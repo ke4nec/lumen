@@ -244,6 +244,28 @@ TEST_CASE("reduce_animation_completes_transition_first_tick", "[motion]") {
     (void)completed;
 }
 
+TEST_CASE("reduce_animation_toggle_does_not_poison_future_transitions", "[motion]") {
+    OverlayApp app;
+    AppShell shell{app.config()};
+    shell.tick(0);
+    (void)shell.renderFrame();
+
+    lumen::accessibility::AccessibilitySettings reduced;
+    reduced.reduceAnimation = true;
+    shell.setAccessibilitySettings(reduced);
+    shell.beginDialogTransition("overlay-card", /*entering=*/true);
+    shell.tick(1);
+    (void)shell.renderFrame();
+
+    lumen::accessibility::AccessibilitySettings normal;
+    shell.setAccessibilitySettings(normal);
+    shell.beginDialogTransition("overlay-card", /*entering=*/false);
+    shell.tick(100);
+    (void)shell.renderFrame();
+    CHECK(overlayAlpha(shell) < 1.0F);
+    CHECK(overlayAlpha(shell) > 0.0F);
+}
+
 // --- 状态色过渡（motionTransitions opt-in + tick 时钟） ---
 
 namespace {

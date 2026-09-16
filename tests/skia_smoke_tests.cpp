@@ -361,3 +361,35 @@ TEST_CASE("skia_real_fonts_shape_layout_and_paint", "[skia][text]") {
     CHECK(lumen::render::frameHash(second.pixels()) == hashA);
     CHECK(hashA != 0);
 }
+
+TEST_CASE("skia_and_cpu_strokes_keep_transparent_interiors_at_fractional_dpi", "[skia][visual]") {
+    lumen::render::RenderCommandList commands;
+    const Color background{20, 40, 80, 255};
+    commands.drawRect(Rect::fromXYWH(0, 0, 100, 80), background);
+    commands.save();
+    commands.clipRect(Rect::fromXYWH(10, 10, 80, 60));
+    commands.drawRectStroke(Rect::fromXYWH(15, 15, 60, 40), Color{240, 60, 20, 255},
+                            CornerRadius::all(6), 2);
+    commands.restore();
+    for (const float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+        CpuRenderer cpu;
+        SkiaRenderer skia;
+        lumen::render::FrameInfo info;
+        info.viewport = {100, 80};
+        info.deviceScale = scale;
+        for (Renderer* renderer : {static_cast<Renderer*>(&cpu), static_cast<Renderer*>(&skia)}) {
+            renderer->submit(commands, info);
+        }
+        for (const auto* pixels : {&cpu.pixels(), &skia.pixels()}) {
+            const auto sample = [&](int x, int y, int channel) {
+                return pixels->rgba[(static_cast<int>(y * scale) * pixels->width +
+                                     static_cast<int>(x * scale)) * 4 + channel];
+            };
+            CHECK(sample(45, 30, 0) == background.r);
+            CHECK(sample(45, 30, 2) == background.b);
+            CHECK(sample(45, 16, 0) > 180);
+            CHECK(sample(45, 16, 2) < 60);
+            CHECK(sample(45, 8, 2) == background.b);
+        }
+    }
+}

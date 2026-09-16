@@ -44,6 +44,7 @@
 | Skia 光栅 | `cmake -S . -B build-skia -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON`<br>`cmake --build build-skia --config Release`（Windows 必须 Release）<br>`ctest --test-dir build-skia -C Release`（含 CPU/Skia 一致性）<br>`./build-skia/examples/counter/lumen-counter --renderer skia` |
 | Skia GPU（Ganesh+GL） | `cmake -S . -B build-gpu -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON`<br>`cmake --build build-gpu --config Release`<br>`./build-gpu/examples/counter/lumen-counter --renderer gpu --diagnostics` |
 | headless smoke | `./build/examples/counter/lumen-counter --headless`<br>`./build/examples/settings/lumen-settings --headless`<br>`./build/examples/gallery/lumen-gallery --headless` |
+| Gallery 固定视觉样本 | `./build/examples/gallery/lumen-gallery --headless --sample-route inputs --sample-key samples-Switch-card --width 600 --height 700 --font-scale 2 --dpi 1.25 --system-fonts --dump-frame build/switch.rgba`（Windows 多配置生成器在可执行文件前增加 `Debug/` 或 `Release/`） |
 | 窗口 smoke（Linux） | `xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build/examples/settings/lumen-settings \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build/examples/gallery/lumen-gallery \|\| test $? -eq 124` |
 | 窗口 smoke（macOS 无窗口服务器） | `SDL_VIDEODRIVER=dummy ./build/examples/counter/lumen-counter & pid=$!; sleep 10; kill -0 "$pid"`（见 `macos.yml`） |
 | 诊断 | `./lumen-counter --diagnostics`<br>`./lumen-counter --renderer gpu --diagnostics --frames 1` |
@@ -62,6 +63,10 @@
   命令做 CPU 对比；Skia/GPU 和新增场景以各自首次归档报告为基线。
 
 ## 3. 历史 SDL-free 实验配置（保留参考）
+
+Gallery 固定样本参数：`--sample-route` 支持 `home/buttons/inputs/layout/lists/feedback/theme`；可选 `--sample-key` 将该 key 滚到主视口顶部。输入类矩阵 key 为 `samples-TextField-card`、`samples-Checkbox-card`、`samples-Switch-card`、`samples-Radio-card`、`samples-Dropdown-card`、`samples-Tabs-card`；Feedback 使用 `samples-Slider-card`、`samples-ProgressBar-card`、`samples-Tooltip-card`；Buttons 使用 `buttons-matrix-card`。`--direction 0..3` 按 Core Dark / Ink Linen / Aurora Signal / Utility Contrast 排列，`--density 0..2` 为 Compact / Comfortable / Touch，另支持 `--light`、`--high-contrast`、`--reduce-animation`。`--width/--height` 是 logical px，`--font-scale` 与 `--dpi` 分开控制且支持 1–2。`--sample-time` 注入毫秒时钟，仅采样当前场景；过渡的事件触发及 t=0/0.5T/T 由测试驱动。
+
+导出为原始 RGBA8，配套 `<输出文件>.txt` 保存实际像素宽高、逻辑视口、字体来源及样本参数。加 `--system-fonts` 使用本机字体，加载失败返回非零状态；省略时使用确定性测试字体。未传 `--sample-route` 的原有 `--headless` 继续执行全路由交互 smoke。原始帧和转换后的 PNG 应保存在忽略的构建目录。
 
 `LUMEN_BUILD_MOBILE_CORE=ON` 仍存在，Linux/macOS 工作流中的 `mobile-core`
 job 也仍会执行。以下命令只验证通用库与 headless 测试，不是 Android NDK/iOS

@@ -56,7 +56,9 @@ text::TextLayoutResult layoutText(const std::string& text,
 }
 
 float lineHeightOf(const TextStyle& style) {
-    return style.fontSize > 0.0F ? style.fontSize * 1.2F : 16.8F;
+    return style.fontSize > 0.0F
+               ? style.fontSize * (style.lineHeight > 0 ? style.lineHeight : 1.2F)
+               : 16.8F;
 }
 
 CornerRadius insetCorners(const CornerRadius& radius, float inset) {
@@ -375,6 +377,11 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
 template <typename Sink>
 void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                const PaintOptions& options, float parentAlpha = 1.0F) {
+    if (std::find(options.suppressedIdentities.begin(),
+                  options.suppressedIdentities.end(), node.identity) !=
+        options.suppressedIdentities.end()) {
+        return;
+    }
     // M10：整节点透明度（transitionAlpha 转场通道；子树继承父 alpha）。
     // 全透明子树不产生命令；alpha<1 时对整份 resolved style 颜色缩放，
     // CPU/Skia/GPU 消费同一份命令数据。已知限制：DrawImage 无颜色通道，
@@ -414,35 +421,8 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         case WidgetType::ThemeScope:
             paintSurface(sink, rect, common);
             break;
-        case WidgetType::Tabs: {
-            // S3（§6.8）：平面页签行——底部分隔线 + 选中项 2px 指示条；
-            // 子按钮（Ghost + 两态前景）经 children 正常绘制。
-            const auto* tabs =
-                std::get_if<core::TabsResolvedStyle>(
-                    &styleSource.component);
-            if (tabs != nullptr && tabs->separator.a > 0) {
-                sink.drawRect(
-                    Rect{Offset{origin.x,
-                                origin.y + node.size.height -
-                                    tabs->separatorHeight},
-                         Size{node.size.width, tabs->separatorHeight}},
-                    tabs->separator);
-            }
-            if (tabs != nullptr && tabs->indicator.a > 0) {
-                for (const auto& child : node.children) {
-                    if (!child.selected) {
-                        continue;
-                    }
-                    sink.drawRect(
-                        Rect{Offset{origin.x + child.offset.x,
-                                    origin.y + node.size.height -
-                                        tabs->indicatorHeight},
-                             Size{child.size.width, tabs->indicatorHeight}},
-                        tabs->indicator);
-                }
-            }
-            break;
-        }
+        case WidgetType::Tabs:
+            break; // Decorations follow child surfaces/focus rings below.
         case WidgetType::Grid:
             paintSurface(sink, rect, common);
             break;
@@ -596,11 +576,20 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             if (radio == nullptr) {
                 break;
             }
+
+            const ScopedClip<Sink> clip{sink, rect};
+            const auto label = layoutText(node.text, common.text,
+                std::max(0.01F, node.size.width - radio->slotSize - radio->labelGap));
+            const float firstHeight = std::max(radio->slotSize, label.lineHeightPx);
+            const float blockHeight = std::max(firstHeight,
+                label.size.height + firstHeight - label.lineHeightPx);
+            const float blockTop = origin.y + (node.size.height - blockHeight) * 0.5F;
+            const float indicatorCenterY = blockTop + firstHeight * 0.5F;
             const float indicator = radio->indicatorSize;
             const float indicatorOrigin =
                 origin.x + (radio->slotSize - indicator) * 0.5F;
             const float cy =
-                origin.y + (node.size.height - indicator) * 0.5F;
+                indicatorCenterY - indicator * 0.5F;
             Rect ring{Offset{indicatorOrigin, cy},
                       Size{indicator, indicator}};
             const float ringRadius = indicator * 0.5F;
@@ -631,14 +620,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                          Size{dot, dot}},
                     radio->dot, CornerRadius::all(dot * 0.5F));
             }
-            if (!node.text.empty()) {
-                const float lineHeight = lineHeightOf(common.text);
-                paintTextAt(
-                    sink, node.text, common.text,
-                    Offset{origin.x + radio->slotSize + radio->labelGap,
-                           origin.y +
-                               (node.size.height - lineHeight) * 0.5F});
-            }
+            paintLines(sink, label, common.text,
+                Offset{origin.x + radio->slotSize + radio->labelGap,
+                       blockTop + (firstHeight - label.lineHeightPx) * 0.5F});
             break;
         }
         case WidgetType::Tooltip: {
@@ -751,8 +735,10 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             TextStyle labelStyle = common.text;
             labelStyle.maxLines = 1;
             labelStyle.overflow = core::TextOverflow::Ellipsis;
+            const bool startAligned = buttonStyle != nullptr && buttonStyle->alignContentStart;
+            const bool reserveIcon = hasIcon || (buttonStyle != nullptr && buttonStyle->reserveIconSpace);
             const float iconExtent =
-                hasIcon ? iconSize + (node.text.empty() ? 0.0F : iconGap)
+                reserveIcon ? iconSize + (node.text.empty() ? 0.0F : iconGap)
                         : 0.0F;
             const float availableWidth = std::max(
                 0.0F, node.size.width - iconExtent -
@@ -770,8 +756,8 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             const ScopedClip<Sink> clip{sink, rect};
             if (!node.text.empty()) {
                 paintLines(sink, textLayout, common.text,
-                           Offset{origin.x + (node.size.width - totalWidth) *
-                                                  0.5F,
+                           Offset{origin.x + (startAligned ? common.padding.left :
+                                              (node.size.width - totalWidth) * 0.5F),
                                   contentTop});
             }
             if (hasIcon) {
@@ -779,9 +765,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                 sink.drawIcon(
                     polylines,
                     Rect{Offset{origin.x +
-                                    (node.size.width - totalWidth) * 0.5F +
-                                    textWidth +
-                                    (node.text.empty() ? 0.0F : iconGap),
+                                    (startAligned ? node.size.width - common.padding.right - iconSize :
+                                     (node.size.width - totalWidth) * 0.5F + textWidth +
+                                         (node.text.empty() ? 0.0F : iconGap)),
                                 origin.y +
                                     (node.size.height - iconSize) * 0.5F},
                          Size{iconSize, iconSize}},
@@ -817,6 +803,15 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             if (checkbox == nullptr) {
                 break;
             }
+
+            const ScopedClip<Sink> clip{sink, rect};
+            const auto label = layoutText(node.text, common.text,
+                std::max(0.01F, node.size.width - checkbox->slotSize - checkbox->labelGap));
+            const float firstHeight = std::max(checkbox->slotSize, label.lineHeightPx);
+            const float blockHeight = std::max(firstHeight,
+                label.size.height + firstHeight - label.lineHeightPx);
+            const float blockTop = origin.y + (node.size.height - blockHeight) * 0.5F;
+            const float indicatorCenterY = blockTop + firstHeight * 0.5F;
             const float indicator = checkbox->indicatorSize;
             // 槽位 = indicator + 2 × (focusRingWidth + 1px 隔离带)；指示器在槽
             // 位内居中（聚焦时环围绕指示器，不改变槽位/标签起点）。
@@ -824,7 +819,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                 origin.x + (checkbox->slotSize - indicator) * 0.5F;
             Rect indicatorRect{
                 Offset{indicatorOrigin,
-                       origin.y + (node.size.height - indicator) * 0.5F},
+                       indicatorCenterY - indicator * 0.5F},
                 Size{indicator, indicator}};
             float indicatorRadius = checkbox->indicatorRadius;
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
@@ -841,12 +836,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                           checkbox->checked ? checkbox->indicatorChecked
                                             : checkbox->indicator,
                           CornerRadius::all(indicatorRadius));
-            if (!checkbox->checked) {
-                // Off：空心框——轮廓描边 + surfaceSunken 内部。
-                sink.drawRectStroke(indicatorRect, checkbox->indicatorOutline,
-                                    CornerRadius::all(indicatorRadius),
-                                    common.borderWidth);
-            } else {
+            sink.drawRectStroke(indicatorRect, checkbox->indicatorOutline,
+                                CornerRadius::all(indicatorRadius), common.borderWidth);
+            if (checkbox->checked) {
                 // On：accent 填充 + 勾号（目录折线按 markInset 内缩）。
                 const auto& polylines =
                     core::iconPolylines(core::IconId::Check);
@@ -865,14 +857,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                     }
                 }
             }
-            if (!node.text.empty()) {
-                const float lineHeight = lineHeightOf(common.text);
-                paintTextAt(sink, node.text, common.text,
-                            Offset{origin.x + checkbox->slotSize +
-                                       checkbox->labelGap,
-                                   origin.y + (node.size.height - lineHeight) *
-                                                  0.5F});
-            }
+            paintLines(sink, label, common.text,
+                Offset{origin.x + checkbox->slotSize + checkbox->labelGap,
+                       blockTop + (firstHeight - label.lineHeightPx) * 0.5F});
             break;
         }
         case WidgetType::Switch: {
@@ -884,10 +871,19 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             if (control == nullptr) {
                 break;
             }
+
+            const ScopedClip<Sink> clip{sink, rect};
+            const auto label = layoutText(node.text, common.text,
+                std::max(0.01F, node.size.width - control->slotSize - control->labelGap));
+            const float firstHeight = std::max((control->trackHeight + control->slotSize - control->trackWidth), label.lineHeightPx);
+            const float blockHeight = std::max(firstHeight,
+                label.size.height + firstHeight - label.lineHeightPx);
+            const float blockTop = origin.y + (node.size.height - blockHeight) * 0.5F;
+            const float indicatorCenterY = blockTop + firstHeight * 0.5F;
             const float trackOrigin =
                 origin.x + (control->slotSize - control->trackWidth) * 0.5F;
             const float trackTop =
-                origin.y + (node.size.height - control->trackHeight) * 0.5F;
+                indicatorCenterY - control->trackHeight * 0.5F;
             Rect trackRect{Offset{trackOrigin, trackTop},
                            Size{control->trackWidth, control->trackHeight}};
             float trackRadius = control->trackHeight * 0.5F;
@@ -908,10 +904,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             sink.drawRectStroke(trackRect, control->trackOutline,
                                 CornerRadius::all(trackRadius), common.borderWidth);
             const float knobX =
-                control->checked
-                    ? trackRect.origin.x + trackRect.size.width -
-                          control->knobInset - control->knobSize
-                    : trackRect.origin.x + control->knobInset;
+                trackRect.origin.x + control->knobInset +
+                control->knobPosition * (trackRect.size.width -
+                    2.0F * control->knobInset - control->knobSize);
             sink.drawRect(
                 Rect{Offset{knobX,
                             trackRect.origin.y +
@@ -920,14 +915,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                      Size{control->knobSize, control->knobSize}},
                 control->checked ? control->knobOn : control->knobOff,
                 CornerRadius::all(control->knobSize * 0.5F));
-            if (!node.text.empty()) {
-                const float lineHeight = lineHeightOf(common.text);
-                paintTextAt(sink, node.text, common.text,
-                            Offset{origin.x + control->slotSize +
-                                       control->labelGap,
-                                   origin.y + (node.size.height - lineHeight) *
-                                                  0.5F});
-            }
+            paintLines(sink, label, common.text,
+                Offset{origin.x + control->slotSize + control->labelGap,
+                       blockTop + (firstHeight - label.lineHeightPx) * 0.5F});
             break;
         }
     }
@@ -978,6 +968,22 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             paintNode(sink, child, origin, options, nodeAlpha);
         }
     }
+    if (node.type == WidgetType::Tabs) {
+        const auto* tabs = std::get_if<core::TabsResolvedStyle>(&styleSource.component);
+        if (tabs) {
+            const ScopedClip<Sink> clip{sink, rect};
+            for (const auto& child : node.children) {
+                const float bottom = origin.y + child.offset.y + child.size.height + 2.0F;
+                sink.drawRect(Rect{Offset{origin.x + child.offset.x, bottom},
+                    Size{child.size.width, tabs->separatorHeight}}, tabs->separator);
+                if (child.selected) {
+                    sink.drawRect(Rect{Offset{origin.x + child.offset.x, bottom},
+                        Size{child.size.width, tabs->indicatorHeight}}, tabs->indicator);
+                }
+            }
+        }
+    }
+
 }
 
 }  // namespace

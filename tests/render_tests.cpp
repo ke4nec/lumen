@@ -505,3 +505,119 @@ TEST_CASE("painter_outline_button_stays_transparent_over_page", "[render]") {
     CHECK(pixelAt(px, 20, 10) == Color::fromRGBA(255, 0, 0));
     CHECK(pixelAt(px, 20, 0) == theme.colors.borderStrong);
 }
+
+// --- CPU 抗锯齿（SDF 覆盖率）与双缓冲 ---
+
+TEST_CASE("cpu_aa_smooths_rect_edge_and_corner", "[render][aa]") {
+    CpuRenderer renderer;
+    renderer.beginFrame(Size{100.0F, 80.0F});
+    // 白色圆角矩形画在暗底上：分数边界像素与底色混合（不是全有/全无
+    // 的硬边），内部仍是纯色。顶边取 20.4：像素 20 的中心 20.5 距边界
+    // 0.1 → 半覆盖量级的混合。
+    renderer.drawRect(Rect::fromXYWH(20.0F, 20.4F, 40.0F, 30.0F),
+                      Color::fromRGBA(255, 255, 255),
+                      CornerRadius::all(8.0F));
+    renderer.endFrame();
+    const auto& px = renderer.pixels();
+    // 内部纯白。
+    CHECK(pixelAt(px, 40, 35) == Color::fromRGBA(255, 255, 255));
+    // 分数边界行：介于底色与纯白之间，且向内单调变亮。
+    const Color edge = pixelAt(px, 40, 20);
+    const Color inner = pixelAt(px, 40, 22);
+    CHECK(edge.r > 24);      // 不是纯底色
+    CHECK(edge.r < 255);     // 也不是纯表面
+    CHECK(edge.r < inner.r);
+    // 圆角外深处的像素保持底色（AA 不越界扩散）。
+    CHECK(pixelAt(px, 18, 18) == Color::fromRGBA(24, 24, 27, 255));
+    // 角弧上存在中间值像素（平滑过渡的直接证据）。
+    int blended = 0;
+    for (int y = 18; y < 30; ++y) {
+        for (int x = 18; x < 30; ++x) {
+            const std::uint8_t r = pixelAt(px, x, y).r;
+            if (r > 30 && r < 250) {
+                ++blended;
+            }
+        }
+    }
+    CHECK(blended >= 4);
+
+    // 整数对齐的几何保持锐利（边界恰在像素网格上时不引入模糊）。
+    CpuRenderer aligned;
+    aligned.beginFrame(Size{40.0F, 30.0F});
+    aligned.drawRect(Rect::fromXYWH(10.0F, 10.0F, 20.0F, 10.0F),
+                     Color::fromRGBA(255, 255, 255));
+    aligned.endFrame();
+    CHECK(pixelAt(aligned.pixels(), 20, 9) ==
+          Color::fromRGBA(24, 24, 27, 255));  // 边界外整像素干净
+    CHECK(pixelAt(aligned.pixels(), 20, 10) ==
+          Color::fromRGBA(255, 255, 255));    // 边界内整像素全强度
+}
+
+TEST_CASE("cpu_aa_stroke_and_icon_use_partial_coverage", "[render][aa]") {
+    CpuRenderer renderer;
+    renderer.beginFrame(Size{100.0F, 80.0F});
+    // 斜线图标（无圆角矩形）：对角线上的中间值像素证明线条 AA。
+    renderer.drawIcon(
+        std::vector<std::vector<Offset>>{{Offset{0.2F, 0.2F},
+                                          Offset{0.8F, 0.8F}}},
+        Rect::fromXYWH(20.0F, 20.0F, 40.0F, 40.0F),
+        Color::fromRGBA(255, 255, 255), 2.0F);
+    renderer.endFrame();
+    const auto& px = renderer.pixels();
+    int blended = 0;
+    int solid = 0;
+    for (int y = 20; y < 60; ++y) {
+        for (int x = 20; x < 60; ++x) {
+            const std::uint8_t r = pixelAt(px, x, y).r;
+            if (r > 30 && r < 250) {
+                ++blended;
+            } else if (r == 255) {
+                ++solid;
+            }
+        }
+    }
+    CHECK(solid > 10);      // 线芯全强度
+    CHECK(blended >= 8);    // 两侧 AA 过渡带
+
+    // 描边环带：分数边界的上下沿出现 AA 过渡（整数对齐处保持锐利）。
+    CpuRenderer stroked;
+    stroked.beginFrame(Size{100.0F, 80.0F});
+    stroked.drawRectStroke(Rect::fromXYWH(20.0F, 20.4F, 40.0F, 30.0F),
+                           Color::fromRGBA(255, 255, 255), CornerRadius::all(8.0F),
+                           2.0F);
+    stroked.endFrame();
+    const auto& spx = stroked.pixels();
+    CHECK(pixelAt(spx, 40, 21) == Color::fromRGBA(255, 255, 255));  // 环带内部
+    int strokeBlend = 0;
+    for (int y = 18; y < 25; ++y) {
+        const std::uint8_t r = pixelAt(spx, 40, y).r;
+        if (r > 30 && r < 250) {
+            ++strokeBlend;
+        }
+    }
+    CHECK(strokeBlend >= 1);  // 分数边界沿的 AA 过渡
+}
+
+TEST_CASE("cpu_double_buffer_returns_completed_frame", "[render][aa]") {
+    CpuRenderer renderer;
+    // 帧 1：红色；endFrame 后 pixels() 是红色完成帧。
+    renderer.beginFrame(Size{10.0F, 10.0F});
+    renderer.drawRect(Rect::fromXYWH(0.0F, 0.0F, 10.0F, 10.0F),
+                      Color::fromRGBA(255, 0, 0));
+    renderer.endFrame();
+    CHECK(pixelAt(renderer.pixels(), 5, 5) == Color::fromRGBA(255, 0, 0));
+    // 帧 2：绿色覆盖；完成帧切换为绿色（back/front 隔离，无残留）。
+    renderer.beginFrame(Size{10.0F, 10.0F});
+    renderer.drawRect(Rect::fromXYWH(0.0F, 0.0F, 10.0F, 10.0F),
+                      Color::fromRGBA(0, 255, 0));
+    renderer.endFrame();
+    CHECK(pixelAt(renderer.pixels(), 5, 5) == Color::fromRGBA(0, 255, 0));
+    // 帧间无内存增长（swap 而非拷贝）无法直接断言容量，但连续多帧稳定。
+    for (int i = 0; i < 8; ++i) {
+        renderer.beginFrame(Size{10.0F, 10.0F});
+        renderer.drawRect(Rect::fromXYWH(0.0F, 0.0F, 10.0F, 10.0F),
+                          Color::fromRGBA(0, 0, 255));
+        renderer.endFrame();
+    }
+    CHECK(pixelAt(renderer.pixels(), 5, 5) == Color::fromRGBA(0, 0, 255));
+}

@@ -135,6 +135,13 @@ class AppShell {
     }
     // 显式请求重建（应用侧业务状态不在 StateStore 时）。
     void markDirty() { dirty_ = true; }
+    void setVisualPreviewState(std::string key, style::WidgetState state) {
+        const auto found = previewStates_.find(key);
+        if (found == previewStates_.end() || !(found->second == state)) {
+            previewStates_.insert_or_assign(std::move(key), state);
+            dirty_ = true;
+        }
+    }
     // 请求全量重绘（模态/路由整树切换等，局部 damage 不可靠时）。
     void requestFullRepaint() { fullRepaintPending_ = true; }
     // 关闭请求（窗口 X / WindowCloseRequested）：true = 已消费（modal/
@@ -171,6 +178,9 @@ class AppShell {
     // 关闭全量重绘；打开期间 overlay 子树独立 damage diff。
     // 已知限制：IME 候选框查询/惯性滚动仍走主树（菜单场景无文本字段）。
     void setOverlay(core::Widget overlay);
+    // Re-evaluated after main-tree layout, so anchored menus follow resize/theme.
+    void setOverlayBuilder(std::function<std::optional<core::Widget>()> builder,
+                           WheelSink wheel = {}, ScrollDragSink drag = {});
     void clearOverlay();
     [[nodiscard]] bool hasOverlay() const {
         return overlayTemplate_.has_value();
@@ -228,7 +238,12 @@ class AppShell {
     }
     // 连续动画是否活跃（caret 闪烁/转场/状态过渡/tooltip 计时/onAnimate）；
     // runApp 据此驱动 FrameScheduler 动画帧。
-    [[nodiscard]] bool animationsActive() const { return animationsActive_; }
+    [[nodiscard]] bool animationsActive() const {
+        return animationsActive_ || !stateBlends_.empty() || transitionsPaintPending_;
+    }
+    [[nodiscard]] bool motionEnabled() const {
+        return config_.motionTransitions && hasTicked_;
+    }
     // M11 review：最早的离散动画唤醒时刻（Armed tooltip 延迟到期；
     // 时钟与 tick 同源）。runApp 注入 FrameScheduler 空闲定时唤醒，
     // 等待期不占用连续动画帧。
@@ -236,10 +251,10 @@ class AppShell {
 
     // --- M11：Tooltip hover 延迟驱动 ---
     // 注册 anchor→tooltip 关联：hover 停留 tooltipDelayMs 后 tooltipKey
-    // 子树淡入（tooltipFadeMs），离开淡出；Hidden 态强制 transitionAlpha 0
-    //（含重建后的新树，替代 M6 常驻显示）。锚点需为 hover 载体（Button/
-    // TextField/Checkbox/Switch）且带 key；tooltip 节点建议放 Stack +
-    // withStackPosition 悬浮定位。语义树不变（alpha 是纯绘制通道）。
+    // 子树淡入（tooltipFadeMs），离开淡出；键盘焦点同样触发。按压、
+    // 滚动、取消及锚点移除会隐藏。绘制样式继承锚点的 ThemeScope；
+    // 纯绘制副本在根后绘制（下方 8px、不足则翻转，窗口边距 8px），
+    // 不受内容视口裁剪，不增加输入/语义树。隐藏节点 alpha 强制为 0。
     void registerTooltip(std::string anchorKey, std::string tooltipKey);
 
     // 热重载：替换 UI 模板（后续重建不再调用 config.build，直到再次
@@ -248,6 +263,7 @@ class AppShell {
 
     // --- 查询（测试/宿主/IME） ---
     [[nodiscard]] const core::RenderNode& root() const { return root_; }
+    [[nodiscard]] style::Theme effectiveThemeForKey(const std::string& key) const;
     // IME 候选框锚点：光标逻辑矩形（与 painter 同一 TextLayout，M1）。
     [[nodiscard]] core::Rect focusedTextRect() const;
     // 光标 x 偏移（逻辑像素；供分离式 cursor 平台的宿主适配）。
@@ -271,7 +287,7 @@ class AppShell {
     [[nodiscard]] core::Size view() const { return view_; }
     [[nodiscard]] style::StyleContext styleContext() const {
         return style::StyleContext{theme_, interactionSnapshot_,
-                                   accessibility_, deviceScale_};
+                                   accessibility_, deviceScale_, &previewStates_};
     }
 
   private:
@@ -298,6 +314,7 @@ class AppShell {
         std::string key{};
         std::string identity{};  // 首次应用时解析（begin 后可能尚未重建）
         core::Tween tween{};
+        double baseDurationMs{0.0};
         float sampledAlpha{0.0F};
         float lastPaintedAlpha{0.0F};
         std::uint64_t startMs{0};
@@ -316,21 +333,33 @@ class AppShell {
         enum class Phase : std::uint8_t { Hidden, Armed, Visible, Fading };
         Phase phase{Phase::Hidden};
         std::uint64_t armedAtMs{0};
+        bool suppressed{false};
     };
     bool advanceTooltips(std::uint64_t nowMs);
     bool applyTooltipVisibility(std::vector<core::Rect>& damage);
     bool hasTransitionForKey(const std::string& key) const;
+    void dismissTooltips();
+    bool updateTooltipPaintNodes(std::vector<core::Rect>& damage);
     std::vector<TooltipRegistration> tooltips_{};
+    std::vector<core::RenderNode> tooltipPaintNodes_{};
+    std::vector<std::string> tooltipSourceIdentities_{};
+    std::map<std::string, core::RenderNode> tooltipTemplates_{};
+    void rebuildTooltipTemplates();
     // M10：状态色过渡（交互快照变化时捕获旧样式，逐帧向新样式插值）。
-    void captureStateBlend();
+    void retargetStateBlends(const core::RenderNode& fresh);
+    std::map<const core::Element*, style::Theme> scopeThemes_{};
     bool applyStateBlend(std::vector<core::Rect>& damage);
     std::vector<ActiveTransition> transitions_;
     bool transitionsPaintPending_{false};
     bool animationsActive_{false};
-    std::map<std::string, core::ResolvedStyle> blendFrom_{};
-    std::map<std::string, core::ResolvedStyle> blendTo_{};
-    std::uint64_t blendStartMs_{0};
-    bool stateBlendActive_{false};
+    bool hasTicked_{false};
+    struct StateBlend {
+        core::ResolvedStyle from;
+        core::ResolvedStyle to;
+        std::uint64_t startMs;
+    };
+    std::map<std::string, StateBlend> stateBlends_{};
+    bool suppressStateBlend_{false};
 
     ShellConfig config_{};
     core::StateStore state_{};
@@ -344,12 +373,16 @@ class AppShell {
     style::Theme theme_{style::Theme::dark()};
     accessibility::AccessibilitySettings accessibility_{};
     style::InteractionStateSnapshot interactionSnapshot_{};
+    std::map<std::string, style::WidgetState> previewStates_{};
     // 热重载模板覆盖（有值时优先于 config_.build）。
     std::optional<core::Widget> swapTemplate_{};
     std::optional<core::Element> element_{};
     core::RenderNode root_{};
     // M11：框架级 overlay（独立布局/独立 identity 命名空间）。
     std::optional<core::Widget> overlayTemplate_{};
+    std::function<std::optional<core::Widget>()> overlayBuilder_{};
+    WheelSink overlayWheel_{};
+    ScrollDragSink overlayDrag_{};
     std::optional<core::RenderNode> overlayRoot_{};
     core::RenderNode previousOverlayRoot_{};
     bool hasPreviousOverlayRoot_{false};

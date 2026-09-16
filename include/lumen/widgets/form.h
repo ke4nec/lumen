@@ -7,8 +7,16 @@
 
 #include "lumen/core/state.h"
 #include "lumen/core/widget.h"
+#include "lumen/style/theme.h"
 
 namespace lumen::widgets {
+
+// Stable label/field/support slots. Empty support still reserves one caption
+// line (at least 18 logical px); longer errors expand without replacing field.
+[[nodiscard]] core::Widget makeFormField(std::string label, core::Widget field,
+                                         std::string support,
+                                         const style::Theme& theme,
+                                         std::string key);
 
 // v0.3 阶段8D (plan §3.4): 表单校验。
 //

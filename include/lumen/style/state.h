@@ -8,9 +8,9 @@ namespace lumen::style {
 // 视觉系统样式状态（docs/lumen-visual-system-design.md §5）。
 //
 // 交互层提供稳定 identity 对应的状态快照；disabled/invalid/checked/
-// selected 属于 Widget 声明（disabled 优先级最高）。解析规则固定：
-// disabled > invalid（可用性语义不被覆盖）> pressed（覆盖 hover）>
-// focused（必须可见焦点环）> checked/selected（仅相应控件）。
+// selected 属于 Widget 声明。状态按通道合成：disabled 抑制交互；
+// invalid 决定错误边框，pressed 覆盖 hover 表面，focus 环独立，
+// checked/selected 保留真实选择标记。
 
 struct WidgetState {
     bool hovered{false};

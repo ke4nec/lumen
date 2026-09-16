@@ -676,10 +676,11 @@ TEST_CASE("adapt_platform_theme_preserves_derivation", "[style]") {
     CHECK(adapted.colors.contentPrimary == Color{0, 0, 0, 255});
     CHECK(adapted.typography.body.fontSize == Approx(14.0F * 1.5F));
     // accent 覆盖走 token 链（filled 背景/勾选指示一致派生）。
-    CHECK(adapted.colors.accent == Color{200, 100, 50});
-    CHECK(adapted.button.filled.background == Color{200, 100, 50});
-    CHECK(adapted.checkbox.indicatorChecked == Color{200, 100, 50});
-    CHECK(adapted.switchControl.trackOn == Color{200, 100, 50});
+    CHECK(adapted.colors.accent.r > adapted.colors.accent.g);
+    CHECK(adapted.colors.accent.g > adapted.colors.accent.b);
+    CHECK(adapted.button.filled.background == adapted.colors.accent);
+    CHECK(adapted.checkbox.indicatorChecked == adapted.colors.accent);
+    CHECK(adapted.switchControl.trackOn == adapted.colors.accent);
     // 不带 accent：强调色来自方向的 light 派生（dark 与 light 色板按模式
     // 取对比度变体，非 base 字面值）。
     const Theme kept = lumen::style::adaptPlatformTheme(base, settings,
@@ -988,7 +989,7 @@ TEST_CASE("style_radio_resolves_dedicated_states", "[style]") {
     CHECK(disabled.checked);
     CHECK(disabled.dot == fixture.theme.colors.disabledContent);
     CHECK(disabled.indicatorChecked ==
-          fixture.theme.colors.disabledBackground);
+          fixture.theme.colors.disabledContent);
 
     // invalid（未选）轮廓取错误色。
     const auto& invalid = radioPart(fixture.resolve(
@@ -1085,4 +1086,25 @@ TEST_CASE("style_key_state_combinations_stay_distinguishable", "[style]") {
     CHECK(checkedDisabled.checked);
     CHECK(checkedDisabled.mark ==
           Fixture{}.theme.colors.disabledContent);
+}
+
+TEST_CASE("system_accent_preserves_contrast_in_all_interaction_surfaces", "[style][visual]") {
+    for (const bool dark : {false, true}) {
+        for (const bool hc : {false, true}) {
+            lumen::accessibility::AccessibilitySettings settings;
+            settings.highContrast = hc;
+            for (const auto accent : {Color{255, 240, 0, 255}, Color{5, 8, 12, 255},
+                                      Color{200, 10, 80, 255}, Color{0, 255, 255, 255}}) {
+                const auto theme = lumen::style::adaptPlatformTheme(Theme::dark(), settings, dark, accent);
+                const auto& c = theme.colors;
+                for (const auto overlay : {Color::transparent(), c.hoverOverlay, c.pressedOverlay}) {
+                    CHECK(contrastRatio(c.onAccent, lumen::style::blendOver(c.accent, overlay)) >= 4.5);
+                }
+                for (const auto surface : {c.pageBackground, c.surface, c.surfaceSunken, c.surfaceElevated}) {
+                    CHECK(contrastRatio(c.accent, surface) >= 3.0);
+                    CHECK(contrastRatio(c.accentContent, surface) >= (hc ? 7.0 : 4.5));
+                }
+            }
+        }
+    }
 }

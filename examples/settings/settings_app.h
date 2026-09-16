@@ -372,28 +372,14 @@ class SettingsApp {
             std::vector<core::Widget> form;
             form.push_back(core::withKey(titleText("Profile", theme),
                                          "form-title"));
-            form.push_back(core::withKey(mutedLabel("Nickname", theme),
-                                         "nickname-label"));
-            form.push_back(core::withKey(
-                fieldWidget("nickname", "Nickname", "nickname-field",
-                            form_.errors().count("nickname") != 0),
-                "nickname-field"));
-            if (form_.errors().count("nickname") != 0) {
-                form.push_back(core::withKey(
-                    errorText(form_.errors().at("nickname"), theme),
-                    "nickname-error"));
-            }
-            form.push_back(
-                core::withKey(mutedLabel("Email", theme), "email-label"));
-            form.push_back(core::withKey(
-                fieldWidget("email", "name@example.com", "email-field",
-                            form_.errors().count("email") != 0),
-                "email-field"));
-            if (form_.errors().count("email") != 0) {
-                form.push_back(core::withKey(
-                    errorText(form_.errors().at("email"), theme),
-                    "email-error"));
-            }
+            form.push_back(widgets::makeFormField("Nickname",
+                fieldWidget("nickname", "Nickname", "nickname-field", form_.errors().count("nickname") != 0),
+                form_.errors().count("nickname") ? form_.errors().at("nickname") : "",
+                theme, "nickname"));
+            form.push_back(widgets::makeFormField("Email",
+                fieldWidget("email", "name@example.com", "email-field", form_.errors().count("email") != 0),
+                form_.errors().count("email") ? form_.errors().at("email") : "",
+                theme, "email"));
             form.push_back(core::withKey(
                 buttonWidget("Save", "save", "save-button",
                              core::ButtonVariant::Filled),
@@ -494,6 +480,7 @@ class SettingsApp {
             core::EdgeInsets{}, core::EdgeInsets{},
             shell_.theme().colors.pageBackground);
         ui.key = "root";
+        ui.children.front().key = "settings-route";
 
         if (dialogOpen_) {
             // S4（§8.2）：整体 padding 24 由 makeDialog 施加；标题到正文
@@ -501,21 +488,18 @@ class SettingsApp {
             core::Widget body = core::withKey(
                 core::makeText("Profile updated.", theme.typography.body),
                 "dialog-body");
-            body.margin.top = style::spaceToken(3);
             core::Widget close = core::withKey(
                 buttonWidget("Close", "dismiss-dialog", kDialogCloseKey,
                              core::ButtonVariant::Tonal),
                 kDialogCloseKey);
-            close.margin.top = style::spaceToken(3);
             core::Widget content = core::makeColumn({
                 core::withKey(titleText("Saved", theme), "dialog-title"),
                 std::move(body),
-                std::move(close),
             }, core::MainAxisAlignment::Start,
                core::CrossAxisAlignment::Start, style::spaceToken(3));
             core::Widget dialog = widgets::makeDialog(
-                std::move(content), shell_.theme(), "dismiss-dialog",
-                kDialogKey, shell_.view());
+                std::move(content), std::move(close), shell_.theme(), "dismiss-dialog",
+                kDialogKey, shell_.view(), dialogScroll_.offset());
             ui = core::makeStack({std::move(ui), std::move(dialog)});
             ui.key = "root";
         }
@@ -532,6 +516,7 @@ class SettingsApp {
         app::ShellConfig config;
         // settings 的 caret 恒不透明（确定性输出；迁移前行为）。
         config.caretBlink = false;
+        config.motionTransitions = true;
         config.build = [self] { return self->buildUi(); };
         // Escape/返回键统一规则：先问 modal，再问路由栈（plan §3.4）。
         config.onKey = [self](app::AppShell& shell, core::Key key,
@@ -588,6 +573,11 @@ class SettingsApp {
         // modal 焦点规则（plan §3.4 焦点恢复）：弹窗打开时把焦点移入
         // dialog 的 FocusScope，Tab/Enter 在域内处理。
         config.onRebuilt = [self](app::AppShell& shell) {
+            if (self->lastRoute_ != self->navigator_.current()) {
+                if (!self->lastRoute_.empty() && shell.motionEnabled())
+                    shell.beginRouteTransition("settings-route", true);
+                self->lastRoute_ = self->navigator_.current();
+            }
             if (self->dialogOpen_ &&
                 shell.focus().focusedIdentity().find(kDialogKey) ==
                     std::string::npos) {
@@ -601,7 +591,11 @@ class SettingsApp {
             // 顺序一致；plan §3.4 pop 后重新聚焦）。
             if (self->focusRestorePending_) {
                 self->focusRestorePending_ = false;
-                shell.controller().focusFirstFocusable(shell.root());
+                const auto* target = self->dialogReturnKey_.empty() ? nullptr :
+                    core::findNodeByKey(shell.root(), self->dialogReturnKey_);
+                if (target && target->enabled) shell.controller().focusNode(*target);
+                else shell.controller().focusFirstFocusable(shell.root());
+                self->dialogReturnKey_.clear();
             }
         };
         return config;
@@ -708,7 +702,7 @@ class SettingsApp {
         };
         handlers["save"] = [this] {
             if (form_.validate(shell_.state())) {
-                dialogOpen_ = true;
+                openDialog();
             }
             shell_.markDirty();
             shell_.requestFullRepaint();
@@ -726,6 +720,13 @@ class SettingsApp {
 
     bool scrollWheel(const core::RenderNode& root, const core::RenderNode* hit,
                      float deltaY) {
+        if (hit && hit->key == std::string(kDialogKey) + "-body-scroll") {
+            dialogScroll_.updateExtents(hit->size.height, hit->size.height + hit->scrollExtent);
+            const bool changed = dialogScroll_.applyWheel(deltaY);
+            if (changed) shell_.markDirty();
+            return changed;
+        }
+
         // 命中的视口（interaction 已解析到 ScrollView/ListView）；键盘
         // 滚动（hit 为空）回退到页面主列表。
         const core::RenderNode* viewport = hit;
@@ -781,13 +782,28 @@ class SettingsApp {
         darkMode_ = shell_.theme().darkMode;
     }
 
-    void closeDialog() {
-        dialogOpen_ = false;
+    void openDialog() {
+        if (!dialogOpen_) dialogReturnKey_ = shell_.focus().focusedKey();
+        dialogOpen_ = true;
+        dialogClosing_ = false;
+        dialogScroll_.scrollTo(0);
         shell_.markDirty();
-        shell_.requestFullRepaint();
-        // M5：modal 焦点恢复——弹窗关闭后原 dialog-close 焦点已随树
-        // 消失，恢复到路由内首个可聚焦节点（与 Tab 顺序一致）。
-        focusRestorePending_ = true;
+        if (shell_.motionEnabled()) shell_.beginDialogTransition(kDialogKey, true);
+    }
+
+    void closeDialog() {
+        if (!dialogOpen_ || dialogClosing_) return;
+        const auto finish = [this](app::AppShell& shell) {
+            dialogOpen_ = false;
+            dialogClosing_ = false;
+            shell.markDirty();
+            shell.requestFullRepaint();
+            focusRestorePending_ = true;
+        };
+        if (shell_.motionEnabled()) {
+            dialogClosing_ = true;
+            shell_.beginDialogTransition(kDialogKey, false, finish);
+        } else finish(shell_);
     }
 
     // M10：视口拖动滚动（触摸/指针）与惯性推进（与 scrollWheel 同一
@@ -798,6 +814,9 @@ class SettingsApp {
         if (viewport != nullptr &&
             viewport->type == core::WidgetType::VirtualList) {
             scroll = &library_.scroll();
+        }
+        if (viewport && viewport->key == std::string(kDialogKey) + "-body-scroll") {
+            scroll = &dialogScroll_;
         }
         switch (phase) {
             case core::ScrollDragPhase::Begin:
@@ -872,7 +891,7 @@ class SettingsApp {
     [[nodiscard]] static core::Widget errorText(
         std::string text, const style::Theme& theme) {
         core::StyleOverrides overrides;
-        overrides.foreground = theme.colors.statusError;
+        overrides.foreground = theme.colors.errorContent;
         overrides.text = theme.typography.caption;
         return core::withStyleOverrides(core::makeText(std::move(text)),
                                         std::move(overrides));
@@ -898,6 +917,7 @@ class SettingsApp {
 
     // 应用侧控制器状态（声明在 shell_ 之前：构造期 build 即可读取）。
     core::ScrollController scroll_{};
+    core::ScrollController dialogScroll_{};
     widgets::FormController form_{};
     widgets::NavigatorController navigator_{"home"};
     bool darkMode_{true};
@@ -905,8 +925,11 @@ class SettingsApp {
     bool systemPrefersDark_{false};
     std::optional<core::Color> systemAccent_{};
     bool dialogOpen_{false};
+    bool dialogClosing_{false};
+    std::string dialogReturnKey_{};
     // M5：路由切换后的焦点恢复请求。
     bool focusRestorePending_{false};
+    std::string lastRoute_{};
     // M3：千项库列表（可变缓存供布局期 noteExtent 回填）。
     mutable core::VirtualListController library_{};
     // M4：平台服务动作（main 注入）与最近结果展示。

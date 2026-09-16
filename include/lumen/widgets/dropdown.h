@@ -35,7 +35,7 @@ class DropdownController {
     // 打开菜单：dropdownKey 定位主树值行（锚定其下方），并注册选项/
     // dismiss handler 与打开时高亮（当前值或首项）。anchorTheme 为空时
     // 使用 shell 主题；菜单从 ThemeScope 内的触发器打开时传入该作用域
-    // 的有效主题（§7.3：浮层继承触发器主题，不回落窗口根主题）。
+    // 的有效主题；未传时从 shell 的实际 ThemeScope 自动继承。
     void open(app::AppShell& shell, const std::string& dropdownKey,
               const style::Theme* anchorTheme = nullptr);
     void close(app::AppShell& shell);
@@ -61,9 +61,11 @@ class DropdownController {
     bool open_{false};
     std::string dropdownKey_{};
     // §7.3：触发器有效主题（ThemeScope 内打开时的拷贝；空 = 每次取
-    // shell 当前主题）。主题切换期间保持打开的菜单需应用重开以刷新。
+    // shell 当前主题）。显式主题为快照；自动继承主题在每次主树重建后刷新。
     std::optional<style::Theme> overlayTheme_{};
+    bool explicitTheme_{false};
     core::Rect anchor_{};
+    std::optional<float> scrollOffset_{};
 };
 
 }  // namespace lumen::widgets

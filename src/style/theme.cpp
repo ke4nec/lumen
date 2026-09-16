@@ -95,6 +95,7 @@ const ElevationShadowParams& ElevationTokens::paramsFor(float level) const {
 
 void MotionTokens::reduceAnimation() {
     stateTransitionMs = 0;
+    switchTransitionMs = 0;
     dialogTransitionMs = 0;
     navigatorTransitionMs = 0;
     caretBlinkHalfPeriodMs = 0;
@@ -721,17 +722,49 @@ Theme adaptPlatformTheme(const Theme& base,
                                         base.metrics.density,
                                         base.direction);
     if (accentColor.has_value()) {
-        // 强调色覆盖走 token 链：semantic accent → 组件 token 重建
-        //（filled 背景/勾选指示/开关轨道一致；onAccent 等派生色保持
-        // 基线，与 gallery applyAccent 同口径）。
-        adapted.colors.accent = *accentColor;
-        // S1：透明按钮文字 accentContent 随 accent 重派生（高对比下
-        // accent 自身已满足对比，直接采用）。
-        adapted.colors.accentContent =
-            settings.highContrast
-                ? *accentColor
-                : (darkMode ? mixColors(*accentColor, core::Color{255, 255, 255, 255}, 0.45F)
-                            : mixColors(*accentColor, core::Color{0, 0, 0, 255}, 0.30F));
+        const auto luminance = [](core::Color c) {
+            const auto linear = [](double v) {
+                v /= 255.0;
+                return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
+            };
+            return 0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b);
+        };
+        const auto contrast = [&](core::Color a, core::Color b) {
+            const double x = luminance(a), y = luminance(b);
+            return (std::max(x, y) + 0.05) / (std::min(x, y) + 0.05);
+        };
+        // System accents are arbitrary (including nearly white/yellow). Preserve
+        // their hue while finding a legal tone for text and control marks.
+        auto accent = *accentColor;
+        accent.a = 255;
+        const core::Color endpoint = darkMode ? core::Color{255, 255, 255, 255}
+                                              : core::Color{0, 0, 0, 255};
+        adapted.colors.onAccent = darkMode ? core::Color{0, 0, 0, 255}
+                                           : core::Color{255, 255, 255, 255};
+        const auto safeTone = [&](double surfaceRatio, bool filled) {
+            for (int step = 0; step <= 1000; ++step) {
+                const auto candidate = mixColors(accent, endpoint, float(step) / 1000.0F);
+                bool safe = true;
+                for (const auto surface : {adapted.colors.pageBackground,
+                                           adapted.colors.surface,
+                                           adapted.colors.surfaceSunken,
+                                           adapted.colors.surfaceElevated}) {
+                    safe = safe && contrast(candidate, surface) >= surfaceRatio;
+                }
+                if (filled) {
+                    for (const auto overlay : {core::Color::transparent(),
+                                               adapted.colors.hoverOverlay,
+                                               adapted.colors.pressedOverlay}) {
+                        safe = safe && contrast(adapted.colors.onAccent,
+                            blendOver(candidate, overlay)) >= 4.5;
+                    }
+                }
+                if (safe) return candidate;
+            }
+            return endpoint;
+        };
+        adapted.colors.accent = safeTone(3.0, true);
+        adapted.colors.accentContent = safeTone(settings.highContrast ? 7.0 : 4.5, false);
         adapted.button = buttonTokensFrom(adapted.colors);
         adapted.checkbox = checkboxTokensFrom(adapted.colors);
         adapted.switchControl = switchTokensFrom(adapted.colors);

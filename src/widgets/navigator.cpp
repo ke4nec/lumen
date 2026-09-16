@@ -54,19 +54,23 @@ bool NavigatorController::handleBack(bool modalOpen) {
 core::Widget makeDialog(core::Widget content, const style::Theme& theme,
                         std::string onDismiss, std::string key,
                         core::Size windowSize) {
+    return makeDialog(std::move(content), core::Widget{}, theme,
+                      std::move(onDismiss), std::move(key), windowSize);
+}
+
+core::Widget makeDialog(core::Widget body, core::Widget actions,
+                        const style::Theme& theme, std::string onDismiss,
+                        std::string key, core::Size windowSize,
+                        float bodyScrollOffset) {
     // 全屏 barrier：点击关闭；内容卡居中。§8.2：surfaceElevated +
     // radius 12 + 1px borderDefault + L3 阴影；宽度 240–420（窗口可用宽
     // 优先），高度受窗口可用高度约束（边距 ≥16）；整体 padding 24 由
     // helper 统一施加（内容不再自带边距，避免双重 padding）。
     const style::DialogTokens& tokens = theme.dialog;
     const float windowMargin = 16.0F;
-    const float maxCardWidth =
-        std::max(tokens.minWidth, windowSize.width - 2.0F * windowMargin);
-    const float cardWidth =
-        std::min(tokens.maxWidth,
-                 std::max(tokens.minWidth,
-                          std::min(windowSize.width * tokens.widthRatio,
-                                   maxCardWidth)));
+    const float availableWidth = std::max(0.0F, windowSize.width - 2.0F * windowMargin);
+    const float cardWidth = std::min(availableWidth,
+        std::clamp(windowSize.width * tokens.widthRatio, tokens.minWidth, tokens.maxWidth));
 
     core::Widget barrier = core::makeContainerLeaf(
         windowSize.width, windowSize.height, core::EdgeInsets{},
@@ -76,9 +80,22 @@ core::Widget makeDialog(core::Widget content, const style::Theme& theme,
     barrier.semanticsActions = accessibility::kActionDismiss;
     barrier.key = key.empty() ? key : key + "-barrier";
 
-    // 内容统一 padding（tokens.padding = 24）。
-    core::Widget padded = core::makeContainer(
-        std::move(content), std::nullopt, std::nullopt, tokens.padding);
+    core::Widget scroll = core::makeScrollView(std::move(body), key + "-body-scroll");
+    scroll.scrollOffset = bodyScrollOffset;
+    scroll.showScrollbar = true;
+    scroll.flex = 1.0F;
+    scroll.shrinkWrap = true;
+    std::vector<core::Widget> sections;
+    sections.push_back(std::move(scroll));
+    const bool hasActions = actions.type != core::WidgetType::Container ||
+                            !actions.children.empty() || !actions.text.empty() ||
+                            !actions.key.empty();
+    if (hasActions) {
+        sections.push_back(std::move(actions));
+    }
+    core::Widget padded = core::makeColumn(std::move(sections),
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+        24.0F, tokens.padding);
     core::Widget card;
     card.type = core::WidgetType::Container;
     card.color = tokens.surface;
@@ -89,6 +106,7 @@ core::Widget makeDialog(core::Widget content, const style::Theme& theme,
     // 宽度显式（240–420 / 窗口可用宽优先）；高度内容驱动（Stack 居中
     // 按实际高度对齐，超长内容受根约束压缩）。
     card.width = cardWidth;
+    card.margin = core::EdgeInsets::all(windowMargin);
     card.children.push_back(std::move(padded));
     card.key = key.empty() ? key : key + "-card";
 

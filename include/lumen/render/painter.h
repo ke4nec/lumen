@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string>
+#include <span>
 
 #include "lumen/core/render_node.h"
 #include "lumen/render/render_commands.h"
@@ -24,6 +25,8 @@ struct PaintOptions {
     std::size_t selectionEnd{0};
     bool hasSelection{false};
     std::string composition{};
+    // Paint-only portals suppress their original location; no extra input tree.
+    std::span<const std::string> suppressedIdentities{};
 };
 
 // Walks the render tree, accumulates absolute offsets and programs the

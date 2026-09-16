@@ -96,6 +96,10 @@ void applyOverrides(const Widget& widget, CommonResolvedStyle& common) {
 
 WidgetState stateFor(const Widget& widget, const StyleContext& context,
                      const std::string& identity) {
+    if (context.previewStates != nullptr) {
+        const auto found = context.previewStates->find(widget.key);
+        if (found != context.previewStates->end()) return found->second;
+    }
     const bool checked = widget.type == WidgetType::Checkbox ||
                                  widget.type == WidgetType::Switch
                              ? (widget.checked || widget.selected)
@@ -150,6 +154,8 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
         variantTokens(theme.button, widget.buttonVariant);
 
     core::ButtonResolvedStyle button;
+    button.alignContentStart = widget.alignContentStart;
+    button.reserveIconSpace = widget.reserveIconSpace;
     CommonResolvedStyle& common = button.common;
     // 图标部件（§6.1/§4.5）：槽位尺寸与 gap 按档位，线宽按 16px→1.5
     // 基准比例缩放。
@@ -170,7 +176,9 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
     common.borderWidth = outlined ? theme.metrics.controlBorderWidth : 0.0F;
 
     if (state.disabled) {
-        common.background = theme.colors.disabledBackground;
+        common.background = (outlined || widget.buttonVariant == core::ButtonVariant::Ghost)
+                                ? Color::transparent()
+                                : theme.colors.disabledBackground;
         common.foreground = theme.colors.disabledContent;
         common.border = outlined ? theme.colors.borderDefault
                                  : Color::transparent();
@@ -193,7 +201,9 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
 
     ResolvedStyle resolved;
     resolved.component = button;
-    resolved.minWidth = theme.metrics.buttonMinWidth[index];
+    resolved.minWidth = widget.text.empty() && widget.icon != core::IconId::None
+                            ? theme.metrics.minHeight[index]
+                            : theme.metrics.buttonMinWidth[index];
     resolved.minHeight = theme.metrics.minHeight[index];
     resolved.controlGap = theme.metrics.controlGap[index];
     applyOverrides(widget,
@@ -303,17 +313,14 @@ ResolvedStyle resolveCheckbox(const Widget& widget,
         checkbox.indicatorChecked = theme.colors.disabledBackground;
         checkbox.mark = theme.colors.disabledContent;
         common.foreground = theme.colors.disabledContent;
-    } else if (state.invalid && !checkbox.checked) {
-        checkbox.indicatorOutline = theme.colors.statusError;
-    } else if (state.pressed) {
-        // pressed 对当前指示器表面叠加（§6.4）。
-        checkbox.indicator = blendOver(checkbox.indicator,
-                                       theme.colors.pressedOverlay);
-        checkbox.indicatorChecked = blendOver(checkbox.indicatorChecked,
-                                              theme.colors.pressedOverlay);
-    } else if (state.hovered) {
-        // hover 轮廓取 focusRing（§6.4）。
-        checkbox.indicatorOutline = theme.colors.focusRing;
+    } else {
+        checkbox.indicatorOutline = checkbox.checked ? checkbox.indicatorChecked : checkbox.indicatorOutline;
+        if (state.pressed) {
+            checkbox.indicator = blendOver(checkbox.indicator, theme.colors.pressedOverlay);
+            checkbox.indicatorChecked = blendOver(checkbox.indicatorChecked, theme.colors.pressedOverlay);
+        }
+        if (state.hovered) checkbox.indicatorOutline = theme.colors.focusRing;
+        if (state.invalid) checkbox.indicatorOutline = theme.colors.statusError;
     }
     common.focusWidth = focusWidthFor(state, theme);
     common.text = resolveTextStyle(widget, theme.typography.label,
@@ -357,6 +364,7 @@ ResolvedStyle resolveSwitch(const Widget& widget, const StyleContext& context,
     control.labelGap = tokens.labelGap;
     control.slotSize = indicatorSlot(theme, control.trackWidth);
     control.checked = state.checked || state.selected;
+    control.knobPosition = control.checked ? 1.0F : 0.0F;
 
     if (state.disabled) {
         control.trackOff = theme.colors.disabledBackground;
@@ -365,15 +373,13 @@ ResolvedStyle resolveSwitch(const Widget& widget, const StyleContext& context,
         control.knobOff = theme.colors.disabledContent;
         control.knobOn = theme.colors.disabledContent;
         common.foreground = theme.colors.disabledContent;
-    } else if (state.invalid && !control.checked) {
-        control.trackOutline = theme.colors.statusError;
-    } else if (state.pressed) {
-        control.trackOff = blendOver(control.trackOff,
-                                     theme.colors.pressedOverlay);
-        control.trackOn = blendOver(control.trackOn,
-                                    theme.colors.pressedOverlay);
-    } else if (state.hovered) {
-        control.trackOutline = theme.colors.focusRing;
+    } else {
+        if (state.pressed) {
+            control.trackOff = blendOver(control.trackOff, theme.colors.pressedOverlay);
+            control.trackOn = blendOver(control.trackOn, theme.colors.pressedOverlay);
+        }
+        if (state.hovered) control.trackOutline = theme.colors.focusRing;
+        if (state.invalid) control.trackOutline = theme.colors.statusError;
     }
     common.focusWidth = focusWidthFor(state, theme);
     common.text = resolveTextStyle(widget, theme.typography.label,
@@ -557,6 +563,7 @@ ResolvedStyle resolveTooltip(const Widget& widget,
     common.padding = EdgeInsets::symmetric(tokens.paddingX, tokens.paddingY);
     common.text = theme.typography.caption;
     common.text.color = common.foreground;
+    common.elevation = tokens.elevation;
     applyOverrides(widget, common);
     return resolved;
 }
@@ -608,16 +615,19 @@ ResolvedStyle resolveRadio(const Widget& widget, const StyleContext& context,
     if (state.disabled) {
         radio.indicator = theme.colors.disabledBackground;
         radio.indicatorOutline = theme.colors.disabledContent;
-        radio.indicatorChecked = theme.colors.disabledBackground;
+        radio.indicatorChecked = theme.colors.disabledContent;
         radio.dot = theme.colors.disabledContent;
         common.foreground = theme.colors.disabledContent;
-    } else if (state.invalid && !radio.checked) {
-        radio.indicatorOutline = theme.colors.statusError;
-    } else if (state.pressed) {
-        radio.indicator = blendOver(radio.indicator,
-                                    theme.colors.pressedOverlay);
-    } else if (state.hovered) {
-        radio.indicatorOutline = theme.colors.focusRing;
+    } else {
+        if (state.pressed) radio.indicator = blendOver(radio.indicator, theme.colors.pressedOverlay);
+        if (state.hovered) {
+            radio.indicatorOutline = theme.colors.focusRing;
+            radio.indicatorChecked = theme.colors.focusRing;
+        }
+        if (state.invalid) {
+            radio.indicatorOutline = theme.colors.statusError;
+            radio.indicatorChecked = theme.colors.statusError;
+        }
     }
     common.focusWidth = focusWidthFor(state, theme);
     common.text = resolveTextStyle(widget, theme.typography.label,
@@ -692,7 +702,7 @@ ResolvedStyle resolveStyle(const Widget& widget, const StyleContext& context,
         // 局部主题域：覆盖主题 + 原交互快照（状态解析优先级不变）。
         const StyleContext scoped{*t_themeOverride, context.interaction,
                                   context.accessibility,
-                                  context.deviceScale};
+                                  context.deviceScale, context.previewStates};
         return resolveStyleImpl(widget, scoped, identity);
     }
     return resolveStyleImpl(widget, context, identity);

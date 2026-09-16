@@ -44,6 +44,8 @@ struct CommonResolvedStyle {
 };
 
 struct ButtonResolvedStyle {
+    bool alignContentStart{false};
+    bool reserveIconSpace{false};
     CommonResolvedStyle common{};
     // 尾随图标部件（§6.1）：尺寸取 metrics.inlineIconSize 档位、间距取
     // 档位 gap、线宽按 16px→1.5 基准比例缩放（§4.5）。IconId::None 时
@@ -98,6 +100,7 @@ struct SwitchResolvedStyle {
     float knobSize{14.0F};
     // 由 (trackHeight - knobSize) / 2 推导（§6.4），随档位变化。
     float knobInset{3.0F};
+    float knobPosition{0.0F}; // Pure paint value: 0 = off, 1 = on.
     float labelGap{8.0F};
     // 轨道槽位（§4.4）：trackWidth + 2 × (focusRingWidth + 1px 隔离带)。
     float slotSize{0.0F};
@@ -317,8 +320,7 @@ inline void lerpCommonStyleColors(CommonResolvedStyle& into,
     into.background = lerpColor(from.background, to.background, t);
     into.foreground = lerpColor(from.foreground, to.foreground, t);
     into.border = lerpColor(from.border, to.border, t);
-    into.focusRing = lerpColor(from.focusRing, to.focusRing, t);
-    into.focusIsolation = lerpColor(from.focusIsolation, to.focusIsolation, t);
+    // Focus is immediate and independent of surface transitions.
     into.selection = lerpColor(from.selection, to.selection, t);
     into.text.color = lerpColor(from.text.color, to.text.color, t);
 }
@@ -329,7 +331,7 @@ inline void lerpCommonStyleColors(CommonResolvedStyle& into,
                                                    const ResolvedStyle& to,
                                                    float t) {
     ResolvedStyle result = to;
-    if (from.component.index() != to.component.index()) {
+    if (t >= 1.0F || from.component.index() != to.component.index()) {
         return result;
     }
     std::visit(
@@ -353,6 +355,9 @@ inline void lerpCommonStyleColors(CommonResolvedStyle& into,
                                   toPart.preeditUnderline, t);
                 } else if constexpr (std::is_same_v<To,
                                                    CheckboxResolvedStyle>) {
+                    const auto fill = lerpColor(
+                        fromPart.checked ? fromPart.indicatorChecked : fromPart.indicator,
+                        toPart.checked ? toPart.indicatorChecked : toPart.indicator, t);
                     toPart.indicator =
                         lerpColor(fromPart.indicator, toPart.indicator, t);
                     toPart.indicatorOutline =
@@ -362,18 +367,33 @@ inline void lerpCommonStyleColors(CommonResolvedStyle& into,
                         lerpColor(fromPart.indicatorChecked,
                                   toPart.indicatorChecked, t);
                     toPart.mark = lerpColor(fromPart.mark, toPart.mark, t);
+                    if (fromPart.checked != toPart.checked) {
+                        if (toPart.checked) toPart.indicatorChecked = fill;
+                        else toPart.indicator = fill;
+                    }
                 } else if constexpr (std::is_same_v<To,
                                                     SwitchResolvedStyle>) {
-                    toPart.trackOff =
-                        lerpColor(fromPart.trackOff, toPart.trackOff, t);
+                    const Color track = lerpColor(
+                        fromPart.checked ? fromPart.trackOn : fromPart.trackOff,
+                        toPart.checked ? toPart.trackOn : toPart.trackOff, t);
+                    const Color knob = lerpColor(
+                        fromPart.checked ? fromPart.knobOn : fromPart.knobOff,
+                        toPart.checked ? toPart.knobOn : toPart.knobOff, t);
+                    if (fromPart.checked != toPart.checked || fromPart.knobPosition != toPart.knobPosition) {
+                        toPart.trackOff = track;
+                        toPart.trackOn = track;
+                        toPart.knobOff = knob;
+                        toPart.knobOn = knob;
+                    } else {
+                        toPart.trackOff = lerpColor(fromPart.trackOff, toPart.trackOff, t);
+                        toPart.trackOn = lerpColor(fromPart.trackOn, toPart.trackOn, t);
+                        toPart.knobOff = lerpColor(fromPart.knobOff, toPart.knobOff, t);
+                        toPart.knobOn = lerpColor(fromPart.knobOn, toPart.knobOn, t);
+                    }
+                    toPart.knobPosition = fromPart.knobPosition +
+                        (toPart.knobPosition - fromPart.knobPosition) * t;
                     toPart.trackOutline =
                         lerpColor(fromPart.trackOutline, toPart.trackOutline, t);
-                    toPart.trackOn =
-                        lerpColor(fromPart.trackOn, toPart.trackOn, t);
-                    toPart.knobOff =
-                        lerpColor(fromPart.knobOff, toPart.knobOff, t);
-                    toPart.knobOn =
-                        lerpColor(fromPart.knobOn, toPart.knobOn, t);
                 } else if constexpr (std::is_same_v<To,
                                                     RadioResolvedStyle>) {
                     toPart.indicator =

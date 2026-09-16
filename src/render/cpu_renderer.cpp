@@ -44,7 +44,7 @@ void CpuRenderer::setDeviceScale(float scale) {
         deviceScale_ = scale;
         // Pixel dimensions change with the scale; the preserved previous
         // frame is stale until the next full frame.
-        hasPrevious_ = false;
+        hasFront_ = false;
     }
 }
 
@@ -78,13 +78,37 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
         static_cast<std::size_t>(buffer_.width) *
         static_cast<std::size_t>(buffer_.height) * 4;
     const bool canPreserve =
-        mode == FrameMode::Preserve && hasPrevious_ &&
-        previous_.width == buffer_.width && previous_.height == buffer_.height;
-    if (canPreserve && damage.size.width <= 0.0F &&
-        damage.size.height <= 0.0F) {
-        // Pure Preserve: start from the previous frame so untouched pixels
-        // survive; the caller scopes the repaint with clipRect.
-        buffer_.rgba = previous_.rgba;
+        mode == FrameMode::Preserve && hasFront_ &&
+        front_.width == buffer_.width && front_.height == buffer_.height;
+    if (canPreserve) {
+        // 双缓冲 Preserve（零拷贝）：交换使 buffer_ 携带上一完成帧；
+        // 未触碰像素原样存活，调用方用 clipRect 约束重绘范围。
+        std::swap(buffer_, front_);
+        if (damage.size.width > 0.0F && damage.size.height > 0.0F) {
+            // Damage-scoped Preserve：仅把损坏区清成底色（等价全帧重绘
+            // 的语义，但不需要整帧拷贝——旧的"四周拷贝"被就地清底取
+            // 代）。
+            const int dx0 =
+                std::clamp(toPixel(damage.left()), 0, buffer_.width);
+            const int dy0 =
+                std::clamp(toPixel(damage.top()), 0, buffer_.height);
+            const int dx1 =
+                std::clamp(toPixel(damage.right()), 0, buffer_.width);
+            const int dy1 =
+                std::clamp(toPixel(damage.bottom()), 0, buffer_.height);
+            for (int y = dy0; y < dy1; ++y) {
+                std::size_t offset =
+                    static_cast<std::size_t>(y) *
+                    static_cast<std::size_t>(buffer_.width) * 4;
+                for (int x = dx0; x < dx1; ++x) {
+                    buffer_.rgba[offset] = clearColor_.r;
+                    buffer_.rgba[offset + 1] = clearColor_.g;
+                    buffer_.rgba[offset + 2] = clearColor_.b;
+                    buffer_.rgba[offset + 3] = clearColor_.a;
+                    offset += 4;
+                }
+            }
+        }
     } else {
         buffer_.rgba.assign(bytes, 0);
         for (std::size_t i = 0; i + 3 < buffer_.rgba.size(); i += 4) {
@@ -92,30 +116,6 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
             buffer_.rgba[i + 1] = clearColor_.g;
             buffer_.rgba[i + 2] = clearColor_.b;
             buffer_.rgba[i + 3] = clearColor_.a;
-        }
-        if (canPreserve) {
-            // Damage-scoped Preserve: keep the previous frame everywhere
-            // OUTSIDE the damage rect; inside it the clear color shows until
-            // the caller repaints, matching a full repaint exactly even over
-            // transparent backgrounds.
-            const int dx0 = std::clamp(toPixel(damage.left()), 0, buffer_.width);
-            const int dy0 = std::clamp(toPixel(damage.top()), 0, buffer_.height);
-            const int dx1 = std::clamp(toPixel(damage.right()), 0, buffer_.width);
-            const int dy1 = std::clamp(toPixel(damage.bottom()), 0, buffer_.height);
-            const auto copyBand = [&](int y0, int y1, int x0, int x1) {
-                for (int y = y0; y < y1; ++y) {
-                    const std::size_t dst =
-                        static_cast<std::size_t>(y) * buffer_.width * 4;
-                    const std::size_t src =
-                        static_cast<std::size_t>(y) * previous_.width * 4;
-                    std::copy_n(previous_.rgba.begin() + src + x0 * 4,
-                                (x1 - x0) * 4, buffer_.rgba.begin() + dst + x0 * 4);
-                }
-            };
-            copyBand(0, dy0, 0, buffer_.width);                 // above
-            copyBand(dy1, buffer_.height, 0, buffer_.width);    // below
-            copyBand(dy0, dy1, 0, dx0);                         // left
-            copyBand(dy0, dy1, dx1, buffer_.width);             // right
         }
     }
     clip_.clear();
@@ -201,66 +201,106 @@ void CpuRenderer::blendPixel(int px, int py, core::Color color) {
 
 namespace {
 
-// 圆角矩形的逻辑空间形状（半径已夹取到半边长）。fill 与 stroke 共用同
-// 一包含判定，边缘/拐角语义一致（像素中心采样）。
-struct RoundedRectShape {
-    core::Rect rect{};
+// 圆角矩形的设备像素空间形状（AA 用；边界为实数，半径已夹取到半边
+// 长）。fill/stroke/图标共用同一距离场，边角语义跨图元一致。
+struct DeviceShape {
+    float x0{0.0F};
+    float y0{0.0F};
+    float x1{0.0F};
+    float y1{0.0F};
     float rTL{0.0F};
     float rTR{0.0F};
     float rBL{0.0F};
     float rBR{0.0F};
-    bool round{false};
 };
 
-RoundedRectShape shapeFor(const core::Rect& rect,
-                          const core::CornerRadius& radius) {
-    const float minSide = std::min(rect.size.width, rect.size.height) * 0.5F;
-    RoundedRectShape shape;
-    shape.rect = rect;
-    shape.rTL = std::clamp(radius.topLeft, 0.0F, minSide);
-    shape.rTR = std::clamp(radius.topRight, 0.0F, minSide);
-    shape.rBL = std::clamp(radius.bottomLeft, 0.0F, minSide);
-    shape.rBR = std::clamp(radius.bottomRight, 0.0F, minSide);
-    shape.round = shape.rTL > 0.0F || shape.rTR > 0.0F || shape.rBL > 0.0F ||
-                  shape.rBR > 0.0F;
+// 设备空间形状：逻辑 rect/radius × deviceScale（无 toPixel 舍入——AA
+// 覆盖率需要亚像素精度的边界）。
+DeviceShape deviceShapeFor(const core::Rect& rect,
+                           const core::CornerRadius& radius, float scale) {
+    const float w = rect.size.width * scale;
+    const float h = rect.size.height * scale;
+    const float minSide = std::min(w, h) * 0.5F;
+    DeviceShape shape;
+    shape.x0 = rect.origin.x * scale;
+    shape.y0 = rect.origin.y * scale;
+    shape.x1 = shape.x0 + w;
+    shape.y1 = shape.y0 + h;
+    shape.rTL = std::clamp(radius.topLeft * scale, 0.0F, minSide);
+    shape.rTR = std::clamp(radius.topRight * scale, 0.0F, minSide);
+    shape.rBL = std::clamp(radius.bottomLeft * scale, 0.0F, minSide);
+    shape.rBR = std::clamp(radius.bottomRight * scale, 0.0F, minSide);
     return shape;
 }
 
-bool insideShape(const RoundedRectShape& shape, float lx, float ly) {
-    if (lx < shape.rect.left() || lx >= shape.rect.right() ||
-        ly < shape.rect.top() || ly >= shape.rect.bottom()) {
+// 形状整体内缩 inset（半径同步内缩、夹取 ≥0；退化为空时 bounds 反转，
+// 调用方用 width/height ≤0 判定）。
+DeviceShape insetShape(const DeviceShape& shape, float inset) {
+    DeviceShape out;
+    out.x0 = shape.x0 + inset;
+    out.y0 = shape.y0 + inset;
+    out.x1 = shape.x1 - inset;
+    out.y1 = shape.y1 - inset;
+    out.rTL = std::max(0.0F, shape.rTL - inset);
+    out.rTR = std::max(0.0F, shape.rTR - inset);
+    out.rBL = std::max(0.0F, shape.rBL - inset);
+    out.rBR = std::max(0.0F, shape.rBR - inset);
+    return out;
+}
+
+// 圆角矩形有符号距离（设备像素；边界 0，外正内负）。四角半径按点所在
+// 象限取（标准 rounded-box SDF 的逐角变体）。
+float sdRoundedRect(const DeviceShape& s, float x, float y) {
+    const float halfW = (s.x1 - s.x0) * 0.5F;
+    const float halfH = (s.y1 - s.y0) * 0.5F;
+    if (halfW <= 0.0F || halfH <= 0.0F) {
+        // 退化形状：取中心点距离为正（完全在外）。
+        const float dx = std::max(s.x0 - x, x - s.x1);
+        const float dy = std::max(s.y0 - y, y - s.y1);
+        return std::max(dx, dy) + 1.0F;
+    }
+    const float px = x - (s.x0 + halfW);
+    const float py = y - (s.y0 + halfH);
+    const float r = px < 0.0F ? (py < 0.0F ? s.rTL : s.rBL)
+                              : (py < 0.0F ? s.rTR : s.rBR);
+    const float qx = std::abs(px) - halfW + r;
+    const float qy = std::abs(py) - halfH + r;
+    const float ax = std::max(qx, 0.0F);
+    const float ay = std::max(qy, 0.0F);
+    return std::min(std::max(qx, qy), 0.0F) + std::sqrt(ax * ax + ay * ay) -
+           r;
+}
+
+// 廉价的"整像素在内"判定（快速区填充用）：边界内缩 1px 的盒 + 圆角
+// 象限测试，保守但不计算平方根。
+bool deepInside(const DeviceShape& inset, float x, float y) {
+    if (inset.x1 - inset.x0 <= 0.0F || inset.y1 - inset.y0 <= 0.0F) {
         return false;
     }
-    if (!shape.round) {
-        return true;
+    if (x < inset.x0 || x >= inset.x1 || y < inset.y0 || y >= inset.y1) {
+        return false;
     }
     float dx = 0.0F;
     float dy = 0.0F;
     float r = 0.0F;
-    if (lx < shape.rect.left() + shape.rTL && ly < shape.rect.top() + shape.rTL) {
-        r = shape.rTL;
-        dx = lx - (shape.rect.left() + r);
-        dy = ly - (shape.rect.top() + r);
-    } else if (lx >= shape.rect.right() - shape.rTR &&
-               ly < shape.rect.top() + shape.rTR) {
-        r = shape.rTR;
-        dx = lx - (shape.rect.right() - r);
-        dy = ly - (shape.rect.top() + r);
-    } else if (lx < shape.rect.left() + shape.rBL &&
-               ly >= shape.rect.bottom() - shape.rBL) {
-        r = shape.rBL;
-        dx = lx - (shape.rect.left() + r);
-        dy = ly - (shape.rect.bottom() - r);
-    } else if (lx >= shape.rect.right() - shape.rBR &&
-               ly >= shape.rect.bottom() - shape.rBR) {
-        r = shape.rBR;
-        dx = lx - (shape.rect.right() - r);
-        dy = ly - (shape.rect.bottom() - r);
+    if (x < inset.x0 + inset.rTL && y < inset.y0 + inset.rTL) {
+        r = inset.rTL;
+        dx = x - (inset.x0 + r);
+        dy = y - (inset.y0 + r);
+    } else if (x >= inset.x1 - inset.rTR && y < inset.y0 + inset.rTR) {
+        r = inset.rTR;
+        dx = x - (inset.x1 - r);
+        dy = y - (inset.y0 + r);
+    } else if (x < inset.x0 + inset.rBL && y >= inset.y1 - inset.rBL) {
+        r = inset.rBL;
+        dx = x - (inset.x0 + r);
+        dy = y - (inset.y1 - r);
+    } else if (x >= inset.x1 - inset.rBR && y >= inset.y1 - inset.rBR) {
+        r = inset.rBR;
+        dx = x - (inset.x1 - r);
+        dy = y - (inset.y1 - r);
     }
-    if (r > 0.0F && dx * dx + dy * dy > r * r) {
-        return false;
-    }
-    return true;
+    return !(r > 0.0F && dx * dx + dy * dy > r * r);
 }
 
 }  // namespace
@@ -270,22 +310,36 @@ void CpuRenderer::fillLogicalRect(const core::Rect& rect, core::Color color,
     if (color.a == 0 || rect.size.width <= 0.0F || rect.size.height <= 0.0F) {
         return;
     }
-    const RoundedRectShape shape = shapeFor(rect, radius);
-
-    int x0 = std::max(0, toPixel(rect.left()));
-    int y0 = std::max(0, toPixel(rect.top()));
-    int x1 = std::min(buffer_.width, toPixel(rect.right()));
-    int y1 = std::min(buffer_.height, toPixel(rect.bottom()));
-    const float inv = 1.0F / deviceScale_;
+    // AA 光栅：像素覆盖率来自圆角矩形 SDF（1px 边界带内插值，带外整
+    // 填充/跳过）。大面积背景只有边界带付出距离场成本。
+    const DeviceShape shape =
+        deviceShapeFor(rect, radius, deviceScale_);
+    const DeviceShape fast = insetShape(shape, 1.0F);
+    const int x0 = std::max(0, static_cast<int>(std::floor(shape.x0 - 0.5F)));
+    const int y0 = std::max(0, static_cast<int>(std::floor(shape.y0 - 0.5F)));
+    const int x1 = std::min(buffer_.width,
+                            static_cast<int>(std::ceil(shape.x1 + 0.5F)));
+    const int y1 = std::min(buffer_.height,
+                            static_cast<int>(std::ceil(shape.y1 + 0.5F)));
 
     for (int py = y0; py < y1; ++py) {
         for (int px = x0; px < x1; ++px) {
-            // Pixel-center sampling in logical space keeps edges and corners
-            // consistent with the half-open hit-test geometry.
-            const float lx = (static_cast<float>(px) + 0.5F) * inv;
-            const float ly = (static_cast<float>(py) + 0.5F) * inv;
-            if (insideShape(shape, lx, ly)) {
+            const float cx = static_cast<float>(px) + 0.5F;
+            const float cy = static_cast<float>(py) + 0.5F;
+            if (deepInside(fast, cx, cy)) {
                 blendPixel(px, py, color);
+                continue;
+            }
+            const float d = sdRoundedRect(shape, cx, cy);
+            if (d <= -0.5F) {
+                blendPixel(px, py, color);
+            } else if (d < 0.5F) {
+                // 边界带：覆盖率 = 1 - (d + 0.5)，与几何覆盖近似一致。
+                const float coverage = 0.5F - d;
+                blendCoveragePixel(
+                    px, py, color,
+                    static_cast<std::uint8_t>(std::lround(
+                        std::clamp(coverage, 0.0F, 1.0F) * 255.0F)));
             }
         }
     }
@@ -302,48 +356,49 @@ void CpuRenderer::drawRectStroke(core::Rect rect, core::Color color,
         width <= 0.0F) {
         return;
     }
-    const RoundedRectShape outer = shapeFor(rect, radius);
-    // 内缘 = 外形内缩 width（圆角同步内缩；与 Skia stroke 几何一致）。
-    // 内缩退化（width ≥ 半边长）时整个外矩形都是环带。
-    const float innerW = rect.size.width - 2.0F * width;
-    const float innerH = rect.size.height - 2.0F * width;
-    bool hasInner = innerW > 0.0F && innerH > 0.0F;
-    RoundedRectShape inner{};
-    if (hasInner) {
-        inner.rect = core::Rect{
-            core::Offset{rect.origin.x + width, rect.origin.y + width},
-            core::Size{innerW, innerH}};
-        core::CornerRadius innerRadius{
-            std::max(0.0F, outer.rTL - width),
-            std::max(0.0F, outer.rTR - width),
-            std::max(0.0F, outer.rBL - width),
-            std::max(0.0F, outer.rBR - width)};
-        const float innerMinSide = std::min(innerW, innerH) * 0.5F;
-        inner.rTL = std::clamp(innerRadius.topLeft, 0.0F, innerMinSide);
-        inner.rTR = std::clamp(innerRadius.topRight, 0.0F, innerMinSide);
-        inner.rBL = std::clamp(innerRadius.bottomLeft, 0.0F, innerMinSide);
-        inner.rBR = std::clamp(innerRadius.bottomRight, 0.0F, innerMinSide);
-        inner.round = inner.rTL > 0.0F || inner.rTR > 0.0F ||
-                      inner.rBL > 0.0F || inner.rBR > 0.0F;
-    }
-
-    int x0 = std::max(0, toPixel(rect.left()));
-    int y0 = std::max(0, toPixel(rect.top()));
-    int x1 = std::min(buffer_.width, toPixel(rect.right()));
-    int y1 = std::min(buffer_.height, toPixel(rect.bottom()));
-    const float inv = 1.0F / deviceScale_;
+    // AA 描边：环带覆盖率 = 外形覆盖 − 内形覆盖（同一 SDF，两端夹取后
+    // 饱和相减；内缩退化为空时整个外矩形都是环带）。
+    const float scale = deviceScale_;
+    const DeviceShape outer = deviceShapeFor(rect, radius, scale);
+    const DeviceShape inner = insetShape(outer, width * scale);
+    const int x0 = std::max(0, static_cast<int>(std::floor(outer.x0 - 0.5F)));
+    const int y0 = std::max(0, static_cast<int>(std::floor(outer.y0 - 0.5F)));
+    const int x1 = std::min(buffer_.width,
+                            static_cast<int>(std::ceil(outer.x1 + 0.5F)));
+    const int y1 = std::min(buffer_.height,
+                            static_cast<int>(std::ceil(outer.y1 + 0.5F)));
+    const bool hasInner =
+        inner.x1 - inner.x0 > 0.0F && inner.y1 - inner.y0 > 0.0F;
 
     for (int py = y0; py < y1; ++py) {
         for (int px = x0; px < x1; ++px) {
-            const float lx = (static_cast<float>(px) + 0.5F) * inv;
-            const float ly = (static_cast<float>(py) + 0.5F) * inv;
-            if (!insideShape(outer, lx, ly)) {
+            const float cx = static_cast<float>(px) + 0.5F;
+            const float cy = static_cast<float>(py) + 0.5F;
+            const float dOuter = sdRoundedRect(outer, cx, cy);
+            if (dOuter >= 0.5F) {
                 continue;
             }
-            if (hasInner && insideShape(inner, lx, ly)) {
+            const float covOuter =
+                dOuter <= -0.5F ? 1.0F : 0.5F - dOuter;
+            float covInner = 0.0F;
+            if (hasInner) {
+                const float dInner = sdRoundedRect(inner, cx, cy);
+                covInner = dInner <= -0.5F
+                               ? 1.0F
+                               : (dInner >= 0.5F ? 0.0F : 0.5F - dInner);
+            }
+            const float coverage = std::clamp(covOuter - covInner, 0.0F, 1.0F);
+            if (coverage <= 0.0F) {
                 continue;
             }
-            blendPixel(px, py, color);
+            if (coverage >= 1.0F) {
+                blendPixel(px, py, color);
+            } else {
+                blendCoveragePixel(
+                    px, py, color,
+                    static_cast<std::uint8_t>(
+                        std::lround(coverage * 255.0F)));
+            }
         }
     }
 }
@@ -528,47 +583,118 @@ void CpuRenderer::drawIcon(std::vector<std::vector<core::Offset>> polylines,
     if (color.a == 0 || box.size.width <= 0.0F || box.size.height <= 0.0F) {
         return;
     }
+    if (polylines.empty()) {
+        return;
+    }
     const float scale = deviceScale_;
-    // 归一化 → 设备像素；线宽以设备像素计（至少 1）。
-    const int widthPx = std::max(1, static_cast<int>(std::lround(
-                                        strokeWidth * scale)));
+    // 归一化 → 设备像素；线宽以设备像素计（至少覆盖 1px）。
+    const float halfWidth =
+        std::max(0.5F, strokeWidth * scale * 0.5F);
     const auto toDevice = [&](const core::Offset& point) {
         return std::pair<float, float>{
             (box.origin.x + point.x * box.size.width) * scale,
             (box.origin.y + point.y * box.size.height) * scale};
     };
-    const auto strokeSegment = [&](float x0, float y0, float x1, float y1) {
-        // Bresenham-ish 数值步进（亚像素端点）。
-        const float dx = x1 - x0;
-        const float dy = y1 - y0;
-        const float length = std::max(std::abs(dx), std::abs(dy));
-        if (length <= 0.0F) {
-            return;
+    // 折线整体包围盒（含 AA 边界 halfWidth + 1px）。图标尺寸 16–24px，
+    // 覆盖率缓冲极小。
+    float minX = std::numeric_limits<float>::max();
+    float minY = std::numeric_limits<float>::max();
+    float maxX = std::numeric_limits<float>::lowest();
+    float maxY = std::numeric_limits<float>::lowest();
+    for (const auto& polyline : polylines) {
+        for (const auto& point : polyline) {
+            const auto [x, y] = toDevice(point);
+            minX = std::min(minX, x);
+            minY = std::min(minY, y);
+            maxX = std::max(maxX, x);
+            maxY = std::max(maxY, y);
         }
-        const int steps = static_cast<int>(std::ceil(length * 2.0F));
-        const float stepX = dx / static_cast<float>(steps);
-        const float stepY = dy / static_cast<float>(steps);
-        float x = x0;
-        float y = y0;
-        for (int i = 0; i <= steps; ++i) {
-            // 粗线：方形笔刷（宽度取半，四邻域 + 自身）。
-            const int brush = widthPx / 2;
-            const int px = static_cast<int>(std::lround(x));
-            const int py = static_cast<int>(std::lround(y));
-            for (int oy = -brush; oy <= brush; ++oy) {
-                for (int ox = -brush; ox <= brush; ++ox) {
-                    blendPixel(px + ox, py + oy, color);
+    }
+    const int x0 = std::max(0, static_cast<int>(std::floor(
+                                   minX - halfWidth - 1.0F)));
+    const int y0 = std::max(0, static_cast<int>(std::floor(
+                                   minY - halfWidth - 1.0F)));
+    const int x1 = std::min(buffer_.width,
+                            static_cast<int>(std::ceil(
+                                maxX + halfWidth + 1.0F)));
+    const int y1 = std::min(buffer_.height,
+                            static_cast<int>(std::ceil(
+                                maxY + halfWidth + 1.0F)));
+    const int width = x1 - x0;
+    const int height = y1 - y0;
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    // AA 线条：逐像素取到线段的有符号距离（端点距离自然形成圆帽，与
+    // Skia Round_Cap/Join 一致）；多段共存的像素取最大覆盖率（避免折点
+    // 多次叠加加深），一次混合。
+    std::vector<float> coverage(static_cast<std::size_t>(width) *
+                                static_cast<std::size_t>(height));
+    const auto strokeSegment = [&](float sx0, float sy0, float sx1,
+                                   float sy1) {
+        const float dx = sx1 - sx0;
+        const float dy = sy1 - sy0;
+        const float lengthSq = dx * dx + dy * dy;
+        const int segX0 = std::max(x0, static_cast<int>(std::floor(
+                                           std::min(sx0, sx1) - halfWidth -
+                                           1.0F)));
+        const int segY0 = std::max(y0, static_cast<int>(std::floor(
+                                           std::min(sy0, sy1) - halfWidth -
+                                           1.0F)));
+        const int segX1 = std::min(x1, static_cast<int>(std::ceil(
+                                           std::max(sx0, sx1) + halfWidth +
+                                           1.0F)));
+        const int segY1 = std::min(y1, static_cast<int>(std::ceil(
+                                           std::max(sy0, sy1) + halfWidth +
+                                           1.0F)));
+        for (int py = segY0; py < segY1; ++py) {
+            for (int px = segX0; px < segX1; ++px) {
+                const float cx = static_cast<float>(px) + 0.5F;
+                const float cy = static_cast<float>(py) + 0.5F;
+                float t = 0.0F;
+                if (lengthSq > 0.0F) {
+                    t = std::clamp(((cx - sx0) * dx + (cy - sy0) * dy) /
+                                       lengthSq,
+                                   0.0F, 1.0F);
                 }
+                const float ex = sx0 + t * dx - cx;
+                const float ey = sy0 + t * dy - cy;
+                const float distance = std::sqrt(ex * ex + ey * ey);
+                const float cov = halfWidth + 0.5F - distance;
+                if (cov <= 0.0F) {
+                    continue;
+                }
+                float& slot =
+                    coverage[static_cast<std::size_t>(py - y0) *
+                                 static_cast<std::size_t>(width) +
+                             static_cast<std::size_t>(px - x0)];
+                slot = std::max(slot, std::min(cov, 1.0F));
             }
-            x += stepX;
-            y += stepY;
         }
     };
     for (const auto& polyline : polylines) {
         for (std::size_t i = 1; i < polyline.size(); ++i) {
-            const auto [x0, y0] = toDevice(polyline[i - 1]);
-            const auto [x1, y1] = toDevice(polyline[i]);
-            strokeSegment(x0, y0, x1, y1);
+            const auto [ax, ay] = toDevice(polyline[i - 1]);
+            const auto [bx, by] = toDevice(polyline[i]);
+            strokeSegment(ax, ay, bx, by);
+        }
+    }
+    for (int py = y0; py < y1; ++py) {
+        for (int px = x0; px < x1; ++px) {
+            const float cov =
+                coverage[static_cast<std::size_t>(py - y0) *
+                             static_cast<std::size_t>(width) +
+                         static_cast<std::size_t>(px - x0)];
+            if (cov <= 0.0F) {
+                continue;
+            }
+            if (cov >= 1.0F) {
+                blendPixel(px, py, color);
+            } else {
+                blendCoveragePixel(
+                    px, py, color,
+                    static_cast<std::uint8_t>(std::lround(cov * 255.0F)));
+            }
         }
     }
 }
@@ -638,9 +764,10 @@ void CpuRenderer::drawImage(ImageId id, core::Rect destination) {
 }
 
 void CpuRenderer::endFrame() {
-    // Snapshot for the next Preserve frame (draw cache, plan 阶段6).
-    previous_ = buffer_;
-    hasPrevious_ = true;
+    // 双缓冲提交：交换 back/front（O(1)）——present/pixels() 读取完成帧，
+    // 下一帧绘制进入旧 front（会被 Clear/Preserve 重建）。
+    std::swap(buffer_, front_);
+    hasFront_ = true;
 }
 
 RendererCapabilities CpuRenderer::capabilities() const {
@@ -662,7 +789,7 @@ void CpuRenderer::submit(const RenderCommandList& commands,
     bool partial = false;
     std::string fallbackReason{};
     if (wantsPartial) {
-        if (hasPrevious_) {
+        if (hasFront_) {
             partial = true;
         } else {
             // 无法证明上一帧覆盖当前 viewport（首帧/DPI 变化后），按

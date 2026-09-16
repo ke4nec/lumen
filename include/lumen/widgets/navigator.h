@@ -46,4 +46,12 @@ class NavigatorController {
                                       core::Size windowSize = core::Size{
                                           800.0F, 600.0F});
 
+// Body scrolls within the available height; actions remain outside its clip.
+// The caller owns bodyScrollOffset, routed from the <key>-body-scroll viewport.
+[[nodiscard]] core::Widget makeDialog(core::Widget body, core::Widget actions,
+                                      const style::Theme& theme,
+                                      std::string onDismiss, std::string key,
+                                      core::Size windowSize,
+                                      float bodyScrollOffset = 0.0F);
+
 }  // namespace lumen::widgets

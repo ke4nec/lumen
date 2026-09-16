@@ -49,6 +49,21 @@ class GalleryApp {
     GalleryApp& operator=(GalleryApp&&) = delete;
 
     void setView(core::Size size) { shell_.setView(size); }
+    // Deterministic entry for screenshots; uses the same routed page and scroll.
+    bool showSample(const std::string& route, const std::string& key = {}) {
+        go(route);
+        (void)renderFrame();
+        if (key.empty()) return true;
+        const auto* node = core::findNodeByKey(root(), key);
+        const auto* viewport = core::findNodeByKey(root(), "gallery-list");
+        if (!node || !viewport) return false;
+        scroll_.updateExtents(viewport->size.height, viewport->size.height + viewport->scrollExtent);
+        const auto position = core::absoluteOffset(root(), key);
+        const auto top = core::absoluteOffset(root(), "gallery-list");
+        scroll_.scrollTo(scroll_.offset() + position.y - top.y - 12.0F);
+        shell_.markDirty();
+        return true;
+    }
     void setDeviceScale(float scale) { shell_.setDeviceScale(scale); }
     void setRenderer(render::Renderer* renderer) {
         shell_.setRenderer(renderer);
@@ -63,6 +78,7 @@ class GalleryApp {
     void setAccessibilitySettings(
         accessibility::AccessibilitySettings settings) {
         shell_.setAccessibilitySettings(settings, darkMode_);
+        refreshScopePreview();
     }
     [[nodiscard]] const accessibility::AccessibilitySettings&
     accessibilitySettings() const {
@@ -74,6 +90,7 @@ class GalleryApp {
         darkMode_ = theme.darkMode;
         direction_ = theme.direction;
         shell_.setTheme(std::move(theme), forceFullRepaint);
+        refreshScopePreview();
     }
     [[nodiscard]] const style::Theme& theme() const { return shell_.theme(); }
     void tick(std::uint64_t nowMs) { shell_.tick(nowMs); }
@@ -142,6 +159,11 @@ class GalleryApp {
         return accessibility::buildSemanticsTree(shell_.root(), options);
     }
 
+    [[nodiscard]] bool compactNavigation() const {
+        return shell_.view().width < 800.0F ||
+               shell_.view().width / shell_.accessibilitySettings().fontScale < 600.0F;
+    }
+
     // Gallery 根：Header + Body(Row: 导航栏 + 内容 ListView) + Footer。
     // Body Row 本身即 flex 布局演示；内容页按路由切换。
     [[nodiscard]] core::Widget buildUi() const {
@@ -153,13 +175,12 @@ class GalleryApp {
         core::Widget divider = core::makeContainerLeaf(
             1.0F, std::nullopt, core::EdgeInsets{}, core::EdgeInsets{},
             theme.colors.borderDefault, "gallery-body-divider");
-        core::Widget body =
-            core::makeRow({std::move(nav), std::move(divider),
-                           std::move(content)},
+        core::Widget body = compactNavigation() ? std::move(content) :
+            core::makeRow({std::move(nav), std::move(divider), std::move(content)},
                           core::MainAxisAlignment::Start,
                           core::CrossAxisAlignment::Stretch, 0.0F);
         body.flex = 1.0F;
-        body.key = "gallery-body";
+        if (!compactNavigation()) body.key = "gallery-body";
         core::Widget footer = buildFooter(theme);
         core::Widget page = core::makeColumn(
             {std::move(header), std::move(body), std::move(footer)},
@@ -174,25 +195,23 @@ class GalleryApp {
         if (dialogOpen_) {
             // S4（§8.2）：整体 padding 24 由 makeDialog 施加；标题到正文
             // 12、正文到操作区 24（spacing 12 + margin 12）。
-            core::Widget body = core::withKey(
+            core::Widget dialogBody = core::withKey(
                 core::makeText("All widgets share one Theme.",
                                theme.typography.body),
                 "dialog-body");
-            body.margin.top = style::spaceToken(3);
             core::Widget close = core::withKey(
                 buttonWidget("Close", "dismiss-dialog", "dialog-close",
                              core::ButtonVariant::Tonal),
                 "dialog-close");
-            close.margin.top = style::spaceToken(3);
             core::Widget contentDialog = core::makeColumn(
                 {core::withKey(titleText("Gallery dialog", theme),
                                "dialog-title"),
-                 std::move(body), std::move(close)},
+                 std::move(dialogBody)},
                 core::MainAxisAlignment::Start,
                 core::CrossAxisAlignment::Start, style::spaceToken(3));
             core::Widget dialog = widgets::makeDialog(
-                std::move(contentDialog), shell_.theme(), "dismiss-dialog",
-                kDialogKey, shell_.view());
+                std::move(contentDialog), std::move(close), shell_.theme(), "dismiss-dialog",
+                kDialogKey, shell_.view(), dialogScroll_.offset());
             ui = core::makeStack({std::move(ui), std::move(dialog)});
             ui.key = "root";
         }
@@ -206,11 +225,13 @@ class GalleryApp {
     [[nodiscard]] static app::ShellConfig configFor(GalleryApp* self) {
         app::ShellConfig config;
         config.caretBlink = false;
+        config.motionTransitions = true;
         config.build = [self] { return self->buildUi(); };
         config.onKey = [self](app::AppShell& shell, core::Key key,
                               core::KeyModifiers, char) {
             // M11：下拉菜单键盘导航（modal 优先于路由返回规则；未打开
             // 时 Up/Down 仍走滚动路径）。
+            if (self->navigationMenu_.handleKey(shell, key)) return true;
             if (self->dropdown_.handleKey(shell, key)) {
                 return true;
             }
@@ -254,6 +275,11 @@ class GalleryApp {
             return false;
         };
         config.onRebuilt = [self](app::AppShell& shell) {
+            if (self->lastRoute_ != self->navigator_.current()) {
+                if (!self->lastRoute_.empty() && shell.motionEnabled())
+                    shell.beginRouteTransition("gallery-list", true);
+                self->lastRoute_ = self->navigator_.current();
+            }
             if (self->dialogOpen_ &&
                 shell.focus().focusedIdentity().find(kDialogKey) ==
                     std::string::npos) {
@@ -265,13 +291,19 @@ class GalleryApp {
             }
             if (self->focusRestorePending_) {
                 self->focusRestorePending_ = false;
-                shell.controller().focusFirstFocusable(shell.root());
+                const auto* target = self->dialogReturnKey_.empty() ? nullptr :
+                    core::findNodeByKey(shell.root(), self->dialogReturnKey_);
+                if (target && target->enabled) shell.controller().focusNode(*target);
+                else shell.controller().focusFirstFocusable(shell.root());
+                self->dialogReturnKey_.clear();
             }
         };
         return config;
     }
 
     void initialize() {
+        navigationMenu_.onSelected = [this](const std::string& route) { go(route); };
+        initializeVisualPreviews();
         library_.setItemCount(1000);
         // M11：Tooltip hover 延迟驱动（anchor → tooltip 关联）。
         shell_.registerTooltip("tooltip-anchor-button", "showcase-tip");
@@ -335,6 +367,11 @@ class GalleryApp {
         };
         // Tooltip 锚点演示按钮（hover 显示气泡；点击无操作）。
         handlers["noop"] = [] {};
+        handlers["open-navigation"] = [this] {
+            dropdown_.close(shell_);
+            navigationMenu_.setValue(navigator_.current());
+            navigationMenu_.open(shell_, "compact-navigation");
+        };
         handlers["switch-tab-basic"] = [this] {
             shell_.state().set("gallery-tab", "Basic");
         };
@@ -342,7 +379,7 @@ class GalleryApp {
             shell_.state().set("gallery-tab", "More");
         };
         handlers["show-dialog"] = [this] {
-            dialogOpen_ = true;
+            openDialog();
             shell_.markDirty();
             shell_.requestFullRepaint();
         };
@@ -408,7 +445,7 @@ class GalleryApp {
         };
         handlers["save"] = [this] {
             if (form_.validate(shell_.state())) {
-                dialogOpen_ = true;
+                openDialog();
             }
             shell_.markDirty();
             shell_.requestFullRepaint();
@@ -456,8 +493,8 @@ class GalleryApp {
 
     // ThemeScope 预览跟随当前方向（浅色变体对比展示）。
     void refreshScopePreview() {
-        themeScopeData_ = style::makeThemeScopeData(style::Theme::light(
-            shell_.theme().metrics.density, direction_));
+        themeScopeData_ = style::makeThemeScopeData(style::Theme::fromSettings(
+            shell_.accessibilitySettings(), false, shell_.theme().metrics.density, direction_));
     }
 
     void go(const std::string& route) {
@@ -489,11 +526,28 @@ class GalleryApp {
         shell_.markDirty();
     }
 
-    void closeDialog() {
-        dialogOpen_ = false;
+    void openDialog() {
+        if (!dialogOpen_) dialogReturnKey_ = shell_.focus().focusedKey();
+        dialogOpen_ = true;
+        dialogClosing_ = false;
+        dialogScroll_.scrollTo(0);
         shell_.markDirty();
-        shell_.requestFullRepaint();
-        focusRestorePending_ = true;
+        if (shell_.motionEnabled()) shell_.beginDialogTransition(kDialogKey, true);
+    }
+
+    void closeDialog() {
+        if (!dialogOpen_ || dialogClosing_) return;
+        const auto finish = [this](app::AppShell& shell) {
+            dialogOpen_ = false;
+            dialogClosing_ = false;
+            shell.markDirty();
+            shell.requestFullRepaint();
+            focusRestorePending_ = true;
+        };
+        if (shell_.motionEnabled()) {
+            dialogClosing_ = true;
+            shell_.beginDialogTransition(kDialogKey, false, finish);
+        } else finish(shell_);
     }
 
     // M10：视口拖动滚动与惯性推进（VirtualList 用 library 的控制器）。
@@ -503,6 +557,9 @@ class GalleryApp {
         if (viewport != nullptr &&
             viewport->type == core::WidgetType::VirtualList) {
             scroll = &library_.scroll();
+        }
+        if (viewport && viewport->key == std::string(kDialogKey) + "-body-scroll") {
+            scroll = &dialogScroll_;
         }
         switch (phase) {
             case core::ScrollDragPhase::Begin:
@@ -547,6 +604,13 @@ class GalleryApp {
 
     bool scrollWheel(const core::RenderNode& root, const core::RenderNode* hit,
                      float deltaY) {
+        if (hit && hit->key == std::string(kDialogKey) + "-body-scroll") {
+            dialogScroll_.updateExtents(hit->size.height, hit->size.height + hit->scrollExtent);
+            const bool changed = dialogScroll_.applyWheel(deltaY);
+            if (changed) shell_.markDirty();
+            return changed;
+        }
+
         const core::RenderNode* viewport = hit;
         if (viewport == nullptr) {
             viewport = core::findNodeByKey(root, "gallery-list");
@@ -599,17 +663,22 @@ class GalleryApp {
             {core::makeText("L", brandMarkStyle(theme))},
             core::MainAxisAlignment::Center, core::CrossAxisAlignment::Center,
             0.0F, core::EdgeInsets{}, core::EdgeInsets{},
-            "gallery-brand-mark", 26.0F, 26.0F);
+            "gallery-brand-mark", std::max(26.0F, brandMarkStyle(theme).fontSize * 1.4F),
+            std::max(26.0F, brandMarkStyle(theme).fontSize * 1.4F));
         mark.color = theme.colors.accent;
         mark.radius = core::CornerRadius::all(7.0F);
         core::Widget title = core::makeText("Lumen Widget Gallery",
                                             headerTitleStyle(theme));
         title.key = "gallery-header-title";
+        title.textStyle.maxLines = 1;
+        title.textStyle.overflow = core::TextOverflow::Ellipsis;
+        title.flex = 1.0F;
         core::Widget brand = core::makeRow(
             {std::move(mark), std::move(title)},
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
             10.0F);
         brand.key = "gallery-brand";
+        brand.flex = 1.0F;
 
         core::Widget pill = core::makeRow(
             {core::makeText("Desktop preview", statusPillStyle(theme))},
@@ -645,12 +714,24 @@ class GalleryApp {
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
             style::spaceToken(4),
             core::EdgeInsets::symmetric(style::spaceToken(5), 14.0F));
+        if (shell_.view().width < 1100.0F * shell_.accessibilitySettings().fontScale) {
+            row.children.resize(1); // Optional diagnostics/decorative window icons need room.
+        }
         row.key = "gallery-header-row";
         core::Widget bottom = core::makeContainerLeaf(
             std::nullopt, 1.0F, core::EdgeInsets{}, core::EdgeInsets{},
             theme.colors.borderDefault, "gallery-header-divider");
+        std::vector<core::Widget> headerRows;
+        headerRows.push_back(std::move(row));
+        if (compactNavigation()) {
+            auto navigation = core::makeDropdown(routeDisplayName(navigator_.current()),
+                "open-navigation", "compact-navigation");
+            headerRows.push_back(core::makeContainer(std::move(navigation), std::nullopt,
+                std::nullopt, core::EdgeInsets::only(20, 0, 20, 12)));
+        }
+        headerRows.push_back(std::move(bottom));
         core::Widget header = core::makeColumn(
-            {std::move(row), std::move(bottom)}, core::MainAxisAlignment::Start,
+            std::move(headerRows), core::MainAxisAlignment::Start,
             core::CrossAxisAlignment::Stretch, 0.0F);
         return core::withKey(
             core::makeContainer(std::move(header), std::nullopt, std::nullopt,
@@ -722,6 +803,7 @@ class GalleryApp {
         } else {
             items = buildHomeItems(theme);
         }
+        appendControlMatrices(items, route, theme);
         core::Widget column = core::makeColumn(
             std::move(items), core::MainAxisAlignment::Start,
             core::CrossAxisAlignment::Start, style::spaceToken(4),
@@ -739,6 +821,15 @@ class GalleryApp {
 
     // 页脚：渲染器状态（左）+ 路由/主题/下拉状态（右）。
     [[nodiscard]] core::Widget buildFooter(const style::Theme& theme) const {
+        if (shell_.view().width < 1100.0F * shell_.accessibilitySettings().fontScale) {
+            auto label = smallLabel("CPU · " + routeDisplayName(navigator_.current()) +
+                " · " + (darkMode_ ? "Dark" : "Light"), theme);
+            label.key = "gallery-footer-label";
+            auto footer = core::makeContainer(std::move(label), std::nullopt, std::nullopt,
+                core::EdgeInsets::symmetric(20, 10));
+            footer.key = "gallery-footer";
+            return footer;
+        }
         core::Widget dot = core::makeContainerLeaf(
             6.0F, 6.0F, core::EdgeInsets{}, core::EdgeInsets{},
             theme.colors.statusSuccess, "footer-dot");
@@ -1125,6 +1216,119 @@ class GalleryApp {
             "Feedback", theme, "tile-feedback", "goto-feedback");
     }
 
+    [[nodiscard]] static style::WidgetState previewState(const std::string& name) {
+        style::WidgetState state;
+        state.hovered = name == "Hover";
+        state.pressed = name == "Press" || name == "Foc+Prs";
+        state.focused = name == "Focus" || name.find("Focused") != std::string::npos || name == "Foc+Prs";
+        state.disabled = name.find("Disabled") != std::string::npos;
+        state.checked = name.find("Checked") != std::string::npos;
+        state.invalid = name.find("Invalid") != std::string::npos;
+        state.selected = name.find("Selected") != std::string::npos;
+        return state;
+    }
+
+    void initializeVisualPreviews() {
+        for (const auto* variant : {"Filled", "Tonal", "Outline", "Ghost", "Danger"}) {
+            for (const auto* name : {"Normal", "Hover", "Press", "Focus", "Foc+Prs", "Disabled"}) {
+                shell_.setVisualPreviewState(std::string("matrix-") + variant + "-" + name, previewState(name));
+            }
+        }
+        for (const auto* control : {"Text", "Icon", "TextField", "Checkbox", "Switch", "Radio",
+                                   "Dropdown", "Tabs", "Slider", "ProgressBar", "Tooltip", "Image"}) {
+            for (const auto* name : {"Normal", "Hover", "Press", "Focus", "Disabled", "Checked",
+                                    "Checked+Disabled", "Checked+Focused", "Selected+Focused", "Invalid",
+                                    "Invalid+Focused", "ReadOnly+Focused", "Small", "Medium", "Large",
+                                    "Zero", "Full"}) {
+                const auto key = std::string("sample-") + control + "-" + name;
+                shell_.setVisualPreviewState(key, previewState(name));
+                shell_.setVisualPreviewState(key + "-tab", previewState(name));
+                shell_.setVisualPreviewState(key + "-other", {});
+            }
+        }
+    }
+
+    [[nodiscard]] core::Widget controlMatrix(const std::string& name, core::Widget prototype,
+                                             const std::string& builder, const style::Theme& theme,
+                                             bool interactive) const {
+        std::vector<std::string> states{"Normal"};
+        if (interactive) states.insert(states.end(), {"Hover", "Press", "Focus", "Disabled"});
+        if (name == "Checkbox" || name == "Switch" || name == "Radio") {
+            states.insert(states.end(), {"Checked", "Checked+Disabled", "Checked+Focused"});
+        }
+        if (name == "TextField") states.insert(states.end(), {"Invalid", "Invalid+Focused", "ReadOnly+Focused"});
+        if (name == "Tabs" || name == "Dropdown") states.push_back("Selected+Focused");
+        if (name == "Slider" || name == "ProgressBar") states.insert(states.end(), {"Zero", "Full"});
+        if (name != "Tooltip" && name != "Text" && name != "Image") {
+            states.insert(states.end(), {"Small", "Medium", "Large"});
+        }
+        std::vector<core::Widget> cells;
+        for (const auto& state : states) {
+            auto cell = prototype;
+            const auto snapshot = previewState(state);
+            cell.key = "sample-" + name + "-" + state;
+            cell.enabled = false;
+            cell.bind.clear();
+            cell.onClick.clear();
+            cell.checked = snapshot.checked;
+            cell.selected = snapshot.selected;
+            cell.invalid = snapshot.invalid;
+            cell.readOnly = state == "ReadOnly+Focused";
+            if (state == "Small") cell.controlSize = core::ControlSize::Small;
+            if (state == "Large") cell.controlSize = core::ControlSize::Large;
+            if (state == "Zero") cell.text = "0";
+            if (state == "Full") cell.text = "100";
+            if (name == "Tabs") {
+                cell.children.front().key = cell.key + "-tab";
+                cell.children.front().selected = true;
+                cell.children.back().key = cell.key + "-other";
+                for (auto& child : cell.children) {
+                    child.enabled = false;
+                    child.controlSize = cell.controlSize;
+                }
+            }
+            if (name == "Icon") {
+                const int offset = cell.controlSize == core::ControlSize::Small ? -1 :
+                                   cell.controlSize == core::ControlSize::Large ? 1 : 0;
+                const int index = std::clamp(int(theme.metrics.baseIndex) + offset, 0, 2);
+                cell.width = cell.height = theme.metrics.inlineIconSize[index];
+            }
+            cells.push_back(core::makeColumn({mutedLabel(state, theme), std::move(cell)},
+                core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 4.0F));
+        }
+        return sectionCard(name + " · states / sizes",
+            {mutedLabel(builder, theme), mutedLabel("Tokens: metrics / typography / focusRing / disabledContent", theme),
+             core::withKey(core::makeGrid(std::move(cells), 0,
+                 std::max(160.0F, theme.typography.label.fontSize * 12.0F), 12.0F, 16.0F),
+                 "samples-" + name)}, theme, "samples-" + name + "-card");
+    }
+
+    void appendControlMatrices(std::vector<core::Widget>& items, const std::string& route,
+                               const style::Theme& theme) const {
+        const auto add = [&](const std::string& name, core::Widget widget,
+                             const std::string& builder, bool interactive = true) {
+            items.push_back(controlMatrix(name, std::move(widget), builder, theme, interactive));
+        };
+        if (route == "inputs") {
+            add("TextField", core::makeTextField("输入 Text", "Placeholder"), "makeTextField(\"Text\", \"Placeholder\")");
+            add("Checkbox", core::makeCheckbox("中文与 English 长标签换行", ""), "makeCheckbox(\"Label\", \"checked\")");
+            add("Switch", core::makeSwitch("中文与 English 长标签换行", ""), "makeSwitch(\"Label\", \"checked\")");
+            add("Radio", core::makeRadio("中文与 English 长标签换行", ""), "makeRadio(\"Label\", \"selected\")");
+            add("Dropdown", core::makeDropdown("Selected value", ""), "makeDropdown(\"Value\", \"open\")");
+            add("Tabs", core::makeTabs({core::makeButton("Selected"), core::makeButton("Other")}), "makeTabs({makeButton(\"First\"), makeButton(\"Second\")})");
+        } else if (route == "feedback") {
+            auto slider = core::makeSlider("");
+            slider.text = "50";
+            add("Slider", std::move(slider), "makeSlider(\"value\")");
+            add("ProgressBar", core::makeProgressBar("50"), "makeProgressBar(\"50\")", false);
+            add("Tooltip", core::makeTooltip("提示说明 Supporting text"), "makeTooltip(\"Tip\")", false);
+        } else if (route == "layout") {
+            add("Text", core::makeText("中文与 English 长文本自动换行。"), "makeText(\"Text\")", false);
+            add("Icon", core::makeIcon(core::IconId::Check), "makeIcon(IconId::Check)", false);
+            add("Image", core::makeImage(0, "", 120.0F, 64.0F), "makeImage(0, \"\", 120, 64)", false);
+        }
+    }
+
     [[nodiscard]] std::vector<core::Widget> buildButtonsItems(
         const style::Theme& theme) const {
         std::vector<core::Widget> items;
@@ -1154,10 +1358,8 @@ class GalleryApp {
         items.push_back(sectionCard(
             "Variants",
             {core::withKey(
-                core::makeRow(std::move(variants),
-                              core::MainAxisAlignment::Start,
-                              core::CrossAxisAlignment::Center,
-                              style::spaceToken(2)),
+                core::makeGrid(std::move(variants), 0, theme.typography.label.fontSize * 8.0F,
+                               style::spaceToken(2), style::spaceToken(2)),
                 "buttons-variants-row"),
              core::withKey(mutedLabel("Clicked " +
                                           shell_.state().get("button-clicks") +
@@ -1184,10 +1386,8 @@ class GalleryApp {
         items.push_back(sectionCard(
             "Sizes",
             {core::withKey(
-                core::makeRow(std::move(sizes),
-                              core::MainAxisAlignment::Start,
-                              core::CrossAxisAlignment::Center,
-                              style::spaceToken(2)),
+                core::makeGrid(std::move(sizes), 0, theme.typography.label.fontSize * 8.0F,
+                               style::spaceToken(2), style::spaceToken(2)),
                 "buttons-sizes-row")},
             theme, "buttons-sizes-card"));
 
@@ -1220,10 +1420,8 @@ class GalleryApp {
         items.push_back(sectionCard(
             "States",
             {core::withKey(
-                core::makeRow(std::move(states),
-                              core::MainAxisAlignment::Start,
-                              core::CrossAxisAlignment::Center,
-                              style::spaceToken(2)),
+                core::makeGrid(std::move(states), 0, theme.typography.label.fontSize * 8.0F,
+                               style::spaceToken(2), style::spaceToken(2)),
                 "buttons-states-row"),
              core::withKey(buttonWidget("Back", "back", "back-button",
                                         core::ButtonVariant::Outline),
@@ -1231,44 +1429,8 @@ class GalleryApp {
             theme, "buttons-states-card"));
 
         // S5（§10.2）：强制状态矩阵——五变体 × Normal/Hovered/Pressed/
-        // Focused/Focused+Pressed/Disabled。预览快照经 resolveStyle 在
-        // 合成交互快照下解析后写入 StyleOverrides（不触发业务回调；单
-        // 元格 enabled=false 保持快照稳定）。
-        auto statePreviewCell = [&](core::ButtonVariant variant,
-                                    const char* label, bool hovered,
-                                    bool pressed, bool focused) {
-            core::Widget probe = core::makeButton(label);
-            probe.buttonVariant = variant;
-            style::InteractionStateSnapshot snapshot;
-            if (hovered) {
-                snapshot.hoveredIdentity = "preview";
-            }
-            if (pressed) {
-                snapshot.pressedIdentity = "preview";
-            }
-            if (focused) {
-                snapshot.focusedIdentity = "preview";
-            }
-            const style::StyleContext context{
-                theme, snapshot, shell_.accessibilitySettings(), 1.0F};
-            const core::ResolvedStyle resolved =
-                style::resolveStyle(probe, context, "preview");
-            const auto& common = core::commonStyle(resolved);
-            probe.enabled = false;  // 快照稳定：预览不参与交互
-            probe.styleOverrides.background = common.background;
-            probe.styleOverrides.foreground = common.foreground;
-            if (focused) {
-                // 焦点环快照以边框槽表达（真控件的环在 focusWidth 通道，
-                // 预览单元格不接入交互）。
-                probe.styleOverrides.border = common.focusRing;
-                probe.styleOverrides.borderWidth =
-                    theme.metrics.focusRingWidth;
-            } else {
-                probe.styleOverrides.border = common.border;
-                probe.styleOverrides.borderWidth = common.borderWidth;
-            }
-            return probe;
-        };
+        // Focused/Focused+Pressed/Disabled。预览快照只送到 StyleResolver；
+        // 真正的 focusWidth、状态色和部件走正常绘制，实际输入仍禁用。
         struct MatrixColumn {
             const char* label;
             bool hovered;
@@ -1287,14 +1449,9 @@ class GalleryApp {
             for (const auto& column : matrixColumns) {
                 const std::string key = std::string("matrix-") + label +
                                         "-" + column.label;
-                core::Widget cell;
-                if (std::string(column.label) == "Disabled") {
-                    cell = core::withEnabled(core::makeButton(label), false);
-                    cell.buttonVariant = variant;
-                } else {
-                    cell = statePreviewCell(variant, label, column.hovered,
-                                            column.pressed, column.focused);
-                }
+                core::Widget cell = core::makeButton(label);
+                cell.buttonVariant = variant;
+                cell.enabled = false; // Preview state affects style only.
                 cells.push_back(core::makeColumn(
                     {mutedLabel(column.label, theme),
                      core::withKey(std::move(cell), key)},
@@ -1462,33 +1619,21 @@ class GalleryApp {
 
         // 迷你表单：校验 + invalid + 错误文案（与 settings 同契约）。
         std::vector<core::Widget> formItems;
-        formItems.push_back(
-            core::withKey(mutedLabel("Nickname", theme), "nickname-label"));
-        formItems.push_back(core::withKey(
-            fieldWidget("nickname", "Nickname", "nickname-field",
-                        form_.errors().count("nickname") != 0),
-            "nickname-field"));
-        if (form_.errors().count("nickname") != 0) {
-            formItems.push_back(core::withKey(
-                errorText(form_.errors().at("nickname"), theme),
-                "nickname-error"));
-        }
-        formItems.push_back(
-            core::withKey(mutedLabel("Email", theme), "email-label"));
-        formItems.push_back(core::withKey(
-            fieldWidget("email", "name@example.com", "email-field",
-                        form_.errors().count("email") != 0),
-            "email-field"));
-        if (form_.errors().count("email") != 0) {
-            formItems.push_back(core::withKey(
-                errorText(form_.errors().at("email"), theme), "email-error"));
-        }
+        formItems.push_back(widgets::makeFormField("Nickname",
+            fieldWidget("nickname", "Nickname", "nickname-field", form_.errors().count("nickname") != 0),
+            form_.errors().count("nickname") ? form_.errors().at("nickname") : "",
+            theme, "nickname"));
+        formItems.push_back(widgets::makeFormField("Email",
+            fieldWidget("email", "name@example.com", "email-field", form_.errors().count("email") != 0),
+            form_.errors().count("email") ? form_.errors().at("email") : "",
+            theme, "email"));
         formItems.push_back(core::withKey(
             buttonWidget("Save", "save", "save-button",
                          core::ButtonVariant::Filled),
             "save-button"));
-        items.push_back(sectionCard("Form validation", std::move(formItems),
-                                    theme, "inputs-form-card"));
+        items.push_back(sectionCard("Form validation", {core::makeColumn(std::move(formItems),
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, style::spaceToken(4))},
+            theme, "inputs-form-card"));
 
         std::vector<core::Widget> tail;
         tail.push_back(core::withKey(
@@ -2268,7 +2413,7 @@ class GalleryApp {
     [[nodiscard]] static core::Widget errorText(
         std::string text, const style::Theme& theme) {
         core::StyleOverrides overrides;
-        overrides.foreground = theme.colors.statusError;
+        overrides.foreground = theme.colors.errorContent;
         overrides.text = theme.typography.caption;
         return core::withStyleOverrides(core::makeText(std::move(text)),
                                         std::move(overrides));
@@ -2319,6 +2464,7 @@ class GalleryApp {
     }
 
     core::ScrollController scroll_{};
+    core::ScrollController dialogScroll_{};
     widgets::FormController form_{};
     widgets::NavigatorController navigator_{"home"};
     bool darkMode_{true};
@@ -2327,9 +2473,15 @@ class GalleryApp {
     bool systemPrefersDark_{false};
     std::optional<core::Color> systemAccent_{};
     bool dialogOpen_{false};
+    bool dialogClosing_{false};
+    std::string dialogReturnKey_{};
     bool focusRestorePending_{false};
+    std::string lastRoute_{};
     mutable core::VirtualListController library_{};
     // M11：下拉浮动菜单控制器（选项 + 当前值；选中回调写状态）。
+    widgets::DropdownController navigationMenu_{{{"home", "Overview"}, {"buttons", "Buttons"},
+        {"inputs", "Inputs"}, {"layout", "Layout"}, {"lists", "Lists"},
+        {"feedback", "Feedback"}, {"theme", "Theme"}}, "home"};
     widgets::DropdownController dropdown_{{{"Red", "Red"},
                                            {"Green", "Green"},
                                            {"Blue", "Blue"}},
