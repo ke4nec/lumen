@@ -413,7 +413,7 @@ TEST_CASE("checkbox_checked_draws_check_icon_not_inner_block", "[visual][s2]") {
 }
 
 TEST_CASE("checkbox_slot_reserves_focus_ring_space", "[visual][s2]") {
-    // §4.4：槽位 = 指示器 + focusRingWidth + 1px；标签从槽位边缘起算。
+    // §4.4：槽位在指示器两侧预留焦点环 + 1px；标签从槽位边缘起算。
     const RenderNode root = layoutOf(makeCheckbox("Label", "a", "cb"));
     const RenderNode* node = findNodeByKey(root, "cb");
     REQUIRE(node != nullptr);
@@ -423,7 +423,7 @@ TEST_CASE("checkbox_slot_reserves_focus_ring_space", "[visual][s2]") {
     const lumen::style::Theme theme = lumen::style::Theme::dark();
     const float ring = theme.metrics.focusRingWidth + 1.0F;
     CHECK(checkbox->slotSize ==
-          checkbox->indicatorSize + ring);
+          checkbox->indicatorSize + 2.0F * ring);
     // 固有宽度 = 槽位 + labelGap + 标签宽（不再是裸指示器宽）。
     CHECK(node->size.width > checkbox->slotSize + checkbox->labelGap);
 }
@@ -844,9 +844,8 @@ TEST_CASE("tooltip_resolves_compact_surface_and_wraps_text", "[visual][s4]") {
     CHECK(common.border == theme.colors.borderDefault);
     CHECK(common.borderWidth == theme.metrics.controlBorderWidth);
     CHECK(common.text.fontSize == theme.typography.caption.fontSize);
-    // 宽度 ≤ 280 + 水平 padding。
-    CHECK(node->size.width <=
-          theme.tooltip.maxWidth + 2.0F * theme.tooltip.paddingX + 0.01F);
+    // 最大宽度包含表面 padding。
+    CHECK(node->size.width <= theme.tooltip.maxWidth + 0.01F);
     CHECK(node->size.width > theme.tooltip.maxWidth * 0.5F);
     // 高度 > 单行（发生了换行）。
     CHECK(node->size.height > theme.typography.caption.fontSize * 2.0F);

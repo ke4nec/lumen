@@ -1,5 +1,7 @@
 #include "lumen/core/interaction.h"
 
+#include "lumen/core/text_field.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -317,22 +319,18 @@ void InteractionController::pointerDown(const RenderNode& root,
 void InteractionController::placeCaretByHit(const RenderNode& field,
                                             Offset localPosition,
                                             bool extend) {
-    const std::string& content = field.text.empty() && !field.placeholder.empty()
-                                     ? field.placeholder
-                                     : field.text;
-    const CommonResolvedStyle& common = field.commonStyle();
-    const float padX = common.padding.left;
-    const float availableWidth =
-        std::max(0.0F, field.size.width - common.padding.horizontal());
-    core::TextStyle style = common.text;
-    style.maxLines = 0;  // 命中测试按自然行
-    const text::TextLayoutResult layout = text::TextLayout::layout(
-        content, style, field.multiline ? availableWidth : 0.0F,
+    const auto display = textFieldDisplay(field);
+    const auto layout = text::TextLayout::layout(
+        display.text, textFieldLayoutStyle(field), textFieldWrapWidth(field),
         textFonts_ != nullptr ? *textFonts_
                               : text::PlaceholderFontManager::shared());
-    const float xInText = localPosition.x - padX;
-    const std::size_t grapheme =
-        layout.positionToGrapheme(xInText, localPosition.y);
+    const auto* style = std::get_if<TextFieldResolvedStyle>(&field.style.component);
+    const Offset origin = textFieldTextOrigin(
+        field, layout, caretGraphemes(), style != nullptr && style->focused);
+    const std::size_t grapheme = std::min(
+        text::graphemeCount(field.text),
+        layout.positionToGrapheme(localPosition.x - origin.x,
+                                   localPosition.y - origin.y));
     if (extend) {
         selection_ = text::TextSelection{selection_.base, grapheme};
     } else {

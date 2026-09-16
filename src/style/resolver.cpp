@@ -262,10 +262,10 @@ ResolvedStyle resolveTextField(const Widget& widget,
     return resolved;
 }
 
-// 指示器/轨道类控件的槽位：指示器边长 + 焦点环宽度 + 1 px 隔离带
+// 指示器/轨道类控件的槽位：指示器边长 + 两侧的焦点环宽度和 1 px 隔离带
 //（§4.4；是否聚焦不改变槽位与标签起点）。
 float indicatorSlot(const Theme& theme, float indicatorSize) {
-    return indicatorSize + theme.metrics.focusRingWidth + 1.0F;
+    return indicatorSize + 2.0F * (theme.metrics.focusRingWidth + 1.0F);
 }
 
 ResolvedStyle resolveCheckbox(const Widget& widget,
@@ -280,6 +280,7 @@ ResolvedStyle resolveCheckbox(const Widget& widget,
     common.background = Color::transparent();
     common.foreground = theme.colors.contentPrimary;
     common.border = Color::transparent();
+    common.borderWidth = theme.metrics.controlBorderWidth;
     common.focusRing = theme.colors.focusRing;
     common.selection = theme.colors.selectionBackground;
     common.radius = core::CornerRadius::zero();
@@ -338,6 +339,7 @@ ResolvedStyle resolveSwitch(const Widget& widget, const StyleContext& context,
     common.background = Color::transparent();
     common.foreground = theme.colors.contentPrimary;
     common.border = Color::transparent();
+    common.borderWidth = theme.metrics.controlBorderWidth;
     common.focusRing = theme.colors.focusRing;
     common.selection = theme.colors.selectionBackground;
     common.radius = core::CornerRadius::zero();
@@ -589,6 +591,7 @@ ResolvedStyle resolveRadio(const Widget& widget, const StyleContext& context,
     common.background = Color::transparent();
     common.foreground = theme.colors.contentPrimary;
     common.border = Color::transparent();
+    common.borderWidth = theme.metrics.controlBorderWidth;
     common.focusRing = theme.colors.focusRing;
     common.selection = theme.colors.selectionBackground;
     common.radius = core::CornerRadius::zero();

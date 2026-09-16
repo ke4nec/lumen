@@ -105,14 +105,17 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
         widget.type == WidgetType::Dropdown) {
         node.text = widget.text;
     }
-    // §4.5：16px 图标基准描边 1.5，按图标盒尺寸比例缩放（iconSize 缺省
-    // 时取 token 默认尺寸）。
-    const float iconBoxSize =
-        widget.width.has_value() ? *widget.width
-                                 : styleContext.theme.icons.defaultSize;
-    node.iconStrokeWidth =
-        styleContext.theme.icons.strokeWidth *
-        (iconBoxSize / std::max(0.01F, styleContext.theme.icons.defaultSize));
+    // §4.5：按实际图标盒缩放描边，不能使用 Image/Checkbox 宿主宽度。
+    float iconBoxSize = std::min(size.width, size.height);
+    if (widget.type == WidgetType::Image) {
+        iconBoxSize = std::min(24.0F, iconBoxSize * 0.6F);
+    } else if (const auto* checkbox =
+                   std::get_if<core::CheckboxResolvedStyle>(&node.style.component)) {
+        iconBoxSize = std::max(
+            0.0F, checkbox->indicatorSize - 2.0F * checkbox->markInset);
+    }
+    node.iconStrokeWidth = styleContext.theme.icons.strokeWidth * iconBoxSize /
+                           std::max(0.01F, styleContext.theme.icons.defaultSize);
     node.icon = static_cast<std::uint8_t>(widget.icon);
     node.transitionAlpha = widget.transitionAlpha;
     node.showScrollbar = widget.showScrollbar;
@@ -249,7 +252,8 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             const Size label = measureTextContent(content, textStyle, 0.0F,
                                                   false);
             return Size{radio->slotSize + radio->labelGap + label.width,
-                        std::max(radio->slotSize, label.height)};
+                        std::max({radio->slotSize, label.height,
+                                  resolved.minHeight})};
         }
         case WidgetType::Dropdown: {
             // S3（§6.7）：值行与字段同源——chrome/最小尺寸来自 resolved
@@ -274,10 +278,14 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
         case WidgetType::Tooltip: {
             // S4（§6.9）：文本换行（最大宽 280）；表面 padding 由
             // layoutLeaf 统一追加（与其他叶子一致，不重复叠加）。
-            const float wrapWidth =
-                std::min(maxWidth > 0.0F ? maxWidth
-                                         : styleContext.theme.tooltip.maxWidth,
-                         styleContext.theme.tooltip.maxWidth);
+            float outerWidth = maxWidth > 0.0F
+                                   ? maxWidth : styleContext.theme.tooltip.maxWidth;
+            if (widget.width.has_value()) {
+                outerWidth = std::min(outerWidth, *widget.width);
+            }
+            const float wrapWidth = std::max(
+                0.01F, std::min(outerWidth, styleContext.theme.tooltip.maxWidth) -
+                           core::commonStyle(resolved).padding.horizontal());
             return measureTextContent(content, textStyle, wrapWidth, true);
         }
         case WidgetType::Checkbox: {
@@ -290,7 +298,8 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
                                                   false);
             // 槽位含焦点环预留（§4.4）：是否聚焦不改变标签起点。
             return Size{checkbox->slotSize + checkbox->labelGap + label.width,
-                        std::max(checkbox->slotSize, label.height)};
+                        std::max({checkbox->slotSize, label.height,
+                                  resolved.minHeight})};
         }
         case WidgetType::Switch: {
             const auto* control =
@@ -301,7 +310,9 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             const Size label = measureTextContent(content, textStyle, 0.0F,
                                                   false);
             return Size{control->slotSize + control->labelGap + label.width,
-                        std::max(control->trackHeight, label.height)};
+                        std::max({control->trackHeight + control->slotSize -
+                                      control->trackWidth,
+                                  label.height, resolved.minHeight})};
         }
         default:
             return measureTextContent(content, textStyle, 0.0F, false);
@@ -1164,11 +1175,16 @@ RenderNode layoutTabs(const Widget& widget, const Constraints& constraints,
                 continue;
             }
             child.buttonVariant = core::ButtonVariant::Ghost;
-            child.styleOverrides.foreground =
-                child.selected ? tabs->selectedContent
-                               : tabs->unselectedContent;
-            child.styleOverrides.padding = core::EdgeInsets::symmetric(
-                styleContext.theme.tabs.tabPaddingX, 0.0F);
+            if (!child.styleOverrides.foreground.has_value()) {
+                child.styleOverrides.foreground =
+                    !child.enabled ? styleContext.theme.colors.disabledContent
+                    : child.selected ? tabs->selectedContent
+                                     : tabs->unselectedContent;
+            }
+            if (!child.styleOverrides.padding.has_value()) {
+                child.styleOverrides.padding = core::EdgeInsets::symmetric(
+                    styleContext.theme.tabs.tabPaddingX, 0.0F);
+            }
         }
     }
     return layoutFlex(row, constraints, styleContext, identity,

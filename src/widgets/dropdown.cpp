@@ -268,6 +268,9 @@ core::Widget DropdownController::buildOverlay(const style::Theme& theme,
     overlay.width = view.width;
     overlay.height = view.height;
     // FocusScope：Tab 遍历不逃出菜单（plan §3.4 modal 键域）。
+    if (overlayTheme_.has_value()) {
+        overlay = core::makeThemeScope(std::move(overlay), &*overlayTheme_);
+    }
     return core::makeFocusScope(std::move(overlay));
 }
 

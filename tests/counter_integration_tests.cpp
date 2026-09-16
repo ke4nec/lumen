@@ -141,7 +141,7 @@ TEST_CASE("counter_focused_rect_tracks_text_field", "[counter]") {
         lumen::core::findNodeByKey(app.root(), "name-field");
     REQUIRE(field != nullptr);
     CHECK(rect.size.width == 1.0F);
-    CHECK(rect.size.height == field->size.height);
+    CHECK(rect.size.height == field->textStyle().fontSize * field->textStyle().lineHeight);
     CHECK(rect.origin.x == lumen::core::absoluteOffset(app.root(),
                                                        "name-field")
                                .x + 12.0F);
@@ -206,6 +206,9 @@ TEST_CASE("counter_caret_blink_ticks_change_only_the_field", "[counter]") {
     app.tick(530);
     const auto dark = app.renderFrame();
     CHECK(dark == app.renderFrame(true));
+    INFO("caret " << app.focusedTextRect().origin.x << "," << app.focusedTextRect().origin.y
+         << " size " << app.focusedTextRect().size.width << "," << app.focusedTextRect().size.height
+         << " focus " << app.controller().wantsTextInput());
     CHECK(dark != visible);
 }
 

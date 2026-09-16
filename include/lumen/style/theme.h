@@ -371,7 +371,7 @@ struct Theme {
 // M12 修复：settings 携带应用当前可访问性输入（高对比/减少动画/字体
 // 缩放），darkMode/accent 只切换对应维度——不再丢弃 base 的派生；方向
 // 继承 base.direction。accentColor 为空时保持 base 的强调色。accent
-// 覆盖后经组件 token 重建（button/checkbox/switch 链一致派生）。
+// 覆盖后所有使用 accent 的组件 token 一致派生，再统一应用 fontScale。
 [[nodiscard]] Theme adaptPlatformTheme(
     const Theme& base, const accessibility::AccessibilitySettings& settings,
     bool darkMode, std::optional<core::Color> accentColor = std::nullopt);

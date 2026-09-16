@@ -18,6 +18,7 @@ set(LUMEN_TEST_SOURCES
     grid_virtual_tests.cpp
     # M6：视觉系统 V3 与控件库（图标/阴影/滚动条/控件交互/语义）。
     visual_m6_tests.cpp
+    visual_regression_tests.cpp
     # M10：动效与滚动体验（转场/整节点透明度/状态色过渡/惯性滚动）。
     motion_scroll_tests.cpp
     dsl_tests.cpp

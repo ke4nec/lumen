@@ -678,6 +678,17 @@ TEST_CASE("settings_services_page_actions_and_diagnostics", "[settings][m4]") {
     // 无动作注入：按钮点击给出“服务不可用”诊断（不崩溃、不阻塞）。
     (void)app.renderFrame();
     const auto click = [&app](const char* key) {
+        // Choice controls retain their minimum hit heights, so later service
+        // actions can be below the viewport. Bring the target into view first.
+        const auto* viewport = core::findNodeByKey(app.root(), "settings-list");
+        REQUIRE(viewport != nullptr);
+        const auto targetTop = core::absoluteOffset(app.root(), key).y;
+        const auto viewportTop = core::absoluteOffset(app.root(), "settings-list").y;
+        app.scroll().updateExtents(viewport->size.height,
+                                   viewport->size.height + viewport->scrollExtent);
+        app.scroll().scrollTo(app.scroll().offset() + targetTop - viewportTop);
+        app.markDirty();
+        (void)app.renderFrame();
         const auto* node = core::findNodeByKey(app.root(), key);
         REQUIRE(node != nullptr);
         const auto pos = core::absoluteOffset(app.root(), key) +

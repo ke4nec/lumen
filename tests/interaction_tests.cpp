@@ -381,6 +381,7 @@ TEST_CASE("composition_previews_without_committing", "[interaction]") {
         makeTextField("", "Name", {}, {}, 0.0F, "field", std::nullopt,
                       std::nullopt, "name"),
         "field"));
+    applyBinds(ui, store);
     const RenderNode root = layoutOf(ui);
     controller.pointerDown(root, centerOf(root, "field"));
     REQUIRE(controller.wantsTextInput());

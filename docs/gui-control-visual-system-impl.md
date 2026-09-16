@@ -218,3 +218,31 @@
 - 性能对照：本阶段未引入每帧分配或新文本整形路径（状态过渡复用既有机制）；未跑基准对照（无既有基线可比场景变化，按 §9.3 记录为未执行）。
 - 兼容性或视觉基准变更：Gallery Buttons 页新增矩阵卡（帧哈希更新）；无框架行为变更。
 - 完成边界：S0–S5 全部阶段已按 §12 顺序执行并逐阶段 review+提交；§11 预留项与本记录"仍存缺口"单列，不计入完成范围。真实桌面人工验收与 Linux/macOS 主机证据为后续补充项。
+
+
+---
+
+## S1–S5 Review 修复（2026-09-16）
+
+- 源码基线：`a7b6e71`；本轮处理 S1–S5 review 的 12 项问题，本节随修复一并提交。
+- 修复内容：
+  1. TextField 的显示文本、密码掩码、preedit、换行、垂直居中和单行水平偏移统一到 `core/text_field.h`；painter、点击定位及 IME 查询共用几何。IME 返回实际光标行的矩形。空字段点击不再定位到 placeholder 的字符索引，并移除实心光标的半像素偏移，恢复 CPU 起始位置光标闪烁。
+  2. Dropdown 将保存的触发器主题通过真正的 ThemeScope 包裹浮层，选项文本、尺寸与菜单阴影均继承该主题；键盘刷新继续使用同一作用域。
+  3. Tooltip 按包含 padding 的最终宽度测量换行，兼顾父约束和显式宽度；默认最大外宽为 280。
+  4. Checkbox / Radio / Switch 的固有高度消费 resolved minHeight，恢复密度对应的点击高度。
+  5. 三类选择控件在部件两侧各预留焦点环与 1 px 间隔；环画在固定部件之外，聚焦不再缩小指示器、轨道、勾号或移动滑块；部件轮廓消费主题边框宽度。
+  6. Icon 描边使用实际图标盒计算；Image 占位图标和 Checkbox 勾号不再随宿主宽度变粗。
+  7. 高对比及平台颜色派生在 fontScale 之前完成；补齐 Slider Thumb、选择控件标签 gap、Tabs/Tooltip/Dialog 相关尺寸与间距的一次缩放。
+  8. 系统强调色同步派生 Slider、ProgressBar 和 Tabs 的颜色。
+  9. Tabs 的默认前景保留 disabled 状态，显式 foreground（含透明/黑色）及 padding（含零值）优先。
+  10. scrollbarColor / scrollbarThumbWidth / scrollbarMinLength 和图标线宽纳入节点 damage 比较。
+  11. Scrollbar 的专用颜色保留 token 原始 alpha，同时乘上节点与祖先转场 alpha。
+  12. Gallery 状态矩阵改为自适应 Grid，每个状态标题随按钮一起换行。
+- 自动化：新增 `tests/visual_regression_tests.cpp` 的 10 个回归用例，覆盖字段点击/IME/密码/多行、焦点几何与三档密度、主题组合、Tooltip 换行、图标描边、Tabs 覆盖、局部主题浮层、滚动条局部重绘像素一致性与祖先透明度，以及 600/800/1024 宽度 × fontScale 1/1.5/2 的矩阵边界。旧测试同步修正绑定数据、实际光标几何及滚入视口后点击的前置条件。
+- 验证环境：Windows / VS 2026；使用 `build/review-fix/source` 隔离快照，包含本轮修复及基线 CPU renderer，未混入工作区另一个任务正在修改的 `cpu_renderer.h/.cpp`。
+- 验证结果：
+  - CPU Debug：`ctest --test-dir build/review-fix/out --output-on-failure -C Debug --parallel 6`，**460/460**；[测试日志](../build/review-fix/ctest.log)。
+  - Skia + GPU Release：`ctest --test-dir build/review-fix/out-gpu --output-on-failure -C Release --parallel 6`，**472/472**；[测试日志](../build/review-fix/ctest-gpu.log)。GPU 提交测试实际执行 18 条断言，无跳过。
+  - Gallery 全路由 `--headless` 冒烟通过；Windows `--max-frames 20 --diagnostics` 窗口运行退出码 0，CPU 后端、系统字体 256 faces、gdi+stb 光栅；[窗口日志](../build/review-fix/gallery-window.log)。
+  - 使用同一 Windows 系统字体离屏导出并核对状态矩阵：[600px / fontScale 1](../build/review-fix/gallery-600-fs1.png)、[600px / fontScale 2](../build/review-fix/gallery-600-fs2.png)。核对范围为矩阵区域；Gallery 顶部/底部固定栏在 200% 下的文本裁剪不属于本轮 12 项。
+- 未验证事项：Linux/macOS 本机运行、完整人工视觉清单及性能对照未执行。上述窗口冒烟与矩阵截图不替代完整人工验收；S5 已记录的动画、Dialog 长正文滚动及 §11 预留能力保持原完成边界。

@@ -79,7 +79,7 @@ struct CheckboxResolvedStyle {
     float indicatorRadius{4.0F};
     float markInset{4.0F};
     float labelGap{8.0F};
-    // 指示器槽位（§4.4）：indicatorSize + focusRingWidth + 1px 隔离带；
+    // 指示器槽位（§4.4）：indicatorSize + 2 × (focusRingWidth + 1px 隔离带)；
     // 是否聚焦不改变槽位与标签起点。
     float slotSize{0.0F};
     bool checked{false};
@@ -99,7 +99,7 @@ struct SwitchResolvedStyle {
     // 由 (trackHeight - knobSize) / 2 推导（§6.4），随档位变化。
     float knobInset{3.0F};
     float labelGap{8.0F};
-    // 轨道槽位（§4.4）：trackWidth + focusRingWidth + 1px 隔离带。
+    // 轨道槽位（§4.4）：trackWidth + 2 × (focusRingWidth + 1px 隔离带)。
     float slotSize{0.0F};
     bool checked{false};
     bool operator==(const SwitchResolvedStyle&) const = default;

@@ -1,5 +1,7 @@
 #include "lumen/render/painter.h"
 
+#include "lumen/core/text_field.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -55,17 +57,6 @@ text::TextLayoutResult layoutText(const std::string& text,
 
 float lineHeightOf(const TextStyle& style) {
     return style.fontSize > 0.0F ? style.fontSize * 1.2F : 16.8F;
-}
-
-// 密码模式显示文本：每个 grapheme 一个圆点（U+2022）。
-std::string obscuredDisplay(const std::string& text) {
-    const std::size_t count = text::graphemeCount(text);
-    std::string display;
-    display.reserve(count * 3);
-    for (std::size_t i = 0; i < count; ++i) {
-        display += "\xE2\x80\xA2";
-    }
-    return display;
 }
 
 CornerRadius insetCorners(const CornerRadius& radius, float inset) {
@@ -295,64 +286,22 @@ void paintSurface(Sink& sink, const Rect& rect,
 template <typename Sink>
 void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
                     const core::TextFieldResolvedStyle& field,
-                    const PaintOptions& options) {    const Rect rect{origin, node.size};
+                    const PaintOptions& options) {
+    const Rect rect{origin, node.size};
     const CommonResolvedStyle& common = field.common;
     const TextStyle& style = common.text;
     paintControlSurface(sink, rect, field.common);
-    const float padX = common.padding.left;
-    const float availableWidth =
-        std::max(0.0F, node.size.width - common.padding.horizontal());
     const ScopedClip<Sink> clip{sink, rect};
-
-    const bool showingPlaceholder =
-        node.text.empty() && !node.placeholder.empty();
-
-    // 显示文本组装：preedit 插入在光标前方（composing 期间 selection 折叠
-    // 在 preedit 之后）。
-    std::string display = node.obscure
-                              ? obscuredDisplay(node.text)
-                              : (showingPlaceholder ? node.placeholder
-                                                    : node.text);
-    const std::size_t compositionGraphemes =
-        field.focused && !options.composition.empty() && !showingPlaceholder
-            ? text::graphemeCount(options.composition)
-            : 0;
-    const std::size_t insertAt = options.selectionStart >= compositionGraphemes
-                                     ? options.selectionStart -
-                                           compositionGraphemes
-                                     : 0;
-    if (compositionGraphemes > 0) {
-        const std::string preedit = node.obscure
-                                        ? obscuredDisplay(options.composition)
-                                        : options.composition;
-        display = text::graphemeSubstring(display, 0, insertAt) + preedit +
-                  text::graphemeSubstring(
-                      display, insertAt,
-                      text::graphemeCount(display));
-    }
-
-    TextStyle layoutStyle = style;
-    if (!node.multiline) {
-        layoutStyle.maxLines = 1;
-    }
-    const auto layout = layoutText(
-        display, layoutStyle, node.multiline ? availableWidth : 0.0F);
-    // 单行视口跟随（§6.3）：长内容时光标保持在字段内（文本整体平移，
-    // selection/preedit 共享同一偏移，不漂移）。
-    float viewportShiftX = 0.0F;
-    if (!node.multiline && field.focused) {
-        std::size_t caretLine = 0;
-        const float caretOffset =
-            layout.graphemeToX(options.caretGraphemes, &caretLine);
-        const float right = caretOffset + padX + 1.0F;
-        if (right > node.size.width - padX) {
-            viewportShiftX =
-                node.size.width - padX - right;
-        }
-    }
-    const Offset textOrigin{
-        origin.x + padX + viewportShiftX,
-        origin.y + (node.size.height - layout.size.height) * 0.5F};
+    const auto display = core::textFieldDisplay(
+        node, field.focused ? options.composition : std::string{},
+        options.selectionStart);
+    const bool showingPlaceholder = display.showingPlaceholder;
+    const auto compositionGraphemes = display.compositionLength;
+    const auto insertAt = display.compositionStart;
+    const auto layout = layoutText(display.text, core::textFieldLayoutStyle(node),
+                                   core::textFieldWrapWidth(node));
+    const Offset textOrigin = origin + core::textFieldTextOrigin(
+        node, layout, options.caretGraphemes, field.focused);
 
     if (field.focused && options.hasSelection && !showingPlaceholder) {
         // 选区背景：按行绘制选区覆盖的区间。
@@ -407,14 +356,11 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
 
     if (field.focused) {
         // 光标：显示文本中的 grapheme 位置（preedit 已计入）。宽度 1
-        // logical px（§6.3），0.5 逻辑偏移使其在 deviceScale=1 时对齐像素
-        // 边界不消失。
-        std::size_t lineIndex = 0;
-        const float caretOffset =
-            layout.graphemeToX(options.caretGraphemes, &lineIndex);
-        const float caretX =
-            textOrigin.x + caretOffset + 0.5F;
-        const float caretWidth = 1.0F;
+        // logical px（§6.3）。实心矩形使用像素边界；半像素偏移仅适用于
+        // 居中描边，放在这里会使 CPU 后端的整数位置光标消失。
+        Rect caretRect = core::textFieldCaretRect(
+            node, layout, options.caretGraphemes, field.focused);
+        caretRect.origin = origin + caretRect.origin;
         const float alpha = std::clamp(options.caretAlpha, 0.0F, 1.0F);
         if (alpha <= 0.0F) {
             return;
@@ -422,12 +368,7 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
         Color caretColor = field.caret;
         caretColor.a =
             static_cast<std::uint8_t>(std::lround(caretColor.a * alpha));
-        sink.drawRect(
-            Rect{Offset{caretX, textOrigin.y +
-                                    static_cast<float>(lineIndex) *
-                                        layout.lineHeightPx},
-                 Size{caretWidth, layout.lineHeightPx}},
-            caretColor);
+        sink.drawRect(caretRect, caretColor);
     }
 }
 
@@ -664,13 +605,12 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                       Size{indicator, indicator}};
             const float ringRadius = indicator * 0.5F;
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
-                sink.drawRectStroke(ring, common.focusRing,
-                                    CornerRadius::all(ringRadius),
-                                    common.focusWidth);
-                const float w = common.focusWidth;
-                ring = Rect{Offset{ring.origin.x + w, ring.origin.y + w},
-                            Size{indicator - 2.0F * w,
-                                 indicator - 2.0F * w}};
+                const float outset = common.focusWidth + 1.0F;
+                sink.drawRectStroke(
+                    Rect{Offset{ring.origin.x - outset, ring.origin.y - outset},
+                         Size{indicator + 2.0F * outset, indicator + 2.0F * outset}},
+                    common.focusRing, CornerRadius::all(ringRadius + outset),
+                    common.focusWidth);
             }
             // 环内表面 + 空心描边（Off=borderStrong，On=accent）。
             sink.drawRect(ring, radio->indicator,
@@ -678,10 +618,10 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             sink.drawRectStroke(
                 ring, radio->checked ? radio->indicatorChecked
                                      : radio->indicatorOutline,
-                CornerRadius::all(ring.size.width * 0.5F), 1.0F);
+                CornerRadius::all(ring.size.width * 0.5F), common.borderWidth);
             if (radio->checked) {
                 // 独立内点（直径 = 外径 × dotRatio），与环之间保留
-                // 表面空隙；相对环盒居中（含焦点环内缩后的几何）。
+                // 表面空隙；相对固定的指示器盒居中。
                 const float dot = indicator * radio->dotRatio;
                 const float dotInset =
                     (ring.size.width - dot) * 0.5F;
@@ -878,7 +818,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                 break;
             }
             const float indicator = checkbox->indicatorSize;
-            // 槽位 = indicator + focusRingWidth + 1px 隔离带；指示器在槽
+            // 槽位 = indicator + 2 × (focusRingWidth + 1px 隔离带)；指示器在槽
             // 位内居中（聚焦时环围绕指示器，不改变槽位/标签起点）。
             const float indicatorOrigin =
                 origin.x + (checkbox->slotSize - indicator) * 0.5F;
@@ -890,15 +830,12 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
                 // 焦点环围绕指示器（描边环带；damage 不变量：绘制不越出
                 // 节点）。
-                sink.drawRectStroke(indicatorRect, common.focusRing,
-                                    CornerRadius::all(indicatorRadius),
-                                    common.focusWidth);
-                const float w = common.focusWidth;
-                indicatorRect =
-                    Rect{Offset{indicatorRect.origin.x + w,
-                                indicatorRect.origin.y + w},
-                         Size{indicator - 2.0F * w, indicator - 2.0F * w}};
-                indicatorRadius = std::max(0.0F, indicatorRadius - w);
+                const float outset = common.focusWidth + 1.0F;
+                sink.drawRectStroke(
+                    Rect{Offset{indicatorRect.origin.x - outset, indicatorRect.origin.y - outset},
+                         Size{indicator + 2.0F * outset, indicator + 2.0F * outset}},
+                    common.focusRing, CornerRadius::all(indicatorRadius + outset),
+                    common.focusWidth);
             }
             sink.drawRect(indicatorRect,
                           checkbox->checked ? checkbox->indicatorChecked
@@ -908,7 +845,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                 // Off：空心框——轮廓描边 + surfaceSunken 内部。
                 sink.drawRectStroke(indicatorRect, checkbox->indicatorOutline,
                                     CornerRadius::all(indicatorRadius),
-                                    1.0F);
+                                    common.borderWidth);
             } else {
                 // On：accent 填充 + 勾号（目录折线按 markInset 内缩）。
                 const auto& polylines =
@@ -956,15 +893,12 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             float trackRadius = control->trackHeight * 0.5F;
             // 焦点环围绕轨道（描边环带）。
             if (common.focusWidth > 0.0F && common.focusRing.a > 0) {
-                sink.drawRectStroke(trackRect, common.focusRing,
-                                    CornerRadius::all(trackRadius),
-                                    common.focusWidth);
-                const float w = common.focusWidth;
-                trackRect = Rect{
-                    Offset{trackRect.origin.x + w, trackRect.origin.y + w},
-                    Size{control->trackWidth - 2.0F * w,
-                         control->trackHeight - 2.0F * w}};
-                trackRadius = std::max(0.0F, trackRadius - w);
+                const float outset = common.focusWidth + 1.0F;
+                sink.drawRectStroke(
+                    Rect{Offset{trackRect.origin.x - outset, trackRect.origin.y - outset},
+                         Size{trackRect.size.width + 2.0F * outset, trackRect.size.height + 2.0F * outset}},
+                    common.focusRing, CornerRadius::all(trackRadius + outset),
+                    common.focusWidth);
             }
             sink.drawRect(trackRect,
                           control->checked ? control->trackOn
@@ -972,7 +906,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                           CornerRadius::all(trackRadius));
             // 轨道轮廓（Off 必要轮廓；On 保持轮廓一致性）。
             sink.drawRectStroke(trackRect, control->trackOutline,
-                                CornerRadius::all(trackRadius), 1.0F);
+                                CornerRadius::all(trackRadius), common.borderWidth);
             const float knobX =
                 control->checked
                     ? trackRect.origin.x + trackRect.size.width -
@@ -1035,7 +969,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                                      node.scrollbarThumbWidth) * 0.5F,
                                 thumbY},
                          Size{node.scrollbarThumbWidth, thumbHeight}},
-                    node.scrollbarColor,
+                    core::scaleColorAlpha(node.scrollbarColor, nodeAlpha),
                     CornerRadius::all(node.scrollbarThumbWidth * 0.5F));
             }
         }

@@ -634,7 +634,36 @@ void scaleComponentSizes(Theme& theme, float factor) {
     for (float& value : theme.radio.indicatorSize) {
         value *= factor;
     }
+    for (float& value : theme.slider.thumbDiameter) {
+        value *= factor;
+    }
+    theme.checkbox.labelGap *= factor;
+    theme.switchControl.labelGap *= factor;
+    theme.radio.labelGap *= factor;
+    theme.tabs.tabPaddingX *= factor;
+    theme.tabs.tabGap *= factor;
+    theme.tooltip.paddingX *= factor;
+    theme.tooltip.paddingY *= factor;
+    theme.dialog.padding.left *= factor;
+    theme.dialog.padding.right *= factor;
+    theme.dialog.padding.top *= factor;
+    theme.dialog.padding.bottom *= factor;
+    theme.dialog.minWidth *= factor;
+    theme.dialog.maxWidth *= factor;
+    theme.dialog.actionGap *= factor;
     theme.icons.defaultSize *= factor;
+}
+
+void scaleTheme(Theme& theme, float factor) {
+    if (factor <= 0.0F || factor == 1.0F) {
+        return;
+    }
+    theme.typography.title.fontSize *= factor;
+    theme.typography.label.fontSize *= factor;
+    theme.typography.body.fontSize *= factor;
+    theme.typography.caption.fontSize *= factor;
+    theme.metrics.scaleBy(factor);
+    scaleComponentSizes(theme, factor);
 }
 
 }  // namespace
@@ -666,19 +695,11 @@ Theme Theme::fromSettings(
     const accessibility::AccessibilitySettings& settings, bool darkMode,
     ControlDensity density, ThemeDirection direction) {
     Theme theme = baseTheme(darkMode, density, direction);
-    // font scale：同步放大排版、控件最小高度与相关间距（§4）。
-    if (settings.fontScale > 0.0F && settings.fontScale != 1.0F) {
-        const float scale = settings.fontScale;
-        theme.typography.title.fontSize *= scale;
-        theme.typography.label.fontSize *= scale;
-        theme.typography.body.fontSize *= scale;
-        theme.typography.caption.fontSize *= scale;
-        theme.metrics.scaleBy(scale);
-        scaleComponentSizes(theme, scale);
-    }
+    // Color-derived tokens are rebuilt before dimensions are scaled once.
     if (settings.highContrast) {
         applyHighContrast(theme, darkMode, direction);
     }
+    scaleTheme(theme, settings.fontScale);
     if (settings.reduceAnimation) {
         theme.motion.reduceAnimation();
     }
@@ -694,7 +715,9 @@ Theme adaptPlatformTheme(const Theme& base,
                          bool darkMode, std::optional<core::Color> accentColor) {
     // M12：以应用的完整可访问性输入重派生——高对比/减少动画/字体缩放
     // 与方向全部保留（旧实现只带 fontScale，会丢弃 base 的派生）。
-    Theme adapted = Theme::fromSettings(settings, darkMode,
+    auto unscaledSettings = settings;
+    unscaledSettings.fontScale = 1.0F;
+    Theme adapted = Theme::fromSettings(unscaledSettings, darkMode,
                                         base.metrics.density,
                                         base.direction);
     if (accentColor.has_value()) {
@@ -713,7 +736,11 @@ Theme adaptPlatformTheme(const Theme& base,
         adapted.checkbox = checkboxTokensFrom(adapted.colors);
         adapted.switchControl = switchTokensFrom(adapted.colors);
         adapted.radio = radioTokensFrom(adapted.colors);
+        adapted.slider = sliderTokensFrom(adapted.colors);
+        adapted.progressBar = progressBarTokensFrom(adapted.colors);
+        adapted.tabs = tabsTokensFrom(adapted.colors);
     }
+    scaleTheme(adapted, settings.fontScale);
     return adapted;
 }
 

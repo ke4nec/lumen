@@ -350,7 +350,7 @@ TEST_CASE("style_checkbox_states_resolve", "[style]") {
     CHECK(hovered.indicatorOutline == fixture.theme.colors.focusRing);
     // 槽位预留焦点环宽度 + 1px 隔离带（§4.4）。
     CHECK(rest.slotSize ==
-          rest.indicatorSize + fixture.theme.metrics.focusRingWidth + 1.0F);
+          rest.indicatorSize + 2.0F * (fixture.theme.metrics.focusRingWidth + 1.0F));
 }
 
 TEST_CASE("style_switch_states_resolve", "[style]") {

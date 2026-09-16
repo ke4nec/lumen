@@ -1281,41 +1281,38 @@ class GalleryApp {
             {"Foc+Prs", false, true, true},
             {"Disabled", false, false, false},
         };
-        std::vector<core::Widget> headerCells;
-        headerCells.push_back(core::withKey(
-            mutedLabel("Variant", theme), "matrix-header-variant"));
-        for (const auto& column : matrixColumns) {
-            headerCells.push_back(core::withKey(
-                mutedLabel(column.label, theme),
-                std::string("matrix-header-") + column.label));
-        }
         std::vector<core::Widget> matrixRows;
-        matrixRows.push_back(core::makeRow(
-            std::move(headerCells), core::MainAxisAlignment::Start,
-            core::CrossAxisAlignment::Center, style::spaceToken(1)));
         for (const auto& [label, variant] : variantList) {
-            std::vector<core::Widget> row;
-            row.push_back(core::withKey(
-                mutedLabel(label, theme),
-                std::string("matrix-") + label + "-label"));
+            std::vector<core::Widget> cells;
             for (const auto& column : matrixColumns) {
                 const std::string key = std::string("matrix-") + label +
                                         "-" + column.label;
+                core::Widget cell;
                 if (std::string(column.label) == "Disabled") {
-                    core::Widget cell = core::withEnabled(
-                        core::makeButton(label), false);
+                    cell = core::withEnabled(core::makeButton(label), false);
                     cell.buttonVariant = variant;
-                    row.push_back(core::withKey(std::move(cell), key));
                 } else {
-                    row.push_back(core::withKey(
-                        statePreviewCell(variant, label, column.hovered,
-                                         column.pressed, column.focused),
-                        key));
+                    cell = statePreviewCell(variant, label, column.hovered,
+                                            column.pressed, column.focused);
                 }
+                cells.push_back(core::makeColumn(
+                    {mutedLabel(column.label, theme),
+                     core::withKey(std::move(cell), key)},
+                    core::MainAxisAlignment::Start,
+                    core::CrossAxisAlignment::Stretch, style::spaceToken(1)));
             }
-            matrixRows.push_back(core::makeRow(
-                std::move(row), core::MainAxisAlignment::Start,
-                core::CrossAxisAlignment::Center, style::spaceToken(1)));
+            // Keep each caption with its preview when narrow windows or larger
+            // fonts reduce the number of columns.
+            const float cellWidth = std::max(
+                theme.metrics.buttonMinWidth[theme.metrics.baseIndex],
+                theme.typography.label.fontSize * 8.0F);
+            matrixRows.push_back(core::makeColumn(
+                {core::withKey(mutedLabel(label, theme),
+                               std::string("matrix-") + label + "-label"),
+                 core::makeGrid(std::move(cells), 0, cellWidth,
+                                style::spaceToken(1), style::spaceToken(2))},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch, style::spaceToken(1)));
         }
         // 长标签：中英文混排在窄按钮内单行省略（§10.2 布局维度样本）；
         // 包一层 Row 避免被 Stretch 列拉宽（显式 200 宽生效）。
@@ -1328,7 +1325,7 @@ class GalleryApp {
             {core::withKey(
                  core::makeColumn(std::move(matrixRows),
                                   core::MainAxisAlignment::Start,
-                                  core::CrossAxisAlignment::Start,
+                                  core::CrossAxisAlignment::Stretch,
                                   style::spaceToken(1)),
                  "buttons-matrix"),
              core::withKey(

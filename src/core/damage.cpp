@@ -26,7 +26,11 @@ bool sameNodeFields(const RenderNode& a, const RenderNode& b) {
            a.scrollExtent == b.scrollExtent && a.checked == b.checked &&
            a.imageId == b.imageId && a.imageSource == b.imageSource &&
            a.enabled == b.enabled && a.invalid == b.invalid &&
-           a.selected == b.selected;
+           a.selected == b.selected &&
+           a.scrollbarColor == b.scrollbarColor &&
+           a.scrollbarThumbWidth == b.scrollbarThumbWidth &&
+           a.scrollbarMinLength == b.scrollbarMinLength &&
+           a.iconStrokeWidth == b.iconStrokeWidth;
 }
 
 // Conservative bounds of a subtree: the node rect union every descendant, so

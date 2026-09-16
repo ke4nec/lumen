@@ -353,7 +353,7 @@ TEST_CASE("gallery_buttons_state_matrix_forces_previews", "[gallery]") {
     // 矩阵落地：五变体 × 六列。
     const RenderNode* matrix = findNodeByKey(app.root(), "buttons-matrix");
     REQUIRE(matrix != nullptr);
-    REQUIRE(matrix->children.size() == 6);  // 表头 + 5 变体行
+    REQUIRE(matrix->children.size() == 5);  // 每个变体内按可用宽度换行
     for (const char* variant : {"Filled", "Tonal", "Outline", "Ghost",
                                 "Danger"}) {
         REQUIRE(findNodeByKey(app.root(),

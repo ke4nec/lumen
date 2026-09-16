@@ -6,6 +6,8 @@
 
 #include "lumen/app/app_shell.h"
 
+#include "lumen/core/text_field.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -914,38 +916,23 @@ core::Rect AppShell::focusedTextRect() const {
     if (found == nullptr) {
         return core::Rect{};
     }
-    const std::string display = controller_.composingActive()
-                                    ? controller_.editingValue().text()
-                                    : found->text;
-    core::TextStyle style = found->textStyle();
-    style.maxLines = 0;
-    const auto layout =
-        text::TextLayout::layout(display, style, 0.0F, textFontSource());
-    std::size_t lineIndex = 0;
-    const float x =
-        layout.graphemeToX(controller_.caretGraphemes(), &lineIndex);
-    return core::Rect{
-        core::Offset{origin.x + found->commonStyle().padding.left + x,
-                     origin.y},
-        core::Size{1.0F, found->size.height}};
+    const auto display = core::textFieldDisplay(
+        *found, controller_.composition(), controller_.selectionStart());
+    const auto layout = text::TextLayout::layout(
+        display.text, core::textFieldLayoutStyle(*found),
+        core::textFieldWrapWidth(*found), textFontSource());
+    auto caret = core::textFieldCaretRect(
+        *found, layout, controller_.caretGraphemes(), true);
+    caret.origin = origin + caret.origin;
+    return caret;
 }
 
 int AppShell::focusedCaretOffset() const {
     core::Offset origin{};
-    const core::RenderNode* found = findFocusedField(origin);
-    if (found == nullptr) {
+    if (findFocusedField(origin) == nullptr) {
         return 0;
     }
-    const std::string display = controller_.composingActive()
-                                    ? controller_.editingValue().text()
-                                    : found->text;
-    core::TextStyle style = found->textStyle();
-    style.maxLines = 0;
-    const auto layout =
-        text::TextLayout::layout(display, style, 0.0F, textFontSource());
-    return static_cast<int>(found->commonStyle().padding.left +
-                            layout.graphemeToX(controller_.caretGraphemes(),
-                                               nullptr));
+    return static_cast<int>(focusedTextRect().origin.x - origin.x);
 }
 
 // --- 内部 ---
