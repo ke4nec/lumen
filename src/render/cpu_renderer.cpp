@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <utility>
 
@@ -72,35 +73,35 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode) {
 
 void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
                              core::Rect damage) {
-    buffer_.width = std::max(1, toPixel(viewport.width));
-    buffer_.height = std::max(1, toPixel(viewport.height));
+    const int width = std::max(1, toPixel(viewport.width));
+    const int height = std::max(1, toPixel(viewport.height));
     const std::size_t bytes =
-        static_cast<std::size_t>(buffer_.width) *
-        static_cast<std::size_t>(buffer_.height) * 4;
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4;
     const bool canPreserve =
         mode == FrameMode::Preserve && hasFront_ &&
-        front_.width == buffer_.width && front_.height == buffer_.height;
+        front_.width == width && front_.height == height;
     if (canPreserve) {
-        // 双缓冲 Preserve（零拷贝）：交换使 buffer_ 携带上一完成帧；
-        // 未触碰像素原样存活，调用方用 clipRect 约束重绘范围。
-        std::swap(buffer_, front_);
+        // Keep the published front intact. After a partial submit only that
+        // frame's damage differs between the two buffers, so synchronize it.
+        if (backDamage_ && buffer_.width == width && buffer_.height == height &&
+            buffer_.rgba.size() == bytes) {
+            const auto& dirty = *backDamage_;
+            for (int y = dirty.y0; y < dirty.y1; ++y) {
+                const auto offset = (static_cast<std::size_t>(y) * width +
+                                     dirty.x0) * 4;
+                std::copy_n(front_.rgba.data() + offset,
+                            (dirty.x1 - dirty.x0) * 4,
+                            buffer_.rgba.data() + offset);
+            }
+        } else {
+            buffer_ = front_;
+        }
         if (damage.size.width > 0.0F && damage.size.height > 0.0F) {
-            // Damage-scoped Preserve：仅把损坏区清成底色（等价全帧重绘
-            // 的语义，但不需要整帧拷贝——旧的"四周拷贝"被就地清底取
-            // 代）。
-            const int dx0 =
-                std::clamp(toPixel(damage.left()), 0, buffer_.width);
-            const int dy0 =
-                std::clamp(toPixel(damage.top()), 0, buffer_.height);
-            const int dx1 =
-                std::clamp(toPixel(damage.right()), 0, buffer_.width);
-            const int dy1 =
-                std::clamp(toPixel(damage.bottom()), 0, buffer_.height);
-            for (int y = dy0; y < dy1; ++y) {
-                std::size_t offset =
-                    static_cast<std::size_t>(y) *
-                    static_cast<std::size_t>(buffer_.width) * 4;
-                for (int x = dx0; x < dx1; ++x) {
+            const auto dirty = pixelRect(damage);
+            for (int y = dirty.y0; y < dirty.y1; ++y) {
+                std::size_t offset = (static_cast<std::size_t>(y) * width +
+                                      dirty.x0) * 4;
+                for (int x = dirty.x0; x < dirty.x1; ++x) {
                     buffer_.rgba[offset] = clearColor_.r;
                     buffer_.rgba[offset + 1] = clearColor_.g;
                     buffer_.rgba[offset + 2] = clearColor_.b;
@@ -110,6 +111,8 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
             }
         }
     } else {
+        buffer_.width = width;
+        buffer_.height = height;
         buffer_.rgba.assign(bytes, 0);
         for (std::size_t i = 0; i + 3 < buffer_.rgba.size(); i += 4) {
             buffer_.rgba[i] = clearColor_.r;
@@ -118,8 +121,47 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
             buffer_.rgba[i + 3] = clearColor_.a;
         }
     }
+    backDamage_.reset();
     clip_.clear();
     clip_.push_back(ClipRects{0, 0, buffer_.width, buffer_.height});
+}
+
+CpuRenderer::ClipRects CpuRenderer::pixelRect(core::Rect rect) const {
+    const int x0 = std::clamp(toPixel(rect.left()), 0, buffer_.width);
+    const int y0 = std::clamp(toPixel(rect.top()), 0, buffer_.height);
+    return {x0, y0, std::clamp(toPixel(rect.right()), x0, buffer_.width),
+                    std::clamp(toPixel(rect.bottom()), y0, buffer_.height)};
+}
+
+CpuRenderer::ClipRects CpuRenderer::rasterBounds(float left, float top,
+                                                float right, float bottom) const {
+    if (clip_.empty()) return {};
+    const auto& clip = clip_.back();
+    return {std::max(clip.x0, static_cast<int>(std::floor(left))),
+            std::max(clip.y0, static_cast<int>(std::floor(top))),
+            std::min(clip.x1, static_cast<int>(std::ceil(right))),
+            std::min(clip.y1, static_cast<int>(std::ceil(bottom)))};
+}
+
+void CpuRenderer::fillSpan(int y, int x0, int x1, core::Color color) {
+    // Callers supply a fully covered span already intersected with the clip.
+    if (x0 >= x1) return;
+    if (color.a != 255) {
+        for (int x = x0; x < x1; ++x) blendPixel(x, y, color);
+        return;
+    }
+    auto* dst = buffer_.rgba.data() +
+        (static_cast<std::size_t>(y) * buffer_.width + x0) * 4;
+    dst[0] = color.r;
+    dst[1] = color.g;
+    dst[2] = color.b;
+    dst[3] = 255;
+    const auto bytes = static_cast<std::size_t>(x1 - x0) * 4;
+    for (std::size_t filled = 4; filled < bytes;) {
+        const auto count = std::min(filled, bytes - filled);
+        std::memcpy(dst + filled, dst, count);
+        filled += count;
+    }
 }
 
 void CpuRenderer::save() {
@@ -271,36 +313,21 @@ float sdRoundedRect(const DeviceShape& s, float x, float y) {
            r;
 }
 
-// 廉价的"整像素在内"判定（快速区填充用）：边界内缩 1px 的盒 + 圆角
-// 象限测试，保守但不计算平方根。
-bool deepInside(const DeviceShape& inset, float x, float y) {
+// Conservative fully covered span for one scanline. Corner bands still use
+// the original SDF; the solid interior needs no per-pixel geometry evaluation.
+std::pair<int, int> solidSpan(const DeviceShape& inset, float y) {
     if (inset.x1 - inset.x0 <= 0.0F || inset.y1 - inset.y0 <= 0.0F) {
-        return false;
+        return {0, 0};
     }
-    if (x < inset.x0 || x >= inset.x1 || y < inset.y0 || y >= inset.y1) {
-        return false;
+    if (y < inset.y0 || y >= inset.y1) {
+        return {0, 0};
     }
-    float dx = 0.0F;
-    float dy = 0.0F;
-    float r = 0.0F;
-    if (x < inset.x0 + inset.rTL && y < inset.y0 + inset.rTL) {
-        r = inset.rTL;
-        dx = x - (inset.x0 + r);
-        dy = y - (inset.y0 + r);
-    } else if (x >= inset.x1 - inset.rTR && y < inset.y0 + inset.rTR) {
-        r = inset.rTR;
-        dx = x - (inset.x1 - r);
-        dy = y - (inset.y0 + r);
-    } else if (x < inset.x0 + inset.rBL && y >= inset.y1 - inset.rBL) {
-        r = inset.rBL;
-        dx = x - (inset.x0 + r);
-        dy = y - (inset.y1 - r);
-    } else if (x >= inset.x1 - inset.rBR && y >= inset.y1 - inset.rBR) {
-        r = inset.rBR;
-        dx = x - (inset.x1 - r);
-        dy = y - (inset.y1 - r);
-    }
-    return !(r > 0.0F && dx * dx + dy * dy > r * r);
+    const float leftRadius = y < inset.y0 + inset.rTL ? inset.rTL :
+        (y >= inset.y1 - inset.rBL ? inset.rBL : 0.0F);
+    const float rightRadius = y < inset.y0 + inset.rTR ? inset.rTR :
+        (y >= inset.y1 - inset.rBR ? inset.rBR : 0.0F);
+    return {static_cast<int>(std::ceil(inset.x0 + leftRadius - 0.5F)),
+            static_cast<int>(std::ceil(inset.x1 - rightRadius - 0.5F))};
 }
 
 }  // namespace
@@ -315,21 +342,22 @@ void CpuRenderer::fillLogicalRect(const core::Rect& rect, core::Color color,
     const DeviceShape shape =
         deviceShapeFor(rect, radius, deviceScale_);
     const DeviceShape fast = insetShape(shape, 1.0F);
-    const int x0 = std::max(0, static_cast<int>(std::floor(shape.x0 - 0.5F)));
-    const int y0 = std::max(0, static_cast<int>(std::floor(shape.y0 - 0.5F)));
-    const int x1 = std::min(buffer_.width,
-                            static_cast<int>(std::ceil(shape.x1 + 0.5F)));
-    const int y1 = std::min(buffer_.height,
-                            static_cast<int>(std::ceil(shape.y1 + 0.5F)));
+    const auto [x0, y0, x1, y1] = rasterBounds(
+        shape.x0 - 0.5F, shape.y0 - 0.5F, shape.x1 + 0.5F, shape.y1 + 0.5F);
+    if (x0 >= x1 || y0 >= y1) return;
 
     for (int py = y0; py < y1; ++py) {
+        const float cy = static_cast<float>(py) + 0.5F;
+        const auto span = solidSpan(fast, cy);
+        const int solid0 = std::clamp(span.first, x0, x1);
+        const int solid1 = std::clamp(span.second, x0, x1);
+        fillSpan(py, solid0, solid1, color);
         for (int px = x0; px < x1; ++px) {
-            const float cx = static_cast<float>(px) + 0.5F;
-            const float cy = static_cast<float>(py) + 0.5F;
-            if (deepInside(fast, cx, cy)) {
-                blendPixel(px, py, color);
-                continue;
+            if (px == solid0 && solid1 > solid0) {
+                px = solid1;
+                if (px >= x1) break;
             }
+            const float cx = static_cast<float>(px) + 0.5F;
             const float d = sdRoundedRect(shape, cx, cy);
             if (d <= -0.5F) {
                 blendPixel(px, py, color);
@@ -361,19 +389,24 @@ void CpuRenderer::drawRectStroke(core::Rect rect, core::Color color,
     const float scale = deviceScale_;
     const DeviceShape outer = deviceShapeFor(rect, radius, scale);
     const DeviceShape inner = insetShape(outer, width * scale);
-    const int x0 = std::max(0, static_cast<int>(std::floor(outer.x0 - 0.5F)));
-    const int y0 = std::max(0, static_cast<int>(std::floor(outer.y0 - 0.5F)));
-    const int x1 = std::min(buffer_.width,
-                            static_cast<int>(std::ceil(outer.x1 + 0.5F)));
-    const int y1 = std::min(buffer_.height,
-                            static_cast<int>(std::ceil(outer.y1 + 0.5F)));
+    const auto [x0, y0, x1, y1] = rasterBounds(
+        outer.x0 - 0.5F, outer.y0 - 0.5F, outer.x1 + 0.5F, outer.y1 + 0.5F);
+    if (x0 >= x1 || y0 >= y1) return;
     const bool hasInner =
         inner.x1 - inner.x0 > 0.0F && inner.y1 - inner.y0 > 0.0F;
+    const DeviceShape emptyInterior = insetShape(inner, 1.0F);
 
     for (int py = y0; py < y1; ++py) {
+        const float cy = static_cast<float>(py) + 0.5F;
+        const auto span = solidSpan(emptyInterior, cy);
+        const int skip0 = std::clamp(span.first, x0, x1);
+        const int skip1 = std::clamp(span.second, x0, x1);
         for (int px = x0; px < x1; ++px) {
+            if (px == skip0 && skip1 > skip0) {
+                px = skip1;
+                if (px >= x1) break;
+            }
             const float cx = static_cast<float>(px) + 0.5F;
-            const float cy = static_cast<float>(py) + 0.5F;
             const float dOuter = sdRoundedRect(outer, cx, cy);
             if (dOuter >= 0.5F) {
                 continue;
@@ -610,16 +643,11 @@ void CpuRenderer::drawIcon(std::vector<std::vector<core::Offset>> polylines,
             maxY = std::max(maxY, y);
         }
     }
-    const int x0 = std::max(0, static_cast<int>(std::floor(
-                                   minX - halfWidth - 1.0F)));
-    const int y0 = std::max(0, static_cast<int>(std::floor(
-                                   minY - halfWidth - 1.0F)));
-    const int x1 = std::min(buffer_.width,
-                            static_cast<int>(std::ceil(
-                                maxX + halfWidth + 1.0F)));
-    const int y1 = std::min(buffer_.height,
-                            static_cast<int>(std::ceil(
-                                maxY + halfWidth + 1.0F)));
+    // Empty paths must not convert the sentinel bounds to integer pixels.
+    if (minX > maxX || minY > maxY) return;
+    const auto [x0, y0, x1, y1] = rasterBounds(
+        minX - halfWidth - 1.0F, minY - halfWidth - 1.0F,
+        maxX + halfWidth + 1.0F, maxY + halfWidth + 1.0F);
     const int width = x1 - x0;
     const int height = y1 - y0;
     if (width <= 0 || height <= 0) {
@@ -721,13 +749,15 @@ void CpuRenderer::drawImage(ImageId id, core::Rect destination) {
     }
     const PixelBuffer& image = it->second;
     if (!validPixelBuffer(image) ||
-        destination.size.width <= 0.0F || destination.size.height <= 0.0F) {
+        destination.size.width <= 0.0F || destination.size.height <= 0.0F ||
+        clip_.empty()) {
         return;
     }
-    const int x0 = std::max(0, toPixel(destination.left()));
-    const int y0 = std::max(0, toPixel(destination.top()));
-    const int x1 = std::min(buffer_.width, toPixel(destination.right()));
-    const int y1 = std::min(buffer_.height, toPixel(destination.bottom()));
+    const auto& clip = clip_.back();
+    const int x0 = std::max(clip.x0, toPixel(destination.left()));
+    const int y0 = std::max(clip.y0, toPixel(destination.top()));
+    const int x1 = std::min(clip.x1, toPixel(destination.right()));
+    const int y1 = std::min(clip.y1, toPixel(destination.bottom()));
     const float inv = 1.0F / deviceScale_;
 
     for (int py = y0; py < y1; ++py) {
@@ -789,7 +819,8 @@ void CpuRenderer::submit(const RenderCommandList& commands,
     bool partial = false;
     std::string fallbackReason{};
     if (wantsPartial) {
-        if (hasFront_) {
+        if (hasFront_ && front_.width == std::max(1, toPixel(info.viewport.width)) &&
+            front_.height == std::max(1, toPixel(info.viewport.height))) {
             partial = true;
         } else {
             // 无法证明上一帧覆盖当前 viewport（首帧/DPI 变化后），按
@@ -800,12 +831,25 @@ void CpuRenderer::submit(const RenderCommandList& commands,
 
     const RenderCommandList* effective = &commands;
     RenderCommandList culled{};
+    core::Rect damage{};
     if (partial) {
-        culled = cullCommandsOutside(commands, *info.damage);
+        // AA can cover a pixel whose center lies outside the logical damage.
+        // Round outwards before culling, clearing and clipping, so all three
+        // operations repaint the same complete device pixels.
+        const float left =
+            std::floor(info.damage->left() * deviceScale_) / deviceScale_;
+        const float top =
+            std::floor(info.damage->top() * deviceScale_) / deviceScale_;
+        const float right =
+            std::ceil(info.damage->right() * deviceScale_) / deviceScale_;
+        const float bottom =
+            std::ceil(info.damage->bottom() * deviceScale_) / deviceScale_;
+        damage = core::Rect::fromXYWH(left, top, right - left, bottom - top);
+        culled = cullCommandsOutside(commands, damage);
         effective = &culled;
-        beginFrame(info.viewport, FrameMode::Preserve, *info.damage);
+        beginFrame(info.viewport, FrameMode::Preserve, damage);
         save();
-        clipRect(*info.damage);
+        clipRect(damage);
     } else {
         beginFrame(info.viewport);
     }
@@ -866,6 +910,11 @@ void CpuRenderer::submit(const RenderCommandList& commands,
         restore();
     }
     endFrame();
+    if (partial) {
+        // The outer clip bounded every write, including the clear. After the
+        // swap, only this region of the back buffer is older than the front.
+        backDamage_ = pixelRect(damage);
+    }
 
     stats_.framesSubmitted += 1;
     stats_.submitMs =

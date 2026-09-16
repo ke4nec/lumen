@@ -439,6 +439,35 @@ TEST_CASE("cpu_preserve_erases_inside_damage_to_clear_color", "[render]") {
     CHECK(pixelAt(renderer.pixels(), 75, 40) == Color::fromRGBA(0, 0, 255));
 }
 
+TEST_CASE("cpu_preserve_clears_only_offset_damage_across_frames", "[render]") {
+    CpuRenderer renderer;
+    const Size view{100.0F, 80.0F};
+    const Color blue = Color::fromRGBA(0, 0, 255);
+    renderer.beginFrame(view);
+    renderer.drawRect(Rect{{}, view}, blue);
+    renderer.endFrame();
+    // Both damage rectangles start beyond their own width. Check every pixel,
+    // including the untouched band to the left and the far side of the damage.
+    const Rect damages[]{Rect::fromXYWH(65, 12, 20, 16),
+                         Rect::fromXYWH(40, 45, 12, 20)};
+    for (const auto& damage : damages) {
+        const auto previous = renderer.pixels();
+        renderer.beginFrame(view, CpuRenderer::FrameMode::Preserve, damage);
+        // A completed frame remains readable until endFrame, even on Preserve.
+        CHECK((renderer.pixels().rgba == previous.rgba));
+        renderer.endFrame();
+        for (int y = 0; y < 80; ++y) {
+            for (int x = 0; x < 100; ++x) {
+                const bool inside = x >= damage.left() && x < damage.right() &&
+                                    y >= damage.top() && y < damage.bottom();
+                REQUIRE(pixelAt(renderer.pixels(), x, y) ==
+                        (inside ? Color::fromRGBA(24, 24, 27)
+                                : pixelAt(previous, x, y)));
+            }
+        }
+    }
+}
+
 // --- S1（gui-control-visual-system-task §9.2）：描边命令与透明表面 ---
 
 TEST_CASE("cpu_renderer_rect_stroke_leaves_interior_transparent", "[render]") {

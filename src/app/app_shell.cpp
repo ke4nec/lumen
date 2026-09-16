@@ -255,7 +255,6 @@ void AppShell::setAccessibilitySettings(
             transition.tween.durationMs = 0;
             transition.sampledAlpha = static_cast<float>(transition.tween.to);
             transition.finished = true;
-            transition.retire = true;
         }
         transitionsPaintPending_ = !transitions_.empty();
     } else {
@@ -402,18 +401,21 @@ void AppShell::rebuildIfDirty() {
     // 同一绘制前累计多次重建的 damage：屏幕仍显示上一次“已绘制”的树，
     // 此处丢弃更早的 rect 会留下残影。renderFrame 绘制后清空并重新武装
     // 有效性。treeDamageValid_ 只在“尚未绘制的重建”之间粘性为 false。
-    if (hasPreviousRoot_) {
+    // Diff against the current render tree, including the last applied alpha
+    // and state colors. A layout-only snapshot already contains their target
+    // values and can miss the terminal animation frame when input rebuilds
+    // the tree. Damage stays accumulated across any intervening rebuilds.
+    if (hasRoot_) {
         treeDamageValid_ =
             treeDamageValid_ &&
-            core::collectDamage(previousRoot_, fresh, pendingDamage_);
+            core::collectDamage(root_, fresh, pendingDamage_);
     } else {
         treeDamageValid_ = false;
         pendingDamage_.clear();
     }
     retargetStateBlends(fresh);
-    root_ = fresh;
-    previousRoot_ = std::move(fresh);
-    hasPreviousRoot_ = true;
+    root_ = std::move(fresh);
+    hasRoot_ = true;
     rebuildTooltipTemplates();
     // M11：overlay 与主树同拍重建（独立布局/独立 identity 命名空间；
     // 打开期间 overlay 子树 diff 汇入 damage，打开首帧走全量）。
@@ -696,9 +698,9 @@ void AppShell::beginRouteTransition(
 }
 
 bool AppShell::advanceTransitions(std::uint64_t nowMs) {
-    // 上一拍完成的转场本拍退休：进场终值由此获得一次提交机会；退场的
-    // onComplete 通常同拍移除子树（重建后 identity 缺失即清除，终值
-    // alpha≈0 与不画等价）。
+    // Retire only after applyTransitions has put the terminal sample into a
+    // frame. VSync/hidden windows may defer rendering across many ticks; a
+    // timer completing does not mean its final alpha has been painted.
     std::erase_if(transitions_,
                   [](const ActiveTransition& t) { return t.retire; });
     if (transitions_.empty()) {
@@ -718,7 +720,6 @@ bool AppShell::advanceTransitions(std::uint64_t nowMs) {
         }
         if (transition.tween.finished(elapsed)) {
             transition.finished = true;
-            transition.retire = true;
             if (transition.onComplete) {
                 completed.push_back(std::move(transition.onComplete));
             }
@@ -764,6 +765,7 @@ bool AppShell::applyTransitions(std::vector<core::Rect>& damage) {
         }
         it->lastPaintedAlpha = it->sampledAlpha;
         it->paintedOnce = true;
+        it->retire = it->finished && !it->onComplete;
         ++it;
     }
     const bool pending = transitionsPaintPending_;

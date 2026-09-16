@@ -1015,8 +1015,11 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   - 转场驱动：`TransitionSpec`/`beginTransition` +
     `beginDialogTransition`/`beginRouteTransition`（时长取
     MotionTokens；进场 EaseOut、退场 EaseIn）；key 延迟解析 identity
-    （begin 可早于含该子树的首次重建）；完成回调后一拍退休，保证终值
-    有一次提交机会。
+    （begin 可早于含该子树的首次重建）；终值已应用到绘制帧且完成回调
+    已消费后，下一 tick 才退休。活动转场持续参与动画调度，终值等待
+    VSync/窗口恢复期间不能因多次 tick 提前消失。
+    重建 damage 比较当前渲染树的 alpha/状态色与新树，并累计绘制前
+    的多次重建，避免终帧恰逢交互重建时漏刷整页或控件颜色。
   - 状态色过渡：`ShellConfig.motionTransitions`（默认关）+
     `blendFrom/blendTo` 双快照——首次应用时定格目标样式（修复插值
     `to` 端被首拍覆盖的问题）；逐帧 `core::lerpStyleColors` 插值，
@@ -1041,9 +1044,9 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     （强制路由开启时用例两条断言均失败）。
   - SettingsApp/GalleryApp 的 wheel 转发显式丢弃消费状态返回值
     （`[[nodiscard]]`，消除 MSVC C4834）。
-  - `advanceTransitions` 退休注释精确化：进场终值有一拍提交机会；退场
-    onComplete 同拍移除子树（重建后 identity 缺失即清除，终值
-    alpha≈0 与不画等价）。
+  - `advanceTransitions` 退休以实际绘制为界，不能只等一个 tick；进场
+    终值应用后才可清除，退场 onComplete 移除子树时则在重建后清除
+    缺失的 identity。详见视觉实现记录的 Buttons 转场回归修复。
 - 测试：新增 `tests/motion_scroll_tests.cpp` 11 用例——整节点 alpha
   命令/子树乘法继承/全透明零命令、Dialog 退场淡出+完成回调+退休、进场
   延迟 identity、Route 时长区分、reduceAnimation 零时长首拍即终态、

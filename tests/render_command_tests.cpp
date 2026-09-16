@@ -216,6 +216,61 @@ TEST_CASE("cpu_partial_without_previous_frame_falls_back_and_reports",
     CHECK(stats.culledCommands == 0);
 }
 
+TEST_CASE("cpu_partial_after_resize_repaints_the_complete_viewport",
+          "[render][commands]") {
+    CpuRenderer renderer;
+    FrameInfo info;
+    info.viewport = Size{100, 80};
+    renderer.submit(recordScene(laidOutScene(sampleScene(), info.viewport)), info);
+    info.viewport = Size{160, 100};
+    info.damage = Rect::fromXYWH(60, 20, 20, 20);
+    info.preservePrevious = true;
+    const auto commands = recordScene(laidOutScene(sampleScene(), info.viewport));
+    renderer.submit(commands, info);
+    CHECK(renderer.stats().fullFrameFallback);
+    CpuRenderer reference;
+    info.damage.reset();
+    info.preservePrevious = false;
+    reference.submit(commands, info);
+    CHECK((renderer.pixels().rgba == reference.pixels().rgba));
+}
+
+TEST_CASE("cpu_consecutive_partial_frames_keep_aa_and_untouched_pixels",
+          "[render][commands][aa]") {
+    for (const float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+        CAPTURE(scale);
+        CpuRenderer partial, reference;
+        FrameInfo info;
+        info.viewport = Size{100, 80};
+        info.deviceScale = scale;
+        const Rect panels[]{Rect::fromXYWH(60.2F, 12.8F, 30.3F, 20.4F),
+                            Rect::fromXYWH(14.4F, 40.25F, 25.8F, 20.3F)};
+        Color colors[]{Color::fromRGBA(30, 120, 220, 160),
+                       Color::fromRGBA(180, 30, 100, 220)};
+        for (int frame = 0; frame < 8; ++frame) {
+            CAPTURE(frame);
+            const int changed = frame % 2;
+            colors[changed].g += 13;
+            RenderCommandList commands;
+            commands.drawRect(Rect{{}, info.viewport}, Color::fromRGBA(60, 50, 40));
+            for (int i = 0; i < 2; ++i) {
+                commands.drawRect(panels[i], colors[i], CornerRadius::all(6));
+                commands.drawRectStroke(panels[i], Color::fromRGBA(220, 180, 90, 200),
+                                        CornerRadius::all(6), 1.3F);
+            }
+            reference.submit(commands, info);
+            auto damage = info;
+            if (frame != 0) {
+                damage.damage = panels[changed];
+                damage.preservePrevious = true;
+            }
+            partial.submit(commands, damage);
+            CHECK_FALSE(partial.stats().fullFrameFallback);
+            REQUIRE((partial.pixels().rgba == reference.pixels().rgba));
+        }
+    }
+}
+
 TEST_CASE("default_submit_adapter_replays_through_legacy_path",
           "[render][commands]") {
     // A renderer that only implements the legacy immediate interface still

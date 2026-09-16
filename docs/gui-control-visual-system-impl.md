@@ -252,18 +252,18 @@
 
 ## S6 全绘制抗锯齿与双缓冲（2026-09-16）
 
-> 目标：CPU 后端所有几何绘制抗锯齿（圆角矩形填充/描边、图标线条）；绘制效率优化采用双缓冲（交换替代每帧全帧拷贝）。三层缓冲不适用：软件光栅 + 同步呈现没有异步呈现队列可消费第三张缓冲，双缓冲已消除逐帧拷贝。
+> 目标：CPU 后端所有几何绘制抗锯齿（圆角矩形填充/描边、图标线条）；绘制效率优化采用双缓冲（完成时交换替代无条件全帧拷贝）。软件光栅 + 同步呈现没有异步呈现队列可消费第三张缓冲。Preserve 的同步规则见本节末尾回归修复。
 
 - 阶段 / 日期 / 源码提交：S6 / 2026-09-16 / 基线 `e0dde59` + 工作区进行中的视觉几何/固定样本改造（见上一节）
 - 抗锯齿实现（`src/render/cpu_renderer.cpp`）：
   - 圆角矩形填充/描边改用**设备像素空间的圆角矩形 SDF**（象限取半径的 rounded-box 距离场）：覆盖率 = `clamp(0.5 - d, 0, 1)`，经既有 `blendCoveragePixel` 混合（与字形 AA 同一通道）。描边 = 外形覆盖 − 内形覆盖（饱和相减）。
   - 整数对齐几何保持锐利（边界恰在像素网格时不引入模糊）；分数边界/圆角弧线产生 1px 过渡带——正是 1/1.25/1.5/2 DPI 与 4/6/8 小圆角的主要观感问题来源。
-  - 性能防护：内部区域（边界内缩 1px 的盒+角测试）直通整像素填充，只有边界带付出距离场成本；大面积背景近似零开销。
+  - 性能防护：光栅循环先与活动 clip 相交；填充内部区域按扫描行批量写入，描边跳过透明内部，边界带保留距离场覆盖率计算。
   - 图标线条：删除"数值步进 + 方形笔刷多遍"旧光栅，改为逐像素点到线段距离（覆盖率 max 累积后单次混合；端点距离自然形成圆帽/圆角，与 Skia Round_Cap/Join 一致，跨后端观感更接近）。
   - 文本：系统字体路径本就有 coverage AA；5x7 占位字形保持确定性位图（headless 哈希稳定），不计入本轮 AA 范围。
 - 双缓冲（`CpuRenderer`）：
   - `endFrame` 由全帧拷贝（`previous_ = buffer_`）改为 **back/front 指针交换**（O(1)）；`pixels()` 返回最近完成帧（present 读到稳定帧，不再与绘制竞争），首帧完成前的帧中读取回退绘制缓冲保持旧语义。
-  - Preserve 帧零拷贝：beginFrame 先交换使绘制缓冲携带上一完成帧；damage 场景只把损坏区带清成底色（旧的"四周拷贝整帧"删除）。
+  - Preserve 在 beginFrame 同步后缓冲中过时的像素，保持 front 在绘制期间稳定；连续局部 submit 仅复制上一帧 damage，全量或即时绘制后首次 Preserve 同步整帧，再清理当前 damage。
   - 顺带修复（跨后端契约）：`Renderer::submit` 默认适配器此前丢弃 `FrameInfo.deviceScale`（仅 CpuRenderer 原生 submit 处理）——新增基类虚 `setDeviceScale` 并在默认适配器注入；Skia 光栅在 submit 路径下各 DPI 现在与 CPU 同尺度（`skia_and_cpu_strokes_keep_transparent_interiors_at_fractional_dpi` 由红转绿）。
 - 测试：
   - 新增 `[render][aa]` 3 例：分数边界混合带/角弧中间值/整数对齐锐利；描边与图标线条的部分覆盖；双缓冲完成帧隔离与多帧稳定。
@@ -274,3 +274,33 @@
   - 两次 `--frames 60` 运行 frame_hash 一致（`2982e8a3d392b612`）。
 - 验证：CPU Debug 476/476；Skia Release 490/490；GPU Release 490/490；Gallery `--headless` 全路由与 `--max-frames` 窗口（系统字体）冒烟通过；固定样本导出（600×700@1.25DPI → 750×875，hash 确定性）通过。
 - 未验证事项：Linux/macOS 本机运行（CI 覆盖）；人工观感验收（圆角平滑度需真人确认，命令级证据为角弧中间值像素）；占位字形 AA 未做（保持 headless 确定性）。
+
+### S6 Gallery 黑块与卡顿回归修复（2026-09-16）
+
+- 核对最近三次提交：主要回归进入 `fc57879` 的 CPU 抗锯齿/双缓冲改动；`13e30c5` 主要补充 DPI setter 和 S6 记录。
+- 黑块：Preserve 清底循环漏加 damage 左边界的行内偏移，错误擦除左侧区域；改为从 `(y * width + x0) * 4` 写入，仅清实际损坏区。
+- 边缘残留：四舍五入的 damage 漏掉分数坐标边缘的 AA 像素；submit 先向外对齐设备像素，再统一用于命令裁剪、清底和绘制 clip。
+- 双缓冲：取消 Preserve 开帧交换，保证 `pixels()` 在绘制期间仍返回上一完成帧；用上一局部提交的 damage 同步旧后缓冲。尺寸/DPI 不匹配时退回完整绘制，避免清空新缓冲后仅回放局部命令。
+- 卡顿：矩形/描边/图标/图像的像素循环提前与活动 clip 相交；不再扫描裁剪区外像素或逐像素计算描边透明内部；不透明填充内部改用扫描行批量写入。保留 AA 覆盖率和透明混合语义。
+- 回归：新增 4 个用例，覆盖横向偏移 damage、帧中读取、连续交替局部更新、窗口尺寸变化、1/1.25/1.5/2 DPI 的半透明圆角/描边，以及 Gallery 1/1.5/2 DPI 悬停动画与完整重绘逐帧像素一致性。修复前新增的前三类问题均在原实现上复现失败。
+- Windows / VS 2026 / CPU Debug 完整构建及 CTest **480/480** 通过。真实系统字体的 Home/Buttons/Inputs × 1/1.25/2 DPI 共 9 组全量 RGBA 与修复前逐字节一致，AA 外观未因热路径优化改变。
+- 性能对照：Windows / VS 2026 / CPU Release / 系统字体 / 1024×768 Home（355 条命令），`--max-frames 60 --diagnostics`，前后交替各跑 5 次。用 SDL dummy 驱动固定窗口负载、排除真实输入干扰；取每次末帧 `submitMs` 的中位数，**26.47 ms → 4.53 ms（-82.9%）**，范围分别为 24.74–29.04 ms 与 4.10–5.64 ms。此数值仅为 CPU 提交耗时，不包含窗口呈现，也不是所有帧的 p50。
+- 原生窗口：实际 SDL 呈现、系统字体的连续悬停验证共 60 帧，其中 36 次局部重绘；与独立 Gallery 实例的全量绘制逐帧比较，像素差异为零。Gallery 全路由 headless 冒烟和 Debug/Release 窗口短跑通过。
+- 本轮证据保存在 `build/gallery-regression/`（构建与测试日志、RGBA 对照、窗口诊断）；生成物不提交。Linux/macOS 本机运行尚未验证。
+
+### Buttons 进入转场停在透明帧的追补修复（2026-09-16）
+
+- 上一轮覆盖了光栅 damage、全量样本和悬停动画，但没有覆盖真实主循环中“一个绘制帧之间发生多次 tick”的路由进入过程。
+- 原因：`advanceTransitions` 在计时完成时立即标记退休，下一 tick 就删除转场；VSync 限帧或慢首帧可能使最终 alpha 尚未提交。真实 SDL `runApp` 在静止鼠标下可停留于 alpha=0.98195；注入 250 ms 首帧耗时模拟冷字体/慢帧时可停在 alpha=0，Buttons 内容完全不显示。`--max-frames` 强制全帧短跑无法覆盖该问题。
+- 修复：退休标记改由 `applyTransitions` 在终值写入绘制帧且完成回调已消费后设置；活动转场自身纳入 `animationsActive()`，保证在 rebuild 内启动的转场首帧后仍有后续调度。减少动画设置也遵守终帧/回调规则。
+- 新增 4 个测试：首帧之后仍保持调度、完成后连续 tick 不丢最终帧、减少动画立即绘制后回调恰好执行一次、Buttons 点击后不再发送鼠标事件（7 ms/250 ms 绘制耗时）自动完成转场。
+- Windows CPU Debug 全量 CTest **484/484** 通过，Debug/Release Gallery 已重建。真实 SDL 主循环（`maxFrames=0`，系统字体）正常/250 ms 慢首帧两种路径均在无后续鼠标输入下达到 alpha=1，最终像素与全量重绘一致；[Buttons 完成帧](../build/gallery-regression/buttons-final.png)。日志为 `build/gallery-regression/route-native-{slow-}after.log`。
+
+### Buttons 转场结束与交互重建同时发生的漏刷修复（2026-09-16）
+
+- 用户继续反馈黑屏：前一轮静止指针测试没有覆盖转场最后一帧同时发生 hover 重建的路径。真实 SDL 主循环注入慢首帧后移动指针，复现了页面大面积空白、只有鼠标经过的局部内容恢复；此时树中 alpha 已为 1，但提交像素与全量绘制不同。
+- 原因：重建的 damage 比较使用独立的布局目标快照，其中 alpha/状态色已是终值，缺少最后绘制帧的动画状态。转场结束时新树同样是 alpha=1，动画应用阶段也不会补充整页 damage。状态色动画在无关内容重建时存在同类终帧漏刷。
+- 修复：重建直接比较当前渲染树（含最后应用的 alpha/状态色）与新树，继续累计同一绘制前的多次重建 damage；删除冗余的主树布局快照及整树复制。保留局部重绘与抗锯齿。
+- 新增回归分别覆盖路由透明帧/中间帧之后的终帧 hover 重建，以及状态色动画终帧的无关内容重建；修复前两类像素断言均失败。
+- 连续局部重绘测试改为与独立 Gallery 实例的完整绘制比较（1/1.5/2 DPI），避免在被测实例上插入完整重绘、掩盖缓存残留。Windows CPU Debug 完整构建及 CTest **486/486** 通过；日志 `build/gallery-regression/moving-ctest-debug.log`。
+- Debug/Release Gallery 均已重建。真实 SDL 窗口、系统字体、`maxFrames=0` 下，Debug 慢首帧后移动鼠标、Release 正常/慢首帧期间及之后移动鼠标、Release 静止等待均通过最终像素与完整绘制一致性检查；[复现的漏刷帧](../build/gallery-regression/buttons-moving-before.png)、[修复后的提交帧](../build/gallery-regression/buttons-moving-after-debug.png)。证据来自完整重绘校验前的 framebuffer，日志为 `build/gallery-regression/route-moving-*.log` 和 `route-stationary-final.log`。

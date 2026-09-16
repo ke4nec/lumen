@@ -239,7 +239,8 @@ class AppShell {
     // 连续动画是否活跃（caret 闪烁/转场/状态过渡/tooltip 计时/onAnimate）；
     // runApp 据此驱动 FrameScheduler 动画帧。
     [[nodiscard]] bool animationsActive() const {
-        return animationsActive_ || !stateBlends_.empty() || transitionsPaintPending_;
+        return animationsActive_ || !transitions_.empty() ||
+               !stateBlends_.empty() || transitionsPaintPending_;
     }
     [[nodiscard]] bool motionEnabled() const {
         return config_.motionTransitions && hasTicked_;
@@ -320,7 +321,7 @@ class AppShell {
         std::uint64_t startMs{0};
         bool paintedOnce{false};
         bool finished{false};
-        bool retire{false};  // 完成后再活一拍，给终值一次提交机会
+        bool retire{false};  // 终值已应用到绘制帧，下一 tick 才可清除
         std::function<void(AppShell&)> onComplete{};
     };
     bool advanceTransitions(std::uint64_t nowMs);
@@ -387,8 +388,7 @@ class AppShell {
     core::RenderNode previousOverlayRoot_{};
     bool hasPreviousOverlayRoot_{false};
     // Damage/paint-cache bookkeeping（plan 阶段6）。
-    core::RenderNode previousRoot_{};
-    bool hasPreviousRoot_{false};
+    bool hasRoot_{false};
     std::vector<core::Rect> pendingDamage_{};
     bool treeDamageValid_{true};
     bool rebuiltThisFrame_{false};

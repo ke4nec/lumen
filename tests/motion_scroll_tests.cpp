@@ -222,6 +222,68 @@ TEST_CASE("route_transition_uses_navigator_duration", "[motion]") {
     CHECK(overlayAlpha(shell) == 0.0F);
 }
 
+TEST_CASE("route_transition_keeps_scheduling_after_its_first_paint", "[motion]") {
+    OverlayApp app;
+    AppShell shell{app.config()};
+    shell.tick(0);
+    (void)shell.renderFrame();
+    shell.beginRouteTransition("overlay-card", true);
+    (void)shell.renderFrame();
+    CHECK(overlayAlpha(shell) == 0.0F);
+    // runApp queries this after renderFrame: onRebuilt can start a transition
+    // after the loop's tick, without a hover blend or another input event.
+    CHECK(shell.animationsActive());
+}
+
+TEST_CASE("transition_terminal_sample_survives_ticks_without_a_frame", "[motion]") {
+    OverlayApp app;
+    AppShell shell{app.config()};
+    shell.tick(0);
+    (void)shell.renderFrame();
+    int callbacks = 0;
+    shell.beginDialogTransition("overlay-card", true,
+        [&](AppShell&) { ++callbacks; });
+    (void)shell.renderFrame();
+    REQUIRE(overlayAlpha(shell) == 0.0F);
+    const auto duration = shell.theme().motion.dialogTransitionMs;
+    // VSync throttling or a hidden window can defer rendering while the event
+    // loop keeps ticking. Completing the timer must not discard its last frame.
+    for (std::uint64_t now = duration; now < duration + 20; ++now) {
+        shell.tick(now);
+    }
+    CHECK(callbacks == 1);
+    CHECK(shell.hasActiveTransitions());
+    (void)shell.renderFrame();
+    CHECK(overlayAlpha(shell) == 1.0F);
+    shell.tick(duration + 20);
+    CHECK_FALSE(shell.hasActiveTransitions());
+    CHECK_FALSE(shell.animationsActive());
+}
+
+TEST_CASE("reduce_animation_keeps_completion_callback_after_immediate_paint",
+          "[motion]") {
+    OverlayApp app;
+    AppShell shell{app.config()};
+    shell.tick(0);
+    (void)shell.renderFrame();
+    int callbacks = 0;
+    shell.beginDialogTransition("overlay-card", true,
+        [&](AppShell&) { ++callbacks; });
+    (void)shell.renderFrame();
+    lumen::accessibility::AccessibilitySettings settings;
+    settings.reduceAnimation = true;
+    shell.setAccessibilitySettings(settings);
+    (void)shell.renderFrame();
+    CHECK(overlayAlpha(shell) == 1.0F);
+    shell.tick(1);
+    CHECK(callbacks == 1);
+    (void)shell.renderFrame();
+    shell.tick(2);
+    CHECK(callbacks == 1);
+    CHECK_FALSE(shell.hasActiveTransitions());
+    CHECK_FALSE(shell.animationsActive());
+}
+
 TEST_CASE("reduce_animation_completes_transition_first_tick", "[motion]") {
     OverlayApp app;
     AppShell shell{app.config()};

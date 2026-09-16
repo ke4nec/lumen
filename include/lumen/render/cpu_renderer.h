@@ -2,6 +2,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 
 #include "lumen/render/render_commands.h"
 #include "lumen/render/renderer.h"
@@ -27,7 +28,7 @@ class CpuRenderer final : public Renderer {
     explicit CpuRenderer(float deviceScale = 1.0F,
                          core::Color clear = core::Color::fromRGBA(24, 24, 27));
 
-    void setDeviceScale(float scale);
+    void setDeviceScale(float scale) override;
 
     // 系统字体光栅（窗口路径经 AppShell::setFontManager 转发；空 = 占
     // 位 5x7 点阵字）。注入后 drawText 使用 SystemFontManager 的系统字
@@ -43,7 +44,7 @@ class CpuRenderer final : public Renderer {
     }
 
     // Framebuffer of the last completed frame; endFrame() swaps it with the
-    // drawing buffer (double buffering, no per-frame copy). Mid-frame reads
+    // drawing buffer without copying at publication. Mid-frame reads
     // see the previous completed frame; before the first completed frame the
     // drawing buffer itself is returned (legacy mid-frame read semantics).
     [[nodiscard]] const PixelBuffer& pixels() const {
@@ -83,8 +84,8 @@ class CpuRenderer final : public Renderer {
     void endFrame() override;
 
     // --- v0.2 命令路径（阶段7B）---
-    // 原生 submit：damage + preserve 请求走 Preserve 帧模式并按命令
-    // bounds 裁剪掉 damage 外的绘制命令；无上一帧时退回全帧并记录原因。
+    // 原生 submit：damage 向外对齐设备像素后走 Preserve，并按命令
+    // bounds 裁剪；无同尺寸上一帧时退回全帧并记录原因。
     [[nodiscard]] RendererCapabilities capabilities() const override;
     void submit(const RenderCommandList& commands,
                 const FrameInfo& info) override;
@@ -98,6 +99,10 @@ class CpuRenderer final : public Renderer {
     };
 
     [[nodiscard]] int toPixel(float logical) const;
+    [[nodiscard]] ClipRects pixelRect(core::Rect rect) const;
+    [[nodiscard]] ClipRects rasterBounds(float left, float top, float right,
+                                         float bottom) const;
+    void fillSpan(int y, int x0, int x1, core::Color color);
     void blendPixel(int px, int py, core::Color color);
     // 灰度 coverage 混合（字形抗锯齿）：coverage 折进 alpha 后走同一
     // source-over 路径。
@@ -117,11 +122,13 @@ class CpuRenderer final : public Renderer {
     float deviceScale_;
     core::Color clearColor_;
     // 双缓冲：buffer_ = 绘制目标（back），front_ = 最近完成帧（present/
-    // pixels() 读取）。endFrame 只交换指针（O(1)，无全帧拷贝）；Preserve
-    // 帧在 beginFrame 先交换使 buffer_ 携带上一帧内容，损坏区就地清底。
+    // pixels() 读取）。endFrame 交换存储；Preserve 先同步 back 中过时的
+    // 像素，再清理当前 damage。绘制期间 front 始终保留上一完成帧。
     PixelBuffer buffer_{};
     PixelBuffer front_{};
     bool hasFront_{false};
+    // 上次局部 submit 改动的像素区域；空值表示 back 需要全量同步。
+    std::optional<ClipRects> backDamage_{};
     std::vector<ClipRects> clip_{};
     std::map<ImageId, PixelBuffer> images_{};
     ImageId nextImageId_{1};

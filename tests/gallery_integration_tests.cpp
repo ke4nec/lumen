@@ -3,13 +3,16 @@
 // 保留（高对比 × 深浅/强调色）、虚拟列表物化窗口、滑杆联动与语义覆盖。
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
+#include <algorithm>
 #include <string>
 
 #include "gallery_app.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/interaction.h"
 #include "lumen/core/state.h"
+#include "lumen/render/frame_scheduler.h"
 
 using namespace lumen;
 using namespace lumen::core;
@@ -79,6 +82,57 @@ void clickOverlayOption(GalleryApp& app, const std::string& key) {
 
 }  // namespace
 
+TEST_CASE("gallery_hover_animation_partial_frames_match_full_repaint", "[gallery]") {
+    for (const float scale : {1.0F, 1.5F, 2.0F}) {
+        CAPTURE(scale);
+        GalleryApp app;
+        GalleryApp reference;
+        app.setView({1024, 768});
+        app.setDeviceScale(scale);
+        reference.setView({1024, 768});
+        reference.setDeviceScale(scale);
+        std::uint64_t now = 1000;
+        app.shell().tick(now);
+        reference.shell().tick(now);
+        (void)app.renderFrame();
+        (void)reference.renderFrame(true);
+        for (const char* key : {"nav-buttons", "show-dialog-button", "nav-inputs"}) {
+            CAPTURE(key);
+            const auto* node = findNodeByKey(app.root(), key);
+            const auto origin = absoluteOffset(app.root(), key);
+            INFO("node x=" << origin.x << " y=" << origin.y
+                 << " w=" << node->size.width << " h=" << node->size.height);
+            app.shell().pointerMove(centerOf(app.root(), key));
+            reference.pointerMove(centerOf(reference.root(), key));
+            for (int i = 0; i < 3; ++i) {
+                CAPTURE(i);
+                now += 40;
+                app.shell().tick(now);
+                reference.shell().tick(now);
+                const auto count = app.shell().partialRepaintCount();
+                const auto partialHash = app.renderFrame();
+                REQUIRE(app.shell().partialRepaintCount() > count);
+                const auto partial = app.pixels();
+                // Keep the tested renderer on consecutive partial frames;
+                // a full repaint here would repair and hide stale pixels.
+                const auto fullHash = reference.renderFrame(true);
+                if (partialHash != fullHash) {
+                    const auto first = std::mismatch(partial.rgba.begin(),
+                        partial.rgba.end(), reference.pixels().rgba.begin()).first;
+                    const auto byte = first - partial.rgba.begin();
+                    INFO("first mismatch x=" << (byte / 4) % partial.width
+                         << " y=" << (byte / 4) / partial.width
+                         << " channel=" << byte % 4
+                         << " partial=" << int(*first)
+                         << " full=" << int(reference.pixels().rgba[byte]));
+                    REQUIRE(partialHash == fullHash);
+                }
+                REQUIRE(partialHash == fullHash);
+            }
+        }
+    }
+}
+
 TEST_CASE("gallery_navigation_and_button_counter", "[gallery]") {
     GalleryApp app;
     app.setView(Size{1024.0F, 768.0F});
@@ -100,6 +154,96 @@ TEST_CASE("gallery_navigation_and_button_counter", "[gallery]") {
     clickVisible(app, "back-button");
     (void)app.renderFrame();
     CHECK(app.navigator().current() == "home");
+}
+
+TEST_CASE("gallery_buttons_transition_finishes_without_more_pointer_events",
+          "[gallery][motion]") {
+    const auto paintMs = GENERATE(7U, 250U);
+    CAPTURE(paintMs);
+    struct Clock final : render::FrameClock {
+        std::uint64_t time{0};
+        std::uint64_t nowMs() const override { return time; }
+    } clock;
+    render::FrameScheduler scheduler{{}, &clock};
+    GalleryApp app;
+    app.setView({1024, 768});
+    app.shell().tick(0);
+    (void)app.renderFrame();
+    scheduler.markFrameSubmitted();
+
+    clock.time = 20;
+    click(app, "nav-buttons");
+    scheduler.requestFrame(render::FrameReason::Input);
+    // Mirror runApp: tick can run several times between scheduled frames;
+    // rendering/presentation consumes time before markFrameSubmitted.
+    for (; clock.time < 600; ++clock.time) {
+        app.shell().tick(clock.time);
+        scheduler.setAnimationsActive(app.shell().animationsActive());
+        if (scheduler.shouldSubmitFrame()) {
+            (void)app.renderFrame();
+            scheduler.setAnimationsActive(app.shell().animationsActive());
+            clock.time += paintMs;
+            scheduler.markFrameSubmitted();
+        }
+    }
+    REQUIRE(app.navigator().current() == "buttons");
+    const auto* page = findNodeByKey(app.root(), "gallery-list");
+    REQUIRE(page != nullptr);
+    CHECK(page->transitionAlpha == 1.0F);
+    CHECK_FALSE(app.shell().hasActiveTransitions());
+    CHECK_FALSE(app.shell().animationsActive());
+    const auto lastFrame = app.renderFrame();
+    CHECK(lastFrame == app.renderFrame(true));
+}
+
+TEST_CASE("gallery_route_terminal_frame_repaints_after_pointer_rebuild",
+          "[gallery][motion]") {
+    const bool paintIntermediate = GENERATE(false, true);
+    CAPTURE(paintIntermediate);
+    GalleryApp app;
+    app.setView({1024, 768});
+    app.shell().tick(1000);
+    (void)app.renderFrame();
+    app.shell().tick(1020);
+    click(app, "nav-buttons");
+    (void)app.renderFrame();
+    REQUIRE(findNodeByKey(app.root(), "gallery-list")->transitionAlpha == 0.0F);
+    const auto duration = app.theme().motion.navigatorTransitionMs;
+    if (paintIntermediate) {
+        app.shell().tick(1020 + duration / 2);
+        (void)app.renderFrame();
+    }
+
+    // Moving the pointer rebuilds the tree with its default alpha of 1 on the
+    // same frame that the route fade finishes. Damage must include the entire
+    // page that is still transparent in the last submitted framebuffer.
+    app.shell().tick(1020 + duration + 1);
+    app.pointerMove(centerOf(app.root(), "nav-inputs"));
+    const auto partial = app.renderFrame();
+    CHECK(findNodeByKey(app.root(), "gallery-list")->transitionAlpha == 1.0F);
+    CHECK(partial == app.renderFrame(true));
+}
+
+TEST_CASE("gallery_state_blend_terminal_frame_repaints_after_state_rebuild",
+          "[gallery][motion]") {
+    GalleryApp app;
+    app.setView({1024, 768});
+    app.shell().tick(1000);
+    (void)app.renderFrame();
+    app.pointerMove(centerOf(app.root(), "nav-buttons"));
+    (void)app.renderFrame();
+    const auto duration = app.theme().motion.stateTransitionMs;
+    app.shell().tick(1000 + duration / 2);
+    (void)app.renderFrame();
+
+    // An unrelated live-state label rebuilds the tree while the hover color
+    // reaches its target. The button's last painted intermediate color still
+    // needs damage even though the layout target already has the final color.
+    app.shell().state().set("button-clicks", "1");
+    app.shell().markDirty();
+    app.shell().tick(1000 + duration + 1);
+    const auto partial = app.renderFrame();
+    CHECK(partial == app.renderFrame(true));
 }
 
 TEST_CASE("gallery_inputs_dropdown_tabs_and_form", "[gallery]") {
