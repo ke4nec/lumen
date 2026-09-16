@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <optional>
 #include <utility>
 
 #include "lumen/text/font_manager.h"
@@ -34,6 +35,70 @@ bool absoluteOffsetOf(const RenderNode& tree, const RenderNode& target,
         }
     }
     return false;
+}
+
+// 滚动条拇指矩形（局部坐标；与 render/painter.cpp §7.2 同式）：
+// 无可见拇指时返回 nullopt。
+std::optional<Rect> scrollbarThumbRect(const RenderNode& node) {
+    if (node.scrollbarThickness <= 0.0F || node.scrollExtent <= 0.0F ||
+        node.scrollbarColor.a == 0 || node.scrollbarThumbWidth <= 0.0F) {
+        return std::nullopt;
+    }
+    const float inset = node.scrollbarThickness - node.scrollbarThumbWidth;
+    const float trackLength =
+        std::max(0.0F, node.size.height - 2.0F * inset);
+    if (trackLength <= 0.0F) {
+        return std::nullopt;
+    }
+    const float fraction =
+        node.size.height / (node.size.height + node.scrollExtent);
+    const float thumbHeight = std::min(
+        std::max(trackLength * fraction, node.scrollbarMinLength),
+        trackLength);
+    if (thumbHeight <= 0.0F) {
+        return std::nullopt;
+    }
+    const float scrollable = trackLength - thumbHeight;
+    const float progress = node.scrollExtent > 0.0F
+                               ? node.scrollOffset / node.scrollExtent
+                               : 0.0F;
+    const float thumbY =
+        inset + std::clamp(progress, 0.0F, 1.0F) * scrollable;
+    const float thumbX =
+        node.size.width - node.scrollbarThickness +
+        (node.scrollbarThickness - node.scrollbarThumbWidth) * 0.5F;
+    return Rect{Offset{thumbX, thumbY},
+                Size{node.scrollbarThumbWidth, thumbHeight}};
+}
+
+// 拇指位移 → 内容偏移的换算比（scrollExtent/可滚轨道长）；无可见拇指
+// 或轨道被拇指占满时返回 nullopt（调用方退化为普通内容拖拽）。
+std::optional<float> scrollbarThumbRatio(const RenderNode& node) {
+    const auto thumb = scrollbarThumbRect(node);
+    if (!thumb.has_value()) {
+        return std::nullopt;
+    }
+    const float inset = node.scrollbarThickness - node.scrollbarThumbWidth;
+    const float trackLength =
+        std::max(0.0F, node.size.height - 2.0F * inset);
+    const float scrollable = trackLength - thumb->size.height;
+    if (scrollable <= 0.0F) {
+        return std::nullopt;
+    }
+    return node.scrollExtent / scrollable;
+}
+
+// 按下点是否落在拇指上：x 取整列宽、y 在拇指上下各放宽 2px（4px 宽的
+// 拇指直接点中太苛刻）。
+bool pressOnScrollbarThumb(const RenderNode& node, Offset local) {
+    const auto thumb = scrollbarThumbRect(node);
+    if (!thumb.has_value()) {
+        return false;
+    }
+    return local.x >= node.size.width - node.scrollbarThickness &&
+           local.x <= node.size.width &&
+           local.y >= thumb->origin.y - 2.0F &&
+           local.y <= thumb->origin.y + thumb->size.height + 2.0F;
 }
 
 // 命中链上 hover 的承载节点：最深的有效可交互控件（disabled 不承载，
@@ -215,6 +280,8 @@ void InteractionController::pointerDown(const RenderNode& root,
     armedIdentity_.clear();
     scrollDragging_ = false;
     scrollDragIdentity_.clear();
+    scrollDragOnThumb_ = false;
+    sliderDragIdentity_.clear();
     // Gesture anchor: every press can become a drag, clickable or not.
     pressActive_ = true;
     dragging_ = false;
@@ -256,6 +323,15 @@ void InteractionController::pointerDown(const RenderNode& root,
             armedOnClick_ = node->onClick;
             armedKey_ = node->key;
             armedIdentity_ = node->identity;
+            break;
+        }
+    }
+    // M6 Slider 拖拽锁定：起点落在可拖动滑块上时，后续移动每拍按位置
+    // 设值（旋钮跟手），不再等释放（释放逻辑不变，仍落一次终值）。
+    for (const RenderNode* node : chain) {
+        if (node->type == WidgetType::Slider && node->enabled &&
+            !node->bind.empty()) {
+            sliderDragIdentity_ = node->identity;
             break;
         }
     }
@@ -427,6 +503,16 @@ void InteractionController::pointerMove(const RenderNode& root,
                         scrollDragging_ = true;
                         scrollDragIdentity_ = node->identity;
                         scrollLastPoint_ = dragAnchor_;
+                        // 起点落在拇指上 → 后续 Update 按拇指映射换算
+                        //（跟手 1:1）；否则内容拖拽 1:1。
+                        Offset viewportOrigin{};
+                        if (absoluteOffsetOf(root, *node, Offset{},
+                                             viewportOrigin)) {
+                            scrollDragOnThumb_ = pressOnScrollbarThumb(
+                                *node, dragAnchor_ - viewportOrigin);
+                        } else {
+                            scrollDragOnThumb_ = false;
+                        }
                         scrollDragSink_(&root, node, dragAnchor_, Offset{},
                                         ScrollDragPhase::Begin, timestampMs);
                         break;
@@ -436,12 +522,35 @@ void InteractionController::pointerMove(const RenderNode& root,
         }
     }
     if (scrollDragging_) {
-        const Offset move = position - scrollLastPoint_;
+        Offset move = position - scrollLastPoint_;
         scrollLastPoint_ = position;
         if (const RenderNode* viewport =
                 findNodeByIdentity(root, scrollDragIdentity_)) {
+            if (scrollDragOnThumb_) {
+                // 拇指跟手：手指位移即拇指位移，内容按比例反向换算
+                //（手指下移 → offset 增大；与内容拖拽反号）。
+                // 比例每拍按当前树重算（拖动中重建导致几何变化时仍成立）；
+                // 拇指中途消失则退化为普通内容拖拽（不换算不断流）。
+                if (const auto ratio = scrollbarThumbRatio(*viewport)) {
+                    move.y = -move.y * *ratio;
+                    move.x = 0.0F;
+                }
+            }
             scrollDragSink_(&root, viewport, position, move,
                             ScrollDragPhase::Update, timestampMs);
+        }
+        return;
+    }
+    // M6 Slider 拖拽跟手：已锁定目标时每拍按位置设值（store 写回经订
+    // 阅置脏，下帧重建即更新旋钮）；目标消失则解锁，不劫持选区路径。
+    if (pressActive_ && !sliderDragIdentity_.empty()) {
+        const RenderNode* slider =
+            findNodeByIdentity(root, sliderDragIdentity_);
+        if (slider != nullptr && slider->type == WidgetType::Slider &&
+            slider->enabled && !slider->bind.empty()) {
+            setSliderByPosition(root, *slider, position);
+        } else {
+            sliderDragIdentity_.clear();
         }
         return;
     }
@@ -480,6 +589,8 @@ void InteractionController::pointerUp(const RenderNode& root,
     selecting_ = false;
     scrollDragging_ = false;
     scrollDragIdentity_.clear();
+    scrollDragOnThumb_ = false;
+    sliderDragIdentity_.clear();
     if (wasScrollDragging) {
         // 拖动滚动释放：应用 sink 决定是否起惯性（End 携带释放时间戳）。
         if (const RenderNode* viewport =
@@ -554,9 +665,11 @@ void InteractionController::pointerCancel() {
     pressActive_ = false;
     dragging_ = false;
     selecting_ = false;
+    sliderDragIdentity_.clear();
     if (scrollDragging_) {
         scrollDragging_ = false;
         scrollDragIdentity_.clear();
+        scrollDragOnThumb_ = false;
         // 取消：应用 sink 停止惯性，不触发 End（无释放速度语义）。
         if (scrollDragSink_) {
             scrollDragSink_(nullptr, nullptr, Offset{}, Offset{},

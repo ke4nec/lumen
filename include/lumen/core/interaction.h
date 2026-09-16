@@ -107,6 +107,8 @@ class InteractionController {
     // --- M10：触摸/指针拖动滚动（视口拖动 → 应用 sink） ---
     // 起点（slop 前）命中滚动视口且不在文本选区路径上的拖动路由到此；
     // 文本字段上的拖动仍走选区扩展。delta 为自上次 Update 的位移。
+    // 起点落在滚动条拇指上时，delta 已按拇指→内容比例换算（拇指跟手
+    // 1:1，方向与内容拖拽相反），sink 无需区分直接消费。
     // Cancel 时 root/viewport 为空（无释放语义，应用只停止惯性）。
     using ScrollDragSink = std::function<bool(
         const RenderNode* root, const RenderNode* viewport, Offset position,
@@ -268,6 +270,12 @@ class InteractionController {
     bool scrollDragging_{false};
     std::string scrollDragIdentity_{};
     Offset scrollLastPoint_{};
+    // 滚动条拇指拖拽：起点落在拇指上时位移按拇指→内容比例换算后
+    // 再进 sink（拇指跟手 1:1）；内容区拖拽仍是 1:1 跟手。
+    bool scrollDragOnThumb_{false};
+    // M6 Slider 拖拽：起点落在滑块上时锁定目标（identity 跨重建），
+    // 移动每拍按位置设值（旋钮跟手），释放再落一次终值。
+    std::string sliderDragIdentity_;
     // 双击检测。
     std::uint64_t lastClickMs_{0};
     std::string lastClickIdentity_{};

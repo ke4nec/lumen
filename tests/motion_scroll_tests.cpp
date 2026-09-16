@@ -3,8 +3,10 @@
 // 状态色过渡插值、reduceAnimation 零时长路径与静态场景零动画帧——
 // 全部经注入时钟直驱 AppShell（确定性；plan §4 M10 接口约束）。
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -603,6 +605,124 @@ TEST_CASE("drag_over_viewport_scrolls_and_flings_via_shell", "[motion]") {
     CHECK_FALSE((shell.animationsActive() || app.scroll.isFlinging()));
 }
 
+TEST_CASE("drag_on_scrollbar_thumb_tracks_finger", "[motion]") {
+    // 拇指拖拽跟手：起点落在拇指上时，拇指位移 1:1 跟随手指，
+    // 内容按 scrollExtent/可滚轨道长换算（与内容拖拽反号）。
+    lumen::core::ScrollController scroll;
+    AppShell* liveShell = nullptr;
+    ShellConfig config;
+    config.initialView = Size{200.0F, 300.0F};
+    config.caretBlink = false;
+    config.build = [&scroll] {
+        using namespace lumen::dsl;
+        namespace core = lumen::core;
+        std::vector<Widget> rows;
+        for (int i = 0; i < 40; ++i) {
+            rows.push_back(core::withKey(text("row " + std::to_string(i)),
+                                         "row-" + std::to_string(i)));
+        }
+        Widget list = scroll_view(core::makeColumn(std::move(rows)));
+        list = core::withScrollOffset(std::move(list), scroll.offset());
+        Widget ui = core::withKey(core::withScrollbar(std::move(list)),
+                                  "scroll-area");
+        ui = container(std::move(ui), Color::fromRGBA(24, 24, 27));
+        ui.key = "root";
+        return ui;
+    };
+    config.onScrollDrag =
+        [&scroll, &liveShell](const RenderNode*, const RenderNode* viewport,
+                  core::Offset, core::Offset delta,
+                  core::ScrollDragPhase phase, std::uint64_t nowMs) {
+            if (viewport == nullptr) {
+                if (phase == core::ScrollDragPhase::Cancel) {
+                    scroll.stopFling();
+                }
+                return false;
+            }
+            scroll.updateExtents(viewport->size.height,
+                                 viewport->size.height +
+                                     viewport->scrollExtent);
+            switch (phase) {
+                case core::ScrollDragPhase::Begin:
+                    break;
+                case core::ScrollDragPhase::Update:
+                    scroll.noteDragSample(delta.y, nowMs);
+                    if (scroll.applyDrag(delta.y)) {
+                        if (liveShell != nullptr) {
+                            liveShell->markDirty();
+                        }
+                        return true;
+                    }
+                    return false;
+                case core::ScrollDragPhase::End:
+                    return scroll.endDrag(nowMs);
+                case core::ScrollDragPhase::Cancel:
+                    scroll.stopFling();
+                    return false;
+            }
+            return false;
+        };
+    AppShell shell{std::move(config)};
+    liveShell = &shell;
+    shell.tick(0);
+    (void)shell.renderFrame();
+
+    const RenderNode* viewport =
+        lumen::core::findNodeByKey(shell.root(), "scroll-area");
+    REQUIRE(viewport != nullptr);
+    REQUIRE(viewport->scrollbarThickness > 0.0F);
+    REQUIRE(viewport->scrollExtent > 0.0F);
+    scroll.updateExtents(viewport->size.height,
+                         viewport->size.height + viewport->scrollExtent);
+    // painter 同式推拇指几何（初始 offset=0，拇指贴轨道顶）。
+    const float inset =
+        viewport->scrollbarThickness - viewport->scrollbarThumbWidth;
+    const float trackLength = viewport->size.height - 2.0F * inset;
+    REQUIRE(trackLength > 0.0F);
+    const float fraction = viewport->size.height /
+                           (viewport->size.height + viewport->scrollExtent);
+    const float thumbHeight =
+        std::min(std::max(trackLength * fraction,
+                           viewport->scrollbarMinLength),
+                 trackLength);
+    REQUIRE(thumbHeight > 0.0F);
+    REQUIRE(trackLength - thumbHeight > 0.0F);
+    const float ratio =
+        viewport->scrollExtent / (trackLength - thumbHeight);
+    REQUIRE(ratio > 1.0F);  // 长列表：不换算就会明显不跟手
+    const core::Offset areaOrigin =
+        lumen::core::absoluteOffset(shell.root(), "scroll-area");
+    const core::Offset thumbPress =
+        areaOrigin +
+        Offset{viewport->size.width - viewport->scrollbarThickness * 0.5F,
+               inset + thumbHeight * 0.5F};
+    const float thumbTop0 = inset;
+
+    // 手指下移 40px：拇指应下移 40px（跟手），offset 增大 40*ratio
+    //（与内容拖拽反号——内容拖拽下移是 offset 减小）。
+    constexpr float kDragDy = 40.0F;
+    REQUIRE(kDragDy * ratio < scroll.maxScrollOffset());
+    shell.pointerDown(thumbPress);
+    shell.tick(100);
+    shell.pointerMove(thumbPress + Offset{0.0F, 10.0F});
+    shell.tick(110);
+    (void)shell.renderFrame();
+    shell.pointerMove(thumbPress + Offset{0.0F, kDragDy});
+    shell.tick(120);
+    (void)shell.renderFrame();
+    CHECK(scroll.offset() == Catch::Approx(kDragDy * ratio).margin(1.0F));
+
+    // 拇指实时位置验证跟手（布局树已带新 offset 重建）。
+    const RenderNode* moved =
+        lumen::core::findNodeByKey(shell.root(), "scroll-area");
+    REQUIRE(moved != nullptr);
+    const float progress = moved->scrollOffset / moved->scrollExtent;
+    const float thumbTop =
+        inset + progress * (trackLength - thumbHeight);
+    CHECK(thumbTop == Catch::Approx(thumbTop0 + kDragDy).margin(1.0F));
+    shell.pointerUp(thumbPress + Offset{0.0F, kDragDy});
+}
+
 TEST_CASE("drag_on_text_field_keeps_selection_path", "[motion]") {
     // 视口内的文本字段：拖动走选区扩展，不路由滚动。
     lumen::core::ScrollController scroll;
@@ -720,6 +840,67 @@ TEST_CASE("slider_drag_inside_scroll_view_still_sets_value", "[motion]") {
 
     CHECK_FALSE(dragRouted);
     CHECK(shell.state().get("volume") != "0");
+}
+
+TEST_CASE("slider_drag_updates_value_before_release", "[motion]") {
+    // 旋钮跟手：按下拖动过程中每拍按位置设值（释放前值已更新）；
+    // 中间隔一次重建，验证目标按 identity 跨重建重定位。
+    ShellConfig config;
+    config.initialView = Size{200.0F, 300.0F};
+    config.caretBlink = false;
+    config.build = [] {
+        using namespace lumen::dsl;
+        namespace core = lumen::core;
+        Widget ui = core::withKey(core::makeSlider("volume"),
+                                  "volume-slider");
+        ui = container(std::move(ui), Color::fromRGBA(24, 24, 27));
+        ui.key = "root";
+        return ui;
+    };
+    AppShell shell{std::move(config)};
+    shell.state().set("volume", "0");
+    shell.tick(0);
+    (void)shell.renderFrame();
+
+    const auto sliderX = [&shell](float fraction) {
+        const RenderNode* node =
+            lumen::core::findNodeByKey(shell.root(), "volume-slider");
+        REQUIRE(node != nullptr);
+        return lumen::core::absoluteOffset(shell.root(), "volume-slider") +
+               Offset{node->size.width * fraction,
+                      node->size.height * 0.5F};
+    };
+    const core::Offset press = sliderX(0.25F);
+    shell.pointerDown(press);
+    shell.tick(100);
+    shell.pointerMove(press + Offset{30.0F, 0.0F});
+    shell.tick(110);
+    (void)shell.renderFrame();  // store 写回已置脏：重建一次
+    CHECK(shell.state().get("volume") != "0");  // 还没释放，值已动
+    shell.pointerMove(press + Offset{60.0F, 0.0F});
+    shell.tick(120);
+    (void)shell.renderFrame();
+
+    // 期望值按与实现相同的轨道区间换算（只验证接线，不验证公式本身）。
+    const RenderNode* node =
+        lumen::core::findNodeByKey(shell.root(), "volume-slider");
+    REQUIRE(node != nullptr);
+    const auto* style =
+        std::get_if<core::SliderResolvedStyle>(&node->style.component);
+    REQUIRE(style != nullptr);
+    const core::Offset origin =
+        lumen::core::absoluteOffset(shell.root(), "volume-slider");
+    const float usable = node->size.width - 2.0F * style->trackInset;
+    REQUIRE(usable > 0.0F);
+    const float ratio =
+        std::clamp((press.x + 60.0F - origin.x - style->trackInset) / usable,
+                   0.0F, 1.0F);
+    const std::string expect =
+        std::to_string(static_cast<int>(std::lround(ratio * 100.0F)));
+    CHECK(shell.state().get("volume") == expect);
+
+    shell.pointerUp(press + Offset{60.0F, 0.0F});
+    CHECK(shell.state().get("volume") == expect);  // 释放落终值（幂等）
 }
 
 // --- M11：Tooltip hover 延迟驱动 ---
