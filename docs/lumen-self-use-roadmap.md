@@ -1201,6 +1201,34 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     后不得解引用 chain/root"约定注释；gallery 注册 noop handler。
   本地 Windows CPU Debug `406/406`（含调度器 deadline 新用例）。
 
+### Gallery 设计稿尺度优化对齐（2026-09-16）
+
+- **设计输入**：`design/gallery.html` 评审板重排为 4px 网格——正文/标签
+  14px、辅助说明与代码 12px、hero 32px/600、指标值 28px/650、面板标题
+  14px/650；主操作/导航 40px、卡片紧凑样本 32px（Small 档）；面板内边距
+  与间距 16px；v1 色槽微调（line-strong #8c8c98、positive #73c991、
+  accent-content #a8c5fa、按钮/开关前景纯黑）与既有 Theme token 一致，
+  无需改 theme.cpp。
+- **实现**（`examples/gallery/gallery_app.h`）：
+  - 排版辅助整体切换到新尺度并补 letterSpacing/lineHeight；kicker/状态
+    胶囊文字改 accentContent；指标 delta 默认 muted、仅正向变化用
+    statusSuccess（设计稿 `.positive`）。
+  - 壳层几何：品牌标 28×28（随 fontScale）、顶栏内距 20/12 且 gap 16、
+    窗口操作 32×32、侧栏 200px/内距 12/24、分隔线上下 24、主内容
+    padding 32、页脚紧凑态内距 16/12。
+  - Overview：内容栅格 1.4:1、间距 16；组件卡最小 176px、间距 12；面板
+    头到内容 16；token 色板 12×12/radius 3 + line-strong 描边；代码行号
+    列宽 20、行距 4；主题色点 24px/间距 8；layout 预览条 32px/圆角 4；
+    瓦片内 Checkbox/Switch/ProgressBar 降为 Small（紧凑样本）。
+  - 响应式（设计稿容器断点的应用侧映射）：≤1024 侧栏收窄 168、主内边距
+    24、隐藏窗口状态（窗口操作保留，此前 <1100 连操作一并裁掉）；<720
+    折叠为 header 下拉导航 + 页脚单行（64px 图标栏因框架无导航图标目录
+    以此近似）；主内容 <720 上下堆叠、<480 指标单列（窄指标卡为左说明
+    右数值两列）且 hero 降 24px。
+- **验证**：本地 Windows CPU Debug `ctest -C Debug` `494/494` 全过；
+  gallery `--headless` 冒烟全链路输出正常（帧哈希随尺度变化更新）；
+  `--dump-frame` 首帧像素核对。
+
 ### Gallery 对齐 Core Dark 设计稿（2026-09-15）
 
 - **壳层与首屏对齐 `design/gallery.html` v1「Core Dark」**：
