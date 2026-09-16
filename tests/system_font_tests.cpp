@@ -69,6 +69,21 @@ TEST_CASE("system_fonts_cover_latin_and_cjk", "[text][system-fonts]") {
     // this prevents a directory-enumeration order from silently selecting a
     // different installed face.
     CHECK(cjk.resolvedFamily == "microsoft yahei");
+    // 拉丁文恒走 Segoe（原生界面行为）：中文系统也不得回落雅黑，否则
+    // 小字号粗体拉丁字母侧轴承过紧、看起来“黏在一起”。
+    const auto latin = fonts->resolveWithStatus(query, U'A');
+    CHECK_FALSE(latin.missing);
+    CHECK(latin.resolvedFamily == "segoe ui");
+    CHECK_FALSE(latin.fallbackUsed);
+    // 显式族名 + 粗体不得被先加载的雅黑劫持（faceFor 族命中优先）。
+    text::FontQuery boldQuery;
+    boldQuery.sizePx = 13.0F;
+    boldQuery.weight = text::FontWeight::ExtraBold;
+    boldQuery.family = "Segoe UI";
+    const auto boldLatin = fonts->resolveWithStatus(boldQuery, U'L');
+    CHECK_FALSE(boldLatin.missing);
+    CHECK(boldLatin.resolvedFamily == "segoe ui");
+    CHECK_FALSE(boldLatin.fallbackUsed);
 #endif
     float ascent = 0.0F;
     float descent = 0.0F;

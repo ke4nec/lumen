@@ -20,6 +20,7 @@
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontStyle.h"
 #include "include/core/SkFontTypes.h"
+#include "include/core/SkRect.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypeface.h"
 #ifdef _WIN32
@@ -255,13 +256,16 @@ bool SkiaFontManager::glyphMetrics(const FontQuery& query,
         utf8[3] = static_cast<char>(0x80 | (cp & 0x3F));
         len = 4;
     }
+    SkRect ink;
     const float advancePx =
-        font.measureText(utf8, len, SkTextEncoding::kUTF8);
+        font.measureText(utf8, len, SkTextEncoding::kUTF8, &ink);
     SkFontMetrics metrics;
     font.getMetrics(&metrics);
     out->advanceEm = advancePx / sizePx;
-    out->ascentEm = -metrics.fAscent / sizePx;
-    out->descentEm = metrics.fDescent / sizePx;
+    // 与系统字体路径相同：回退字形（尤其 emoji）的轮廓可能超出
+    // 字体级 ascent/descent，布局必须包含它实际绘制的上下界。
+    out->ascentEm = std::max(-metrics.fAscent, -ink.top()) / sizePx;
+    out->descentEm = std::max(metrics.fDescent, ink.bottom()) / sizePx;
     return true;
 }
 

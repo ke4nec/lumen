@@ -561,7 +561,10 @@ class SkiaGpuRenderer final : public Renderer {
             }
         }
         float x = run.origin.x * scale;
-        const float baseline = (run.origin.y + fontSize) * scale;
+        const float baseline =
+            (run.origin.y +
+             (run.baselinePx > 0.0F ? run.baselinePx : fontSize)) *
+            scale;
         for (std::size_t offset = 0; offset < run.text.size();) {
             const std::size_t length = utf8SequenceLength(
                 run.text.data() + offset, run.text.size() - offset);

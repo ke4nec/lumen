@@ -218,10 +218,10 @@ std::vector<std::string> defaultFontStackFor(char32_t codePoint) {
     if (isCjkCodePoint(codePoint)) {
         return {"Microsoft YaHei", "SimSun", "SimHei", "Segoe UI", "Arial"};
     }
-    if (systemUiPrefersCjkFont()) {
-        // 中文系统：拉丁字母/数字也优先雅黑，与中文正文观感统一。
-        return {"Microsoft YaHei", "Segoe UI", "SimSun", "Arial"};
-    }
+    // 拉丁字母/数字始终优先 Segoe UI（原生 Windows 界面字体）：雅黑的
+    // 拉丁字形在小字号粗体下侧轴承过紧、易与前后字形相接（Gallery 标题/
+    // 指标 delta“黏在一起”）；中英文混排时 CJK 码点仍走上面的雅黑分支，
+    // 由逐码点回退保证各归其主，而非全文落在同一族。
     return {"Segoe UI", "Arial", "Tahoma", "Microsoft YaHei", "SimSun"};
 #elif defined(__ANDROID__)
     if (isEmojiCodePoint(codePoint)) {

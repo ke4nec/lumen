@@ -18,6 +18,7 @@
 #include <fstream>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -42,6 +43,8 @@ namespace {
 #ifdef LUMEN_HAS_STB_TRUETYPE
 
 constexpr std::size_t kMaxFiles = 256;
+// 文件数和加载后的 face 数共用此上限，三个缓存都为 face 保留 8 位。
+static_assert(kMaxFiles <= (1U << 8));
 constexpr std::size_t kMaxFileBytes = 64U * 1024U * 1024U;
 constexpr std::size_t kMaxBitmapCache = 4096;
 
@@ -65,6 +68,50 @@ bool isBoldFile(const std::string& path) {
            lower.find("-black") != std::string::npos ||
            lower.find("-heavy") != std::string::npos ||
            lower.find("msyhbd") != std::string::npos;
+}
+
+// OS/2 表 usWeightClass（100..900；缺表/越界返回 -1）。文件名启发
+// 式认不出 segoeuib/arialbd/tahomabd 这类 Windows 粗体（无 "bold"
+// 子串），按 OS/2 为准，解析失败才回退文件名。
+int weightClassForFace(const unsigned char* data, std::size_t size,
+                       int fontOffset) {
+    if (data == nullptr || fontOffset < 0) {
+        return -1;
+    }
+    const auto start = static_cast<std::size_t>(fontOffset);
+    if (start + 12 > size) {
+        return -1;
+    }
+    const int numTables =
+        (static_cast<int>(data[start + 4]) << 8) | data[start + 5];
+    if (numTables <= 0 || numTables > 96) {
+        return -1;
+    }
+    for (int i = 0; i < numTables; ++i) {
+        const std::size_t rec = start + 12 + static_cast<std::size_t>(i) * 16;
+        if (rec + 16 > size) {
+            return -1;
+        }
+        if (data[rec] != 'O' || data[rec + 1] != 'S' ||
+            data[rec + 2] != '/' || data[rec + 3] != '2') {
+            continue;
+        }
+        const std::size_t tab =
+            (static_cast<std::size_t>(data[rec + 8]) << 24) |
+            (static_cast<std::size_t>(data[rec + 9]) << 16) |
+            (static_cast<std::size_t>(data[rec + 10]) << 8) |
+            static_cast<std::size_t>(data[rec + 11]);
+        const std::size_t length =
+            (static_cast<std::size_t>(data[rec + 12]) << 24) |
+            (static_cast<std::size_t>(data[rec + 13]) << 16) |
+            (static_cast<std::size_t>(data[rec + 14]) << 8) |
+            static_cast<std::size_t>(data[rec + 15]);
+        if (length < 6 || tab + 6 > size) {
+            return -1;
+        }
+        return (static_cast<int>(data[tab + 4]) << 8) | data[tab + 5];
+    }
+    return -1;
 }
 
 // 文件名 → 粗略 family（"msyh.ttc" → "msyh"），name 表缺失时回退。
@@ -113,6 +160,70 @@ std::string familyFromNameTable(const stbtt_fontinfo& info) {
     return family;
 }
 
+#ifdef _WIN32
+struct GdiGlyphMetrics {
+    float advancePx{0.0F};
+    float ascentPx{0.0F};
+    float descentPx{0.0F};
+};
+
+// GetTextFaceW 可能返回本地化族名（如“微软雅黑”），不能直接与英文
+// 查询比较。读取 GDI 实际选中字体的英文 name 记录，避免把别名误报
+// 为替换，也不把 CreateFontW 成功当成命中请求族。
+bool selectedGdiFamilyMatches(HDC dc, const std::string& requested) {
+    constexpr DWORD kNameTable = 0x656D616E;  // GDI tag: 'name'
+    const DWORD size = GetFontData(dc, kNameTable, 0, nullptr, 0);
+    if (size == GDI_ERROR || size < 6 || size > 1024U * 1024U) {
+        return false;
+    }
+    std::vector<unsigned char> table(size);
+    if (GetFontData(dc, kNameTable, 0, table.data(), size) != size) {
+        return false;
+    }
+    const auto u16 = [&table](std::size_t offset) -> std::size_t {
+        return (static_cast<std::size_t>(table[offset]) << 8) |
+               table[offset + 1];
+    };
+    const std::size_t count = u16(2);
+    const std::size_t strings = u16(4);
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::size_t record = 6 + i * 12;
+        if (record + 12 > table.size()) {
+            break;
+        }
+        // 部分字重把子族放进 legacy family（如 Segoe UI Semibold），
+        // typographic family（16）仍是 Segoe UI，也属于合法命中。
+        const auto nameId = u16(record + 6);
+        if (u16(record) != 3 || u16(record + 2) != 1 ||
+            u16(record + 4) != 0x409 || (nameId != 1 && nameId != 16)) {
+            continue;
+        }
+        const std::size_t length = u16(record + 8);
+        const std::size_t offset = strings + u16(record + 10);
+        if (length == 0 || length > 512 || offset + length > table.size()) {
+            continue;
+        }
+        std::string family;
+        for (std::size_t j = 0; j + 1 < length; j += 2) {
+            const unsigned char hi = table[offset + j];
+            const unsigned char lo = table[offset + j + 1];
+            if (hi == 0 && lo >= ' ' && lo < 0x7F) {
+                family.push_back(static_cast<char>(lo));
+            }
+        }
+        const auto first = family.find_first_not_of(' ');
+        if (first == std::string::npos) {
+            continue;
+        }
+        if (lowerAscii(family.substr(first, family.find_last_not_of(' ') -
+                                               first + 1)) == requested) {
+            return true;
+        }
+    }
+    return false;
+}
+#endif
+
 std::vector<std::string> defaultDirectories() {
     std::vector<std::string> dirs;
 #ifdef _WIN32
@@ -151,7 +262,18 @@ struct FaceEntry {
     int unitsPerEm{1000};
     int ascentEm{0};
     int descentEm{0};
+    // OS/2 usWeightClass（100..900；-1 = 无表，回退文件名启发）。
+    int weightClass{-1};
 };
+
+// 粗体判定：OS/2 优先（阈值与 faceFor 的 wantBold 同为 >= 600），
+// 无表时回退文件名启发。
+bool faceIsBold(const FaceEntry& face) {
+    if (face.weightClass >= 1 && face.weightClass <= 1000) {
+        return face.weightClass >= 600;
+    }
+    return isBoldFile(face.path);
+}
 
 class SystemFontManagerImpl final : public SystemFontManager {
   public:
@@ -181,14 +303,16 @@ class SystemFontManagerImpl final : public SystemFontManager {
             return status;
         }
         status.resolvedFamily = face->family;
-        status.fallbackUsed =
-            !query.family.empty() && face->family != query.family;
+        // 族名比较不区分大小写：请求 "Segoe UI" 命中 "segoe ui" 是精确
+        // 命中，不应记为回退（否则诊断误报、调用方误判）。
+        status.fallbackUsed = !query.family.empty() &&
+                              face->family != lowerAscii(query.family);
         return status;
     }
 
     [[nodiscard]] bool glyphMetrics(const FontQuery& query,
-                                    char32_t codePoint,
-                                    GlyphMetrics* out) const override {
+                                     char32_t codePoint,
+                                     GlyphMetrics* out) const override {
         if (out == nullptr) {
             return false;
         }
@@ -196,6 +320,27 @@ class SystemFontManagerImpl final : public SystemFontManager {
         if (face == nullptr) {
             return false;
         }
+#ifdef _WIN32
+        // Windows：位图走 GDI 光栅，度量也必须走 GDI，否则 stb advance
+        // 与 GDI 位图宽度系统性漂移，文本看起来“挤在一起”。同一字体/
+        // 字重/字号下 GDI 的 gmCellIncX 与位图同源，布局 pen 与绘制对齐。
+        {
+            const float size =
+                query.sizePx > 0.0F ? query.sizePx : 14.0F;
+            GdiGlyphMetrics glyph;
+            float ascentPx = 0.0F;
+            float descentPx = 0.0F;
+            if (gdiGlyphMetrics(*face, query, codePoint, size, &glyph) &&
+                gdiVertical(*face, query, size, &ascentPx, &descentPx) &&
+                size > 0.0F) {
+                out->advanceEm = glyph.advancePx / size;
+                out->ascentEm = std::max(ascentPx, glyph.ascentPx) / size;
+                out->descentEm = std::max(descentPx, glyph.descentPx) / size;
+                return true;
+            }
+            // GDI 失败（如增补平面表情）回退 stb，与位图回退路径一致。
+        }
+#endif
         const int glyph = stbtt_FindGlyphIndex(
             &face->info, static_cast<int>(codePoint));
         if (glyph == 0) {
@@ -217,6 +362,16 @@ class SystemFontManagerImpl final : public SystemFontManager {
                              ? std::abs(static_cast<float>(face->descentEm) /
                                         static_cast<float>(face->unitsPerEm))
                              : 0.2F;
+        // 字体级 hhea 度量未必包住每个轮廓（如 Segoe UI Emoji）。布局
+        // 还要容纳实际位图的上下界，否则纯 emoji 会在顶部被节点裁剪。
+        const float size = query.sizePx > 0.0F ? query.sizePx : 14.0F;
+        const float scale = stbtt_ScaleForMappingEmToPixels(&face->info, size);
+        int top = 0;
+        int bottom = 0;
+        stbtt_GetGlyphBitmapBox(&face->info, glyph, scale, scale, nullptr,
+                               &top, nullptr, &bottom);
+        out->ascentEm = std::max(out->ascentEm, static_cast<float>(-top) / size);
+        out->descentEm = std::max(out->descentEm, static_cast<float>(bottom) / size);
         return true;
     }
 
@@ -228,6 +383,23 @@ class SystemFontManagerImpl final : public SystemFontManager {
             return false;
         }
         const float size = query.sizePx > 0.0F ? query.sizePx : 14.0F;
+#ifdef _WIN32
+        // 同 glyphMetrics：行高基线与 GDI 位图同源，避免 baseline 漂移
+        // 导致下行部被裁（“底部显示不全”）。
+        {
+            float ascent = 0.0F;
+            float descent = 0.0F;
+            if (gdiVertical(*face, query, size, &ascent, &descent)) {
+                if (ascentPx != nullptr) {
+                    *ascentPx = ascent;
+                }
+                if (descentPx != nullptr) {
+                    *descentPx = descent;
+                }
+                return true;
+            }
+        }
+#endif
         // FontQuery::sizePx is an em size.  Keep metrics and bitmap raster
         // on the same scale; ScaleForPixelHeight uses the face's ascender /
         // descender box and otherwise makes glyph advances drift from
@@ -316,6 +488,12 @@ class SystemFontManagerImpl final : public SystemFontManager {
                              std::to_string(faces_.size());
 #ifdef _WIN32
         result += " raster=gdi+stb";
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex_);
+            for (const auto& family : gdiSubstitutions_) {
+                result += " gdi-substitution=" + family + " (using stb)";
+            }
+        }
 #else
         result += " raster=stb";
 #endif
@@ -323,8 +501,9 @@ class SystemFontManagerImpl final : public SystemFontManager {
     }
 
   private:
-    // 与 Mobile 后端同策略：空请求走 defaultFontStackFor 顺序（雅黑在
-    // 中文 Windows 优先），显式族名精确匹配，粗细按文件名近似。
+    // 空请求走 defaultFontStackFor 顺序（拉丁恒为 Segoe 优先，CJK 为
+    // 雅黑优先，均按码点脚本逐字回退），显式族名精确匹配，粗细按 OS/2
+    // usWeightClass（>= 600 为粗，与 wantBold 同阈值）。
     [[nodiscard]] const FaceEntry* faceFor(const FontQuery& query,
                                            char32_t codePoint) const {
         const std::string requested = lowerAscii(query.family);
@@ -343,7 +522,7 @@ class SystemFontManagerImpl final : public SystemFontManager {
                             static_cast<int>(codePoint)) == 0) {
                         continue;
                     }
-                    if (wantBold == isBoldFile(face.path)) {
+                    if (wantBold == faceIsBold(face)) {
                         return &face;
                     }
                     if (boldMiss == nullptr) {
@@ -355,18 +534,22 @@ class SystemFontManagerImpl final : public SystemFontManager {
                 }
             }
         }
+        // 显式族名：族命中的粗细未中者优先于其他族的覆盖者。旧实现把
+        // 首个覆盖者（常为先加载的雅黑）直接记为 fallback，导致
+        // family="Segoe UI" 的粗体请求被雅黑劫持。
         const FaceEntry* fallback = nullptr;
+        const FaceEntry* familyFallback = nullptr;
         for (const auto& face : faces_) {
             if (stbtt_FindGlyphIndex(&face.info,
                                      static_cast<int>(codePoint)) == 0) {
                 continue;
             }
             if (!requested.empty() && face.family == requested) {
-                if (wantBold == isBoldFile(face.path)) {
+                if (wantBold == faceIsBold(face)) {
                     return &face;
                 }
-                if (fallback == nullptr) {
-                    fallback = &face;
+                if (familyFallback == nullptr) {
+                    familyFallback = &face;
                 }
                 continue;
             }
@@ -374,13 +557,16 @@ class SystemFontManagerImpl final : public SystemFontManager {
                 fallback = &face;
             }
         }
+        if (familyFallback != nullptr) {
+            return familyFallback;
+        }
         return fallback;
     }
 
-    [[nodiscard]] static bool rasterize(const FaceEntry& face,
+    [[nodiscard]] bool rasterize(const FaceEntry& face,
                                         const FontQuery& query,
                                         int codePoint, float pixelHeight,
-                                        GlyphBitmap* out) {
+                                        GlyphBitmap* out) const {
 #ifdef _WIN32
         // Prefer the platform rasterizer on Windows.  GDI's gray glyph
         // bitmap is the same system font path used by desktop controls and
@@ -419,11 +605,199 @@ class SystemFontManagerImpl final : public SystemFontManager {
     }
 
 #ifdef _WIN32
-    [[nodiscard]] static bool rasterizeWindows(const FaceEntry& face,
+    // 度量和光栅共用创建/选择/校验；替换字体时两者均回退到已加载的
+    // stb face，并留下诊断，不能混用替换字体的位图和原字体的度量。
+    [[nodiscard]] HFONT createGdiFont(HDC dc, const FaceEntry& face,
+                                     const FontQuery& query, float pixelHeight,
+                                     HGDIOBJ* previous) const {
+        if (face.family.empty() || pixelHeight <= 0.0F) {
+            return nullptr;
+        }
+        const int height =
+            -std::max(1, static_cast<int>(std::lround(pixelHeight)));
+        const int weight =
+            std::clamp(static_cast<int>(query.weight), 100, 900);
+        std::wstring family;
+        const int length = MultiByteToWideChar(CP_UTF8, 0, face.family.c_str(),
+                                              -1, nullptr, 0);
+        if (length > 1) {
+            family.resize(static_cast<std::size_t>(length));
+            MultiByteToWideChar(CP_UTF8, 0, face.family.c_str(), -1,
+                                family.data(), length);
+            family.resize(static_cast<std::size_t>(length - 1));
+        }
+        const HFONT font = CreateFontW(height, 0, 0, 0, weight,
+                           query.italic ? TRUE : FALSE, FALSE, FALSE,
+                           DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                           CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                           DEFAULT_PITCH | FF_DONTCARE, family.c_str());
+        if (font == nullptr) {
+            return nullptr;
+        }
+        *previous = SelectObject(dc, font);
+        if (*previous == nullptr || *previous == HGDI_ERROR) {
+            DeleteObject(font);
+            return nullptr;
+        }
+        if (!selectedGdiFamilyMatches(dc, face.family)) {
+            SelectObject(dc, *previous);
+            DeleteObject(font);
+            std::lock_guard<std::mutex> lock(cacheMutex_);
+            gdiSubstitutions_.insert(face.family);
+            return nullptr;
+        }
+        return font;
+    }
+
+    // GDI 垂直度量（逻辑像素；字体级，可缓存）。失败返回 false 走 stb。
+    [[nodiscard]] bool gdiVertical(const FaceEntry& face,
+                                   const FontQuery& query, float sizePx,
+                                   float* ascentPx,
+                                   float* descentPx) const {
+        if (sizePx <= 0.0F || sizePx > 256.0F) {
+            return false;
+        }
+        const std::size_t faceIndex =
+            static_cast<std::size_t>(&face - faces_.data());
+        const auto quantized =
+            static_cast<std::uint32_t>(std::lround(sizePx * 16.0F));
+        const std::uint64_t key =
+            ((static_cast<std::uint64_t>(faceIndex) & 0xFFULL) << 32) |
+            ((static_cast<std::uint64_t>(quantized) & 0xFFFFFFULL) << 8) |
+            ((static_cast<std::uint64_t>(
+                  std::clamp(static_cast<int>(query.weight), 100, 900) / 100) &
+              0x0FULL)
+             << 1) |
+            (query.italic ? 1ULL : 0ULL);
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex_);
+            if (const auto it = gdiVerticalCache_.find(key);
+                it != gdiVerticalCache_.end()) {
+                if (ascentPx != nullptr) {
+                    *ascentPx = it->second.first;
+                }
+                if (descentPx != nullptr) {
+                    *descentPx = it->second.second;
+                }
+                return true;
+            }
+        }
+        HDC dc = CreateCompatibleDC(nullptr);
+        if (dc == nullptr) {
+            return false;
+        }
+        HGDIOBJ previous = nullptr;
+        HFONT font = createGdiFont(dc, face, query, sizePx, &previous);
+        if (font == nullptr) {
+            DeleteDC(dc);
+            return false;
+        }
+        TEXTMETRICW tm{};
+        const bool ok = GetTextMetricsW(dc, &tm) != 0;
+        const float ascent =
+            ok ? static_cast<float>(tm.tmAscent) : 0.0F;
+        const float descent =
+            ok ? static_cast<float>(tm.tmDescent) : 0.0F;
+        SelectObject(dc, previous);
+        DeleteObject(font);
+        DeleteDC(dc);
+        if (!ok || ascent <= 0.0F) {
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex_);
+            if (gdiVerticalCache_.size() >= kMaxGdiMetricsCache) {
+                gdiVerticalCache_.clear();
+            }
+            gdiVerticalCache_.emplace(key, std::make_pair(ascent, descent));
+        }
+        if (ascentPx != nullptr) {
+            *ascentPx = ascent;
+        }
+        if (descentPx != nullptr) {
+            *descentPx = descent;
+        }
+        return true;
+    }
+
+    // GDI advance 与字形上下界（逻辑像素）。增补平面回退 stb。
+    [[nodiscard]] bool gdiGlyphMetrics(const FaceEntry& face,
+                                     const FontQuery& query, char32_t codePoint,
+                                     float sizePx, GdiGlyphMetrics* out) const {
+        if (out == nullptr || sizePx <= 0.0F || sizePx > 256.0F ||
+            codePoint > 0xFFFF) {
+            return false;
+        }
+        const std::size_t faceIndex =
+            static_cast<std::size_t>(&face - faces_.data());
+        const auto quantized =
+            static_cast<std::uint32_t>(std::lround(sizePx * 16.0F));
+        const std::uint64_t key =
+            ((static_cast<std::uint64_t>(faceIndex) & 0xFFULL) << 56) |
+            ((static_cast<std::uint64_t>(
+                  static_cast<std::uint32_t>(codePoint)) & 0xFFFFFFULL)
+             << 32) |
+            ((static_cast<std::uint64_t>(quantized) & 0xFFFFFFULL) << 8) |
+            ((static_cast<std::uint64_t>(
+                  std::clamp(static_cast<int>(query.weight), 100, 900) / 100) &
+              0x0FULL)
+             << 1) |
+            (query.italic ? 1ULL : 0ULL);
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex_);
+            if (const auto it = gdiGlyphCache_.find(key);
+                it != gdiGlyphCache_.end()) {
+                *out = it->second;
+                return true;
+            }
+        }
+        HDC dc = CreateCompatibleDC(nullptr);
+        if (dc == nullptr) {
+            return false;
+        }
+        HGDIOBJ previous = nullptr;
+        HFONT font = createGdiFont(dc, face, query, sizePx, &previous);
+        if (font == nullptr) {
+            DeleteDC(dc);
+            return false;
+        }
+        GLYPHMETRICS metrics{};
+        MAT2 matrix{};
+        matrix.eM11.value = 1;
+        matrix.eM22.value = 1;
+        const DWORD result = GetGlyphOutlineW(
+            dc, static_cast<wchar_t>(codePoint), GGO_METRICS, &metrics, 0,
+            nullptr, &matrix);
+        const float advance =
+            result == GDI_ERROR
+                ? -1.0F
+                : static_cast<float>(metrics.gmCellIncX);
+        SelectObject(dc, previous);
+        DeleteObject(font);
+        DeleteDC(dc);
+        if (advance < 0.0F) {
+            return false;
+        }
+        const GdiGlyphMetrics glyph{
+            advance, std::max(0.0F, static_cast<float>(metrics.gmptGlyphOrigin.y)),
+            std::max(0.0F, static_cast<float>(metrics.gmBlackBoxY) -
+                               static_cast<float>(metrics.gmptGlyphOrigin.y))};
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex_);
+            if (gdiGlyphCache_.size() >= kMaxGdiMetricsCache) {
+                gdiGlyphCache_.clear();
+            }
+            gdiGlyphCache_.emplace(key, glyph);
+        }
+        *out = glyph;
+        return true;
+    }
+
+    [[nodiscard]] bool rasterizeWindows(const FaceEntry& face,
                                                const FontQuery& query,
                                                wchar_t codePoint,
                                                float pixelHeight,
-                                               GlyphBitmap* out) {
+                                               GlyphBitmap* out) const {
         if (out == nullptr || pixelHeight <= 0.0F || face.family.empty()) {
             return false;
         }
@@ -431,30 +805,12 @@ class SystemFontManagerImpl final : public SystemFontManager {
         if (dc == nullptr) {
             return false;
         }
-        const int height = -std::max(1, static_cast<int>(std::lround(pixelHeight)));
-        const int weight = std::clamp(static_cast<int>(query.weight), 100, 900);
-        const HFONT font = CreateFontW(
-            height, 0, 0, 0, weight, query.italic ? TRUE : FALSE, FALSE,
-            FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
-            [&face]() {
-                static thread_local std::wstring family;
-                family.clear();
-                const int length = MultiByteToWideChar(
-                    CP_UTF8, 0, face.family.c_str(), -1, nullptr, 0);
-                if (length > 1) {
-                    family.resize(static_cast<std::size_t>(length));
-                    MultiByteToWideChar(CP_UTF8, 0, face.family.c_str(), -1,
-                                        family.data(), length);
-                    family.resize(static_cast<std::size_t>(length - 1));
-                }
-                return family.c_str();
-            }());
+        HGDIOBJ previous = nullptr;
+        const HFONT font = createGdiFont(dc, face, query, pixelHeight, &previous);
         if (font == nullptr) {
             DeleteDC(dc);
             return false;
         }
-        const HGDIOBJ previous = SelectObject(dc, font);
         GLYPHMETRICS metrics{};
         MAT2 matrix{};
         // Keep the native GDI transform.  GGO_GRAY8_BITMAP scanlines are
@@ -521,6 +877,14 @@ class SystemFontManagerImpl final : public SystemFontManager {
     std::string usedDir_{};
     mutable std::mutex cacheMutex_{};
     mutable std::unordered_map<std::uint64_t, GlyphBitmap> bitmapCache_{};
+#ifdef _WIN32
+    // GDI 度量缓存（与位图同源；布局热路径命中，避免每 cluster 建 DC）。
+    static constexpr std::size_t kMaxGdiMetricsCache = 8192;
+    mutable std::unordered_map<std::uint64_t, GdiGlyphMetrics> gdiGlyphCache_{};
+    mutable std::unordered_map<std::uint64_t, std::pair<float, float>>
+        gdiVerticalCache_{};
+    mutable std::unordered_set<std::string> gdiSubstitutions_{};
+#endif
 };
 
 std::vector<unsigned char> readFile(const std::filesystem::path& path) {
@@ -555,8 +919,8 @@ std::vector<std::filesystem::path> listFontFiles(const std::string& dir) {
     //（目录遍历顺序不确定，不能依赖它）。
     const std::vector<std::string> kPreferred = {
         "msyh.ttc",  "msyhbd.ttc", "msyhl.ttc", "simsun.ttc",
-        "simhei.ttf", "segoeui.ttf", "seguisb.ttf", "seguisym.ttf",
-        "seguiemj.ttf", "arial.ttf",
+        "simhei.ttf", "segoeui.ttf", "segoeuib.ttf", "seguisb.ttf",
+        "seguisym.ttf", "seguiemj.ttf", "arial.ttf", "arialbd.ttf",
     };
     auto take = [&](const std::filesystem::path& path) {
         if (files.size() >= kMaxFiles || !isFontFile(path)) {
@@ -650,6 +1014,10 @@ std::unique_ptr<SystemFontManager> createSystemFontManager(
                 if (entry.family.empty()) {
                     entry.family = familyFromFile(pathStr);
                 }
+                // OS/2 粗细（segoeuib/arialbd 等文件名无 "bold" 标记，
+                // 必须读表；失败（-1）则查询期回退文件名启发）。
+                entry.weightClass = weightClassForFace(
+                    base, blobs.back().size(), offset);
                 // head 表 unitsPerEm（大端；stbtt_fontinfo 无该成员）。
                 entry.unitsPerEm = 1000;
                 if (entry.info.head > 0) {

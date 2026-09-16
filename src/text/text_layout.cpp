@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <unordered_set>
 #include <utility>
 
 #include "lumen/text/bidi.h"
@@ -155,16 +156,8 @@ TextLayoutResult TextLayout::layout(const std::string& text,
         style.bold ? std::max(style.weight, 700) : style.weight);
     query.italic = style.italic;
     query.sizePx = fontSize;
-    // M1：水平度量走 FontManager（Skia 为真实 ascent/descent，占位为
-    // 0.8em/0.4em）；失败时回退到既有默认值，保证可启动。
-    float ascentPx = fontSize * 0.8F;
-    float descentPx = fontSize * 0.4F;
-    (void)fonts.horizontalMetrics(query, &ascentPx, &descentPx);
     const float multiplier = style.lineHeight > 0.0F ? style.lineHeight : 1.2F;
-    // lineHeight 仍由 style 倍数派生（与 effectiveLineHeightPx 一致），
-    // baseline 取真实 ascent，保证 Skia 布局不再使用占位度量。
     result.lineHeightPx = fontSize * multiplier;
-    result.baseline = ascentPx;
     result.fontBackend = fonts.backend();
     result.usedPlaceholderFallback = fonts.backend() == FontBackend::Placeholder;
 
@@ -487,9 +480,38 @@ TextLayoutResult TextLayout::layout(const std::string& text,
         result.lines.push_back(std::move(line));
     }
 
+    // 只汇总最终可见字符（含省略号），不让被 maxLines/ellipsis 隐藏的
+    // 字体撑高布局。混排共享基线，ascent/descent 必须分别取最大值。
+    float ascentPx = 0.0F;
+    float descentPx = 0.0F;
+    std::unordered_set<char32_t> measured;
+    for (const auto& line : result.lines) {
+        for (const auto& cp : decodeUtf8(line.visual)) {
+            if (!measured.insert(cp.codePoint).second) {
+                continue;
+            }
+            GlyphMetrics metrics;
+            if (!fonts.glyphMetrics(query, cp.codePoint, &metrics)) {
+                // 缺字实际绘制为占位字形，与占位光标/绘制框同源。
+                metrics = GlyphMetrics{};
+            }
+            ascentPx = std::max(ascentPx, metrics.ascentEm * fontSize);
+            descentPx = std::max(descentPx, metrics.descentEm * fontSize);
+        }
+    }
+    if (measured.empty()) {
+        ascentPx = fontSize * 0.8F;
+        descentPx = fontSize * 0.4F;
+        (void)fonts.horizontalMetrics(query, &ascentPx, &descentPx);
+    }
+    result.baseline = ascentPx;
+    result.lineBoxHeightPx =
+        std::max(result.lineHeightPx, ascentPx + descentPx);
+    // 维持默认行高下既有浮点运算顺序/帧哈希，只追加末行超出的行框。
     result.size = core::Size{
         maxLineWidth,
-        static_cast<float>(result.lines.size()) * result.lineHeightPx};
+        static_cast<float>(result.lines.size()) * result.lineHeightPx +
+            (result.lineBoxHeightPx - result.lineHeightPx)};
     result.fontDiagnostic =
         "backend=" + std::string(fontBackendName(fonts.backend())) +
         " families=" + std::to_string(fonts.familyCount()) +

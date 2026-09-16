@@ -47,9 +47,13 @@ struct TextLine {
 struct TextLayoutResult {
     std::vector<TextLine> lines{};
     core::Size size{};
-    // 首行 baseline 距顶部（Skia 路径为真实 ascent，见 horizontalMetrics）。
+    // 可见文本各字体 ascent 的最大值；所有行共享同一基线偏移。
     float baseline{0.0F};
+    // 相邻行原点/基线的步进，严格使用 TextStyle.lineHeight 倍数。
     float lineHeightPx{0.0F};
+    // 单行绘制/编辑框：至少容纳 max(ascent) + max(descent)。紧行高下
+    // 行框可以重叠；size.height 包含最后一行完整行框，不裁掉下行部。
+    float lineBoxHeightPx{0.0F};
     bool ellipsized{false};
     // 段落方向（命中测试平局时按阅读方向取边界）。
     bool rtl{false};

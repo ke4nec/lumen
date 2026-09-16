@@ -169,6 +169,16 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - `FontManager` 公共接口不暴露 Skia 类型。
 - shaped run 的生命周期由 `TextLayout` 管理，RenderCommand 只接收可序列化的文本绘制数据。
 - 字体不可用时必须返回明确 fallback 状态，不能静默改变编辑索引。
+- `TextStyle.lineHeight` 是相邻行基线距离相对字号的倍数，紧行高允许
+  行框重叠。`TextLayoutResult.lineHeightPx` 保存该步进，
+  `lineBoxHeightPx` 独立容纳可见文本各字体的最大 ascent + 最大 descent；
+  段落高度包含最后一行完整行框。省略掉的文本不参与度量，全空文本使用
+  默认字体度量。光标、选区和控件居中使用行框，行定位/命中仍按步进。
+- Windows 系统字体的 GDI 度量与光栅共用字体创建及实际族校验；GDI
+  静默替换请求族时，两条路径均回退已加载的 stb 字体，并通过字体
+  管理器诊断报告 `gdi-substitution`，避免默认字体混入布局/位图。
+  系统/Skia 字形度量同时包含字体度量和实际绘制上下界，覆盖 hhea 指标不足
+  以容纳轮廓的 emoji 等字形。
 
 **验证**
 

@@ -15,9 +15,11 @@
 
 #include "lumen/core/interaction.h"
 #include "lumen/core/state.h"
+#include "lumen/core/text_field.h"
 #include "lumen/dsl/dsl.h"
 #include "lumen/dsl/text_dsl.h"
 #include "lumen/layout/layout.h"
+#include "lumen/render/painter.h"
 #include "lumen/text/bidi.h"
 #include "lumen/text/editing_history.h"
 #include "lumen/text/editing_value.h"
@@ -58,6 +60,29 @@ class FakeClipboard final : public ClipboardProvider {
     }
     void clear() override { content.clear(); }
     std::string content{};
+};
+
+// 两个字体的 ascent/descent 最大值不在同一个 face，防止只取
+// max(ascent+descent) 或只看文本首字/空格的回归。
+class MixedMetricsFonts final : public FontManager {
+  public:
+    FontBackend backend() const override { return FontBackend::System; }
+    std::string resolveFamily(const FontQuery&, char32_t cp) const override {
+        return cp >= 0x4E00 ? "test-cjk" : "test-latin";
+    }
+    bool glyphMetrics(const FontQuery&, char32_t cp,
+                      GlyphMetrics* out) const override {
+        *out = GlyphMetrics{0.6F, 0.8F, 0.4F};
+        if (cp >= 0x4E00) {
+            *out = GlyphMetrics{1.0F, 1.1F, 0.2F};
+        } else if (cp == 0x2026) {
+            *out = GlyphMetrics{0.6F, 0.9F, 0.6F};
+        }
+        return true;
+    }
+    std::vector<std::string> availableFamilies() const override {
+        return {"test-latin", "test-cjk"};
+    }
 };
 
 }  // namespace
@@ -281,6 +306,77 @@ TEST_CASE("text_layout_measures_and_wraps", "[text]") {
         TextLayout::layout(cjk, style, 14.0F * 2.0F,
                            PlaceholderFontManager::shared());
     CHECK(cjkWrapped.lines.size() == 2);
+}
+
+TEST_CASE("text_layout_preserves_tight_spacing_and_contains_last_line", "[text]") {
+    core::TextStyle tight;
+    tight.fontSize = 36.0F;
+    tight.lineHeight = 1.03F;
+    const auto tightLayout = TextLayout::layout(
+        "language\nlanguage", tight, 0.0F, PlaceholderFontManager::shared());
+    REQUIRE(tightLayout.lines.size() == 2);
+    CHECK(tightLayout.lineHeightPx == Catch::Approx(37.08F));
+    CHECK(tightLayout.lineBoxHeightPx == Catch::Approx(43.2F));
+    CHECK(tightLayout.size.height == Catch::Approx(80.28F));
+    CHECK(tightLayout.positionToGrapheme(0, 37.0F) == 0);
+    CHECK(tightLayout.positionToGrapheme(0, 37.1F) == 9);
+    CHECK(tightLayout.positionToGrapheme(0, 80.0F) == 9);
+
+    RenderNode field;
+    field.multiline = true;
+    field.size = tightLayout.size;
+    const auto caret = textFieldCaretRect(field, tightLayout, 17, true);
+    CHECK(caret.origin.y == Catch::Approx(37.08F));
+    CHECK(caret.size.height == Catch::Approx(43.2F));
+    CHECK(caret.bottom() == Catch::Approx(tightLayout.size.height));
+}
+
+TEST_CASE("text_layout_combines_visible_fallback_metrics", "[text]") {
+    const MixedMetricsFonts fonts;
+    core::TextStyle style;
+    style.fontSize = 10;
+    for (const auto& value : {std::string{"A中"}, std::string{"中A"}}) {
+        const auto layout = TextLayout::layout(value, style, 0, fonts);
+        CHECK(layout.baseline == Catch::Approx(11));
+        CHECK(layout.lineHeightPx == Catch::Approx(12));
+        CHECK(layout.lineBoxHeightPx == Catch::Approx(15));
+        CHECK(layout.size.height == Catch::Approx(15));
+    }
+    const auto cjk = TextLayout::layout("中", style, 0, fonts);
+    CHECK(cjk.baseline == Catch::Approx(11));
+    CHECK(cjk.lineBoxHeightPx == Catch::Approx(13));
+    style.maxLines = 1;
+    const auto hidden = TextLayout::layout("A\n中", style, 0, fonts);
+    CHECK(hidden.baseline == Catch::Approx(8));
+    CHECK(hidden.size.height == Catch::Approx(12));
+    style.overflow = core::TextOverflow::Ellipsis;
+    const auto ellipsis = TextLayout::layout("AA\n中", style, 12, fonts);
+    REQUIRE(ellipsis.ellipsized);
+    CHECK(ellipsis.baseline == Catch::Approx(9));
+    CHECK(ellipsis.lineBoxHeightPx == Catch::Approx(15));
+}
+
+TEST_CASE("tight_text_paint_uses_styled_step_and_complete_clip", "[text][render]") {
+    const MixedMetricsFonts fonts;
+    core::TextStyle style;
+    style.fontSize = 10;
+    style.lineHeight = 1.03F;
+    const auto node = LayoutEngine::layout(
+        makeText("A中\n中A", style), Constraints::loose({100, 100}), fonts);
+    CHECK(node.size.height == Catch::Approx(25.3F));
+    const auto commands = render::recordScene(node, {}, fonts);
+    std::vector<render::TextRun> runs;
+    for (const auto& command : commands.commands()) {
+        if (command.type == render::CommandType::DrawText) {
+            runs.push_back(command.textRun);
+            REQUIRE(command.hasBounds);
+            CHECK(command.bounds.size.height == Catch::Approx(25.3F));
+        }
+    }
+    REQUIRE(runs.size() == 2);
+    CHECK(runs[1].origin.y - runs[0].origin.y == Catch::Approx(10.3F));
+    CHECK(runs[0].baselinePx == Catch::Approx(11));
+    CHECK(runs[1].baselinePx == Catch::Approx(11));
 }
 
 TEST_CASE("text_layout_ellipsizes_overflow", "[text]") {
@@ -1069,17 +1165,21 @@ TEST_CASE("default_font_stack_is_platform_aware", "[text][fonts]") {
     CHECK_FALSE(latin.empty());
     CHECK_FALSE(cjk.empty());
     CHECK_FALSE(emoji.empty());
-    // 非 CJK 系统下拉丁与 CJK 首选不同；CJK 系统下两者统一为 CJK 族。
+    // 非 CJK 系统下拉丁与 CJK 首选不同；CJK 系统下两者统一为 CJK 族
+    //（Windows 例外：拉丁恒为 Segoe，见下）。
     const bool preferCjk = systemUiPrefersCjkFont();
+    (void)preferCjk;
+#if !defined(_WIN32)
     if (preferCjk) {
         CHECK(latin.front() == cjk.front());
     } else {
         CHECK(latin.front() != cjk.front());
     }
+#endif
 #if defined(_WIN32)
     CHECK(cjk.front() == "Microsoft YaHei");
-    CHECK(latin.front() ==
-          (preferCjk ? "Microsoft YaHei" : "Segoe UI"));
+    // Windows 拉丁恒为 Segoe（原生界面行为；雅黑拉丁小字号粗体过黏）。
+    CHECK(latin.front() == "Segoe UI");
 #elif defined(__APPLE__)
     CHECK(cjk.front() == "PingFang SC");
     if (preferCjk) {

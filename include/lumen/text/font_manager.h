@@ -54,8 +54,8 @@ enum class FontBackend : std::uint8_t {
 // （CFLocaleCopyPreferredLanguages，环境变量做回退）；其他平台走
 // LC_ALL/LC_CTYPE/LANG/LANGUAGE 环境变量（首个有效值决定，zh/ja/ko
 // 前缀为 true）。结果进程内缓存，切换系统语言需重启进程。空 family
-// 的拉丁栈据此排序：CJK 系统连拉丁字母/数字也优先 CJK 字体，保证中文
-// 界面字重/观感统一。
+// 的 CJK/emoji 栈据此排序；拉丁栈在 Windows 上恒为 Segoe 优先（原生
+// 界面行为，中英文混排由逐码点回退分别取字）。
 [[nodiscard]] bool systemUiPrefersCjkFont();
 // 应用层覆盖默认字体栈：设置后 `family` 为空的文本走该栈（按序取首个
 // 覆盖码点者），不再用系统语言默认。传空等价于清除。

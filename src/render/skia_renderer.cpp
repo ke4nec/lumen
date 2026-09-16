@@ -394,7 +394,11 @@ void SkiaRenderer::drawText(TextRun run, core::TextStyle style) {
         }
     }
     float x = run.origin.x * scale;
-    const float baseline = (run.origin.y + fontSize) * scale;
+    // 回退逐码点路径也用布局 baseline（占位 0.8em），而非 fontSize，
+    // 否则文本整体下沉 0.2em，下行部被裁。
+    const float baseline =
+        (run.origin.y + (run.baselinePx > 0.0F ? run.baselinePx : fontSize)) *
+        scale;
     for (std::size_t offset = 0; offset < run.text.size();) {
         const std::size_t length =
             utf8SequenceLength(run.text.data() + offset, run.text.size() - offset);

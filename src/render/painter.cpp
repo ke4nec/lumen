@@ -328,7 +328,7 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
                 Rect{Offset{textOrigin.x + left,
                             textOrigin.y + static_cast<float>(i) *
                                                layout.lineHeightPx},
-                     Size{width, layout.lineHeightPx}},
+                     Size{width, layout.lineBoxHeightPx}},
                 common.selection);
         }
     }
@@ -349,8 +349,9 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
         const float width = std::abs(x1 - x0);
         sink.drawRect(
             Rect{Offset{textOrigin.x + left,
-                        textOrigin.y + (static_cast<float>(lineIndex) + 1.0F) *
-                                           layout.lineHeightPx -
+                        textOrigin.y + static_cast<float>(lineIndex) *
+                                           layout.lineHeightPx +
+                               layout.lineBoxHeightPx -
                                1.5F},
                  Size{width, 1.5F}},
             field.preeditUnderline);
@@ -580,9 +581,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             const ScopedClip<Sink> clip{sink, rect};
             const auto label = layoutText(node.text, common.text,
                 std::max(0.01F, node.size.width - radio->slotSize - radio->labelGap));
-            const float firstHeight = std::max(radio->slotSize, label.lineHeightPx);
+            const float firstHeight = std::max(radio->slotSize, label.lineBoxHeightPx);
             const float blockHeight = std::max(firstHeight,
-                label.size.height + firstHeight - label.lineHeightPx);
+                label.size.height + firstHeight - label.lineBoxHeightPx);
             const float blockTop = origin.y + (node.size.height - blockHeight) * 0.5F;
             const float indicatorCenterY = blockTop + firstHeight * 0.5F;
             const float indicator = radio->indicatorSize;
@@ -622,7 +623,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             }
             paintLines(sink, label, common.text,
                 Offset{origin.x + radio->slotSize + radio->labelGap,
-                       blockTop + (firstHeight - label.lineHeightPx) * 0.5F});
+                       blockTop + (firstHeight - label.lineBoxHeightPx) * 0.5F});
             break;
         }
         case WidgetType::Tooltip: {
@@ -676,7 +677,10 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                     node.text.empty()
                         ? text::TextLayoutResult{}
                         : layoutText(node.text, valueStyle, textMax);
-                const float lineHeight = lineHeightOf(common.text);
+                // 单行按完整绘制框居中，紧行高只控制多行步进。
+                const float lineHeight = layout.lines.empty()
+                                             ? lineHeightOf(common.text)
+                                             : layout.lineBoxHeightPx;
                 paintLines(sink, layout, common.text,
                            Offset{origin.x + padX,
                                   origin.y + (node.size.height - lineHeight) *
@@ -749,7 +753,10 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                     ? text::TextLayoutResult{}
                     : layoutText(node.text, labelStyle, availableWidth);
             const float textWidth = textLayout.size.width;
-            const float lineHeight = lineHeightOf(common.text);
+            // 同 Dropdown：按完整绘制框居中。
+            const float lineHeight = textLayout.lines.empty()
+                                         ? lineHeightOf(common.text)
+                                         : textLayout.lineBoxHeightPx;
             const float totalWidth = textWidth + iconExtent;
             const float contentTop =
                 origin.y + (node.size.height - lineHeight) * 0.5F;
@@ -807,9 +814,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             const ScopedClip<Sink> clip{sink, rect};
             const auto label = layoutText(node.text, common.text,
                 std::max(0.01F, node.size.width - checkbox->slotSize - checkbox->labelGap));
-            const float firstHeight = std::max(checkbox->slotSize, label.lineHeightPx);
+            const float firstHeight = std::max(checkbox->slotSize, label.lineBoxHeightPx);
             const float blockHeight = std::max(firstHeight,
-                label.size.height + firstHeight - label.lineHeightPx);
+                label.size.height + firstHeight - label.lineBoxHeightPx);
             const float blockTop = origin.y + (node.size.height - blockHeight) * 0.5F;
             const float indicatorCenterY = blockTop + firstHeight * 0.5F;
             const float indicator = checkbox->indicatorSize;
@@ -859,7 +866,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             }
             paintLines(sink, label, common.text,
                 Offset{origin.x + checkbox->slotSize + checkbox->labelGap,
-                       blockTop + (firstHeight - label.lineHeightPx) * 0.5F});
+                       blockTop + (firstHeight - label.lineBoxHeightPx) * 0.5F});
             break;
         }
         case WidgetType::Switch: {
@@ -875,9 +882,9 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             const ScopedClip<Sink> clip{sink, rect};
             const auto label = layoutText(node.text, common.text,
                 std::max(0.01F, node.size.width - control->slotSize - control->labelGap));
-            const float firstHeight = std::max((control->trackHeight + control->slotSize - control->trackWidth), label.lineHeightPx);
+            const float firstHeight = std::max((control->trackHeight + control->slotSize - control->trackWidth), label.lineBoxHeightPx);
             const float blockHeight = std::max(firstHeight,
-                label.size.height + firstHeight - label.lineHeightPx);
+                label.size.height + firstHeight - label.lineBoxHeightPx);
             const float blockTop = origin.y + (node.size.height - blockHeight) * 0.5F;
             const float indicatorCenterY = blockTop + firstHeight * 0.5F;
             const float trackOrigin =
@@ -917,7 +924,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                 CornerRadius::all(control->knobSize * 0.5F));
             paintLines(sink, label, common.text,
                 Offset{origin.x + control->slotSize + control->labelGap,
-                       blockTop + (firstHeight - label.lineHeightPx) * 0.5F});
+                       blockTop + (firstHeight - label.lineBoxHeightPx) * 0.5F});
             break;
         }
     }

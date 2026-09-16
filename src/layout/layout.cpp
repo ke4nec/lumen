@@ -151,8 +151,9 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
 // v0.3 阶段8B: 文本度量统一走 text::TextLayout（布局与绘制共用同一份
 // 布局结果）。maxWidth <= 0 表示不换行；TextField 单行不换行（横向滚动
 // 属于 8D 视口），Text 按约束换行并支持 maxLines/ellipsis。
-Size measureTextContent(const std::string& content, const TextStyle& style,
-                        float maxWidth, bool wrap) {
+text::TextLayoutResult layoutTextContent(const std::string& content,
+                                        const TextStyle& style,
+                                        float maxWidth, bool wrap) {
     TextStyle effective = style;
     if (!wrap) {
         effective.maxLines = 1;
@@ -162,9 +163,12 @@ Size measureTextContent(const std::string& content, const TextStyle& style,
     // plan 阶段2 布局缓存契约，此前未接线——静态文本场景每帧全量
     // reshape）。UI 线程独占；缓存实例按线程隔离（字体源亦线程局部）。
     static thread_local text::TextLayoutCache cache;
-    const text::TextLayoutResult& layout =
-        cache.compute(content, effective, maxWidth, activeFonts());
-    return layout.size;
+    return cache.compute(content, effective, maxWidth, activeFonts());
+}
+
+Size measureTextContent(const std::string& content, const TextStyle& style,
+                         float maxWidth, bool wrap) {
+    return layoutTextContent(content, style, maxWidth, wrap).size;
 }
 
 Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
@@ -253,10 +257,10 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             const float labelWidth = available > 0.0F
                 ? std::max(0.01F, available - radio->slotSize - radio->labelGap -
                     core::commonStyle(resolved).padding.horizontal()) : 0.0F;
-            const Size label = measureTextContent(content, textStyle, labelWidth, true);
-            return Size{radio->slotSize + radio->labelGap + label.width,
-                        std::max({radio->slotSize, label.height + std::max(0.0F,
-                                      radio->slotSize - measureTextContent("M", textStyle, 0, false).height),
+            const auto label = layoutTextContent(content, textStyle, labelWidth, true);
+            return Size{radio->slotSize + radio->labelGap + label.size.width,
+                        std::max({radio->slotSize, label.size.height + std::max(0.0F,
+                                      radio->slotSize - label.lineBoxHeightPx),
                                   resolved.minHeight})};
         }
         case WidgetType::Dropdown: {
@@ -302,11 +306,11 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             const float labelWidth = available > 0.0F
                 ? std::max(0.01F, available - checkbox->slotSize - checkbox->labelGap -
                     core::commonStyle(resolved).padding.horizontal()) : 0.0F;
-            const Size label = measureTextContent(content, textStyle, labelWidth, true);
+            const auto label = layoutTextContent(content, textStyle, labelWidth, true);
             // 槽位含焦点环预留（§4.4）：是否聚焦不改变标签起点。
-            return Size{checkbox->slotSize + checkbox->labelGap + label.width,
-                        std::max({checkbox->slotSize, label.height + std::max(0.0F,
-                                      checkbox->slotSize - measureTextContent("M", textStyle, 0, false).height),
+            return Size{checkbox->slotSize + checkbox->labelGap + label.size.width,
+                        std::max({checkbox->slotSize, label.size.height + std::max(0.0F,
+                                      checkbox->slotSize - label.lineBoxHeightPx),
                                   resolved.minHeight})};
         }
         case WidgetType::Switch: {
@@ -319,13 +323,13 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
             const float labelWidth = available > 0.0F
                 ? std::max(0.01F, available - control->slotSize - control->labelGap -
                     core::commonStyle(resolved).padding.horizontal()) : 0.0F;
-            const Size label = measureTextContent(content, textStyle, labelWidth, true);
-            return Size{control->slotSize + control->labelGap + label.width,
+            const auto label = layoutTextContent(content, textStyle, labelWidth, true);
+            return Size{control->slotSize + control->labelGap + label.size.width,
                         std::max({control->trackHeight + control->slotSize -
                                       control->trackWidth,
-                                  label.height + std::max(0.0F, control->trackHeight +
+                                  label.size.height + std::max(0.0F, control->trackHeight +
                                       control->slotSize - control->trackWidth -
-                                      measureTextContent("M", textStyle, 0, false).height),
+                                      label.lineBoxHeightPx),
                                   resolved.minHeight})};
         }
         default:

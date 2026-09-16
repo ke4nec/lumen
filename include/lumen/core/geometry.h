@@ -194,7 +194,9 @@ struct TextStyle {
     int weight{400};  // 100..900（FontWeight 的整数值）
     bool italic{false};
     float letterSpacing{0.0F};
-    float lineHeight{0.0F};  // 倍数；0 = 默认 1.2
+    // 相邻行基线距离 / fontSize；0 = 默认 1.2。字形绘制框独立扩展，
+    // 紧行高允许行框重叠，不强制放大该倍数。
+    float lineHeight{0.0F};
     TextDirection direction{TextDirection::Ltr};
     std::size_t maxLines{0};  // 0 = 不限
     TextOverflow overflow{TextOverflow::Clip};

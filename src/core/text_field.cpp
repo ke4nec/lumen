@@ -73,7 +73,7 @@ Rect textFieldCaretRect(const RenderNode& node,
     const float x = layout.graphemeToX(caret, &line);
     return Rect{Offset{origin.x + x,
                        origin.y + static_cast<float>(line) * layout.lineHeightPx},
-                Size{1.0F, layout.lineHeightPx}};
+                Size{1.0F, layout.lineBoxHeightPx}};
 }
 
 }  // namespace lumen::core
