@@ -397,6 +397,14 @@ int runSample(GalleryApp& app, const Options& options) {
 }
 
 int runWindowed(GalleryApp& app, const Options& options) {
+    if (options.reduceAnimation) {
+        // 窗口模式此前解析了该开关但从不消费（仅采样路径用）：经同一
+        // 派生链归零 MotionTokens，路由/状态过渡首拍即终态，便于对比
+        // “慢”是动画还是光栅。不传参时默认行为不变。
+        lumen::accessibility::AccessibilitySettings settings;
+        settings.reduceAnimation = true;
+        app.setAccessibilitySettings(settings);
+    }
     lumen::platform::Sdl3ApplicationHost host;
     lumen::app::RunOptions runOptions;
     runOptions.windowDesc.title = "Lumen Gallery";
