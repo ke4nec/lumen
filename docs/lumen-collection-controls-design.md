@@ -95,6 +95,8 @@
 
 核心架构决策：**Tree 与 TreeList 不需要新的虚拟化引擎**。树控制器把"可见节点序列"扁平化为行序列（`itemCount = 可见行数`），复用 M3 的 VirtualListSource 契约与 layoutVirtualList 布局路径。Qt/QTreeView、GTK/GtkTreeView、Win32/TreeView 内部同样如此。
 
+语义层单源实现：List 与 Tree 控制器中语义相同的部分——共享键位（§6.3 与 §7.4 的交集：Ctrl+A / Up / Down / Home / End / PageUp / PageDown）、`ScrollAlignment` 四向滚动对齐、行点击/激活 sink 接线（§6.5 的前缀分发）、Shift 区间 key 序列与集合行 Row 壳——单源实现于私有 `src/widgets/collection_common.h`（inline 自由函数，不进公共 API）。`ScrollAlignment` 单一定义于公共 `include/lumen/widgets/collection.h`，两控制器经类内 `using` 别名保持 `ListController::ScrollAlignment` 等既有写法。Tree 专属键位（Left/Right）、chevron toggle 与扁平化/按 key 的 extent 缓存仍在 TreeController。
+
 ### 4.2 三个控件的职责边界
 
 | 控件 | 数据形态 | 典型场景 | 对应参考 |
@@ -179,8 +181,8 @@ class ListController final : public core::VirtualListSource {
     // --- 激活（双击/Enter；语义 Activate 同路径） ---
     std::function<void(const std::string& key)> onActivated{};
 
-    // --- 滚动（扩展既有 scrollToIndex） ---
-    enum class ScrollAlignment { Visible, Start, Center, End };
+    // --- 滚动（扩展既有 scrollToIndex；ScrollAlignment 单一定义于
+    //      widgets/collection.h，List/Tree/TreeList 公用） ---
     void scrollToKey(const std::string& key, ScrollAlignment align);
 
     // --- 事件入口（应用 onKey 转发，M11 DropdownController 同模式） ---
@@ -305,7 +307,9 @@ class TreeController final : public core::VirtualListSource {
     void expandAll(std::size_t maxRows);     // 防护上限（默认 10'000 可见行）
     void collapseAll();
 
-    // 选择/激活/键盘：同 ListController（SelectionModel 复用）。
+    // 选择/激活/键盘：同 ListController（SelectionModel 复用）。共享键位、
+    // 滚动对齐与 sink 接线单源实现于 src/widgets/collection_common.h；
+    // Left/Right 树键位与 chevron toggle 留在本控制器。
     bool handleKey(core::Key key, core::KeyModifiers mods, char keyChar = 0);
 
     // 可见行查询（键盘导航/语义/测试需要）。
@@ -525,12 +529,18 @@ treelist.header.height         = 行最小高度同档
 
 1. `ListView` / `VirtualList` **保留不删**（既有示例与测试依赖；M5 语义契约冻结）。
    文档标注：新代码建议 `List`；`VirtualList` 无选择需求时仍可直用。
-2. `VirtualListController` 保留；`ListController` 内部组合其 extent 缓存/锚点逻辑
-   （提取为共享 `ExtentCache` 私有实现，不改变公共契约）。
+2. `VirtualListController` 保留；`ListController` 直接组合它（几何全部委托：
+   extent 缓存/锚点稳定/滚动）；Tree 的 extent 缓存按 key 存于 TreeController
+   （展开折叠后 index 漂移）。公共契约均不变。
 3. `InteractionController::scrollKey` 行为变化仅在"焦点位于集合行"时生效，
    其余场景哈希不变；用 headless 回归锁定。
 4. 新增 RenderCommand：无（chevron 复用 DrawIcon，需扩充 `IconId` 枚举与折线目录——
    属语义 ID 扩展，不动命令层与序列化版本）。
+5. List/Tree 语义层单源化：共享键位、`ScrollAlignment` 四向对齐、行点击/
+   激活 sink 接线、Shift 区间序列与集合行 Row 壳单源实现于私有
+   `src/widgets/collection_common.h`；`ScrollAlignment` 单一定义于公共
+   `include/lumen/widgets/collection.h`（控制器类内 `using` 别名保持既有
+   限定写法）。零行为变化：既有 collection 用例与帧哈希回归全绿。
 
 ## 14. 开放问题（实施前需确认）
 

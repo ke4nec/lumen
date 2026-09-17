@@ -5,14 +5,13 @@
 #include <algorithm>
 #include <cmath>
 
-#include "lumen/accessibility/semantics.h"
+// 语义层共享实现（与 List 同契约）：键盘导航/滚动对齐/sink 接线/区间序列。
+#include "collection_common.h"
 
 namespace lumen::widgets {
 
 namespace {
-// 视觉系统 §3.2 / collection-design §10.1：Medium 档行高与缩进步进。
-constexpr float kDefaultRowExtent = 40.0F;
-constexpr float kRowPaddingX = 12.0F;
+// 视觉系统 §3.2 / collection-design §10.1：缩进步进与 chevron 命中区。
 constexpr float kIndentStep = 20.0F;   // 每层缩进
 constexpr float kChevronExtent = 24.0F;  // chevron 命中区
 constexpr float kColumnGap = 0.0F;
@@ -169,33 +168,14 @@ void TreeController::setSelectionMode(SelectionMode mode) {
 void TreeController::attach(app::AppShell& shell, std::string ownerKey) {
     shell_ = &shell;
     owner_ = std::move(ownerKey.empty() ? std::string("tree") : ownerKey);
-    estimatedExtent_ = kDefaultRowExtent;
+    estimatedExtent_ = detail::kDefaultRowExtent;
+    // 区间选择：行序来自扁平化可见行序列（惰性重建）。
     selection_.setKeySequence(
         [this](const std::string& from, const std::string& to) {
-            std::vector<std::string> keys;
             rebuildRows();
-            std::size_t begin = 0;
-            std::size_t end = 0;
-            const auto find = [this](const std::string& key,
-                                     std::size_t& index) {
-                for (std::size_t i = 0; i < rows_.size(); ++i) {
-                    if (rows_[i].key == key) {
-                        index = i;
-                        return true;
-                    }
-                }
-                return false;
-            };
-            if (!find(from, begin) || !find(to, end)) {
-                return keys;
-            }
-            if (begin > end) {
-                std::swap(begin, end);
-            }
-            for (std::size_t i = begin; i <= end && i < rows_.size(); ++i) {
-                keys.push_back(rows_[i].key);
-            }
-            return keys;
+            return detail::closedKeyRange(
+                rows_.size(),
+                [this](std::size_t i) { return rows_[i].key; }, from, to);
         });
     selection_.onSelectionChanged = [this] { requestRebuild(); };
     selection_.onCurrentChanged = [this](const std::string&) {
@@ -214,31 +194,14 @@ void TreeController::attach(app::AppShell& shell, std::string ownerKey) {
             toggle(key);
             return true;
         }
-        const std::string prefix = "tree:" + owner_ + ":";
-        if (onClick.rfind(prefix, 0) != 0) {
-            return false;
-        }
-        const std::string key = onClick.substr(prefix.size());
-        if (key.empty()) {
-            return false;
-        }
-        const auto modifiers =
-            shell_ != nullptr
-                ? shell_->controller().pointerModifiers()
-                : core::kModifierNone;
-        rowClicked(key, (modifiers & core::kModifierCtrl) != 0,
-                   (modifiers & core::kModifierShift) != 0);
-        return true;
+        return detail::dispatchRowClick(
+            shell_, onClick, "tree:" + owner_ + ":",
+            [this](const std::string& key, bool ctrl, bool shift) {
+                rowClicked(key, ctrl, shift);
+            });
     });
-    shell.controller().addRowActivateSink(
-        [this](const std::string& rowKey, const std::string&, bool) {
-            const std::string prefix = owner_ + ":item:";
-            if (rowKey.rfind(prefix, 0) != 0) {
-                return false;
-            }
-            activate(rowKey.substr(prefix.size()));
-            return true;
-        });
+    shell.controller().addRowActivateSink(detail::makeRowActivateSink(
+        owner_, [this](const std::string& key) { activate(key); }));
 }
 
 void TreeController::scrollToKey(const std::string& key,
@@ -248,37 +211,7 @@ void TreeController::scrollToKey(const std::string& key,
     if (!indexOfKey(key, index)) {
         return;
     }
-    const float viewport = scroll_.viewportExtent();
-    if (viewport <= 0.0F) {
-        return;
-    }
-    const float top = offsetOfIndex(index);
-    const float extent = extentOf(index);
-    float target = 0.0F;
-    switch (align) {
-        case ScrollAlignment::Visible: {
-            const float offset = scroll_.offset();
-            if (top < offset) {
-                target = top;
-            } else if (top + extent > offset + viewport) {
-                target = top + extent - viewport;
-            } else {
-                return;  // 已可见。
-            }
-            break;
-        }
-        case ScrollAlignment::Start:
-            target = top;
-            break;
-        case ScrollAlignment::Center:
-            target = top - (viewport - extent) * 0.5F;
-            break;
-        case ScrollAlignment::End:
-            target = top + extent - viewport;
-            break;
-    }
-    const float maxOffset = std::max(0.0F, totalExtent() - viewport);
-    scroll_.scrollTo(std::clamp(target, 0.0F, maxOffset));
+    detail::scrollToAligned(*this, index, align);
 }
 
 void TreeController::moveCurrent(const std::string& key, bool extend) {
@@ -292,70 +225,22 @@ void TreeController::moveCurrent(const std::string& key, bool extend) {
 bool TreeController::handleKey(core::Key key, core::KeyModifiers modifiers,
                                char keyChar) {
     rebuildRows();
-    const std::size_t count = rows_.size();
-    if (count == 0) {
-        return false;
-    }
-    std::size_t current = 0;
-    const bool hasCurrent =
-        !selection_.currentKey().empty() &&
-        indexOfKey(selection_.currentKey(), current);
-    const bool ctrl = (modifiers & core::kModifierCtrl) != 0;
-    const bool shift = (modifiers & core::kModifierShift) != 0;
-
-    // Ctrl+A（collection-design §7.4）。
-    if (ctrl && (keyChar == 'a' || keyChar == 'A')) {
-        if (selection_.mode() == SelectionMode::Extended) {
-            std::vector<std::string> all;
-            all.reserve(count);
-            for (const auto& row : rows_) {
-                all.push_back(row.key);
-            }
-            selection_.setSelected(std::move(all));
-        } else if (hasCurrent) {
-            selection_.setSelected({rows_[current].key});
-        }
-        requestRebuild();
+    // 共享键位（Ctrl+A / Up / Down / Home / End / PageUp / PageDown）。
+    if (detail::handleCollectionKeys(
+            shell_, owner_, selection_, *this,
+            [this](std::size_t i) { return rows_[i].key; }, key, modifiers,
+            keyChar)) {
         return true;
     }
-
-    const auto move = [this, shift](std::size_t target) {
-        // 按值拷贝 key：moveCurrent 的应用回调可能 modelChanged 失效
-        // rows_，引用会随 clear 悬垂。
-        const std::string key = rows_[target].key;
-        moveCurrent(key, shift);
-        scrollToKey(key, ScrollAlignment::Visible);
-    };
-
+    // --- 树专属键位（collection-design §7.4） ---
+    const std::size_t count = rows_.size();
+    if (count == 0) {
+        return false;  // 与共享导航一致：空树不消费任何键。
+    }
+    std::size_t current = 0;
+    const bool hasCurrent = !selection_.currentKey().empty() &&
+                            indexOfKey(selection_.currentKey(), current);
     switch (key) {
-        case core::Key::Down:
-            move(hasCurrent ? std::min(current + 1, count - 1) : 0);
-            return true;
-        case core::Key::Up:
-            move(hasCurrent && current > 0 ? current - 1 : 0);
-            return true;
-        case core::Key::Home:
-            move(0);
-            scrollToKey(rows_[0].key, ScrollAlignment::Start);
-            return true;
-        case core::Key::End:
-            move(count - 1);
-            scrollToKey(rows_[count - 1].key, ScrollAlignment::End);
-            return true;
-        case core::Key::PageUp:
-        case core::Key::PageDown: {
-            const float extent = std::max(
-                1.0F, extentOf(hasCurrent ? current : 0));
-            const std::size_t step = std::max(
-                1U, static_cast<unsigned>(scroll_.viewportExtent() / extent));
-            if (key == core::Key::PageUp) {
-                move(hasCurrent && current > step ? current - step : 0);
-            } else {
-                move(hasCurrent ? std::min(current + step, count - 1)
-                               : std::min(step, count - 1));
-            }
-            return true;
-        }
         case core::Key::Left:
             // 展开 → 折叠；已折叠 → current 移到父级（Qt 契约）。
             if (hasCurrent) {
@@ -499,16 +384,11 @@ core::Widget TreeController::buildItem(std::size_t index) const {
     cells.push_back(buildRowContent(row));
 
     core::Widget widget;
-    widget.type = core::WidgetType::Row;
-    widget.key = owner_ + ":item:" + row.key;
-    widget.collectionRow = true;
-    widget.selected = selection_.isSelected(row.key);
-    widget.onClick = "tree:" + owner_ + ":" + row.key;
-    widget.crossAxis = core::CrossAxisAlignment::Center;
-    widget.padding = core::EdgeInsets::symmetric(kRowPaddingX, 0.0F);
-    widget.semanticsRole = "treeItem";
-    widget.semanticsActions =
-        accessibility::kActionFocus | accessibility::kActionActivate;
+    detail::applyCollectionRowShell(widget, owner_, row.key,
+                                    selection_.isSelected(row.key),
+                                    "tree:" + owner_ + ":" + row.key,
+                                    core::CrossAxisAlignment::Center,
+                                    "treeItem");
     if (row.hasChildren) {
         widget.semanticsValue = row.expanded ? "true" : "false";
     }
@@ -548,13 +428,9 @@ void TreeController::requestRebuild() {
 bool TreeController::indexOfKey(const std::string& key,
                                 std::size_t& index) const {
     rebuildRows();
-    for (std::size_t i = 0; i < rows_.size(); ++i) {
-        if (rows_[i].key == key) {
-            index = i;
-            return true;
-        }
-    }
-    return false;
+    return detail::findKeyIndex(
+        rows_.size(),
+        [this](std::size_t i) { return rows_[i].key; }, key, index);
 }
 
 // --- TreeListController ---
@@ -715,14 +591,14 @@ core::Widget TreeListController::buildHeader() const {
         }
         cell.alignContentStart = true;
         cell.width = widths_[i];
-        cell.height = kDefaultRowExtent;
+        cell.height = detail::kDefaultRowExtent;
         cells.push_back(std::move(cell));
     }
     core::Widget header;
     header.type = core::WidgetType::Row;
     header.key = owner_ + ":header";
     header.crossAxis = core::CrossAxisAlignment::Center;
-    header.padding = core::EdgeInsets::symmetric(kRowPaddingX, 0.0F);
+    header.padding = core::EdgeInsets::symmetric(detail::kRowPaddingX, 0.0F);
     header.children = std::move(cells);
     return header;
 }
