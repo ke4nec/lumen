@@ -34,6 +34,10 @@ enum class SemanticsRole : std::uint8_t {
     Slider,
     ProgressBar,
     Radio,
+    // 集合控件（collection-controls-design §9.3）：树语义。追加在尾部，
+    // 保持既有 role 枚举值不变。
+    Tree,
+    TreeItem,
 };
 
 [[nodiscard]] const char* semanticsRoleName(SemanticsRole role);

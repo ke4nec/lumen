@@ -136,7 +136,11 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     if (widget.showScrollbar &&
         (widget.type == WidgetType::ScrollView ||
          widget.type == WidgetType::ListView ||
-         widget.type == WidgetType::VirtualList)) {
+         widget.type == WidgetType::VirtualList ||
+         // 集合控件：同一滚动条 token 路径（TreeList 含表头区）。
+         widget.type == WidgetType::List ||
+         widget.type == WidgetType::Tree ||
+         widget.type == WidgetType::TreeList)) {
         node.scrollbarThickness = styleContext.theme.scrollbar.thickness;
         node.scrollbarThumbWidth = styleContext.theme.scrollbar.thumbWidth;
         node.scrollbarMinLength = styleContext.theme.scrollbar.minLength;
@@ -145,6 +149,7 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.enabled = widget.enabled;
     node.invalid = widget.invalid;
     node.selected = widget.selected;
+    node.collectionRow = widget.collectionRow;
     return node;
 }
 
@@ -404,6 +409,10 @@ RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
 RenderNode layoutVirtualList(const Widget& widget, const Constraints& constraints,
                              const style::StyleContext& styleContext,
                              const std::string& identity);
+// 集合控件：TreeList（树 + 列）——VirtualList 引擎 + 粘性表头。
+RenderNode layoutTreeList(const Widget& widget, const Constraints& constraints,
+                          const style::StyleContext& styleContext,
+                          const std::string& identity);
 
 RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
                         const style::StyleContext& styleContext,
@@ -453,8 +462,14 @@ RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
         case WidgetType::Grid:
             return layoutGrid(widget, constraints, styleContext, identity);
         case WidgetType::VirtualList:
+        // 集合控件：List/Tree 与 VirtualList 同一虚拟化引擎（差异全部
+        // 在 widgets 层控制器的 buildItem/source 实现）。
+        case WidgetType::List:
+        case WidgetType::Tree:
             return layoutVirtualList(widget, constraints, styleContext,
                                      identity);
+        case WidgetType::TreeList:
+            return layoutTreeList(widget, constraints, styleContext, identity);
         case WidgetType::Image:
         case WidgetType::Text:
         case WidgetType::Button:
@@ -764,6 +779,14 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
     if (crossOverride.has_value()) {
         borderCross = resolvedCross;
     }
+    // 集合行（collection-controls-design §10.1）：行最小高度走视觉系统
+    // §3.2 尺度表（resolveContainer 注入 metrics.minHeight[baseIndex]）；
+    // 变高项（多行内容）按内容增高不受影响。
+    if (widget.collectionRow && !crossOverride.has_value() &&
+        resolved.minHeight > borderCross) {
+        borderCross =
+            clampFloat(resolved.minHeight, outerMinCross, outerMaxCross);
+    }
     // contentBoxMain is derived after the stretch pass because stretching can
     // change child main sizes. The cross box must exist beforehand: it is the
     // stretch budget itself.
@@ -1051,6 +1074,70 @@ RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
 // buildItem 物化，子项绝对定位在内容坐标（offsetOfIndex），滚动偏移
 // 应用到子 offset；实测修正后继续物化到视口填满。每项在本次布局中
 // 仅构建/测量一次，避免估值偏大时留下空白或反复构建同一项目。
+// 虚拟化行区物化（VirtualList 与 TreeList 共用的 M3 引擎 §3.4）：可见区
+//（含 cacheExtent 缓存）行构建/测量/绝对定位，extent 修正后继续物化到
+// 稳定（每项本轮仅构建一次，至多物化 itemCount 项）。两种视口的差异显
+// 式参数化：rowsViewport 为行区视口高；rangeShift 把 scrollOffset 换算
+// 为行内容坐标（VirtualList 内容含顶部 padding）；childBaseY 为行区内
+// 容原点（padding.top[ + 表头高]）；contentExtentPad 为滚动内容高在
+// totalExtent 之外的附加（VirtualList 的上下 padding）。
+void materializeVirtualRows(RenderNode& node,
+                            const VirtualListSource* source,
+                            const style::StyleContext& styleContext,
+                            const std::string& identity,
+                            const EdgeInsets& padding, float contentMaxWidth,
+                            float cacheExtent, float rowsViewport,
+                            float rangeShift, float childBaseY,
+                            float contentExtentPad) {
+    struct MaterializedItem {
+        RenderNode node;
+        EdgeInsets margin;
+    };
+    std::map<std::size_t, MaterializedItem> materialized;
+    for (;;) {
+        node.scrollExtent = std::max(
+            0.0F, source->totalExtent() + contentExtentPad - rowsViewport);
+        node.scrollOffset =
+            std::clamp(source->scrollOffset(), 0.0F, node.scrollExtent);
+        const auto [first, last] = source->visibleRangeAt(
+            node.scrollOffset - rangeShift, rowsViewport, cacheExtent);
+        bool extentsChanged = false;
+        for (std::size_t i = first; i < last; ++i) {
+            if (materialized.contains(i)) {
+                continue;
+            }
+            Widget item = source->buildItem(i);
+            if (t_prepareItem != nullptr && *t_prepareItem) {
+                (*t_prepareItem)(item);
+            }
+            const Constraints childConstraints{
+                0.0F, contentMaxWidth, 0.0F,
+                Constraints::unbounded().maxHeight};
+            RenderNode childNode = layoutSingle(
+                item, childConstraints, styleContext,
+                childIdentity(identity, item, i));
+            const float assumed = source->extentOf(i);
+            source->noteExtent(i, childNode.size.height + item.margin.vertical());
+            extentsChanged = extentsChanged || source->extentOf(i) != assumed;
+            materialized.emplace(i, MaterializedItem{std::move(childNode), item.margin});
+        }
+        if (extentsChanged) {
+            // 每次修正都来自首次物化的新项，因此至多物化 itemCount 项。
+            // 下一轮沿用已测节点，只补齐修正后进入可见区的项目。
+            continue;
+        }
+        for (std::size_t i = first; i < last; ++i) {
+            auto& item = materialized.at(i);
+            item.node.offset = Offset{
+                padding.left + item.margin.left,
+                childBaseY + item.margin.top + source->offsetOfIndex(i) -
+                    node.scrollOffset};
+            node.children.push_back(std::move(item.node));
+        }
+        break;
+    }
+}
+
 RenderNode layoutVirtualList(const Widget& widget,
                              const Constraints& constraints,
                              const style::StyleContext& styleContext,
@@ -1084,57 +1171,96 @@ RenderNode layoutVirtualList(const Widget& widget,
         return node;
     }
 
+    materializeVirtualRows(
+        node, source, styleContext, identity, padding,
+        std::max(0.0F, viewportWidth - padding.horizontal()),
+        std::max(0.0F, widget.virtualCacheExtent),
+        /*rowsViewport=*/viewportHeight,
+        /*rangeShift=*/padding.top,
+        /*childBaseY=*/padding.top,
+        /*contentExtentPad=*/padding.vertical());
+    return node;
+}
+
+// 集合控件（collection-controls-design §8.3）：TreeList = VirtualList 引擎
+// + 粘性表头。表头是非滚动 chrome：noteContentWidth 回填列宽 → 布局实测
+// 表头高度 → 行区视口 = 视口高 - 表头高；行滚动偏移只作用于行区，表头
+// 固定在顶部（QHeaderView/wx report 模式语义）。
+RenderNode layoutTreeList(const Widget& widget,
+                          const Constraints& constraints,
+                          const style::StyleContext& styleContext,
+                          const std::string& identity) {
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
+    const EdgeInsets& padding = core::commonStyle(resolved).padding;
+    const Constraints outer = constraints.deflate(widget.margin);
+
+    const float viewportWidth =
+        widget.width.has_value()
+            ? clampFloat(*widget.width, outer.minWidth, outer.maxWidth)
+            : outer.maxWidth;
+    const float viewportHeight =
+        widget.height.has_value()
+            ? clampFloat(*widget.height, outer.minHeight, outer.maxHeight)
+            : outer.maxHeight;
+
+    RenderNode node = makeNode(widget, Offset{0.0F, 0.0F},
+                               Size{viewportWidth, viewportHeight},
+                               styleContext, identity);
+    node.clipContent = true;
+
+    const VirtualListSource* source = widget.virtualSource;
     const float contentMaxWidth =
         std::max(0.0F, viewportWidth - padding.horizontal());
-    const float cacheExtent = std::max(0.0F, widget.virtualCacheExtent);
-
-    struct MaterializedItem {
-        RenderNode node;
-        EdgeInsets margin;
-    };
-    std::map<std::size_t, MaterializedItem> materialized;
-    for (;;) {
-        node.scrollExtent = std::max(
-            0.0F, source->totalExtent() + padding.vertical() - viewportHeight);
-        node.scrollOffset = std::clamp(source->scrollOffset(), 0.0F,
-                                        node.scrollExtent);
-        const auto [first, last] = source->visibleRangeAt(
-            node.scrollOffset - padding.top, viewportHeight, cacheExtent);
-        bool extentsChanged = false;
-        for (std::size_t i = first; i < last; ++i) {
-            if (materialized.contains(i)) {
-                continue;
-            }
-            Widget item = source->buildItem(i);
-            if (t_prepareItem != nullptr && *t_prepareItem) {
-                (*t_prepareItem)(item);
-            }
-            const Constraints childConstraints{
-                0.0F, contentMaxWidth, 0.0F,
-                Constraints::unbounded().maxHeight};
-            RenderNode childNode = layoutSingle(
-                item, childConstraints, styleContext,
-                childIdentity(identity, item, i));
-            const float assumed = source->extentOf(i);
-            source->noteExtent(i, childNode.size.height + item.margin.vertical());
-            extentsChanged = extentsChanged || source->extentOf(i) != assumed;
-            materialized.emplace(i, MaterializedItem{std::move(childNode), item.margin});
-        }
-        if (extentsChanged) {
-            // 每次修正都来自首次物化的新项，因此至多物化 itemCount 项。
-            // 下一轮沿用已测节点，只补齐修正后进入可见区的项目。
-            continue;
-        }
-        for (std::size_t i = first; i < last; ++i) {
-            auto& item = materialized.at(i);
-            item.node.offset = Offset{
-                padding.left + item.margin.left,
-                padding.top + item.margin.top + source->offsetOfIndex(i) -
-                    node.scrollOffset};
-            node.children.push_back(std::move(item.node));
-        }
-        break;
+    if (source != nullptr) {
+        // 列宽按内容宽分配（控制器幂等缓存；视口变化时自动重排）。
+        source->noteContentWidth(contentMaxWidth);
     }
+
+    // 粘性表头：布局一次、置于顶部、不随滚动平移。
+    RenderNode headerNode{};
+    float headerHeight = 0.0F;
+    if (widget.collectionShowHeader && source != nullptr) {
+        Widget header = source->buildHeader();
+        if (header.type != WidgetType::Container || !header.children.empty() ||
+            !header.key.empty()) {
+            headerNode = layoutSingle(
+                header,
+                Constraints{0.0F, contentMaxWidth, 0.0F,
+                            Constraints::unbounded().maxHeight},
+                styleContext, childIdentity(identity, header, 0));
+            headerNode.offset = Offset{padding.left + header.margin.left,
+                                       padding.top + header.margin.top};
+            headerHeight = headerNode.size.height + header.margin.vertical();
+        }
+    }
+
+    const float rowsViewport =
+        std::max(0.0F, viewportHeight - headerHeight - padding.vertical());
+    if (source != nullptr) {
+        // 行区视口（表头下方）同步给滚动控制器。
+        source->updateViewport(rowsViewport, 0.0F);
+    }
+    if (source == nullptr || source->itemCount() == 0) {
+        node.scrollExtent = 0.0F;
+        node.scrollOffset = 0.0F;
+        if (headerHeight > 0.0F) {
+            node.children.push_back(std::move(headerNode));
+        }
+        return node;
+    }
+
+    // 表头先入 children（非滚动 chrome），行区随其后物化。
+    if (headerHeight > 0.0F) {
+        node.children.push_back(std::move(headerNode));
+    }
+    materializeVirtualRows(
+        node, source, styleContext, identity, padding, contentMaxWidth,
+        std::max(0.0F, widget.virtualCacheExtent),
+        /*rowsViewport=*/rowsViewport,
+        /*rangeShift=*/0.0F,
+        /*childBaseY=*/padding.top + headerHeight,
+        /*contentExtentPad=*/0.0F);
     return node;
 }
 

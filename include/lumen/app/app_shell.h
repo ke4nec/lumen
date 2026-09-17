@@ -190,7 +190,9 @@ class AppShell {
     }
 
     // --- 事件分发（runApp 调用；headless 测试可直接驱动） ---
-    void pointerDown(core::Offset position);
+    // modifiers 为按下时刻修饰键（集合行 Extended 选择语义）。
+    void pointerDown(core::Offset position,
+                     core::KeyModifiers modifiers = core::kModifierNone);
     void pointerMove(core::Offset position);
     void pointerUp(core::Offset position);
     void pointerCancel();

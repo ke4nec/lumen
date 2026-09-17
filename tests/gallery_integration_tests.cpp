@@ -68,6 +68,32 @@ void go(GalleryApp& app, const std::string& navKey) {
     (void)app.renderFrame();
 }
 
+// Scroll the outer gallery-list so the node enters the viewport. The wheel
+// at the list center falls inside the nested collection widgets (the inner
+// List/Tree/TreeList takes the gesture), so drive the outer controller
+// directly (same approach as GalleryApp::showSample).
+void scrollIntoView(GalleryApp& app, const std::string& key) {
+    const RenderNode* node = findNodeByKey(app.root(), key);
+    const RenderNode* viewport = findNodeByKey(app.root(), "gallery-list");
+    REQUIRE(node != nullptr);
+    REQUIRE(viewport != nullptr);
+    app.scroll().updateExtents(viewport->size.height,
+                               viewport->size.height +
+                                   viewport->scrollExtent);
+    const auto position = absoluteOffset(app.root(), key);
+    const auto top = absoluteOffset(app.root(), "gallery-list");
+    app.scroll().scrollTo(app.scroll().offset() + position.y - top.y -
+                          12.0F);
+    app.markDirty();
+    (void)app.renderFrame();
+}
+
+void clickScrolled(GalleryApp& app, const std::string& key) {
+    scrollIntoView(app, key);
+    click(app, key);
+    (void)app.renderFrame();
+}
+
 // M11：点击 overlay 菜单选项（坐标相对 overlay 根 = 窗口坐标）。
 void clickOverlayOption(GalleryApp& app, const std::string& key) {
     const RenderNode* overlay = app.shell().overlayRoot();
@@ -420,6 +446,57 @@ TEST_CASE("gallery_lists_materialize_visible_window", "[gallery]") {
     CHECK(library->children.size() < 1000);
 }
 
+TEST_CASE("gallery_collections_showcase_interacts", "[gallery]") {
+    GalleryApp app;
+    app.setView(Size{1024.0F, 768.0F});
+    (void)app.renderFrame();
+    go(app, "nav-collections");
+
+    // List：单击选中（Extended；current 与 selected 同步）。
+    clickVisible(app, "collection-list:item:i1");
+    (void)app.renderFrame();
+    CHECK(app.collectionList().selection().currentKey() == "i1");
+    CHECK(app.collectionList().selection().isSelected("i1"));
+
+    // 同行再点击两次（400ms 内第二组 down/up）→ 双击激活回显。
+    clickVisible(app, "collection-list:item:i1");
+    clickVisible(app, "collection-list:item:i1");
+    (void)app.renderFrame();
+    CHECK(app.lastActivatedKey() == "i1");
+
+    // Tree：chevron 点击只展开（不选中该行）。树卡在外层视口下方，
+    // 经 scrollIntoView 滚入（滚轮中心点会落进内层集合被其消费）。
+    clickScrolled(app, "collection-tree:chev:tree:src:widgets");
+    CHECK(app.collectionTree().isExpanded("tree:src:widgets"));
+    CHECK_FALSE(app.collectionTree().selection().isSelected("tree:src:widgets"));
+    // 初始展开两层：src 与 src:core 均展开。
+    CHECK(app.collectionTree().isExpanded("tree:src"));
+
+    // TreeList：粘性表头存在；点击 name 表头 → 应用排序（首次升序）。
+    const RenderNode* header =
+        findNodeByKey(app.root(), "collection-table:header");
+    REQUIRE(header != nullptr);
+    clickScrolled(app, "collection-table:head:name");
+    CHECK(app.lastSortColumn() == "name");
+    CHECK_FALSE(app.lastSortDescending());
+    // 再次点击 → 方向翻转。
+    clickScrolled(app, "collection-table:head:name");
+    CHECK(app.lastSortDescending());
+
+    // 三个集合均只物化可见窗口（O(visible)）；TreeList 首子节点为粘性表头。
+    const RenderNode* list = findNodeByKey(app.root(), "collection-list");
+    const RenderNode* tree = findNodeByKey(app.root(), "collection-tree");
+    const RenderNode* table = findNodeByKey(app.root(), "collection-table");
+    REQUIRE(list != nullptr);
+    REQUIRE(tree != nullptr);
+    REQUIRE(table != nullptr);
+    CHECK(list->children.size() < 200);
+    CHECK(!tree->children.empty());
+    CHECK(!table->children.empty());
+    CHECK(table->children.front().key == "collection-table:header");
+    CHECK(table->children.size() <= 10);  // 表头 + 9 行数据（全部物化）。
+}
+
 TEST_CASE("gallery_slider_drives_progress", "[gallery]") {
     GalleryApp app;
     app.setView(Size{1024.0F, 768.0F});
@@ -548,4 +625,49 @@ TEST_CASE("gallery_buttons_state_matrix_forces_previews", "[gallery]") {
         findNodeByKey(app.root(), "btn-long-label");
     REQUIRE(longLabel != nullptr);
     CHECK(longLabel->size.width <= 200.0F + 0.01F);
+}
+
+// 集合控件滚轮：滚轮落在集合上由该集合消费（命中链最近视口），
+// 偏移同步落到布局节点。
+TEST_CASE("gallery_collections_wheel_scrolls_inner_collection", "[gallery]") {
+    GalleryApp app;
+    app.setView(Size{1024.0F, 768.0F});
+    (void)app.renderFrame();
+    go(app, "nav-collections");
+    scrollIntoView(app, "collection-list");
+
+    const RenderNode* list = findNodeByKey(app.root(), "collection-list");
+    REQUIRE(list != nullptr);
+    const float before = app.collectionList().scroll().offset();
+    const Offset point = absoluteOffset(app.root(), "collection-list") +
+                         Offset{40.0F, 20.0F};
+    app.wheel(point, Offset{0.0F, 120.0F});
+    CHECK(app.collectionList().scroll().offset() == before + 120.0F);
+    (void)app.renderFrame();
+    list = findNodeByKey(app.root(), "collection-list");
+    REQUIRE(list != nullptr);
+    CHECK(list->scrollOffset == 120.0F);
+
+    // Tree / TreeList 同路径。
+    scrollIntoView(app, "collection-tree");
+    const float treeBefore = app.collectionTree().scroll().offset();
+    app.wheel(
+        absoluteOffset(app.root(), "collection-tree") + Offset{40.0F, 20.0F},
+        Offset{0.0F, 120.0F});
+    CHECK(app.collectionTree().scroll().offset() == treeBefore + 120.0F);
+    (void)app.renderFrame();
+    const RenderNode* tree = findNodeByKey(app.root(), "collection-tree");
+    REQUIRE(tree != nullptr);
+    CHECK(tree->scrollOffset == 120.0F);
+
+    scrollIntoView(app, "collection-table");
+    const float tableBefore = app.collectionTable().scroll().offset();
+    app.wheel(
+        absoluteOffset(app.root(), "collection-table") + Offset{40.0F, 20.0F},
+        Offset{0.0F, 120.0F});
+    CHECK(app.collectionTable().scroll().offset() == tableBefore + 120.0F);
+    (void)app.renderFrame();
+    const RenderNode* table = findNodeByKey(app.root(), "collection-table");
+    REQUIRE(table != nullptr);
+    CHECK(table->scrollOffset == 120.0F);
 }

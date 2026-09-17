@@ -313,6 +313,10 @@ std::size_t Sdl3ApplicationHost::translateEvent(
             event.device = core::PointerDevice::Mouse;
             event.button = mapMouseButton(sdlEvent.button.button);
             event.pointerId = 0;
+            // 集合控件（collection-controls-design §6.3）：按下时刻的
+            // 修饰键（Extended 选择 Ctrl/Shift 语义）。本 SDL3 版本的
+            // 按钮事件不携带 mod，改查全局实时修饰键状态。
+            event.modifiers = mapSdlModifiers(SDL_GetModState());
             push(std::move(event));
             break;
         }

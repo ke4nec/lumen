@@ -1,0 +1,523 @@
+# Lumen 集合控件设计（List / Tree / TreeList）
+
+> 文档状态：设计稿（2026-09）
+> 输入：源码现状盘点（`include/lumen/core/widget.h`、`include/lumen/core/virtual_list.h`、`src/layout/layout.cpp`）、`docs/lumen-self-use-roadmap.md` M0–M12 完成记录、`docs/lumen-visual-system-design.md`（token 三层模型/尺度表/状态规则/滚动条契约）、成熟 C++ GUI 框架的列表/树控件契约。
+> 配套视觉设计稿：`design/collection-controls.html`。
+> 定位：桌面自用版控件库增强，遵循既有"Widget 不可变声明 + 应用侧控制器 + 布局期物化"架构，不引入新模块。
+
+---
+
+## 1. 背景与问题
+
+用户反馈：现有 list 控件功能太弱。经源码核对，当前集合类控件的实际能力如下：
+
+| 控件 | 现状 | 关键缺口 |
+| --- | --- | --- |
+| `ListView` | ScrollView 的语义别名（`role=list`），单子节点，**无虚拟化**（`src/layout/layout.cpp:429` 直接走 viewport 布局） | 无选择模型、无项目级键盘导航、无分隔线/空态、千项数据全量物化 |
+| `VirtualList` | M3 交付的纵向虚拟化：`itemCount/estimatedExtent/extentOf/visibleRange/noteExtent` + 锚点稳定 | 无选择/激活语义、无项目交互（点击/双击/悬停仅取决于应用自建子树）、无表头、`scrollToIndex` 仅"最小移动"一种对齐 |
+| Tree | **不存在** | 层级模型、展开状态、缩进、chevron、树键盘导航全部缺失 |
+| TreeList（树+列） | **不存在** | 列定义、列宽分配、粘性表头、单元格构建、排序钩子缺失 |
+
+补充事实：`Widget.selected` 标志已存在（`widget.h:250`，注释"用于列表/工具栏选中语义"），但框架内**没有任何列表基建驱动它**——选中视觉只能由应用逐项手写；`InteractionController` 的 Tab 遍历、Enter/Space 激活、hover/pressed 状态全部基于 Widget key/identity，已经具备承载列表项交互的前提。
+
+结论：问题不是渲染或虚拟化能力不足，而是**缺少列表语义层**（选择模型、当前项、激活、树展开、列系统）以及把它们接入既有交互/语义/样式管线的通道。
+
+## 2. 参考框架调研
+
+| 框架 | 列表 | 树 | 树+列 | 选择模型 | 虚拟化 | 对 Lumen 的启示 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Qt 5/6 | `QListView` | `QTreeView` | `QTreeView` + `QHeaderView`（即 QTreeWidget 形态） | `QItemSelectionModel`：current≠selected、四选择模式（SingleSelection/ MultiSelection/ ExtendedSelection/ ContiguousSelection）、anchor 区间 | model/index 驱动，按需委托绘制 | current/selected 分离；Ctrl/Shift 语义；树扁平化为可见行序列 |
+| wxWidgets | `wxListCtrl`（report 模式=列） | `wxTreeCtrl` | `wxDataViewCtrl` | 索引集合 + 事件 | 虚拟模式（`wxLC_VIRTUAL`） | report 模式证明"列表+列"与"树+列"可共用列系统 |
+| GTK3/4 | `GtkListBox` | `GtkTreeView`（树） | `GtkTreeView` + `GtkTreeViewColumn` | `GtkTreeSelection`（单/多/范围） | GtkTreeView 原生虚拟化；GtkListBox 非虚拟 | 列定义（title/renderer/width）独立于行的价值 |
+| JUCE | `ListBox`（`ListBoxModel::paintListBoxItem`） | `TreeView` | — | `setMultipleSelectionEnabled` + `SparseSet<int>` | 行回调驱动（`getNumRows/refreshComponentForRow`） | 控制器持有行数+行绘制回调、组件按需物化的极简契约——最接近 Lumen 现有 VirtualListSource |
+| Win32 | `ListView`（LVS_REPORT） | `TreeView` | ListView report 模式 | `LVIS_SELECTED`/`LVIS_FOCUSED` 位 | 虚拟模式（LVS_OWNERDATA） | current 与 selected 是两个独立位；表头 `HDN_*` 通知与控件解耦 |
+| Dear ImGui | `BeginListBox` | `TreeNode` | 表格 `Table` | 应用自持 | 即时模式自持 | 反例：无共享选择模型导致每个应用重写选择逻辑——Lumen 应提供控制器 |
+
+**采纳的共同事实**（六个框架一致）：
+
+1. **current（焦点项）与 selected（选中集）是两个概念**，键盘导航移动 current，选择集独立维护。
+2. **四种选择模式**收敛为：None / Single / Multiple / Extended（Extended = 单击重置+Ctrl 切换+Shift 区间）。
+3. **树 = 扁平化的可见行序列 + 展开状态集**；展开/折叠改变行数，虚拟化在扁平序列上进行。
+4. **列系统与行系统解耦**：列（id/标题/宽/对齐）独立声明，行按列取单元格。
+5. **双击/Enter = 激活（activate）**，单击 = 选择；激活是应用回调，框架不定义业务含义。
+
+**采纳的 Lumen 本土事实**（决定不做的事）：
+
+1. Lumen 无 model/view 委托系统——保持 **source 接口 + Widget 构建**（JUCE 式），不引入 Qt 级抽象。
+2. 选择状态放**应用侧控制器**（与 VirtualListController/DropdownController 同层），Widget 只携带声明——不违反"runtime state lives in Element / 控制器"的既定架构。
+3. M11 已验证**"控制器把行构建为 Button 并注册 onClick handler"**的模式（DropdownController 浮动菜单）——列表项复用该路径，点击/hover/焦点/Enter/Space 全部免费获得。
+
+## 3. 设计目标与非目标
+
+**目标**
+
+1. 三个新控件类型：`List`、`Tree`、`TreeList`，共享一套虚拟化引擎与选择模型。
+2. 千项 List、万节点 Tree 在 1080p 保持 O(visible) 物化（对齐 M3/M7 性能口径）。
+3. 选择/当前/激活/展开语义在**视觉、键盘、指针、语义树**四层一致（M5 出口条件延伸）。
+4. Widget 体积增长 ≤ 32B（实测 Release 基线 800B → 816B；新字段走指针 + packed 标志。注：Debug 构建的 MSVC STL `_ITERATOR_DEBUG_LEVEL=2` 会给每个容器 +8B，Debug 实测 920B 属工具链开销，不计入预算口径）。
+5. 全部新路径有 headless 测试；基准场景进入 `lumen-scene-bench`。
+
+**非目标（第一版明确不做）**
+
+- 单元格内编辑（行内 TextField）——表单能力已有，组合留给应用。
+- 拖拽重排/拖入拖出（DnD）——无框架级拖拽通道，留后续增强链。
+- 列宽拖拽调整、列显示/隐藏 UI——列宽首版为"固定 + 权重"，调整控件留后续。
+- 多列纯表格（Table/Grid 无树形态）——`Grid` 已覆盖简单网格；按需评估池。
+- 水平虚拟化、横向滚动。
+- 橡皮筋框选（rubber band）、type-ahead 定位。
+- 排序执行（框架只给"列头点击 → 应用回调"钩子，排序由应用做）。
+- 移动端（Android/iOS）——路线图明确暂缓。
+
+## 4. 总体架构
+
+### 4.1 分层
+
+```text
+┌───────────────────────────────────────────────────────────┐
+│ 应用层：build() 产出 Widget 树                              │
+│   makeList(&listController) / makeTree(&treeController)     │
+│   / makeTreeList(&treeListController)                      │
+├───────────────────────────────────────────────────────────┤
+│ widgets 层（新文件 include/lumen/widgets/selection.h）     │
+│   SelectionModel（共享：模式/current/selected 集/回调）     │
+│   ListController   TreeController   TreeListController     │
+│   （持有数据、选择、展开状态、滚动；注册行 onClick）          │
+├───────────────────────────────────────────────────────────┤
+│ core 层：VirtualListSource 布局契约（既有，零改动）          │
+│   itemCount/estimatedExtent/extentOf/offsetOfIndex/        │
+│   visibleRange/buildItem/noteExtent                         │
+├───────────────────────────────────────────────────────────┤
+│ layout 层：layoutVirtualList 引擎（既有）                   │
+│   可见区物化、extent 修正、锚点稳定、绝对定位子项            │
+│   TreeList 追加：表头高度预留 + 粘性表头绘制                 │
+└───────────────────────────────────────────────────────────┘
+```
+
+核心架构决策：**Tree 与 TreeList 不需要新的虚拟化引擎**。树控制器把"可见节点序列"扁平化为行序列（`itemCount = 可见行数`），复用 M3 的 VirtualListSource 契约与 layoutVirtualList 布局路径。Qt/QTreeView、GTK/GtkTreeView、Win32/TreeView 内部同样如此。
+
+### 4.2 三个控件的职责边界
+
+| 控件 | 数据形态 | 典型场景 | 对应参考 |
+| --- | --- | --- | --- |
+| **List** | 一维行序列 | 文件列表、菜单、日志、搜索结果 | QListWidget / GtkListBox / JUCE ListBox |
+| **Tree** | 层级行序列，单列 | 目录树、大纲、依赖图 | QTreeWidget 单列形态 / wxTreeCtrl |
+| **TreeList** | 层级行序列 + 多列 | 设置页、依赖列表（名称/版本/大小）、资产浏览器 | QTreeWidget 多列 / wxListCtrl report+分组 |
+
+`List` 与 `Tree` 的差异只在 source 实现（平铺 vs 扁平化）；`TreeList = Tree + 列系统 + 表头`。
+
+## 5. 共享选择模型（widgets 层）
+
+```cpp
+// include/lumen/widgets/selection.h（新）
+namespace lumen::widgets {
+
+enum class SelectionMode : std::uint8_t {
+    None,       // 不可选择（仅激活/浏览）
+    Single,     // 单选：单击选中并重置
+    Multiple,   // 多选：单击即切换（checkbox 语义）
+    Extended,   // 单击重置；Ctrl+单击切换；Shift+单击区间（默认桌面模式）
+};
+
+class SelectionModel {
+  public:
+    void setMode(SelectionMode mode);
+    [[nodiscard]] SelectionMode mode() const;
+
+    // current（焦点行）与 selected 集相互独立（Qt/Win32 一致语义）。
+    void setCurrent(const std::string& key);          // "" = 无 current
+    [[nodiscard]] const std::string& currentKey() const;
+
+    // selected 集：按 stable key 存储（不按 index——index 随数据增删漂移，
+    // key 是 Lumen Element identity 的既有唯一依据）。
+    void setSelected(std::vector<std::string> keys); // 批量替换（单选/清空同路）
+    bool toggle(const std::string& key);
+    [[nodiscard]] bool isSelected(const std::string& key) const;
+    [[nodiscard]] const std::vector<std::string>& selectedKeys() const;
+    [[nodiscard]] std::size_t selectedCount() const;
+
+    // 区间选择需要行序：由持有行序列的控制器回调提供
+    //（List/Tree 控制器注入；SelectionModel 不假设数据结构）。
+    using KeySequence = std::function<std::vector<std::string>(
+        const std::string& from, const std::string& to)>;
+    void setKeySequence(KeySequence sequence);       // [from, to] 闭区间
+
+    // 修饰键语义（Extended 模式；控制器把指针/键盘事件翻译到这里）。
+    void click(const std::string& key, bool ctrl, bool shift);
+    void moveTo(const std::string& key, bool extend); // 键盘移动 current
+
+    // 回调（UI 线程；控制器订阅后驱动重建/语义）。
+    std::function<void()> onSelectionChanged{};
+    std::function<void(const std::string&)> onCurrentChanged{};
+};
+
+}  // namespace lumen::widgets
+```
+
+设计要点：
+
+1. **key 而非 index**：Lumen 的状态复用、焦点、语义 identity 全部基于 stable key（M3 接口约束"stable key 是状态复用的唯一依据"）。选择集跟随同一事实来源，index 增删漂移不破坏选择。
+2. **current≠selected**：键盘导航只移 current；是否随动修改选择集由模式决定（Single/Extended：随动；None：只移焦点）。这与 Win32 `LVIS_FOCUSED`/`LVIS_SELECTED`、Qt `currentIndex`/`QItemSelection` 完全一致。
+3. **区间语义交给控制器**：SelectionModel 不持有行序（Tree 的行序随展开状态变化），`KeySequence` 回调查询闭区间。
+
+## 6. List 控件
+
+### 6.1 ListController（widgets 层）
+
+```cpp
+class ListController final : public core::VirtualListSource {
+  public:
+    // --- 数据（沿用 VirtualListController 契约） ---
+    void setItemCount(std::size_t count);
+    void setItemBuilder(std::function<core::Widget(std::size_t)> builder);
+    void setKeyOf(std::function<std::string(std::size_t)> keyOf); // index→stable key
+    void setEstimatedExtent(float extent);
+
+    // --- 选择 ---
+    void setSelectionMode(SelectionMode mode);
+    SelectionModel& selection();
+
+    // --- 激活（双击/Enter；语义 Activate 同路径） ---
+    std::function<void(const std::string& key)> onActivated{};
+
+    // --- 滚动（扩展既有 scrollToIndex） ---
+    enum class ScrollAlignment { Visible, Start, Center, End };
+    void scrollToKey(const std::string& key, ScrollAlignment align);
+
+    // --- 事件入口（应用 onKey 转发，M11 DropdownController 同模式） ---
+    bool handleKey(core::Key key, core::KeyModifiers mods, char keyChar = 0);
+
+    // --- 行构建（覆盖 VirtualListSource::buildItem） ---
+    // 包装应用 builder 产物：注入 selected/enable 状态、行 chrome（分隔线
+    // 交 StyleResolver token）、注册 onClick handler（选择路径）。
+    [[nodiscard]] core::Widget buildItem(std::size_t index) const override;
+
+    // 空态：itemCount()==0 时经 setEmptyBuilder 提供单棵占位子树
+    //（非虚拟化、参与语义）。
+    void setEmptyBuilder(std::function<core::Widget()> builder);
+};
+```
+
+### 6.2 行的构建与交互路径
+
+行 Widget 由控制器包装生成，**外层是 focusable Button**（M11 浮动菜单已验证的模式）：
+
+```text
+行 = Button(key = "list:<owner>/item:<stableKey>", selected = selection.isSelected)
+     └─ 应用 builder 产物（内容自由组合）
+```
+
+- **单击**：`onClick("list:<owner>:<key>")` 经 `InteractionController` 的
+  行点击 sink（`addRowClickSink`）按前缀分发——控制器执行
+  `selection().click(key, ctrl, shift)` 并请求重建。**不按行注册常驻
+  handler**：虚拟化行序大（千/万级），注册表会随滚动无界累积；sink 恒
+  O(1)。
+- **hover/pressed/焦点环**：Button 的 WidgetState 解析路径，零新增代码。
+- **双击激活**：`InteractionController` 已有双击检测（`lastClickMs/lastClickIdentity_`），
+  新增一个 sink：`setDoubleClickSink(std::function<bool(identity)>)`——控制器匹配
+  `list:<owner>/item:` 前缀后触发 `onActivated(key)`。
+- **Enter/Space**：Button 既有激活路径直接可用（激活 handler 同 `onActivated`）。
+- **selected 视觉**：`Widget.selected` 进 `WidgetState`（视觉系统 §5 已含 selected 位），
+  行的选中背景解析为 `color.selection.background`（§10.2 的 list.row 组件 token），
+  Core Dark 下派生值即设计稿的 `#2e3c60`；分隔线/圆角同经 token 派生。
+
+### 6.3 键盘契约（List 拥有焦点时）
+
+| 键 | 行为 |
+| --- | --- |
+| Up / Down | current 上/下移一行（Extended 随动修改选择；Single 选中该行；滚动按 `Visible` 对齐） |
+| Home / End | current 移到首/末行，滚动对齐 `Start`/`End` |
+| PageUp / PageDown | current 移动约一视口行数（用 estimatedExtent 折算），对齐 `Visible` |
+| Ctrl+Home / Ctrl+End | 同 Home/End |
+| Enter / Space | 激活 current（`onActivated`） |
+| Ctrl+A | Extended 模式全选；Single 选中 current |
+| Tab / Shift+Tab | 离开列表（FocusManager 既有遍历，行为不变） |
+
+**路由方式**：应用 `ShellConfig.onKey` 以焦点列表为优先目标转发（M11 `handleKey` 同模式）；`InteractionController::scrollKey` 在焦点位于集合项上时不再执行视口滚动（滚轮与 PageUp/PageDown 的默认视口路径让位于项导航）。
+
+### 6.4 Widget 声明
+
+```cpp
+enum class WidgetType { ..., List, Tree, TreeList };  // 新增三个值
+
+// List Widget：children 必须为空；source = ListController（指针，
+// 生命周期由应用持有，与 VirtualList 同契约）。
+inline core::Widget makeList(const core::VirtualListSource* source,
+                             std::string key = {},
+                             std::optional<float> width = std::nullopt,
+                             std::optional<float> height = std::nullopt,
+                             float cacheExtent = 200.0F);
+```
+
+布局实现：`WidgetType::List` 直接映射 `layoutVirtualList`（零新布局代码）；`isScrollableWidget` 纳入 List。
+
+## 7. Tree 控件
+
+### 7.1 TreeModel（应用侧数据适配器）
+
+```cpp
+// 惰性层级契约：框架不复制数据，只按需拉取（wxDataView/GtkTreeModel 模式）。
+class TreeModel {
+  public:
+    virtual ~TreeModel() = default;
+    // key 为空串时表示根的子级查询。
+    [[nodiscard]] virtual std::size_t childCount(const std::string& parent) const = 0;
+    [[nodiscard]] virtual std::string childAt(const std::string& parent,
+                                              std::size_t index) const = 0;
+    // 惰性：hasChildren 可先行返回 true 而不物化子级（千节点目录场景）。
+    [[nodiscard]] virtual bool hasChildren(const std::string& key) const = 0;
+    // 行内容（不含缩进与 chevron，由控制器注入）。
+    [[nodiscard]] virtual core::Widget buildRow(const std::string& key,
+                                                std::size_t depth) const = 0;
+    // 数据变更通知入口由 TreeController 提供（modelChanged/setData 重建）。
+};
+```
+
+### 7.2 TreeController
+
+```cpp
+class TreeController final : public core::VirtualListSource {
+  public:
+    void setModel(TreeModel* model);        // 应用拥有生命周期
+    void modelChanged();                    // 数据变更→失效扁平缓存+请求重建
+
+    // 展开状态：按 key 存储（数据移动/重排不丢失展开）。
+    void expand(const std::string& key);
+    void collapse(const std::string& key);
+    void toggle(const std::string& key);
+    [[nodiscard]] bool isExpanded(const std::string& key) const;
+    void expandAll(std::size_t maxRows);     // 防护上限（默认 10'000 可见行）
+    void collapseAll();
+
+    // 选择/激活/键盘：同 ListController（SelectionModel 复用）。
+    bool handleKey(core::Key key, core::KeyModifiers mods, char keyChar = 0);
+
+    // 可见行查询（键盘导航/语义/测试需要）。
+    struct VisibleRow { std::string key; std::size_t depth;
+                        bool hasChildren; bool expanded; };
+    [[nodiscard]] std::vector<VisibleRow> visibleRows() const;  // O(n) 拷贝（测试/语义用）
+    [[nodiscard]] const VisibleRow* rowAt(std::size_t index) const;
+};
+```
+
+**扁平化与失效**：控制器维护 `std::vector<VisibleRow>` 缓存（key+depth+flags），由 TreeModel 深度优先遍历生成；`expand/collapse/modelChanged` 时失效重建。重建成本 O(可见节点)——与一次可见区物化同数量级；展开动画不做（首版），几何瞬变。
+
+**extent 缓存按 key 而非 index**（内部 `std::map<std::string, float>`）：M3 的 `std::map<index, float>` 在树场景下会因展开/折叠产生大面积 index 漂移；key 缓存使"折叠再展开"保留实测高度，锚点稳定逻辑（`noteExtent` 平移）复用。
+
+### 7.3 行构建
+
+```text
+行 = Button(key = "tree:<owner>/item:<stableKey>", selected = …)
+     └─ Row[ padding-left = depth × indentStep,
+             chevron 按钮（有子级时，key = "tree:toggle:<key>"）,
+             应用 buildRow 产物 ]
+```
+
+- **chevron**：新增 `IconId::ChevronRight`（折叠）与既有 `ChevronDown`（展开）；
+  chevron 是行内独立小 Button，点击只 toggle 不选择（文件管理器惯例）。
+- **缩进**：`indentStep` = 20px（视觉规格 §10）；缩进参考线（细竖线）首版不画，留视觉增强。
+- **空态**：模型返回 0 根节点时同 List 的 emptyBuilder。
+
+### 7.4 键盘契约（Qt/QTreeView 对齐）
+
+| 键 | 行为 |
+| --- | --- |
+| Left | current 有子级且展开 → 折叠；否则 → current 移到父级 |
+| Right | current 有子级且折叠 → 展开；否则 → current 移到首个子级 |
+| Up / Down、Home / End、PageUp / PageDown | 同 List |
+| Enter / Space | 激活 current（`onActivated`）；折叠态 Enter 先展开再激活由应用组合 |
+| Ctrl+A | 同 List |
+
+## 8. TreeList 控件（树 + 列）
+
+### 8.1 列模型
+
+```cpp
+// 应用持有列向量（生命周期同 source；Widget 携带裸指针，themeOverride 同模式）。
+struct TreeListColumn {
+    std::string id{};           // 稳定列标识（单元格构建参数）
+    std::string label{};        // 表头文本（语义标签）
+    float fixedWidth{0.0F};      // >0：固定像素列宽
+    float weight{0.0F};         // >0：按权重分配剩余宽度
+    float minWidth{0.0F};       // 弹性列的最小宽（默认 48）
+    bool visible{true};         // 隐藏列（布局期跳过）
+    bool sortable{false};      // 表头可点击（排序执行在应用）
+};
+
+class TreeListController final : public TreeController {
+  public:
+    void setColumns(std::vector<TreeListColumn> columns);
+    // 单元格构建：列内容与行内容解耦；返回 Widget 由框架放入列盒。
+    void setCellBuilder(std::function<core::Widget(
+        const std::string& rowKey, const std::string& columnId)> builder);
+    // 表头点击（sortable 列）：onHeaderClick 返回应用执行排序，控制器只
+    // 重建 + 记录 sortColumn/sortDescending（表头箭头显示）。
+    std::function<void(const std::string& columnId, bool descending)> onHeaderClick{};
+    void setSortIndicator(std::string columnId, bool descending);
+};
+```
+
+### 8.2 行内布局与列宽分配
+
+```text
+行 = Button(key = "treelist:<owner>/item:<key>")
+     └─ Row[
+          第一列: [chevron, indent(padding), cellBuilder(key, col0)]
+          其余列: cellBuilder(key, colN)   ← 每列一个固定宽容器
+        ]
+```
+
+列宽算法（布局期，宽度可用后）：
+
+1. `W = viewportWidth - padding.horizontal()`；
+2. 固定列占 `fixedWidth`，计入 `W_used`；
+3. 剩余 `W_free = W - W_used - 列间距×(n-1)` 按权重比例分配给 weight 列，
+   每列下限 `max(minWidth, …)`；无 weight 列时剩余宽归最后一列（或留白由
+   `CrossAxisAlignment` 决定，默认归尾列）。
+
+列宽由**控制器计算**（布局前用 `ScrollController.viewportExtent` 的已知宽度；首帧未知时按固定列先排、弹性列用估算宽，视口尺寸回填后自动重排——与 M3 Grid 的窗口变化重排同一机制）。
+
+### 8.3 粘性表头
+
+表头是 TreeList 特有的非滚动 chrome：
+
+- `layoutVirtualList` 扩展：`WidgetType::TreeList` 时布局先物化表头行
+  （`TreeListController::buildHeader()`，高度 = ControlSize 对应行高），置于
+  内容顶部**不随 scrollOffset 平移**；行区 `visibleRangeAt` 的视口高度减去
+  表头高。
+- 表头单元格 = Button（key = `treelist:header:<colId>`，sortable 时注册 onClick
+  → `onHeaderClick`），语义 role=button、label=列名；排序指示 = `ChevronUp/
+  ChevronDown` 图标（新增 IconId）。
+- 表头始终可见（列表滚动时表头不动）——参考 QHeaderView/wxListCtrl report 模式。
+
+### 8.4 TreeList 键盘契约
+
+同 Tree（§7.4）。列间导航（Left/Right 在列间移动）**不做**——树场景 Left/Right 已被折叠/展开占用；单元格内交互（按钮、checkbox）经 Tab 既有遍历可达。
+
+## 9. Widget / DSL 扩展与体积预算
+
+### 9.1 Widget 字段（M7 体积预算内的最小增量）
+
+| 字段 | 类型 | 用途 |
+| --- | --- | --- |
+| `collectionSelectionMode` | `std::uint8_t`（枚举打包进既有 packed 区） | 声明选择模式（语义树与视觉一致性校验用；真实状态在控制器） |
+| `collectionColumns` | `const void*` | TreeList 列向量指针（应用持有；themeOverride 同模式） |
+| `collectionShowHeader` | bool（packed） | 表头显隐 |
+
+`virtualSource` 字段与三个新类型复用（List/Tree/TreeList 的 source 均实现 `VirtualListSource`）。预算：+8B（columns 指针）+2 packed 标志 ≈ **+16B**，实测 Release 800B → 816B，满足 M7 约束（"Widget 体积直接影响 reconcile 构建/比较成本"）。体积断言按构建模式分档（Debug 见 §3 注）。
+
+### 9.2 构建器（C++ DSL 与 .lumen）
+
+- C++：`makeList/makeTree/makeTreeList` + `withSelectionMode`。
+- `.lumen` DSL：冻结节点集追加 `list` / `tree` / `treelist` 三节点
+  （属性：`selection-mode`、`cache-extent`、`show-header`；source 由 C++ 侧
+  装配，DSL 只声明——与 VirtualList 现状一致：`.lumen` 不表达数据源指针）。
+- golden 对照测试沿用 M2 模式。
+
+### 9.3 语义树契约
+
+| 节点 | role | 状态/动作 |
+| --- | --- | --- |
+| 控件本身 | `list`（List）/ `tree`（Tree/TreeList） | `Scroll`（复用既有滚动 action 路径） |
+| 行 | `listitem`（List）/ `treeitem`（Tree/TreeList） | `selected` flag、`Activate`；treeitem 另带 `expanded`（semanticsValue "true"/"false"）与 `Expand`/`Collapse` action |
+| 表头单元格 | `button` | label = 列名；点击触发 `onHeaderClick` |
+
+语义值与 M5 冻结契约的兼容：`selected` flag 已在 M5 语义固化（invalid/hidden/selected）；`expanded` 是新增 value 通道用法，不改变既有节点。视口外缓存区行标 Hidden（沿用 M5 VirtualList 规则）。
+
+## 10. 视觉规格（详见 design/collection-controls.html）
+
+视觉契约完全遵循 `docs/lumen-visual-system-design.md`（token 三层模型 §3.1、尺度表 §3.2、状态规则 §5、滚动条 §7.4），本节只做行级映射，不新增颜色或尺度槽位。
+
+### 10.1 尺度（视觉系统 §3.2 对齐）
+
+| 项目 | Small/Compact | Medium/Comfortable | Large/Touch | 依据 |
+| --- | --- | --- | --- | --- |
+| 行最小高度 | 32px | 40px | 48px | 视觉系统"控件最小高度"行——行高下限；变高项（多行文本）按实测 extent 增高 |
+| 行水平内边距 | 8px | 12px | 16px | 视觉系统"水平内边距"行 |
+| 行小部件圆角 | 4px | 6px | 8px | 视觉系统"小部件圆角"行（选中/current 行圆角同档） |
+| 树缩进步进 | 20px/层 | 20px/层 | 20px/层 | 4px 基础网格；4 层缩进 80px 仍留足内容（Large 行高下不变） |
+| chevron 图标 | 16×16，命中区 24×24 | 同 | 同 | 桌面指针精度；随 IconTheme.defaultSize 联动 |
+| 分隔线 | 1px，`color.border.default` | 同 | 同 | 行间 line token |
+| 空态 | 居中文本 + muted 图标，高度 ≥ 2 行最小高 | 同 | 同 | 设计稿 |
+
+桌面默认 Medium（40px 行）；长数据列表可显式选 Small/Compact（32px），密度由应用声明、不随平台隐式改变（§3.2 约束）。
+
+### 10.2 组件 token（三层模型 §3.1 的 component 层）
+
+```text
+list.row.background            = color.background.surface
+list.row.background.hover      = surface 层 hover 派生（surface→elevated 之间）
+list.row.background.pressed    = 覆盖 hover（状态规则 §5.3：pressed 覆盖 hover）
+list.row.background.selected   = color.selection.background
+list.row.separator             = color.border.default
+list.row.content               = color.content.primary / .disabled（disabled.content）
+tree.indent.step               = 20
+tree.chevron.hitExtent         = 24
+treelist.header.background     = color.background.surface（粘性表头）
+treelist.header.content        = color.content.secondary；sortable 悬停 → content.primary
+treelist.header.height         = 行最小高度同档
+```
+
+焦点环：`color.focus.ring` + `focusWidth`，**内嵌绘制**（V2 实施约定：damage 不变量——控件绘制不越出节点矩形）；键盘焦点必须可见（§5 规则 4：focused 必须产生可见焦点环，不能只依赖 hover）。滚动条复用 `ScrollbarTokens`（§7.4：rest/hovered/dragged/disabled 四态）。
+
+### 10.3 状态矩阵
+
+行状态 = 既有 `WidgetState`（§5：hovered/pressed/focused/disabled/checked/invalid/**selected**）的组合，无新增状态位。组合视觉见设计稿状态矩阵表；优先级遵循 §5：disabled > invalid > pressed > focused/hovered，checked/selected 只影响有对应语义的控件。**高对比主题下选中/current 不得只靠颜色区分**（§11 约束：焦点环与选中需有形状/边框差异）。
+
+## 11. 性能与测试计划
+
+### 11.1 性能目标
+
+| 指标 | 目标 |
+| --- | --- |
+| List 千项（Mixed extent） | 与 M3 virtual-list-1000 基线偏差 ≤ 10%（nodes/cmds 应同为 O(visible)） |
+| Tree 万节点全折叠 | 扁平缓存 O(根节点)；物化行数 = 可见行 |
+| Tree 深层展开+滚动 | nodes ≈ 可见行 + 表头；extent 缓存命中率报告（key 命中/重建） |
+| TreeList 百行×5列 | 子节点数 = 行 × (列 + chrome)，命令数与同规模 List 的比例记录进基准报告 |
+| 语义 diff | 增删行/选择变化只 diff 变更行（identity 稳定） |
+
+基准新增场景：`list-select-1000`（滚动+连续选择）、`tree-10k-fold`（万节点折叠展开）、`treelist-100x5`。
+
+### 11.2 测试（Catch2，命名 `*_tests.cpp`，行为命名）
+
+1. **SelectionModel 单测**：四模式单击/Ctrl/Shift 语义、current 独立移动、key 增删后选择保持。
+2. **ListController**：首屏物化、`scrollToKey` 四对齐、双击激活、Enter 激活、Ctrl+A、锚点稳定（沿用 grid_virtual_tests 模式）。
+3. **TreeController**：扁平化正确性（嵌套展开/折叠序）、惰性 hasChildren、展开后 extent 缓存 key 命中、collapseAll/expandAll 防护上限、Left/Right 键盘折叠/父级跳转。
+4. **TreeListController**：列宽分配（固定+权重+minWidth）、表头粘性（滚动后表头 y 不变）、表头点击回调、隐藏列。
+5. **语义/键盘一致性**：激活（点击≡Enter≡语义 Activate）、选择变化语义 flag、treeitem expanded value、Expand/Collapse 语义 action ≡ 键盘。
+6. **回归**：既有 ListView/VirtualList 行为与帧哈希不变；Widget 体积静态断言（Release `sizeof(Widget)` ≤ 816，Debug ≤ 920——工具链调试迭代器开销）。
+7. **局部 damage 与全帧逐像素一致**（AppShell 真实帧管线，M3 模式）。
+
+### 11.3 示例与验收
+
+- settings 新页 `Collections`：List（千项+选择模式切换）、Tree（目录树）、TreeList（列+表头排序钩子演示）。
+- headless 冒烟：导航、物化行数、选择流、表头回调输出。
+- 三桌面窗口 smoke 由 CI 承担（既有矩阵）。
+
+## 12. 实施分期
+
+| 阶段 | 内容 | 出口条件 |
+| --- | --- | --- |
+| P1 选择模型 + List | SelectionModel、ListController、WidgetType::List、双击 sink、键盘路由、语义、测试、settings 页 | List 在四选择模式下视觉/键盘/语义一致；千项基准达标 |
+| P2 Tree | TreeModel、TreeController、IconId::ChevronRight、树键盘契约、测试 | 万节点折叠树性能达标；展开状态跨重建保持 |
+| P3 TreeList | 列模型、表头、排序钩子、IconId::ChevronUp/Down、测试 | 表头粘性；列宽重排随窗口变化 |
+| P4 DSL/基准/收口 | `.lumen` 节点、golden 测试、基准场景归档、roadmap 完成记录 | 全部测试绿；基线归档；路线图状态更新 |
+
+各阶段独立可交付；P2 不依赖 P1 的 List Widget（但依赖 SelectionModel）。
+
+## 13. 兼容与迁移
+
+1. `ListView` / `VirtualList` **保留不删**（既有示例与测试依赖；M5 语义契约冻结）。
+   文档标注：新代码建议 `List`；`VirtualList` 无选择需求时仍可直用。
+2. `VirtualListController` 保留；`ListController` 内部组合其 extent 缓存/锚点逻辑
+   （提取为共享 `ExtentCache` 私有实现，不改变公共契约）。
+3. `InteractionController::scrollKey` 行为变化仅在"焦点位于集合行"时生效，
+   其余场景哈希不变；用 headless 回归锁定。
+4. 新增 RenderCommand：无（chevron 复用 DrawIcon，需扩充 `IconId` 枚举与折线目录——
+   属语义 ID 扩展，不动命令层与序列化版本）。
+
+## 14. 开放问题（实施前需确认）
+
+1. `KeySequence` 区间方向语义：`[from,to]` 与 `[to,from]` 是否等价（当前设计：等价，控制器返回闭区间按行序）。
+2. `expandAll` 防护上限的默认值（当前设计：10'000，超过则拒绝并返回 false——防万级目录误触）。
+3. 列宽首帧未知视口时的估算策略是否需要 `estimatedColumnWidth`（当前设计：固定列先排、弹性列按 minWidth，首帧后重排）。
+4. Multiple 模式下键盘 Up/Down 是否随动切换选择（当前设计：不随动，键盘只移 current；Qt MultiSelection 移动即选中，差异点需评审）。

@@ -320,10 +320,11 @@ void AppShell::clearOverlay() {
 
 // --- 事件分发 ---
 
-void AppShell::pointerDown(core::Offset position) {
+void AppShell::pointerDown(core::Offset position,
+                           core::KeyModifiers modifiers) {
     dismissTooltips();
     rebuildIfDirty();
-    controller_.pointerDown(eventTree(), position, lastTickMs_);
+    controller_.pointerDown(eventTree(), position, lastTickMs_, modifiers);
 }
 
 void AppShell::pointerMove(core::Offset position) {

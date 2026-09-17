@@ -126,9 +126,36 @@ CommonResolvedStyle containerCommon(const Widget& widget, const Theme& theme) {
     return common;
 }
 
-ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme) {
+ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme,
+                               const WidgetState& state) {
     ResolvedStyle resolved;
     commonStyle(resolved.component) = containerCommon(widget, theme);
+    // 集合行（collection-controls-design §10.2）：Row/Container 行由集合
+    // 控制器构建——选中/hover/pressed 折算与焦点环（current 行）走与
+    // 控件一致的状态规则（§5：pressed 覆盖 hover；focused 必须可见）。
+    // 普通容器不受影响（无焦点环，卡片/页面背景）。
+    if (widget.collectionRow) {
+        CommonResolvedStyle& common = commonStyle(resolved.component);
+        common.focusRing = theme.colors.focusRing;
+        common.selection = theme.colors.selectionBackground;
+        if (state.selected) {
+            common.background = blendOver(common.background,
+                                           theme.colors.selectionBackground);
+        }
+        if (state.disabled) {
+            common.foreground = theme.colors.disabledContent;
+            common.text.color = common.foreground;
+        } else if (state.pressed) {
+            common.background = blendOver(common.background,
+                                            theme.colors.pressedOverlay);
+        } else if (state.hovered) {
+            common.background = blendOver(common.background,
+                                           theme.colors.hoverOverlay);
+        }
+        common.focusWidth = focusWidthFor(state, theme);
+        // 行最小高度（视觉系统 §3.2 尺度表）：布局把行钳到该下限。
+        resolved.minHeight = theme.metrics.minHeight[theme.metrics.baseIndex];
+    }
     applyOverrides(widget, commonStyle(resolved.component));
 
     return resolved;
@@ -174,6 +201,14 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
 
     const bool outlined = widget.buttonVariant == core::ButtonVariant::Outline;
     common.borderWidth = outlined ? theme.metrics.controlBorderWidth : 0.0F;
+
+    // 集合行（collection-controls-design §10.2）：selected 折算为
+    // color.selection.background 组件 token——只对集合控制器构建的行
+    // 生效，Tabs/Dropdown 等既有 selected 语义不受影响。
+    if (state.selected && widget.collectionRow) {
+        common.background = blendOver(common.background,
+                                      theme.colors.selectionBackground);
+    }
 
     if (state.disabled) {
         common.background = (outlined || widget.buttonVariant == core::ButtonVariant::Ghost)
@@ -690,7 +725,7 @@ ResolvedStyle resolveStyleImpl(const Widget& widget,
         case WidgetType::Text:
             return resolveText(widget, context.theme);
         default:
-            return resolveContainer(widget, context.theme);
+            return resolveContainer(widget, context.theme, state);
     }
 }
 

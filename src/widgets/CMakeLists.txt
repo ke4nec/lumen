@@ -2,6 +2,10 @@ add_library(lumen-widgets STATIC
     dropdown.cpp
     form.cpp
     navigator.cpp
+    # 集合控件（collection-controls-design）：共享选择模型与三控制器。
+    selection.cpp
+    list.cpp
+    tree.cpp
 )
 
 target_include_directories(lumen-widgets PUBLIC

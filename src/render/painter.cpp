@@ -420,7 +420,16 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         case WidgetType::ListView:
         case WidgetType::VirtualList:  // M3：滚动视口同源绘制（裁剪/表面）
         case WidgetType::ThemeScope:
-            paintSurface(sink, rect, common);
+        case WidgetType::List:
+        case WidgetType::Tree:
+        case WidgetType::TreeList:
+            // 集合行（collection-controls-design §10.3）：Row/Container 行
+            // 走控件表面（焦点环/隔离带/内缩填充）；普通容器保持卡片表面。
+            if (node.collectionRow) {
+                paintControlSurface(sink, rect, common);
+            } else {
+                paintSurface(sink, rect, common);
+            }
             break;
         case WidgetType::Tabs:
             break; // Decorations follow child surfaces/focus rings below.

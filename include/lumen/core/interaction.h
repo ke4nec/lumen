@@ -60,9 +60,10 @@ class InteractionController {
                           FocusManager& focus);
 
     // --- 指针（root = 当前布局树；timestampMs 供双击检测与 M10 拖动
-    // 速度采样） ---
+    // 速度采样；modifiers 为按下时刻修饰键——集合行选择语义用） ---
     void pointerDown(const RenderNode& root, Offset position,
-                     std::uint64_t timestampMs = 0);
+                     std::uint64_t timestampMs = 0,
+                     KeyModifiers modifiers = kModifierNone);
     void pointerMove(const RenderNode& root, Offset position,
                      std::uint64_t timestampMs = 0);
     void pointerUp(const RenderNode& root, Offset position,
@@ -70,6 +71,11 @@ class InteractionController {
     // 取消活动指针（触摸取消/窗口失焦）：解除按压与拖动，不触发点击，
     // 选区保留。
     void pointerCancel();
+    // 按下修饰键（本次按压期间有效；下次 pointerDown 覆盖）。
+    // 集合行 handler 在点击触发期间经此读取 Ctrl/Shift。
+    [[nodiscard]] KeyModifiers pointerModifiers() const {
+        return pointerModifiers_;
+    }
 
     // --- 文本输入与 IME ---
     void textInput(const std::string& text);
@@ -116,6 +122,23 @@ class InteractionController {
     void setScrollDragSink(ScrollDragSink sink);
     // 当前拖动是否被路由为视口滚动。
     [[nodiscard]] bool isScrollDragging() const { return scrollDragging_; }
+
+    // --- 集合控件：行激活 sink（collection-controls-design §6.2） ---
+    // 双击（400ms 窗口内同一 identity 两次点击）或键盘 Enter 激活聚焦
+    // 行后调用；key/identity 为被激活节点。返回 true = 已消费（控制器
+    // 触发 onActivated）。单击仍走行 onClick（选择路径），不受影响。
+    // 可追加多个（多集合共存；控制器生命周期必须覆盖 shell）。
+    using RowActivateSink = std::function<bool(
+        const std::string& key, const std::string& identity, bool keyboard)>;
+    void addRowActivateSink(RowActivateSink sink);
+
+    // --- 集合控件：行点击 sink（collection-controls-design §6.5） ---
+    // onClick 分发（指针或键盘）前的拦截：返回 true = 已消费，跳过
+    // HandlerRegistry 查找。集合控制器注册一个 sink 按名字前缀解析行
+    // key——虚拟化行序大（千/万级），按行注册常驻 handler 会随滚动无界
+    // 累积；sink 恒 O(1)。
+    using RowClickSink = std::function<bool(const std::string& onClick)>;
+    void addRowClickSink(RowClickSink sink);
 
     // --- 剪贴板（可选注入；宿主 Clipboard 适配 core::ClipboardProvider） ---
     void setClipboard(ClipboardProvider* clipboard);
@@ -235,6 +258,8 @@ class InteractionController {
     ClipboardProvider* clipboard_{nullptr};
     WheelSink wheelSink_{};
     ScrollDragSink scrollDragSink_{};
+    std::vector<RowActivateSink> rowActivateSinks_{};
+    std::vector<RowClickSink> rowClickSinks_{};
 
     std::string pressedKey_{};
     std::string pressedIdentity_{};
@@ -266,6 +291,8 @@ class InteractionController {
     bool selecting_{false};  // 指针拖动扩展选区中
     Offset dragAnchor_{};
     Offset dragCurrent_{};
+    // 按下修饰键（本次按压期间有效；click handler 内可查询）。
+    KeyModifiers pointerModifiers_{kModifierNone};
     // M10：视口拖动滚动（identity 跨重建重定位视口）。
     bool scrollDragging_{false};
     std::string scrollDragIdentity_{};
@@ -280,6 +307,9 @@ class InteractionController {
     std::uint64_t lastClickMs_{0};
     std::string lastClickIdentity_{};
     bool lastClickWasField_{false};
+    // 集合行双击检测（非字段点击的通用路径；与字段双击选词独立）。
+    std::uint64_t rowClickMs_{0};
+    std::string rowClickIdentity_{};
 };
 
 }  // namespace lumen::core

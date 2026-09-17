@@ -14,10 +14,12 @@
 // Container/Grid、ListView/VirtualList、Theme 深浅/密度/强调色/局部
 // ThemeScope/排版/语义色板。
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -37,7 +39,9 @@
 #include "lumen/style/resolver.h"
 #include "lumen/text/font_manager.h"
 #include "lumen/widgets/form.h"
+#include "lumen/widgets/list.h"
 #include "lumen/widgets/navigator.h"
+#include "lumen/widgets/tree.h"
 
 namespace lumen::examples {
 
@@ -129,6 +133,25 @@ class GalleryApp {
         return navigator_;
     }
     [[nodiscard]] widgets::FormController& form() { return form_; }
+    [[nodiscard]] widgets::ListController& collectionList() {
+        return collectionList_;
+    }
+    [[nodiscard]] widgets::TreeController& collectionTree() {
+        return collectionTree_;
+    }
+    [[nodiscard]] widgets::TreeListController& collectionTable() {
+        return collectionTable_;
+    }
+    // Collections 回显（测试/截图断言用）。
+    [[nodiscard]] const std::string& lastActivatedKey() const {
+        return lastActivatedKey_;
+    }
+    [[nodiscard]] const std::string& lastSortColumn() const {
+        return lastSortColumn_;
+    }
+    [[nodiscard]] bool lastSortDescending() const {
+        return lastSortDescending_;
+    }
     [[nodiscard]] bool dialogOpen() const { return dialogOpen_; }
     [[nodiscard]] bool dropdownOpen() const { return dropdown_.isOpen(); }
     [[nodiscard]] widgets::DropdownController& dropdown() { return dropdown_; }
@@ -250,12 +273,35 @@ class GalleryApp {
         config.motionTransitions = true;
         config.build = [self] { return self->buildUi(); };
         config.onKey = [self](app::AppShell& shell, core::Key key,
-                              core::KeyModifiers, char) {
+                              core::KeyModifiers modifiers, char keyChar) {
             // M11：下拉菜单键盘导航（modal 优先于路由返回规则；未打开
             // 时 Up/Down 仍走滚动路径）。
             if (self->navigationMenu_.handleKey(shell, key)) return true;
             if (self->dropdown_.handleKey(shell, key)) {
                 return true;
+            }
+            // 集合控件键盘契约（collection-design §6.4/§7.4）：焦点位于
+            // 某集合的行内时，导航键交给该集合的控制器（Up/Down/Home/
+            // End/PageUp/PageDown、树 Left/Right、Ctrl+A）。按行 key 的
+            // owner 前缀路由，三个集合互不串扰。
+            if (self->navigator_.current() == "collections") {
+                const std::string& focused = shell.focus().focusedKey();
+                if (focused.find("collection-list") == 0) {
+                    if (self->collectionList_.handleKey(key, modifiers,
+                                                        keyChar)) {
+                        return true;
+                    }
+                } else if (focused.find("collection-table") == 0) {
+                    if (self->collectionTable_.handleKey(key, modifiers,
+                                                         keyChar)) {
+                        return true;
+                    }
+                } else if (focused.find("collection-tree") == 0) {
+                    if (self->collectionTree_.handleKey(key, modifiers,
+                                                        keyChar)) {
+                        return true;
+                    }
+                }
             }
             if (key == core::Key::Escape &&
                 self->navigator_.handleBack(self->dialogOpen_)) {
@@ -326,6 +372,7 @@ class GalleryApp {
     void initialize() {
         navigationMenu_.onSelected = [this](const std::string& route) { go(route); };
         initializeVisualPreviews();
+        setupCollections();
         library_.setItemCount(1000);
         // M11：Tooltip hover 延迟驱动（anchor → tooltip 关联）。
         shell_.registerTooltip("tooltip-anchor-button", "showcase-tip");
@@ -368,6 +415,7 @@ class GalleryApp {
         handlers["goto-inputs"] = [this] { go("inputs"); };
         handlers["goto-layout"] = [this] { go("layout"); };
         handlers["goto-lists"] = [this] { go("lists"); };
+        handlers["goto-collections"] = [this] { go("collections"); };
         handlers["goto-feedback"] = [this] { go("feedback"); };
         handlers["goto-theme"] = [this] { go("theme"); };
         handlers["back"] = [this] {
@@ -479,6 +527,157 @@ class GalleryApp {
         form_.registerField(
             "email", widgets::FormController::minLength(
                          5, "Email must have at least 5 characters"));
+    }
+
+    // Collections 装配（collection-design §11.3）：数据模型 + 三控制器
+    // attach。attach 已内置：行 handler 幂等注册、激活 sink、选择回调
+    // → markDirty、区间选择的行序序列。
+    void setupCollections() {
+        // --- List：200 行资产清单（Extended 选择 + 激活回显） ---
+        collectionList_.setItemCount(200);
+        collectionList_.setSelectionMode(widgets::SelectionMode::Extended);
+        collectionList_.setItemBuilder([this](std::size_t index) {
+            char number[8];
+            std::snprintf(number, sizeof(number), "%03zu", index);
+            char size[24];
+            std::snprintf(size, sizeof(size), "%.1f KB",
+                          4.0F + static_cast<float>(index) * 1.5F);
+            core::Widget name = core::makeText(
+                std::string("asset-") + number + ".png",
+                shell_.theme().typography.body);
+            name.flex = 1.0F;
+            core::StyleOverrides muted;
+            muted.foreground = shell_.theme().colors.contentSecondary;
+            core::Widget sizeText = core::withStyleOverrides(
+                core::makeText(size), std::move(muted));
+            return core::makeRow(
+                {std::move(name), std::move(sizeText)},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Center, 8.0F);
+        });
+        collectionList_.onActivated = [this](const std::string& key) {
+            lastActivatedKey_ = key;
+            shell_.markDirty();
+        };
+        collectionList_.attach(shell_, "collection-list");
+
+        // --- Tree：仓库目录骨架（键路径全局唯一；初始展开两层） ---
+        collectionTreeModel_.setRoots({"tree:src", "tree:docs",
+                                       "tree:tests", "tree:cmake",
+                                       "tree:readme"});
+        collectionTreeModel_.setEntries({
+            {"tree:src", {"src", {"tree:src:core", "tree:src:widgets",
+                                  "tree:src:app"}}},
+            {"tree:src:core", {"core/", {"tree:core:widget",
+                                         "tree:core:layout",
+                                         "tree:core:painter"}}},
+            {"tree:src:widgets", {"widgets/", {"tree:widget:list",
+                                               "tree:widget:tree"}}},
+            {"tree:src:app", {"app/", {"tree:app:shell"}}},
+            {"tree:docs", {"docs/", {"tree:doc:plan",
+                                     "tree:doc:visual",
+                                     "tree:doc:collection"}}},
+            {"tree:tests", {"tests/", {"tree:test:collection"}}},
+            {"tree:cmake", {"cmake/", {"tree:cmake:deps"}}},
+            {"tree:core:widget", {"widget.cpp", {}}, },
+            {"tree:core:layout", {"layout.cpp", {}}, },
+            {"tree:core:painter", {"painter.cpp", {}}, },
+            {"tree:widget:list", {"list.cpp", {}}, },
+            {"tree:widget:tree", {"tree.cpp", {}}, },
+            {"tree:app:shell", {"app_shell.cpp", {}}, },
+            {"tree:doc:plan", {"lumen-gui-framework-plan.md", {}}, },
+            {"tree:doc:visual", {"lumen-visual-system-design.md", {}}, },
+            {"tree:doc:collection", {"lumen-collection-controls-design.md", {}}, },
+            {"tree:test:collection", {"collection_tests.cpp", {}}, },
+            {"tree:cmake:deps", {"dependencies.cmake", {}}, },
+            {"tree:readme", {"README.md", {}}, },
+        });
+        collectionTree_.setModel(&collectionTreeModel_);
+        collectionTree_.setSelectionMode(widgets::SelectionMode::Single);
+        collectionTree_.onActivated = [this](const std::string&) {
+            shell_.markDirty();
+        };
+        collectionTree_.attach(shell_, "collection-tree");
+        collectionTree_.expand("tree:src");
+        collectionTree_.expand("tree:src:core");
+
+        // --- TreeList：依赖清单（列系统 + 排序钩子由应用执行） ---
+        collectionTableModel_.setRows({
+            {"dep-core", "lumen-core", "Static lib", 4200.0F},
+            {"dep-widgets", "lumen-widgets", "Static lib", 1840.0F},
+            {"dep-layout", "lumen-layout", "Static lib", 640.0F},
+            {"dep-render", "lumen-render", "Static lib", 2100.0F},
+            {"dep-text", "lumen-text", "Static lib", 980.0F},
+            {"dep-style", "lumen-style", "Static lib", 312.0F},
+            {"dep-sdl3", "SDL3", "Shared", 2600.0F},
+            {"dep-catch2", "Catch2", "Interface", 1100.0F},
+            {"dep-stb", "stb", "Interface", 768.0F},
+        });
+        collectionTable_.setModel(&collectionTableModel_);
+        collectionTable_.setSelectionMode(widgets::SelectionMode::Single);
+        collectionTable_.setColumns({
+            {"name", "Name", 0.0F, 1.0F, 120.0F, true, true},
+            {"type", "Type", 96.0F, 0.0F, 48.0F, true, false},
+            {"size", "Size", 72.0F, 0.0F, 48.0F, true, true},
+        });
+        collectionTable_.setCellBuilder(
+            [this](const std::string& rowKey, const std::string& columnId) {
+                const auto* row = collectionTableModel_.rowOf(rowKey);
+                if (row == nullptr) {
+                    return core::makeText(rowKey);
+                }
+                if (columnId == "name") {
+                    return core::makeText(row->name,
+                                          shell_.theme().typography.body);
+                }
+                if (columnId == "type") {
+                    core::StyleOverrides muted;
+                    muted.foreground =
+                        shell_.theme().colors.contentSecondary;
+                    return core::withStyleOverrides(
+                        core::makeText(row->type), std::move(muted));
+                }
+                char size[24];
+                std::snprintf(size, sizeof(size), "%.1f KB", row->sizeKb);
+                core::StyleOverrides muted;
+                muted.foreground = shell_.theme().colors.contentSecondary;
+                return core::withStyleOverrides(
+                    core::makeText(size), std::move(muted));
+            });
+        collectionTable_.onHeaderClick =
+            [this](const std::string& columnId, bool descending) {
+                sortCollectionTable(columnId, descending);
+            };
+        collectionTable_.attach(shell_, "collection-table");
+    }
+
+    // TreeList 排序：框架只回调与记录指示器，行序由应用重排（key 稳定
+    // → 选择随行保留）。
+    void sortCollectionTable(const std::string& columnId, bool descending) {
+        lastSortColumn_ = columnId;
+        lastSortDescending_ = descending;
+        auto& rows = collectionTableModel_.rows();
+        std::sort(rows.begin(), rows.end(),
+                  [columnId, descending](
+                      const CollectionTableModel::Row& a,
+                      const CollectionTableModel::Row& b) {
+                      int cmp = 0;
+                      if (columnId == "type") {
+                          cmp = a.type.compare(b.type);
+                      } else if (columnId == "size") {
+                          cmp = a.sizeKb < b.sizeKb   ? -1
+                                : a.sizeKb > b.sizeKb ? 1
+                                                     : 0;
+                      } else {
+                          cmp = a.name.compare(b.name);
+                      }
+                      if (cmp == 0) {
+                          cmp = a.id.compare(b.id);
+                      }
+                      return descending ? cmp > 0 : cmp < 0;
+                  });
+        collectionTable_.modelChanged();
+        shell_.markDirty();
     }
 
     // M11：切换 v0.4 视觉方向（保留深浅/密度/可访问性派生）。
@@ -661,6 +860,37 @@ class GalleryApp {
             }
             return moved;
         }
+        // 集合控件（List/Tree/TreeList）：按节点 key 路由到所属控制器的
+        // ScrollController（三个集合可共存，滚轮只作用于命中链最近的视口）。
+        if (viewport->type == core::WidgetType::List ||
+            viewport->type == core::WidgetType::Tree ||
+            viewport->type == core::WidgetType::TreeList) {
+            core::ScrollController* scroller = nullptr;
+            if (viewport->key == "collection-list") {
+                scroller = &collectionList_.scroll();
+            } else if (viewport->key == "collection-tree") {
+                scroller = &collectionTree_.scroll();
+            } else if (viewport->key == "collection-table") {
+                scroller = &collectionTable_.scroll();
+            }
+            if (scroller != nullptr) {
+                scroller->updateExtents(
+                    viewport->size.height,
+                    viewport->size.height + viewport->scrollExtent);
+                if (std::abs(deltaY) > 1e8F) {
+                    scroller->scrollTo(deltaY > 0
+                                           ? scroller->maxScrollOffset()
+                                           : 0.0F);
+                    shell_.markDirty();
+                    return true;
+                }
+                const bool moved = scroller->applyWheel(deltaY);
+                if (moved) {
+                    shell_.markDirty();
+                }
+                return moved;
+            }
+        }
         scroll_.updateExtents(viewport->size.height,
                               viewport->size.height +
                                   viewport->scrollExtent);
@@ -777,7 +1007,8 @@ class GalleryApp {
         const std::pair<const char*, const char*> sections[] = {
             {"Overview", "home"}, {"Buttons", "buttons"},
             {"Inputs", "inputs"},   {"Layout", "layout"},
-            {"Lists", "lists"},     {"Feedback", "feedback"},
+            {"Lists", "lists"},     {"Collections", "collections"},
+            {"Feedback", "feedback"},
             {"Theme", "theme"},
         };
         std::vector<core::Widget> navItems;
@@ -834,6 +1065,8 @@ class GalleryApp {
             items = buildLayoutItems(theme);
         } else if (route == "lists") {
             items = buildListsItems(theme);
+        } else if (route == "collections") {
+            items = buildCollectionsItems(theme);
         } else if (route == "feedback") {
             items = buildFeedbackItems(theme);
         } else if (route == "theme") {
@@ -1019,9 +1252,10 @@ class GalleryApp {
         tiles.push_back(togglesTile(theme));
         tiles.push_back(layoutTile(theme));
         tiles.push_back(listsTile(theme));
+        tiles.push_back(collectionsTile(theme));
         tiles.push_back(feedbackTile(theme));
         std::vector<core::Widget> body;
-        body.push_back(panelHead("Control inventory", "6 sections", theme));
+        body.push_back(panelHead("Control inventory", "7 sections", theme));
         // 组件卡最小 176px、间距 12（设计稿 auto-fit 网格）：保证瓦片内
         // 迷你控件（双按钮/输入框）不被压缩裁字。
         body.push_back(core::withKey(
@@ -1273,6 +1507,42 @@ class GalleryApp {
                 core::MainAxisAlignment::Start,
                 core::CrossAxisAlignment::Start, 4.0F),
             "Lists", theme, "tile-lists", "goto-lists");
+    }
+
+    // Collections 瓦片：迷你树（分支行 + 缩进 + Tonal 选中行）。
+    [[nodiscard]] core::Widget collectionsTile(
+        const style::Theme& theme) const {
+        auto branchRow = [&theme](core::IconId icon, const std::string& label,
+                                  float indent, const std::string& key) {
+            core::Widget chevron = core::makeIcon(
+                icon, key + "-chevron");
+            chevron =
+                core::withControlSize(std::move(chevron),
+                                      core::ControlSize::Small);
+            core::Widget row = core::makeRow(
+                {std::move(chevron), smallStrong(label, theme)},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Center, 4.0F,
+                core::EdgeInsets::only(indent, 0.0F, 0.0F, 0.0F));
+            return core::withKey(std::move(row), key);
+        };
+        core::Widget selected = buttonWidget(
+            "widget.cpp", "noop", "tile-collection-selected",
+            core::ButtonVariant::Tonal);
+        selected = core::withControlSize(std::move(selected),
+                                          core::ControlSize::Small);
+        selected.alignContentStart = true;
+        selected.padding = core::EdgeInsets::only(24.0F, 0.0F, 8.0F, 0.0F);
+        core::Widget preview = core::makeColumn(
+            {branchRow(core::IconId::ChevronDown, "src", 0.0F,
+                       "tile-collection-src"),
+             core::withKey(std::move(selected), "tile-collection-selected"),
+             branchRow(core::IconId::ChevronRight, "layout", 8.0F,
+                       "tile-collection-layout")},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Start,
+            3.0F);
+        return tileShell(std::move(preview), "Collections", theme,
+                         "tile-collections", "goto-collections");
     }
 
     [[nodiscard]] core::Widget feedbackTile(const style::Theme& theme) const {
@@ -1935,6 +2205,102 @@ class GalleryApp {
         return items;
     }
 
+    // Collections 分区（docs/lumen-collection-controls-design.md §11.3）：
+    // List / Tree / TreeList 三控件同页对照。三个集合共享 M3 虚拟化引擎
+    //（O(visible) 物化）与 SelectionModel；外层 ListView 主轴无界，集合
+    // 控件须给显式高度（与 Lists 页 VirtualList 同约束）。
+    [[nodiscard]] std::vector<core::Widget> buildCollectionsItems(
+        const style::Theme& theme) const {
+        std::vector<core::Widget> items;
+        items.push_back(core::withKey(titleText("Collections", theme),
+                                      "collections-title"));
+        items.push_back(core::withKey(
+            mutedLabel("List, Tree and TreeList share one virtualized "
+                       "engine and one selection model. Rows materialize "
+                       "O(visible); selection state lives in the "
+                       "controllers, keyed by row identity.",
+                       theme),
+            "collections-desc"));
+
+        // --- List：Extended 选择 + 双击/Enter 激活 + Ctrl+A ---
+        core::Widget listWidget = core::makeList(
+            &collectionList_, "collection-list", std::nullopt, 300.0F);
+        items.push_back(sectionCard(
+            "List — selection & activation",
+            {core::withKey(mutedLabel(collectionListStatus(), theme),
+                           "collection-list-status"),
+             core::withKey(std::move(listWidget), "collection-list"),
+             core::withKey(mutedLabel("Click selects; Ctrl+click toggles; "
+                                      "Shift+click extends; double-click or "
+                                      "Enter activates; Ctrl+A selects all.",
+                                      theme),
+                           "collection-list-hint")},
+            theme, "collections-list-card", "Extended · 200 rows"));
+
+        // --- Tree：层级模型 + 键盘 Left/Right + 按 key 的展开状态 ---
+        core::Widget treeWidget = core::makeTree(
+            &collectionTree_, "collection-tree", std::nullopt, 280.0F);
+        items.push_back(sectionCard(
+            "Tree — hierarchy & lazy model",
+            {core::withKey(mutedLabel(collectionTreeStatus(), theme),
+                           "collection-tree-status"),
+             core::withKey(std::move(treeWidget), "collection-tree"),
+             core::withKey(mutedLabel("Chevrons toggle expansion without "
+                                      "changing selection; Left collapses "
+                                      "or jumps to parent, Right expands.",
+                                      theme),
+                           "collection-tree-hint")},
+            theme, "collections-tree-card", "Single · repo skeleton"));
+
+        // --- TreeList：列系统 + 粘性表头 + 排序钩子 ---
+        core::Widget tableWidget = core::makeTreeList(
+            &collectionTable_, &collectionTable_.columns(), true,
+            "collection-table", std::nullopt, 280.0F);
+        items.push_back(sectionCard(
+            "TreeList — columns & sticky header",
+            {core::withKey(mutedLabel(collectionTableStatus(), theme),
+                           "collection-table-status"),
+             core::withKey(std::move(tableWidget), "collection-table"),
+             core::withKey(mutedLabel("Header stays pinned while rows "
+                                      "scroll; clicking a sortable column "
+                                      "asks the app to sort (framework "
+                                      "never reorders data).",
+                                      theme),
+                           "collection-table-hint")},
+            theme, "collections-table-card", "deps · sortable"));
+        return items;
+    }
+
+    // Collections 状态行（选择/展开/排序实时回显；build 期读取控制器）。
+    [[nodiscard]] std::string collectionListStatus() const {
+        const auto& selection = collectionList_.selection();
+        std::string text = "Selected: " +
+                           std::to_string(selection.selectedCount()) +
+                           " · Current: " +
+                           (selection.currentKey().empty()
+                                ? std::string("—")
+                                : selection.currentKey());
+        if (!lastActivatedKey_.empty()) {
+            text += " · Activated: " + lastActivatedKey_;
+        }
+        return text;
+    }
+    [[nodiscard]] std::string collectionTreeStatus() const {
+        const auto& selection = collectionTree_.selection();
+        return "Visible rows: " +
+               std::to_string(collectionTree_.visibleRows().size()) +
+               " · Current: " +
+               (selection.currentKey().empty() ? std::string("—")
+                                               : selection.currentKey());
+    }
+    [[nodiscard]] std::string collectionTableStatus() const {
+        if (lastSortColumn_.empty()) {
+            return "Sort: natural order";
+        }
+        return "Sort: " + lastSortColumn_ +
+               (lastSortDescending_ ? " · descending" : " · ascending");
+    }
+
     [[nodiscard]] std::vector<core::Widget> buildFeedbackItems(
         const style::Theme& theme) const {
         std::vector<core::Widget> items;
@@ -2582,6 +2948,118 @@ class GalleryApp {
         return "Core Dark";
     }
 
+    // --- Collections 数据模型（GalleryApp 拥有；buildRow 经 this 取主题） ---
+
+    // 树模型：仓库目录骨架。key 为路径式全局唯一标识（叶/分支共用
+    // entries_ 查询；roots_ 为根级子键序列）。
+    class CollectionTreeModel final : public widgets::TreeModel {
+      public:
+        struct Entry {
+            std::string label{};
+            std::vector<std::string> children{};
+        };
+
+        explicit CollectionTreeModel(const GalleryApp* app) : app_(app) {}
+
+        void setRoots(std::vector<std::string> roots) {
+            roots_ = std::move(roots);
+        }
+        void setEntries(std::map<std::string, Entry> entries) {
+            entries_ = std::move(entries);
+        }
+
+        [[nodiscard]] std::size_t childCount(
+            const std::string& parent) const override {
+            if (parent.empty()) {
+                return roots_.size();
+            }
+            const auto it = entries_.find(parent);
+            return it != entries_.end() ? it->second.children.size() : 0;
+        }
+        [[nodiscard]] std::string childAt(const std::string& parent,
+                                          std::size_t index) const override {
+            if (parent.empty()) {
+                return index < roots_.size() ? roots_[index]
+                                             : std::string{};
+            }
+            const auto it = entries_.find(parent);
+            if (it == entries_.end() || index >= it->second.children.size()) {
+                return {};
+            }
+            return it->second.children[index];
+        }
+        [[nodiscard]] bool hasChildren(const std::string& key) const override {
+            const auto it = entries_.find(key);
+            return it != entries_.end() && !it->second.children.empty();
+        }
+        [[nodiscard]] core::Widget buildRow(
+            const std::string& key, std::size_t /*depth*/) const override {
+            const auto it = entries_.find(key);
+            const std::string& label = it != entries_.end() &&
+                                               !it->second.label.empty()
+                                           ? it->second.label
+                                           : key;
+            return core::makeText(label, app_->shell_.theme().typography.body);
+        }
+
+      private:
+        const GalleryApp* app_{};
+        std::vector<std::string> roots_{};
+        std::map<std::string, Entry> entries_{};
+    };
+
+    // 表格模型：扁平行（根级子键 = 行 id）。排序由 GalleryApp 执行后
+    // modelChanged（框架永不重排数据）。
+    class CollectionTableModel final : public widgets::TreeModel {
+      public:
+        struct Row {
+            std::string id{};
+            std::string name{};
+            std::string type{};
+            float sizeKb{0.0F};
+        };
+
+        explicit CollectionTableModel(const GalleryApp* app) : app_(app) {}
+
+        void setRows(std::vector<Row> rows) { rows_ = std::move(rows); }
+        [[nodiscard]] std::vector<Row>& rows() { return rows_; }
+        [[nodiscard]] const Row* rowOf(const std::string& id) const {
+            for (const auto& row : rows_) {
+                if (row.id == id) {
+                    return &row;
+                }
+            }
+            return nullptr;
+        }
+
+        [[nodiscard]] std::size_t childCount(
+            const std::string& parent) const override {
+            return parent.empty() ? rows_.size() : 0;
+        }
+        [[nodiscard]] std::string childAt(const std::string& parent,
+                                          std::size_t index) const override {
+            if (!parent.empty() || index >= rows_.size()) {
+                return {};
+            }
+            return rows_[index].id;
+        }
+        [[nodiscard]] bool hasChildren(const std::string&) const override {
+            return false;
+        }
+        [[nodiscard]] core::Widget buildRow(
+            const std::string& key, std::size_t) const override {
+            // TreeList 列模式下单元格经 cellBuilder 构建；此实现仅为
+            // 未设 cellBuilder 时的回退（首列显示行名）。
+            const auto* row = rowOf(key);
+            return core::makeText(row != nullptr ? row->name : key,
+                                  app_->shell_.theme().typography.body);
+        }
+
+      private:
+        const GalleryApp* app_{};
+        std::vector<Row> rows_{};
+    };
+
     core::ScrollController scroll_{};
     core::ScrollController dialogScroll_{};
     widgets::FormController form_{};
@@ -2597,10 +3075,19 @@ class GalleryApp {
     bool focusRestorePending_{false};
     std::string lastRoute_{};
     mutable core::VirtualListController library_{};
+    // Collections（模型先于控制器声明 → 析构序安全：模型后于控制器销毁）。
+    CollectionTreeModel collectionTreeModel_{this};
+    CollectionTableModel collectionTableModel_{this};
+    widgets::ListController collectionList_{};
+    widgets::TreeController collectionTree_{};
+    widgets::TreeListController collectionTable_{};
+    std::string lastActivatedKey_{};
+    std::string lastSortColumn_{};
+    bool lastSortDescending_{false};
     // M11：下拉浮动菜单控制器（选项 + 当前值；选中回调写状态）。
     widgets::DropdownController navigationMenu_{{{"home", "Overview"}, {"buttons", "Buttons"},
         {"inputs", "Inputs"}, {"layout", "Layout"}, {"lists", "Lists"},
-        {"feedback", "Feedback"}, {"theme", "Theme"}}, "home"};
+        {"collections", "Collections"}, {"feedback", "Feedback"}, {"theme", "Theme"}}, "home"};
     widgets::DropdownController dropdown_{{{"Red", "Red"},
                                            {"Green", "Green"},
                                            {"Blue", "Blue"}},

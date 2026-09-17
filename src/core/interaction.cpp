@@ -272,7 +272,9 @@ bool InteractionController::canRedo() const {
 
 void InteractionController::pointerDown(const RenderNode& root,
                                         Offset position,
-                                        std::uint64_t timestampMs) {
+                                        std::uint64_t timestampMs,
+                                        KeyModifiers modifiers) {
+    pointerModifiers_ = modifiers;
     pressedKey_.clear();
     pressedIdentity_.clear();
     armedOnClick_.clear();
@@ -645,9 +647,38 @@ void InteractionController::pointerUp(const RenderNode& root,
         }
         if (node->onClick == armedOnClick && node->key == armedKey &&
             node->identity == armedIdentity && node->enabled) {
-            const auto handler = handlers_.find(armedOnClick);
-            if (handler != handlers_.end()) {
-                handler->second();
+            // 集合行双击检测（collection-controls-design §6.2）：同一
+            // identity 的第二次点击在 handler 之后触发激活 sink；key/
+            // identity 先行拷贝（handler 可能重建整树）。
+            const std::string firedKey = node->key;
+            const std::string firedIdentity = node->identity;
+            const bool doubleClick =
+                rowClickIdentity_ == firedIdentity &&
+                timestampMs >= rowClickMs_ &&
+                timestampMs - rowClickMs_ <= kDoubleClickMs;
+            rowClickMs_ = timestampMs;
+            rowClickIdentity_ = firedIdentity;
+            // 行点击 sink 先于 HandlerRegistry：集合行按名字前缀解析
+            //（虚拟化行不注册常驻 handler）；未消费再走应用注册表。
+            bool clickConsumed = false;
+            for (const auto& sink : rowClickSinks_) {
+                if (sink(armedOnClick)) {
+                    clickConsumed = true;
+                    break;
+                }
+            }
+            if (!clickConsumed) {
+                const auto handler = handlers_.find(armedOnClick);
+                if (handler != handlers_.end()) {
+                    handler->second();
+                }
+            }
+            if (doubleClick) {
+                for (const auto& sink : rowActivateSinks_) {
+                    if (sink(firedKey, firedIdentity, /*keyboard=*/false)) {
+                        break;
+                    }
+                }
             }
         }
         return;
@@ -991,7 +1022,10 @@ bool InteractionController::traverseFocus(const RenderNode& root,
                    node.type == WidgetType::Switch) &&
                   !node.bind.empty()) ||
                  (node.type == WidgetType::Radio && !node.bind.empty()) ||
-                 (node.type == WidgetType::Slider && !node.bind.empty()));
+                 (node.type == WidgetType::Slider && !node.bind.empty()) ||
+                 // 集合行（collection-controls-design §6.2）：Row/Container
+                 // 行同样可聚焦（控制器构建，onClick 已注册）。
+                 (node.collectionRow && !node.onClick.empty()));
             if (editable || activatable) {
                 focusables.push_back(Candidate{&node, scope});
             }
@@ -1094,12 +1128,38 @@ void InteractionController::activateFocusedButton(const RenderNode& root) {
         toggleChecked(*node);
         return;
     }
-    if (node->type != WidgetType::Button || node->onClick.empty()) {
+    // 集合行（Row/Container）与 Button 共用激活路径。
+    const bool activatableRow = node->collectionRow && !node->onClick.empty();
+    if ((node->type != WidgetType::Button && !activatableRow) ||
+        node->onClick.empty()) {
         return;
     }
-    const auto handler = handlers_.find(node->onClick);
-    if (handler != handlers_.end()) {
-        handler->second();
+    // 集合行键盘激活（collection-controls-design §6.2）：Enter/Space 激活
+    // 聚焦行——与行 onClick（选择）同一节点，先选择后激活；key/identity
+    // 先行拷贝（handler 可能重建整树，返回后不得再解引用 node）。
+    const std::string firedKey = node->key;
+    const std::string firedIdentity = node->identity;
+    const std::string firedOnClick = node->onClick;
+    // 行点击 sink 先于 HandlerRegistry（集合行按名字前缀解析）。
+    bool clickConsumed = false;
+    for (const auto& sink : rowClickSinks_) {
+        if (sink(firedOnClick)) {
+            clickConsumed = true;
+            break;
+        }
+    }
+    if (!clickConsumed) {
+        const auto handler = handlers_.find(firedOnClick);
+        if (handler != handlers_.end()) {
+            handler->second();
+        }
+    }
+    // 集合行键盘激活：Enter/Space 激活聚焦行（与行 onClick 同一节点，
+    // 先选择后激活）；消费即止（返回 true 的 sink 处理该行）。
+    for (const auto& sink : rowActivateSinks_) {
+        if (sink(firedKey, firedIdentity, /*keyboard=*/true)) {
+            break;
+        }
     }
 }
 
@@ -1124,6 +1184,14 @@ void InteractionController::setWheelSink(WheelSink sink) {
 
 void InteractionController::setScrollDragSink(ScrollDragSink sink) {
     scrollDragSink_ = std::move(sink);
+}
+
+void InteractionController::addRowActivateSink(RowActivateSink sink) {
+    rowActivateSinks_.push_back(std::move(sink));
+}
+
+void InteractionController::addRowClickSink(RowClickSink sink) {
+    rowClickSinks_.push_back(std::move(sink));
 }
 
 bool InteractionController::wheel(const RenderNode& root, Offset position,

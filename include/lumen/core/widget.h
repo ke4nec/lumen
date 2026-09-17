@@ -39,6 +39,11 @@ enum class WidgetType {
                  // onClick("select:<index>") 交应用
     Tabs,        // 页签：bind 当前 tab id + 标签列表，点击切换
     ThemeScope,  // M6：局部主题域（子树覆盖父主题；布局期生效）
+    // 集合控件（docs/lumen-collection-controls-design.md）：三控件共享
+    // VirtualListSource 布局契约与 M3 虚拟化引擎；差异在 widgets 层控制器。
+    List,        // 列表：一维行序列（选择/激活语义由 ListController 驱动）
+    Tree,        // 树：层级模型扁平化为可见行序列（TreeController）
+    TreeList,    // 树+列：Tree 能力 + 列系统与粘性表头（TreeListController）
 };
 
 enum class MainAxisAlignment {
@@ -145,6 +150,15 @@ class VirtualListSource {
     [[nodiscard]] virtual Widget buildItem(std::size_t index) const = 0;
     // 布局期回填实测高度（幂等缓存写入，允许修正滚动锚点）。
     virtual void noteExtent(std::size_t index, float extent) const = 0;
+
+    // --- 集合控件扩展（collection-controls-design §8.3） ---
+    // TreeList 表头（非滚动 chrome）：返回空 Widget = 无表头。表头在
+    // 行区上方固定，不随 scrollOffset 平移；高度由布局实测。
+    // 默认实现（返回空 Widget）在 widget.cpp 中定义（此处 Widget 尚未
+    // 完整定义）。
+    [[nodiscard]] virtual Widget buildHeader() const;
+    // 内容宽度回填（列宽分配用；幂等缓存写入，viewport 变化时重排）。
+    virtual void noteContentWidth(float width) const { (void)width; }
 };
 
 // Immutable UI description. Aggregates are intentionally copyable so tests and
@@ -239,6 +253,20 @@ struct Widget {
     //（像素）。children 必须为空——布局期按可见区物化。
     const VirtualListSource* virtualSource{nullptr};
     float virtualCacheExtent{200.0F};
+
+    // 集合控件（collection-controls-design）：List/Tree/TreeList 复用
+    // virtualSource 指针（源为 widgets 层控制器，实现 VirtualListSource）。
+    // collectionSelectionMode 为声明值（0=None/1=Single/2=Multiple/
+    // 3=Extended；真实选择状态在控制器，Widget 只承载语义声明）。
+    std::uint8_t collectionSelectionMode{0};
+    // TreeList 列向量指针（应用拥有的 std::vector<TreeListColumn>；
+    // themeOverride 同模式）与表头显隐。
+    const void* collectionColumns{nullptr};
+    // 集合行标记：行 Button 由集合控制器构建；StyleResolver 把 selected
+    // 折算为 color.selection.background（Tabs/Dropdown 的 selected 语义
+    // 不受影响）。
+    bool collectionRow{false};
+    bool collectionShowHeader{false};
 
     // 视觉系统声明属性（visual-system-design §6.1）：enabled=false 时控
     // 件不可用（视觉、命中、键盘与语义一致拒绝）；invalid=true 表达校验
@@ -745,6 +773,68 @@ inline Widget makeVirtualList(const VirtualListSource* source,
     widget.width = width;
     widget.height = height;
     widget.virtualCacheExtent = cacheExtent;
+    return widget;
+}
+
+// --- 集合控件（collection-controls-design §6-8） ---
+
+// List：一维行序列。source = ListController（widgets 层；实现
+// VirtualListSource 并注入选择/激活语义）。布局直接复用 VirtualList 路径。
+inline Widget makeList(const VirtualListSource* source,
+                       std::string key = {},
+                       std::optional<float> width = std::nullopt,
+                       std::optional<float> height = std::nullopt,
+                       float cacheExtent = 200.0F) {
+    Widget widget;
+    widget.type = WidgetType::List;
+    widget.virtualSource = source;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.height = height;
+    widget.virtualCacheExtent = cacheExtent;
+    return widget;
+}
+
+// Tree：层级行序列。source = TreeController（可见节点扁平化）。
+inline Widget makeTree(const VirtualListSource* source,
+                       std::string key = {},
+                       std::optional<float> width = std::nullopt,
+                       std::optional<float> height = std::nullopt,
+                       float cacheExtent = 200.0F) {
+    Widget widget;
+    widget.type = WidgetType::Tree;
+    widget.virtualSource = source;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.height = height;
+    widget.virtualCacheExtent = cacheExtent;
+    return widget;
+}
+
+// TreeList：树 + 列。columns 为应用拥有的列向量指针（生命周期覆盖布局，
+// themeOverride 同模式）；showHeader 控制粘性表头（source 的 buildHeader）。
+inline Widget makeTreeList(const VirtualListSource* source,
+                           const void* columns = nullptr,
+                           bool showHeader = true,
+                           std::string key = {},
+                           std::optional<float> width = std::nullopt,
+                           std::optional<float> height = std::nullopt,
+                           float cacheExtent = 200.0F) {
+    Widget widget;
+    widget.type = WidgetType::TreeList;
+    widget.virtualSource = source;
+    widget.collectionColumns = columns;
+    widget.collectionShowHeader = showHeader;
+    widget.key = std::move(key);
+    widget.width = width;
+    widget.height = height;
+    widget.virtualCacheExtent = cacheExtent;
+    return widget;
+}
+
+// 集合选择模式声明（语义树与控制器一致性检查用；真实状态在控制器）。
+inline Widget withSelectionMode(Widget widget, std::uint8_t mode) {
+    widget.collectionSelectionMode = mode;
     return widget;
 }
 

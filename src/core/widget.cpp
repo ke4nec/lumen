@@ -55,6 +55,10 @@ bool isLeafWidget(WidgetType type) {
         case WidgetType::VirtualList:
         case WidgetType::Tabs:      // M6：标签行容器
         case WidgetType::ThemeScope:  // M6：主题域（单子容器）
+        // 集合控件：布局期按可见区物化行（同 VirtualList）。
+        case WidgetType::List:
+        case WidgetType::Tree:
+        case WidgetType::TreeList:
             return false;
     }
     return false;
@@ -66,7 +70,12 @@ bool isFlexContainer(WidgetType type) {
 
 bool isScrollableWidget(WidgetType type) {
     return type == WidgetType::ScrollView || type == WidgetType::ListView ||
-           type == WidgetType::VirtualList;  // M3：滚轮/键盘/语义滚动目标
+           type == WidgetType::VirtualList ||  // M3：滚轮/键盘/语义滚动目标
+           // 集合控件：同一滚动路径（M3 引擎复用）。
+           type == WidgetType::List || type == WidgetType::Tree ||
+           type == WidgetType::TreeList;
 }
+
+Widget VirtualListSource::buildHeader() const { return Widget{}; }
 
 }  // namespace lumen::core

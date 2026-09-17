@@ -28,6 +28,12 @@ SemanticsRole defaultRoleFor(const RenderNode& node, bool isRoot) {
         case WidgetType::ScrollView:
         case WidgetType::VirtualList:  // M3：虚拟列表同列表语义
             return SemanticsRole::List;
+        // 集合控件：List 同列表语义；Tree/TreeList 为树语义。
+        case WidgetType::List:
+            return SemanticsRole::List;
+        case WidgetType::Tree:
+        case WidgetType::TreeList:
+            return SemanticsRole::Tree;
         case WidgetType::Image:  // M3：图像（label/value 保留可访问名）
             return SemanticsRole::Image;
         case WidgetType::Slider:
@@ -67,6 +73,10 @@ std::uint32_t defaultActionsFor(const RenderNode& node) {
         case WidgetType::ScrollView:
         case WidgetType::ListView:
         case WidgetType::VirtualList:
+        // 集合控件：同一滚动 action 路径。
+        case WidgetType::List:
+        case WidgetType::Tree:
+        case WidgetType::TreeList:
             return kActionScroll;
         case WidgetType::Image:
             return kActionFocus;  // 可聚焦/可访问（无激活语义）
@@ -233,6 +243,10 @@ const char* semanticsRoleName(SemanticsRole role) {
             return "progressBar";
         case SemanticsRole::Radio:
             return "radio";
+        case SemanticsRole::Tree:
+            return "tree";
+        case SemanticsRole::TreeItem:
+            return "treeItem";
     }
     return "unknown";
 }
@@ -256,6 +270,9 @@ bool semanticsRoleFromName(const std::string& name, SemanticsRole* out) {
         {"progressBar", SemanticsRole::ProgressBar},
         {"progress_bar", SemanticsRole::ProgressBar},
         {"radio", SemanticsRole::Radio},
+        {"tree", SemanticsRole::Tree},
+        {"treeItem", SemanticsRole::TreeItem},
+        {"tree_item", SemanticsRole::TreeItem},
     };
     for (const auto& [key, role] : kTable) {
         if (name == key) {

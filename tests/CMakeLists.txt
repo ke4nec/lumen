@@ -16,6 +16,9 @@ set(LUMEN_TEST_SOURCES
     app_shell_tests.cpp
     # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
     grid_virtual_tests.cpp
+    # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、
+    # 列宽与语义角色（docs/lumen-collection-controls-design.md）。
+    collection_tests.cpp
     # M6：视觉系统 V3 与控件库（图标/阴影/滚动条/控件交互/语义）。
     visual_m6_tests.cpp
     visual_regression_tests.cpp

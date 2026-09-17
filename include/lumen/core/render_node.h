@@ -82,6 +82,9 @@ struct RenderNode {
     bool enabled{true};
     bool invalid{false};
     bool selected{false};
+    // 集合行（collection-controls-design）：Row/Container 行标记——
+    // 可聚焦/可激活（Tab/Enter），painter 走控件表面（焦点环）。
+    bool collectionRow{false};
 
     std::vector<RenderNode> children{};
 

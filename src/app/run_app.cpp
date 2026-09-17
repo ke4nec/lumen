@@ -188,7 +188,7 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                                            event.window);
                     break;
                 case HostEventType::PointerDown:
-                    shell.pointerDown(event.position);
+                    shell.pointerDown(event.position, event.modifiers);
                     scheduler.requestFrame(render::FrameReason::Input,
                                            event.window);
                     break;

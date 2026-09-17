@@ -340,7 +340,7 @@ int runHeadless(GalleryApp& app, const std::string& dumpFrame) {
 }
 
 int runSample(GalleryApp& app, const Options& options) {
-    const std::vector<std::string> routes{"home", "buttons", "inputs", "layout", "lists", "feedback", "theme"};
+    const std::vector<std::string> routes{"home", "buttons", "inputs", "layout", "lists", "collections", "feedback", "theme"};
     if (std::find(routes.begin(), routes.end(), options.sampleRoute) == routes.end()) return 2;
     if (!(options.width >= 200 && options.width <= 4096 &&
           options.height >= 200 && options.height <= 4096 &&
