@@ -349,8 +349,16 @@ std::size_t Sdl3ApplicationHost::translateEvent(
                                           std::isnan(sdlEvent.wheel.mouse_y)
                                               ? 0.0F
                                               : sdlEvent.wheel.mouse_y};
-            event.scrollDelta = core::Offset{sdlEvent.wheel.x * kWheelUnitPx,
-                                             sdlEvent.wheel.y * kWheelUnitPx};
+            // 符号换算：框架约定 scrollDelta.y>0 = 内容向下（windowing.h），
+            // 而 SDL NORMAL 语义 y>0 = 远离用户（Windows 习惯"向上滚"），
+            // 需取负；FLIPPED（macOS 自然滚动）时系统已翻转，透传即可。
+            // 两平台手感与各自原生一致。
+            const float wheelSign =
+                sdlEvent.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? 1.0F
+                                                                   : -1.0F;
+            event.scrollDelta = core::Offset{
+                sdlEvent.wheel.x * kWheelUnitPx * wheelSign,
+                sdlEvent.wheel.y * kWheelUnitPx * wheelSign};
             event.device = core::PointerDevice::Mouse;
             push(std::move(event));
             break;
