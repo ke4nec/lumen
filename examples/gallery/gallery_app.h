@@ -771,14 +771,11 @@ class GalleryApp {
         } else finish(shell_);
     }
 
-    // M10：视口拖动滚动与惯性推进（VirtualList 用 library 的控制器）。
+    // M10：视口拖动滚动与惯性推进。VirtualList/List/Tree/TreeList（源视
+    // 口）由框架直接驱动源控制器并推进惯性；这里只处理应用侧滚动状态。
     bool scrollDrag(const core::RenderNode* viewport, float deltaY,
                     core::ScrollDragPhase phase, std::uint64_t nowMs) {
         core::ScrollController* scroll = &scroll_;
-        if (viewport != nullptr &&
-            viewport->type == core::WidgetType::VirtualList) {
-            scroll = &library_.scroll();
-        }
         if (viewport && viewport->key == std::string(kDialogKey) + "-body-scroll") {
             scroll = &dialogScroll_;
         }
@@ -811,16 +808,13 @@ class GalleryApp {
     }
 
     bool advanceFling(app::AppShell& shell, std::uint64_t nowMs) {
-        bool active = false;
+        // 源视口（library_/collections）的惯性由框架 advanceSourceFling
+        // 推进（AppShell::tick 内）；这里只推进应用侧外层滚动。
         if (scroll_.isFlinging()) {
-            active = scroll_.stepFling(nowMs);
             shell.markDirty();
+            return scroll_.stepFling(nowMs);
         }
-        if (library_.scroll().isFlinging()) {
-            active = library_.scroll().stepFling(nowMs) || active;
-            shell.markDirty();
-        }
-        return active;
+        return false;
     }
 
     bool scrollWheel(const core::RenderNode& root, const core::RenderNode* hit,
@@ -842,55 +836,9 @@ class GalleryApp {
         if (viewport == nullptr || !core::isScrollableWidget(viewport->type)) {
             return false;
         }
-        if (viewport->type == core::WidgetType::VirtualList) {
-            library_.scroll().updateExtents(
-                viewport->size.height,
-                viewport->size.height + viewport->scrollExtent);
-            if (std::abs(deltaY) > 1e8F) {
-                library_.scroll().scrollTo(deltaY > 0
-                                               ? library_.scroll()
-                                                     .maxScrollOffset()
-                                               : 0.0F);
-                shell_.markDirty();
-                return true;
-            }
-            const bool moved = library_.scroll().applyWheel(deltaY);
-            if (moved) {
-                shell_.markDirty();
-            }
-            return moved;
-        }
-        // 集合控件（List/Tree/TreeList）：按节点 key 路由到所属控制器的
-        // ScrollController（三个集合可共存，滚轮只作用于命中链最近的视口）。
-        if (viewport->type == core::WidgetType::List ||
-            viewport->type == core::WidgetType::Tree ||
-            viewport->type == core::WidgetType::TreeList) {
-            core::ScrollController* scroller = nullptr;
-            if (viewport->key == "collection-list") {
-                scroller = &collectionList_.scroll();
-            } else if (viewport->key == "collection-tree") {
-                scroller = &collectionTree_.scroll();
-            } else if (viewport->key == "collection-table") {
-                scroller = &collectionTable_.scroll();
-            }
-            if (scroller != nullptr) {
-                scroller->updateExtents(
-                    viewport->size.height,
-                    viewport->size.height + viewport->scrollExtent);
-                if (std::abs(deltaY) > 1e8F) {
-                    scroller->scrollTo(deltaY > 0
-                                           ? scroller->maxScrollOffset()
-                                           : 0.0F);
-                    shell_.markDirty();
-                    return true;
-                }
-                const bool moved = scroller->applyWheel(deltaY);
-                if (moved) {
-                    shell_.markDirty();
-                }
-                return moved;
-            }
-        }
+        // VirtualList/List/Tree/TreeList（源视口）的滚轮已由框架直接驱
+        // 动源控制器（interaction 拦截），这里只处理应用侧滚动状态：
+        // 弹窗正文与外层 gallery-list。
         scroll_.updateExtents(viewport->size.height,
                               viewport->size.height +
                                   viewport->scrollExtent);

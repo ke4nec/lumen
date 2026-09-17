@@ -54,6 +54,10 @@ struct RenderNode {
     float scrollOffset{0.0F};    // 当前滚动偏移（已应用到子 offset）
     float scrollExtent{0.0F};    // 可滚动的最大范围（内容-视口）
     bool checked{false};         // Checkbox/Switch 状态
+    // 虚拟化视口（VirtualList/List/Tree/TreeList）携带数据源：交互层
+    // 滚轮/拖动滚动据此直接驱动源控制器的 ScrollController，应用无需
+    // 按 key 逐个接线（collection-controls-design §6.5）。
+    const VirtualListSource* virtualSource{nullptr};
 
     // M3 Image：已就绪资源 id（0 = 占位）与资源路径（诊断/语义）。
     std::uint64_t imageId{0};

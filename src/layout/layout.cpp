@@ -150,6 +150,7 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.invalid = widget.invalid;
     node.selected = widget.selected;
     node.collectionRow = widget.collectionRow;
+    node.virtualSource = widget.virtualSource;
     return node;
 }
 

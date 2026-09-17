@@ -5,7 +5,9 @@
 // 一维行序列 + 共享 SelectionModel + 激活语义。几何（extent 缓存/锚点
 // 稳定/滚动）全部组合复用 VirtualListController（M3）；本控制器只叠加
 // 列表语义层：行包装（focusable 集合行 + onClick 注册）、选择语义、
-// 激活（双击/Enter）、键盘导航与 scrollToKey 四种对齐。
+// 激活（双击/Enter）、键盘导航与 scrollToKey 四种对齐。语义层中与
+// Tree 相同的部分（键盘导航/滚动对齐/sink 接线/区间序列）单源实现于
+// src/widgets/collection_common.h。
 //
 // 行 = Row 容器（collectionRow=true）：hover/pressed/选中/焦点环由
 // StyleResolver 与 painter 的集合行路径驱动（Tabs/Dropdown 等既有
@@ -21,18 +23,15 @@
 #include "lumen/core/virtual_list.h"
 #include "lumen/core/widget.h"
 #include "lumen/core/windowing.h"
+#include "lumen/widgets/collection.h"
 #include "lumen/widgets/selection.h"
 
 namespace lumen::widgets {
 
 class ListController final : public core::VirtualListSource {
   public:
-    enum class ScrollAlignment : std::uint8_t {
-        Visible,  // 最小移动使行可见（默认）
-        Start,    // 行顶对齐视口顶
-        Center,   // 行居中
-        End,      // 行底对齐视口底
-    };
+    // 滚动对齐语义单一定义于 collection.h（List/Tree/TreeList 公用）。
+    using ScrollAlignment = ::lumen::widgets::ScrollAlignment;
 
     // --- 数据装配（UI 线程） ---
     void setItemCount(std::size_t count);
@@ -82,6 +81,9 @@ class ListController final : public core::VirtualListSource {
     void noteExtent(std::size_t index, float extent) const override;
     void updateViewport(float viewportExtent,
                         float contentPadding) const override;
+    [[nodiscard]] core::ScrollController* scrollController() const override {
+        return base_.scrollController();
+    }
 
     // 滚动输入（与 ScrollView 统一路径）。
     [[nodiscard]] core::ScrollController& scroll() { return base_.scroll(); }

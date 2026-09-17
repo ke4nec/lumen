@@ -19,6 +19,8 @@ namespace lumen::core {
 
 // Key 枚举与修饰键定义在 windowing.h（平台无关事件值类型）。
 
+class ScrollController;  // scroll.h 反向包含此处，源视口滚动用指针引用
+
 // Hit testing walks the render tree in reverse paint order: the last child is
 // on top and wins (plan §5.3). On success `chain` receives the nodes from the
 // hit target up to the root — the bubbling order. `position` is in root
@@ -109,6 +111,17 @@ class InteractionController {
     // 键盘滚动（无编辑焦点时的 PageUp/PageDown/Up/Down/Home/End）→
     // wheelSink（hit 为聚焦节点或空）；返回 sink 消费状态。
     [[nodiscard]] bool scrollKey(const RenderNode& root, Key key);
+
+    // --- 集合控件：源视口框架级滚动（collection-controls-design §6.5） ---
+    // RenderNode.virtualSource 非空的视口（VirtualList/List/Tree/
+    // TreeList）：滚轮/键盘滚动与拖动滚动直接驱动源控制器的
+    // ScrollController，应用 sink 无需按 key 逐个接线（onWheel/
+    // onScrollDrag 只处理非源视口，如 ScrollView）。
+    // 框架滚动变更内容后的重建请求（AppShell 注入 markDirty）。
+    void setRebuildRequest(std::function<void()> request);
+    // 源视口拖动惯性的逐拍推进（AppShell::tick 调用；返回 true = 仍在
+    // 惯性中，调用方据此继续请求帧）。
+    [[nodiscard]] bool advanceSourceFling(std::uint64_t nowMs);
 
     // --- M10：触摸/指针拖动滚动（视口拖动 → 应用 sink） ---
     // 起点（slop 前）命中滚动视口且不在文本选区路径上的拖动路由到此；
@@ -258,8 +271,20 @@ class InteractionController {
     ClipboardProvider* clipboard_{nullptr};
     WheelSink wheelSink_{};
     ScrollDragSink scrollDragSink_{};
+    std::function<void()> rebuildRequest_{};  // 框架滚动变更 → markDirty
     std::vector<RowActivateSink> rowActivateSinks_{};
     std::vector<RowClickSink> rowClickSinks_{};
+    // 源视口拖动惯性登记（弱引用源 ScrollController；End 起滑时加入，
+    // 推进到停止即移除）。
+    std::vector<ScrollController*> sourceFlinging_{};
+    // 当前拖动接管的源视口滚动控制器（非空 = 本次拖动走框架路径）。
+    ScrollController* scrollDragSource_{nullptr};
+
+    // 框架滚动路径的重建请求与源视口滚动（wheel/drag/scrollKey 共用；
+    // |dy| > 1e8 为端点哨兵——跳到顶/底）。
+    void requestRebuild();
+    [[nodiscard]] bool scrollSourceViewport(ScrollController& scroller,
+                                            float dy);
 
     std::string pressedKey_{};
     std::string pressedIdentity_{};

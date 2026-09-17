@@ -232,7 +232,7 @@ class ListController final : public core::VirtualListSource {
 | Ctrl+A | Extended 模式全选；Single 选中 current |
 | Tab / Shift+Tab | 离开列表（FocusManager 既有遍历，行为不变） |
 
-**路由方式**：应用 `ShellConfig.onKey` 以焦点列表为优先目标转发（M11 `handleKey` 同模式）；`InteractionController::scrollKey` 在焦点位于集合项上时不再执行视口滚动（滚轮与 PageUp/PageDown 的默认视口路径让位于项导航）。
+**路由方式**：应用 `ShellConfig.onKey` 以焦点列表为优先目标转发（M11 `handleKey` 同模式）；未被应用消费的滚动键由 `InteractionController::scrollKey` 兜底——焦点位于源视口（List/Tree/TreeList/VirtualList）内时直接驱动该源控制器（§6.5），不再落到应用默认视口。
 
 ### 6.4 Widget 声明
 
@@ -249,6 +249,23 @@ inline core::Widget makeList(const core::VirtualListSource* source,
 ```
 
 布局实现：`WidgetType::List` 直接映射 `layoutVirtualList`（零新布局代码）；`isScrollableWidget` 纳入 List。
+
+### 6.5 框架级源视口滚动（滚轮/拖动/惯性）
+
+滚动状态在源控制器（`ScrollController`）内，框架此前只能经应用
+`onWheel`/`onScrollDrag` 按 key 逐个路由（遗漏即"滚轮无效/误滚外层"）。
+收口为框架路径：
+
+- `RenderNode` 携带 `virtualSource` 指针（`makeNode` 自 Widget 复制）；
+  `VirtualListSource::scrollController()` 返回源持有的控制器（默认
+  `nullptr` = 滚动状态在应用侧，走原 sink 路径，静态数据源/测试源不受
+  影响）。
+- `InteractionController` 在命中链最近的可滚动视口为源视口时直接消费：
+  滚轮（`wheel`）、键盘滚动（`scrollKey`，聚焦节点的最近源视口祖先）、
+  指针/触摸拖动（M10 拖动路径，含拇指跟手换算）。边界处不冒泡到外层。
+- 拖动释放起的惯性由 `AppShell::tick` 调 `advanceSourceFling` 逐拍推进
+  （框架登记起滑的源控制器）。
+- 框架滚动经 `setRebuildRequest`（AppShell 注入 `markDirty`）请求重建。
 
 ## 7. Tree 控件
 

@@ -94,6 +94,9 @@ AppShell::AppShell(ShellConfig config) : config_(std::move(config)) {
             const auto& sink = overlayRoot_ ? overlayDrag_ : config_.onScrollDrag;
             return sink ? sink(root, viewport, position, delta, phase, timestampMs) : false;
         });
+    // 集合控件：框架级源视口滚动（滚轮/拖动/惯性）变更内容后请求重建
+    //（与 sink 路径里应用自调 markDirty 等价）。
+    controller_.setRebuildRequest([this] { markDirty(); });
 }
 
 // --- 视口/渲染器/字体 ---
@@ -629,6 +632,9 @@ void AppShell::tick(std::uint64_t nowMs) {
     // 请求 FrameScheduler 动画帧。
     animating = advanceTransitions(nowMs) || animating;
     animating = advanceTooltips(nowMs) || animating;
+    // 集合控件：框架级源视口拖动惯性逐拍推进（advanceSourceFling 内部
+    // 经重建请求标记 dirty）。
+    animating = controller_.advanceSourceFling(nowMs) || animating;
     if (config_.onAnimate) {
         animating = config_.onAnimate(*this, nowMs) || animating;
     }

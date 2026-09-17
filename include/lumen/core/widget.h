@@ -10,6 +10,8 @@
 
 namespace lumen::core {
 
+class ScrollController;  // 指针返回（VirtualListSource::scrollController）
+
 enum class WidgetType {
     Container,
     Row,
@@ -159,6 +161,12 @@ class VirtualListSource {
     [[nodiscard]] virtual Widget buildHeader() const;
     // 内容宽度回填（列宽分配用；幂等缓存写入，viewport 变化时重排）。
     virtual void noteContentWidth(float width) const { (void)width; }
+    // 源持有的滚动控制器：非空时框架直接接管该视口的滚轮/拖动滚动与
+    // 惯性推进（RenderNode.virtualSource 由此解析，应用无需按 key 接
+    // 线）；默认 nullptr = 滚动状态在应用侧，走 onWheel/onScrollDrag。
+    [[nodiscard]] virtual ScrollController* scrollController() const {
+        return nullptr;
+    }
 };
 
 // Immutable UI description. Aggregates are intentionally copyable so tests and

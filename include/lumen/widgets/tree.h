@@ -7,7 +7,10 @@
 // 擎，布局走 layoutVirtualList）。extent 缓存按节点 key 存储（折叠/再
 // 展开保留实测高度；index 缓存在树场景会因展开折叠大面积漂移）。
 // TreeList = Tree + 列系统（固定/权重列宽、粘性表头、排序钩子——排序
-// 由应用执行，控制器只回调 + 记录指示方向）。
+// 由应用执行，控制器只回调 + 记录指示方向）。语义层中与 List 相同的
+// 部分（键盘导航/滚动对齐/sink 接线/区间序列）单源实现于
+// src/widgets/collection_common.h；Left/Right 树键位与 chevron toggle
+// 留在本控制器。
 //
 // 行 = Row 容器（collectionRow=true）；分支行的 chevron 是行内独立
 // Ghost Button（点击只 toggle 展开状态，不改变选择）。UI 线程独占。
@@ -22,6 +25,7 @@
 #include "lumen/core/virtual_list.h"
 #include "lumen/core/widget.h"
 #include "lumen/core/windowing.h"
+#include "lumen/widgets/collection.h"
 #include "lumen/widgets/selection.h"
 
 namespace lumen::widgets {
@@ -44,9 +48,8 @@ class TreeModel {
 
 class TreeController : public core::VirtualListSource {
   public:
-    enum class ScrollAlignment : std::uint8_t {
-        Visible, Start, Center, End,
-    };
+    // 滚动对齐语义单一定义于 collection.h（List/Tree/TreeList 公用）。
+    using ScrollAlignment = ::lumen::widgets::ScrollAlignment;
     struct VisibleRow {
         std::string key{};
         std::size_t depth{0};
@@ -106,6 +109,9 @@ class TreeController : public core::VirtualListSource {
     void noteExtent(std::size_t index, float extent) const override;
     void updateViewport(float viewportExtent,
                         float contentPadding) const override;
+    [[nodiscard]] core::ScrollController* scrollController() const override {
+        return &scroll_;
+    }
 
     [[nodiscard]] core::ScrollController& scroll() { return scroll_; }
     [[nodiscard]] bool consumeExtentsChanged() {

@@ -1,5 +1,6 @@
 #include "lumen/core/interaction.h"
 
+#include "lumen/core/scroll.h"
 #include "lumen/core/text_field.h"
 
 #include <algorithm>
@@ -283,6 +284,7 @@ void InteractionController::pointerDown(const RenderNode& root,
     scrollDragging_ = false;
     scrollDragIdentity_.clear();
     scrollDragOnThumb_ = false;
+    scrollDragSource_ = nullptr;
     sliderDragIdentity_.clear();
     // Gesture anchor: every press can become a drag, clickable or not.
     pressActive_ = true;
@@ -505,6 +507,13 @@ void InteractionController::pointerMove(const RenderNode& root,
                         scrollDragging_ = true;
                         scrollDragIdentity_ = node->identity;
                         scrollLastPoint_ = dragAnchor_;
+                        // 源视口（VirtualList/List/Tree/TreeList）：框架
+                        // 直接驱动源 ScrollController；其余视口交应用
+                        // sink（ScrollView 等应用侧滚动状态）。
+                        scrollDragSource_ =
+                            node->virtualSource != nullptr
+                                ? node->virtualSource->scrollController()
+                                : nullptr;
                         // 起点落在拇指上 → 后续 Update 按拇指映射换算
                         //（跟手 1:1）；否则内容拖拽 1:1。
                         Offset viewportOrigin{};
@@ -515,8 +524,10 @@ void InteractionController::pointerMove(const RenderNode& root,
                         } else {
                             scrollDragOnThumb_ = false;
                         }
-                        scrollDragSink_(&root, node, dragAnchor_, Offset{},
-                                        ScrollDragPhase::Begin, timestampMs);
+                        if (scrollDragSource_ == nullptr) {
+                            scrollDragSink_(&root, node, dragAnchor_, Offset{},
+                                            ScrollDragPhase::Begin, timestampMs);
+                        }
                         break;
                     }
                 }
@@ -538,8 +549,16 @@ void InteractionController::pointerMove(const RenderNode& root,
                     move.x = 0.0F;
                 }
             }
-            scrollDragSink_(&root, viewport, position, move,
-                            ScrollDragPhase::Update, timestampMs);
+            if (scrollDragSource_ != nullptr) {
+                // 框架路径：内容 1:1 跟手（拇指换算已在 move 上完成）。
+                scrollDragSource_->noteDragSample(move.y, timestampMs);
+                if (scrollDragSource_->applyDrag(move.y)) {
+                    requestRebuild();
+                }
+            } else {
+                scrollDragSink_(&root, viewport, position, move,
+                                ScrollDragPhase::Update, timestampMs);
+            }
         }
         return;
     }
@@ -595,6 +614,15 @@ void InteractionController::pointerUp(const RenderNode& root,
     sliderDragIdentity_.clear();
     if (wasScrollDragging) {
         // 拖动滚动释放：应用 sink 决定是否起惯性（End 携带释放时间戳）。
+        if (scrollDragSource_ != nullptr) {
+            // 框架路径：源控制器起滑后登记，由 AppShell::tick 逐拍推进。
+            if (scrollDragSource_->endDrag(timestampMs)) {
+                sourceFlinging_.push_back(scrollDragSource_);
+                requestRebuild();
+            }
+            scrollDragSource_ = nullptr;
+            return;
+        }
         if (const RenderNode* viewport =
                 findNodeByIdentity(root, scrollDragIdentity)) {
             scrollDragSink_(&root, viewport, position, Offset{},
@@ -701,8 +729,12 @@ void InteractionController::pointerCancel() {
         scrollDragging_ = false;
         scrollDragIdentity_.clear();
         scrollDragOnThumb_ = false;
-        // 取消：应用 sink 停止惯性，不触发 End（无释放速度语义）。
-        if (scrollDragSink_) {
+        // 取消：停止惯性，不触发 End（无释放速度语义）。框架路径直接
+        // 停源控制器；应用路径经 sink。
+        if (scrollDragSource_ != nullptr) {
+            scrollDragSource_->stopFling();
+            scrollDragSource_ = nullptr;
+        } else if (scrollDragSink_) {
             scrollDragSink_(nullptr, nullptr, Offset{}, Offset{},
                             ScrollDragPhase::Cancel, 0);
         }
@@ -1194,11 +1226,71 @@ void InteractionController::addRowClickSink(RowClickSink sink) {
     rowClickSinks_.push_back(std::move(sink));
 }
 
-bool InteractionController::wheel(const RenderNode& root, Offset position,
-                                  Offset delta) {
-    if (!wheelSink_) {
+void InteractionController::setRebuildRequest(std::function<void()> request) {
+    rebuildRequest_ = std::move(request);
+}
+
+void InteractionController::requestRebuild() {
+    if (rebuildRequest_) {
+        rebuildRequest_();
+    }
+}
+
+bool InteractionController::advanceSourceFling(std::uint64_t nowMs) {
+    if (sourceFlinging_.empty()) {
         return false;
     }
+    bool active = false;
+    for (ScrollController* scroller : sourceFlinging_) {
+        active = scroller->stepFling(nowMs) || active;
+    }
+    std::erase_if(sourceFlinging_,
+                  [](const ScrollController* scroller) {
+                      return !scroller->isFlinging();
+                  });
+    if (active) {
+        requestRebuild();
+    }
+    return active;
+}
+
+// 源视口滚动（wheel/drag/scrollKey 共用）：extents 由布局每帧
+// updateViewport 同步（wheel 前必经 rebuildIfDirty），直接消费即可。
+// |delta| > 1e8 为端点哨兵（跳到顶/底，测试与 Home/End 同路径）。
+bool InteractionController::scrollSourceViewport(ScrollController& scroller,
+                                                 float dy) {
+    if (std::abs(dy) > 1e8F) {
+        scroller.scrollTo(dy > 0.0F ? scroller.maxScrollOffset() : 0.0F);
+        requestRebuild();
+        return true;
+    }
+    if (scroller.applyWheel(dy)) {
+        requestRebuild();
+        return true;
+    }
+    return false;
+}
+
+// 定位 identity 节点并收集其祖先链（自节点到根；供最近滚动视口解析）。
+const RenderNode* findIdentityChain(const RenderNode& node,
+                                    const std::string& identity,
+                                    std::vector<const RenderNode*>& chain) {
+    chain.push_back(&node);
+    if (node.identity == identity) {
+        return &node;
+    }
+    for (const RenderNode& child : node.children) {
+        if (const RenderNode* found =
+                findIdentityChain(child, identity, chain)) {
+            return found;
+        }
+    }
+    chain.pop_back();
+    return nullptr;
+}
+
+bool InteractionController::wheel(const RenderNode& root, Offset position,
+                                  Offset delta) {
     std::vector<const RenderNode*> chain;
     const RenderNode* hit = hitTestChain(root, position, chain);
     if (hit == nullptr) {
@@ -1215,17 +1307,28 @@ bool InteractionController::wheel(const RenderNode& root, Offset position,
     if (viewport == nullptr) {
         return false;
     }
+    // 源视口：滚动状态在源控制器内，框架直接驱动（应用无需按 key 接
+    // 线）；已在边界时不冒泡到外层（与应用 sink 行为一致）。
+    if (viewport->virtualSource != nullptr) {
+        ScrollController* scroller =
+            viewport->virtualSource->scrollController();
+        if (scroller != nullptr) {
+            return scrollSourceViewport(*scroller, delta.y);
+        }
+    }
+    if (!wheelSink_) {
+        return false;
+    }
     return wheelSink_(root, viewport, position, delta);
 }
 
 bool InteractionController::scrollKey(const RenderNode& root, Key key) {
-    if (!wheelSink_) {
-        return false;
-    }
     // 键盘滚动的目标：聚焦节点；无焦点时交给 sink（默认视口）。
     const RenderNode* focused = nullptr;
+    std::vector<const RenderNode*> focusChain;
     if (!focus_.focusedIdentity().empty()) {
-        focused = findNodeByIdentity(root, focus_.focusedIdentity());
+        focused = findIdentityChain(root, focus_.focusedIdentity(),
+                                    focusChain);
     }
     float dy = 0.0F;
     switch (key) {
@@ -1245,6 +1348,26 @@ bool InteractionController::scrollKey(const RenderNode& root, Key key) {
             break;
         default:
             return false;
+    }
+    // 聚焦节点的最近源视口祖先由框架直接滚动（集合控件行聚焦时的
+    // Home/End/PageUp 语义与滚轮一致）。
+    if (focused != nullptr) {
+        for (const RenderNode* node : focusChain) {
+            if (node->virtualSource == nullptr) {
+                continue;
+            }
+            ScrollController* scroller = node->virtualSource->scrollController();
+            if (scroller == nullptr) {
+                continue;
+            }
+            if (scrollSourceViewport(*scroller, dy)) {
+                return true;
+            }
+            return false;
+        }
+    }
+    if (!wheelSink_) {
+        return false;
     }
     return wheelSink_(root, focused, Offset{}, Offset{0.0F, dy});
 }

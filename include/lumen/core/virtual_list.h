@@ -45,6 +45,9 @@ class VirtualListController final : public VirtualListSource {
     [[nodiscard]] Widget buildItem(std::size_t index) const override;
     void noteExtent(std::size_t index, float extent) const override;
     void updateViewport(float viewportExtent, float contentPadding) const override;
+    [[nodiscard]] ScrollController* scrollController() const override {
+        return &scroll_;
+    }
 
     // --- 滚动输入（与 ScrollView 相同的统一路径） ---
     [[nodiscard]] ScrollController& scroll() { return scroll_; }

@@ -747,6 +747,44 @@ TEST_CASE("list_row_clicks_do_not_grow_handler_registry", "[collection]") {
     CHECK(app.shell.handlers().size() == handlersBefore);
 }
 
+TEST_CASE("list_wheel_scrolls_source_viewport_without_app_wiring",
+          "[collection]") {
+    // 框架级滚动（collection-design §6.5）：ShellConfig 未设置 onWheel，
+    // 滚轮经 RenderNode.virtualSource 直接驱动源控制器。
+    ListApp app;
+    app.list.setItemCount(100);
+    app.build();
+
+    CHECK(app.shell.wheel(Offset{40.0F, 20.0F}, Offset{0.0F, 120.0F}));
+    CHECK(app.list.scroll().offset() == Catch::Approx(120.0F));
+    app.shell.rebuildIfDirty();
+    const RenderNode* list = findNodeByKey(app.shell.root(), "files");
+    REQUIRE(list != nullptr);
+    CHECK(list->scrollOffset == Catch::Approx(120.0F));
+
+    // 反向滚回顶。
+    CHECK(app.shell.wheel(Offset{40.0F, 20.0F}, Offset{0.0F, -200.0F}));
+    CHECK(app.list.scroll().offset() == Catch::Approx(0.0F));
+}
+
+TEST_CASE("list_drag_scrolls_source_viewport_without_app_wiring",
+          "[collection]") {
+    // 拖动滚动（M10）同样由框架路由到源视口：拖动集合不再误滚外层。
+    ListApp app;
+    app.list.setItemCount(100);
+    app.build();
+
+    // 上拖 = 内容上移（offset 增大；applyDrag 内容跟手语义）。
+    app.shell.pointerDown(Offset{40.0F, 20.0F});
+    app.shell.pointerMove(Offset{40.0F, -20.0F});
+    app.shell.pointerUp(Offset{40.0F, -20.0F});
+    CHECK(app.list.scroll().offset() == Catch::Approx(40.0F));
+    CHECK_FALSE(app.shell.controller().isScrollDragging());
+
+    // 拖动期间不触发行点击（手势抑制）。
+    CHECK(app.list.selection().selectedCount() == 0);
+}
+
 TEST_CASE("treelist_column_mode_skips_model_build_row", "[collection]") {
     TreeListApp app;
     app.build();

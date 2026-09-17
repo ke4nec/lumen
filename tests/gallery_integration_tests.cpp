@@ -627,8 +627,8 @@ TEST_CASE("gallery_buttons_state_matrix_forces_previews", "[gallery]") {
     CHECK(longLabel->size.width <= 200.0F + 0.01F);
 }
 
-// 集合控件滚轮：滚轮落在集合上由该集合消费（命中链最近视口），
-// 偏移同步落到布局节点。
+// 集合控件滚轮回归：框架直接驱动源控制器（不经应用 onWheel 接线），
+// 内层集合消费滚轮且偏移落到布局节点。
 TEST_CASE("gallery_collections_wheel_scrolls_inner_collection", "[gallery]") {
     GalleryApp app;
     app.setView(Size{1024.0F, 768.0F});
