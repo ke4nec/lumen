@@ -581,8 +581,8 @@ TEST_CASE("treelist_header_is_sticky_and_not_scrolled", "[collection]") {
 
     const RenderNode* tree = findNodeByKey(app.shell.root(), "deps");
     REQUIRE(tree != nullptr);
-    // 首子节点 = 表头（粘性）。
-    const RenderNode& header = tree->children.front();
+    // 末子节点 = 表头（粘性 chrome，绘制/命中盖在行区之上）。
+    const RenderNode& header = tree->children.back();
     CHECK(header.key == "deps:header");
     const float headerY = header.offset.y;
 
@@ -590,9 +590,9 @@ TEST_CASE("treelist_header_is_sticky_and_not_scrolled", "[collection]") {
     app.shell.rebuildIfDirty();
     tree = findNodeByKey(app.shell.root(), "deps");
     REQUIRE(tree != nullptr);
-    // 滚动后表头 y 不变（行区滚动）。
-    CHECK(tree->children.front().key == "deps:header");
-    CHECK(tree->children.front().offset.y == Catch::Approx(headerY)
+    // 滚动后表头 y 不变（行区滚动），仍在末尾盖住滚入的行。
+    CHECK(tree->children.back().key == "deps:header");
+    CHECK(tree->children.back().offset.y == Catch::Approx(headerY)
                                               .margin(0.01F));
 }
 

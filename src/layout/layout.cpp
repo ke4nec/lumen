@@ -1228,13 +1228,16 @@ RenderNode layoutTreeList(const Widget& widget,
         source->noteContentWidth(contentMaxWidth);
     }
 
-    // 粘性表头：布局一次、置于顶部、不随滚动平移。
+    // 粘性表头：布局一次、置于顶部、不随滚动平移。不透明 surface 底
+    //（collection-design §8.3/§10.3：treelist.header.background；行滚
+    // 入表头区时被盖住，不与表头文字叠加）。
     RenderNode headerNode{};
     float headerHeight = 0.0F;
     if (widget.collectionShowHeader && source != nullptr) {
         Widget header = source->buildHeader();
         if (header.type != WidgetType::Container || !header.children.empty() ||
             !header.key.empty()) {
+            header.color = styleContext.theme.colors.surface;
             headerNode = layoutSingle(
                 header,
                 Constraints{0.0F, contentMaxWidth, 0.0F,
@@ -1261,10 +1264,8 @@ RenderNode layoutTreeList(const Widget& widget,
         return node;
     }
 
-    // 表头先入 children（非滚动 chrome），行区随其后物化。
-    if (headerHeight > 0.0F) {
-        node.children.push_back(std::move(headerNode));
-    }
+    // 行区先物化，表头后入 children（非滚动 chrome 盖在行区之上：
+    // 绘制/命中都是后子节点在上，滚入表头区的行被不透明表头盖住）。
     materializeVirtualRows(
         node, source, styleContext, identity, padding, contentMaxWidth,
         std::max(0.0F, widget.virtualCacheExtent),
@@ -1272,6 +1273,9 @@ RenderNode layoutTreeList(const Widget& widget,
         /*rangeShift=*/0.0F,
         /*childBaseY=*/padding.top + headerHeight,
         /*contentExtentPad=*/0.0F);
+    if (headerHeight > 0.0F) {
+        node.children.push_back(std::move(headerNode));
+    }
     return node;
 }
 

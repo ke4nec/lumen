@@ -194,6 +194,11 @@ class TreeListController final : public TreeController {
     // shell 接线（同 TreeController；追加表头排序 sink）。
     void attach(app::AppShell& shell, std::string ownerKey);
 
+    // 行构建覆盖基类：chevron 进首列盒（与表头同列口径；基类放行首只
+    // 适用于单列 Tree）。
+    [[nodiscard]] core::Widget buildItem(
+        std::size_t index) const override;
+
     [[nodiscard]] const std::vector<TreeListColumn>& columns() const {
         return columns_;
     }

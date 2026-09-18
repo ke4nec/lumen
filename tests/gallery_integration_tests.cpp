@@ -483,7 +483,8 @@ TEST_CASE("gallery_collections_showcase_interacts", "[gallery]") {
     clickScrolled(app, "collection-table:head:name");
     CHECK(app.lastSortDescending());
 
-    // 三个集合均只物化可见窗口（O(visible)）；TreeList 首子节点为粘性表头。
+    // 三个集合均只物化可见窗口（O(visible)）；TreeList 末子节点为粘性
+    // 表头（绘制/命中盖在行区之上）。
     const RenderNode* list = findNodeByKey(app.root(), "collection-list");
     const RenderNode* tree = findNodeByKey(app.root(), "collection-tree");
     const RenderNode* table = findNodeByKey(app.root(), "collection-table");
@@ -493,7 +494,7 @@ TEST_CASE("gallery_collections_showcase_interacts", "[gallery]") {
     CHECK(list->children.size() < 200);
     CHECK(!tree->children.empty());
     CHECK(!table->children.empty());
-    CHECK(table->children.front().key == "collection-table:header");
+    CHECK(table->children.back().key == "collection-table:header");
     CHECK(table->children.size() <= 10);  // 表头 + 9 行数据（全部物化）。
 }
 

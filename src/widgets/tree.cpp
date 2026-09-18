@@ -16,6 +16,27 @@ constexpr float kIndentStep = 20.0F;   // 每层缩进
 constexpr float kChevronExtent = 24.0F;  // chevron 命中区
 constexpr float kColumnGap = 0.0F;
 constexpr float kMinExtent = 1.0F;
+
+// 行首 chevron/占位（collection-design §7.4）：分支行 = 独立 Ghost
+// Button（点击只 toggle，不改选择）；叶子行 = 等宽透明占位（列对齐）。
+// Tree 与 TreeList 共用（后者把它放进首列盒内，列宽口径一致）。
+core::Widget makeLeadWidget(const std::string& owner,
+                            const TreeController::VisibleRow& row) {
+    if (row.hasChildren) {
+        core::Widget chevron = core::makeButton("");
+        chevron.icon = row.expanded ? core::IconId::ChevronDown
+                                    : core::IconId::ChevronRight;
+        chevron.buttonVariant = core::ButtonVariant::Ghost;
+        chevron.onClick = "tree:" + owner + ":toggle:" + row.key;
+        chevron.key = owner + ":chev:" + row.key;
+        chevron.width = kChevronExtent;
+        chevron.height = kChevronExtent;
+        chevron.semanticsLabel = row.expanded ? "折叠" : "展开";
+        chevron.semanticsValue = row.expanded ? "true" : "false";
+        return chevron;
+    }
+    return core::makeContainerLeaf(kChevronExtent, 0.0F);
+}
 }  // namespace
 
 // --- TreeController ---
@@ -364,23 +385,7 @@ core::Widget TreeController::buildItem(std::size_t index) const {
     const VisibleRow& row = rows_[index];
 
     std::vector<core::Widget> cells;
-    if (row.hasChildren) {
-        core::Widget chevron = core::makeButton("");
-        chevron.icon = row.expanded ? core::IconId::ChevronDown
-                                    : core::IconId::ChevronRight;
-        chevron.buttonVariant = core::ButtonVariant::Ghost;
-        chevron.onClick = "tree:" + owner_ + ":toggle:" + row.key;
-        chevron.key = owner_ + ":chev:" + row.key;
-        chevron.width = kChevronExtent;
-        chevron.height = kChevronExtent;
-        chevron.semanticsLabel = row.expanded ? "折叠" : "展开";
-        chevron.semanticsValue = row.expanded ? "true" : "false";
-        cells.push_back(std::move(chevron));
-    } else {
-        core::Widget spacer = core::makeContainerLeaf(kChevronExtent, 0.0F);
-        cells.push_back(std::move(spacer));
-    }
-
+    cells.push_back(makeLeadWidget(owner_, row));
     cells.push_back(buildRowContent(row));
 
     core::Widget widget;
@@ -524,11 +529,55 @@ void TreeListController::recomputeWidths() const {
 }
 
 void TreeListController::noteContentWidth(float width) const {
-    if (width == contentWidth_) {
+    // 列宽预算扣掉行壳/表头两侧对称内边距（detail::kRowPaddingX）：列盒
+    // 与表头同起（左 pad 后），同止（右 pad 前）——右侧不再被视口裁剪，
+    // overlay 滚动条也落在右 pad 空区。chevron 在首列盒内，不另占宽。
+    const float budget =
+        std::max(0.0F, width - 2.0F * detail::kRowPaddingX);
+    if (budget == contentWidth_) {
         return;
     }
-    contentWidth_ = width;
+    contentWidth_ = budget;
     recomputeWidths();
+}
+
+core::Widget TreeListController::buildItem(std::size_t index) const {
+    rebuildRows();
+    // rows_/model_ 在基类是 private：经可见行序列访问（model 为空时
+    // 序列为空，与基类的 model_ 判空等价）。
+    const std::vector<VisibleRow>& rows = visibleRows();
+    if (index >= rows.size()) {
+        return core::Widget{};
+    }
+    const VisibleRow& row = rows[index];
+    core::Widget rowCells = buildRowContent(row);
+    // chevron 进首列盒（与表头同列口径：表头/行列对齐，右侧无裁剪）。
+    if (!rowCells.children.empty()) {
+        core::Widget box = std::move(rowCells.children.front());
+        core::Widget inner;
+        inner.type = core::WidgetType::Row;
+        inner.crossAxis = core::CrossAxisAlignment::Center;
+        core::Widget cell = box.children.empty()
+                                ? core::Widget{}
+                                : std::move(box.children.front());
+        inner.children.push_back(makeLeadWidget(owner_, row));
+        inner.children.push_back(std::move(cell));
+        box.children.clear();
+        box.children.push_back(std::move(inner));
+        rowCells.children.front() = std::move(box);
+    }
+
+    core::Widget widget;
+    detail::applyCollectionRowShell(widget, owner_, row.key,
+                                    selection_.isSelected(row.key),
+                                    "tree:" + owner_ + ":" + row.key,
+                                    core::CrossAxisAlignment::Center,
+                                    "treeItem");
+    if (row.hasChildren) {
+        widget.semanticsValue = row.expanded ? "true" : "false";
+    }
+    widget.children.push_back(std::move(rowCells));
+    return widget;
 }
 
 core::Widget TreeListController::buildRowContent(
