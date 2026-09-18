@@ -98,6 +98,10 @@ PlatformCapabilities FakeApplicationHost::capabilities() const {
     return capabilities_;
 }
 
+void FakeApplicationHost::noteAccessibilityBridgeActive(bool active) {
+    capabilities_.accessibility = active;
+}
+
 void FakeApplicationHost::pushPointerDown(
     core::WindowId id, core::Offset position, core::PointerDevice device,
     std::uint32_t pointerId) {

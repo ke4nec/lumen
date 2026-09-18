@@ -1029,6 +1029,37 @@ void Sdl3ApplicationHost::setWindowDragRegion(
     }
 }
 
+void* Sdl3ApplicationHost::nativeWindowHandle(core::WindowId id) const {
+    // 经 nativeSurface 取 SDL_Window*（void*），再按平台取原生句柄；
+    // SDK 类型只在实现内出现（AGENTS.md）。
+    PlatformWindow* window = platformWindow(id);
+    if (window == nullptr) {
+        return nullptr;
+    }
+    SDL_Window* sdlWindow =
+        static_cast<SDL_Window*>(window->nativeSurface().nativeWindow);
+    if (sdlWindow == nullptr) {
+        return nullptr;
+    }
+    SDL_PropertiesID props = SDL_GetWindowProperties(sdlWindow);
+#if defined(_WIN32)
+    return SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+#elif defined(__APPLE__)
+    // NSWindow*（M13 语义桥用；contentView 由 provider 侧 ObjC++ 取）。
+    return SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
+#else
+    // AT-SPI 走会话总线（org.a11y.Bus），无窗口句柄需求。
+    (void)props;
+    return nullptr;
+#endif
+}
+
+void Sdl3ApplicationHost::noteAccessibilityBridgeActive(bool active) {
+    capabilities_.accessibility = active;
+}
+
 void Sdl3ApplicationHost::refreshLifecycle() {
     if (!initialized_) {
         lifecycle_ = core::AppLifecycle::Launching;

@@ -117,6 +117,45 @@ jobs:
           retention-days: 3
           overwrite: true
 
+  # M13（自用路线图）：原生无障碍桥（Windows UIA provider）。选项默认
+  # 关闭；本 job 验证编入路径——headless COM 直驱断言 + 真实窗口端到端
+  # 冒烟（LUMEN_UIA_LIVE_SMOKE：UIA 客户端 API 走完整 WM_GETOBJECT 链
+  # 路；runner 有桌面会话）。屏幕阅读器人工回环另行验收。
+  a11y-bridge:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/zlib)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: windows-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            windows-fetchcontent-
+      - name: Configure (accessibility bridge ON)
+        run: >
+          cmake -S . -B build-a11y
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=OFF
+          -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
+      - name: Build (Debug)
+        run: cmake --build build-a11y --config Debug
+      - name: Test (Debug, incl. live UIA window smoke)
+        run: ctest --test-dir build-a11y --output-on-failure -C Debug --timeout 120
+        env:
+          LUMEN_UIA_LIVE_SMOKE: '1'
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-a11y-test-logs
+          path: |
+            build-a11y/Testing/Temporary/LastTest.log
+            build-a11y/Testing/Temporary/LastTestsFailed.log
+          retention-days: 3
+          overwrite: true
+
   skia-raster:
     runs-on: windows-2025
     timeout-minutes: 30

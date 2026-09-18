@@ -101,6 +101,9 @@ class FakeApplicationHost final : public ApplicationHost {
         core::WindowId id) override;
     [[nodiscard]] PlatformCapabilities capabilities() const override;
 
+    // M13：原生语义桥激活状态如实入能力（headless 断言用）。
+    void noteAccessibilityBridgeActive(bool active) override;
+
     // --- M4：平台服务（确定性记录 + 失败注入） ---
     [[nodiscard]] ServiceResult openUrl(const std::string& url) override;
     [[nodiscard]] ServiceResult requestFileDialog(

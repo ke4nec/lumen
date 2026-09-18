@@ -13,15 +13,17 @@ option(LUMEN_BUILD_PACKAGE "Enable install and CPack packaging rules" OFF)
 option(LUMEN_ENABLE_SKIA "Enable Skia renderer backend" OFF)
 # v0.2 阶段7C: Skia Ganesh GPU 后端，默认关闭；需要 LUMEN_ENABLE_SKIA。
 option(LUMEN_ENABLE_GPU "Enable the Skia Ganesh GPU backend" OFF)
-# v0.3 阶段8C: 平台无障碍桥接（Windows UIA / Linux AT-SPI / macOS
-# NSAccessibility），默认关闭；语义树与 Recording 桥始终可用。
+# v0.3 阶段8C 预留，M13 落地：平台无障碍 provider（Windows UIA /
+# Linux AT-SPI / macOS NSAccessibility），默认关闭；语义树与 Recording
+# 桥始终可用。编入的平台实现在 src/accessibility/CMakeLists.txt 分发。
 option(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE
-       "Enable platform accessibility bridge providers (reserved)" OFF)
+       "Enable platform accessibility bridge providers" OFF)
 if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE)
-  message(WARNING
-          "LUMEN_ENABLE_ACCESSIBILITY_BRIDGE is reserved; no platform "
-          "provider is included yet. RecordingAccessibilityBridge remains "
-          "available for headless validation.")
+  if(NOT WIN32 AND NOT APPLE AND NOT UNIX)
+    message(WARNING
+            "LUMEN_ENABLE_ACCESSIBILITY_BRIDGE has no provider on this "
+            "platform; the factory degrades to nullptr with diagnostics.")
+  endif()
 endif()
 # v0.3 阶段8E: 移动核心。交叉编译（Android NDK / iOS Xcode）时打开：跳过
 # SDL 桌面依赖与示例，构建 core/layout/render(CPU)/text/accessibility/

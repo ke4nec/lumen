@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -94,10 +95,39 @@ class RecordingAccessibilityBridge final : public AccessibilityBridge {
     }
 };
 
-// 平台桥接工厂（预留接口；当前仓库未包含桌面 provider，因此返回 nullptr
-// 并把原因写入 *diagnostics）。RecordingAccessibilityBridge 用于验证协议。
+// M13：AT（屏幕阅读器）请求执行语义 action 时回灌应用——与键盘/指针
+// 同走 AppShell::performAccessibilityAction 路径（plan §3.3）。provider
+// 在 UI 线程同步调用；重入（dispatch 内触发重建/推送）由应用壳的
+// 既有单线程顺序保证。
+using SemanticsActionDispatch = std::function<SemanticsActionStatus(
+    const std::string& nodeId, std::uint32_t action,
+    const std::string& value, float scrollDeltaY)>;
+
+// provider 装配输入：全部为平台无关值。nativeWindow 为原生窗口句柄
+//（Windows = HWND、macOS = NSWindow*，由宿主层填入；AT-SPI 走会话
+// 总线无窗口句柄需求；headless 测试为 nullptr）。SDK 类型不进公共头。
+struct PlatformAccessibilityHost {
+    // 语义 action 回灌目标（runApp 接 shell.performAccessibilityAction）。
+    SemanticsActionDispatch dispatch{};
+    void* nativeWindow{nullptr};
+    // 逻辑坐标 → 物理像素倍率快照（语义 bounds 为窗口逻辑坐标）；
+    // 有原生窗口时 provider 以活度量（窗口 DPI）优先。
+    float deviceScale{1.0F};
+    // 应用名（UIA root 名称 / AT-SPI RegisterApplication 名）。
+    std::string applicationName{};
+};
+
+// 平台 provider 工厂：LUMEN_ENABLE_ACCESSIBILITY_BRIDGE 开启且平台实现
+// 编入时返回原生桥（Windows UIA / Linux AT-SPI / macOS NSAccessibility）；
+// 否则返回 nullptr 并把原因写入 *diagnostics（能力如实降级，plan §2.3）。
 [[nodiscard]] std::unique_ptr<AccessibilityBridge>
-createPlatformAccessibilityBridge(std::string* diagnostics = nullptr);
+createPlatformAccessibilityBridge(const PlatformAccessibilityHost& host,
+                                  std::string* diagnostics = nullptr);
+
+// 编入的 provider 名称（"uia"/"atspi"/"nsaccessibility"；"" = 无）。
+// 只反映编译事实，不代表运行时可用（另查 bridge->available()）；测试
+// 以此分流断言。
+[[nodiscard]] const char* accessibilityProviderName();
 
 // 阶段标识。
 [[nodiscard]] const char* accessibilityStageName();

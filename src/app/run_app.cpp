@@ -105,6 +105,39 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
     };
     applyMetrics();
 
+    // --- M13：原生无障碍桥（LUMEN_ENABLE_ACCESSIBILITY_BRIDGE 编入时） ---
+    // AT 的语义 action 经 dispatch 回灌 AppShell::performAccessibilityAction
+    //（与键盘/指针同路径）；桥为局部变量——函数返回时先于宿主窗口销毁
+    // 析构（断开 WM_GETOBJECT 应答与 UIA provider）。
+    std::unique_ptr<accessibility::AccessibilityBridge> nativeA11y;
+    if (options.nativeAccessibility) {
+        accessibility::PlatformAccessibilityHost a11yHost;
+        a11yHost.nativeWindow = host.nativeWindowHandle(*windowId);
+        a11yHost.deviceScale =
+            host.windowMetrics(*windowId).value_or(WindowMetrics{}).deviceScale;
+        a11yHost.applicationName = options.windowDesc.title;
+        a11yHost.dispatch = [&shell](const std::string& nodeId,
+                                     std::uint32_t action,
+                                     const std::string& value,
+                                     float scrollDeltaY) {
+            return shell.performAccessibilityAction(nodeId, action, value,
+                                                    scrollDeltaY);
+        };
+        std::string a11yDiagnostics;
+        nativeA11y = accessibility::createPlatformAccessibilityBridge(
+            a11yHost, &a11yDiagnostics);
+        if (nativeA11y != nullptr) {
+            shell.setAccessibilityBridge(nativeA11y.get());
+            host.noteAccessibilityBridgeActive(true);
+            if (options.diagnostics) {
+                std::printf("[diag] a11y=%s\n",
+                            nativeA11y->bridgeName().c_str());
+            }
+        } else if (options.diagnostics && !a11yDiagnostics.empty()) {
+            std::printf("[diag] a11y=off (%s)\n", a11yDiagnostics.c_str());
+        }
+    }
+
     render::RealtimeClock clock;
     render::FrameScheduler::Config schedulerConfig;
     schedulerConfig.targetFps = 60;

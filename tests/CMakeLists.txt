@@ -43,6 +43,8 @@ set(LUMEN_TEST_SOURCES
     system_font_tests.cpp
     font_metrics_tests.cpp
     semantics_tests.cpp
+    # M13：原生无障碍 provider（工厂分流/能力上报/Windows UIA COM 直驱）。
+    a11y_provider_tests.cpp
     settings_integration_tests.cpp
     gallery_integration_tests.cpp
     mobile_host_tests.cpp
@@ -73,6 +75,14 @@ endif()
 
 if(LUMEN_ENABLE_GPU)
     target_compile_definitions(lumen-tests PRIVATE LUMEN_HAS_GPU_BACKEND=1)
+endif()
+
+if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND WIN32)
+    # 与 lumen-accessibility 同名编译定义：测试直驱 UIA provider COM 对象。
+    target_compile_definitions(lumen-tests PRIVATE
+        LUMEN_ACCESSIBILITY_PROVIDER_UIA=1)
+    target_include_directories(lumen-tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/accessibility)
 endif()
 
 target_include_directories(lumen-tests PRIVATE

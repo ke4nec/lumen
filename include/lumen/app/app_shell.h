@@ -481,6 +481,10 @@ struct RunOptions {
     // M4：宿主服务事件转发（FileDialogCompleted 等应用壳不消费的
     // 事件类型）；事件泵内同步调用，UI 线程独占。
     std::function<void(AppShell&, const core::HostEvent&)> onEvent{};
+    // M13：尝试装配原生无障碍桥（LUMEN_ENABLE_ACCESSIBILITY_BRIDGE 编入
+    // 时生效；未编入平台实现安全降级为 nullptr + 诊断）。语义 action 与
+    // 键盘/指针同路径回灌 performAccessibilityAction。
+    bool nativeAccessibility{true};
 };
 
 // 阻塞运行应用直到关闭请求/maxFrames；返回进程退出码。

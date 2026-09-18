@@ -329,11 +329,15 @@ TEST_CASE("recording_bridge_protocol_and_platform_factory_fallback",
     CHECK(bridge.updates[1].diff.changed.size() == 1);
     CHECK(bridge.focusedNodes.size() == 1);
 
-    // 平台桥未编入时工厂安全降级（能力可查询，plan §2.3）。
+    // 平台桥未编入时工厂安全降级（能力可查询，plan §2.3）；编入时由
+    // tests/a11y_provider_tests.cpp 按平台分流断言。
     std::string diagnostics;
-    auto platform = createPlatformAccessibilityBridge(&diagnostics);
-    CHECK(platform == nullptr);
-    CHECK_FALSE(diagnostics.empty());
+    if (std::string(accessibilityProviderName()).empty()) {
+        auto platform = createPlatformAccessibilityBridge(
+            accessibility::PlatformAccessibilityHost{}, &diagnostics);
+        CHECK(platform == nullptr);
+        CHECK_FALSE(diagnostics.empty());
+    }
 }
 
 TEST_CASE("frame_scheduler_honors_reduce_animation_setting", "[a11y][sched]") {

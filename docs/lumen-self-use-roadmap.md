@@ -72,7 +72,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 增强链 M10 | 已完成动效与滚动体验 | 动画帧调度/整节点透明度转场/状态色过渡/惯性滚动（见 §10 M10 完成记录） |
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
 | 增强链 M12 | 已完成平台服务与发布补全 | 系统主题查询/事件、三平台原生通知与强调色、AppImage/.app/包变体（见 §10 M12 完成记录） |
-| 增强链 M13 | 已规划未开始 | 原生无障碍 provider（UIA/AT-SPI/NSAccessibility，见 §4） |
+| 增强链 M13 | 进行中（P1 Windows UIA 已实施） | 契约扩展/runApp 装配/UIA fragment 树与端到端冒烟；AT-SPI 与 NSAccessibility 待做（见 §10 M13 进行中记录） |
 | 按需控件增强 · 集合控件 | 已完成 List/Tree/TreeList 与共享选择模型 | 四选择模式/树扁平化/源视口滚动框架接管（见 §10 集合控件完成记录） |
 | 按需控件增强 · 菜单与分栏 | 已完成 ContextMenu/MenuBar 与 Splitter | Secondary 通道/M11 overlay 菜单面板/分隔条框架接管（见 §10 对应完成记录） |
 | 按需控件增强 · 自定义标题栏 | 已完成无边框窗口 chrome | customTitleBar/拖拽区谓词/窗口操作宿主服务（见 §10 标题栏完成记录） |
@@ -94,7 +94,7 @@ M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/3
 | 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 横向网格/跨行列合并留按需评估（§4） | M3 已收口 |
 | 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | M10 已收口触摸拖动接线与惯性滚动；水平/嵌套滚动留按需评估 | M3+M10 已收口 |
 | 平台服务 | M4+M12 已完成：文件选择/OpenURL/光标/图标（SDL）+ 通知与强调色（M12 原生 seam：Win32/DBus/AppKit）+ 系统主题查询（SDL_GetSystemTheme）与 SystemThemeChanged 事件 + adaptPlatformTheme 保留派生 | Linux/macOS 原生代码以 CI 首跑为事实来源 | M4+M12 已收口 |
-| 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| UIA/AT-SPI/NSAccessibility 原生 provider 属 M13（Recording bridge 作跨平台回归证据） | M5 已收口，provider M13 |
+| 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| M13 P1 Windows UIA provider 已实施（契约扩展 `PlatformAccessibilityHost`/runApp 装配/UIA fragment 树/端到端冒烟）；AT-SPI 与 NSAccessibility 待做（Recording bridge 作跨平台回归证据） | M5 已收口；M13 进行中 |
 | 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur/CPU 扁平面降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | M10 已收口转场动画驱动（整节点透明度/Dialog/Navigator 过渡/状态色过渡 opt-in）；v0.4 视觉方向属 M11 | M6+M10 已收口 |
 | GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道（快照去子化，reconcile O(n·depth)→O(n)） | 三桌面 GPU CI 首跑为事实来源（macOS job 为本变更新增） | M7 已收口 |
 | 发布 | M8+M12 已完成：install/CPack/RPATH/package job + Linux 桌面集成（desktop/icon）与 linuxdeploy AppImage + macOS Lumen.app 骨架 + package-skia（三平台）与 package-skia-gpu（Linux llvmpipe）变体 | Windows/macOS GPU 包与 CPack Bundle 生成器留后续；新形态以 CI 首跑为事实来源 | M8+M12 已收口 |
@@ -427,6 +427,8 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 **出口条件**：服务失败仍结构化降级且 UI 线程不阻塞；三平台新形态在 CI 解包/启动冒烟通过；能力报告如实反映。
 
 ### M13：原生无障碍 provider
+
+**状态**：进行中——P1 Windows UIA 已实施（本地真验 + CI 变体 job）；P2 AT-SPI、P3 NSAccessibility 待做（映射规格见 `docs/lumen-accessibility-provider-design.md` §6/§7）。出口条件以三平台全部收口为准。
 
 **目标**：把语义契约接到三平台原生屏幕阅读器（UIA/AT-SPI/NSAccessibility）。
 
@@ -1425,6 +1427,56 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   headless 帧文本仍为占位字体（确定性帧哈希）；窗口 CPU 路径经
   SystemFontManager 绘制真实字形（Windows 优先 GDI 雅黑，其他平台或 GDI
   回退经 stb_truetype，无 Skia 依赖）。
+
+### M13 进行中记录（P1：Windows UIA provider，2026-09-18）
+
+- 完成日期：2026-09-18（P1 范围；AT-SPI/NSAccessibility 属 P2/P3 后续提交）
+- 提交号：（本变更提交，见 Git 历史 `feat(a11y)`）
+- 变更：
+  - 公共契约（`include/lumen/accessibility/bridge.h`）：`PlatformAccessibilityHost`
+    （dispatch 回灌 + `void*` 原生窗口句柄 + deviceScale/applicationName；
+    SDK 类型不进公共头）+ 工厂改签名 `createPlatformAccessibilityBridge(host,
+    diagnostics)` + `accessibilityProviderName()` 编译事实查询。
+  - 平台接缝：`ApplicationHost::nativeWindowHandle`（SDL 宿主 Windows =
+    HWND、macOS = NSWindow*、Linux = nullptr；经 SDL_GetPointerProperty）与
+    `noteAccessibilityBridgeActive`（SDL/Fake host 如实置位 capabilities）。
+  - runApp 装配（`src/app/run_app.cpp`）：`RunOptions.nativeAccessibility`
+    （默认 true）时创建原生桥、dispatch 捕获
+    `shell.performAccessibilityAction`（与键盘/指针同路径）、能力置位与
+    `[diag] a11y=` 诊断；桥为局部变量先于窗口销毁析构。
+  - Windows UIA provider（`src/accessibility/uia_provider.*`，选项
+    `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` + Win32 条件编入）：
+    `SetWindowSubclass` 应答 WM_GETOBJECT（SDL 消息泵钩子拦不到 SendMessage
+    直达的请求）；`UiaRootProvider`（fragment root = 语义根，命中测试/
+    GetFocus/宿主元素）+ `UiaNodeProvider`（每节点缓存，Simple/Fragment +
+    Invoke/Toggle/Value/RangeValue 同对象按快照门控）；role→ControlType、
+    flags→属性（focused 双源 flag+focusedId）、actions→pattern、changed
+    字段级属性事件 + 结构整体失效事件 + 焦点事件（UiaEventSink 出口可注
+    入）；RuntimeId = identity FNV-1a 双字（跨重建稳定）；桥析构
+    UiaDisconnectProvider 断开残留 AT 引用。
+  - 设计文档 `docs/lumen-accessibility-provider-design.md`（含 AT-SPI §6/
+    NSAccessibility §7 的 P2/P3 实施映射规格）。
+- 测试：新增 `tests/a11y_provider_tests.cpp`——工厂按编译事实分流（未编入
+  安全降级）、Fake host 能力翻转、fragment 导航/属性映射/pattern 回灌
+  （含 Toggle 翻转/RangeValue 0..100/SetValue 字符串契约）/事件序列/
+  RuntimeId 稳定/dispatch 重入（id 拷贝 + 残留引用安全）/根命中测试；
+  真实窗口端到端冒烟（`LUMEN_UIA_LIVE_SMOKE=1` 启用）：Win32 窗口 + UIA
+  客户端 API `CUIAutomation::ElementFromHandle` → FindFirst("OK") →
+  Invoke → dispatch 回执（完整 WM_GETOBJECT 链路，本地 Windows 全过 16
+  断言）。本地 Windows：选项 ON Debug `591/591`、默认 OFF Debug
+  `582/582`（未启用行为与现状一致——出口条件之一）。
+- 平台：本地 Windows 全部真验（headless + 真实窗口端到端）；windows.yml
+  新增 `a11y-bridge` job（选项 ON + live smoke，CI 首跑为事实来源）。
+- 已知限制（与出口条件的差异）：
+  - **AT-SPI（P2）与 NSAccessibility（P3）未实施**：两平台工厂保持
+    nullptr + 诊断降级、能力位 false；M13 出口（每平台一款屏幕阅读器回环）
+    未达成，里程碑保持进行中。
+  - 讲述人/NVDA 人工回环待办（端到端冒烟已覆盖 UIA core 链路，但非真实
+    AT 验收）。
+  - Text/Scroll/Selection pattern 不做（设计文档 §3 非目标）；结构事件为
+    整体失效（细粒度留优化）。
+- 回滚点：`286746d fix(platform): SDL 滚轮方向换算对齐平台原生手感`
+  （P1 前）。
 
 ### 范围调整记录（2026-09-14）
 

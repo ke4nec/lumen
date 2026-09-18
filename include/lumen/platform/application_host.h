@@ -253,6 +253,20 @@ class ApplicationHost {
     // hit-test 先判 resize 边、再咨询谓词；空谓词/未注册 = 无拖拽区。
     virtual void setWindowDragRegion(
         core::WindowId id, std::function<bool(core::Offset)> predicate);
+
+    // --- M13：原生无障碍桥装配 ---
+    // 原生窗口句柄（PlatformAccessibilityHost.nativeWindow 语义；契约
+    // host/无原生层返回 nullptr）。SDL 宿主：Windows = HWND、macOS =
+    // NSWindow*、Linux = nullptr（AT-SPI 走会话总线）。
+    [[nodiscard]] virtual void* nativeWindowHandle(core::WindowId id) const {
+        (void)id;
+        return nullptr;
+    }
+    // 原生语义桥激活状态（PlatformCapabilities.accessibility 如实上报；
+    // 默认 no-op）。
+    virtual void noteAccessibilityBridgeActive(bool active) {
+        (void)active;
+    }
 };
 
 // 阶段标识（阶段8A 契约冻结）。

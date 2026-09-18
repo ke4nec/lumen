@@ -62,6 +62,10 @@ class Sdl3ApplicationHost final : public ApplicationHost {
         core::WindowId id,
         std::function<bool(core::Offset)> predicate) override;
 
+    // --- M13：原生无障碍桥装配 ---
+    [[nodiscard]] void* nativeWindowHandle(core::WindowId id) const override;
+    void noteAccessibilityBridgeActive(bool active) override;
+
   private:
     class Sdl3Clipboard;
     class Sdl3TextInputSession;
