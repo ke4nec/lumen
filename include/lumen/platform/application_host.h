@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,6 +35,11 @@ struct WindowDesc {
     // 回退路径依赖渲染器重建（M2：counter_software_present_failure
     // 奇偶性依赖 SDL_UpdateWindowSurface 路径）。
     bool softwarePresentation{false};
+    // 自定义标题栏（lumen-titlebar-design §4）：无边框窗口（系统标题
+    // 栏/边框移除），应用自绘 caption 与窗口控制。runApp 据此向宿主注册
+    // 拖拽区谓词；宿主 hit-test 另提供 resize 边（拖动/双击最大化/snap
+    // 等行为由平台原生路径提供）。
+    bool customTitleBar{false};
 };
 
 // 剪贴板服务（实现 core::ClipboardProvider，交互层直接消费）。不可用
@@ -233,6 +239,20 @@ class ApplicationHost {
     // 窗口图标（straight RGBA8）。
     [[nodiscard]] virtual ServiceResult setWindowIcon(
         core::WindowId id, const WindowIcon& icon);
+
+    // --- 自定义标题栏（lumen-titlebar-design §4.3）：窗口操作与拖拽区 ---
+    // 默认实现安全 no-op（契约 host/未支持平台结构化降级）；无效窗口 id
+    // 时单窗口宿主可挂靠首个窗口（requestFileDialog 先例）。
+    virtual void minimizeWindow(core::WindowId id);
+    // 最大化/还原切换；结果经 WindowMaximized/WindowRestored 事件交付。
+    virtual void toggleMaximizeWindow(core::WindowId id);
+    // 请求关闭：与系统 X 同路径——宿主合成 WindowCloseRequested 事件经
+    // pollEvent 交付（runApp → shell.requestClose，应用可消费）。
+    virtual void requestWindowClose(core::WindowId id);
+    // 窗口拖拽区谓词（窗口逻辑坐标；true = 该点可拖动移窗）。宿主
+    // hit-test 先判 resize 边、再咨询谓词；空谓词/未注册 = 无拖拽区。
+    virtual void setWindowDragRegion(
+        core::WindowId id, std::function<bool(core::Offset)> predicate);
 };
 
 // 阶段标识（阶段8A 契约冻结）。

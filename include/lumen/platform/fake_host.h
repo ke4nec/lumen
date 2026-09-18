@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -110,6 +111,15 @@ class FakeApplicationHost final : public ApplicationHost {
     [[nodiscard]] ServiceResult setWindowIcon(
         core::WindowId id, const WindowIcon& icon) override;
 
+    // --- 自定义标题栏（lumen-titlebar-design §4.3）：窗口操作（记录 +
+    // 状态驱动语义合一：更新 metrics 并入队对应事件） ---
+    void minimizeWindow(core::WindowId id) override;
+    void toggleMaximizeWindow(core::WindowId id) override;
+    void requestWindowClose(core::WindowId id) override;
+    void setWindowDragRegion(
+        core::WindowId id,
+        std::function<bool(core::Offset)> predicate) override;
+
     // --- 可注入事件源（归一化事件直接入队） ---
     void pushPointerDown(core::WindowId id, core::Offset position,
                          core::PointerDevice device = core::PointerDevice::Mouse,
@@ -144,7 +154,7 @@ class FakeApplicationHost final : public ApplicationHost {
     // DPI 变化：drawableSize = logicalSize * scale 先行更新。
     void changeDeviceScale(core::WindowId id, float scale);
     void setSafeArea(core::WindowId id, core::EdgeInsets safeArea);
-    void minimizeWindow(core::WindowId id);
+    // minimizeWindow 已升级为窗口操作 override（原状态驱动语义保留）。
     void restoreWindow(core::WindowId id);
     void setWindowFocus(core::WindowId id, bool focused);
     // 移动端 surface 语义：detach 期间暂停提交，不销毁状态树。
@@ -196,6 +206,10 @@ class FakeApplicationHost final : public ApplicationHost {
         bool operator==(const IconCall&) const = default;
     };
     std::vector<IconCall> iconCalls{};
+    // 自定义标题栏：窗口操作记录（minimize/maximize-toggle/close）与
+    // 各窗口拖拽区谓词（测试直接调用谓词断言注册结果）。
+    std::vector<std::string> windowCommandCalls{};
+    std::map<core::WindowId, std::function<bool(core::Offset)>> dragRegions{};
 
   private:
     struct WindowEntry {

@@ -83,6 +83,14 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
         shell.controller().setClipboard(clipboard);
     }
 
+    // 自定义标题栏（lumen-titlebar-design §4.1）：注册拖拽区谓词——命中
+    // 判定在 AppShell（事件树/交互排除），宿主 hit-test 另判 resize 边。
+    if (options.windowDesc.customTitleBar) {
+        host.setWindowDragRegion(*windowId, [&shell](core::Offset position) {
+            return shell.isWindowDragPoint(position);
+        });
+    }
+
     // 指标同步：视口/DPI 跟随宿主（后续 Resize/DpiChanged 事件刷新）。
     const auto applyMetrics = [&]() {
         const auto metrics = host.windowMetrics(*windowId);
@@ -209,6 +217,20 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                 case HostEventType::WindowRestored:
                     scheduler.setWindowVisible(true);
                     scheduler.requestFrame(render::FrameReason::Resize,
+                                           event.window);
+                    // 自定义标题栏：还原事件转发应用（最大化态复位为
+                    // false；最小化恢复同路径）。
+                    if (options.onEvent) {
+                        options.onEvent(shell, event);
+                    }
+                    break;
+                case HostEventType::WindowMaximized:
+                    // 自定义标题栏：最大化完成（按钮图标/布局自适应经
+                    // onEvent 消费；无钩子则仅请求重绘）。
+                    if (options.onEvent) {
+                        options.onEvent(shell, event);
+                    }
+                    scheduler.requestFrame(render::FrameReason::Input,
                                            event.window);
                     break;
                 case HostEventType::PointerDown:

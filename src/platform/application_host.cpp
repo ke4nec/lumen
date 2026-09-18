@@ -31,4 +31,15 @@ ServiceResult ApplicationHost::setWindowIcon(core::WindowId,
         "window icon not supported by this host");
 }
 
+// --- 自定义标题栏（lumen-titlebar-design §4.3）：默认安全 no-op ---
+
+void ApplicationHost::minimizeWindow(core::WindowId) {}
+
+void ApplicationHost::toggleMaximizeWindow(core::WindowId) {}
+
+void ApplicationHost::requestWindowClose(core::WindowId) {}
+
+void ApplicationHost::setWindowDragRegion(core::WindowId,
+                                          std::function<bool(core::Offset)>) {}
+
 }  // namespace lumen::platform

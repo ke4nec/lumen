@@ -22,6 +22,21 @@
 namespace lumen::app {
 namespace {
 
+// 自定义标题栏（lumen-titlebar-design §4.1）：无 onClick 也消费指针的
+// 输入控件（点击聚焦/切换/拖动/展开）——命中即排除窗口拖拽。
+bool consumesPointerInput(const core::RenderNode& node) {
+    switch (node.type) {
+        case core::WidgetType::TextField:
+        case core::WidgetType::Checkbox:
+        case core::WidgetType::Switch:
+        case core::WidgetType::Slider:
+        case core::WidgetType::Dropdown:
+            return true;
+        default:
+            return node.splitterSource != nullptr;
+    }
+}
+
 // 深度优先按 identity 查找（origin 累计根相对偏移）。
 const core::RenderNode* findByIdentity(const core::RenderNode& node,
                                        const std::string& identity,
@@ -369,6 +384,35 @@ bool AppShell::wheel(core::Offset position, core::Offset delta) {
         return overlayWheel_(*overlayRoot_, nullptr, position, delta);
     }
     return handled;
+}
+
+bool AppShell::isWindowDragPoint(core::Offset position) {
+    rebuildIfDirty();
+    // 事件树口径与 pointerDown 一致：overlay（菜单面板等模态层）活跃期
+    // 命中即不可拖；未命中 overlay 才回落主树。
+    std::vector<const core::RenderNode*> chain;
+    const core::RenderNode* target = nullptr;
+    if (overlayRoot_.has_value()) {
+        target = core::hitTestChain(*overlayRoot_, position, chain);
+    }
+    if (target == nullptr) {
+        chain.clear();
+        target = core::hitTestChain(root_, position, chain);
+    }
+    if (target == nullptr) {
+        return false;
+    }
+    // 最深命中为交互控件时不拖：菜单项/窗口按钮（onClick 目标）、输入
+    // 控件在命中链更深处，天然把拖拽区"挖空"。
+    if (!target->onClick.empty() || consumesPointerInput(*target)) {
+        return false;
+    }
+    for (const core::RenderNode* node : chain) {
+        if (node->windowDrag) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void AppShell::textInput(const std::string& text) {

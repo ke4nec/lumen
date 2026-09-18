@@ -425,6 +425,11 @@ std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
     if (desc.resizable) {
         flags |= SDL_WINDOW_RESIZABLE;
     }
+    // 自定义标题栏（lumen-titlebar-design §4）：无边框窗口；宿主随后
+    // 注册 SDL hit-test 恢复 resize 边与 caption 拖拽。
+    if (desc.customTitleBar) {
+        flags |= SDL_WINDOW_BORDERLESS;
+    }
     // OpenGL 窗口供 Skia GPU 适配创建 GL 上下文；此时不建 SDL 呈现器，
     // CPU present 路径返回 Rejected（v0.2 阶段7C）。
     if (desc.opengl) {

@@ -20,6 +20,65 @@ namespace {
 // 定义（plan §3.1 滚轮/触摸增量）。
 constexpr float kWheelUnitPx = 40.0F;
 
+// 自定义标题栏（lumen-titlebar-design §4.2）：hit-test 回调。回调在
+// SDL_PumpEvents（本仓 UI 线程泵）内触发，读应用谓词无数据竞争；
+// userdata = WindowEntry.dragRegion 的地址（map 节点稳定，destroyWindow
+// 前注销）。坐标与指针事件同为窗口逻辑坐标。
+SDL_HitTestResult SDLCALL titleBarHitTest(SDL_Window* window,
+                                          const SDL_Point* area,
+                                          void* userdata) {
+    const auto* region =
+        static_cast<const std::function<bool(core::Offset)>*>(userdata);
+    if (window == nullptr || area == nullptr) {
+        return SDL_HITTEST_NORMAL;
+    }
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSize(window, &width, &height);
+    const int x = area->x;
+    const int y = area->y;
+    // 最大化态无 resize 边（原生行为一致）：边缘落点走 caption 谓词，
+    // 使标题栏拖动可还原/移动（unsnap），避免边缘返回 RESIZE 拦截拖拽。
+    const bool maximized =
+        (SDL_GetWindowFlags(window) & SDL_WINDOW_MAXIMIZED) != 0;
+    // resize 边带：边 8 逻辑 px、角 12×12（角覆盖边，与系统行为一致）。
+    constexpr int kEdge = 8;
+    constexpr int kCorner = 12;
+    const bool left = x < kEdge;
+    const bool right = x >= width - kEdge;
+    const bool top = y < kEdge;
+    const bool bottom = y >= height - kEdge;
+    if (!maximized && (left || right || top || bottom)) {
+        if (x < kCorner && y < kCorner) {
+            return SDL_HITTEST_RESIZE_TOPLEFT;
+        }
+        if (x >= width - kCorner && y < kCorner) {
+            return SDL_HITTEST_RESIZE_TOPRIGHT;
+        }
+        if (x < kCorner && y >= height - kCorner) {
+            return SDL_HITTEST_RESIZE_BOTTOMLEFT;
+        }
+        if (x >= width - kCorner && y >= height - kCorner) {
+            return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
+        }
+        if (top) {
+            return SDL_HITTEST_RESIZE_TOP;
+        }
+        if (bottom) {
+            return SDL_HITTEST_RESIZE_BOTTOM;
+        }
+        if (left) {
+            return SDL_HITTEST_RESIZE_LEFT;
+        }
+        return SDL_HITTEST_RESIZE_RIGHT;
+    }
+    if (region != nullptr &&
+        (*region)(core::Offset{static_cast<float>(x), static_cast<float>(y)})) {
+        return SDL_HITTEST_DRAGGABLE;
+    }
+    return SDL_HITTEST_NORMAL;
+}
+
 core::Key mapSdlKey(SDL_Keycode key) {
     switch (key) {
         case SDLK_BACKSPACE:
@@ -479,6 +538,18 @@ std::size_t Sdl3ApplicationHost::translateEvent(
             push(std::move(event));
             break;
         }
+        case SDL_EVENT_WINDOW_MAXIMIZED: {
+            // 自定义标题栏（lumen-titlebar-design §4.3）：toggleMaximize
+            // 或系统途径（snap/双击）完成最大化；还原走 RESTORED。
+            if (windows_.count(sdlEvent.window.windowID) == 0) {
+                break;
+            }
+            core::HostEvent event;
+            event.type = core::HostEventType::WindowMaximized;
+            event.window = windowIdOf(sdlEvent.window.windowID);
+            push(std::move(event));
+            break;
+        }
         case SDL_EVENT_WINDOW_RESTORED: {
             if (windows_.count(sdlEvent.window.windowID) == 0) {
                 break;
@@ -630,6 +701,7 @@ std::optional<core::WindowId> Sdl3ApplicationHost::createWindow(
     windowDesc.highPixelDensity = desc.highPixelDensity;
     windowDesc.opengl = desc.opengl;
     windowDesc.softwarePresentation = desc.softwarePresentation;
+    windowDesc.customTitleBar = desc.customTitleBar;
     auto window = createSdl3Window(windowDesc);
     if (window == nullptr) {
         return std::nullopt;
@@ -642,11 +714,30 @@ std::optional<core::WindowId> Sdl3ApplicationHost::createWindow(
     entry.textInput = std::make_unique<Sdl3TextInputSession>(
         entry.window.get());
     windows_.emplace(id.value, std::move(entry));
+    if (desc.customTitleBar) {
+        // hit-test 回调数据 = dragRegion 成员地址（map 节点稳定）；
+        // destroyWindow 时注销。注册后 resize 边 + caption 拖拽即可用。
+        WindowEntry* inserted = find(id);
+        if (!SDL_SetWindowHitTest(sdlWindow, titleBarHitTest,
+                                  &inserted->dragRegion)) {
+            std::fprintf(stderr,
+                         "SDL_SetWindowHitTest failed: %s\n",
+                         SDL_GetError());
+        }
+    }
     refreshLifecycle();
     return id;
 }
 
 void Sdl3ApplicationHost::destroyWindow(core::WindowId id) {
+    if (WindowEntry* entry = find(id)) {
+        // 先注销 hit-test：回调数据指向 entry 内成员，窗口销毁前必须
+        // 解除挂靠（SDL 窗口销毁本身也会清理，这里显式以防重建路径）。
+        (void)SDL_SetWindowHitTest(
+            static_cast<SDL_Window*>(
+                entry->window->nativeSurface().nativeWindow),
+            nullptr, nullptr);
+    }
     windows_.erase(id.value);
     refreshLifecycle();
 }
@@ -667,6 +758,12 @@ std::optional<core::WindowMetrics> Sdl3ApplicationHost::windowMetrics(
                               : 1.0F;
     metrics.visible = window.isVisible();
     metrics.minimized = window.isMinimized();
+    // 自定义标题栏（lumen-titlebar-design §4.3）：最大化状态（最大化按钮
+    // 图标/布局自适应消费）。
+    metrics.maximized =
+        (SDL_GetWindowFlags(static_cast<SDL_Window*>(
+             window.nativeSurface().nativeWindow)) &
+         SDL_WINDOW_MAXIMIZED) != 0;
     return metrics;
 }
 
@@ -872,6 +969,64 @@ Sdl3ApplicationHost::WindowEntry* Sdl3ApplicationHost::find(
     core::WindowId id) {
     const auto it = windows_.find(id.value);
     return it == windows_.end() ? nullptr : &it->second;
+}
+
+// --- 自定义标题栏（lumen-titlebar-design §4.3）：窗口操作 ---
+// 无效窗口 id 时挂靠首个窗口（requestFileDialog 的单窗口便捷路径先例：
+// 应用回调常无窗口 id 上下文）。
+
+void Sdl3ApplicationHost::minimizeWindow(core::WindowId id) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr && !windows_.empty()) {
+        entry = &windows_.begin()->second;
+    }
+    if (entry == nullptr) {
+        return;
+    }
+    SDL_MinimizeWindow(static_cast<SDL_Window*>(
+        entry->window->nativeSurface().nativeWindow));
+}
+
+void Sdl3ApplicationHost::toggleMaximizeWindow(core::WindowId id) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr && !windows_.empty()) {
+        entry = &windows_.begin()->second;
+    }
+    if (entry == nullptr) {
+        return;
+    }
+    auto* sdlWindow = static_cast<SDL_Window*>(
+        entry->window->nativeSurface().nativeWindow);
+    const bool maximized =
+        (SDL_GetWindowFlags(sdlWindow) & SDL_WINDOW_MAXIMIZED) != 0;
+    if (maximized) {
+        SDL_RestoreWindow(sdlWindow);
+    } else {
+        SDL_MaximizeWindow(sdlWindow);
+    }
+}
+
+void Sdl3ApplicationHost::requestWindowClose(core::WindowId id) {
+    std::uint64_t target = id.value;
+    if (windows_.find(target) == windows_.end()) {
+        if (windows_.empty()) {
+            return;
+        }
+        target = windows_.begin()->first;
+    }
+    // 与系统 X 同路径：合成 WindowCloseRequested 事件经 pollEvent 交付
+    //（runApp → shell.requestClose，应用可按 modal/路由规则消费）。
+    core::HostEvent event;
+    event.type = core::HostEventType::WindowCloseRequested;
+    event.window = core::WindowId{target};
+    pending_.push_back(std::move(event));
+}
+
+void Sdl3ApplicationHost::setWindowDragRegion(
+    core::WindowId id, std::function<bool(core::Offset)> predicate) {
+    if (WindowEntry* entry = find(id)) {
+        entry->dragRegion = std::move(predicate);
+    }
 }
 
 void Sdl3ApplicationHost::refreshLifecycle() {

@@ -197,6 +197,11 @@ struct Widget {
     bool shrinkWrap{false};
     bool alignContentStart{false}; // Button: left label, trailing icon column.
     bool reserveIconSpace{false};  // Button: keep that column when no icon is set.
+    // 自定义标题栏（lumen-titlebar-design §4.1）：声明"窗口拖拽区"
+    //（无边框窗口的 caption；M7 体积预算：与 box-model bool 簇同槽）。
+    // 命中点落在该节点且最深命中非交互控件时可拖动移窗；其上的按钮/
+    // 菜单项因更深的命中链自然排除。
+    bool windowDrag{false};
     EdgeInsets padding{};
     EdgeInsets margin{};
 
@@ -648,6 +653,14 @@ inline Widget withTransitionAlpha(Widget child, float alpha) {
 
 inline Widget withScrollbar(Widget child, bool show = true) {
     child.showScrollbar = show;
+    return child;
+}
+
+// 自定义标题栏（lumen-titlebar-design §4.1）：标记窗口拖拽区（caption）。
+// 用于无边框窗口的自绘标题栏行；交互子控件（按钮/菜单项）命中更深，
+// 平台拖拽判定自动排除。
+inline Widget withWindowDrag(Widget child, bool drag = true) {
+    child.windowDrag = drag;
     return child;
 }
 

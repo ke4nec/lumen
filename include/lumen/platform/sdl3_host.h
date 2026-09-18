@@ -54,6 +54,14 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     [[nodiscard]] ServiceResult setWindowIcon(
         core::WindowId id, const WindowIcon& icon) override;
 
+    // --- 自定义标题栏（lumen-titlebar-design §4.3） ---
+    void minimizeWindow(core::WindowId id) override;
+    void toggleMaximizeWindow(core::WindowId id) override;
+    void requestWindowClose(core::WindowId id) override;
+    void setWindowDragRegion(
+        core::WindowId id,
+        std::function<bool(core::Offset)> predicate) override;
+
   private:
     class Sdl3Clipboard;
     class Sdl3TextInputSession;
@@ -64,6 +72,8 @@ class Sdl3ApplicationHost final : public ApplicationHost {
         // M4：窗口级系统光标缓存（不透明指针：SDL 类型不出公共头）。
         void* cursor{nullptr};
         SystemCursor cursorShape{SystemCursor::Arrow};
+        // 自定义标题栏：拖拽区谓词（窗口逻辑坐标）；空 = 无拖拽区。
+        std::function<bool(core::Offset)> dragRegion{};
     };
 
     // M4：文件对话框异步完成暂存（回调线程填充，pollEvent 消费）。

@@ -247,13 +247,59 @@ void FakeApplicationHost::setSafeArea(core::WindowId id,
 }
 
 void FakeApplicationHost::minimizeWindow(core::WindowId id) {
+    windowCommandCalls.push_back("minimize");
     WindowEntry* entry = find(id);
+    core::WindowId target = id;
+    if (entry == nullptr && !windows_.empty()) {
+        // 与 SDL host 同语义：应用回调常无窗口 id 上下文（main.cpp 注入
+        // {}），单窗口便捷路径挂靠首个窗口。
+        target = windows_.begin()->first;
+        entry = &windows_.begin()->second;
+    }
     if (entry == nullptr || entry->metrics.minimized) {
         return;
     }
     entry->metrics.minimized = true;
     entry->metrics.visible = false;
-    queue_.push_back(makeEvent(core::HostEventType::WindowMinimized, id));
+    queue_.push_back(makeEvent(core::HostEventType::WindowMinimized, target));
+}
+
+void FakeApplicationHost::toggleMaximizeWindow(core::WindowId id) {
+    WindowEntry* entry = find(id);
+    core::WindowId target = id;
+    if (entry == nullptr) {
+        if (windows_.empty()) {
+            return;
+        }
+        target = windows_.begin()->first;
+        entry = &windows_.begin()->second;
+    }
+    windowCommandCalls.push_back(entry->metrics.maximized ? "restore"
+                                                          : "maximize");
+    entry->metrics.maximized = !entry->metrics.maximized;
+    queue_.push_back(makeEvent(entry->metrics.maximized
+                                   ? core::HostEventType::WindowMaximized
+                                   : core::HostEventType::WindowRestored,
+                               target));
+}
+
+void FakeApplicationHost::requestWindowClose(core::WindowId id) {
+    windowCommandCalls.push_back("close");
+    // 与 SDL host 同语义：合成 WindowCloseRequested 事件（应用侧
+    // requestClose 统一拦截规则）；无效 id 挂靠首个窗口。
+    core::WindowId target = id;
+    if (windows_.find(target) == windows_.end()) {
+        if (windows_.empty()) {
+            return;
+        }
+        target = windows_.begin()->first;
+    }
+    queue_.push_back(makeEvent(core::HostEventType::WindowCloseRequested, target));
+}
+
+void FakeApplicationHost::setWindowDragRegion(
+    core::WindowId id, std::function<bool(core::Offset)> predicate) {
+    dragRegions[id] = std::move(predicate);
 }
 
 void FakeApplicationHost::restoreWindow(core::WindowId id) {

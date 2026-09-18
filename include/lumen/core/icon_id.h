@@ -32,6 +32,9 @@ enum class IconId : std::uint8_t {
     // S4（gui-control-visual-system-task §6.10）：Image 未就绪占位的居中
     // 图片图标（追加在尾部，保持既有 ID 值不变）。
     Image,
+    // 自定义标题栏（lumen-titlebar-design §4.3）：最大化态的"还原"双
+    // 层方框（追加在尾部，保持既有 ID 值不变）。
+    Restore,
 };
 
 // 图标的归一化折线组（0..1 坐标；stroke 绘制，无填充）。

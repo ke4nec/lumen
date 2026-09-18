@@ -13,7 +13,8 @@ using Catalog = std::vector<Line>;
 
 const std::vector<Catalog>& catalog() {
     static const std::vector<Catalog> kCatalog = [] {
-        std::vector<Catalog> table(static_cast<std::size_t>(IconId::Image) + 1);
+        std::vector<Catalog> table(
+            static_cast<std::size_t>(IconId::Restore) + 1);
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
@@ -65,6 +66,15 @@ const std::vector<Catalog>& catalog() {
                     Line{{Offset{0.18F, 0.68F}, Offset{0.38F, 0.46F},
                           Offset{0.52F, 0.60F}, Offset{0.66F, 0.42F},
                           Offset{0.82F, 0.58F}}}};
+        // 自定义标题栏（lumen-titlebar-design §4.3）：还原 = 前后两个
+        // 方框（后框只画被遮挡以外的两边，24 栅格 9,5→19,5→19,15 +
+        // 5,9..15,19 前框）。
+        table[static_cast<std::size_t>(IconId::Restore)] =
+            Catalog{Line{{Offset{0.38F, 0.21F}, Offset{0.79F, 0.21F},
+                          Offset{0.79F, 0.62F}}},
+                    Line{{Offset{0.21F, 0.38F}, Offset{0.62F, 0.38F},
+                          Offset{0.62F, 0.79F}, Offset{0.21F, 0.79F},
+                          Offset{0.21F, 0.38F}}}};
         return table;
     }();
     return kCatalog;

@@ -25,6 +25,9 @@ set(LUMEN_TEST_SOURCES
     # Splitter：布局分配/钳制、拖动/键盘/双击复位、语义
     #（docs/lumen-splitter-design.md）。
     splitter_tests.cpp
+    # 自定义标题栏：windowDrag 物化/拖拽判定、Gallery 窗口命令/最大化态、
+    # Fake host 窗口操作契约与 runApp 注册（docs/lumen-titlebar-design.md）。
+    titlebar_tests.cpp
     # M6：视觉系统 V3 与控件库（图标/阴影/滚动条/控件交互/语义）。
     visual_m6_tests.cpp
     visual_regression_tests.cpp

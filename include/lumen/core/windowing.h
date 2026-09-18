@@ -55,6 +55,9 @@ struct WindowMetrics {
     float deviceScale{1.0F};
     bool visible{true};
     bool minimized{false};
+    // 自定义标题栏（lumen-titlebar-design §4.3）：最大化/还原状态（窗口
+    // 按钮图标与布局自适应消费；恢复自最小化时为 false）。
+    bool maximized{false};
 
     [[nodiscard]] bool operator==(const WindowMetrics&) const = default;
 };
@@ -122,6 +125,9 @@ enum class HostEventType : std::uint8_t {
     DpiChanged,
     WindowMinimized,
     WindowRestored,
+    // 自定义标题栏（lumen-titlebar-design §4.3）：最大化完成（toggle-
+    // MaximizeWindow 或系统途径）；还原走 WindowRestored。
+    WindowMaximized,
     WindowFocusGained,
     WindowFocusLost,
     WindowCloseRequested,

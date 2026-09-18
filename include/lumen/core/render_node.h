@@ -95,6 +95,10 @@ struct RenderNode {
     // 可聚焦/可激活（Tab/Enter），painter 走控件表面（焦点环）。
     bool collectionRow{false};
 
+    // 自定义标题栏（lumen-titlebar-design §4.1）：窗口拖拽区标记
+    //（Widget.windowDrag 布局期复制；AppShell::isWindowDragPoint 消费）。
+    bool windowDrag{false};
+
     std::vector<RenderNode> children{};
 
     // Field-wise equality (all fields including children); damage tracking

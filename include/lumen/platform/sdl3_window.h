@@ -22,6 +22,9 @@ struct Sdl3WindowDesc {
     // Mutually exclusive with opengl; never selects an SDL GPU renderer.
     // Requires a native framebuffer (Windows/X11); otherwise creation fails.
     bool softwarePresentation{false};
+    // 自定义标题栏（lumen-titlebar-design §4）：以 SDL_WINDOW_BORDERLESS
+    // 创建（无系统边框/标题栏）；resize 与拖拽由宿主 hit-test 提供。
+    bool customTitleBar{false};
 };
 
 // Creates an SDL3-backed window. Returns nullptr on failure; SDL's error is

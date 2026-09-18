@@ -208,6 +208,11 @@ class AppShell {
     void pointerCancel();
     // 返回 sink 消费状态（M5 收口：语义滚动回执同源）。
     [[nodiscard]] bool wheel(core::Offset position, core::Offset delta);
+    // 自定义标题栏（lumen-titlebar-design §4.1）：逻辑点是否窗口拖拽区
+    //（caption）。runApp 在 WindowDesc.customTitleBar 时注册给宿主
+    // hit-test；判定走事件树命中链（overlay 活跃期 = 模态层不可拖），
+    // 最深命中为交互控件（onClick 目标/输入控件）时不拖。
+    [[nodiscard]] bool isWindowDragPoint(core::Offset position);
     void textInput(const std::string& text);
     void textEditing(const std::string& preedit);
     void cancelComposition();
