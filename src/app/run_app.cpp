@@ -212,7 +212,8 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                                            event.window);
                     break;
                 case HostEventType::PointerDown:
-                    shell.pointerDown(event.position, event.modifiers);
+                    shell.pointerDown(event.position, event.modifiers,
+                                      event.button);
                     if (event.device != core::PointerDevice::Touch) {
                         syncPointerCursor();
                     }
@@ -228,7 +229,7 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                                            event.window);
                     break;
                 case HostEventType::PointerUp:
-                    shell.pointerUp(event.position);
+                    shell.pointerUp(event.position, event.button);
                     if (event.device != core::PointerDevice::Touch) {
                         syncPointerCursor();
                     }

@@ -38,7 +38,10 @@ enum class SemanticsRole : std::uint8_t {
     // 保持既有 role 枚举值不变。
     Tree,
     TreeItem,
-    // Splitter（splitter-design §8）：追加在尾部，同上约束。
+    // 菜单类控件（menu-controls-design §8.1）与 Splitter（splitter-
+    // design §8）：追加在尾部，同上约束。
+    Menu,
+    MenuItem,
     Splitter,
 };
 

@@ -84,8 +84,13 @@ AppShell::AppShell(ShellConfig config) : config_(std::move(config)) {
     controller_.setWheelSink([this](const core::RenderNode& root,
                                     const core::RenderNode* hit,
                                     core::Offset position, core::Offset delta) {
-        if (overlayRoot_) return overlayWheel_ ? overlayWheel_(root, hit, position, delta) : false;
-        return config_.onWheel ? config_.onWheel(root, hit, position, delta) : false;
+        if (overlayRoot_) {
+            overlayWheelForwarded_ = true;
+            return overlayWheel_ ? overlayWheel_(root, hit, position, delta)
+                                 : false;
+        }
+        return config_.onWheel ? config_.onWheel(root, hit, position, delta)
+                               : false;
     });
     controller_.setScrollDragSink(
         [this](const core::RenderNode* root, const core::RenderNode* viewport,
@@ -324,20 +329,24 @@ void AppShell::clearOverlay() {
 // --- 事件分发 ---
 
 void AppShell::pointerDown(core::Offset position,
-                           core::KeyModifiers modifiers) {
+                           core::KeyModifiers modifiers,
+                           core::PointerButton button) {
     dismissTooltips();
     rebuildIfDirty();
-    controller_.pointerDown(eventTree(), position, lastTickMs_, modifiers);
+    controller_.pointerDown(eventTree(), position, lastTickMs_, modifiers,
+                            button);
 }
 
 void AppShell::pointerMove(core::Offset position) {
     rebuildIfDirty();
     controller_.pointerMove(eventTree(), position, lastTickMs_);
+    controller_.notifyPointerMove(root_, position);
 }
 
-void AppShell::pointerUp(core::Offset position) {
+void AppShell::pointerUp(core::Offset position,
+                         core::PointerButton button) {
     rebuildIfDirty();
-    controller_.pointerUp(eventTree(), position, lastTickMs_);
+    controller_.pointerUp(eventTree(), position, lastTickMs_, button);
 }
 
 void AppShell::pointerCancel() {
@@ -348,7 +357,18 @@ void AppShell::pointerCancel() {
 bool AppShell::wheel(core::Offset position, core::Offset delta) {
     dismissTooltips();
     rebuildIfDirty();
-    return controller_.wheel(eventTree(), position, delta);
+    overlayWheelForwarded_ = false;
+    const bool handled = controller_.wheel(eventTree(), position, delta);
+    // 模态 overlay 兜底（menu-controls-design §6.4"滚轮（任意位置）关
+    // 闭"）：命中链无滚动视口时 controller 不调用 sink，overlay 就收不
+    // 到滚轮——此处以空 hit 直调一次（菜单外滚轮关闭；Dropdown 等对空
+    // hit 返回 false，不受影响）。sink 已转发但未消费（滚动到边界）时
+    // 不再二次直调。
+    if (!handled && !overlayWheelForwarded_ && overlayRoot_.has_value() &&
+        overlayWheel_) {
+        return overlayWheel_(*overlayRoot_, nullptr, position, delta);
+    }
+    return handled;
 }
 
 void AppShell::textInput(const std::string& text) {

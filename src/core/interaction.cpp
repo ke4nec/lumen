@@ -289,7 +289,34 @@ bool InteractionController::canRedo() const {
 void InteractionController::pointerDown(const RenderNode& root,
                                         Offset position,
                                         std::uint64_t timestampMs,
-                                        KeyModifiers modifiers) {
+                                        KeyModifiers modifiers,
+                                        PointerButton button) {
+    std::vector<const RenderNode*> chain;
+    const RenderNode* target = hitTestChain(root, position, chain);
+    // hover 状态照常更新（Secondary 亦更新；menu-controls-design §6.2）。
+    if (const RenderNode* hover = hoverTargetOf(chain)) {
+        hoveredKey_ = hover->key;
+        hoveredIdentity_ = hover->identity;
+    } else {
+        hoveredKey_.clear();
+        hoveredIdentity_.clear();
+    }
+    hoverCursor_ = cursorFromChain(chain);
+    // 菜单类控件（menu-controls-design §6.2）：Secondary（右键）不进入
+    // 点击/按压/拖动/聚焦路径——右键只属于上下文菜单通道；Middle 同样
+    // 无语义。进行中的主键手势状态不受影响（§6.2”不进入 press/armed/
+    // drag/slide 路径”）。命中链不做 enabled 过滤（对禁用行弹”属性”类
+    // 菜单合法）。
+    if (button != PointerButton::Primary) {
+        if (button == PointerButton::Secondary) {
+            for (const auto& sink : secondaryPressSinks_) {
+                if (sink(chain, position)) {
+                    break;
+                }
+            }
+        }
+        return;
+    }
     pointerModifiers_ = modifiers;
     pressedKey_.clear();
     pressedIdentity_.clear();
@@ -305,17 +332,6 @@ void InteractionController::pointerDown(const RenderNode& root,
     splitterDragSource_ = nullptr;
     dragAnchor_ = position;
     dragCurrent_ = position;
-    std::vector<const RenderNode*> chain;
-    const RenderNode* target = hitTestChain(root, position, chain);
-    if (const RenderNode* hover = hoverTargetOf(chain)) {
-        hoveredKey_ = hover->key;
-        hoveredIdentity_ = hover->identity;
-    } else {
-        hoveredKey_.clear();
-        hoveredIdentity_.clear();
-    }
-    // 悬停期望光标（splitter-design §7）：链上分隔条 → ResizeEW/NS。
-    hoverCursor_ = cursorFromChain(chain);
     // Gesture anchor: every press can become a drag, clickable or not.
     pressActive_ = true;
     dragging_ = false;
@@ -673,7 +689,13 @@ void InteractionController::pointerMove(const RenderNode& root,
 
 void InteractionController::pointerUp(const RenderNode& root,
                                       Offset position,
-                                      std::uint64_t timestampMs) {
+                                      std::uint64_t timestampMs,
+                                      PointerButton button) {
+    // 非主键释放：无点击/拖动语义，也不影响进行中的主键手势（与
+    // pointerDown 的 Secondary 隔离对称；menu-controls-design §6.2）。
+    if (button != PointerButton::Primary) {
+        return;
+    }
     const std::string armedOnClick = std::move(armedOnClick_);
     const std::string armedKey = std::move(armedKey_);
     const std::string armedIdentity = std::move(armedIdentity_);
@@ -1362,6 +1384,21 @@ void InteractionController::addRowActivateSink(RowActivateSink sink) {
 
 void InteractionController::addRowClickSink(RowClickSink sink) {
     rowClickSinks_.push_back(std::move(sink));
+}
+
+void InteractionController::addSecondaryPressSink(SecondaryPressSink sink) {
+    secondaryPressSinks_.push_back(std::move(sink));
+}
+
+void InteractionController::addPointerMoveSink(PointerMoveSink sink) {
+    pointerMoveSinks_.push_back(std::move(sink));
+}
+
+void InteractionController::notifyPointerMove(const RenderNode& root,
+                                              Offset position) {
+    for (const auto& sink : pointerMoveSinks_) {
+        sink(root, position);
+    }
 }
 
 void InteractionController::setRebuildRequest(std::function<void()> request) {

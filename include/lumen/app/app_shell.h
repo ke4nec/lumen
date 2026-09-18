@@ -195,11 +195,16 @@ class AppShell {
     }
 
     // --- 事件分发（runApp 调用；headless 测试可直接驱动） ---
-    // modifiers 为按下时刻修饰键（集合行 Extended 选择语义）。
+    // modifiers 为按下时刻修饰键（集合行 Extended 选择语义）；button 为
+    // 归一化主键（Secondary 经交互层只咨询 SecondaryPressSink，不产生
+    // 点击/拖动——menu-controls-design §6.2；缺省 Primary 保持既有调用
+    // 不变）。
     void pointerDown(core::Offset position,
-                     core::KeyModifiers modifiers = core::kModifierNone);
+                     core::KeyModifiers modifiers = core::kModifierNone,
+                     core::PointerButton button = core::PointerButton::Primary);
     void pointerMove(core::Offset position);
-    void pointerUp(core::Offset position);
+    void pointerUp(core::Offset position,
+                   core::PointerButton button = core::PointerButton::Primary);
     void pointerCancel();
     // 返回 sink 消费状态（M5 收口：语义滚动回执同源）。
     [[nodiscard]] bool wheel(core::Offset position, core::Offset delta);

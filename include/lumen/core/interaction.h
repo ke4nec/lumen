@@ -72,14 +72,20 @@ class InteractionController {
                           FocusManager& focus);
 
     // --- 指针（root = 当前布局树；timestampMs 供双击检测与 M10 拖动
-    // 速度采样；modifiers 为按下时刻修饰键——集合行选择语义用） ---
+    // 速度采样；modifiers 为按下时刻修饰键——集合行 Extended 选择语义用；
+    // button 为归一化主键——Secondary（右键）不进入点击/按压/拖动/聚焦
+    // 路径，只咨询 SecondaryPressSink（菜单类控件，menu-controls-design
+    // §6.2），也不干扰进行中的主键手势状态；缺省 Primary 保持既有调用
+    // 与帧哈希不变） ---
     void pointerDown(const RenderNode& root, Offset position,
                      std::uint64_t timestampMs = 0,
-                     KeyModifiers modifiers = kModifierNone);
+                     KeyModifiers modifiers = kModifierNone,
+                     PointerButton button = PointerButton::Primary);
     void pointerMove(const RenderNode& root, Offset position,
                      std::uint64_t timestampMs = 0);
     void pointerUp(const RenderNode& root, Offset position,
-                   std::uint64_t timestampMs = 0);
+                   std::uint64_t timestampMs = 0,
+                   PointerButton button = PointerButton::Primary);
     // 取消活动指针（触摸取消/窗口失焦）：解除按压与拖动，不触发点击，
     // 选区保留。
     void pointerCancel();
@@ -162,6 +168,20 @@ class InteractionController {
     // 累积；sink 恒 O(1)。
     using RowClickSink = std::function<bool(const std::string& onClick)>;
     void addRowClickSink(RowClickSink sink);
+
+    // --- 菜单类控件：Secondary（右键）按下 sink（menu-controls-design
+    // §6.2）。命中链不做 enabled 过滤（对禁用行弹“属性”类菜单合法）；
+    // 返回 true = 已消费。右键不产生点击/按压/拖动/聚焦语义。 ---
+    using SecondaryPressSink = std::function<bool(
+        const std::vector<const RenderNode*>& hitChain, Offset position)>;
+    void addSecondaryPressSink(SecondaryPressSink sink);
+
+    // 指针移动观察：AppShell 在 overlay 命中分发后，以主树通知。
+    // MenuBar 用它在菜单已打开时按 hover 切换顶级菜单。
+    using PointerMoveSink =
+        std::function<void(const RenderNode& root, Offset position)>;
+    void addPointerMoveSink(PointerMoveSink sink);
+    void notifyPointerMove(const RenderNode& root, Offset position);
 
     // --- 剪贴板（可选注入；宿主 Clipboard 适配 core::ClipboardProvider） ---
     void setClipboard(ClipboardProvider* clipboard);
@@ -302,6 +322,8 @@ class InteractionController {
     std::function<void()> rebuildRequest_{};  // 框架滚动变更 → markDirty
     std::vector<RowActivateSink> rowActivateSinks_{};
     std::vector<RowClickSink> rowClickSinks_{};
+    std::vector<SecondaryPressSink> secondaryPressSinks_{};
+    std::vector<PointerMoveSink> pointerMoveSinks_{};
     // 源视口拖动惯性登记（弱引用源 ScrollController；End 起滑时加入，
     // 推进到停止即移除）。
     std::vector<ScrollController*> sourceFlinging_{};

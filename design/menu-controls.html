@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen 菜单类控件设计稿 · ContextMenu / MenuBar</title>
+<meta name="description" content="Lumen 桌面 GUI 菜单类控件（ContextMenu、MenuBar）的视觉与交互设计稿，配套 docs/lumen-menu-controls-design.md，视觉规格对齐 docs/lumen-visual-system-design.md。">
+<style>
+  :root {
+    color-scheme: light;
+    /* 评审板（与 design/gallery.html / collection-controls.html 一致的板面语言） */
+    --board-bg: #e9edf3;
+    --board-grid: rgba(42, 58, 82, .045);
+    --board-ink: #172033;
+    --board-muted: #69758b;
+    --board-line: #d8dee8;
+    --board-card: rgba(255, 255, 255, .86);
+    --board-shadow: 0 24px 70px rgba(31, 48, 77, .12);
+    --board-accent: #2864b7;
+    --board-accent-soft: #e8f0ff;
+    --radius-xl: 24px;
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+    --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    /* 拟真应用：Core Dark（gallery.html 变体 01 的精确 token 值） */
+    --app-bg: #18181b;
+    --app-surface: #27272e;
+    --app-surface-alt: #2e2e36;
+    --app-ink: #f1f1f4;
+    --app-muted: #a1a1aa;
+    --app-line: #3b3b45;
+    --app-line-strong: #8c8c98;
+    --app-accent: #568cf0;
+    --app-accent-content: #a8c5fa;
+    --app-accent-soft: #2e3c60;
+    --app-positive: #73c991;
+    --card-radius: 8px;
+    --control-radius: 6px;
+    /* 菜单面板（menu.* 组件 token 的 Core Dark 派生值） */
+    --menu-bg: var(--app-surface-alt);          /* menu.panel.background = color.background.elevated */
+    --menu-line: var(--app-line);
+    --menu-hover: rgba(255, 255, 255, .055);    /* surface→elevated 之间的 hover 派生 */
+    --menu-current: var(--app-accent-soft);     /* menu.item.background.current = color.selection.background */
+  }
+  * { box-sizing: border-box; }
+  html { min-width: 320px; background: var(--board-bg); }
+  body {
+    margin: 0; min-height: 100vh; color: var(--board-ink);
+    font-family: var(--font-ui);
+    background-color: var(--board-bg);
+    background-image: linear-gradient(var(--board-grid) 1px, transparent 1px), linear-gradient(90deg, var(--board-grid) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  button { font: inherit; }
+  button:focus-visible, [tabindex]:focus-visible { outline: 3px solid #4e86db; outline-offset: 3px; }
+
+  .board { width: min(1280px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 48px; }
+  .board-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+  .eyebrow { display: flex; align-items: center; gap: 9px; color: var(--board-accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+  .eyebrow::before { content: ""; width: 22px; height: 2px; background: currentColor; border-radius: 2px; }
+  h1 { margin: 8px 0; max-width: 760px; font-size: clamp(26px, 3vw, 36px); line-height: 1.2; letter-spacing: -.035em; }
+  .lead { max-width: 820px; margin: 0; color: var(--board-muted); font-size: 14px; line-height: 1.6; }
+  .brand-mark { display: grid; place-items: center; width: 40px; height: 40px; color: white; font-size: 20px; font-weight: 900; letter-spacing: -.12em; border-radius: 12px; background: linear-gradient(135deg, #2864b7, #6f9ee8); box-shadow: 0 10px 24px rgba(40, 100, 183, .24); }
+
+  .panel { border: 1px solid var(--board-line); border-radius: var(--radius-xl); background: rgba(250, 252, 255, .68); box-shadow: var(--board-shadow); padding: 20px; margin-bottom: 18px; }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin: 0 4px 14px; }
+  .panel-title { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+  .panel-title .chip { padding: 3px 8px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--board-accent); border: 1px solid #c6d6ee; border-radius: 999px; background: var(--board-accent-soft); }
+  .panel-sub { color: var(--board-muted); font-size: 12.5px; }
+  .panel-body { display: grid; gap: 16px; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); align-items: start; }
+  @media (max-width: 900px) { .panel-body { grid-template-columns: 1fr; } }
+
+  /* ===== 拟真应用窗口（Core Dark） ===== */
+  .app-window { position: relative; border-radius: 16px; overflow: hidden; background: var(--app-bg); color: var(--app-ink); box-shadow: 0 20px 48px rgba(7, 8, 14, .2); }
+  .app-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; padding: 12px 20px; border-bottom: 1px solid var(--app-line); background: var(--app-surface); }
+  .app-brand { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; font-weight: 650; }
+  .app-brand .brand-mini { flex: 0 0 28px; display: grid; place-items: center; height: 28px; color: #000; font-size: 14px; font-weight: 800; border-radius: 7px; background: var(--app-accent); }
+  .app-brand span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-actions { display: flex; align-items: center; gap: 4px; }
+  .win-btn { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--app-muted); cursor: pointer; border: 1px solid transparent; border-radius: 6px; background: transparent; transition: color .16s ease, background .16s ease, border-color .16s ease; }
+  .win-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .win-btn:hover { color: var(--app-ink); border-color: var(--app-line); background: var(--app-surface-alt); }
+  .win-btn.close:hover { color: #b4233c; border-color: rgba(180, 35, 60, .3); background: rgba(180, 35, 60, .1); }
+  .app-window-content { padding: 14px; }
+  .window-label { margin: 14px 4px 6px; color: var(--app-muted); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+
+  /* 通用行（复用集合控件行规格：Medium 40px / padding 12 / radius 6） */
+  .row-list { display: grid; gap: 0; background: var(--app-surface); border: 1px solid var(--app-line); border-radius: var(--card-radius); overflow: hidden; }
+  .crow { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 12px; font-size: 13.5px; border-bottom: 1px solid var(--app-line); }
+  .crow:last-child { border-bottom: 0; }
+  .crow .glyph { flex: 0 0 18px; display: grid; place-items: center; color: var(--app-muted); }
+  .crow .glyph svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .crow .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crow .meta { flex-shrink: 0; color: var(--app-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .crow.is-hover { background: var(--app-surface-alt); }
+  .crow.is-selected { background: var(--app-accent-soft); }
+  .crow.is-current { box-shadow: inset 0 0 0 2px var(--app-accent); border-radius: 6px; }
+
+  /* ===== 菜单面板（设计稿主角） ===== */
+  .menu { position: absolute; z-index: 40; min-width: 220px; max-width: 320px; padding: 4px; color: var(--app-ink); font-size: 13px; background: var(--menu-bg); border: 1px solid var(--menu-line); border-radius: var(--card-radius); box-shadow: 0 4px 12px rgba(0, 0, 0, .45), 0 12px 32px rgba(0, 0, 0, .25); }
+  .menu[hidden] { display: none; }
+  .mi { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 6px 12px; color: inherit; text-align: left; border: 0; border-radius: var(--control-radius); background: transparent; cursor: pointer; transition: background .12s ease; }
+  .mi:hover { background: var(--menu-hover); }
+  .mi .slot { flex: 0 0 20px; display: grid; place-items: center; color: var(--app-muted); }
+  .mi .slot svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .mi .slot .check { color: var(--app-accent-content); }
+  .mi .mlabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mi .mlabel u { text-decoration-thickness: 2px; text-underline-offset: 3px; } /* mnemonic（首版不渲染，见设计文档 §14.2） */
+  .mi .sc { flex-shrink: 0; margin-left: 24px; color: var(--app-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mi .subchev { flex: 0 0 16px; display: grid; place-items: center; margin-left: 12px; color: var(--app-muted); }
+  .mi .subchev svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .mi.is-current { background: var(--menu-current); box-shadow: inset 0 0 0 2px var(--app-accent); } /* 键盘高亮 = selection 背景 + 内嵌 focus ring */
+  .mi.is-current .slot, .mi.is-current .subchev, .mi.is-current .sc { color: var(--app-ink); }
+  .mi.is-disabled { color: rgba(241, 241, 244, .4); cursor: default; }
+  .mi.is-disabled .slot, .mi.is-disabled .subchev, .mi.is-disabled .sc { color: rgba(241, 241, 244, .3); }
+  .mi.is-disabled:hover { background: transparent; }
+  .msep { height: 1px; margin: 4px 8px; background: var(--app-line); }
+  .submenu-anchor { position: relative; }
+  .submenu-anchor > .menu { top: -5px; left: calc(100% - 6px); min-width: 180px; }
+  .submenu-anchor > .menu[hidden] { display: none; }
+  .submenu-anchor:hover > .menu { display: block; } /* 级联演示：hover 展开 */
+
+  /* ===== 菜单栏 ===== */
+  .menubar { display: flex; align-items: stretch; gap: 2px; min-height: 40px; padding: 2px 8px; background: var(--app-surface); border-bottom: 1px solid var(--app-line); }
+  .mb-item { position: relative; display: flex; align-items: center; min-height: 36px; padding: 4px 12px; color: var(--app-ink); font-size: 13px; border: 0; border-radius: var(--control-radius); background: transparent; cursor: pointer; transition: background .12s ease; }
+  .mb-item:hover { background: var(--menu-hover); }
+  .mb-item.is-open { background: var(--app-accent-soft); } /* 打开态 = Tonal 派生 */
+  .mb-item u { text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .mb-anchor { position: relative; }
+  .mb-anchor > .menu { top: calc(100% + 2px); left: 0; }
+
+  /* 演示提示 */
+  .demo-hint { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 12px; color: var(--app-accent-content); font-size: 12px; border: 1px dashed rgba(86, 140, 240, .5); border-radius: var(--control-radius); background: rgba(86, 140, 240, .08); }
+  .demo-hint svg { flex-shrink: 0; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* 注释与表格 */
+  .callouts { display: grid; gap: 10px; }
+  .callout { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 12px 14px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--board-card); font-size: 12.5px; }
+  .callout .no { display: grid; place-items: center; width: 22px; height: 22px; color: var(--board-accent); font-size: 11px; font-weight: 800; border: 1.5px solid currentColor; border-radius: 50%; }
+  .callout strong { color: var(--board-ink); }
+  .callout span { color: var(--board-muted); line-height: 1.55; }
+
+  table.spec { width: 100%; border-collapse: collapse; background: var(--board-card); border: 1px solid var(--board-line); border-radius: var(--radius-md); overflow: hidden; font-size: 12.5px; }
+  table.spec caption { caption-side: top; text-align: left; padding: 0 4px 8px; color: var(--board-muted); font-size: 12px; font-weight: 650; }
+  table.spec th, table.spec td { padding: 8px 12px; border-bottom: 1px solid var(--board-line); text-align: left; vertical-align: top; line-height: 1.5; }
+  table.spec tr:last-child td { border-bottom: 0; }
+  table.spec thead th { color: var(--board-muted); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: rgba(23, 32, 51, .03); }
+  table.spec td code, table.spec td kbd { padding: 1px 6px; font-size: 11.5px; border: 1px solid var(--board-line); border-radius: 5px; background: #fff; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  kbd { box-shadow: 0 1.5px 0 var(--board-line); }
+
+  .mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .mode-card { padding: 12px 14px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--board-card); font-size: 12.5px; }
+  .mode-card h4 { margin: 0 0 6px; font-size: 12.5px; }
+  .mode-card p { margin: 0; color: var(--board-muted); line-height: 1.55; }
+
+  footer { margin-top: 26px; color: var(--board-muted); font-size: 12px; text-align: center; }
+  footer code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+</style>
+</head>
+<body>
+<div class="board">
+
+  <header class="board-header">
+    <div>
+      <div class="eyebrow">Lumen Control Design · Menus</div>
+      <h1>菜单类控件设计稿：ContextMenu / MenuBar</h1>
+      <p class="lead">菜单 = M11 框架级 overlay 上的一棵 Button 子树：零新增 WidgetType、零新增 RenderCommand。本稿定义菜单面板视觉规格、菜单项状态矩阵、定位/级联与键盘契约；设计文档见 <code>docs/lumen-menu-controls-design.md</code>，视觉 token 对齐 <code>docs/lumen-visual-system-design.md</code>。</p>
+    </div>
+    <div class="brand-mark">L</div>
+  </header>
+
+  <!-- ============ 1. CONTEXT MENU ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">ContextMenu <span class="chip">ContextMenuController</span></div>
+      <div class="panel-sub">指针位置唤起 · overlay + 全窗 barrier · 平面菜单全形态（icon / checkable / 快捷键展示 / 子菜单 / 分隔线 / disabled）· Medium 密度</div>
+    </div>
+    <div class="panel-body">
+      <div>
+        <div class="app-window" id="ctx-window">
+          <div class="app-topbar">
+            <div class="app-brand"><span class="brand-mini">L</span><span>lumen · 文档列表 — 右键行唤起</span></div>
+            <div class="app-actions">
+              <button class="win-btn" aria-label="最小化"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+              <button class="win-btn" aria-label="最大化"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+              <button class="win-btn close" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+          </div>
+          <div class="app-window-content" style="padding-bottom:96px;">
+            <div class="row-list" id="ctx-area" style="cursor:default;">
+              <div class="crow is-selected is-current">
+                <span class="glyph"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="name">roadmap-m13-notes.md</span>
+                <span class="meta">2026-09-16</span>
+              </div>
+              <div class="crow">
+                <span class="glyph"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="name">menu-controls-design.md</span>
+                <span class="meta">2026-09-17</span>
+              </div>
+              <div class="crow">
+                <span class="glyph"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+                <span class="name">design/</span>
+                <span class="meta">9 项</span>
+              </div>
+              <div class="crow is-hover">
+                <span class="glyph"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="name">splitter-design.md</span>
+                <span class="meta">2026-09-17</span>
+              </div>
+              <div class="crow">
+                <span class="glyph"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="name">support-matrix.md</span>
+                <span class="meta">2026-09-15</span>
+              </div>
+              <div class="crow">
+                <span class="glyph"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="name">build-commands.md</span>
+                <span class="meta">2026-09-11</span>
+              </div>
+              <div class="crow">
+                <span class="glyph"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="name">visual-system-impl.md</span>
+                <span class="meta">2026-09-13</span>
+              </div>
+              <div class="crow">
+                <span class="glyph"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="name">perf-baselines.json</span>
+                <span class="meta">2026-09-18</span>
+              </div>
+              <div class="crow">
+                <span class="glyph"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+                <span class="name">collection-controls.md</span>
+                <span class="meta">2026-09-16</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 上下文菜单（演示：右键列表区唤起） -->
+          <div class="menu" id="ctx-menu" hidden>
+            <button class="mi">
+              <span class="slot"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></span>
+              <span class="mlabel">打开</span>
+              <span class="sc">Enter</span>
+            </button>
+            <button class="mi">
+              <span class="slot"></span>
+              <span class="mlabel">在新窗口打开</span>
+              <span class="sc">Ctrl+O</span>
+            </button>
+            <div class="msep"></div>
+            <button class="mi is-current">
+              <span class="slot"></span>
+              <span class="mlabel">剪切</span>
+              <span class="sc">Ctrl+X</span>
+            </button>
+            <button class="mi">
+              <span class="slot"></span>
+              <span class="mlabel">复制</span>
+              <span class="sc">Ctrl+C</span>
+            </button>
+            <button class="mi is-disabled">
+              <span class="slot"></span>
+              <span class="mlabel">粘贴</span>
+              <span class="sc">Ctrl+V</span>
+            </button>
+            <div class="msep"></div>
+            <div class="submenu-anchor">
+              <button class="mi">
+                <span class="slot"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 16c0-4 2-7 6-7s6 3 6 7"/></svg></span>
+                <span class="mlabel">排序方式</span>
+                <span class="subchev"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+              </button>
+              <div class="menu" hidden>
+                <button class="mi">
+                  <span class="slot"><span class="check"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span></span>
+                  <span class="mlabel">名称</span>
+                </button>
+                <button class="mi">
+                  <span class="slot"></span>
+                  <span class="mlabel">修改时间</span>
+                </button>
+                <button class="mi">
+                  <span class="slot"></span>
+                  <span class="mlabel">大小</span>
+                </button>
+              </div>
+            </div>
+            <button class="mi">
+              <span class="slot"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+              <span class="mlabel">属性…</span>
+              <span class="sc">Alt+Enter</span>
+            </button>
+          </div>
+
+          <div class="demo-hint" style="position:absolute; left:14px; bottom:14px; right:14px;">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v.01M12 11v5"/></svg>
+            本区可交互演示：右键（或长按 Ctrl + 点击）列表区域唤起菜单 · hover「排序方式」展开级联 · 点击空白/Esc 关闭
+          </div>
+        </div>
+      </div>
+      <div class="callouts">
+        <div class="callout"><span class="no">1</span><div><strong>零新增 WidgetType / RenderCommand</strong> <span>菜单面板 = overlay 上的 Container + Button 行；行 hover / pressed / 焦点 / 语义 Activate 复用 Button 的 WidgetState 路径（M11 DropdownController + 集合控件行双重验证）。框架侧唯一缝隙：<code>PointerButton</code> 从 HostEvent 穿透到 InteractionController + <code>SecondaryPressSink</code>。</span></div></div>
+        <div class="callout"><span class="no">2</span><div><strong>快捷键只展示、不执行</strong> <span>右侧 muted 文本列（间隙 ≥ 24px，tabular-nums）；实际按键分发在应用 <code>onKey</code>——框架不建全局加速键表（非目标 §3）。</span></div></div>
+        <div class="callout"><span class="no">3</span><div><strong>checkable = 图标槽形状指示</strong> <span>勾选显示 <code>IconId::Check</code>（16px 图标 / 20px 槽），checked 状态由应用维护（点击 → onCommand → 应用翻转 → 刷新面板）。高对比主题下不得只靠颜色（视觉系统 §11）。</span></div></div>
+        <div class="callout"><span class="no">4</span><div><strong>键盘高亮 = selection 背景 + 内嵌 focus ring</strong> <span>与集合控件 current 行同视觉（本稿「剪切」行）；<code>Up/Down</code> 跳过分隔线与禁用项、不环绕；Enter 激活、Right 展开子菜单、Left 回父级、Esc 逐级关闭。</span></div></div>
+        <div class="callout"><span class="no">5</span><div><strong>定位与级联</strong> <span>原点 = 指针 + (2,2)px；右/下缘不足翻左/上；clamp 视口 8px 边距。子菜单 = 父行右缘 + 0、顶对齐，右缘不足翻左——钳制算法与 Dropdown 共享私有实现。</span></div></div>
+        <div class="callout"><span class="no">6</span><div><strong>分隔线不进语义树</strong> <span>1px <code>color.border.default</code>、水平 inset 8px；不可聚焦、无 label/action（屏幕阅读器惯例跳过）。</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. MENU BAR ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">MenuBar <span class="chip">MenuBarController</span></div>
+      <div class="panel-sub">栏 = 主树 Ghost Button 行 · 菜单 = overlay 锚定栏项下方 · hover 切换 / Alt+助记字母 · 打开才模态</div>
+    </div>
+    <div class="panel-body">
+      <div>
+        <div class="app-window" style="display:flex; flex-direction:column;">
+          <div class="menubar" style="order:2;">
+            <div class="mb-anchor">
+              <button class="mb-item"><u>文</u>件(F)</button>
+              <div class="menu" hidden>
+                <button class="mi"><span class="slot"></span><span class="mlabel">新建窗口</span><span class="sc">Ctrl+N</span></button>
+                <button class="mi"><span class="slot"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></span><span class="mlabel">打开…</span><span class="sc">Ctrl+O</span></button>
+                <div class="msep"></div>
+                <button class="mi"><span class="slot"></span><span class="mlabel">保存</span><span class="sc">Ctrl+S</span></button>
+                <button class="mi is-disabled"><span class="slot"></span><span class="mlabel">另存为…</span><span class="sc">Ctrl+Shift+S</span></button>
+              </div>
+            </div>
+            <div class="mb-anchor">
+              <button class="mb-item"><u>视</u>图(V)</button>
+              <div class="menu" hidden>
+                <button class="mi"><span class="slot"><span class="check"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span></span><span class="mlabel">显示侧栏</span><span class="sc">Ctrl+B</span></button>
+                <div class="submenu-anchor">
+                  <button class="mi"><span class="slot"></span><span class="mlabel">密度</span><span class="subchev"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span></button>
+                  <div class="menu" hidden>
+                    <button class="mi"><span class="slot"></span><span class="mlabel">紧凑（32px）</span></button>
+                    <button class="mi is-current"><span class="slot"></span><span class="mlabel">舒适（40px）</span></button>
+                    <button class="mi"><span class="slot"></span><span class="mlabel">触摸（48px）</span></button>
+                  </div>
+                </div>
+                <div class="msep"></div>
+                <button class="mi"><span class="slot"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span><span class="mlabel">跟随系统主题</span></button>
+              </div>
+            </div>
+            <div class="mb-anchor">
+              <button class="mb-item is-open"><u>帮</u>助(H)</button>
+              <div class="menu">
+                <button class="mi"><span class="slot"></span><span class="mlabel">快捷键总览</span><span class="sc">Ctrl+/</span></button>
+                <button class="mi"><span class="slot"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8v.01"/></svg></span><span class="mlabel">关于 lumen</span></button>
+              </div>
+            </div>
+          </div>
+          <div class="app-topbar" style="order:1;">
+            <div class="app-brand"><span class="brand-mini">L</span><span>lumen · 工具窗 — 帮助菜单打开（锚定栏项下方）</span></div>
+            <div class="app-actions">
+              <button class="win-btn" aria-label="最小化"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+              <button class="win-btn" aria-label="最大化"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+              <button class="win-btn close" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+          </div>
+          <div class="app-window-content" style="order:3; flex:1; min-height:150px; display:grid; place-items:center; color:var(--app-muted); font-size:12.5px;">
+            内容区（模态 barrier 覆盖：点击任意处关闭菜单，主树指针/键盘 NotHandled）
+          </div>
+        </div>
+      </div>
+      <div class="callouts">
+        <div class="callout"><span class="no">1</span><div><strong>栏在主树、菜单在 overlay</strong> <span>栏 = Row + Ghost Button（key = <code>menu:bar:&lt;id&gt;</code>），参与 Tab 遍历与语义树；菜单面板经 ContextMenuController 同一面板路径锚定栏项 <code>bounds</code> 下方。栏不模态，菜单打开才模态。</span></div></div>
+        <div class="callout"><span class="no">2</span><div><strong>打开态 = Tonal 派生</strong> <span>打开的栏项背景 = <code>color.selection.background</code> 派生（本稿 #2e3c60）；hover 相邻栏项直接切换菜单（桌面惯例，锚点随之移动）。</span></div></div>
+        <div class="callout"><span class="no">3</span><div><strong>Alt + 助记字母</strong> <span>mnemonic 是 MenuItem/TopMenu 的显式字段（非 <code>&amp;</code> 标记语法）；栏拥有焦点或菜单打开时 <code>Alt+keyChar</code> 打开对应菜单并高亮首项，大小写不敏感。首版不渲染下划线（TextStyle 无静态下划线通道，设计文档 §14.2）——本稿下划线仅为演示。</span></div></div>
+        <div class="callout"><span class="no">4</span><div><strong>菜单打开期间键盘</strong> <span>Left/Right 切换顶级菜单；Esc 关闭并焦点恢复栏项；Tab 关闭全部（不逃逸模态）；Up/Down/Enter/Right/Left 子级行为同 ContextMenu 契约。</span></div></div>
+        <div class="callout"><span class="no">5</span><div><strong>密度子菜单演示档位联动</strong> <span>菜单项最小高度随 ControlDensity 32/40/48（视觉系统 §3.2「控件最小高度」行）；「密度」子菜单勾选项即密度预览。</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 状态矩阵与 token ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">状态矩阵与 token</div>
+      <div class="panel-sub">ContextMenu / MenuBar 共用 · 全部颜色经 Theme/StyleResolver 派生，控件内无常量</div>
+    </div>
+    <table class="spec" style="margin-bottom:14px;">
+      <thead><tr><th style="width:170px;">菜单项状态</th><th>背景</th><th>前景/内容</th><th>指示</th></tr></thead>
+      <tbody>
+        <tr><td>normal</td><td>透明（面板 elevated 底）</td><td>ink</td><td>icon 槽（无 = 空槽对齐）</td></tr>
+        <tr><td>hover</td><td>surface→elevated hover 派生</td><td>ink</td><td>—</td></tr>
+        <tr><td>current（键盘高亮）</td><td>color.selection.background（#2e3c60）</td><td>ink</td><td>内嵌 focus ring · color.focus.ring（§5 规则 4）</td></tr>
+        <tr><td>hover + current</td><td>current 覆盖（§5 规则 3 同源）</td><td>ink</td><td>内嵌 focus ring</td></tr>
+        <tr><td>checked（checkable）</td><td>不变</td><td>ink</td><td>图标槽 Check 形状（HC 下不靠颜色，§11）</td></tr>
+        <tr><td>disabled</td><td>不变</td><td>color.disabled.content</td><td>命中拒绝 + 键盘跳过 + 语义一致（优先级最高）</td></tr>
+        <tr><td>separator</td><td>—</td><td>—</td><td>1px color.border.default · inset 8px · 不进语义树</td></tr>
+        <tr><td>高对比主题</td><td>面板实底 + 边框</td><td>提高对比</td><td>勾选/高亮需形状差异——不得只靠颜色</td></tr>
+      </tbody>
+    </table>
+    <div class="mode-grid">
+      <div class="mode-card"><h4>token 依据（gallery v1 精确值）</h4><p>bg <code>#18181b</code> · surface <code>#27272e</code> · elevated <code>#2e2e36</code> · line <code>#3b3b45</code> · accent <code>#568cf0</code> · accent-soft <code>#2e3c60</code> · ink <code>#f1f1f4</code> · muted <code>#a1a1aa</code>——实现走三层 token 映射（<code>menu.panel.background = color.background.elevated</code> 等），本稿不新增颜色槽位。</p></div>
+      <div class="mode-card"><h4>尺度（视觉系统 §3.2）</h4><p>菜单项最小高 Small 32 / Medium 40（本稿）/ Large 48；水平内边距 8/12/16；圆角 4/6/8；面板圆角 8（卡片档）、内边距 4、宽 160–320px、最大高 = 视口 − 16（超出 ScrollView 兜底）。</p></div>
+      <div class="mode-card"><h4>elevation 与动效</h4><p><code>menu.panel.elevation = ElevationTokens L2</code>（(0,4)/12/64；CPU 后端扁平面降级既有规则）；打开淡入 120ms（<code>menu.open.fadeMs</code> 对齐 tooltipFadeMs，M10 转场驱动，reduceAnimation 归零）。</p></div>
+      <div class="mode-card"><h4>图标</h4><p><code>IconId::Check</code>（勾选）、<code>ChevronRight</code>（子菜单级联）全部既有——本控件零新增图标、零命令层改动。</p></div>
+    </div>
+    <div style="margin-top:14px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;" class="spec-wrap">
+      <table class="spec">
+        <caption>键盘契约（菜单打开期间，modal）</caption>
+        <thead><tr><th style="width:130px;">键</th><th>行为</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>高亮上/下一可聚焦项（跳过分隔线/禁用，不环绕）</td></tr>
+          <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>高亮首/末可聚焦项</td></tr>
+          <tr><td><kbd>Enter</kbd> / <kbd>Space</kbd></td><td>激活；子菜单项 = 展开</td></tr>
+          <tr><td><kbd>→</kbd></td><td>展开子菜单；顶级（栏）= 切换下一菜单</td></tr>
+          <tr><td><kbd>←</kbd></td><td>关闭子级回父项；顶级（栏）= 切换上一菜单</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>逐级关闭；顶级关闭后焦点恢复</td></tr>
+          <tr><td><kbd>Tab</kbd></td><td>关闭全部并恢复焦点（模态不逃逸）</td></tr>
+          <tr><td><kbd>Alt</kbd>+字母</td><td>命中 mnemonic 项直接激活（P2 接线）</td></tr>
+        </tbody>
+      </table>
+      <table class="spec">
+        <caption>语义契约（role 尾部追加，Tree/TreeItem 先例）</caption>
+        <thead><tr><th style="width:130px;">节点</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td>菜单面板</td><td><code>menu</code>（新 role）· overlay 附加子树（M11 既有路径）</td></tr>
+          <tr><td>菜单项</td><td><code>menuitem</code>（新 role）· label · <code>Activate</code> ≡ Enter ≡ 单击</td></tr>
+          <tr><td>checkable 项</td><td><code>checked</code> flag ≡ 勾选视觉 ≡ 应用状态</td></tr>
+          <tr><td>子菜单项</td><td>semanticsValue <code>hasSubmenu="true"</code> · Activate = 展开</td></tr>
+          <tr><td>菜单栏</td><td>既有 role 复用：栏 = Group · 栏项 = Button</td></tr>
+          <tr><td>模态边界</td><td>打开期间主树 Activate/滚动 NotHandled（M12 统一规则）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <footer style="text-align:left; margin-top:16px;">
+      设计文档：<code>docs/lumen-menu-controls-design.md</code> · 视觉 token 对齐 <code>design/gallery.html</code> Core Dark（变体 01）· Widget 体积预算 +0（零新增 WidgetType / 字段）· 实施分期 P1 平面菜单 → P2 菜单栏与级联 → P3 按需评估
+    </footer>
+  </section>
+
+</div>
+<script>
+  // 演示交互（设计稿演示用；真实实现见设计文档 §6/§7）
+  (function () {
+    var win = document.getElementById('ctx-window');
+    var menu = document.getElementById('ctx-menu');
+    var area = document.getElementById('ctx-area');
+    var hint = win.querySelector('.demo-hint');
+
+    // 首屏静态展示：默认在选中行上打开（评审未交互也能看到菜单形态）
+    function openDefault() {
+      var sel = area.querySelector('.crow');
+      var r = sel.getBoundingClientRect();
+      openAt(r.left + 150, r.top + 16);
+    }
+    openDefault();
+
+    function openAt(x, y) {
+      menu.hidden = false;
+      var wr = win.getBoundingClientRect();
+      var mw = menu.offsetWidth, mh = menu.offsetHeight;
+      var x2 = Math.min(Math.max(x + 2, wr.left + 8), wr.right - mw - 8);   // 原点 = 指针 + (2,2)，视口 8px 钳制
+      var y2 = Math.min(Math.max(y + 2, wr.top + 8), wr.bottom - mh - 8);
+      if (y + mh + 16 > wr.bottom) y2 = y - mh - 2;                          // 下缘不足上翻
+      y2 = Math.max(y2, wr.top + 8);                                         // 钳制下限：不越过视口顶
+      menu.style.left = (x2 - wr.left) + 'px';
+      menu.style.top = (y2 - wr.top) + 'px';
+    }
+    area.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      openAt(e.clientX, e.clientY);
+    });
+    win.addEventListener('pointerdown', function (e) {
+      if (!menu.hidden && !menu.contains(e.target)) { menu.hidden = true; }  // barrier：点击外部关闭
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !menu.hidden) { menu.hidden = true; }        // Esc 逐级关闭（演示单级）
+    });
+
+    // 菜单栏演示：点击/hover 切换打开的菜单
+    var bars = document.querySelectorAll('.mb-anchor');
+    var openBar = null;
+    function closeBar() {
+      if (openBar) { openBar.querySelector('.menu').hidden = true; openBar.querySelector('.mb-item').classList.remove('is-open'); openBar = null; }
+    }
+    bars.forEach(function (bar) {
+      var item = bar.querySelector('.mb-item');
+      var panel = bar.querySelector('.menu');
+      item.addEventListener('click', function () {
+        if (openBar === bar) { closeBar(); return; }
+        closeBar();
+        panel.hidden = false; item.classList.add('is-open'); openBar = bar;
+      });
+      item.addEventListener('mouseenter', function () {                      // 菜单已打开时 hover 切换
+        if (openBar && openBar !== bar) { item.click(); }
+      });
+    });
+    document.addEventListener('pointerdown', function (e) {
+      if (openBar && !openBar.contains(e.target)) { closeBar(); }
+    });
+    hint && hint.addEventListener('dblclick', function () { menu.hidden = true; });
+  })();
+</script>
+</body>
+</html>

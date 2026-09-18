@@ -6,6 +6,8 @@ add_library(lumen-widgets STATIC
     selection.cpp
     list.cpp
     tree.cpp
+    # 菜单类控件（menu-controls-design）：ContextMenu/MenuBar（overlay）。
+    menu.cpp
     # Splitter（splitter-design）：分栏控制器（core::SplitterSource）。
     splitter.cpp
 )

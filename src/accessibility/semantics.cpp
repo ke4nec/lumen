@@ -190,6 +190,9 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
             semantic.role = role;
         }
     }
+    if (semantic.role == SemanticsRole::MenuItem && node.checked) {
+        semantic.flags |= kSemanticsChecked;
+    }
     // 焦点 flag。
     if (options.focus != nullptr &&
         !options.focus->focusedIdentity().empty() &&
@@ -250,6 +253,10 @@ const char* semanticsRoleName(SemanticsRole role) {
             return "tree";
         case SemanticsRole::TreeItem:
             return "treeItem";
+        case SemanticsRole::Menu:
+            return "menu";
+        case SemanticsRole::MenuItem:
+            return "menuItem";
         case SemanticsRole::Splitter:
             return "splitter";
     }
@@ -278,6 +285,9 @@ bool semanticsRoleFromName(const std::string& name, SemanticsRole* out) {
         {"tree", SemanticsRole::Tree},
         {"treeItem", SemanticsRole::TreeItem},
         {"tree_item", SemanticsRole::TreeItem},
+        {"menu", SemanticsRole::Menu},
+        {"menuItem", SemanticsRole::MenuItem},
+        {"menu_item", SemanticsRole::MenuItem},
         {"splitter", SemanticsRole::Splitter},
     };
     for (const auto& [key, role] : kTable) {
