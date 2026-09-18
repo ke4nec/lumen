@@ -27,7 +27,9 @@
 #include "lumen/text/font_manager.h"
 #include "lumen/widgets/dropdown.h"
 #include "lumen/widgets/form.h"
+#include "lumen/widgets/menu.h"
 #include "lumen/widgets/navigator.h"
+#include "lumen/widgets/splitter.h"
 
 namespace lumen::examples {
 
@@ -106,9 +108,18 @@ class SettingsApp {
 
     // --- 事件分发（Escape/返回统一规则在 configFor 的 onKey 钩子） ---
 
-    void pointerDown(core::Offset position) { shell_.pointerDown(position); }
+    void pointerDown(core::Offset position,
+                     core::KeyModifiers modifiers = core::kModifierNone,
+                     core::PointerButton button =
+                         core::PointerButton::Primary) {
+        shell_.pointerDown(position, modifiers, button);
+    }
     void pointerMove(core::Offset position) { shell_.pointerMove(position); }
-    void pointerUp(core::Offset position) { shell_.pointerUp(position); }
+    void pointerUp(core::Offset position,
+                   core::PointerButton button =
+                       core::PointerButton::Primary) {
+        shell_.pointerUp(position, button);
+    }
     void pointerCancel() { shell_.pointerCancel(); }
     void wheel(core::Offset position, core::Offset delta) {
         // 消费状态由调用方按需读取（示例转发不区分）。
@@ -398,6 +409,96 @@ class SettingsApp {
                     core::makeListView(std::move(column), "settings-list"),
                     scroll_.offset()),
                 "settings-list"));
+        } else if (navigator_.current() == "menus") {
+            // 菜单类控件（menu-controls-design §11.3）：菜单栏（点击/
+            // Alt+助记字母打开，打开后 ←/→ 切换）+ 右键上下文菜单演示。
+            std::vector<core::Widget> items;
+            items.push_back(
+                core::withKey(titleText("Menus", theme), "menus-title"));
+            items.push_back(core::withKey(menuBar_.build(), "menubar"));
+            items.push_back(core::withKey(
+                mutedLabel("Last command: " + lastMenuCommand_, theme),
+                "menu-command-label"));
+            items.push_back(core::withKey(
+                mutedLabel("右键下列行唤起上下文菜单 · Alt+F/V/H 打开菜单栏",
+                           theme),
+                "menus-hint"));
+            for (const char* name : {"notes.md", "design.md", "build.log"}) {
+                items.push_back(buttonWidget(
+                    name, "", "menu-target:" + std::string(name),
+                    core::ButtonVariant::Outline));
+            }
+            items.push_back(core::withKey(
+                buttonWidget("Back", "back", "back-button",
+                             core::ButtonVariant::Outline),
+                "back-button"));
+            core::Widget column = core::makeColumn(
+                std::move(items), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch, style::spaceToken(4),
+                core::EdgeInsets::all(style::spaceToken(6)));
+            column.flex = 1.0F;
+            page.push_back(core::withKey(
+                core::withScrollOffset(
+                    core::makeListView(std::move(column), "settings-list"),
+                    scroll_.offset()),
+                "settings-list"));
+        } else if (navigator_.current() == "splitter") {
+            // Splitter（splitter-design §10.3）：列表|详情主分栏 + 详情区
+            // 嵌套垂直分栏；分隔条可拖动/键盘步进（聚焦后 ←→↑↓）/双击复位。
+            std::vector<core::Widget> items;
+            items.push_back(
+                core::withKey(titleText("Splitter", theme), "splitter-title"));
+            items.push_back(core::withKey(
+                mutedLabel("拖动分隔条调节 · 双击复位 · Tab 聚焦后方向键步进",
+                           theme),
+                "splitter-hint"));
+            const auto pane = [&theme](std::string title,
+                                       std::vector<std::string> lines) {
+                std::vector<core::Widget> body;
+                body.push_back(core::makeText(
+                    std::move(title), theme.typography.label));
+                for (auto& line : lines) {
+                    body.push_back(core::makeText(std::move(line),
+                                                  theme.typography.body));
+                }
+                core::Widget column =
+                    core::makeColumn(std::move(body),
+                                     core::MainAxisAlignment::Start,
+                                     core::CrossAxisAlignment::Start, 6.0F,
+                                     core::EdgeInsets::all(12.0F));
+                return core::makeContainer(
+                    std::move(column), std::nullopt, std::nullopt,
+                    core::EdgeInsets{}, core::EdgeInsets{},
+                    theme.colors.surface, core::CornerRadius::all(8.0F));
+            };
+            core::Widget fileList = pane(
+                "文件", {"notes.md", "design.md", "build.log", "…"});
+            core::Widget detail = pane("详情", {"design.md · 4 KB",
+                                                "更新于 2026-09-17"});
+            core::Widget notes = pane("说明", {"窗格内容随拖动实时重排",
+                                               "位置持久化由应用负责"});
+            core::Widget detailSplit = core::makeSplitter(
+                &detailSplit_, std::move(detail), std::move(notes),
+                /*horizontal=*/false, "detail-split");
+            core::Widget mainSplit = core::makeSplitter(
+                &mainSplitter_, std::move(fileList), std::move(detailSplit),
+                /*horizontal=*/true, "main-split");
+            mainSplit.height = 360.0F;
+            items.push_back(std::move(mainSplit));
+            items.push_back(core::withKey(
+                buttonWidget("Back", "back", "back-button",
+                             core::ButtonVariant::Outline),
+                "back-button"));
+            core::Widget column = core::makeColumn(
+                std::move(items), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch, style::spaceToken(4),
+                core::EdgeInsets::all(style::spaceToken(6)));
+            column.flex = 1.0F;
+            page.push_back(core::withKey(
+                core::withScrollOffset(
+                    core::makeListView(std::move(column), "settings-list"),
+                    scroll_.offset()),
+                "settings-list"));
         } else {
             std::vector<core::Widget> list;
             list.push_back(
@@ -418,6 +519,15 @@ class SettingsApp {
                 buttonWidget("Theme", "goto-theme", "goto-theme-button",
                              core::ButtonVariant::Filled),
                 "goto-theme-button"));
+            list.push_back(core::withKey(
+                buttonWidget("Menus", "goto-menus", "goto-menus-button",
+                             core::ButtonVariant::Filled),
+                "goto-menus-button"));
+            list.push_back(core::withKey(
+                buttonWidget("Splitter", "goto-splitter",
+                             "goto-splitter-button",
+                             core::ButtonVariant::Filled),
+                "goto-splitter-button"));
             list.push_back(core::withKey(
                 buttonWidget("Browse library (1000)", "goto-library",
                              "goto-library-button",
@@ -520,10 +630,18 @@ class SettingsApp {
         config.build = [self] { return self->buildUi(); };
         // Escape/返回键统一规则：先问 modal，再问路由栈（plan §3.4）。
         config.onKey = [self](app::AppShell& shell, core::Key key,
-                              core::KeyModifiers, char) {
+                              core::KeyModifiers mods, char keyChar) {
             // M11：下拉菜单键盘导航（modal 优先于路由返回规则；未打开
             // 时 Up/Down 仍走滚动路径）。
             if (self->dropdown_.handleKey(shell, key)) {
+                return true;
+            }
+            // 菜单类控件：上下文菜单/菜单栏键盘（modal 优先；菜单打开
+            // 时 Up/Down/Enter/Esc/Tab/Alt+助记字母全部由菜单消费）。
+            if (self->contextMenu_.handleKey(shell, key, mods, keyChar)) {
+                return true;
+            }
+            if (self->menuBar_.handleKey(shell, key, mods, keyChar)) {
                 return true;
             }
             if (key == core::Key::Escape &&
@@ -613,6 +731,43 @@ class SettingsApp {
             shell_.state().set("color", name);
             shell_.markDirty();
         };
+        // 菜单类控件（menu-controls-design §11.3）：菜单栏（文件/视图/
+        // 帮助）+ 右键上下文菜单 + 命令统一回显。checkable 项状态由应用
+        // 维护（点击 → onCommand → 翻转 → 重开菜单时读取）。
+        shell_.state().set("sidebar", "true");
+        menuBar_.setMenus({{"file", "文件(F)", 'f'},
+                           {"view", "视图(V)", 'v'},
+                           {"help", "帮助(H)", 'h'}});
+        menuBar_.setMenuProvider([this](const std::string& id) {
+            return barMenuItems(id);
+        });
+        menuBar_.setSubmenuProvider([this](const std::string& id) {
+            return barMenuItems("sub:" + id);
+        });
+        menuBar_.attach(shell_);
+        const auto forwardCommand = [this](const std::string& id) {
+            lastMenuCommand_ = id;
+            if (id == "toggle-sidebar") {
+                const bool on = shell_.state().get("sidebar") != "true";
+                shell_.state().set("sidebar", on ? "true" : "false");
+            }
+            shell_.markDirty();
+        };
+        menuBar_.onCommand = forwardCommand;
+        contextMenu_.onCommand = forwardCommand;
+        // 右键通道：菜单演示区行（key 前缀 menu-target:）唤起上下文菜单。
+        shell_.controller().addSecondaryPressSink(
+            [this](const std::vector<const core::RenderNode*>& chain,
+                   core::Offset position) {
+                for (const core::RenderNode* node : chain) {
+                    if (node->key.rfind("menu-target:", 0) == 0) {
+                        contextMenu_.open(shell_, position,
+                                          contextMenuItems(node->key));
+                        return true;
+                    }
+                }
+                return false;
+            });
         library_.setEstimatedExtent(44.0F);
         library_.setItemBuilder([this](std::size_t index) {
             core::Widget item = core::makeText(
@@ -691,6 +846,14 @@ class SettingsApp {
         };
         handlers["goto-library"] = [this] {
             navigator_.push("library");
+            shell_.markDirty();
+        };
+        handlers["goto-menus"] = [this] {
+            navigator_.push("menus");
+            shell_.markDirty();
+        };
+        handlers["goto-splitter"] = [this] {
+            navigator_.push("splitter");
             shell_.markDirty();
         };
         handlers["back"] = [this] {
@@ -915,6 +1078,62 @@ class SettingsApp {
         return core::withVariant(std::move(button), variant);
     }
 
+    // 菜单类控件演示数据（menu-controls-design §5 模型：快捷键仅展示，
+    // checkable 状态读 StateStore）。
+    [[nodiscard]] widgets::MenuItems barMenuItems(
+        const std::string& id) const {
+        widgets::MenuItems items;
+        if (id == "file") {
+            items.push_back({.id = "new", .label = "新建窗口",
+                             .shortcut = "Ctrl+N"});
+            items.push_back({.id = "open", .label = "打开…",
+                             .icon = core::IconId::Search,
+                             .shortcut = "Ctrl+O"});
+            items.push_back({.id = "sep", .separator = true});
+            items.push_back({.id = "save", .label = "保存",
+                             .shortcut = "Ctrl+S"});
+            items.push_back({.id = "save-as", .label = "另存为…",
+                             .enabled = false});
+        } else if (id == "view") {
+            items.push_back({.id = "toggle-sidebar", .label = "显示侧栏",
+                             .checkable = true,
+                             .checked = shell_.state().get("sidebar") == "true",
+                             .shortcut = "Ctrl+B", .mnemonic = 's'});
+            items.push_back({.id = "density", .label = "密度",
+                             .hasSubmenu = true});
+        } else if (id == "help") {
+            items.push_back({.id = "shortcuts", .label = "快捷键总览",
+                             .shortcut = "Ctrl+/"});
+            items.push_back({.id = "about", .label = "关于 lumen"});
+        } else if (id == "sub:density") {
+            items.push_back({.id = "density-compact", .label = "紧凑（32px）",
+                             .checkable = true});
+            items.push_back({.id = "density-comfort", .label = "舒适（40px）",
+                             .checkable = true, .checked = true});
+            items.push_back({.id = "density-touch", .label = "触摸（48px）",
+                             .checkable = true});
+        }
+        return items;
+    }
+
+    [[nodiscard]] widgets::MenuItems contextMenuItems(
+        const std::string& rowKey) const {
+        // rowKey = "menu-target:<name>"（前缀 12 字符）。
+        const std::string name =
+            rowKey.size() > 12 ? rowKey.substr(12) : rowKey;
+        widgets::MenuItems items;
+        items.push_back({.id = "open:" + name, .label = "打开",
+                         .shortcut = "Enter"});
+        items.push_back({.id = "rename:" + name, .label = "重命名"});
+        items.push_back({.id = "sep", .separator = true});
+        items.push_back({.id = "copy:" + name, .label = "复制",
+                         .shortcut = "Ctrl+C"});
+        items.push_back({.id = "remove:" + name, .label = "删除",
+                         .enabled = false});
+        items.push_back({.id = "props:" + name, .label = "属性…"});
+        return items;
+    }
+
     // 应用侧控制器状态（声明在 shell_ 之前：构造期 build 即可读取）。
     core::ScrollController scroll_{};
     core::ScrollController dialogScroll_{};
@@ -941,6 +1160,15 @@ class SettingsApp {
                                            {"Green", "Green"},
                                            {"Blue", "Blue"}},
                                           "Red"};
+    // 菜单类控件（menu-controls-design §11.3）：菜单栏 + 右键上下文菜单
+    // 与最近命令回显。
+    widgets::ContextMenuController contextMenu_{};
+    widgets::MenuBarController menuBar_{};
+    std::string lastMenuCommand_{"(none)"};
+    // Splitter（splitter-design §10.3）：列表|详情主分栏 + 详情区嵌套
+    // 垂直分栏。
+    widgets::SplitterController mainSplitter_{220.0F};
+    widgets::SplitterController detailSplit_{140.0F};
     std::shared_ptr<void> themeScopeData_{
         style::makeThemeScopeData(style::Theme::light())};
 

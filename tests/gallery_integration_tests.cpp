@@ -2,6 +2,7 @@
 // 导航/计数、输入联动（下拉/页签/表单双路径）、弹窗统一规则、主题派生
 // 保留（高对比 × 深浅/强调色）、虚拟列表物化窗口、滑杆联动与语义覆盖。
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
@@ -483,8 +484,8 @@ TEST_CASE("gallery_collections_showcase_interacts", "[gallery]") {
     clickScrolled(app, "collection-table:head:name");
     CHECK(app.lastSortDescending());
 
-    // 三个集合均只物化可见窗口（O(visible)）；TreeList 末子节点为粘性
-    // 表头（绘制/命中盖在行区之上）。
+    // 三个集合均只物化可见窗口（O(visible)）；TreeList 表头在末子节点
+    //（粘性 chrome，盖住滚入的行区）。
     const RenderNode* list = findNodeByKey(app.root(), "collection-list");
     const RenderNode* tree = findNodeByKey(app.root(), "collection-tree");
     const RenderNode* table = findNodeByKey(app.root(), "collection-table");
@@ -496,6 +497,62 @@ TEST_CASE("gallery_collections_showcase_interacts", "[gallery]") {
     CHECK(!table->children.empty());
     CHECK(table->children.back().key == "collection-table:header");
     CHECK(table->children.size() <= 10);  // 表头 + 9 行数据（全部物化）。
+}
+
+// TreeList 表头几何回归（collection-design §8.3/§10.3）：表头不透明、
+// 置顶粘性、与行列同口径、右端不越视口（滚动条落在右 pad 空区）。
+TEST_CASE("gallery_treelist_header_geometry", "[gallery]") {
+    GalleryApp app;
+    app.setView(Size{1024.0F, 768.0F});
+    (void)app.renderFrame();
+    go(app, "nav-collections");
+    scrollIntoView(app, "collection-table");
+
+    const RenderNode* table = findNodeByKey(app.root(), "collection-table");
+    REQUIRE(table != nullptr);
+    REQUIRE(!table->children.empty());
+    // 表头在末尾（绘制/命中盖住行区）、置顶、不透明 surface 底。
+    const RenderNode& header = table->children.back();
+    CHECK(header.key == "collection-table:header");
+    CHECK(header.offset.y == Catch::Approx(0.0F).margin(0.01F));
+    CHECK(header.commonStyle().background == app.theme().colors.surface);
+    // 首行紧贴表头下方。
+    const RenderNode& row0 = table->children.front();
+    CHECK(row0.offset.y ==
+          Catch::Approx(header.size.height).margin(0.01F));
+    // 表头/行首列同起（左 pad 后），行末盒右端不越视口。
+    const Offset tableAbs = absoluteOffset(app.root(), "collection-table");
+    const Offset headAbs =
+        absoluteOffset(app.root(), "collection-table:head:name");
+    CHECK(headAbs.x ==
+          Catch::Approx(tableAbs.x + 12.0F).margin(0.01F));
+    const RenderNode* row =
+        findNodeByKey(app.root(), "collection-table:item:dep-core");
+    REQUIRE(row != nullptr);
+    REQUIRE(!row->children.empty());
+    const RenderNode& rowCells = row->children.front();
+    REQUIRE(!rowCells.children.empty());
+    const float rowAbsX =
+        tableAbs.x + row->offset.x + rowCells.offset.x +
+        rowCells.children.front().offset.x;
+    CHECK(rowAbsX == Catch::Approx(headAbs.x).margin(0.01F));
+    const RenderNode& lastBox = rowCells.children.back();
+    const float rightEdge =
+        tableAbs.x + row->offset.x + rowCells.offset.x +
+        lastBox.offset.x + lastBox.size.width;
+    CHECK(rightEdge <= tableAbs.x + table->size.width + 0.01F);
+
+    // 内滚 40px：表头仍置顶置末，行滑入其下（不透明底盖住，无叠字）。
+    app.wheel(absoluteOffset(app.root(), "collection-table") +
+                  Offset{40.0F, 60.0F},
+              Offset{0.0F, 40.0F});
+    (void)app.renderFrame();
+    table = findNodeByKey(app.root(), "collection-table");
+    REQUIRE(table != nullptr);
+    REQUIRE(!table->children.empty());
+    CHECK(table->children.back().key == "collection-table:header");
+    CHECK(table->children.back().offset.y == Catch::Approx(0.0F)
+                                                 .margin(0.01F));
 }
 
 TEST_CASE("gallery_slider_drives_progress", "[gallery]") {
@@ -671,4 +728,102 @@ TEST_CASE("gallery_collections_wheel_scrolls_inner_collection", "[gallery]") {
     const RenderNode* table = findNodeByKey(app.root(), "collection-table");
     REQUIRE(table != nullptr);
     CHECK(table->scrollOffset == 120.0F);
+}
+
+// 菜单类控件（menu-controls-design §11.3，对齐 design/gallery.html 增补）：
+// chrome 菜单栏打开/命令执行 + 主内容区右键菜单 + Menus 分区演示。
+TEST_CASE("gallery_menu_bar_and_context_menu", "[gallery][menu]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+
+    // chrome 菜单栏在主树（File/View/Help）。
+    REQUIRE(findNodeByKey(app.root(), "menu:bar:file") != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "menu:bar:view") != nullptr);
+
+    // 点击 View 栏项：面板锚定栏项下方打开。
+    click(app, "menu:bar:view");
+    (void)app.renderFrame();
+    REQUIRE(app.menuBarOpen());
+    REQUIRE(findNodeByKey(*app.shell().overlayRoot(), "menubar:panel:0") !=
+            nullptr);
+
+    // 激活 toggle-sidebar（View 首项）：侧栏隐藏 + 命令回显。
+    clickOverlayOption(app, "menubar:m0:i0");
+    (void)app.renderFrame();
+    CHECK(app.lastMenuCommand() == "toggle-sidebar");
+    CHECK_FALSE(app.sidebarVisible());
+    CHECK(findNodeByKey(app.root(), "gallery-nav") == nullptr);
+
+    // 主内容区右键：指针位置唤起 ContextMenu（全窗 barrier）。
+    const Offset content = centerOf(app.root(), "home-hero");
+    app.shell().pointerDown(content, kModifierNone, PointerButton::Secondary);
+    app.shell().pointerUp(content, PointerButton::Secondary);
+    (void)app.renderFrame();
+    REQUIRE(app.shell().overlayRoot() != nullptr);
+    REQUIRE(findNodeByKey(*app.shell().overlayRoot(), "ctx:panel:0") !=
+            nullptr);
+
+    // 激活 Open：命令经统一 onCommand 回显（菜单关闭）。
+    clickOverlayOption(app, "ctx:m0:i0");
+    (void)app.renderFrame();
+    CHECK(app.lastMenuCommand() == "open");
+    CHECK_FALSE(app.menuBarOpen());
+
+    // 再开 View 恢复侧栏（checkable 状态经 provider 重读 → 项为未勾选）。
+    click(app, "menu:bar:view");
+    clickOverlayOption(app, "menubar:m0:i0");
+    (void)app.renderFrame();
+    CHECK(app.sidebarVisible());
+    CHECK(findNodeByKey(app.root(), "gallery-nav") != nullptr);
+
+    // Menus 分区：右键演示行（menu-target: 前缀）行级菜单。
+    go(app, "nav-menus");
+    REQUIRE(findNodeByKey(app.root(), "menus-title") != nullptr);
+    const Offset target = centerOf(app.root(), "menu-target:notes.md");
+    app.shell().pointerDown(target, kModifierNone, PointerButton::Secondary);
+    (void)app.renderFrame();
+    REQUIRE(findNodeByKey(*app.shell().overlayRoot(), "ctx:panel:0") !=
+            nullptr);
+    clickOverlayOption(app, "ctx:m0:i0");
+    (void)app.renderFrame();
+    CHECK(app.lastMenuCommand() == "open:notes.md");
+}
+
+// Splitter（splitter-design §10.3）：断点跟随（200/168）→ 手动调节后
+// KeepOffset → View 菜单复位恢复断点。
+TEST_CASE("gallery_splitter_breakpoint_and_user_offset", "[gallery][splitter]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+    const auto navWidth = [&app] {
+        const RenderNode* nav = findNodeByKey(app.root(), "gallery-nav");
+        REQUIRE(nav != nullptr);
+        return nav->size.width;
+    };
+
+    // 未手动调节：跟随响应式断点（>1024 → 200；<1024 → 168）。
+    CHECK(navWidth() == 200.0F);
+    app.setView(Size{900.0F, 800.0F});
+    (void)app.renderFrame();
+    CHECK(navWidth() == 168.0F);
+
+    // 手动拖动：用户位置优先，此后窗口变宽不再回断点（KeepOffset）。
+    app.sidebarSplitter().dragTo(260.0F);
+    app.markDirty();
+    (void)app.renderFrame();
+    CHECK(navWidth() == 260.0F);
+    app.setView(Size{1400.0F, 900.0F});
+    (void)app.renderFrame();
+    CHECK(navWidth() == 260.0F);
+
+    // View 菜单 Reset pane layout：回断点并恢复跟随。
+    click(app, "menu:bar:view");
+    clickOverlayOption(app, "menubar:m0:i1");
+    (void)app.renderFrame();
+    CHECK(app.lastMenuCommand() == "reset-panes");
+    CHECK(navWidth() == 200.0F);
+    app.setView(Size{900.0F, 800.0F});
+    (void)app.renderFrame();
+    CHECK(navWidth() == 168.0F);
 }

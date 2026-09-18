@@ -410,6 +410,9 @@ int runWindowed(GalleryApp& app, const Options& options) {
     runOptions.windowDesc.title = "Lumen Gallery";
     runOptions.windowDesc.width = static_cast<int>(options.width);
     runOptions.windowDesc.height = static_cast<int>(options.height);
+    // 自定义标题栏（lumen-titlebar-design）：无边框窗口 + 自绘 caption
+    //（拖拽/resize 边由平台 hit-test 提供；runApp 注册拖拽区谓词）。
+    runOptions.windowDesc.customTitleBar = true;
     runOptions.diagnostics = options.diagnostics;
     runOptions.maxFrames = options.maxFrames;
     // 桌面系统字体：窗口路径注入真实字形（Windows 雅黑优先），CPU 光
@@ -429,14 +432,33 @@ int runWindowed(GalleryApp& app, const Options& options) {
                     fontDiagnostics.c_str());
         return {};
     };
-    // M12：系统主题切换 → 注入偏好（开启"跟随系统"时重派生主题）。
+    // M12：系统主题切换 → 注入偏好（开启"跟随系统"时重派生主题）；
+    // 自定义标题栏：WindowMaximized/WindowRestored → 最大化图标切换。
+    // Restored 需查询实际最大化态（最小化恢复与最大化还原同事件，盲目
+    // 置 false 会误清“最大化后最小化再恢复”的图标）。
     runOptions.onEvent = [&app, &host](lumen::app::AppShell&,
                                        const lumen::core::HostEvent& event) {
         if (event.type == lumen::core::HostEventType::SystemThemeChanged) {
             app.setSystemThemePreference(host.capabilities().prefersDarkMode,
                                          host.capabilities().accentColor);
+        } else if (event.type ==
+                   lumen::core::HostEventType::WindowMaximized) {
+            app.noteWindowMaximized(true);
+        } else if (event.type == lumen::core::HostEventType::WindowRestored) {
+            const auto metrics = host.windowMetrics(event.window);
+            app.noteWindowMaximized(metrics.has_value() &&
+                                    metrics->maximized);
         }
     };
+    // 自定义标题栏：窗口命令经宿主（无效 WindowId 走 SDL host 单窗口
+    // 便捷路径）；close 走 WindowCloseRequested 统一拦截规则。
+    GalleryApp::WindowCommands windowCommands;
+    windowCommands.minimize = [&host] { host.minimizeWindow({}); };
+    windowCommands.toggleMaximize = [&host] {
+        host.toggleMaximizeWindow({});
+    };
+    windowCommands.requestClose = [&host] { host.requestWindowClose({}); };
+    app.setWindowCommands(std::move(windowCommands));
     return lumen::app::runApp(app.shell(), host, runOptions);
 }
 

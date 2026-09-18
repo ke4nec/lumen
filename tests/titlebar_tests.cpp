@@ -1,7 +1,6 @@
-// 自定义标题栏框架测试（docs/lumen-titlebar-design.md §6）：
-// Widget.windowDrag 物化 → Fake host 平台契约（窗口操作/无效 id 挂靠/
-// 默认 no-op 安全降级/拖拽区谓词）。Gallery 结构/窗口命令/runApp 注册
-// 集成见同文件 gallery 段（随示例提交合入）。
+// 自定义标题栏专项测试（docs/lumen-titlebar-design.md §6）：
+// Widget.windowDrag 物化 → AppShell::isWindowDragPoint 判定 → Gallery
+// 标题栏结构/窗口命令/最大化图标 → Fake host 平台契约 → runApp 注册。
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -9,6 +8,9 @@
 #include <optional>
 #include <string>
 
+#include "gallery_app.h"
+#include "lumen/app/app_shell.h"
+#include "lumen/core/icon_id.h"
 #include "lumen/core/widget.h"
 #include "lumen/layout/layout.h"
 #include "lumen/platform/application_host.h"
@@ -16,8 +18,22 @@
 
 using namespace lumen;
 using namespace lumen::core;
+using namespace lumen::examples;
 
 namespace {
+
+Offset centerOf(const RenderNode& root, const std::string& key) {
+    const RenderNode* node = findNodeByKey(root, key);
+    REQUIRE(node != nullptr);
+    return absoluteOffset(root, key) +
+           Offset{node->size.width * 0.5F, node->size.height * 0.5F};
+}
+
+void click(GalleryApp& app, const std::string& key) {
+    const Offset point = centerOf(app.root(), key);
+    app.pointerDown(point);
+    app.pointerUp(point);
+}
 
 bool drainOne(platform::FakeApplicationHost& host, HostEvent& out) {
     return host.pollEvent(out);
@@ -25,7 +41,7 @@ bool drainOne(platform::FakeApplicationHost& host, HostEvent& out) {
 
 }  // namespace
 
-// --- core：windowDrag 物化 ---
+// --- core/app：windowDrag 物化与拖拽判定 ---
 
 TEST_CASE("titlebar_window_drag_flag_materializes_to_render_node",
           "[titlebar]") {
@@ -43,6 +59,193 @@ TEST_CASE("titlebar_window_drag_flag_materializes_to_render_node",
     const RenderNode undragNode = layout::LayoutEngine::layout(
         undragged, Constraints::tight(Size{10.0F, 10.0F}));
     CHECK_FALSE(undragNode.windowDrag);
+}
+
+TEST_CASE("titlebar_gallery_structure_marks_only_caption_row",
+          "[titlebar][gallery]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+
+    // 标题栏三段式：品牌 / 菜单栏 / 拖拽区 / 窗口控制，同时存在。
+    REQUIRE(findNodeByKey(app.root(), "gallery-titlebar") != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "gallery-titlebar-row") != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "gallery-brand") != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "gallery-menubar") != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "gallery-titlebar-drag") != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "gallery-window-actions") != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "window-minimize") != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "window-maximize") != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "window-close") != nullptr);
+    // 菜单栏在标题栏行内（chrome 一部分，menu-design 先例）。
+    const Offset barAbs = absoluteOffset(app.root(), "gallery-titlebar-row");
+    const Offset menuAbs = absoluteOffset(app.root(), "gallery-menubar");
+    CHECK(menuAbs.y >= barAbs.y);
+
+    // 物化口径：标题栏行 windowDrag=true，主内容区=false。
+    const RenderNode* row =
+        findNodeByKey(app.root(), "gallery-titlebar-row");
+    REQUIRE(row != nullptr);
+    CHECK(row->windowDrag);
+    const RenderNode* list = findNodeByKey(app.root(), "gallery-list");
+    REQUIRE(list != nullptr);
+    CHECK_FALSE(list->windowDrag);
+}
+
+TEST_CASE("titlebar_drag_points_exclude_interactive_controls",
+          "[titlebar][gallery]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+
+    // 标题文本 / 拖拽空白 → 可拖（原生 caption 行为）。
+    CHECK(app.shell().isWindowDragPoint(
+        centerOf(app.root(), "gallery-titlebar-title")));
+    CHECK(app.shell().isWindowDragPoint(
+        centerOf(app.root(), "gallery-titlebar-drag")));
+
+    // 菜单项 / 窗口按钮（onClick 目标，命中链更深）→ 不可拖。
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(app.root(), "menu:bar:file")));
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(app.root(), "window-minimize")));
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(app.root(), "window-maximize")));
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(app.root(), "window-close")));
+
+    // 主内容区 → 不可拖。
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(app.root(), "home-hero")));
+
+    // 紧凑导航下拉（标题栏下自身非拖拽区，≤720 折叠路径）。
+    app.setView(Size{700.0F, 800.0F});
+    (void)app.renderFrame();
+    REQUIRE(findNodeByKey(app.root(), "compact-navigation") != nullptr);
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(app.root(), "compact-navigation")));
+}
+
+TEST_CASE("titlebar_modal_overlay_blocks_drag", "[titlebar][gallery]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+    const Offset dragPoint = centerOf(app.root(), "gallery-titlebar-drag");
+    REQUIRE(app.shell().isWindowDragPoint(dragPoint));
+
+    // ContextMenu 全窗 barrier：打开后同一点命中 overlay → 不可拖。
+    const Offset content = centerOf(app.root(), "home-hero");
+    app.shell().pointerDown(content, kModifierNone, PointerButton::Secondary);
+    app.shell().pointerUp(content, PointerButton::Secondary);
+    (void)app.renderFrame();
+    REQUIRE(app.shell().overlayRoot() != nullptr);
+    CHECK_FALSE(app.shell().isWindowDragPoint(dragPoint));
+
+    // overlay 面板自身命中 → 不可拖。
+    const RenderNode* overlay = app.shell().overlayRoot();
+    REQUIRE(overlay != nullptr);
+    const RenderNode* panel = findNodeByKey(*overlay, "ctx:panel:0");
+    REQUIRE(panel != nullptr);
+    const Offset panelPoint =
+        absoluteOffset(*overlay, "ctx:panel:0") +
+        Offset{panel->size.width * 0.5F, panel->size.height * 0.5F};
+    CHECK_FALSE(app.shell().isWindowDragPoint(panelPoint));
+}
+
+// --- gallery 集成：窗口命令与最大化态 ---
+
+TEST_CASE("titlebar_window_commands_record_and_forward",
+          "[titlebar][gallery]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+
+    int minimizeCalls = 0;
+    int maximizeCalls = 0;
+    int closeCalls = 0;
+    GalleryApp::WindowCommands commands;
+    commands.minimize = [&] { ++minimizeCalls; };
+    commands.toggleMaximize = [&] { ++maximizeCalls; };
+    commands.requestClose = [&] { ++closeCalls; };
+    app.setWindowCommands(std::move(commands));
+
+    click(app, "window-minimize");
+    (void)app.renderFrame();
+    CHECK(app.lastWindowCommand() == "window-minimize");
+    CHECK(minimizeCalls == 1);
+
+    click(app, "window-maximize");
+    (void)app.renderFrame();
+    CHECK(app.lastWindowCommand() == "window-maximize");
+    CHECK(maximizeCalls == 1);
+
+    click(app, "window-close");
+    (void)app.renderFrame();
+    CHECK(app.lastWindowCommand() == "window-close");
+    CHECK(closeCalls == 1);
+}
+
+TEST_CASE("titlebar_window_commands_safe_without_host",
+          "[titlebar][gallery]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+    // headless/采样路径不注入平台回调：handler 仍执行并记录，不崩溃。
+    click(app, "window-minimize");
+    (void)app.renderFrame();
+    CHECK(app.lastWindowCommand() == "window-minimize");
+    click(app, "window-maximize");
+    (void)app.renderFrame();
+    CHECK(app.lastWindowCommand() == "window-maximize");
+}
+
+TEST_CASE("titlebar_close_falls_back_to_unified_close_policy",
+          "[titlebar][gallery]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+    // 无宿主时 close 回退 shell.requestClose()：弹窗打开 → 消费关闭弹窗。
+    // 注：弹窗为模态 overlay，标题栏按钮被遮挡不可点——直接执行 handler
+    //（与点击无弹窗时同一 handler 路径），验证回退语义。
+    app.shell().handlers().at("show-dialog")();
+    (void)app.renderFrame();
+    REQUIRE(app.dialogOpen());
+
+    app.shell().handlers().at("window-close")();
+    (void)app.renderFrame();
+    CHECK(app.lastWindowCommand() == "window-close");
+    CHECK_FALSE(app.dialogOpen());
+}
+
+TEST_CASE("titlebar_maximized_state_switches_icon",
+          "[titlebar][gallery]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+
+    const auto maximizeIcon = [&app] {
+        const RenderNode* node =
+            findNodeByKey(app.root(), "window-maximize");
+        REQUIRE(node != nullptr);
+        return static_cast<IconId>(node->icon);
+    };
+    CHECK(maximizeIcon() == IconId::Maximize);
+    CHECK_FALSE(app.windowMaximized());
+
+    app.noteWindowMaximized(true);
+    (void)app.renderFrame();
+    CHECK(app.windowMaximized());
+    CHECK(maximizeIcon() == IconId::Restore);
+
+    // 同值重复注入不 markDirty 死循环（行为不变）。
+    app.noteWindowMaximized(true);
+    (void)app.renderFrame();
+    CHECK(maximizeIcon() == IconId::Restore);
+
+    app.noteWindowMaximized(false);
+    (void)app.renderFrame();
+    CHECK_FALSE(app.windowMaximized());
+    CHECK(maximizeIcon() == IconId::Maximize);
 }
 
 // --- 平台契约：Fake host + 默认 no-op ---
@@ -142,7 +345,7 @@ TEST_CASE("titlebar_host_default_window_operations_are_safe_noops",
             return std::nullopt;
         }
         [[nodiscard]] std::vector<core::WindowId> windowIds()
-        const override {
+            const override {
             return {};
         }
         [[nodiscard]] platform::PlatformWindow* platformWindow(
@@ -157,7 +360,7 @@ TEST_CASE("titlebar_host_default_window_operations_are_safe_noops",
             return nullptr;
         }
         [[nodiscard]] platform::PlatformCapabilities capabilities()
-        const override {
+            const override {
             return {};
         }
     };
@@ -187,4 +390,53 @@ TEST_CASE("titlebar_fake_host_drag_region_predicate",
     REQUIRE(host.dragRegions.count(*id) == 1);
     CHECK(host.dragRegions[*id](Offset{10.0F, 10.0F}));
     CHECK_FALSE(host.dragRegions[*id](Offset{200.0F, 10.0F}));
+}
+
+// --- runApp 接线：customTitleBar 注册拖拽区谓词 ---
+
+TEST_CASE("titlebar_run_app_registers_drag_region_for_custom_title_bar",
+          "[titlebar][app]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+
+    platform::FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    HostEvent ignored{};
+    while (host.pollEvent(ignored)) {
+    }
+
+    app::RunOptions options;
+    options.windowDesc.customTitleBar = true;
+    options.maxFrames = 1;
+    CHECK(app::runApp(app.shell(), host, options) == 0);
+
+    const auto ids = host.windowIds();
+    REQUIRE(ids.size() == 1);
+    REQUIRE(host.dragRegions.count(ids.front()) == 1);
+
+    // 注册的谓词即 shell.isWindowDragPoint（事件树口径一致）。
+    const Offset dragPoint = centerOf(app.root(), "gallery-titlebar-drag");
+    const Offset buttonPoint = centerOf(app.root(), "window-close");
+    CHECK(host.dragRegions[ids.front()](dragPoint));
+    CHECK_FALSE(host.dragRegions[ids.front()](buttonPoint));
+}
+
+TEST_CASE("titlebar_run_app_skips_drag_region_without_custom_title_bar",
+          "[titlebar][app]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+
+    platform::FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    HostEvent ignored{};
+    while (host.pollEvent(ignored)) {
+    }
+
+    app::RunOptions options;
+    options.windowDesc.customTitleBar = false;
+    options.maxFrames = 1;
+    CHECK(app::runApp(app.shell(), host, options) == 0);
+    CHECK(host.dragRegions.empty());
 }

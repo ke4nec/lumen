@@ -31,7 +31,6 @@ RenderNode layoutOf(const Widget& widget, float width = 400.0F,
     return LayoutEngine::layout(
         widget, Constraints::tight(Size{width, height}));
 }
-
 Offset centerOf(const RenderNode& root, const std::string& key) {
     const RenderNode* node = findNodeByKey(root, key);
     REQUIRE(node != nullptr);
@@ -850,4 +849,96 @@ TEST_CASE("settings_semantics_bridge_records_full_contract", "[settings][m5]") {
           SemanticsActionStatus::Handled);
     (void)app.renderFrame();
     CHECK(app.scroll().offset() > beforeScroll);
+}
+
+// --- 菜单类控件与 Splitter（menu/splitter-controls-design §11.3/§10.3） ---
+
+TEST_CASE("settings_menus_page_bar_and_context_menu", "[settings][menu]") {
+    SettingsApp app;
+    (void)app.renderFrame();  // 首帧落地（构造期不求值 build）
+    app.pointerDown(centerOf(app.root(), "goto-menus-button"));
+    app.pointerUp(centerOf(app.root(), "goto-menus-button"));
+    (void)app.renderFrame();  // 路由切换的重建在下一帧落地
+    REQUIRE(app.navigator().current() == "menus");
+
+    // 菜单栏：点击「文件(F)」打开（overlay 面板锚定栏项下方）。
+    const Offset fileBar = centerOf(app.root(), "menu:bar:file");
+    app.pointerDown(fileBar);
+    app.pointerUp(fileBar);
+    REQUIRE(app.shell().overlayRoot() != nullptr);
+    CHECK(core::findNodeByKey(*app.shell().overlayRoot(), "menubar:panel:0") !=
+          nullptr);
+    // Escape 关闭并焦点恢复栏项（onKey → MenuBarController → 面板）。
+    app.keyDown(Key::Escape);
+    CHECK(app.shell().overlayRoot() == nullptr);
+
+    // 上下文菜单：右键演示区行（Secondary 经 sink 唤起）。
+    const Offset row = centerOf(app.root(), "menu-target:notes.md");
+    app.pointerDown(row, core::kModifierNone, core::PointerButton::Secondary);
+    app.pointerUp(row, core::PointerButton::Secondary);
+    REQUIRE(app.shell().overlayRoot() != nullptr);
+    CHECK(core::findNodeByKey(*app.shell().overlayRoot(), "ctx:panel:0") !=
+          nullptr);
+    // 键盘：Down（跳过无动作首项到 rename）+ Enter 激活 → 命令回显。
+    app.keyDown(Key::Down);
+    app.keyDown(Key::Enter);
+    (void)app.renderFrame();
+    CHECK(app.shell().overlayRoot() == nullptr);
+    const RenderNode* echo =
+        core::findNodeByKey(app.root(), "menu-command-label");
+    REQUIRE(echo != nullptr);
+    CHECK(echo->text.find("rename:notes.md") != std::string::npos);
+
+    // 返回 home（返回规则不受菜单改动影响）。
+    app.pointerDown(centerOf(app.root(), "back-button"));
+    app.pointerUp(centerOf(app.root(), "back-button"));
+    CHECK(app.navigator().current() == "home");
+}
+
+TEST_CASE("settings_splitter_page_drag_keyboard_and_reset",
+          "[settings][splitter]") {
+    SettingsApp app;
+    (void)app.renderFrame();  // 首帧落地（构造期不求值 build）
+    app.pointerDown(centerOf(app.root(), "goto-splitter-button"));
+    app.pointerUp(centerOf(app.root(), "goto-splitter-button"));
+    (void)app.renderFrame();  // 路由切换的重建在下一帧落地
+    REQUIRE(app.navigator().current() == "splitter");
+
+    const std::string dividerKey = "split:div:main-split";
+    const float before =
+        core::absoluteOffset(app.root(), dividerKey).x;
+    // 拖动 +80：分隔条右移（布局下一帧重排，rebuildIfDirty 后核对）。
+    const Offset center = centerOf(app.root(), dividerKey);
+    app.pointerDown(center);
+    app.pointerMove(Offset{center.x + 80.0F, center.y});
+    app.pointerUp(Offset{center.x + 80.0F, center.y});
+    app.rebuildIfDirty();
+    CHECK(core::absoluteOffset(app.root(), dividerKey).x ==
+          Catch::Approx(before + 80.0F));
+
+    // 键盘：直接聚焦分隔条后 → 步进 +16（松手即失焦，点击不再建焦）。
+    const core::RenderNode* divider =
+        core::findNodeByKey(app.root(), dividerKey);
+    REQUIRE(divider != nullptr);
+    app.shell().controller().focusNode(*divider);
+    app.keyDown(Key::Right);
+    app.rebuildIfDirty();
+    CHECK(core::absoluteOffset(app.root(), dividerKey).x ==
+          Catch::Approx(before + 96.0F));
+
+    // 双击复位：回到初始位置（before）。
+    app.shell().tick(2000);
+    const Offset reset = centerOf(app.root(), dividerKey);
+    app.pointerDown(reset);
+    app.pointerUp(reset);
+    app.shell().tick(2200);
+    app.pointerDown(centerOf(app.root(), dividerKey));
+    app.pointerUp(centerOf(app.root(), dividerKey));
+    app.rebuildIfDirty();
+    CHECK(core::absoluteOffset(app.root(), dividerKey).x ==
+          Catch::Approx(before));
+
+    // 嵌套垂直分栏同样存在（detail-split 分隔条）。
+    CHECK(core::findNodeByKey(app.root(), "split:div:detail-split") !=
+          nullptr);
 }

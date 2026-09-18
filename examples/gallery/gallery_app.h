@@ -5,20 +5,28 @@
 // 应用层职责：build 函数、状态 key 与业务 handler（plan §6.1）。
 // 壳层与 Overview 首屏对齐 design/gallery.html v1「Core Dark」设计稿
 //（2026-09 尺度优化：正文/标签 14px、辅助 12px、主控件 40px、紧凑样本
-// 32px、4px 网格）：窗口顶栏（品牌标/状态胶囊/窗口操作）、200px 侧栏
-//（<1024 收窄 168；导航 + Live state 注记）、kicker/hero/指标卡/双栏
-// 面板（Control inventory、DSL 快照、Resolved tokens、Theme controls）、
-// 双侧页脚；主内容 <720 上下堆叠。视觉全部来自 Theme token。
+// 32px、4px 网格）：自定义标题栏（lumen-titlebar-design：品牌/MenuBar/
+// 拖拽区/状态胶囊/窗口控制一条 48px 行，无边框窗口自绘 caption）、
+// 200px 侧栏（<1024 收窄 168；导航 + Live state 注记）、kicker/hero/
+// 指标卡/双栏面板（Control inventory、DSL 快照、Resolved tokens、
+// Theme controls）、双侧页脚；主内容 <720 上下堆叠。视觉全部来自
+// Theme token。
 // 覆盖：Button 变体/尺寸/状态、TextField/Checkbox/Switch/Radio/Slider/
 // Dropdown/Tabs/ProgressBar/Icon/Tooltip/Dialog、Row/Column(flex)/Stack/
 // Container/Grid、ListView/VirtualList、Theme 深浅/密度/强调色/局部
 // ThemeScope/排版/语义色板。
+// 菜单类控件与分栏（menu/splitter-controls 设计稿 §11.3/§10.3，对齐
+// design/gallery.html 增补）：MenuBar 嵌入标题栏（File/View/Help，
+// 点击/Alt+助记打开，打开后 ←/→ 切换顶级）、主内容区右键
+// ContextMenu、侧栏|内容 Splitter（拖动/键盘步进/双击复位；未手动调节
+// 时跟随 200/168 断点）、Menus 分区演示页与 Overview 清单新瓷砖。
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -40,7 +48,9 @@
 #include "lumen/text/font_manager.h"
 #include "lumen/widgets/form.h"
 #include "lumen/widgets/list.h"
+#include "lumen/widgets/menu.h"
 #include "lumen/widgets/navigator.h"
+#include "lumen/widgets/splitter.h"
 #include "lumen/widgets/tree.h"
 
 namespace lumen::examples {
@@ -54,7 +64,11 @@ class GalleryApp {
     GalleryApp(GalleryApp&&) = delete;
     GalleryApp& operator=(GalleryApp&&) = delete;
 
-    void setView(core::Size size) { shell_.setView(size); }
+    void setView(core::Size size) {
+        shell_.setView(size);
+        // Splitter 未被手动调节时跟随 200/168 响应式断点（设计稿侧栏宽）。
+        syncSidebarBreakpoint();
+    }
     // Deterministic entry for screenshots; uses the same routed page and scroll.
     bool showSample(const std::string& route, const std::string& key = {}) {
         go(route);
@@ -155,6 +169,41 @@ class GalleryApp {
     [[nodiscard]] bool dialogOpen() const { return dialogOpen_; }
     [[nodiscard]] bool dropdownOpen() const { return dropdown_.isOpen(); }
     [[nodiscard]] widgets::DropdownController& dropdown() { return dropdown_; }
+    // 菜单类控件与分栏（测试/回显断言用）。
+    [[nodiscard]] const std::string& lastMenuCommand() const {
+        return lastMenuCommand_;
+    }
+    [[nodiscard]] bool menuBarOpen() const { return menuBar_.isOpen(); }
+    [[nodiscard]] bool sidebarVisible() const { return sidebarVisible_; }
+    [[nodiscard]] widgets::SplitterController& sidebarSplitter() {
+        return sidebarSplitter_;
+    }
+    // 自定义标题栏（lumen-titlebar-design §4.4）：平台窗口命令（main.cpp
+    // 窗口装配注入；headless/采样路径为空——handler 仍执行并记录命令，
+    // close 回退 shell.requestClose() 保持统一关闭语义可测）。
+    struct WindowCommands {
+        std::function<void()> minimize{};
+        std::function<void()> toggleMaximize{};
+        std::function<void()> requestClose{};
+    };
+    void setWindowCommands(WindowCommands commands) {
+        windowCommands_ = std::move(commands);
+    }
+    // 窗口命令回显（测试/截图断言用）：最近一次 window-minimize/
+    // window-maximize/window-close。
+    [[nodiscard]] const std::string& lastWindowCommand() const {
+        return lastWindowCommand_;
+    }
+    // 最大化状态（WindowMaximized/WindowRestored 经 onEvent 注入）：
+    // 切换窗口控制 Maximize/Restore 图标。
+    void noteWindowMaximized(bool maximized) {
+        if (windowMaximized_ == maximized) {
+            return;
+        }
+        windowMaximized_ = maximized;
+        shell_.markDirty();
+    }
+    [[nodiscard]] bool windowMaximized() const { return windowMaximized_; }
     [[nodiscard]] bool darkMode() const { return darkMode_; }
     [[nodiscard]] style::ThemeDirection direction() const {
         return direction_;
@@ -203,32 +252,48 @@ class GalleryApp {
     [[nodiscard]] float contentPadding() const {
         return narrowWindow() ? 24.0F : 32.0F;
     }
-    // 主内容可用宽（决定内容栅格单双列与窄版指标卡）。
+    // 主内容可用宽（决定内容栅格单双列与窄版指标卡）。Splitter 接管后
+    // 侧栏宽取控制器实际 offset（未手动调节时 = 断点宽），并扣除分隔条
+    // 6px 轨道占位；框架按密度在轨道两侧透明扩展命中区。
     [[nodiscard]] float contentColumnWidth() const {
-        const float sidebar = compactNavigation() ? 0.0F : sidebarWidth();
-        return shell_.view().width - sidebar - 2.0F * contentPadding();
+        const bool sidebarShown =
+            !compactNavigation() && sidebarVisible_;
+        const float sidebar =
+            sidebarShown ? sidebarSplitter_.offset() : 0.0F;
+        const float track =
+            sidebarShown ? core::kSplitterTrackThickness : 0.0F;
+        return shell_.view().width - sidebar - track -
+               2.0F * contentPadding();
     }
 
-    // Gallery 根：Header + Body(Row: 导航栏 + 内容 ListView) + Footer。
-    // Body Row 本身即 flex 布局演示；内容页按路由切换。
+    // Gallery 根：自定义标题栏（MenuBar 嵌入）+ Body(Splitter: 导航栏 |
+    // 内容 ListView) + Footer。Body 的 Splitter 即分栏控件在窗口 chrome 的
+    // 使用演示（拖动/键盘/双击复位，framework 物化分隔条）；内容页按
+    // 路由切换。
     [[nodiscard]] core::Widget buildUi() const {
         const style::Theme& theme = shell_.theme();
-        core::Widget header = buildHeader(theme);
-        core::Widget nav = buildNav(theme);
-        core::Widget content = buildContent(theme);
-        content.flex = 1.0F;
-        core::Widget divider = core::makeContainerLeaf(
-            1.0F, std::nullopt, core::EdgeInsets{}, core::EdgeInsets{},
-            theme.colors.borderDefault, "gallery-body-divider");
-        core::Widget body = compactNavigation() ? std::move(content) :
-            core::makeRow({std::move(nav), std::move(divider), std::move(content)},
-                          core::MainAxisAlignment::Start,
-                          core::CrossAxisAlignment::Stretch, 0.0F);
+        core::Widget titleBar = buildTitleBar(theme);
+        core::Widget body;
+        if (compactNavigation() || !sidebarVisible_) {
+            core::Widget content = buildContent(theme);
+            content.flex = 1.0F;
+            body = std::move(content);
+        } else {
+            core::Widget nav = buildNav(theme);
+            core::Widget content = buildContent(theme);
+            content.flex = 1.0F;
+            body = core::makeSplitter(&sidebarSplitter_, std::move(nav),
+                                      std::move(content),
+                                      /*horizontal=*/true, "gallery-body");
+        }
         body.flex = 1.0F;
-        if (!compactNavigation()) body.key = "gallery-body";
         core::Widget footer = buildFooter(theme);
+        std::vector<core::Widget> pageRows;
+        pageRows.push_back(std::move(titleBar));
+        pageRows.push_back(std::move(body));
+        pageRows.push_back(std::move(footer));
         core::Widget page = core::makeColumn(
-            {std::move(header), std::move(body), std::move(footer)},
+            std::move(pageRows),
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Start,
             0.0F);
         page.flex = 1.0F;
@@ -278,6 +343,16 @@ class GalleryApp {
             // 时 Up/Down 仍走滚动路径）。
             if (self->navigationMenu_.handleKey(shell, key)) return true;
             if (self->dropdown_.handleKey(shell, key)) {
+                return true;
+            }
+            // 菜单类控件（menu-controls-design §6/§7）：菜单打开期间
+            // Up/Down/Enter/Esc/Tab/Alt+助记字母全部由菜单消费（modal
+            // 优先；未打开时 handleKey 不消费，键盘仍走滚动/焦点路径）。
+            if (self->contextMenu_.handleKey(shell, key, modifiers,
+                                             keyChar)) {
+                return true;
+            }
+            if (self->menuBar_.handleKey(shell, key, modifiers, keyChar)) {
                 return true;
             }
             // 集合控件键盘契约（collection-design §6.4/§7.4）：焦点位于
@@ -416,8 +491,32 @@ class GalleryApp {
         handlers["goto-layout"] = [this] { go("layout"); };
         handlers["goto-lists"] = [this] { go("lists"); };
         handlers["goto-collections"] = [this] { go("collections"); };
+        handlers["goto-menus"] = [this] { go("menus"); };
         handlers["goto-feedback"] = [this] { go("feedback"); };
         handlers["goto-theme"] = [this] { go("theme"); };
+        // 自定义标题栏：窗口命令（lumen-titlebar-design §4.4）——命令
+        // 始终记录（headless 断言）；平台回调由 main.cpp 注入，close 无
+        // 宿主时回退统一关闭规则（modal 优先消费）。
+        handlers["window-minimize"] = [this] {
+            lastWindowCommand_ = "window-minimize";
+            if (windowCommands_.minimize) {
+                windowCommands_.minimize();
+            }
+        };
+        handlers["window-maximize"] = [this] {
+            lastWindowCommand_ = "window-maximize";
+            if (windowCommands_.toggleMaximize) {
+                windowCommands_.toggleMaximize();
+            }
+        };
+        handlers["window-close"] = [this] {
+            lastWindowCommand_ = "window-close";
+            if (windowCommands_.requestClose) {
+                windowCommands_.requestClose();
+                return;
+            }
+            (void)shell_.requestClose();
+        };
         handlers["back"] = [this] {
             navigator_.pop();
             scroll_.scrollTo(0.0F);
@@ -519,6 +618,60 @@ class GalleryApp {
             }
             shell_.markDirty();
             shell_.requestFullRepaint();
+        };
+
+        // 菜单类控件（menu-controls-design §11.3，对齐 design/gallery.html
+        // 增补）：窗口 chrome 菜单栏（File/View/Help）+ 主内容区右键菜单 +
+        // 命令统一回显。checkable 项状态由应用维护（点击 → onCommand →
+        // 翻转 → 重开菜单时经 provider 读取）。
+        menuBar_.setMenus({{"file", "File", 'f'},
+                           {"view", "View", 'v'},
+                           {"help", "Help", 'h'}});
+        menuBar_.setMenuProvider([this](const std::string& id) {
+            return barMenuItems(id);
+        });
+        menuBar_.setSubmenuProvider([this](const std::string& id) {
+            return barMenuItems("sub:" + id);
+        });
+        menuBar_.attach(shell_);
+        const auto forwardCommand = [this](const std::string& id) {
+            handleMenuCommand(id);
+        };
+        menuBar_.onCommand = forwardCommand;
+        contextMenu_.onCommand = forwardCommand;
+        // 右键通道：Menus 分区演示行（menu-target: 前缀）行级菜单，主内
+        // 容区（gallery-list 子树）通用菜单（设计稿右键 app-main）。
+        shell_.controller().addSecondaryPressSink(
+            [this](const std::vector<const core::RenderNode*>& chain,
+                   core::Offset position) {
+                const core::RenderNode* target = nullptr;
+                bool inContent = false;
+                for (const core::RenderNode* node : chain) {
+                    if (node->key.rfind("menu-target:", 0) == 0) {
+                        target = node;
+                    }
+                    if (node->key == "gallery-list") {
+                        inContent = true;
+                    }
+                }
+                if (target != nullptr) {
+                    contextMenu_.open(shell_, position,
+                                      targetContextMenuItems(target->key));
+                    return true;
+                }
+                if (inContent) {
+                    contextMenu_.open(shell_, position,
+                                      contentContextMenuItems());
+                    return true;
+                }
+                return false;
+            });
+        // Splitter：手动调节标记（此后断点不再覆盖；Reset pane layout
+        // 复位并恢复断点跟随）。
+        sidebarSplitter_.onOffsetChanged = [this](float) {
+            if (!syncingSidebarBreakpoint_) {
+                sidebarUserAdjusted_ = true;
+            }
         };
 
         form_.registerField(
@@ -856,9 +1009,13 @@ class GalleryApp {
 
     // --- 页面骨架（design/gallery.html v1 Core Dark 壳层） ---
 
-    // 窗口顶栏：品牌标 + 标题 | 状态胶囊 + 视口尺寸 | 窗口操作（装饰性
-    // 图标——真实窗口控件由 OS 标题栏提供）。
-    [[nodiscard]] core::Widget buildHeader(const style::Theme& theme) const {
+    // 自定义标题栏（lumen-titlebar-design §5；无边框窗口自绘 caption）：
+    // 品牌 + MenuBar（chrome 用法，面板锚定栏项下方打开）+ 弹性拖拽区
+    //（右侧状态胶囊）+ 窗口控制（44×32 贴合右上角，Windows 惯例）一条
+    // 48px 行。整行标记 windowDrag：空白可拖动移窗、双击最大化由平台
+    // hit-test 原生提供；菜单项/窗口按钮/紧凑导航下拉命中链更深，自然
+    // 排除拖拽。≤1024 隐藏状态胶囊；≤720 折叠标题文字（留品牌标）。
+    [[nodiscard]] core::Widget buildTitleBar(const style::Theme& theme) const {
         const float markSize = brandMarkStyle(theme).fontSize * 2.0F;
         core::Widget mark = core::makeRow(
             {core::makeText("L", brandMarkStyle(theme))},
@@ -869,83 +1026,96 @@ class GalleryApp {
         mark.radius = core::CornerRadius::all(markSize * 0.25F);
         core::Widget title = core::makeText("Lumen Widget Gallery",
                                             headerTitleStyle(theme));
-        title.key = "gallery-header-title";
+        title.key = "gallery-titlebar-title";
         title.textStyle.maxLines = 1;
         title.textStyle.overflow = core::TextOverflow::Ellipsis;
-        title.flex = 1.0F;
         core::Widget brand = core::makeRow(
             {std::move(mark), std::move(title)},
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-            10.0F);
+            10.0F, core::EdgeInsets::only(0.0F, 0.0F, 12.0F, 0.0F));
+        if (compactNavigation()) {
+            // ≤720：只留品牌标（设计稿折叠标题文字）。
+            brand.children.pop_back();
+        }
         brand.key = "gallery-brand";
-        brand.flex = 1.0F;
 
-        core::Widget pill = core::makeRow(
-            {core::makeText("Desktop preview", statusPillStyle(theme))},
-            core::MainAxisAlignment::Center, core::CrossAxisAlignment::Center,
-            0.0F, core::EdgeInsets::symmetric(8.0F, 4.0F), core::EdgeInsets{},
-            "gallery-status-pill", std::nullopt,
-            // 设计稿 24px（4px 上下内距 + 单行文字）；fontScale 放大时
-            // 按行高推导，避免固定高度裁字。
-            std::max(24.0F, statusPillStyle(theme).fontSize + 8.0F));
-        pill.color = theme.colors.accentContainer;
-        pill.radius = core::CornerRadius::all(12.0F);
-        const core::Size view = shell_.view();
-        core::Widget viewLabel = smallLabel(
-            std::to_string(static_cast<int>(view.width)) + " × " +
-                std::to_string(static_cast<int>(view.height)),
-            theme);
-        core::Widget status = core::makeRow(
-            {std::move(pill), std::move(viewLabel)},
-            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-            8.0F);
-        status.key = "gallery-status";
+        core::Widget menus =
+            core::withKey(menuBar_.build(), "gallery-menubar");
+
+        // 拖拽区：弹性空白（窗口拖动 hit-test 的主要落点），右端状态
+        // 胶囊 + 视口尺寸（≥1024 显示）。
+        std::vector<core::Widget> dragChildren;
+        if (!narrowWindow()) {
+            core::Widget pill = core::makeRow(
+                {core::makeText("Desktop preview", statusPillStyle(theme))},
+                core::MainAxisAlignment::Center,
+                core::CrossAxisAlignment::Center, 0.0F,
+                core::EdgeInsets::symmetric(8.0F, 4.0F), core::EdgeInsets{},
+                "gallery-status-pill", std::nullopt,
+                // 设计稿 24px（4px 上下内距 + 单行文字）；fontScale 放大
+                // 时按行高推导，避免固定高度裁字。
+                std::max(24.0F, statusPillStyle(theme).fontSize + 8.0F));
+            pill.color = theme.colors.accentContainer;
+            pill.radius = core::CornerRadius::all(12.0F);
+            const core::Size view = shell_.view();
+            core::Widget viewLabel = smallLabel(
+                std::to_string(static_cast<int>(view.width)) + " × " +
+                    std::to_string(static_cast<int>(view.height)),
+                theme);
+            core::Widget status = core::makeRow(
+                {std::move(pill), std::move(viewLabel)},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Center, 8.0F);
+            status.key = "gallery-status";
+            dragChildren.push_back(std::move(status));
+        }
+        core::Widget drag = core::makeRow(
+            std::move(dragChildren), core::MainAxisAlignment::End,
+            core::CrossAxisAlignment::Center, 8.0F,
+            core::EdgeInsets::only(0.0F, 0.0F, 8.0F, 0.0F));
+        drag.key = "gallery-titlebar-drag";
+        drag.flex = 1.0F;
 
         core::Widget actions = core::makeRow(
-            {windowAction(core::IconId::Minus, "window-minimize", theme),
-             windowAction(core::IconId::Maximize, "window-maximize", theme),
-             windowAction(core::IconId::Close, "window-close", theme)},
+            {windowButton(core::IconId::Minus, "window-minimize", theme),
+             windowButton(windowMaximized_ ? core::IconId::Restore
+                                           : core::IconId::Maximize,
+                          "window-maximize", theme),
+             windowButton(core::IconId::Close, "window-close", theme)},
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-            4.0F);
+            0.0F);
         actions.key = "gallery-window-actions";
 
-        // 设计稿 ≤1024 隐藏窗口状态（窗口操作保留）；≤720 顶栏收窄内距。
-        std::vector<core::Widget> rowChildren;
-        rowChildren.push_back(std::move(brand));
-        core::Widget spacer;
-        spacer.flex = 1.0F;
-        rowChildren.push_back(std::move(spacer));
-        if (!narrowWindow()) {
-            rowChildren.push_back(std::move(status));
-        }
-        rowChildren.push_back(std::move(actions));
-        const float headerPaddingX = compactNavigation() ? 16.0F : 20.0F;
+        const float barPaddingX = compactNavigation() ? 12.0F : 16.0F;
         core::Widget row = core::makeRow(
-            std::move(rowChildren),
+            {std::move(brand), std::move(menus), std::move(drag),
+             std::move(actions)},
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-            style::spaceToken(4),
-            core::EdgeInsets::symmetric(headerPaddingX, 12.0F));
-        row.key = "gallery-header-row";
+            8.0F, core::EdgeInsets::symmetric(barPaddingX, 4.0F));
+        row = core::withWindowDrag(std::move(row));
+        row.key = "gallery-titlebar-row";
         core::Widget bottom = core::makeContainerLeaf(
             std::nullopt, 1.0F, core::EdgeInsets{}, core::EdgeInsets{},
-            theme.colors.borderDefault, "gallery-header-divider");
-        std::vector<core::Widget> headerRows;
-        headerRows.push_back(std::move(row));
-        if (compactNavigation()) {
+            theme.colors.borderDefault, "gallery-titlebar-divider");
+        std::vector<core::Widget> barRows;
+        barRows.push_back(std::move(row));
+        // 紧凑路由下拉：窄窗口自动收起侧栏，或侧栏被 View 菜单手动隐藏
+        //（否则指针端无导航入口）。位于标题栏下（自身非拖拽区）。
+        if (compactNavigation() || !sidebarVisible_) {
             auto navigation = core::makeDropdown(routeDisplayName(navigator_.current()),
                 "open-navigation", "compact-navigation");
-            headerRows.push_back(core::makeContainer(std::move(navigation), std::nullopt,
-                std::nullopt, core::EdgeInsets::only(20, 0, 20, 12)));
+            barRows.push_back(core::makeContainer(std::move(navigation), std::nullopt,
+                std::nullopt, core::EdgeInsets::only(16, 0, 16, 12)));
         }
-        headerRows.push_back(std::move(bottom));
-        core::Widget header = core::makeColumn(
-            std::move(headerRows), core::MainAxisAlignment::Start,
+        barRows.push_back(std::move(bottom));
+        core::Widget titleBar = core::makeColumn(
+            std::move(barRows), core::MainAxisAlignment::Start,
             core::CrossAxisAlignment::Stretch, 0.0F);
         return core::withKey(
-            core::makeContainer(std::move(header), std::nullopt, std::nullopt,
+            core::makeContainer(std::move(titleBar), std::nullopt, std::nullopt,
                                 core::EdgeInsets{}, core::EdgeInsets{},
                                 theme.colors.surface),
-            "gallery-header");
+            "gallery-titlebar");
     }
 
     // 侧栏：分区标签 + 路由导航（当前项 Tonal 强调）+ 分隔线 + Live state
@@ -956,7 +1126,7 @@ class GalleryApp {
             {"Overview", "home"}, {"Buttons", "buttons"},
             {"Inputs", "inputs"},   {"Layout", "layout"},
             {"Lists", "lists"},     {"Collections", "collections"},
-            {"Feedback", "feedback"},
+            {"Menus", "menus"},     {"Feedback", "feedback"},
             {"Theme", "theme"},
         };
         std::vector<core::Widget> navItems;
@@ -1015,6 +1185,8 @@ class GalleryApp {
             items = buildListsItems(theme);
         } else if (route == "collections") {
             items = buildCollectionsItems(theme);
+        } else if (route == "menus") {
+            items = buildMenusItems(theme);
         } else if (route == "feedback") {
             items = buildFeedbackItems(theme);
         } else if (route == "theme") {
@@ -1191,7 +1363,7 @@ class GalleryApp {
         return items;
     }
 
-    // Control inventory：六个分区瓷砖（预览即真控件，点击整格跳转分区）。
+    // Control inventory：分区瓷砖（预览即真控件，点击整格跳转分区）。
     [[nodiscard]] core::Widget inventoryPanel(
         const style::Theme& theme) const {
         std::vector<core::Widget> tiles;
@@ -1199,11 +1371,13 @@ class GalleryApp {
         tiles.push_back(inputsTile(theme));
         tiles.push_back(togglesTile(theme));
         tiles.push_back(layoutTile(theme));
+        tiles.push_back(splitterTile(theme));
         tiles.push_back(listsTile(theme));
         tiles.push_back(collectionsTile(theme));
+        tiles.push_back(menusTile(theme));
         tiles.push_back(feedbackTile(theme));
         std::vector<core::Widget> body;
-        body.push_back(panelHead("Control inventory", "7 sections", theme));
+        body.push_back(panelHead("Control inventory", "8 sections", theme));
         // 组件卡最小 176px、间距 12（设计稿 auto-fit 网格）：保证瓦片内
         // 迷你控件（双按钮/输入框）不被压缩裁字。
         body.push_back(core::withKey(
@@ -1217,6 +1391,8 @@ class GalleryApp {
     [[nodiscard]] core::Widget codePanel(const style::Theme& theme) const {
         static const char* kLines[] = {
             "auto gallery = makeColumn({",
+            "  menuBar({file, view, help}),",
+            "  splitter(sidebar, mainPane),",
             "  button(\"Filled\", variant::filled),",
             "  textField(\"username\"),",
             "  virtualList(1000),",
@@ -1436,6 +1612,38 @@ class GalleryApp {
             "Layout", theme, "tile-layout", "goto-layout");
     }
 
+    // Splitter 瓦片：迷你分栏预览（两窗格 + 分隔条 active 态）。
+    [[nodiscard]] core::Widget splitterTile(
+        const style::Theme& theme) const {
+        auto pane = [&theme](const std::string& key, bool bordered) {
+            core::Widget leaf = core::makeContainerLeaf(
+                std::nullopt, 32.0F, core::EdgeInsets{}, core::EdgeInsets{},
+                theme.colors.accentContainer, key);
+            leaf.flex = 1.0F;
+            leaf.radius = core::CornerRadius::all(4.0F);
+            if (bordered) {
+                core::StyleOverrides overrides;
+                overrides.border = theme.colors.borderStrong;
+                overrides.borderWidth = 1.0F;
+                return core::withStyleOverrides(std::move(leaf),
+                                                 std::move(overrides));
+            }
+            return leaf;
+        };
+        // 分隔条：3px accent（hover/drag 视觉态；与真控件 active 线同宽）。
+        core::Widget divider = core::makeContainerLeaf(
+            3.0F, std::nullopt, core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.accent, "tile-split-divider");
+        return tileShell(
+            core::makeRow(
+                {pane("tile-split-leading", false),
+                 core::withKey(std::move(divider), "tile-split-divider"),
+                 pane("tile-split-trailing", true)},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Center, 5.0F),
+            "Splitter", theme, "tile-splitter", "goto-layout");
+    }
+
     [[nodiscard]] core::Widget listsTile(const style::Theme& theme) const {
         auto row = [&theme](const char* number, const std::string& key) {
             core::Widget dot = core::makeContainerLeaf(
@@ -1491,6 +1699,45 @@ class GalleryApp {
             3.0F);
         return tileShell(std::move(preview), "Collections", theme,
                          "tile-collections", "goto-collections");
+    }
+
+    // Menus 瓦片：迷你菜单面板（label + 快捷键展示列 + 禁用行）。
+    [[nodiscard]] core::Widget menusTile(const style::Theme& theme) const {
+        auto itemRow = [&theme](const std::string& label,
+                                const std::string& shortcut,
+                                const std::string& key, bool disabled) {
+            // 行文本与 smallLabel 同排版（12px/500）；禁用行仅换 disabled 色。
+            core::TextStyle style = scaledStyle(12.0F, 500, theme);
+            style.color = disabled ? theme.colors.disabledContent
+                                   : theme.colors.contentSecondary;
+            core::Widget text = core::makeText(label, style);
+            text.flex = 1.0F;
+            return core::withKey(
+                core::makeRow(
+                    {std::move(text),
+                     codeText(shortcut, theme,
+                              disabled ? theme.colors.disabledContent
+                                       : theme.colors.contentSecondary)},
+                    core::MainAxisAlignment::Start,
+                    core::CrossAxisAlignment::Center, 8.0F,
+                    core::EdgeInsets::symmetric(7.0F, 0.0F)),
+                key);
+        };
+        core::Widget panel = core::makeColumn(
+            {itemRow("Open", "Enter", "tile-menu-open", false),
+             itemRow("Copy path", "Ctrl+C", "tile-menu-copy", false),
+             itemRow("Paste", "Ctrl+V", "tile-menu-paste", true)},
+            core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Stretch, 2.0F,
+            core::EdgeInsets::all(3.0F));
+        core::StyleOverrides overrides;
+        overrides.background = theme.colors.surfaceElevated;
+        overrides.border = theme.colors.borderDefault;
+        overrides.borderWidth = 1.0F;
+        overrides.radius = core::CornerRadius::all(6.0F);
+        return tileShell(
+            core::withStyleOverrides(std::move(panel), std::move(overrides)),
+            "Menus", theme, "tile-menus", "goto-menus");
     }
 
     [[nodiscard]] core::Widget feedbackTile(const style::Theme& theme) const {
@@ -2171,8 +2418,10 @@ class GalleryApp {
             "collections-desc"));
 
         // --- List：Extended 选择 + 双击/Enter 激活 + Ctrl+A ---
-        core::Widget listWidget = core::makeList(
-            &collectionList_, "collection-list", std::nullopt, 300.0F);
+        // 内层视口常显滚动条（与外层 gallery-list 同 token 路径；内容
+        // 超出固定高度时右侧出现 Thumb）。
+        core::Widget listWidget = core::withScrollbar(core::makeList(
+            &collectionList_, "collection-list", std::nullopt, 300.0F));
         items.push_back(sectionCard(
             "List — selection & activation",
             {core::withKey(mutedLabel(collectionListStatus(), theme),
@@ -2186,8 +2435,8 @@ class GalleryApp {
             theme, "collections-list-card", "Extended · 200 rows"));
 
         // --- Tree：层级模型 + 键盘 Left/Right + 按 key 的展开状态 ---
-        core::Widget treeWidget = core::makeTree(
-            &collectionTree_, "collection-tree", std::nullopt, 280.0F);
+        core::Widget treeWidget = core::withScrollbar(core::makeTree(
+            &collectionTree_, "collection-tree", std::nullopt, 280.0F));
         items.push_back(sectionCard(
             "Tree — hierarchy & lazy model",
             {core::withKey(mutedLabel(collectionTreeStatus(), theme),
@@ -2201,9 +2450,9 @@ class GalleryApp {
             theme, "collections-tree-card", "Single · repo skeleton"));
 
         // --- TreeList：列系统 + 粘性表头 + 排序钩子 ---
-        core::Widget tableWidget = core::makeTreeList(
+        core::Widget tableWidget = core::withScrollbar(core::makeTreeList(
             &collectionTable_, &collectionTable_.columns(), true,
-            "collection-table", std::nullopt, 280.0F);
+            "collection-table", std::nullopt, 280.0F));
         items.push_back(sectionCard(
             "TreeList — columns & sticky header",
             {core::withKey(mutedLabel(collectionTableStatus(), theme),
@@ -2247,6 +2496,225 @@ class GalleryApp {
         }
         return "Sort: " + lastSortColumn_ +
                (lastSortDescending_ ? " · descending" : " · ascending");
+    }
+
+    // --- Menus（menu-controls-design §11.3，对齐 design/gallery.html 增补）---
+
+    // Menus 分区：ContextMenu 行级演示（右键唤起）+ chrome 菜单栏实时
+    // 状态回显（菜单栏本体在窗口 chrome，见 buildUi）。
+    [[nodiscard]] std::vector<core::Widget> buildMenusItems(
+        const style::Theme& theme) const {
+        std::vector<core::Widget> items;
+        items.push_back(core::withKey(titleText("Menus", theme),
+                                      "menus-title"));
+        items.push_back(core::withKey(
+            mutedLabel("ContextMenu and MenuBar share one overlay panel: "
+                       "separators, checkable items, shortcut display and "
+                       "lazy submenus. The bar under the window title is "
+                       "the live MenuBar; right-click targets below (or any "
+                       "content row) for the context menu.",
+                       theme),
+            "menus-desc"));
+
+        std::vector<core::Widget> targets;
+        for (const char* name : {"notes.md", "design.md", "build.log"}) {
+            targets.push_back(core::withKey(
+                buttonWidget(name, "", "menu-target:" + std::string(name),
+                             core::ButtonVariant::Outline),
+                "menu-target:" + std::string(name)));
+        }
+        items.push_back(sectionCard(
+            "ContextMenu — pointer anchored",
+            {core::withKey(
+                 mutedLabel("Last command: " + lastMenuCommand_, theme),
+                 "menu-command-label"),
+             core::withKey(
+                 core::makeColumn(std::move(targets),
+                                  core::MainAxisAlignment::Start,
+                                  core::CrossAxisAlignment::Stretch, 8.0F),
+                 "menu-targets"),
+             core::withKey(mutedLabel("Right-click a row to open · Up/Down "
+                                      "move · Enter activates · Esc closes. "
+                                      "Shortcut text is display-only.",
+                                      theme),
+                           "menus-ctx-hint")},
+            theme, "menus-context-card"));
+
+        items.push_back(sectionCard(
+            "MenuBar — chrome & cascade",
+            {core::withKey(mutedLabel(viewMenuStatus(), theme),
+                           "menus-bar-status"),
+             core::withKey(mutedLabel("Click File / View / Help in the "
+                                      "window chrome, or press Alt+F / "
+                                      "Alt+V / Alt+H. With a menu open, "
+                                      "Left / Right switch top menus; Enter "
+                                      "or Right expands submenu items.",
+                                      theme),
+                           "menus-bar-hint")},
+            theme, "menus-bar-card"));
+        return items;
+    }
+
+    // View 菜单状态回显（checkable 项的应用侧真状态）。
+    [[nodiscard]] std::string viewMenuStatus() const {
+        std::string text =
+            "Sidebar: " + std::string(sidebarVisible_ ? "shown" : "hidden") +
+            " · Pane: " +
+            std::to_string(static_cast<int>(sidebarSplitter_.offset())) +
+            " px (" + (sidebarUserAdjusted_ ? "adjusted" : "breakpoint") +
+            ") · Density: " + densityName(shell_.theme().metrics.density) +
+            " · Follow system theme: " +
+            (followSystemTheme_ ? "on" : "off");
+        return text;
+    }
+
+    // 菜单栏顶级项（menu-controls-design §5；对齐设计稿 File/View/Help
+    // 内容）。checkable 项构建期读取应用状态（点击 → onCommand → 翻转 →
+    // 重开菜单经 provider 再读取）。
+    [[nodiscard]] widgets::MenuItems barMenuItems(
+        const std::string& id) const {
+        widgets::MenuItems items;
+        if (id == "file") {
+            items.push_back({.id = "new-window", .label = "New window",
+                             .shortcut = "Ctrl+N"});
+            items.push_back({.id = "open", .label = "Open…",
+                             .icon = core::IconId::Search,
+                             .shortcut = "Ctrl+O"});
+            items.push_back({.id = "sep", .separator = true});
+            items.push_back({.id = "save", .label = "Save",
+                             .shortcut = "Ctrl+S"});
+            items.push_back({.id = "save-as", .label = "Save As…",
+                             .shortcut = "Ctrl+Shift+S",
+                             .enabled = false});
+        } else if (id == "view") {
+            items.push_back({.id = "toggle-sidebar",
+                             .label = "Show sidebar",
+                             .checkable = true,
+                             .checked = sidebarVisible_,
+                             .shortcut = "Ctrl+B"});
+            items.push_back({.id = "reset-panes",
+                             .label = "Reset pane layout",
+                             .shortcut = "Ctrl+0"});
+            items.push_back({.id = "sep", .separator = true});
+            items.push_back({.id = "density", .label = "Density",
+                             .hasSubmenu = true});
+            items.push_back({.id = "follow-theme",
+                             .label = "Follow system theme"});
+        } else if (id == "help") {
+            items.push_back({.id = "shortcuts",
+                             .label = "Shortcut overview",
+                             .shortcut = "Ctrl+/"});
+            items.push_back({.id = "about", .label = "About Lumen",
+                             .icon = core::IconId::Info});
+        } else if (id == "sub:density") {
+            using style::ControlDensity;
+            const ControlDensity current =
+                shell_.theme().metrics.density;
+            items.push_back({.id = "density-compact",
+                             .label = "Compact (32px)",
+                             .checkable = true,
+                             .checked =
+                                 current == ControlDensity::Compact});
+            items.push_back({.id = "density-comfortable",
+                             .label = "Comfortable (40px)",
+                             .checkable = true,
+                             .checked =
+                                 current == ControlDensity::Comfortable});
+            items.push_back({.id = "density-touch",
+                             .label = "Touch (48px)",
+                             .checkable = true,
+                             .checked = current == ControlDensity::Touch});
+        }
+        return items;
+    }
+
+    // 主内容区通用右键菜单（设计稿 app-main 右键形态）。
+    [[nodiscard]] widgets::MenuItems contentContextMenuItems() const {
+        widgets::MenuItems items;
+        items.push_back({.id = "open", .label = "Open",
+                         .icon = core::IconId::Search,
+                         .shortcut = "Enter"});
+        items.push_back({.id = "copy-path", .label = "Copy path",
+                         .shortcut = "Ctrl+C"});
+        items.push_back({.id = "paste", .label = "Paste",
+                         .shortcut = "Ctrl+V", .enabled = false});
+        items.push_back({.id = "sep", .separator = true});
+        items.push_back({.id = "props", .label = "Properties…",
+                         .icon = core::IconId::Info,
+                         .shortcut = "Alt+Enter"});
+        return items;
+    }
+
+    // Menus 分区演示行行级菜单（rowKey = "menu-target:<name>"）。
+    [[nodiscard]] widgets::MenuItems targetContextMenuItems(
+        const std::string& rowKey) const {
+        const std::string name =
+            rowKey.size() > 12 ? rowKey.substr(12) : rowKey;
+        widgets::MenuItems items;
+        items.push_back({.id = "open:" + name, .label = "Open",
+                         .icon = core::IconId::Search,
+                         .shortcut = "Enter"});
+        items.push_back({.id = "rename:" + name, .label = "Rename…"});
+        items.push_back({.id = "sep", .separator = true});
+        items.push_back({.id = "copy:" + name, .label = "Copy path",
+                         .shortcut = "Ctrl+C"});
+        items.push_back({.id = "remove:" + name, .label = "Delete",
+                         .enabled = false});
+        items.push_back({.id = "props:" + name, .label = "Properties…",
+                         .icon = core::IconId::Info,
+                         .shortcut = "Alt+Enter"});
+        return items;
+    }
+
+    // 菜单命令统一入口（menu-controls-design §6：激活 = 关闭后回调）。
+    // checkable/状态类命令改应用状态；未接业务命令仅回显。
+    void handleMenuCommand(const std::string& id) {
+        lastMenuCommand_ = id;
+        if (id == "toggle-sidebar") {
+            sidebarVisible_ = !sidebarVisible_;
+        } else if (id == "reset-panes") {
+            // 复位分隔条并恢复断点跟随（双击分隔条等价路径在框架侧）。
+            sidebarUserAdjusted_ = false;
+            syncSidebarBreakpoint();
+        } else if (id == "follow-theme") {
+            followSystemTheme_ = !followSystemTheme_;
+            if (followSystemTheme_) {
+                applySystemTheme();
+            }
+        } else if (id == "about") {
+            openDialog();
+            shell_.requestFullRepaint();
+        } else if (id.rfind("density-", 0) == 0) {
+            using style::ControlDensity;
+            ControlDensity density = ControlDensity::Comfortable;
+            if (id == "density-compact") {
+                density = ControlDensity::Compact;
+            } else if (id == "density-touch") {
+                density = ControlDensity::Touch;
+            }
+            applyDensity(density);
+        }
+        shell_.markDirty();
+    }
+
+    // 密度档位（与 View 菜单子菜单联动；保留全部派生与可访问性设置）。
+    void applyDensity(style::ControlDensity density) {
+        style::Theme nextTheme = style::Theme::fromSettings(
+            shell_.accessibilitySettings(), darkMode_, density, direction_);
+        shell_.setTheme(std::move(nextTheme));
+        shell_.markDirty();
+    }
+
+    // Splitter 断点同步：未被手动调节时，侧栏跟随 200/168 响应式宽度
+    //（设计稿侧栏断点）；手动拖动/键盘后保持用户位置（KeepOffset）。
+    void syncSidebarBreakpoint() {
+        if (sidebarUserAdjusted_) {
+            return;
+        }
+        syncingSidebarBreakpoint_ = true;
+        sidebarSplitter_.setResetOffset(sidebarWidth());
+        sidebarSplitter_.resetToInitial();
+        syncingSidebarBreakpoint_ = false;
     }
 
     [[nodiscard]] std::vector<core::Widget> buildFeedbackItems(
@@ -2675,15 +3143,18 @@ class GalleryApp {
             "nav-note");
     }
 
-    // 窗口操作图标（装饰性；真实窗口控件由 OS 标题栏提供）。设计稿 32×32。
-    [[nodiscard]] static core::Widget windowAction(
-        core::IconId icon, const std::string& key,
+    // 窗口控制按钮（lumen-titlebar-design §5）：图标 Button（空标签）
+    // 44×32，Ghost（hover 弱表面），Tab 可聚焦；handler 即命令 id
+    //（window-minimize/maximize/close，见 initialize）。
+    [[nodiscard]] static core::Widget windowButton(
+        core::IconId icon, const std::string& onClick,
         const style::Theme& theme) {
-        core::StyleOverrides overrides;
-        overrides.foreground = theme.colors.contentSecondary;
-        const float size = 32.0F * (theme.typography.body.fontSize / 14.0F);
-        return core::withStyleOverrides(
-            core::makeIcon(icon, key, size, size), std::move(overrides));
+        const float scale = theme.typography.body.fontSize / 14.0F;
+        core::Widget button = core::makeButton(
+            "", core::TextStyle{}, core::EdgeInsets{}, 0.0F, onClick,
+            44.0F * scale, 32.0F * scale, onClick);
+        button.buttonVariant = core::ButtonVariant::Ghost;
+        return core::withIcon(std::move(button), icon);
     }
 
     [[nodiscard]] core::Widget swatch(core::Color color,
@@ -3035,7 +3506,24 @@ class GalleryApp {
     // M11：下拉浮动菜单控制器（选项 + 当前值；选中回调写状态）。
     widgets::DropdownController navigationMenu_{{{"home", "Overview"}, {"buttons", "Buttons"},
         {"inputs", "Inputs"}, {"layout", "Layout"}, {"lists", "Lists"},
-        {"collections", "Collections"}, {"feedback", "Feedback"}, {"theme", "Theme"}}, "home"};
+        {"collections", "Collections"}, {"menus", "Menus"}, {"feedback", "Feedback"},
+        {"theme", "Theme"}}, "home"};
+    // 菜单类控件（menu-controls-design §11.3）：chrome 菜单栏（File/
+    // View/Help）+ 右键菜单与最近命令回显。checkable 状态由应用维护。
+    widgets::ContextMenuController contextMenu_{};
+    widgets::MenuBarController menuBar_{};
+    std::string lastMenuCommand_{"(none)"};
+    // Splitter（splitter-design §10.3）：侧栏|内容主分栏（chrome 用法
+    // 演示）。未手动调节时跟随 200/168 响应式断点。
+    widgets::SplitterController sidebarSplitter_{200.0F};
+    bool sidebarUserAdjusted_{false};
+    bool syncingSidebarBreakpoint_{false};
+    bool sidebarVisible_{true};
+    // 自定义标题栏（lumen-titlebar-design §4.4）：平台窗口命令注入点、
+    // 命令回显与最大化态（图标切换）。
+    WindowCommands windowCommands_{};
+    std::string lastWindowCommand_{"(none)"};
+    bool windowMaximized_{false};
     widgets::DropdownController dropdown_{{{"Red", "Red"},
                                            {"Green", "Green"},
                                            {"Blue", "Blue"}},
