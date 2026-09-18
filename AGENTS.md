@@ -31,6 +31,16 @@ Run the counter sample from `build/examples/counter/` (Windows adds the `Debug/`
 
 Use C++20, four-space indentation, and braces on the declaration line. Use `PascalCase` for types, `camelCase` for functions and variables, and `snake_case` for filenames. Prefer RAII and value types over raw ownership. Keep UI-thread ownership explicit and avoid platform types in `lumen-core` headers.
 
+## Design & Visual Guidelines
+
+When designing or implementing a control, or producing a UI mockup, consult the design and visual documentation first:
+
+- [`docs/lumen-visual-system-design.md`](docs/lumen-visual-system-design.md) is the visual baseline: color roles, typography, spacing, density tiers, and control surface styles. Take visual values from `Theme` tokens instead of hardcoding constants; add or extend tokens through this document rather than bypassing it.
+- Per-control specs live in `docs/lumen-*-design.md` (e.g. `lumen-menu-controls-design.md`, `lumen-splitter-design.md`). They define geometry, interaction, and semantics contracts — implementation and tests should cite the relevant section, and behavior changes go through the design doc.
+- Visual mockups live in `design/*.html`. Keep them in sync when a control's appearance changes.
+
+Deviating from these documents requires updating them in the same change, and new controls should ship with their own design doc and mockup.
+
 ## Testing Guidelines
 
 Write Catch2 tests beside the subsystem they protect. Name files `*_tests.cpp` and test cases by behavior, such as `row_distributes_flex_space`. Cover layout constraints, hit testing, event bubbling, state invalidation, DSL diagnostics, and CPU framebuffer output. Add a headless test before relying on a desktop smoke test; run the full `ctest` command before submitting changes.
