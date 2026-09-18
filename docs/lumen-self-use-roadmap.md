@@ -4,6 +4,7 @@
 > 目标：在现有 Lumen 核心之上，形成一套可供个人工具类应用长期使用的跨平台桌面 GUI。
 > 当前策略（2026-09-14 调整）：只规划 Windows/Linux/macOS 桌面端；暂不考虑 Android/iOS。M9 已暂缓，桌面里程碑完成后不自动进入移动端开发，也不预排移动端版本。
 > 桌面自用版 M0–M8 已全部收口；后续实施 M10–M13 桌面增强链（见 §3/§4），M9 编号保留为暂缓历史记录。
+> M12 之后按用户需求穿插交付按需控件增强（集合控件/菜单/分栏/自定义标题栏），不占里程碑编号（见 §10 对应完成记录）。
 
 ## 1. 目标、范围和完成定义
 
@@ -72,6 +73,9 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
 | 增强链 M12 | 已完成平台服务与发布补全 | 系统主题查询/事件、三平台原生通知与强调色、AppImage/.app/包变体（见 §10 M12 完成记录） |
 | 增强链 M13 | 已规划未开始 | 原生无障碍 provider（UIA/AT-SPI/NSAccessibility，见 §4） |
+| 按需控件增强 · 集合控件 | 已完成 List/Tree/TreeList 与共享选择模型 | 四选择模式/树扁平化/源视口滚动框架接管（见 §10 集合控件完成记录） |
+| 按需控件增强 · 菜单与分栏 | 已完成 ContextMenu/MenuBar 与 Splitter | Secondary 通道/M11 overlay 菜单面板/分隔条框架接管（见 §10 对应完成记录） |
+| 按需控件增强 · 自定义标题栏 | 已完成无边框窗口 chrome | customTitleBar/拖拽区谓词/窗口操作宿主服务（见 §10 标题栏完成记录） |
 
 M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/380、GPU Release 387/387（其中 3 个硬件相关用例按环境跳过），另有历史 mobile-core 356/356。这些数量不是当前提交的复测结果，mobile-core 结果也不代表移动设备验证。Windows/macOS 对应门槛由 CI package/GPU job 负责验证。M7/M8 的跨平台 CI 与便携包 job 已纳入工作流。
 
@@ -86,7 +90,7 @@ M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/3
 | 方向文本 | M1 已完成：UAX#9 确定性子集（强/弱/中性类 + L2 重排），混合方向命中测试可靠，grapheme 边界为唯一编辑索引 | 显式嵌入控制/镜像括号/数字定形属按需评估池（§4） | M1 已收口 |
 | 应用框架层 | M2 已完成：`lumen-app` 目标（`app::AppShell` + `app::runApp`）统一主循环/事件泵/重建/damage/DPI/IME 同步，支持 Fake host 与外部 renderer 注入；counter/settings 已迁移（示例只保留 build/状态/handler） | — | M2 已收口 |
 | DSL | M2 已完成：C++ builder 补齐 stack/checkbox/switch_widget/scroll_view/list_view/focus_scope，与 `.lumen` 冻结节点集对齐（golden 对照测试）；Dialog/Navigator 经 `widgets::makeDialog`/`NavigatorController` 提供 | DSL 可编程性/脚本能力不纳入第一版 | M2 已收口 |
-| 控件库 | M6+M11 已完成：Slider/ProgressBar/Radio/Tooltip/Dropdown/Tabs 六控件 + Scrollbar 实绘 + `FormController::compose`；M11 收口 Dropdown 浮动菜单（overlay + 键盘导航）与 Tooltip hover 延迟显隐 | — | M6+M11 已收口 |
+| 控件库 | M6+M11 已完成：Slider/ProgressBar/Radio/Tooltip/Dropdown/Tabs 六控件 + Scrollbar 实绘 + `FormController::compose`；M11 收口 Dropdown 浮动菜单（overlay + 键盘导航）与 Tooltip hover 延迟显隐；集合控件 List/Tree/TreeList 与共享选择模型（2026-09-17）、ContextMenu/MenuBar/Splitter（2026-09-18）随按需控件增强补齐 | — | M6+M11 已收口（控件增强见 §10） |
 | 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 横向网格/跨行列合并留按需评估（§4） | M3 已收口 |
 | 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | M10 已收口触摸拖动接线与惯性滚动；水平/嵌套滚动留按需评估 | M3+M10 已收口 |
 | 平台服务 | M4+M12 已完成：文件选择/OpenURL/光标/图标（SDL）+ 通知与强调色（M12 原生 seam：Win32/DBus/AppKit）+ 系统主题查询（SDL_GetSystemTheme）与 SystemThemeChanged 事件 + adaptPlatformTheme 保留派生 | Linux/macOS 原生代码以 CI 首跑为事实来源 | M4+M12 已收口 |
@@ -442,6 +446,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - 多窗口：`runApp` 按 `event.window` 路由多个 AppShell 实例；宿主层多窗口 API 已齐备。
 - 完整 UBA：显式嵌入控制、镜像括号、数字定形。
 - 桌面专用 GPU 后端（Graphite/Vulkan/Metal/D3D）。
+- 控件增强后续：集合控件行内编辑/DnD/列宽拖拽、Splitter 窗格塌缩/KeepRatio 与 `.lumen` 节点及基准场景、菜单触摸长按/F10-Alt 单键/mnemonic 下划线、标题栏 macOS 交通灯与 borderless 最大化回退策略（见 §10 各完成记录已知限制）。
 
 ## 5. 公共接口与模块边界
 
@@ -513,7 +518,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 ## 8. 版本切分和停止条件
 
 - **桌面自用版**：完成 M0–M8（已收口）。M5 的语义契约和 Recording bridge 已完成；原生桌面 accessibility provider 由 M13 追加。
-- **后续桌面增强版**：按 M10–M13 增强链实施——M10 动效与滚动体验、M11 v0.4 视觉方向与控件体验、M12 平台服务与发布补全、M13 原生无障碍 provider；HarfBuzz 富文本、多窗口、完整 UBA、专用 GPU 后端留在按需评估池（§4）。业务数据与网络仍由应用层负责。
+- **后续桌面增强版**：按 M10–M13 增强链实施——M10 动效与滚动体验、M11 v0.4 视觉方向与控件体验、M12 平台服务与发布补全、M13 原生无障碍 provider；M12 之后、M13 之前穿插交付按需控件增强（不占编号）：集合控件 List/Tree/TreeList、菜单类控件、Splitter 分栏与自定义标题栏（见 §10 对应完成记录）；HarfBuzz 富文本、多窗口、完整 UBA、专用 GPU 后端留在按需评估池（§4）。业务数据与网络仍由应用层负责。
 - **移动端**：暂不规划版本；M9 保留为暂缓记录。
 
 任何里程碑若无法满足出口条件，只能修复当前阶段或回退实现，不能通过修改文档把“接口存在”标记为“平台完成”。
@@ -1200,6 +1205,170 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     控制器/StateStore 双源漂移）；pointerUp 分发处固化"handler 返回
     后不得解引用 chain/root"约定注释；gallery 注册 noop handler。
   本地 Windows CPU Debug `406/406`（含调度器 deadline 新用例）。
+
+### 集合控件完成记录（List/Tree/TreeList，2026-09-17）
+
+- 完成日期：2026-09-17
+- 提交号：1b6ce5c（List/Tree/TreeList 与共享选择模型）/ d13a2ea（源视口
+  滚动框架接管）/ 4c96a8d（语义层共享实现单源化）/ 286746d（SDL 滚轮
+  方向换算）；设计输入 `docs/lumen-collection-controls-design.md` 与
+  `design/collection-controls.html`
+- 变更：
+  - 新增 `WidgetType::{List, Tree, TreeList}` 与控制器
+    （`include/lumen/widgets/list.h`/`tree.h`）：List 一维行序列、Tree
+    层级模型扁平化为可见行序列（展开状态集/缩进/chevron toggle）、
+    TreeList 树 + 列系统（列定义/列宽固定+权重/粘性表头/列头排序点击
+    钩子）；共享 VirtualList 虚拟化引擎，O(visible) 物化。
+  - 共享选择模型 `include/lumen/widgets/selection.h`：None/Single/
+    Multiple/Extended 四模式，current ≠ selected 两概念分离，
+    Ctrl 切换/Shift 区间；键盘导航（Up/Down/Home/End/PageUp/PageDown/
+    Ctrl+A）、ScrollAlignment 四向滚动对齐、行单击/双击/激活 sink
+    （key 前缀分发，`addRowClickSink` 家族）。
+  - 源视口滚动框架接管（d13a2ea）：RenderNode 携带 `virtualSource`，
+    `VirtualListSource::scrollController()` 暴露源控制器——滚轮/键盘
+    滚动/拖动（含拇指跟手换算）/惯性（AppShell::tick 逐拍推进）由框架
+    直接驱动，应用零接线（此前需在 onWheel/onScrollDrag 按 key 逐个
+    路由，gallery 三段硬编码路由移除）。
+  - List/Tree 键盘导航/滚动对齐/sink/集合行 Row 壳单源化（4c96a8d，
+    私有 `src/widgets/collection_common.h`；ScrollAlignment 单一定义
+    移入公共 `include/lumen/widgets/collection.h`），零行为变化。
+  - SDL 滚轮方向换算（286746d）：框架约定 scrollDelta.y>0 = 内容向下，
+    SDL NORMAL 语义取负、FLIPPED 透传——修 Windows 真实窗口滚轮方向
+    与原生相反；headless fake_host 不经此层。
+  - 语义：List/Tree/TreeItem role 尾部追加，选中/展开状态与视觉/
+    键盘/指针四层一致；gallery 增加树+列演示区。
+- 测试：新增 `tests/collection_tests.cpp`（30 用例：选择模式/键盘
+  导航/滚动对齐/树展开/列系统/虚拟化物化）与 gallery 集成用例；本地
+  Windows 全量 ctest `526/526`（Debug/Release 双跑）。
+- 平台：本地 Windows 全部验证；Linux/macOS 以 CI 为事实来源（滚轮
+  方向换算只影响真实窗口输入路径，语义由 headless 契约测试锁定）。
+- 已知限制：无单元格行内编辑、拖拽重排（DnD）、列宽拖拽调整（首版
+  固定+权重）、水平虚拟化、橡皮筋框选、type-ahead、排序执行（框架
+  只给列头点击回调，排序由应用做）；多列纯表格由 Grid 按需评估。
+- 回滚点：`3422b06 feat(gui): Gallery 对齐设计稿尺度优化`（集合链前）。
+
+### Splitter 完成记录（2026-09-18）
+
+- 完成日期：2026-09-18
+- 提交号：80429bd；设计输入 `docs/lumen-splitter-design.md` 与
+  `design/splitter.html`
+- 变更：
+  - 新增 `WidgetType::Splitter` + `core::SplitterSource` 契约
+    （`include/lumen/core/splitter.h`：offset/min/initial/seeded/
+    noteLayout/dragTo/stepBy/stepToEdge/reset，常量方法 + mutable
+    状态，virtualSource 同模式）+ `widgets::SplitterController`
+    （GTK position 模式：绝对 px 存储、KeepOffset resize 钳制、比例
+    仅派生只读、`onOffsetChanged` 持久化回调、min 窗格默认 48px）。
+  - `layoutSplitter`（src/layout/layout.cpp）：两窗格主轴精确尺寸 +
+    分隔条布局期物化（Ghost Button 承载命中/焦点/语义，key 前缀
+    `split:div:`）；min 钳制、极端窄窗按最小值比例压缩不重叠、
+    嵌套递归（水平套垂直）。
+  - 交互接管（`split:div:` 命中即独占，先于滚动/滑块/选区判定）：
+    拖动直接跟手（逐拍 setOffset + 请求重建）、方向键/Home/End 步进
+    （随密度 12/16/24px）、双击复位；按压建立键盘焦点、松手失焦。
+  - 悬停/拖动光标：`core::PointerCursor`（ResizeEW/NS，core 语义层）
+    → runApp 映射 `SystemCursor`（枚举新增 ResizeNS/ResizeEW）仅在
+    变化时落宿主。
+  - 视觉：painter 画居中轨道线，rest 1px borderStrong / active 3px
+    focusRing（形状差异，HC 不靠颜色）；轨道 6px，命中区随密度
+    12/16/24px 透明扩展。
+  - 语义：role=splitter（尾部追加）、value=百分比文本、SetValue
+    0..100 经交互层驱动（≡ 键盘方向键，钳制同源）。
+- 测试：新增 `tests/splitter_tests.cpp` 17 用例（布局分配/min 钳制/
+  窄窗压缩/拖动跟手与抢占/键盘步进与到边/双击复位/resize 保持 offset/
+  垂直方向/语义/Widget 体积预算/轨道线绘制/光标报告/runApp 落宿主）；
+  本地 Windows CPU Debug 全量 `580/580`（含同批菜单/标题栏材料的
+  完整工作树验证，见下一条记录）。
+- 平台：本地 Windows 全部验证；Linux/macOS 以 CI 为事实来源
+  （Resize 光标形状经 SDL 系统光标映射）。
+- 已知限制：无窗格塌缩/展开恢复与 KeepRatio resize 行为（设计 §13
+  按需评估）；`.lumen` splitter 节点、C++ DSL builder 与
+  `splitter-list` 基准场景未做（设计 P3 留后续）。
+- 回滚点：`286746d fix(platform): SDL 滚轮方向换算对齐平台原生手感`。
+
+### 菜单类控件与自定义标题栏完成记录（2026-09-18）
+
+- 完成日期：2026-09-18
+- 提交号：（本批变更提交，见 Git 历史；与 80429bd 同批拆分提交）；
+  设计输入 `docs/lumen-menu-controls-design.md`/
+  `docs/lumen-titlebar-design.md` 与 `design/menu-controls.html`/
+  `design/gallery.html`（标题栏四变体）
+- 变更：
+  - **菜单类控件（零新增 WidgetType/RenderCommand）**：
+    `widgets::MenuItem` 值类型（label/icon/checkable+checked（应用
+    维护）/shortcut 仅展示/hasSubmenu 懒构建/separator/disabled/
+    mnemonic）+ `ContextMenuController`（指针位置唤起 `open` 与锚定
+    唤起 `openAnchored`、级联子菜单逐层懒展开、键盘全契约 Up/Down/
+    Home/End（跳过 separator/disabled）/Enter/Space、Right 展开/Left
+    回父级/Escape 逐级关闭、Tab 关闭全部、Alt+助记字母直接激活、
+    滚轮持久滚动位置/菜单外滚轮关闭/面板内拖动保持打开、barrier
+    点击关闭与焦点恢复）+ `MenuBarController`（栏 = 主树 Ghost
+    Button 行，参与 Tab 遍历与语义；菜单面板经同一 ContextMenu
+    路径锚定栏项下方；点击/hover 切换打开、菜单打开期 Left/Right
+    切换顶级、Alt+mnemonic 直接打开）。菜单面板 = M11 框架级
+    overlay + 集合行（hover/焦点/语义激活复用 collectionRow 路径）。
+  - **Secondary 右键通道（框架唯一缝隙）**：`AppShell::pointerDown`/
+    `pointerUp` 与 `InteractionController` 签名增加 `PointerButton`
+    缺省参数（runApp 从 HostEvent 填充，既有调用与帧哈希零改动）；
+    Secondary 按下不进点击/按压/拖动路径；新增
+    `addSecondaryPressSink` 咨询链（命中链 + 指针位置，按注册序
+    问询、消费即停，命中链不做 enabled 过滤）。
+  - **语义**：`SemanticsRole::{Menu, MenuItem}` 尾部追加；菜单项
+    Activate ≡ Enter ≡ 单击同 handler 回执；checked flag；分隔线
+    不进语义树；模态期主树指针/键盘/语义 NotHandled（M12 统一规则）。
+  - **自定义标题栏（无边框窗口 chrome）**：`WindowDesc.
+    customTitleBar`（SDL `SDL_WINDOW_BORDERLESS`）；宿主窗口操作
+    `minimizeWindow`/`toggleMaximizeWindow`/`requestWindowClose`
+    （默认实现安全 no-op；close 与系统 X 同路径合成
+    WindowCloseRequested，经 pollEvent 交付；Fake host 可记录/注入）
+    与 `setWindowDragRegion` 拖拽区谓词（无效窗口 id 挂靠首窗）；
+    `WindowMetrics.maximized` + `HostEventType::WindowMaximized`
+    （runApp 经 onEvent 转发，还原走既有 WindowRestored）。
+  - **SDL hit-test**（泵线程内回调，读应用谓词无竞争）：边 8 逻辑
+    px/角 12×12 resize 带（最大化态禁用 resize 边，caption 谓词
+    兜底保证拖动可还原/unsnap），谓词命中返回 SDL_HITTEST_DRAGGABLE。
+  - **拖拽区判定**：`Widget.windowDrag`/`withWindowDrag` 布局期物化
+    到 RenderNode；`AppShell::isWindowDragPoint`——事件树口径
+    （overlay 活跃期命中即不可拖），最深命中为交互控件（onClick
+    目标/TextField/Checkbox/Switch/Slider/Dropdown/分隔条）时不可
+    拖，链上含 windowDrag 节点可拖；runApp 在 customTitleBar 时
+    注册为宿主谓词。
+  - `IconId::Restore`（最大化态还原双层方框图标，尾部追加）。
+  - **示例**：gallery 48px 自绘标题栏（品牌 + MenuBar 嵌入 + 拖拽
+    区 + 窗口控制按钮 44×32、close hover 警示红）+ 侧栏 Splitter
+    （未手动调节时跟随 200/168 响应式断点）+ Menus 演示页与
+    Overview 新瓷砖；settings 新页 Menus（栏 + 列表行/空白处右键
+    场景）与 Splitter（列表|详情主分栏 + 详情区嵌套垂直分栏）。
+  - TreeList 几何修正：chevron 进首列盒（与表头同列口径）、列宽
+    预算扣除行壳两侧内边距（修右缘裁剪与滚动条压列）。
+- 测试：新增 `tests/menu_tests.cpp` 18 用例（Secondary 穿透不触发
+  点击/按压 + sink 消费与未消费两路 + 注册序问询、打开定位与项列
+  表、键盘跳过 separator/disabled、Enter 激活 + 焦点恢复、barrier
+  关闭、checkable 与快捷键仅展示、子菜单级联 Right/Left/Escape、
+  子菜单项直接激活、mnemonic、menu/menuitem 语义、滚轮持久滚动、
+  面板内拖动不关闭、菜单外滚轮关闭、Secondary 不扰 Primary、
+  MenuBar 锚定打开、Alt+mnemonic、hover 切换）；新增
+  `tests/titlebar_tests.cpp` 14 用例（windowDrag 物化、gallery
+  结构仅 caption 行标记、交互控件排除、模态 overlay 阻断、窗口
+  命令记录与转发、空宿主安全、close 统一策略回退、最大化态图标
+  切换、fake host 窗口操作记录、无效 id 挂靠首窗、默认实现 no-op、
+  拖拽谓词、runApp 注册条件两路）；gallery 集成 +3（菜单栏+右键、
+  分栏断点与手动调节、TreeList 表头几何）、settings 集成 +2
+  （Menus/Splitter 页）。本地 Windows CPU Debug 全量 `580/580`。
+- 平台：本地 Windows 全部验证（headless + 窗口路径）；Linux/macOS
+  以 CI 为事实来源——borderless/hit-test 平台行为差异（Wayland 无
+  WM_NCHITTEST 对应物，SDL 退化为 xdg-shell 软件模拟拖动）。
+- 已知限制：
+  - 菜单 P3 项未做：触摸长按唤起、F10/Alt 单键打开（Key 枚举无
+    功能键值）、mnemonic 下划线渲染（Alt+字母键盘已生效）；快捷键
+    仅展示不执行（分发在应用 onKey）；系统菜单栏原生同步
+    （NSMainMenu/HMENU）不做。
+  - 标题栏：macOS 交通灯不适配（三端统一右上 min/max/close）；
+    Windows 11 Snap Layouts 悬停弹层不出现（拖到屏幕边缘 snap 仍
+    可用）；borderless 最大化工作区约束依赖 SDL（异常回退策略未
+    实现，按需评估）。
+- 回滚点：`80429bd feat(splitter): 两窗格分栏控件与框架分隔条接管`
+  （同批 Splitter 已先行合入；回退本批其余部分回到该提交）。
 
 ### Gallery 设计稿尺度优化对齐（2026-09-16）
 
