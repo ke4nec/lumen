@@ -6,6 +6,8 @@
 #include <map>
 #include <numeric>
 
+#include "lumen/accessibility/semantics.h"
+#include "lumen/core/splitter.h"
 #include "lumen/core/utf8.h"
 #include "lumen/text/font_manager.h"
 #include "lumen/text/text_layout.h"
@@ -19,6 +21,7 @@ using core::Offset;
 using core::RenderNode;
 using core::ResolvedStyle;
 using core::Size;
+using core::SplitterSource;
 using core::TextStyle;
 using core::VirtualListSource;
 using core::Widget;
@@ -414,6 +417,10 @@ RenderNode layoutVirtualList(const Widget& widget, const Constraints& constraint
 RenderNode layoutTreeList(const Widget& widget, const Constraints& constraints,
                           const style::StyleContext& styleContext,
                           const std::string& identity);
+// Splitter（splitter-design §6）：两窗格 + 框架物化分隔条。
+RenderNode layoutSplitter(const Widget& widget, const Constraints& constraints,
+                          const style::StyleContext& styleContext,
+                          const std::string& identity);
 
 RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
                         const style::StyleContext& styleContext,
@@ -471,6 +478,8 @@ RenderNode layoutSingle(const Widget& widget, const Constraints& constraints,
                                      identity);
         case WidgetType::TreeList:
             return layoutTreeList(widget, constraints, styleContext, identity);
+        case WidgetType::Splitter:
+            return layoutSplitter(widget, constraints, styleContext, identity);
         case WidgetType::Image:
         case WidgetType::Text:
         case WidgetType::Button:
@@ -1262,6 +1271,133 @@ RenderNode layoutTreeList(const Widget& widget,
         /*rangeShift=*/0.0F,
         /*childBaseY=*/padding.top + headerHeight,
         /*contentExtentPad=*/0.0F);
+    return node;
+}
+
+// Splitter（splitter-design §6）：两窗格主轴精确分配 + 框架物化分隔条。
+// 位置 = 源 offset（首次布局播种 initial），钳制 [minLeading, 主轴可用 −
+// minTrailing]；极端窄窗按最小值比例压缩（不重叠不崩）。分隔条为 Button
+// 节点（key 前缀 "split:div:"，collectionRow 可聚焦；onClick 不注册
+// handler——单击无操作，拖动/键盘/双击复位由交互层经 splitterSource 接
+// 管）；painter 按 splitterSource 特判绘制居中轨道线。
+RenderNode layoutSplitter(const Widget& widget, const Constraints& constraints,
+                          const style::StyleContext& styleContext,
+                          const std::string& identity) {
+    const ResolvedStyle resolved =
+        style::resolveStyle(widget, styleContext, identity);
+    const EdgeInsets& padding = core::commonStyle(resolved).padding;
+    const Constraints outer = constraints.deflate(widget.margin);
+
+    const float width =
+        widget.width.has_value()
+            ? clampFloat(*widget.width, outer.minWidth, outer.maxWidth)
+            : outer.maxWidth;
+    const float height =
+        widget.height.has_value()
+            ? clampFloat(*widget.height, outer.minHeight, outer.maxHeight)
+            : outer.maxHeight;
+    RenderNode node = makeNode(widget, Offset{0.0F, 0.0F},
+                               Size{width, height}, styleContext, identity);
+
+    const SplitterSource* source = widget.splitterSource;
+    if (widget.children.size() < 2 || source == nullptr) {
+        // 声明不完整（children/source 缺失）：保持空容器，不崩溃。
+        return node;
+    }
+
+    const bool horizontal = widget.splitterHorizontal;
+    const float crossMax =
+        horizontal ? std::max(0.0F, height - padding.vertical())
+                   : std::max(0.0F, width - padding.horizontal());
+    const float dividerExtent =
+        core::splitterHitExtent(styleContext.theme.metrics.baseIndex);
+    const float trackThickness = core::kSplitterTrackThickness;
+    const float mainMax =
+        std::max(0.0F,
+                 (horizontal ? width - padding.horizontal()
+                             : height - padding.vertical()) -
+                     trackThickness);
+
+    float offset = source->seeded() ? source->offsetPx()
+                                    : source->initialOffset();
+    const float minLead = std::max(0.0F, source->minLeading());
+    const float minTrail = std::max(0.0F, source->minTrailing());
+    if (mainMax < minLead + minTrail) {
+        offset = minLead + minTrail > 0.0F
+                     ? mainMax * minLead / (minLead + minTrail)
+                     : 0.0F;
+    } else {
+        offset = std::clamp(offset, minLead, mainMax - minTrail);
+    }
+    source->noteLayout(offset, mainMax);
+
+    const float leadingMain = offset;
+    const float trailingMain = std::max(0.0F, mainMax - leadingMain);
+    const auto paneConstraints = [horizontal, crossMax](float main) {
+        return horizontal ? Constraints{main, main, crossMax, crossMax}
+                          : Constraints{crossMax, crossMax, main, main};
+    };
+
+    Widget divider;
+    divider.type = WidgetType::Button;
+    divider.key =
+        "split:div:" + (widget.key.empty() ? identity : widget.key);
+    divider.onClick = divider.key;  // 无注册 handler：单击无操作
+    divider.collectionRow = true;   // Tab 可聚焦（键盘步进）
+    divider.semanticsRole = "splitter";
+    divider.semanticsLabel = "分栏调节";
+    const int percent = mainMax > 0.0F
+                            ? static_cast<int>(std::lround(
+                                  offset / mainMax * 100.0F))
+                            : 0;
+    divider.semanticsValue = std::to_string(percent) + "%";
+    divider.semanticsActions = accessibility::kActionFocus |
+                               accessibility::kActionSetValue;
+    divider.enabled = widget.enabled;
+    divider.buttonVariant = core::ButtonVariant::Ghost;
+
+    const std::string leadId =
+        childIdentity(identity, widget.children[0], 0);
+    const std::string dividerId = childIdentity(identity, divider, 1);
+    const std::string trailId =
+        childIdentity(identity, widget.children[1], 2);
+
+    RenderNode leading =
+        layoutSingle(widget.children[0], paneConstraints(leadingMain),
+                     styleContext, leadId);
+    RenderNode dividerNode = layoutSingle(
+        divider,
+        horizontal
+            ? Constraints{dividerExtent, dividerExtent, crossMax, crossMax}
+            : Constraints{crossMax, crossMax, dividerExtent, dividerExtent},
+        styleContext, dividerId);
+    dividerNode.splitterSource = source;
+    RenderNode trailing =
+        layoutSingle(widget.children[1], paneConstraints(trailingMain),
+                     styleContext, trailId);
+
+    if (horizontal) {
+        leading.offset = Offset{padding.left, padding.top};
+        dividerNode.offset = Offset{
+            padding.left + leadingMain -
+                (dividerExtent - trackThickness) * 0.5F,
+            padding.top};
+        trailing.offset =
+            Offset{padding.left + leadingMain + trackThickness,
+                   padding.top};
+    } else {
+        leading.offset = Offset{padding.left, padding.top};
+        dividerNode.offset = Offset{
+            padding.left,
+            padding.top + leadingMain -
+                (dividerExtent - trackThickness) * 0.5F};
+        trailing.offset =
+            Offset{padding.left,
+                   padding.top + leadingMain + trackThickness};
+    }
+    node.children.push_back(std::move(leading));
+    node.children.push_back(std::move(dividerNode));
+    node.children.push_back(std::move(trailing));
     return node;
 }
 

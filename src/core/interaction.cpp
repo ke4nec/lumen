@@ -1,6 +1,7 @@
 #include "lumen/core/interaction.h"
 
 #include "lumen/core/scroll.h"
+#include "lumen/core/splitter.h"
 #include "lumen/core/text_field.h"
 
 #include <algorithm>
@@ -120,6 +121,20 @@ const RenderNode* hoverTargetOf(const std::vector<const RenderNode*>& chain) {
         }
     }
     return nullptr;
+}
+
+// 悬停期望光标（splitter-design §7）：链上分隔条（splitterSource 节点）
+// → ResizeEW/NS（分隔条窄边即主轴：宽 ≤ 高 = 水平分栏，左右调）；
+// disabled 分隔条不声明。方向判定与 painter 同口径（节点几何）。
+PointerCursor cursorFromChain(const std::vector<const RenderNode*>& chain) {
+    for (const RenderNode* node : chain) {
+        if (node->splitterSource != nullptr && node->enabled) {
+            return node->size.width <= node->size.height
+                       ? PointerCursor::ResizeEW
+                       : PointerCursor::ResizeNS;
+        }
+    }
+    return PointerCursor::Arrow;
 }
 
 }  // namespace
@@ -286,10 +301,8 @@ void InteractionController::pointerDown(const RenderNode& root,
     scrollDragOnThumb_ = false;
     scrollDragSource_ = nullptr;
     sliderDragIdentity_.clear();
-    // Gesture anchor: every press can become a drag, clickable or not.
-    pressActive_ = true;
-    dragging_ = false;
-    selecting_ = false;
+    splitterDragIdentity_.clear();
+    splitterDragSource_ = nullptr;
     dragAnchor_ = position;
     dragCurrent_ = position;
     std::vector<const RenderNode*> chain;
@@ -301,6 +314,12 @@ void InteractionController::pointerDown(const RenderNode& root,
         hoveredKey_.clear();
         hoveredIdentity_.clear();
     }
+    // 悬停期望光标（splitter-design §7）：链上分隔条 → ResizeEW/NS。
+    hoverCursor_ = cursorFromChain(chain);
+    // Gesture anchor: every press can become a drag, clickable or not.
+    pressActive_ = true;
+    dragging_ = false;
+    selecting_ = false;
     if (target == nullptr) {
         focus_.clearFocus();
         focusedBind_.clear();
@@ -336,6 +355,22 @@ void InteractionController::pointerDown(const RenderNode& root,
         if (node->type == WidgetType::Slider && node->enabled &&
             !node->bind.empty()) {
             sliderDragIdentity_ = node->identity;
+            break;
+        }
+    }
+    // Splitter 分隔条拖拽锁定（splitter-design §7.1）：命中即独占（优先
+    // 于滚动/滑块——分隔条不属于任何滚动视口内容）；identity 跨重建，
+    // 方向按节点宽高比判定（宽扁 = 水平分栏的纵向分隔条）。按压期间建
+    // 立键盘焦点（拖住时方向键仍可微调）；释放/取消即清除（松手即失
+    // 焦——高亮跟鼠标走，见 pointerUp/pointerCancel）。
+    std::string splitterPressKey{};
+    for (const RenderNode* node : chain) {
+        if (node->splitterSource != nullptr && node->enabled) {
+            splitterDragIdentity_ = node->identity;
+            splitterDragSource_ = node->splitterSource;
+            splitterDragStartOffset_ = node->splitterSource->offsetPx();
+            splitterDragHorizontal_ = node->size.width <= node->size.height;
+            splitterPressKey = node->key;
             break;
         }
     }
@@ -393,6 +428,10 @@ void InteractionController::pointerDown(const RenderNode& root,
         selection_ = {};
         composingActive_ = false;
         lastClickWasField_ = false;
+    }
+    // Splitter 分隔条：非字段命中的焦点清理后恢复分隔条键盘焦点。
+    if (!splitterDragIdentity_.empty() && !splitterPressKey.empty()) {
+        focus_.setFocus(splitterPressKey, splitterDragIdentity_);
     }
 }
 
@@ -464,6 +503,30 @@ bool InteractionController::setSliderValue(const RenderNode& node,
     return true;
 }
 
+bool InteractionController::setSplitterValue(const RenderNode& node,
+                                              const std::string& raw) {
+    if (node.splitterSource == nullptr || !node.enabled ||
+        node.splitterSource->extentPx() <= 0.0F) {
+        return false;
+    }
+    char* end = nullptr;
+    const float parsed = std::strtof(raw.c_str(), &end);
+    if (end == raw.c_str() || !std::isfinite(parsed)) {
+        return false;
+    }
+    if (*end == '%') {
+        ++end;
+    }
+    if (*end != '\0') {
+        return false;
+    }
+    const float percent = std::clamp(parsed, 0.0F, 100.0F);
+    node.splitterSource->dragTo(node.splitterSource->extentPx() *
+                                percent / 100.0F);
+    requestRebuild();
+    return true;
+}
+
 void InteractionController::pointerMove(const RenderNode& root,
                                         Offset position,
                                         std::uint64_t timestampMs) {
@@ -478,12 +541,29 @@ void InteractionController::pointerMove(const RenderNode& root,
             hoveredKey_.clear();
             hoveredIdentity_.clear();
         }
+        hoverCursor_ = cursorFromChain(chain);
     }
     if (!pressActive_) {
         return;
     }
     dragCurrent_ = position;
     const Offset delta = dragCurrent_ - dragAnchor_;
+    // Splitter 分隔条拖拽（splitter-design §7.1）：直接跟手，无 slop——
+    // 命中分隔条即意图明确；位移逐拍写入源（内部钳制），请求重建下一帧
+    // 重排；越过 slop 标记 dragging（释放不触发点击/双击）。先于滚动/
+    // 滑块路径（命中即独占）。
+    if (!splitterDragIdentity_.empty()) {
+        if (splitterDragSource_ != nullptr) {
+            if (std::abs(delta.x) + std::abs(delta.y) > kDragSlopPx) {
+                dragging_ = true;
+            }
+            splitterDragSource_->dragTo(
+                splitterDragStartOffset_ +
+                (splitterDragHorizontal_ ? delta.x : delta.y));
+            requestRebuild();
+        }
+        return;
+    }
     if (!dragging_ && std::abs(delta.x) + std::abs(delta.y) > kDragSlopPx) {
         dragging_ = true;
         // M10：越过 slop 的拖动若不在文本选区路径上，且起点命中滚动
@@ -612,6 +692,18 @@ void InteractionController::pointerUp(const RenderNode& root,
     scrollDragIdentity_.clear();
     scrollDragOnThumb_ = false;
     sliderDragIdentity_.clear();
+    // Splitter 分隔条释放：拖动状态解除（无惯性/无终值落点；干净单击
+    // 继续走下方 fired 路径参与双击复位检测）。松手即失焦：本次按压建
+    // 立的分隔条焦点随释放清除（高亮跟鼠标走；中途 Tab 离开则不动新
+    // 焦点；Tab/语义聚焦不经过按压路径，不受影响）。
+    const std::string pressSplitterIdentity =
+        std::move(splitterDragIdentity_);
+    splitterDragIdentity_.clear();
+    splitterDragSource_ = nullptr;
+    if (!pressSplitterIdentity.empty() &&
+        focus_.focusedIdentity() == pressSplitterIdentity) {
+        focus_.clearFocus();
+    }
     if (wasScrollDragging) {
         // 拖动滚动释放：应用 sink 决定是否起惯性（End 携带释放时间戳）。
         if (scrollDragSource_ != nullptr) {
@@ -680,6 +772,8 @@ void InteractionController::pointerUp(const RenderNode& root,
             // identity 先行拷贝（handler 可能重建整树）。
             const std::string firedKey = node->key;
             const std::string firedIdentity = node->identity;
+            // Splitter 分隔条源先行拷贝（同上；双击复位用）。
+            const SplitterSource* firedSplitter = node->splitterSource;
             const bool doubleClick =
                 rowClickIdentity_ == firedIdentity &&
                 timestampMs >= rowClickMs_ &&
@@ -702,6 +796,12 @@ void InteractionController::pointerUp(const RenderNode& root,
                 }
             }
             if (doubleClick) {
+                // Splitter 分隔条双击复位（splitter-design §7.3）：回
+                // initialOffset/setResetOffset 目标（源指针已拷贝）。
+                if (firedSplitter != nullptr) {
+                    firedSplitter->reset();
+                    requestRebuild();
+                }
                 for (const auto& sink : rowActivateSinks_) {
                     if (sink(firedKey, firedIdentity, /*keyboard=*/false)) {
                         break;
@@ -725,6 +825,16 @@ void InteractionController::pointerCancel() {
     dragging_ = false;
     selecting_ = false;
     sliderDragIdentity_.clear();
+    const std::string cancelledSplitterIdentity =
+        std::move(splitterDragIdentity_);
+    splitterDragIdentity_.clear();
+    splitterDragSource_ = nullptr;
+    // 松手即失焦的取消路径：本次按压建立的分隔条焦点一并清除。
+    if (!cancelledSplitterIdentity.empty() &&
+        focus_.focusedIdentity() == cancelledSplitterIdentity) {
+        focus_.clearFocus();
+    }
+    hoverCursor_ = PointerCursor::Arrow;
     if (scrollDragging_) {
         scrollDragging_ = false;
         scrollDragIdentity_.clear();
@@ -1008,6 +1118,34 @@ void InteractionController::keyDown(const RenderNode& root, Key key,
     }
     // 无编辑焦点时的滚动键：PageUp/PageDown/Up/Down/Home/End → wheelSink
     //（plan §3.4 键盘滚动）。
+    // Splitter 分隔条键盘（splitter-design §7.2）：聚焦分隔条时方向键
+    // 步进（水平 Left/Right、垂直 Up/Down——方向不匹配时消费不滚动）、
+    // Home/End 到边；先于滚动键（分隔条不属于滚动内容）。
+    if (focusedBind_.empty() && !focus_.focusedIdentity().empty() &&
+        (key == Key::Left || key == Key::Right || key == Key::Up ||
+         key == Key::Down || key == Key::Home || key == Key::End)) {
+        const RenderNode* focused =
+            findNodeByIdentity(root, focus_.focusedIdentity());
+        if (focused != nullptr && focused->splitterSource != nullptr &&
+            focused->enabled) {
+            const bool horizontal =
+                focused->size.width <= focused->size.height;
+            const bool forward =
+                key == Key::Right || key == Key::Down;
+            if (key == Key::Home || key == Key::End) {
+                focused->splitterSource->stepToEdge(key == Key::End);
+            } else if ((horizontal &&
+                        (key == Key::Left || key == Key::Right)) ||
+                       (!horizontal &&
+                        (key == Key::Up || key == Key::Down))) {
+                const float step = horizontal ? focused->size.width
+                                              : focused->size.height;
+                focused->splitterSource->stepBy(forward ? step : -step);
+            }
+            requestRebuild();
+            return;
+        }
+    }
     // M6：聚焦 Slider 的 Left/Right 调值（±5，夹取 0..100）。
     if (focusedBind_.empty() &&
         (key == Key::Left || key == Key::Right) &&

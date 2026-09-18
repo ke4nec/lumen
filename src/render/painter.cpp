@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "lumen/core/icon_id.h"
+#include "lumen/core/splitter.h"
 #include "lumen/core/utf8.h"
 #include "lumen/text/font_manager.h"
 #include "lumen/text/grapheme.h"
@@ -729,6 +730,40 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             break;
         }
         case WidgetType::Button: {
+            // Splitter 分隔条（splitter-design §7.4/§9.2）：Button 只承载
+            // 命中/焦点/按压语义，绘制为居中轨道线——rest 1px border 色；
+            // hover/press/focus（resolved style 已折算出容器色/焦点环）
+            // 3px focusRing 色（形状差异保证高对比可辨，§11 约束）。
+            if (node.splitterSource != nullptr) {
+                const bool active = common.background.a > 0 ||
+                                    common.focusWidth > 0.0F;
+                const float line = active ? core::kSplitterActiveLineWidth
+                                          : core::kSplitterRestLineWidth;
+                const Color color = active ? common.focusRing
+                                           : common.border;
+                const bool horizontalSplit =
+                    node.size.width <= node.size.height;
+                if (horizontalSplit) {
+                    sink.drawRect(
+                        Rect{Offset{origin.x +
+                                        (node.size.width - line) * 0.5F,
+                                    origin.y + 2.0F},
+                             Size{line,
+                                  std::max(0.0F, node.size.height - 4.0F)}},
+                        core::scaleColorAlpha(color, nodeAlpha),
+                        CornerRadius::all(line * 0.5F));
+                } else {
+                    sink.drawRect(
+                        Rect{Offset{origin.x + 2.0F,
+                                    origin.y +
+                                        (node.size.height - line) * 0.5F},
+                             Size{std::max(0.0F, node.size.width - 4.0F),
+                                  line}},
+                        core::scaleColorAlpha(color, nodeAlpha),
+                        CornerRadius::all(line * 0.5F));
+                }
+                break;
+            }
             paintControlSurface(sink, rect, common);
             const auto buttonStyle =
                 std::get_if<core::ButtonResolvedStyle>(

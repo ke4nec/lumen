@@ -152,6 +152,30 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
     std::uint64_t lastPollMs = clock.nowMs();
     std::uint64_t lastDiagPrintMs = clock.nowMs();
     bool running = true;
+
+    // 悬停光标同步（splitter-design §7）：交互层从命中链推导期望形状
+    //（core 语义，无平台类型），此处映射 SystemCursor 落到宿主；仅在变
+    // 化时调用（SDL 为进程级创建）。
+    const auto mapCursor = [](core::PointerCursor cursor) {
+        switch (cursor) {
+            case core::PointerCursor::ResizeEW:
+                return platform::SystemCursor::ResizeEW;
+            case core::PointerCursor::ResizeNS:
+                return platform::SystemCursor::ResizeNS;
+            case core::PointerCursor::Arrow:
+                break;
+        }
+        return platform::SystemCursor::Arrow;
+    };
+    core::PointerCursor lastCursor = shell.pointerCursor();
+    const auto syncPointerCursor = [&]() {
+        const core::PointerCursor desired = shell.pointerCursor();
+        if (desired == lastCursor) {
+            return;
+        }
+        lastCursor = desired;
+        host.setCursor(*windowId, mapCursor(desired));
+    };
     while (running) {
         bool eventsPumped = false;
         HostEvent event;
@@ -189,21 +213,33 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                     break;
                 case HostEventType::PointerDown:
                     shell.pointerDown(event.position, event.modifiers);
+                    if (event.device != core::PointerDevice::Touch) {
+                        syncPointerCursor();
+                    }
                     scheduler.requestFrame(render::FrameReason::Input,
                                            event.window);
                     break;
                 case HostEventType::PointerMove:
                     shell.pointerMove(event.position);
+                    if (event.device != core::PointerDevice::Touch) {
+                        syncPointerCursor();
+                    }
                     scheduler.requestFrame(render::FrameReason::Input,
                                            event.window);
                     break;
                 case HostEventType::PointerUp:
                     shell.pointerUp(event.position);
+                    if (event.device != core::PointerDevice::Touch) {
+                        syncPointerCursor();
+                    }
                     scheduler.requestFrame(render::FrameReason::Input,
                                            event.window);
                     break;
                 case HostEventType::PointerCancel:
                     shell.pointerCancel();
+                    if (event.device != core::PointerDevice::Touch) {
+                        syncPointerCursor();
+                    }
                     scheduler.requestFrame(render::FrameReason::Input,
                                            event.window);
                     break;

@@ -6,6 +6,8 @@ add_library(lumen-widgets STATIC
     selection.cpp
     list.cpp
     tree.cpp
+    # Splitter（splitter-design）：分栏控制器（core::SplitterSource）。
+    splitter.cpp
 )
 
 target_include_directories(lumen-widgets PUBLIC

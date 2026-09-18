@@ -187,6 +187,10 @@ ButtonTokens buttonTokensFrom(const ColorScheme& colors) {
     tokens.outline.border = colors.borderStrong;
     tokens.ghost.background = core::Color::transparent();
     tokens.ghost.content = colors.accentContent;
+    // Ghost 边框色派生 borderStrong：Ghost 本体边框宽为 0（外观不变），
+    // 供以 Ghost Button 承载的框架 chrome 取色——Splitter 分隔条 rest 线
+    //（splitter-design §9.2：rest 1px = color.border.strong）。
+    tokens.ghost.border = colors.borderStrong;
     tokens.danger.background = colors.statusError;
     tokens.danger.content = colors.onError;
     return tokens;

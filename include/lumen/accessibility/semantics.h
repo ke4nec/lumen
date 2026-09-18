@@ -38,6 +38,8 @@ enum class SemanticsRole : std::uint8_t {
     // 保持既有 role 枚举值不变。
     Tree,
     TreeItem,
+    // Splitter（splitter-design §8）：追加在尾部，同上约束。
+    Splitter,
 };
 
 [[nodiscard]] const char* semanticsRoleName(SemanticsRole role);
@@ -140,8 +142,8 @@ enum class SemanticsActionStatus : std::uint8_t {
 //
 //   Focus     → FocusManager 聚焦该节点（字段可编辑时建立编辑焦点）
 //   Activate  → 触发节点 onClick handler（Button/Dialog barrier 等）
-//   SetValue  → 经 InteractionController 写入焦点/目标字段（grapheme 光
-//               标置于文本末尾；只读字段拒绝）
+//   SetValue  → 经 InteractionController 写入字段/Slider/Splitter；
+//               只读字段拒绝，数值控件使用 0..100 百分比
 //   Dismiss   → 等价 Activate（modal barrier/Dialog 关闭）
 //   Scroll    → 转发给 sink（8D ScrollController 注册；未注册则未处理）
 using SemanticsScrollSink =

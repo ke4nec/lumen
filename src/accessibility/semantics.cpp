@@ -59,6 +59,9 @@ SemanticsRole defaultRoleFor(const RenderNode& node, bool isRoot) {
 }
 
 std::uint32_t defaultActionsFor(const RenderNode& node) {
+    if (node.splitterSource != nullptr) {
+        return kActionFocus | kActionSetValue;
+    }
     switch (node.type) {
         case WidgetType::Button:
             return kActionFocus | kActionActivate;
@@ -247,6 +250,8 @@ const char* semanticsRoleName(SemanticsRole role) {
             return "tree";
         case SemanticsRole::TreeItem:
             return "treeItem";
+        case SemanticsRole::Splitter:
+            return "splitter";
     }
     return "unknown";
 }
@@ -273,6 +278,7 @@ bool semanticsRoleFromName(const std::string& name, SemanticsRole* out) {
         {"tree", SemanticsRole::Tree},
         {"treeItem", SemanticsRole::TreeItem},
         {"tree_item", SemanticsRole::TreeItem},
+        {"splitter", SemanticsRole::Splitter},
     };
     for (const auto& [key, role] : kTable) {
         if (name == key) {
@@ -418,6 +424,12 @@ SemanticsActionStatus performSemanticsAction(
     }
 
     if (action == kActionSetValue) {
+        if (context.controller != nullptr && renderNode != nullptr &&
+            renderNode->splitterSource != nullptr) {
+            return context.controller->setSplitterValue(*renderNode, value)
+                       ? SemanticsActionStatus::Handled
+                       : SemanticsActionStatus::NotHandled;
+        }
         if (context.controller != nullptr && renderNode != nullptr &&
             renderNode->type == core::WidgetType::Slider) {
             return context.controller->setSliderValue(*renderNode, value)

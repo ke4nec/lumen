@@ -56,8 +56,13 @@ struct RenderNode {
     bool checked{false};         // Checkbox/Switch 状态
     // 虚拟化视口（VirtualList/List/Tree/TreeList）携带数据源：交互层
     // 滚轮/拖动滚动据此直接驱动源控制器的 ScrollController，应用无需
-    // 按 key 逐个接线（collection-controls-design §6.5）。
+    // 按 key 接线（collection-controls-design §6.5）。
     const VirtualListSource* virtualSource{nullptr};
+
+    // Splitter（splitter-design §4）：布局期物化的分隔条节点携带分栏
+    // 源——交互层拖动/键盘/双击复位据此直接驱动控制器（容器节点不携带，
+    // 同 virtualSource 只挂在视口节点的口径）。
+    const SplitterSource* splitterSource{nullptr};
 
     // M3 Image：已就绪资源 id（0 = 占位）与资源路径（诊断/语义）。
     std::uint64_t imageId{0};

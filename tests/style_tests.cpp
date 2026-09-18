@@ -122,6 +122,10 @@ TEST_CASE("style_maps_semantic_colors_to_component_tokens", "[style]") {
     // S1：透明按钮文字与 Danger 文字使用专属角色（§6.1）。
     CHECK(theme.button.outline.content == colors.accentContent);
     CHECK(theme.button.ghost.content == colors.accentContent);
+    // Splitter 分隔条以 Ghost Button 承载：rest 线取 ghost.border
+    //（splitter-design §9.2：rest = color.border.strong；Ghost 本体边框
+    // 宽为 0，外观不变）。
+    CHECK(theme.button.ghost.border == colors.borderStrong);
     CHECK(theme.button.danger.content == colors.onError);
     // S1：字段底色 surfaceSunken、常态边框 borderStrong（§6.3）。
     CHECK(theme.textField.background == colors.surfaceSunken);

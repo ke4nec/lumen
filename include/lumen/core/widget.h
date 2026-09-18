@@ -11,6 +11,7 @@
 namespace lumen::core {
 
 class ScrollController;  // 指针返回（VirtualListSource::scrollController）
+class SplitterSource;    // Splitter 布局/交互源（widget 携带裸指针）
 
 enum class WidgetType {
     Container,
@@ -46,6 +47,9 @@ enum class WidgetType {
     List,        // 列表：一维行序列（选择/激活语义由 ListController 驱动）
     Tree,        // 树：层级模型扁平化为可见行序列（TreeController）
     TreeList,    // 树+列：Tree 能力 + 列系统与粘性表头（TreeListController）
+    // Splitter（docs/lumen-splitter-design.md）：两窗格分栏 + 框架物化的
+    // 分隔条 chrome；位置状态在 widgets 层 SplitterController。
+    Splitter,
 };
 
 enum class MainAxisAlignment {
@@ -275,6 +279,14 @@ struct Widget {
     // 不受影响）。
     bool collectionRow{false};
     bool collectionShowHeader{false};
+
+    // Splitter（splitter-design §5.1）：分栏源（widgets 层
+    // SplitterController 实现 core::SplitterSource；virtualSource 同模
+    // 式）与方向（true = 水平左右分栏）。children 恰好 2 个（首 =
+    // leading，次 = trailing）；分隔条由布局期物化（key 前缀
+    // "split:div:"）。
+    const SplitterSource* splitterSource{nullptr};
+    bool splitterHorizontal{true};
 
     // 视觉系统声明属性（visual-system-design §6.1）：enabled=false 时控
     // 件不可用（视觉、命中、键盘与语义一致拒绝）；invalid=true 表达校验
@@ -843,6 +855,26 @@ inline Widget makeTreeList(const VirtualListSource* source,
 // 集合选择模式声明（语义树与控制器一致性检查用；真实状态在控制器）。
 inline Widget withSelectionMode(Widget widget, std::uint8_t mode) {
     widget.collectionSelectionMode = mode;
+    return widget;
+}
+
+// --- Splitter（splitter-design §5.1） ---
+
+// 两窗格分栏：children 恰好 2 个（首 = leading，次 = trailing）；分隔条
+// 由布局期物化（framework chrome，key = "split:div:<key>"）。source 为
+// widgets 层 SplitterController（实现 core::SplitterSource；应用持有生命
+// 周期）。horizontal = 左右分栏（false = 上下）。初始位置由控制器自身
+// 持有（构造/setResetOffset），不经 Widget 传递。
+inline Widget makeSplitter(const SplitterSource* source, Widget leading,
+                           Widget trailing, bool horizontal = true,
+                           std::string key = {}) {
+    Widget widget;
+    widget.type = WidgetType::Splitter;
+    widget.splitterSource = source;
+    widget.splitterHorizontal = horizontal;
+    widget.key = std::move(key);
+    widget.children.push_back(std::move(leading));
+    widget.children.push_back(std::move(trailing));
     return widget;
 }
 

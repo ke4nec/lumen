@@ -19,6 +19,9 @@ set(LUMEN_TEST_SOURCES
     # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、
     # 列宽与语义角色（docs/lumen-collection-controls-design.md）。
     collection_tests.cpp
+    # Splitter：布局分配/钳制、拖动/键盘/双击复位、语义
+    #（docs/lumen-splitter-design.md）。
+    splitter_tests.cpp
     # M6：视觉系统 V3 与控件库（图标/阴影/滚动条/控件交互/语义）。
     visual_m6_tests.cpp
     visual_regression_tests.cpp

@@ -59,6 +59,8 @@ bool isLeafWidget(WidgetType type) {
         case WidgetType::List:
         case WidgetType::Tree:
         case WidgetType::TreeList:
+        // Splitter：两窗格容器（分隔条由布局物化）。
+        case WidgetType::Splitter:
             return false;
     }
     return false;

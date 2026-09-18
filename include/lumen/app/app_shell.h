@@ -120,6 +120,11 @@ class AppShell {
     [[nodiscard]] const core::InteractionController& controller() const {
         return controller_;
     }
+    // 当前指针期望光标（分隔条 ResizeEW/NS，splitter-design §7）：宿主
+    // 适配层（runApp）映射 SystemCursor 并调 ApplicationHost::setCursor。
+    [[nodiscard]] core::PointerCursor pointerCursor() const {
+        return controller_.pointerCursor();
+    }
     [[nodiscard]] style::Theme& theme() { return theme_; }
     [[nodiscard]] const style::Theme& theme() const { return theme_; }
     // 主题切换：resolved style 变化 → 重建（可选全量重绘）。
@@ -385,6 +390,10 @@ class AppShell {
     std::optional<core::Widget> overlayTemplate_{};
     std::function<std::optional<core::Widget>()> overlayBuilder_{};
     WheelSink overlayWheel_{};
+    // 本次 wheel 分发中 controller 是否已把滚轮转发给 overlayWheel_
+    //（无滚动视口时 controller 不调 sink，AppShell::wheel 以空 hit 直调
+    // 一次兜底——见 wheel 实现）。
+    bool overlayWheelForwarded_{false};
     ScrollDragSink overlayDrag_{};
     std::optional<core::RenderNode> overlayRoot_{};
     core::RenderNode previousOverlayRoot_{};

@@ -20,6 +20,7 @@ namespace lumen::core {
 // Key 枚举与修饰键定义在 windowing.h（平台无关事件值类型）。
 
 class ScrollController;  // scroll.h 反向包含此处，源视口滚动用指针引用
+class SplitterSource;    // splitter.h；分隔条拖动/键盘经此驱动（常量方法）
 
 // Hit testing walks the render tree in reverse paint order: the last child is
 // on top and wins (plan §5.3). On success `chain` receives the nodes from the
@@ -48,6 +49,15 @@ class FocusManager {
 // M10：视口拖动滚流的阶段（Begin/Update = 拖动中，End = 释放可起惯性，
 // Cancel = 取消只停惯性）。AppShell 的同形 sink 别名复用此类型。
 enum class ScrollDragPhase { Begin, Update, End, Cancel };
+
+// 指针悬停期望的系统光标形状（core 语义层；平台适配层映射
+// platform::SystemCursor 并调用 ApplicationHost::setCursor——core 不含
+// 平台类型）。当前仅分隔条声明特殊形状（splitter-design §7）；默认 Arrow。
+enum class PointerCursor : std::uint8_t {
+    Arrow,
+    ResizeEW,  // 水平 Splitter 分隔条（左右分栏）
+    ResizeNS,  // 垂直 Splitter 分隔条（上下分栏）
+};
 
 // v0.3 阶段8B (plan §3.2): TextField 编辑模型升级为 selection/composing。
 // 命中定位用 TextLayout（布局与绘制同一份），光标/删除按 grapheme
@@ -179,6 +189,8 @@ class InteractionController {
     void focusNode(const RenderNode& node);
     // 语义 setValue：将 Slider 值限制到 0..100 后写回绑定状态。
     bool setSliderValue(const RenderNode& node, const std::string& value);
+    // Splitter 语义 setValue：百分比映射到最近布局的可用长。
+    bool setSplitterValue(const RenderNode& node, const std::string& value);
 
     // M5：焦点恢复（路由 pop/页面切换）：把焦点给 subtree 内第一个
     // 可聚焦节点（enabled 的字段/按钮/开关；遍历顺序与 Tab 一致）。
@@ -206,6 +218,22 @@ class InteractionController {
     // True while the pressed pointer moved beyond the drag slop; a drag
     // release never fires a click.
     [[nodiscard]] bool isDragging() const { return dragging_; }
+    [[nodiscard]] bool splitterDragActive() const {
+        return !splitterDragIdentity_.empty();
+    }
+    [[nodiscard]] bool splitterDragHorizontal() const {
+        return splitterDragHorizontal_;
+    }
+    // 当前指针期望光标（splitter-design §7）：分隔条 hover → ResizeEW/NS；
+    // 分隔条拖动期间保持拖动方向（指针可能移出 12px 轨道）。宿主适配层
+    // 轮询并映射系统光标。
+    [[nodiscard]] PointerCursor pointerCursor() const {
+        if (splitterDragActive()) {
+            return splitterDragHorizontal_ ? PointerCursor::ResizeEW
+                                           : PointerCursor::ResizeNS;
+        }
+        return hoverCursor_;
+    }
     // Drag displacement from the press anchor to the latest move.
     [[nodiscard]] Offset dragDelta() const {
         return dragCurrent_ - dragAnchor_;
@@ -291,6 +319,8 @@ class InteractionController {
     // hover：最近一次指针移动/按下的最深命中节点（disabled 除外）。
     std::string hoveredKey_{};
     std::string hoveredIdentity_{};
+    // hover 命中链推导的光标（分隔条 ResizeEW/NS；见 pointerCursor）。
+    PointerCursor hoverCursor_{PointerCursor::Arrow};
     // Click target armed at pointer down: nearest onClick node identity.
     std::string armedOnClick_{};
     std::string armedKey_{};
@@ -328,6 +358,12 @@ class InteractionController {
     // M6 Slider 拖拽：起点落在滑块上时锁定目标（identity 跨重建），
     // 移动每拍按位置设值（旋钮跟手），释放再落一次终值。
     std::string sliderDragIdentity_;
+    // Splitter 分隔条拖拽（splitter-design §7.1）：命中即独占（先于滚动
+    // /滑块判定）；identity 跨重建重定位，源指针每拍校验存在。
+    std::string splitterDragIdentity_{};
+    const SplitterSource* splitterDragSource_{nullptr};
+    float splitterDragStartOffset_{0.0F};
+    bool splitterDragHorizontal_{true};
     // 双击检测。
     std::uint64_t lastClickMs_{0};
     std::string lastClickIdentity_{};
