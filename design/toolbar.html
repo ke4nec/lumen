@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen Toolbar 设计稿 · 工具栏</title>
+<meta name="description" content="Lumen 工具栏（Toolbar）的视觉与交互设计稿，配套 docs/lumen-toolbar-design.md，视觉规格对齐 docs/lumen-visual-system-design.md。">
+<style>
+  :root {
+    color-scheme: light;
+    /* 评审板（与 design/gallery.html / menu-controls.html 一致的板面语言） */
+    --board-bg: #e9edf3;
+    --board-grid: rgba(42, 58, 82, .045);
+    --board-ink: #172033;
+    --board-muted: #69758b;
+    --board-line: #d8dee8;
+    --board-card: rgba(255, 255, 255, .86);
+    --board-shadow: 0 24px 70px rgba(31, 48, 77, .12);
+    --board-accent: #2864b7;
+    --board-accent-soft: #e8f0ff;
+    --radius-xl: 24px;
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+    --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    /* 拟真应用：Core Dark（gallery.html 变体 01 的精确 token 值） */
+    --app-bg: #18181b;
+    --app-surface: #27272e;
+    --app-surface-alt: #2e2e36;
+    --app-ink: #f1f1f4;
+    --app-muted: #a1a1aa;
+    --app-line: #3b3b45;
+    --app-accent: #568cf0;
+    --app-accent-content: #a8c5fa;
+    --app-accent-soft: #2e3c60;
+    --app-positive: #73c991;
+    --card-radius: 8px;
+    --control-radius: 6px;
+    /* 工具栏（toolbar.* 组件 token 的 Core Dark 派生值） */
+    --tb-hover: rgba(255, 255, 255, .055);        /* surface 层 hover 派生 */
+    --tb-pressed: rgba(86, 140, 240, .32);        /* surface/accent 0.32 混合 */
+    --tb-checked: var(--app-accent-soft);         /* color.selection.background */
+  }
+  * { box-sizing: border-box; }
+  html { min-width: 320px; background: var(--board-bg); }
+  body {
+    margin: 0; min-height: 100vh; color: var(--board-ink);
+    font-family: var(--font-ui);
+    background-color: var(--board-bg);
+    background-image: linear-gradient(var(--board-grid) 1px, transparent 1px), linear-gradient(90deg, var(--board-grid) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  button { font: inherit; }
+
+  .board { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 48px; }
+  .board-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+  .eyebrow { display: flex; align-items: center; gap: 9px; color: var(--board-accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+  .eyebrow::before { content: ""; width: 22px; height: 2px; background: currentColor; border-radius: 2px; }
+  h1 { margin: 8px 0; max-width: 760px; font-size: clamp(26px, 3vw, 36px); line-height: 1.2; letter-spacing: -.035em; }
+  .lead { max-width: 820px; margin: 0; color: var(--board-muted); font-size: 14px; line-height: 1.6; }
+  .brand-mark { display: grid; place-items: center; width: 40px; height: 40px; color: white; font-size: 20px; font-weight: 900; letter-spacing: -.12em; border-radius: 12px; background: linear-gradient(135deg, #2864b7, #6f9ee8); box-shadow: 0 10px 24px rgba(40, 100, 183, .24); }
+
+  .panel { border: 1px solid var(--board-line); border-radius: var(--radius-xl); background: rgba(250, 252, 255, .68); box-shadow: var(--board-shadow); padding: 20px; margin-bottom: 18px; }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin: 0 4px 14px; }
+  .panel-title { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 650; letter-spacing: -.01em; margin: 0; }
+  .panel-title .chip { padding: 3px 8px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--board-accent); border: 1px solid #c6d6ee; border-radius: 999px; background: var(--board-accent-soft); }
+  .panel-sub { color: var(--board-muted); font-size: 12.5px; }
+
+  /* ===== 拟真应用窗口（Core Dark；工具栏为主角） ===== */
+  .app-window { border-radius: 16px; overflow: hidden; background: var(--app-bg); color: var(--app-ink); box-shadow: 0 20px 48px rgba(7, 8, 14, .2); }
+  .app-topbar { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 16px; border-bottom: 1px solid var(--app-line); background: var(--app-surface); font-size: 14px; font-weight: 650; }
+  .app-topbar .brand-mini { flex: 0 0 28px; display: grid; place-items: center; height: 28px; color: #000; font-size: 14px; font-weight: 800; border-radius: 8px; background: var(--app-accent); }
+  .app-menubar { display: flex; align-items: stretch; gap: 2px; min-height: 32px; padding: 2px 8px; border-bottom: 1px solid var(--app-line); background: var(--app-surface); font-size: 13px; }
+  .mb-item { display: flex; align-items: center; min-height: 28px; padding: 2px 10px; color: var(--app-ink); border: 0; border-radius: var(--control-radius); background: transparent; cursor: pointer; }
+  .mb-item:hover { background: var(--tb-hover); }
+
+  /* ===== 工具栏（设计稿主角；Medium/Comfortable 档） =====
+     栏高 40（含 1px 底分隔线）；项 = 方形通高 40×40；分组分隔线 1px、
+     上下 inset 8；溢出按钮 = 尾部 chevron，折叠项进 M14 面板。 */
+  .toolbar {
+    --item: 40px; --icon: 16px; --gap: 4px; --r: 6px;
+    display: flex; align-items: stretch; gap: var(--gap);
+    height: calc(var(--item) + 1px); padding: 0 8px;
+    background: var(--app-surface);
+    border-bottom: 1px solid var(--app-line);
+    overflow: hidden;
+  }
+  .tb-item {
+    position: relative; flex: 0 0 auto;
+    display: grid; place-items: center; width: var(--item);
+    padding: 0; color: var(--app-muted);
+    border: 0; border-radius: var(--r); background: transparent; cursor: pointer;
+    transition: background .1s ease, color .1s ease;   /* stateTransitionMs = 100 */
+  }
+  .tb-item svg { width: var(--icon); height: var(--icon); fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .tb-item:hover { background: var(--tb-hover); color: var(--app-ink); }
+  .tb-item:active { background: var(--tb-pressed); color: var(--app-ink); }
+  .tb-item.is-checked { background: var(--tb-checked); color: var(--app-ink); }
+  .tb-item.is-checked:hover { background: var(--tb-checked); }
+  .tb-item.is-disabled { color: rgba(241, 241, 244, .4); cursor: default; }
+  .tb-item.is-disabled:hover { background: transparent; }
+  /* 焦点环恒开启（makeToolBar 自建键盘件口径——makeTabs 同源，visual-system §6.1） */
+  .tb-item:focus { outline: none; }
+  .tb-item:focus-visible { box-shadow: inset 0 0 0 2px var(--app-accent); }
+  /* tooltip：延迟 400ms → 淡入 120ms（tooltipDelayMs/tooltipFadeMs 既有 token） */
+  .tb-item .tip {
+    position: absolute; z-index: 30; top: calc(100% + 6px); left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 10px; color: var(--app-ink); font-size: 12px; white-space: nowrap;
+    background: var(--app-surface-alt); border: 1px solid var(--app-line);
+    border-radius: var(--control-radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .35);
+    opacity: 0; pointer-events: none;
+    transition: opacity .12s ease;
+  }
+  .tb-item .tip kbd { color: var(--app-muted); font-size: 11px; margin-left: 8px; font-family: ui-monospace, Consolas, monospace; }
+  .tb-item:hover .tip, .tb-item:focus-visible .tip { opacity: 1; transition-delay: .4s; }
+  .tb-item.is-disabled .tip { opacity: 0; }
+  /* labelMode 项（icon + 文本水平排列） */
+  .tb-item.has-label { width: auto; min-width: var(--item); display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13px; font-weight: 550; }
+  /* 分组分隔线：1px 宽、上下 inset 8（= 高度 栏高-16），两侧 gap 8 */
+  .tb-sep { flex: 0 0 auto; align-self: center; height: calc(var(--item) - 16px); width: 1px; margin: 0 8px; background: var(--app-line); }
+  /* 溢出按钮 */
+  .tb-overflow { margin-left: auto; display: none; }
+  .toolbar.has-overflow .tb-overflow { display: grid; }
+  .toolbar.has-overflow .tb-spacer { display: none; }
+  .tb-spacer { flex: 1 1 auto; min-width: 8px; }
+  /* 溢出面板（M14 菜单面板路径：120ms 淡入 + 上升 6px）——锚定工具栏行下方 */
+  .tb-anchor { position: relative; }
+  .tb-panel {
+    position: absolute; z-index: 40; top: calc(100% + 2px); right: 8px;
+    min-width: 200px; padding: 4px; font-size: 13px;
+    background: var(--app-surface-alt); border: 1px solid var(--app-line); border-radius: var(--card-radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .45), 0 12px 32px rgba(0, 0, 0, .25);
+  }
+  .tb-panel .pi { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 12px; color: inherit; text-align: left; border: 0; border-radius: var(--control-radius); background: transparent; cursor: pointer; }
+  .tb-panel .pi:hover { background: var(--tb-hover); }
+  .tb-panel .pi svg { flex: 0 0 16px; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; color: var(--app-muted); }
+  .tb-panel .pi.is-checked { background: var(--tb-checked); }
+  .tb-panel[hidden] { display: none; }
+
+  /* 内容区 + 状态栏（联动演示的上下文） */
+  .app-content { padding: 16px; min-height: 120px; }
+  .app-content p { margin: 0; color: var(--app-muted); font-size: 12.5px; }
+  .statusbar { display: flex; align-items: center; gap: 16px; height: 28px; padding: 0 12px; border-top: 1px solid var(--app-line); background: var(--app-surface); color: var(--app-muted); font-size: 12px; }
+  .statusbar .msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .statusbar .busy { display: none; align-items: center; gap: 8px; }
+  .statusbar .busy.on { display: flex; }
+  .busy-arc { width: 12px; height: 12px; animation: busy-spin 1.2s linear infinite; }  /* statusbar.busyCycleMs = 1200 */
+  .busy-arc svg { width: 12px; height: 12px; fill: none; stroke: var(--app-accent); stroke-width: 2; stroke-linecap: round; }
+  @keyframes busy-spin { to { transform: rotate(360deg); } }
+
+  /* 状态矩阵 */
+  .state-grid { display: flex; flex-wrap: wrap; gap: 20px 26px; align-items: flex-end; }
+  .state-cell { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .state-cell small { color: var(--board-muted); font-size: 11.5px; }
+  .demo-strip { display: flex; align-items: stretch; gap: 4px; height: 40px; padding: 0 8px; background: var(--app-surface); border: 1px solid var(--app-line); border-bottom-width: 1px; border-radius: 8px 8px 0 0; }
+
+  /* 溢出演示控件 */
+  .resize-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; color: var(--board-muted); font-size: 12px; }
+  .resize-row input[type="range"] { flex: 1; accent-color: var(--board-accent); }
+
+  .callouts { display: grid; gap: 10px; }
+  .callout { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 12px 14px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--board-card); font-size: 12.5px; }
+  .callout .no { display: grid; place-items: center; width: 22px; height: 22px; color: var(--board-accent); font-size: 11px; font-weight: 800; border: 1.5px solid currentColor; border-radius: 50%; }
+  .callout strong { color: var(--board-ink); }
+  .callout span { color: var(--board-muted); line-height: 1.55; }
+  table.spec { width: 100%; border-collapse: collapse; background: var(--board-card); border: 1px solid var(--board-line); border-radius: var(--radius-md); overflow: hidden; font-size: 12.5px; }
+  table.spec th, table.spec td { padding: 8px 12px; border-bottom: 1px solid var(--board-line); text-align: left; vertical-align: top; line-height: 1.5; }
+  table.spec tr:last-child td { border-bottom: 0; }
+  table.spec thead th { color: var(--board-muted); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: rgba(23, 32, 51, .03); }
+  table.spec td code, table.spec td kbd { padding: 1px 6px; font-size: 11.5px; border: 1px solid var(--board-line); border-radius: 5px; background: #fff; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  kbd { box-shadow: 0 1.5px 0 var(--board-line); }
+  .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 980px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="board">
+  <header class="board-header">
+    <div>
+      <p class="eyebrow">Lumen · 控件设计稿</p>
+      <h1>Toolbar 工具栏</h1>
+      <p class="lead">Ghost Button 子树 + 栏级控制器：分组分隔、toggle 态、tooltip、尾部溢出折叠（复用 M14 面板）。零新增 WidgetType，配套 <code>docs/lumen-toolbar-design.md</code>，token 对齐 Core Dark · Medium 密度。</p>
+    </div>
+    <div class="brand-mark">Lu</div>
+  </header>
+
+  <!-- ============ 一、拟真场景 ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">一、应用 chrome 场景 <span class="chip">可交互</span></h2>
+      <p class="panel-sub">hover 项看 tooltip（400ms 延迟）；点「运行」toggle（状态栏 busy 联动）；Tab 进栏后 ←→ 漫游</p>
+    </div>
+    <div class="app-window">
+      <div class="app-topbar"><span class="brand-mini">Lu</span><span>Lumen 工作台</span></div>
+      <div class="app-menubar">
+        <button class="mb-item" type="button">文件</button>
+        <button class="mb-item" type="button">编辑</button>
+        <button class="mb-item" type="button">视图</button>
+        <button class="mb-item" type="button">帮助</button>
+      </div>
+      <div class="tb-anchor">
+      <div class="toolbar" id="demo-toolbar">
+        <button class="tb-item" type="button" data-id="new" data-label="新建" title="">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="tip">新建<kbd>Ctrl+N</kbd></span>
+        </button>
+        <button class="tb-item" type="button" data-id="open" data-label="打开">
+          <svg viewBox="0 0 24 24"><path d="M3 7c0-1.1.9-2 2-2h4l2 2h8c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V7z"/></svg>
+          <span class="tip">打开<kbd>Ctrl+O</kbd></span>
+        </button>
+        <button class="tb-item" type="button" data-id="save" data-label="保存">
+          <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3z"/><path d="M14 3v4h4"/></svg>
+          <span class="tip">保存<kbd>Ctrl+S</kbd></span>
+        </button>
+        <span class="tb-sep"></span>
+        <button class="tb-item" type="button" data-id="undo" data-label="撤销">
+          <svg viewBox="0 0 24 24"><path d="M8 7L4 11l4 4"/><path d="M4 11h10a5 5 0 0 1 0 10h-3"/></svg>
+          <span class="tip">撤销<kbd>Ctrl+Z</kbd></span>
+        </button>
+        <button class="tb-item is-disabled" type="button" data-id="redo" data-label="重做" aria-disabled="true">
+          <svg viewBox="0 0 24 24"><path d="M16 7l4 4-4 4"/><path d="M20 11H10a5 5 0 0 0 0 10h3"/></svg>
+          <span class="tip">重做<kbd>Ctrl+Y</kbd></span>
+        </button>
+        <span class="tb-sep"></span>
+        <button class="tb-item has-label" type="button" data-id="run" data-label="运行" data-toggle="1">
+          <svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7V5z"/></svg>
+          <span>运行</span>
+          <span class="tip">运行<kbd>F5</kbd></span>
+        </button>
+        <span class="tb-sep"></span>
+        <button class="tb-item" type="button" data-id="grid" data-label="网格" data-toggle="1">
+          <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+          <span class="tip">网格</span>
+        </button>
+        <button class="tb-item" type="button" data-id="search" data-label="搜索">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+          <span class="tip">搜索<kbd>Ctrl+F</kbd></span>
+        </button>
+        <button class="tb-item" type="button" data-id="settings" data-label="设置">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+          <span class="tip">设置</span>
+        </button>
+        <span class="tb-spacer"></span>
+        <button class="tb-item tb-overflow" type="button" id="overflow-btn" data-id="overflow" data-label="更多命令">
+          <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          <span class="tip">更多命令</span>
+        </button>
+      </div>
+      <!-- 溢出面板（M14：120ms 淡入 + 6px 上升；锚定工具栏行下方） -->
+      <div class="tb-panel" id="overflow-panel" hidden>
+        <button class="pi" type="button" data-id="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>搜索</button>
+        <button class="pi" type="button" data-id="grid" data-toggle="1"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>网格</button>
+        <button class="pi" type="button" data-id="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>设置</button>
+      </div>
+      </div>
+      <div class="app-content">
+        <p>主内容区。工具栏 toggle「运行」驱动下方状态栏 busy 弧（同一命令在菜单/工具栏共享 id、由应用联动——框架不建注册表）。</p>
+      </div>
+      <div class="statusbar">
+        <span class="msg" id="demo-status-msg">就绪</span>
+        <span class="busy" id="demo-status-busy">
+          <span class="busy-arc"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1-9 9" transform="translate(1.5 1.5) scale(0.875)"/></svg></span>
+          正在运行
+        </span>
+        <span>UTF-8</span>
+      </div>
+    </div>
+    <div class="resize-row">
+      <span>窗口宽度</span>
+      <input type="range" id="toolbar-resize" min="300" max="760" value="760" aria-label="应用窗口宽度">
+      <span id="resize-readout">760px 窗宽 · 全量显示</span>
+    </div>
+    <div class="callouts" style="margin-top: 14px;">
+      <div class="callout"><span class="no">1</span><span><strong>单一 Tab 停靠域</strong>：Tab 进入栏（漫游焦点记忆项），←→ 在项间移动、跳过分隔线与 disabled；Enter/Space 激活 ≡ 单击。焦点环恒开启（<code>makeTabs</code> 同口径）。</span></div>
+      <div class="callout"><span class="no">2</span><span><strong>toggle 激活态 = 持久底色</strong>（<code>selection.background</code>），不换图标——与菜单 checkable 的勾选槽区分；高对比下追加图标底部 2px accent 下划线（形状差异）。</span></div>
+      <div class="callout"><span class="no">3</span><span><strong>溢出即时重排</strong>（无布局动画）：宽度不足时尾部项折叠进「更多命令」面板（M14 淡入 + 上升 6px）；labelMode 项优先折叠。</span></div>
+      <div class="callout"><span class="no">4</span><span><strong>图标目录</strong>：Plus/Folder/Document/Search/ChevronDown 为既有 IconId；撤销/重做/运行/网格/设置为候选新增（枚举追尾部，零几何冲突）。</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 二、状态矩阵 + 密度 ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">二、项状态矩阵 <span class="chip">Medium 档</span></h2>
+      <p class="panel-sub">栏高 40（含 1px 底线）· 项 40×40 · 图标 16</p>
+    </div>
+    <div class="state-grid">
+      <div class="state-cell">
+        <div class="demo-strip"><button class="tb-item"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3z"/></svg></button></div>
+        <small>rest（透明底 · secondary 图标）</small>
+      </div>
+      <div class="state-cell">
+        <div class="demo-strip"><button class="tb-item" style="background: var(--tb-hover); color: var(--app-ink);"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3z"/></svg></button></div>
+        <small>hover（+ tooltip 延迟武装）</small>
+      </div>
+      <div class="state-cell">
+        <div class="demo-strip"><button class="tb-item" style="background: var(--tb-pressed); color: var(--app-ink);"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3z"/></svg></button></div>
+        <small>pressed（accent 0.32 混合）</small>
+      </div>
+      <div class="state-cell">
+        <div class="demo-strip"><button class="tb-item is-checked"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7V5z"/></svg></button></div>
+        <small>checked（toggle 持久底色）</small>
+      </div>
+      <div class="state-cell">
+        <div class="demo-strip"><button class="tb-item is-disabled"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3z"/></svg></button></div>
+        <small>disabled</small>
+      </div>
+      <div class="state-cell">
+        <div class="demo-strip"><button class="tb-item" style="box-shadow: inset 0 0 0 2px var(--app-accent);"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3z"/></svg></button></div>
+        <small>focused（漫游焦点 · 内嵌环恒开）</small>
+      </div>
+      <div class="state-cell">
+        <div class="demo-strip" style="height: 32px;"><button class="tb-item" style="--item: 32px; --r: 4px;"><svg viewBox="0 0 24 24" style="--icon: 16px;"><path d="M6 3h8l4 4v14H6V3z"/></svg></button></div>
+        <small>Compact：栏 32 · 项 32×32 · 图标 16</small>
+      </div>
+      <div class="state-cell">
+        <div class="demo-strip" style="height: 48px;"><button class="tb-item" style="--item: 48px; --r: 8px;"><svg viewBox="0 0 24 24" style="--icon: 20px; width: 20px; height: 20px;"><path d="M6 3h8l4 4v14H6V3z"/></svg></button></div>
+        <small>Touch：栏 48 · 项 48×48 · 图标 20</small>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 三、规格表 ============ -->
+  <section class="panel">
+    <div class="two-col">
+      <div>
+        <div class="panel-head" style="margin-inline: 4px;">
+          <h2 class="panel-title">三、规格速查</h2>
+          <p class="panel-sub">完整契约见 docs/lumen-toolbar-design.md §9</p>
+        </div>
+        <table class="spec">
+          <thead><tr><th>项目</th><th>Compact</th><th>Comfortable</th><th>Touch</th></tr></thead>
+          <tbody>
+            <tr><td>栏高 / 项尺寸</td><td>32 / 32×32</td><td>40 / 40×40</td><td>48 / 48×48</td></tr>
+            <tr><td>图标 · 项圆角</td><td>16 · 4</td><td>16 · 6</td><td>20 · 8</td></tr>
+            <tr><td>项间 gap · 分隔线</td><td colspan="3">2 / 4 / 4 · 1px 上下 inset 8、两侧 gap 8</td></tr>
+            <tr><td>labelMode 项</td><td colspan="3">icon + 8 gap + label，水平内边距 12</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="panel-head" style="margin-inline: 4px;">
+          <h2 class="panel-title">四、动效口径</h2>
+          <p class="panel-sub">零新增 MotionTokens，全部既有</p>
+        </div>
+        <table class="spec">
+          <tbody>
+            <tr><td>项状态过渡</td><td><code>stateTransitionMs</code> = 100ms；reduceAnimation 归零</td></tr>
+            <tr><td>tooltip</td><td>延迟 <code>tooltipDelayMs</code>=400 → 淡入 <code>tooltipFadeMs</code>=120；移出即隐</td></tr>
+            <tr><td>溢出面板</td><td><code>menuOpenFadeMs</code>=120 淡入 + 上升 6px（M14 路径复用）</td></tr>
+            <tr><td>溢出折叠 / 回位</td><td><b>无布局动画</b>（即时重排；溢出按钮 alpha 100ms 淡入）</td></tr>
+            <tr><td>键盘漫游</td><td><kbd>←</kbd><kbd>→</kbd> 焦点移动 · <kbd>Home</kbd><kbd>End</kbd> 首末 · <kbd>Enter</kbd> 激活 · <kbd>↓</kbd> 开溢出面板</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// 交互演示：ToolBarController 的行为口径（激活/toggle/漫游/溢出/面板）。
+(function () {
+  "use strict";
+  const bar = document.getElementById("demo-toolbar");
+  const overflowBtn = document.getElementById("overflow-btn");
+  const panel = document.getElementById("overflow-panel");
+  const range = document.getElementById("toolbar-resize");
+  const readout = document.getElementById("resize-readout");
+  const statusMsg = document.getElementById("demo-status-msg");
+  const statusBusy = document.getElementById("demo-status-busy");
+
+  // —— 激活与 toggle（checked 状态由应用维护并重建）——
+  function activate(btn) {
+    const id = btn.dataset.id;
+    if (btn.classList.contains("is-disabled")) return;
+    if (btn.dataset.toggle) {
+      const on = !btn.classList.contains("is-checked");
+      btn.classList.toggle("is-checked", on);
+      if (id === "run") {
+        statusBusy.classList.toggle("on", on);
+        statusMsg.textContent = on ? "任务运行中…" : "就绪";
+        // 联动演示：同一命令在溢出面板/菜单中的 checked 同步由应用维护。
+      }
+    } else {
+      statusMsg.textContent = "已执行：" + (btn.dataset.label || id);
+      setTimeout(() => { if (statusMsg.textContent === "已执行：" + (btn.dataset.label || id)) statusMsg.textContent = "就绪"; }, 2000);
+    }
+  }
+  bar.addEventListener("click", (e) => {
+    const btn = e.target.closest(".tb-item");
+    if (!btn || btn === overflowBtn) return;
+    activate(btn);
+  });
+
+  // —— 键盘漫游（roving tabindex；←→ Home End Enter/Space ↓ Esc）——
+  function focusables() {
+    return [...bar.querySelectorAll(".tb-item")].filter((b) => {
+      if (b === overflowBtn && !bar.classList.contains("has-overflow")) return false;
+      return !b.classList.contains("is-disabled") && b.offsetParent !== null;
+    });
+  }
+  function refreshTabindex() {
+    const items = focusables();
+    items.forEach((b, i) => b.tabIndex = i === current ? 0 : -1);
+  }
+  let current = 0;
+  bar.addEventListener("keydown", (e) => {
+    const items = focusables();
+    if (!items.length) return;
+    const idx = items.indexOf(document.activeElement);
+    if (e.key === "ArrowRight") { current = Math.min(items.length - 1, (idx < 0 ? current : idx) + 1); items[current].focus(); e.preventDefault(); }
+    else if (e.key === "ArrowLeft") { current = Math.max(0, (idx < 0 ? current : idx) - 1); items[current].focus(); e.preventDefault(); }
+    else if (e.key === "Home") { current = 0; items[0].focus(); e.preventDefault(); }
+    else if (e.key === "End") { current = items.length - 1; items[current].focus(); e.preventDefault(); }
+    else if (e.key === "Enter" || e.key === " ") {
+      const btn = items[Math.max(0, idx)];
+      if (btn) { activate(btn); e.preventDefault(); }
+    } else if (e.key === "ArrowDown" && document.activeElement === overflowBtn) {
+      panel.hidden = false; panel.querySelector(".pi").focus(); e.preventDefault();
+    } else if (e.key === "Escape") { panel.hidden = true; overflowBtn.focus(); }
+  });
+  bar.addEventListener("focusin", () => { const idx = focusables().indexOf(document.activeElement); if (idx >= 0) current = idx; refreshTabindex(); });
+
+  // —— 溢出：窗口宽度回放（布局回填 → 从尾部折叠；labelMode 先折）——
+  const win = document.querySelector(".app-window");
+  const items = [...bar.querySelectorAll(".tb-item")].filter((b) => b !== overflowBtn);
+  const seps = [...bar.querySelectorAll(".tb-sep")];
+  function relayout() {
+    // 压窄整窗（窄窗口场景）；溢出按工具栏实际内宽判定。
+    win.style.width = parseInt(range.value, 10) + "px";
+    const w = bar.clientWidth;
+    // 先全显，再从尾部逐项隐藏（labelMode 优先）。
+    items.forEach((b) => { b.style.display = ""; });
+    seps.forEach((s) => { s.style.display = ""; });
+    const natW = (b) => b.getBoundingClientRect().width;
+    const overflowW = 40 + 4; // 溢出按钮 + gap
+    let hidden = [];
+    const fits = () => {
+      const visible = items.filter((b) => b.style.display !== "none");
+      const visSeps = seps.filter((s) => s.style.display !== "none");
+      const used = visible.reduce((s, b) => s + natW(b) + 4, -4) + visSeps.reduce((s, x) => s + natW(x) + 16, -16);
+      const extra = hidden.length ? overflowW : 0;
+      return used + extra <= w - 16;
+    };
+    const tryHide = () => {
+      const visible = items.filter((b) => b.style.display !== "none");
+      // labelMode 优先折叠；其后从尾部。
+      const target = visible.find((b) => b.classList.contains("has-label")) || visible[visible.length - 1];
+      if (!target || visible.length <= 1) return false;
+      target.style.display = "none";
+      hidden.push(target);
+      // 折空后隐藏悬空分隔线。
+      seps.forEach((s) => {
+        const prevSib = s.previousElementSibling, nextSib = s.nextElementSibling;
+        const edge = (prevSib && prevSib.style.display === "none" && prevSib.classList.contains("tb-item")) ||
+                     (nextSib && (nextSib.style.display === "none" || nextSib.classList.contains("tb-overflow")) && nextSib.classList.contains("tb-item"));
+        if (edge) s.style.display = "none";
+      });
+      return true;
+    };
+    while (!fits() && tryHide()) { /* 从尾部逐项折叠 */ }
+    bar.classList.toggle("has-overflow", hidden.length > 0);
+    // 重建面板内容（保持原顺序）。
+    panel.querySelectorAll(".pi").forEach((p) => p.remove());
+    hidden.forEach((b) => {
+      const pi = document.createElement("button");
+      pi.className = "pi" + (b.classList.contains("is-checked") ? " is-checked" : "");
+      pi.type = "button"; pi.dataset.id = b.dataset.id; pi.dataset.toggle = b.dataset.toggle || "";
+      pi.innerHTML = b.querySelector("svg").outerHTML + "<span>" + (b.dataset.label || b.dataset.id) + "</span>";
+      pi.addEventListener("click", () => { activate(b); pi.classList.toggle("is-checked", b.classList.contains("is-checked")); });
+      panel.appendChild(pi);
+    });
+    readout.textContent = w + "px 窗宽 · " + (hidden.length ? "溢出 " + hidden.length + " 项" : "全量显示");
+    refreshTabindex();
+  }
+  range.addEventListener("input", relayout);
+  relayout();
+
+  // —— 溢出面板开关 ——
+  overflowBtn.addEventListener("click", () => { panel.hidden = !panel.hidden; });
+  document.addEventListener("pointerdown", (e) => {
+    if (!panel.hidden && !panel.contains(e.target) && e.target !== overflowBtn && !overflowBtn.contains(e.target)) panel.hidden = true;
+  });
+})();
+</script>
+</body>
+</html>

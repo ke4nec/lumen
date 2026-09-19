@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen StatusBar 设计稿 · 状态栏</title>
+<meta name="description" content="Lumen 状态栏（StatusBar）的视觉与交互设计稿，配套 docs/lumen-statusbar-design.md，视觉规格对齐 docs/lumen-visual-system-design.md。">
+<style>
+  :root {
+    color-scheme: light;
+    /* 评审板（与 design/gallery.html / menu-controls.html 一致的板面语言） */
+    --board-bg: #e9edf3;
+    --board-grid: rgba(42, 58, 82, .045);
+    --board-ink: #172033;
+    --board-muted: #69758b;
+    --board-line: #d8dee8;
+    --board-card: rgba(255, 255, 255, .86);
+    --board-shadow: 0 24px 70px rgba(31, 48, 77, .12);
+    --board-accent: #2864b7;
+    --board-accent-soft: #e8f0ff;
+    --radius-xl: 24px;
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+    --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    /* 拟真应用：Core Dark（gallery.html 变体 01 的精确 token 值） */
+    --app-bg: #18181b;
+    --app-surface: #27272e;
+    --app-surface-alt: #2e2e36;
+    --app-ink: #f1f1f4;
+    --app-muted: #a1a1aa;
+    --app-line: #3b3b45;
+    --app-accent: #568cf0;
+    --app-accent-content: #a8c5fa;
+    --app-accent-soft: #2e3c60;
+    --card-radius: 8px;
+    --control-radius: 6px;
+    /* 状态栏（statusbar.* 组件 token 的 Core Dark 派生值） */
+    --sb-hover: rgba(255, 255, 255, .055);
+    --sb-pressed: rgba(86, 140, 240, .32);
+    --sb-track: rgba(86, 140, 240, .16);          /* 0.6 透明 accent 底（indeterminate 轨道） */
+  }
+  * { box-sizing: border-box; }
+  html { min-width: 320px; background: var(--board-bg); }
+  body {
+    margin: 0; min-height: 100vh; color: var(--board-ink);
+    font-family: var(--font-ui);
+    background-color: var(--board-bg);
+    background-image: linear-gradient(var(--board-grid) 1px, transparent 1px), linear-gradient(90deg, var(--board-grid) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  button { font: inherit; }
+  button:focus-visible { outline: 3px solid #4e86db; outline-offset: 3px; }
+
+  .board { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 48px; }
+  .board-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+  .eyebrow { display: flex; align-items: center; gap: 9px; color: var(--board-accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+  .eyebrow::before { content: ""; width: 22px; height: 2px; background: currentColor; border-radius: 2px; }
+  h1 { margin: 8px 0; max-width: 760px; font-size: clamp(26px, 3vw, 36px); line-height: 1.2; letter-spacing: -.035em; }
+  .lead { max-width: 820px; margin: 0; color: var(--board-muted); font-size: 14px; line-height: 1.6; }
+  .brand-mark { display: grid; place-items: center; width: 40px; height: 40px; color: white; font-size: 20px; font-weight: 900; letter-spacing: -.12em; border-radius: 12px; background: linear-gradient(135deg, #2864b7, #6f9ee8); box-shadow: 0 10px 24px rgba(40, 100, 183, .24); }
+
+  .panel { border: 1px solid var(--board-line); border-radius: var(--radius-xl); background: rgba(250, 252, 255, .68); box-shadow: var(--board-shadow); padding: 20px; margin-bottom: 18px; }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin: 0 4px 14px; }
+  .panel-title { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 650; letter-spacing: -.01em; margin: 0; }
+  .panel-title .chip { padding: 3px 8px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--board-accent); border: 1px solid #c6d6ee; border-radius: 999px; background: var(--board-accent-soft); }
+  .panel-sub { color: var(--board-muted); font-size: 12.5px; }
+
+  /* ===== 拟真应用窗口（Core Dark；状态栏为主角） ===== */
+  .app-window { position: relative; border-radius: 16px; overflow: hidden; background: var(--app-bg); color: var(--app-ink); box-shadow: 0 20px 48px rgba(7, 8, 14, .2); }
+  .app-topbar { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 16px; border-bottom: 1px solid var(--app-line); background: var(--app-surface); font-size: 14px; font-weight: 650; }
+  .app-topbar .brand-mini { flex: 0 0 28px; display: grid; place-items: center; height: 28px; color: #000; font-size: 14px; font-weight: 800; border-radius: 8px; background: var(--app-accent); }
+  .app-content { padding: 18px 20px 26px; min-height: 190px; }
+  .app-content p { margin: 0 0 10px; color: var(--app-ink); font-size: 13px; line-height: 1.7; }
+  .app-content p.dim { color: var(--app-muted); font-size: 12.5px; }
+
+  /* ===== 状态栏（设计稿主角；Medium/Comfortable 档） =====
+     单行 28px（border-box，顶部 1px 分隔线）；左弹性消息区 + 右常驻项序列；
+     项间 1px×12 垂直分隔线、两侧 gap 8；文本 secondary 12px。 */
+  .statusbar {
+    --h: 28px; --fs: 12px; --pad: 12px; --sep: 12px; --r: 6px;
+    display: flex; align-items: center; gap: 8px;
+    min-height: var(--h); padding: 0 var(--pad);
+    border-top: 1px solid var(--app-line);
+    background: var(--app-surface);
+    color: var(--app-muted);
+    font-size: var(--fs); line-height: 1;
+    white-space: nowrap;
+  }
+  /* 消息区：弹性 + 省略号；淡切 120ms（statusbar.messageFadeMs，无位移） */
+  .sb-msg { flex: 1 1 auto; min-width: 120px; overflow: hidden; text-overflow: ellipsis; transition: opacity .12s ease; }
+  .sb-items { display: flex; align-items: center; gap: 8px; margin-left: 16px; }
+  .sb-sep { align-self: center; height: var(--sep); width: 1px; background: var(--app-line); }
+  .sb-item { display: inline-flex; align-items: center; gap: 6px; }
+  .sb-item.is-toggle { padding: 4px 8px; border-radius: var(--r); cursor: pointer; transition: background .1s ease, color .1s ease; }
+  .sb-item.is-toggle:hover { background: var(--sb-hover); color: var(--app-ink); }
+  .sb-item.is-toggle:active { background: var(--sb-pressed); color: var(--app-ink); }
+  .sb-item.is-disabled { color: rgba(241, 241, 244, .4); }
+  .sb-item .glyph { display: grid; place-items: center; }
+  .sb-item .glyph svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  /* 进度项：determinate 120×4（值即状态，宽度不补间） */
+  .sb-progress { width: 120px; height: 4px; border-radius: 2px; background: var(--sb-track); overflow: hidden; }
+  .sb-progress .fill { height: 100%; width: 0; border-radius: 2px; background: var(--app-accent); }
+  /* indeterminate：144×4 轨道 + 16px 往返段（1400ms/周期 linear） */
+  .sb-progress.indet { width: 144px; position: relative; }
+  .sb-progress.indet .fill { display: none; }
+  .sb-progress.indet::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 16px;
+    border-radius: 2px; background: var(--app-accent);
+    animation: sb-marquee 1.4s linear infinite alternate;  /* progressIndeterminateCycleMs = 1400 */
+  }
+  @keyframes sb-marquee { from { transform: translateX(0); } to { transform: translateX(128px); } }
+  /* busy 弧：12px、3/4 圆弧、1200ms/圈 linear */
+  .sb-busy { display: none; }
+  .sb-busy.on { display: inline-flex; }
+  .busy-arc { width: 12px; height: 12px; animation: busy-spin 1.2s linear infinite; }  /* statusbar.busyCycleMs = 1200 */
+  .busy-arc svg { width: 12px; height: 12px; fill: none; stroke: var(--app-accent); stroke-width: 2.4; stroke-linecap: round; }
+  @keyframes busy-spin { to { transform: rotate(360deg); } }
+  /* resize grip：12×12、3 条 45° 短线；纯视觉件（命中归平台 8px resize 边） */
+  .sb-grip { flex: 0 0 auto; align-self: flex-end; width: 12px; height: 12px; margin-right: calc(var(--pad) * -1); background:
+    linear-gradient(135deg, transparent 0 46%, var(--app-line) 46% 54%, transparent 54% 66%, var(--app-line) 66% 74%, transparent 74% 86%, var(--app-line) 86% 94%, transparent 94%); }
+
+  /* 密度档 */
+  .statusbar.d-compact { --h: 24px; --pad: 8px; --fs: 12px; }
+  .statusbar.d-medium   { --h: 28px; --pad: 12px; --fs: 12px; }
+  .statusbar.d-touch    { --h: 32px; --pad: 16px; --fs: 13px; }
+
+  /* 演示控制条 */
+  .demo-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .demo-controls button {
+    padding: 6px 12px; color: var(--board-ink); font-size: 12.5px;
+    border: 1px solid var(--board-line); border-radius: 8px; background: #fff; cursor: pointer;
+    transition: background .12s ease;
+  }
+  .demo-controls button:hover { background: var(--board-accent-soft); }
+
+  /* 消息生命周期时序图 */
+  .timeline { margin-top: 6px; }
+  .tl-track { position: relative; height: 44px; border: 1px solid var(--board-line); border-radius: var(--radius-sm); background: var(--board-card); display: flex; }
+  .tl-seg { position: relative; display: grid; place-items: center; font-size: 11px; color: var(--board-muted); }
+  .tl-seg b { color: var(--board-ink); font-weight: 650; }
+  .tl-legend { display: flex; margin-top: 8px; color: var(--board-muted); font-size: 11.5px; gap: 14px; }
+
+  .callouts { display: grid; gap: 10px; }
+  .callout { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 12px 14px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--board-card); font-size: 12.5px; }
+  .callout .no { display: grid; place-items: center; width: 22px; height: 22px; color: var(--board-accent); font-size: 11px; font-weight: 800; border: 1.5px solid currentColor; border-radius: 50%; }
+  .callout strong { color: var(--board-ink); }
+  .callout span { color: var(--board-muted); line-height: 1.55; }
+  table.spec { width: 100%; border-collapse: collapse; background: var(--board-card); border: 1px solid var(--board-line); border-radius: var(--radius-md); overflow: hidden; font-size: 12.5px; }
+  table.spec th, table.spec td { padding: 8px 12px; border-bottom: 1px solid var(--board-line); text-align: left; vertical-align: top; line-height: 1.5; }
+  table.spec tr:last-child td { border-bottom: 0; }
+  table.spec thead th { color: var(--board-muted); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: rgba(23, 32, 51, .03); }
+  table.spec td code { padding: 1px 6px; font-size: 11.5px; border: 1px solid var(--board-line); border-radius: 5px; background: #fff; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 980px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="board">
+  <header class="board-header">
+    <div>
+      <p class="eyebrow">Lumen · 控件设计稿</p>
+      <h1>StatusBar 状态栏</h1>
+      <p class="lead">窗口底部信息 chrome：弹性消息区（瞬态/常驻）+ 右侧常驻项（文本/Toggle/进度/busy）+ resize grip。零新增 WidgetType（ProgressBar 补 indeterminate 为唯一缝隙），配套 <code>docs/lumen-statusbar-design.md</code>，token 对齐 Core Dark · Medium 密度。</p>
+    </div>
+    <div class="brand-mark">Lu</div>
+  </header>
+
+  <!-- ============ 一、拟真场景 ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">一、编辑器场景 <span class="chip">可交互</span></h2>
+      <p class="panel-sub">「UTF-8」「空格:4」为 Toggle 项（hover 有反馈、点击归应用）；右下角为 resize grip</p>
+    </div>
+    <div class="app-window">
+      <div class="app-topbar"><span class="brand-mini">Lu</span><span>main.cpp — Lumen 工作台</span></div>
+      <div class="app-content">
+        <p>Spin / Toolbar / StatusBar 三控件同批设计（2026-09）。</p>
+        <p class="dim">状态栏不进 Tab 遍历、不获键盘焦点——信息 chrome；唯一交互面是 Toggle 项。</p>
+        <p class="dim">窗口变窄时消息区先收缩到省略号，再窄则项序列从左往右整项折叠（状态栏无 overflow 面板）。</p>
+      </div>
+      <div class="statusbar d-medium" id="demo-statusbar">
+        <span class="sb-msg" id="demo-msg">就绪</span>
+        <span class="sb-items">
+          <span class="sb-item sb-busy" id="demo-busy">
+            <span class="busy-arc"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1-9 9"/></svg></span>
+            <span>索引中</span>
+          </span>
+          <span class="sb-sep"></span>
+          <span class="sb-item sb-progress" id="demo-progress"><span class="fill" id="demo-progress-fill"></span></span>
+          <span class="sb-item" id="demo-progress-label">构建 0%</span>
+          <span class="sb-sep"></span>
+          <span class="sb-item" id="demo-cursor">Ln 12, Col 8</span>
+          <span class="sb-sep"></span>
+          <span class="sb-item is-toggle" role="button" tabindex="0">空格:4</span>
+          <span class="sb-sep"></span>
+          <span class="sb-item is-toggle" role="button" tabindex="0">UTF-8</span>
+          <span class="sb-sep"></span>
+          <span class="sb-item is-toggle" role="button" tabindex="0">100%</span>
+        </span>
+        <span class="sb-grip" aria-hidden="true"></span>
+      </div>
+    </div>
+    <div class="demo-controls">
+      <button type="button" id="btn-message">瞬态消息（4000ms 自动清空）</button>
+      <button type="button" id="btn-message-warn">常驻消息</button>
+      <button type="button" id="btn-progress">模拟构建进度</button>
+      <button type="button" id="btn-indet">切 indeterminate</button>
+      <button type="button" id="btn-busy">busy 开 / 关</button>
+    </div>
+    <div class="callouts" style="margin-top: 14px;">
+      <div class="callout"><span class="no">1</span><span><strong>消息淡切 120ms</strong>（淡出 → 替换 → 淡入，无位移）：消息是信息不是转场；复用 Tooltip 的常驻树透明度通道。瞬态驻留 4000ms 超时回 idle（<code>statusbar.messageTimeoutMs</code>）。</span></div>
+      <div class="callout"><span class="no">2</span><span><strong>determinate 进度不补间</strong>：值即状态（ProgressBar 既有口径），连续更新时宽度跳变；indeterminate 才有往返段动效（1400ms/周期）。</span></div>
+      <div class="callout"><span class="no">3</span><span><strong>busy 弧</strong>：12px、3/4 圆弧 stroke 2、1200ms/圈——indeterminate 的紧凑等价物（无百分比的「正在做」）。reduceAnimation 下弧静止 0.5 透明（形状仍传达进行中，不靠运动）。</span></div>
+      <div class="callout"><span class="no">4</span><span><strong>resize grip 纯视觉</strong>：12×12 三条 45° 线；命中归平台 8 逻辑 px resize 边（titlebar §4.2），grip 不设命中区、不进语义树；最大化时消失。</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 二、项类型矩阵 ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">二、项类型矩阵 <span class="chip">Medium 档</span></h2>
+      <p class="panel-sub">StatusItemKind：Text / Progress / Busy / Toggle / Separator（+ 消息区与 grip）</p>
+    </div>
+    <div style="display: grid; gap: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--board-line); background: var(--app-bg);">
+      <div class="statusbar d-medium"><span class="sb-msg">就绪（idle 常驻消息 · secondary）</span></div>
+      <div class="statusbar d-medium"><span class="sb-msg">已保存 main.cpp（瞬态消息活跃——不强调，secondary 同色）</span></div>
+      <div class="statusbar d-medium"><span class="sb-msg">消息区</span><span class="sb-items"><span class="sb-item"><span class="glyph"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3z"/></svg></span>Text 项（icon + 文本）</span><span class="sb-sep"></span><span class="sb-item is-disabled">disabled 项</span></span></div>
+      <div class="statusbar d-medium"><span class="sb-msg">Toggle 项：hover 背景 + primary（点击行为归应用）</span><span class="sb-items"><span class="sb-item is-toggle" style="background: var(--sb-hover); color: var(--app-ink);">UTF-8</span><span class="sb-sep"></span><span class="sb-item is-toggle">UTF-8（rest）</span></span></div>
+      <div class="statusbar d-medium"><span class="sb-msg">determinate 进度（120×4，宽度即值）</span><span class="sb-items"><span class="sb-item sb-progress"><span class="fill" style="width: 45%;"></span></span><span class="sb-item">构建 45%</span></span></div>
+      <div class="statusbar d-medium"><span class="sb-msg">indeterminate（144×4 + 16px 往返段，1400ms）</span><span class="sb-items"><span class="sb-item sb-progress indet"></span><span class="sb-item">链接中…</span></span></div>
+      <div class="statusbar d-medium"><span class="sb-msg">busy 弧（12px，1200ms/圈）</span><span class="sb-items"><span class="sb-item sb-busy on"><span class="busy-arc"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1-9 9"/></svg></span><span>索引中</span></span></span></div>
+      <div class="statusbar d-medium"><span class="sb-msg">resize grip（最大化 / 非 customTitleBar 时消失）</span><span class="sb-items"><span class="sb-item">UTF-8</span></span><span class="sb-grip"></span></div>
+    </div>
+  </section>
+
+  <!-- ============ 三、密度 + 消息时序 ============ -->
+  <section class="panel">
+    <div class="two-col">
+      <div>
+        <div class="panel-head" style="margin-inline: 4px;">
+          <h2 class="panel-title">三、密度三档</h2>
+          <p class="panel-sub">信息 chrome 降一档（控件 32/40/48、标题栏 48 之下）</p>
+        </div>
+        <div style="display: grid; gap: 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--board-line); background: var(--app-bg);">
+          <div class="statusbar d-compact"><span class="sb-msg">Compact 24 · 12px · pad 8</span><span class="sb-items"><span class="sb-item">Ln 1, Col 1</span><span class="sb-sep"></span><span class="sb-item is-toggle">UTF-8</span></span></div>
+          <div class="statusbar d-medium"><span class="sb-msg">Comfortable 28 · 12px · pad 12（桌面默认）</span><span class="sb-items"><span class="sb-item">Ln 1, Col 1</span><span class="sb-sep"></span><span class="sb-item is-toggle">UTF-8</span></span></div>
+          <div class="statusbar d-touch"><span class="sb-msg">Touch 32 · 13px · pad 16</span><span class="sb-items"><span class="sb-item">Ln 1, Col 1</span><span class="sb-sep"></span><span class="sb-item is-toggle">UTF-8</span></span></div>
+        </div>
+        <div class="callouts" style="margin-top: 16px;">
+          <div class="callout"><span class="no">5</span><span><strong>动效全部低幅度、可关闭、不位移</strong>：进度定宽、busy 定尺寸、消息弹性——任何动效不改变布局，resize 与更新期间无抖动。</span></div>
+          <div class="callout"><span class="no">6</span><span><strong>局部 damage</strong>：往返段 ≤144×4、busy ≤12×12、消息淡切仅消息文本节点——逐 tick 重绘不扩散（M3 口径）。</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="panel-head" style="margin-inline: 4px;">
+          <h2 class="panel-title">四、瞬态消息生命周期</h2>
+          <p class="panel-sub">motion.statusbar.*</p>
+        </div>
+        <div class="timeline">
+          <div class="tl-track">
+            <div class="tl-seg" style="flex: 0 0 16%; background: rgba(40, 100, 183, .10);"><span><b>淡入 120ms</b></span></div>
+            <div class="tl-seg" style="flex: 1 1 auto; background: rgba(40, 100, 183, .035);"><span><b>驻留 4000ms</b>（messageTimeoutMs）</span></div>
+            <div class="tl-seg" style="flex: 0 0 16%; background: rgba(40, 100, 183, .10);"><span><b>淡出 120ms</b></span></div>
+          </div>
+          <div class="tl-legend">
+            <span>新消息到达：当前内容淡出 → 替换 → 淡入（取代，不排队）</span>
+          </div>
+          <div class="tl-legend">
+            <span>超时后回 idle 消息（同淡切）；timeout=0 = 常驻</span>
+          </div>
+        </div>
+        <table class="spec" style="margin-top: 14px;">
+          <thead><tr><th>动效</th><th>时长</th><th>reduceAnimation</th></tr></thead>
+          <tbody>
+            <tr><td>消息切换</td><td><code>messageFadeMs</code> = 120ms 淡出→替换→淡入</td><td>即时切换</td></tr>
+            <tr><td>瞬态超时</td><td><code>messageTimeoutMs</code> = 4000ms 驻留</td><td>驻留保留，淡出归零</td></tr>
+            <tr><td>indeterminate 往返</td><td><code>indeterminateCycleMs</code> = 1400ms linear</td><td>静止中段 40% 半透明带</td></tr>
+            <tr><td>busy 旋转</td><td><code>busyCycleMs</code> = 1200ms linear</td><td>弧静止 + 0.5 透明</td></tr>
+            <tr><td>determinate 进度</td><td>无补间（值即状态）</td><td>—</td></tr>
+            <tr><td>Toggle hover/pressed</td><td><code>stateTransitionMs</code> = 100ms</td><td>归零</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 五、规格表 ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">五、规格速查</h2>
+      <p class="panel-sub">完整契约见 docs/lumen-statusbar-design.md §9–§10</p>
+    </div>
+    <table class="spec">
+      <thead><tr><th>项目</th><th>Compact</th><th>Comfortable</th><th>Touch</th><th>token 依据</th></tr></thead>
+      <tbody>
+        <tr><td>栏高 · 字号 · 水平内边距</td><td>24 · 12 · 8</td><td>28 · 12 · 12</td><td>32 · 13 · 16</td><td><code>statusbar.height</code> 等新组件 token</td></tr>
+        <tr><td>消息区 / 项序列</td><td colspan="3">左弹性（省略号，保底 120px）· 右常驻序列，间隔 ≥16px</td><td>窄窗项序列从左往右整项折叠</td></tr>
+        <tr><td>项间分隔</td><td colspan="3">1px × 12 垂直、上下居中，两侧 gap 8</td><td><code>statusbar.separator</code></td></tr>
+        <tr><td>进度 / busy / grip</td><td colspan="3">120×4（Touch 144×4）· 12px 弧（Touch 14）· 12×12 三斜线</td><td>grip 命中归平台 resize 边</td></tr>
+        <tr><td>交互面</td><td colspan="3">仅 Toggle 项（hover/pressed/onClick）；不进 Tab、无键盘焦点</td><td>桌面惯例</td></tr>
+        <tr><td>语义</td><td colspan="3">role <code>statusbar</code>（尾部追加）；消息 Text + value diff；live region 留 M13 后评估</td><td>§14.3</td></tr>
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+// 交互演示：StatusBarController 的行为口径（瞬态消息/进度/busy）。
+(function () {
+  "use strict";
+  const FADE = 120, TIMEOUT = 4000;
+  const msg = document.getElementById("demo-msg");
+  const busy = document.getElementById("demo-busy");
+  const progress = document.getElementById("demo-progress");
+  const fill = document.getElementById("demo-progress-fill");
+  const label = document.getElementById("demo-progress-label");
+  const cursor = document.getElementById("demo-cursor");
+  let msgTimer = null;
+
+  function setMessage(text, timeoutMs) {
+    clearTimeout(msgTimer);
+    msg.style.opacity = "0";
+    setTimeout(() => {
+      msg.textContent = text;
+      msg.style.opacity = "1";
+      if (timeoutMs > 0) {
+        msgTimer = setTimeout(() => {
+          msg.style.opacity = "0";
+          setTimeout(() => { msg.textContent = "就绪"; msg.style.opacity = "1"; }, FADE);
+        }, timeoutMs);
+      }
+    }, FADE);
+  }
+
+  document.getElementById("btn-message").addEventListener("click", () => {
+    setMessage("已保存 main.cpp（" + new Date().toLocaleTimeString("zh-CN", { hour12: false }) + "）", TIMEOUT);
+  });
+  document.getElementById("btn-message-warn").addEventListener("click", () => {
+    setMessage("3 个警告：未使用的变量 x（点击「问题」项查看）", 0);
+  });
+  document.getElementById("btn-busy").addEventListener("click", () => {
+    busy.classList.toggle("on");
+  });
+
+  // determinate：值即状态，宽度直接跳变（无补间——ProgressBar 既有口径）。
+  let progTimer = null, pct = 0;
+  document.getElementById("btn-progress").addEventListener("click", () => {
+    clearInterval(progTimer); progress.classList.remove("indet"); pct = 0; fill.style.width = "0%";
+    progTimer = setInterval(() => {
+      pct = Math.min(100, pct + 7 + Math.floor(Math.random() * 9));
+      fill.style.width = pct + "%";
+      label.textContent = "构建 " + pct + "%";
+      if (pct >= 100) {
+        clearInterval(progTimer);
+        setMessage("构建完成（0 错误）", TIMEOUT);
+        setTimeout(() => { fill.style.width = "0%"; label.textContent = "构建 0%"; }, 1600);
+      }
+    }, 300);
+  });
+  document.getElementById("btn-indet").addEventListener("click", () => {
+    clearInterval(progTimer);
+    progress.classList.toggle("indet");
+    label.textContent = progress.classList.contains("indet") ? "链接中…" : "构建 0%";
+  });
+
+  // Toggle 项演示：点击行为归应用（这里演示光标位置联动/占位反馈）。
+  document.querySelectorAll(".statusbar[id] .sb-item.is-toggle").forEach((el) => {
+    el.addEventListener("click", () => setMessage("点击了「" + el.textContent.trim() + "」——行为由应用定义", TIMEOUT));
+  });
+  // 模拟光标位置变化。
+  let ln = 12, col = 8;
+  setInterval(() => {
+    col = (col % 40) + 1;
+    if (col === 1) ln = (ln % 30) + 1;
+    cursor.textContent = "Ln " + ln + ", Col " + col;
+  }, 1500);
+})();
+</script>
+</body>
+</html>

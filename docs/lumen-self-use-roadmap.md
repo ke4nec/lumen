@@ -449,6 +449,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - 完整 UBA：显式嵌入控制、镜像括号、数字定形。
 - 桌面专用 GPU 后端（Graphite/Vulkan/Metal/D3D）。
 - 控件增强后续：集合控件行内编辑/DnD/列宽拖拽、Splitter 窗格塌缩/KeepRatio 与 `.lumen` 节点及基准场景、菜单触摸长按/F10-Alt 单键/mnemonic 下划线、标题栏 macOS 交通灯与 borderless 最大化回退策略（见 §10 各完成记录已知限制）。
+- Spin（SpinBox 数值步进）、Toolbar（工具栏）、StatusBar（状态栏）三控件已实施（2026-09：设计稿 `docs/lumen-{spin,toolbar,statusbar}-design.md` §15 实施状态 + 配套 `design/{spin,toolbar,statusbar}.html`；实现 `include/lumen/widgets/{spin,toolbar,statusbar}.h` + `src/widgets/` 同名源文件，零新增 WidgetType，唯一 core 缝隙为 ProgressBar indeterminate bool + iconRotation float（Widget 体积断言 +8B → 840B）。测试 `tests/{spin,toolbar,statusbar}_tests.cpp` 33 用例 + settings/gallery 演示页（Spin/Toolbar/StatusBar 与 Controls 路由）集成冒烟；SemanticsRole 尾部追加 SpinButton/Toolbar/StatusBar（UIA 映射已接），MotionTokens 追加 spin 重复节奏（reduceAnimation 不归零——输入节奏）与 statusbar 消息/进度/busy 四 token。
 
 ## 5. 公共接口与模块边界
 
