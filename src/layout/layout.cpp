@@ -231,6 +231,9 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
         }
         case WidgetType::Icon: {
             // M6：默认尺寸来自 IconTheme（token），width/height 覆盖。
+            if (widget.listPart == core::ListPart::EmptyIcon) {
+                return Size{resolved.minWidth, resolved.minHeight};
+            }
             return Size{styleContext.theme.icons.defaultSize,
                         styleContext.theme.icons.defaultSize};
         }
@@ -689,8 +692,10 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
         (isRow ? outer.isBoundedWidth() : outer.isBoundedHeight());
 
     const std::size_t count = widget.children.size();
+    const float spacing = widget.listPart == core::ListPart::Empty
+        ? resolved.controlGap : widget.spacing;
     const float baseSpacing =
-        count > 0 ? widget.spacing * static_cast<float>(count - 1) : 0.0F;
+        count > 0 ? spacing * static_cast<float>(count - 1) : 0.0F;
 
     std::vector<RenderNode> measured(count);
     std::vector<float> mainWithMargin(count, 0.0F);
@@ -863,6 +868,10 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
             borderMain = resolvedMain;
         }
     }
+    if (!isRow && widget.listPart == core::ListPart::Empty) {
+        borderMain = clampFloat(std::max(borderMain, resolved.minHeight),
+                                outerMinMain, outerMaxMain);
+    }
     const float contentBoxMain = std::max(0.0F, borderMain - paddingMain);
 
     const float totalChildrenMain =
@@ -901,14 +910,14 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
                 padding.top + crossOffset + child.margin.top,
             };
             cursor +=
-                childMainNoMargin + childMarginMain + widget.spacing + extraGap;
+                childMainNoMargin + childMarginMain + spacing + extraGap;
         } else {
             childOffset = Offset{
                 padding.left + crossOffset + child.margin.left,
                 padding.top + cursor + child.margin.top,
             };
             cursor +=
-                childMainNoMargin + childMarginMain + widget.spacing + extraGap;
+                childMainNoMargin + childMarginMain + spacing + extraGap;
         }
         measured[i].offset = childOffset;
         node.children.push_back(std::move(measured[i]));
@@ -1118,15 +1127,52 @@ void materializeVirtualRows(RenderNode& node,
                 continue;
             }
             Widget item = source->buildItem(i);
+            if (node.type == WidgetType::List && !node.enabled) {
+                const auto disable = [](auto&& self, Widget& widget) -> void {
+                    widget.enabled = false;
+                    for (auto& child : widget.children) self(self, child);
+                };
+                disable(disable, item);
+            }
             if (t_prepareItem != nullptr && *t_prepareItem) {
                 (*t_prepareItem)(item);
             }
+            if (node.type == WidgetType::List && item.collectionRow) {
+                const auto rowStyle = style::resolveStyle(item, styleContext,
+                    childIdentity(identity, item, i));
+                const auto foreground = core::commonStyle(rowStyle).foreground;
+                // Default labels/icons inherit the row token; explicit content
+                // colors and nested ThemeScopes retain their own appearance.
+                const auto inherit = [foreground](auto&& self, Widget& child) -> void {
+                    if (child.type == WidgetType::ThemeScope) return;
+                    if ((child.type == WidgetType::Text || child.type == WidgetType::Icon) &&
+                        !child.styleOverrides.foreground && !child.styleOverrides.text &&
+                        child.textStyle.color == core::Color{0, 0, 0, 255}) {
+                        child.styleOverrides.foreground = foreground;
+                    }
+                    for (auto& nested : child.children) self(self, nested);
+                };
+                for (auto& child : item.children) inherit(inherit, child);
+            }
             const Constraints childConstraints{
-                0.0F, contentMaxWidth, 0.0F,
+                node.type == WidgetType::List ? contentMaxWidth : 0.0F,
+                contentMaxWidth, 0.0F,
                 Constraints::unbounded().maxHeight};
             RenderNode childNode = layoutSingle(
                 item, childConstraints, styleContext,
                 childIdentity(identity, item, i));
+            if (node.type == WidgetType::List && !item.enabled) {
+                const core::Color disabled = childNode.commonStyle().foreground;
+                const auto tint = [disabled](auto&& self, RenderNode& child) -> void {
+                    child.enabled = false;
+                    auto& common = core::commonStyle(child.style.component);
+                    common.foreground = disabled;
+                    common.text.color = disabled;
+                    common.focusWidth = 0.0F;
+                    for (auto& nested : child.children) self(self, nested);
+                };
+                for (auto& child : childNode.children) tint(tint, child);
+            }
             const float assumed = source->extentOf(i);
             source->noteExtent(i, childNode.size.height + item.margin.vertical());
             extentsChanged = extentsChanged || source->extentOf(i) != assumed;
@@ -1173,12 +1219,25 @@ RenderNode layoutVirtualList(const Widget& widget,
     node.clipContent = true;
 
     const VirtualListSource* source = widget.virtualSource;
+    const bool list = widget.type == WidgetType::List;
+    const float rowsViewport = list
+        ? std::max(0.0F, viewportHeight - padding.vertical()) : viewportHeight;
     if (source != nullptr) {
-        source->updateViewport(viewportHeight, padding.vertical());
+        source->updateViewport(rowsViewport, list ? 0.0F : padding.vertical());
     }
     if (source == nullptr || source->itemCount() == 0) {
         node.scrollExtent = 0.0F;
         node.scrollOffset = 0.0F;
+        if (source != nullptr && widget.type == WidgetType::List) {
+            Widget empty = source->buildEmpty();
+            if (t_prepareItem != nullptr && *t_prepareItem) (*t_prepareItem)(empty);
+            const float width = std::max(0.0F, viewportWidth - padding.horizontal());
+            const float height = std::max(0.0F, viewportHeight - padding.vertical());
+            RenderNode placeholder = layoutSingle(empty, Constraints::tight(Size{width, height}),
+                styleContext, childIdentity(identity, empty, 0));
+            placeholder.offset = Offset{padding.left, padding.top};
+            node.children.push_back(std::move(placeholder));
+        }
         return node;
     }
 
@@ -1186,10 +1245,10 @@ RenderNode layoutVirtualList(const Widget& widget,
         node, source, styleContext, identity, padding,
         std::max(0.0F, viewportWidth - padding.horizontal()),
         std::max(0.0F, widget.virtualCacheExtent),
-        /*rowsViewport=*/viewportHeight,
-        /*rangeShift=*/padding.top,
+        /*rowsViewport=*/rowsViewport,
+        /*rangeShift=*/list ? 0.0F : padding.top,
         /*childBaseY=*/padding.top,
-        /*contentExtentPad=*/padding.vertical());
+        /*contentExtentPad=*/list ? 0.0F : padding.vertical());
     return node;
 }
 

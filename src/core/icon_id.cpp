@@ -16,7 +16,7 @@ using Catalog = std::vector<Line>;
 const std::vector<Catalog>& catalog() {
     static const std::vector<Catalog> kCatalog = [] {
         std::vector<Catalog> table(
-            static_cast<std::size_t>(IconId::Restore) + 1);
+            static_cast<std::size_t>(IconId::Folder) + 1);
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
@@ -90,6 +90,17 @@ const std::vector<Catalog>& catalog() {
                     Line{{Offset{0.21F, 0.38F}, Offset{0.62F, 0.38F},
                           Offset{0.62F, 0.79F}, Offset{0.21F, 0.79F},
                           Offset{0.21F, 0.38F}}}};
+        table[static_cast<std::size_t>(IconId::Document)] =
+            Catalog{Line{{Offset{0.25F, 0.12F}, Offset{0.60F, 0.12F},
+                          Offset{0.80F, 0.32F}, Offset{0.80F, 0.88F},
+                          Offset{0.25F, 0.88F}, Offset{0.25F, 0.12F}}},
+                    Line{{Offset{0.60F, 0.12F}, Offset{0.60F, 0.32F},
+                          Offset{0.80F, 0.32F}}}};
+        table[static_cast<std::size_t>(IconId::Folder)] =
+            Catalog{Line{{Offset{0.12F, 0.25F}, Offset{0.40F, 0.25F},
+                          Offset{0.50F, 0.38F}, Offset{0.88F, 0.38F},
+                          Offset{0.88F, 0.78F}, Offset{0.12F, 0.78F},
+                          Offset{0.12F, 0.25F}}}};
         return table;
     }();
     return kCatalog;

@@ -51,7 +51,8 @@ inline bool findKeyIndex(std::size_t count, const KeyAt& keyAt,
 inline std::vector<std::string> closedKeyRange(std::size_t count,
                                                const KeyAt& keyAt,
                                                const std::string& from,
-                                               const std::string& to) {
+                                               const std::string& to,
+                                               const std::function<bool(std::size_t)>& enabled = {}) {
     std::vector<std::string> keys;
     std::size_t begin = 0;
     std::size_t end = 0;
@@ -63,7 +64,7 @@ inline std::vector<std::string> closedKeyRange(std::size_t count,
         std::swap(begin, end);
     }
     for (std::size_t i = begin; i <= end && i < count; ++i) {
-        keys.push_back(keyAt(i));
+        if (!enabled || enabled(i)) keys.push_back(keyAt(i));
     }
     return keys;
 }
@@ -162,7 +163,8 @@ inline bool handleCollectionKeys(app::AppShell* shell,
                                  SelectionModel& selection,
                                  const core::VirtualListSource& source,
                                  const KeyAt& keyAt, core::Key key,
-                                 core::KeyModifiers modifiers, char keyChar) {
+                                 core::KeyModifiers modifiers, char keyChar,
+                                 const std::function<bool(std::size_t)>& enabled = {}) {
     const std::size_t count = source.itemCount();
     if (count == 0) {
         return false;
@@ -180,10 +182,11 @@ inline bool handleCollectionKeys(app::AppShell* shell,
             std::vector<std::string> all;
             all.reserve(count);
             for (std::size_t i = 0; i < count; ++i) {
-                all.push_back(keyAt(i));
+                if (!enabled || enabled(i)) all.push_back(keyAt(i));
             }
             selection.setSelected(std::move(all));
-        } else if (hasCurrent) {
+        } else if (selection.mode() == SelectionMode::Single && hasCurrent &&
+                   (!enabled || enabled(current))) {
             selection.setSelected({keyAt(current)});
         }
         if (shell != nullptr) {
@@ -199,7 +202,12 @@ inline bool handleCollectionKeys(app::AppShell* shell,
             scrollToAligned(source, index, align);
         }
     };
-    const auto move = [&](std::size_t target) {
+    const auto move = [&](std::size_t target, bool backward = false) {
+        while (enabled && !enabled(target)) {
+            if (backward ? target == 0 : target + 1 >= count) return;
+            if (backward) --target;
+            else ++target;
+        }
         // 按值拷贝 key：选择回调可能失效行缓存，引用会随 clear 悬垂。
         const std::string nextKey = keyAt(target);
         selection.moveTo(nextKey, shift);
@@ -214,21 +222,19 @@ inline bool handleCollectionKeys(app::AppShell* shell,
 
     switch (key) {
         case core::Key::Up:
-            move(hasCurrent && current > 0 ? current - 1 : 0);
+            move(hasCurrent && current > 0 ? current - 1 : 0, true);
             return true;
         case core::Key::Down:
             move(hasCurrent ? std::min(current + 1, count - 1) : 0);
             return true;
         case core::Key::Home: {
-            const std::string targetKey = keyAt(0);
             move(0);
-            scrollToKeyAligned(targetKey, ScrollAlignment::Start);
+            scrollToKeyAligned(selection.currentKey(), ScrollAlignment::Start);
             return true;
         }
         case core::Key::End: {
-            const std::string targetKey = keyAt(count - 1);
-            move(count - 1);
-            scrollToKeyAligned(targetKey, ScrollAlignment::End);
+            move(count - 1, true);
+            scrollToKeyAligned(selection.currentKey(), ScrollAlignment::End);
             return true;
         }
         case core::Key::PageUp:
@@ -239,7 +245,7 @@ inline bool handleCollectionKeys(app::AppShell* shell,
                 1U, static_cast<unsigned>(
                         source.scrollController()->viewportExtent() / extent));
             if (key == core::Key::PageUp) {
-                move(hasCurrent && current > step ? current - step : 0);
+                move(hasCurrent && current > step ? current - step : 0, true);
             } else {
                 move(hasCurrent ? std::min(current + step, count - 1)
                                 : std::min(step, count - 1));
@@ -255,7 +261,7 @@ inline bool handleCollectionKeys(app::AppShell* shell,
 
 // 集合行 Row 壳：key/collectionRow/selected/onClick/水平内边距/语义
 // role + actions（hover/pressed/选中/焦点环由 StyleResolver 与 painter
-// 的集合行路径驱动）。crossAxis 与 role 由控件语义决定：List=Stretch/
+// 的集合行路径驱动）。crossAxis 与 role 由控件语义决定：List=Center/
 // listItem，Tree=Center/treeItem（Tree 的 semanticsValue 由调用方补写）。
 // onClick 是行身份（attach 的 sink 按前缀解析；空 = 不可聚焦/激活）。
 inline void applyCollectionRowShell(core::Widget& row,

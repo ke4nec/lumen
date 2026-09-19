@@ -35,6 +35,8 @@ enum class IconId : std::uint8_t {
     // 自定义标题栏（lumen-titlebar-design §4.3）：最大化态的"还原"双
     // 层方框（追加在尾部，保持既有 ID 值不变）。
     Restore,
+    Document,
+    Folder,
 };
 
 // 图标的归一化折线组（0..1 坐标；stroke 绘制，无填充）。

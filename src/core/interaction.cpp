@@ -155,6 +155,10 @@ const RenderNode* hitTestChain(const RenderNode& node, Offset position,
     if (!Rect{Offset{}, node.size}.contains(position)) {
         return nullptr;
     }
+    if (node.clipContent && !node.contentClipRect().contains(position)) {
+        chain.push_back(&node);
+        return &node;
+    }
     // Reverse paint order: later children are on top, so they hit first.
     for (auto it = node.children.rbegin(); it != node.children.rend(); ++it) {
         if (const RenderNode* hit =
@@ -354,7 +358,8 @@ void InteractionController::pointerDown(const RenderNode& root,
     // Nearest enabled button in the target chain gets the pressed state;
     // disabled 控件不响应指针（visual-system §7.3）。
     for (const RenderNode* node : chain) {
-        if (node->type == WidgetType::Button && node->enabled) {
+        if (node->enabled && (node->type == WidgetType::Button ||
+            (node->collectionRow && !node->onClick.empty()))) {
             pressedKey_ = node->key;
             pressedIdentity_ = node->identity;
             break;
@@ -1205,10 +1210,29 @@ bool InteractionController::traverseFocus(const RenderNode& root,
     struct Candidate {
         const RenderNode* node{};
         std::string scope{};
+        std::string collectionCurrent{};
     };
     std::vector<Candidate> focusables;
     std::function<void(const RenderNode&, const std::string&)> collect =
         [&](const RenderNode& node, const std::string& scope) {
+            // List is one Tab stop. Arrow keys navigate its rows; Tab leaves it.
+            if (node.type == WidgetType::List && node.virtualSource != nullptr) {
+                if (!node.enabled) return;
+                const std::string preferred = node.virtualSource->tabStopKey();
+                const RenderNode* candidate = nullptr;
+                for (const auto& row : node.children) {
+                    if (!row.collectionRow || !row.enabled || row.onClick.empty()) continue;
+                    const bool focused = row.identity == focus_.focusedIdentity() ||
+                                         row.key == focus_.focusedKey();
+                    const bool visible = row.offset.y < node.size.height - node.padding.bottom &&
+                                         row.offset.y + row.size.height > node.padding.top;
+                    if (!visible && !focused) continue;
+                    if (candidate == nullptr || row.key == preferred || focused) candidate = &row;
+                    if (focused) break;
+                }
+                if (candidate != nullptr) focusables.push_back(Candidate{candidate, scope, preferred});
+                return;
+            }
             const bool editable =
                 (node.type == WidgetType::TextField && !node.bind.empty() &&
                  node.enabled);
@@ -1245,7 +1269,8 @@ bool InteractionController::traverseFocus(const RenderNode& root,
             !focus_.focusedIdentity().empty() &&
             focusables[i].node->identity == focus_.focusedIdentity();
         const bool keyMatch = !focus_.focusedKey().empty() &&
-                              focusables[i].node->key == focus_.focusedKey();
+            (focusables[i].node->key == focus_.focusedKey() ||
+             focusables[i].collectionCurrent == focus_.focusedKey());
         if (identityMatch || keyMatch) {
             index = static_cast<std::ptrdiff_t>(i);
             currentScope = focusables[i].scope;
@@ -1306,6 +1331,13 @@ bool InteractionController::traverseFocus(const RenderNode& root,
         composition_.clear();
         selection_ = {};
         composingActive_ = false;
+    }
+    // Sinks can request a rebuild; do not access the selected node afterwards.
+    if (target->collectionRow) {
+        const std::string rowKey = target->key;
+        for (const auto& sink : rowFocusSinks_) {
+            if (sink && sink(rowKey)) break;
+        }
     }
     return true;
 }
@@ -1388,8 +1420,22 @@ void InteractionController::addRowActivateSink(RowActivateSink sink) {
     rowActivateSinks_.push_back(std::move(sink));
 }
 
+bool InteractionController::activateCollectionRow(const RenderNode& node) {
+    if (!node.enabled || !node.collectionRow || node.onClick.empty()) return false;
+    const std::string key = node.key;
+    const std::string identity = node.identity;
+    for (const auto& sink : rowActivateSinks_) {
+        if (sink && sink(key, identity, /*keyboard=*/true)) return true;
+    }
+    return false;
+}
+
 void InteractionController::addRowClickSink(RowClickSink sink) {
     rowClickSinks_.push_back(std::move(sink));
+}
+
+void InteractionController::addRowFocusSink(RowFocusSink sink) {
+    rowFocusSinks_.push_back(std::move(sink));
 }
 
 void InteractionController::addSecondaryPressSink(SecondaryPressSink sink) {
@@ -1639,6 +1685,12 @@ void InteractionController::focusNode(const RenderNode& node) {
         composition_.clear();
         selection_ = {};
         composingActive_ = false;
+    }
+    if (node.collectionRow) {
+        const std::string rowKey = node.key;
+        for (const auto& sink : rowFocusSinks_) {
+            if (sink && sink(rowKey)) break;
+        }
     }
 }
 

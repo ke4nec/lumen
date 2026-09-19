@@ -493,10 +493,17 @@ TEST_CASE("gallery_collections_showcase_interacts", "[gallery]") {
     REQUIRE(tree != nullptr);
     REQUIRE(table != nullptr);
     CHECK(list->children.size() < 200);
+    CHECK(findNodeByKey(app.root(), "collection-list-states") != nullptr);
+    CHECK(findNodeByKey(app.root(), "collection-empty-list:empty") != nullptr);
     CHECK(!tree->children.empty());
     CHECK(!table->children.empty());
     CHECK(table->children.back().key == "collection-table:header");
     CHECK(table->children.size() <= 10);  // 表头 + 9 行数据（全部物化）。
+    for (const auto mode : {widgets::SelectionMode::None, widgets::SelectionMode::Single,
+                            widgets::SelectionMode::Multiple, widgets::SelectionMode::Extended}) {
+        clickScrolled(app, "collection-list-mode");
+        CHECK(app.collectionList().selection().mode() == mode);
+    }
 }
 
 // TreeList 表头几何回归（collection-design §8.3/§10.3）：表头不透明、

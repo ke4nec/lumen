@@ -17,6 +17,8 @@
 #include "lumen/render/painter.h"
 #include "lumen/render/renderer.h"
 #include "lumen/render/skia_gpu_renderer.h"
+#include "lumen/style/theme.h"
+#include "lumen/widgets/list.h"
 
 using lumen::core::Constraints;
 using lumen::core::Size;
@@ -238,5 +240,63 @@ TEST_CASE("gpu_stroke_readback_preserves_transparent_interiors_and_clip", "[gpu]
         CHECK(sample(45, 16, 0) > 180);
         CHECK(sample(45, 16, 2) < 60);
         CHECK(sample(45, 8, 2) == 80);
+    }
+}
+
+TEST_CASE("gpu_list_readback_preserves_selection_focus_and_scrolled_border", "[gpu][list-visual]") {
+    using namespace lumen;
+    using namespace lumen::core;
+    std::string diagnostics;
+    if (!render::probeSkiaGpuAvailable(&diagnostics)) SKIP("GPU unavailable: " << diagnostics);
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow("lumen-list-test", 240, 200,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN), SDL_DestroyWindow);
+    REQUIRE(window);
+    render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    desc.widthPixels = 240;
+    desc.heightPixels = 200;
+    desc.allowSwap = false;
+    auto renderer = render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer);
+    REQUIRE(renderer->capabilities().gpu);
+    const auto theme = style::Theme::dark();
+    accessibility::AccessibilitySettings settings;
+    style::InteractionStateSnapshot interaction;
+    style::StyleContext context{theme, interaction, settings, 1.0F};
+    widgets::ListController list;
+    list.setItemCount(12);
+    list.setItemBuilder([](std::size_t) { return makeText("Item"); });
+    list.selection().setSelected({"i0"});
+    for (const float scale : {1.0F, 2.0F}) {
+        for (const float scroll : {0.0F, 7.0F}) {
+            CAPTURE(scale, scroll);
+            FrameInfo info;
+            info.viewport = {240.0F / scale, 200.0F / scale};
+            info.deviceScale = scale;
+            const auto widget = makeList(&list, "list", info.viewport.width, info.viewport.height);
+            auto tree = LayoutEngine::layout(widget, Constraints::tight(info.viewport), context);
+            const auto* row = findNodeByKey(tree, "list:item:i0");
+            REQUIRE(row);
+            interaction.focusedIdentity = row->identity;
+            list.scroll().scrollTo(scroll);
+            tree = LayoutEngine::layout(widget, Constraints::tight(info.viewport), context);
+            renderer->submit(recordScene(tree), info);
+            REQUIRE(render::skiaGpuRendererAlive(*renderer));
+            std::vector<unsigned char> pixels(240 * 200 * 4);
+            glReadBuffer(GL_BACK);
+            glReadPixels(0, 0, 240, 200, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            REQUIRE(glGetError() == GL_NO_ERROR);
+            const auto sample = [&](int x, int y) {
+                const auto at = ((199 - static_cast<int>(y * scale)) * 240 +
+                                 static_cast<int>(x * scale)) * 4;
+                return Color{pixels[at], pixels[at + 1], pixels[at + 2], 255};
+            };
+            CHECK(sample(80, 20) == theme.list.selected);
+            CHECK(sample(4, 20) == theme.list.selectionMarker);
+            CHECK(sample(80, 0) == theme.list.separator);
+            if (scroll == 0.0F) CHECK(sample(80, 1) == theme.colors.focusRing);
+        }
     }
 }

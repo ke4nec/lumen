@@ -383,6 +383,11 @@ Row 的按钮组 gap 8，Column 的字段组 gap 16，Grid 的面板 gap 16。�
 
 列表行是子节点组合，单行最小高 32/40/48，双行默认 56；padding 横 12，图标与内容 gap 8，行内主/次文字间 gap 4。hover 使用状态面，selected 使用 accentContainer 与标记，focused 使用独立环。多选仅展示应用现有选择状态，不新增 selection controller。
 
+后续集合控件已引入 `ListController`（2026-09）：新 `List` 的现行契约以
+`lumen-collection-controls-design.md` §6/§10 为准，横向 padding 为 8/12/16，
+由 `Theme.list` 提供选中实色、指示条、分隔线与自动空态。旧 ListView/VirtualList
+继续由应用构建行。Gallery Collections 提供真实交互与七态视觉样本。
+
 滚动容器必须裁剪内容且保持聚焦行可见。VirtualList 的交互和动效状态按稳定 key 归属，不按可见索引复用；高度修正、主题/字体变化后的滚动锚点保持可解释。
 
 Scrollbar 继续作为 `withScrollbar` 启用的附属部件：

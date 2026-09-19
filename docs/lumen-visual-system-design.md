@@ -152,6 +152,16 @@ dialog.scrim
 组件 token 可以引用 semantic token，也可以通过状态计算得到最终值。应用只在真正
 需要品牌定制时提供局部 override。
 
+List 的组件 token 位于 `Theme.list`（集合控件设计 §10）：background 引用
+surface，hovered 引用 surfaceSunken，pressed 为 surface/accent 的 0.32 混合，
+selected 引用不透明 accentContainer；separator/content/disabledContent/emptyContent
+分别引用 borderDefault/contentPrimary/disabledContent/contentSecondary。
+selectionMarker 引用 accent，宽 3、上下 inset 4；空态图标 24。标记与图标随
+fontScale 缩放一次；行高、padding、圆角由下表密度档派生。焦点环独立于选中条，
+禁用选中行保留淡化指示条。高对比重新派生上述颜色，不能只靠选中底色传达状态。
+`ListPart` 只用于 List 壳与空态，不改变 Tree、菜单和旧 ListView/VirtualList。
+文件行与空态图标使用目录 `IconId::Document` / `Folder`。
+
 ### 3.2 初始尺度
 
 第一版视觉系统采用 4 logical px 基础网格，8 px 作为常用间距节奏。初始尺度如下，

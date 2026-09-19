@@ -32,6 +32,7 @@
     --app-line: #3b3b45;
     --app-line-strong: #8c8c98;
     --app-accent: #568cf0;
+    --app-focus: #96b9fa;
     --app-accent-content: #a8c5fa;
     --app-accent-soft: #2e3c60;
     --app-accent-shadow: rgba(86, 140, 240, .23);
@@ -83,7 +84,7 @@
 
   /* 通用行 */
   .row-list { display: grid; gap: 0; background: var(--app-surface); border: 1px solid var(--app-line); border-radius: var(--card-radius); overflow: hidden; }
-  .crow { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 12px; font-size: 13.5px; border-bottom: 1px solid var(--app-line); position: relative; }
+  .crow { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 12px; font-size: 14px; border-bottom: 1px solid var(--app-line); border-radius: var(--control-radius); position: relative; }
   .crow:last-child { border-bottom: 0; }
   .crow .glyph { flex: 0 0 18px; display: grid; place-items: center; color: var(--app-muted); }
   .crow .glyph svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -91,10 +92,12 @@
   .crow .meta { flex-shrink: 0; color: var(--app-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   .crow.is-hover { background: var(--app-surface-alt); }
   .crow.is-selected { background: var(--app-accent-soft); }
-  .crow.is-current { box-shadow: inset 0 0 0 2px var(--app-accent); border-radius: 6px; }
-  .crow.is-pressed { background: rgba(86, 140, 240, .32); }
-  .crow.is-disabled { color: rgba(241, 241, 244, .4); }
-  .crow.is-disabled .glyph { color: rgba(241, 241, 244, .3); }
+  .crow.is-selected::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 1.5px; background: var(--app-accent); }
+  .crow.is-current { box-shadow: inset 0 0 0 2px var(--app-focus); border-bottom-color: transparent; }
+  .crow.is-selected.is-current::before { left: 2px; }
+  .crow.is-pressed { background: #36476c; }
+  .crow.is-disabled, .crow.is-disabled .glyph, .crow.is-disabled .meta { color: var(--app-line-strong); }
+  .crow.is-disabled.is-selected::before { background: var(--app-line-strong); }
   .crow .badge { flex-shrink: 0; padding: 2px 7px; color: var(--app-accent-content); font-size: 10.5px; font-weight: 650; border-radius: 999px; background: rgba(86, 140, 240, .14); border: 1px solid rgba(86, 140, 240, .38); }
 
   /* 滚动条 */
@@ -135,8 +138,8 @@
   .tl-row.is-current { box-shadow: inset 0 0 0 2px var(--app-accent); border-radius: 6px; }
 
   /* 空态 */
-  .empty-state { display: grid; place-items: center; gap: 8px; padding: 28px 16px; background: var(--app-surface); border: 1px dashed var(--app-line-strong); border-radius: var(--card-radius); color: var(--app-muted); font-size: 12.5px; text-align: center; }
-  .empty-state svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
+  .empty-state { display: grid; place-items: center; align-content: center; min-height: 80px; gap: 8px; padding: 6px 12px; background: var(--app-surface); border: 1px solid var(--app-line); border-radius: var(--card-radius); color: var(--app-muted); font-size: 14px; text-align: center; }
+  .empty-state svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
   /* 注释与表格 */
   .callouts { display: grid; gap: 10px; }
@@ -174,7 +177,7 @@
     <div>
       <div class="eyebrow">Lumen Control Design · Collections</div>
       <h1>集合控件设计稿：List / Tree / TreeList</h1>
-      <p class="lead">三个控件共享同一套虚拟化引擎（M3 VirtualList 布局路径）、选择模型（SelectionModel）与行交互通道（M11 浮动菜单的 Button 行模式）。本稿定义视觉规格、状态矩阵、选择语义与键盘契约；设计文档见 <code>docs/lumen-collection-controls-design.md</code>。</p>
+      <p class="lead">三个控件共享同一套虚拟化引擎（M3 VirtualList 布局路径）、选择模型（SelectionModel）与行交互通道（可聚焦集合 Row 与固定数量的行事件 sink）。本稿定义视觉规格、状态矩阵、选择语义与键盘契约；设计文档见 <code>docs/lumen-collection-controls-design.md</code>。</p>
     </div>
     <div class="brand-mark">L</div>
   </header>
@@ -249,12 +252,12 @@
         </div>
       </div>
       <div class="callouts">
-        <div class="callout"><span class="no">1</span><div><strong>行 = focusable Button</strong> <span>key = <code>list:&lt;owner&gt;/item:&lt;stableKey&gt;</code>；hover / pressed / 焦点环 / Enter 激活全部复用 Button 的 WidgetState 路径（M11 浮动菜单已验证）。</span></div></div>
-        <div class="callout"><span class="no">2</span><div><strong>选中 = <code>Widget.selected</code> 状态位</strong> <span>背景解析为语义 token <code>color.selection.background</code>（Core Dark 派生 <code>#2e3c60</code>）；current 行叠加内嵌 focus ring（<code>color.focus.ring</code>，内嵌绘制不越出节点矩形——V2 damage 不变量）——与选中不互斥。</span></div></div>
+        <div class="callout"><span class="no">1</span><div><strong>行 = focusable Row</strong> <span>key = <code>&lt;owner&gt;:item:&lt;stableKey&gt;</code>；hover / pressed / 焦点环基于完整 identity 解析；Enter 与双击使用 addRowActivateSink。整行占满可用宽度。</span></div></div>
+        <div class="callout"><span class="no">2</span><div><strong>选中 = <code>Widget.selected</code> 状态位</strong> <span>背景解析为语义 token <code>colors.accentContainer</code>（Core Dark 派生 <code>#2e3c60</code>）；current 行叠加内嵌 focus ring（<code>color.focus.ring</code>，内嵌绘制不越出节点矩形——V2 damage 不变量）——与选中不互斥。</span></div></div>
         <div class="callout"><span class="no">3</span><div><strong>行高与栅格（视觉系统 §3.2）</strong> <span>行最小高度 Small 32 / Medium 40（桌面默认，本稿）/ Large 48；水平内边距 8 / 12 / 16；小部件圆角 4 / 6 / 8；行间 1px <code>color.border.default</code> 分隔线。密度由应用显式声明，不随平台隐式改变。</span></div></div>
         <div class="callout"><span class="no">4</span><div><strong>双击 = 激活</strong> <span>InteractionController 既有双击检测扩展 DoubleClickSink；单击只做选择。Enter 与语义 Activate 同一 <code>onActivated(key)</code> 回调。</span></div></div>
-        <div class="callout"><span class="no">5</span><div><strong>虚拟化</strong> <span>直接复用 <code>layoutVirtualList</code>（M3）：千项 O(visible) 物化、实测 extent 修正、锚点稳定。List 无新增布局代码。</span></div></div>
-        <div class="callout"><span class="no">6</span><div><strong>禁用行</strong> <span><code>enabled=false</code>：视觉 40% 前景 + 命中拒绝 + 键盘跳过 + 语义一致（既有四层一致约束）。</span></div></div>
+        <div class="callout"><span class="no">5</span><div><strong>虚拟化</strong> <span>直接复用 <code>layoutVirtualList</code>（M3）：千项 O(visible) 物化、实测 extent 修正、锚点稳定。List 补充整行宽度、自动空态与边框内滚动对齐。</span></div></div>
+        <div class="callout"><span class="no">6</span><div><strong>禁用行</strong> <span><code>enabled=false</code>：前景来自 disabledContent；命中、导航、区间与全选均跳过。屏外禁用由 setEnabledOf 元数据提供。</span></div></div>
       </div>
     </div>
     <div style="margin-top:16px;">
@@ -447,7 +450,7 @@
   <section class="panel">
     <div class="panel-head">
       <div class="panel-title">状态矩阵与 token</div>
-      <div class="panel-sub">三控件共用 · 全部颜色经 Theme/StyleResolver 派生，控件内无常量</div>
+      <div class="panel-sub">List 当前状态 · 全部颜色经 Theme/StyleResolver 派生</div>
     </div>
     <table class="spec" style="margin-bottom:14px;">
       <thead><tr><th style="width:150px;">状态组合</th><th>背景</th><th>前景/内容</th><th>边框/焦点</th></tr></thead>
@@ -455,21 +458,21 @@
         <tr><td>normal</td><td>surface</td><td>ink</td><td>无</td></tr>
         <tr><td>hover</td><td>surface-alt</td><td>ink</td><td>无</td></tr>
         <tr><td>pressed</td><td>accent-soft（增强）</td><td>ink</td><td>无 · pressed 覆盖 hover（§5 规则 3）</td></tr>
-        <tr><td>selected</td><td>color.selection.background（#2e3c60）</td><td>ink</td><td>无</td></tr>
+        <tr><td>selected</td><td>colors.accentContainer（#2e3c60）</td><td>ink</td><td>左侧 3px 指示条</td></tr>
         <tr><td>current（列表有焦点）</td><td>不变</td><td>ink</td><td>内嵌 focus ring · color.focus.ring（§5 规则 4：键盘焦点必须可见）</td></tr>
-        <tr><td>selected + current</td><td>color.selection.background</td><td>ink</td><td>内嵌 focus ring</td></tr>
+        <tr><td>selected + current</td><td>colors.accentContainer</td><td>ink</td><td>指示条 + 独立内嵌 focus ring</td></tr>
         <tr><td>disabled</td><td>surface</td><td>color.disabled.content</td><td>无 · 命中/键盘/语义一致拒绝（disabled 优先级最高）</td></tr>
         <tr><td>高对比主题</td><td>选中实底 + 边框</td><td>提高对比</td><td>形状差异区分选中/current——不得只靠颜色（视觉系统 §11 约束）</td></tr>
       </tbody>
     </table>
     <div class="mode-grid">
-      <div class="mode-card"><h4>token 依据（gallery v1 精确值）</h4><p>bg <code>#18181b</code> · surface <code>#27272e</code> · surface-alt <code>#2e2e36</code> · line <code>#3b3b45</code> · accent <code>#568cf0</code> · accent-soft <code>#2e3c60</code> · accent-content <code>#a8c5fa</code> · ink <code>#f1f1f4</code> · muted <code>#a1a1aa</code>——取自 gallery Core Dark 变体；实现走三层 token 映射（行选中 = <code>color.selection.background</code>，焦点 = <code>color.focus.ring</code>），本稿不新增颜色槽位。</p></div>
-      <div class="mode-card"><h4>图标新增</h4><p><code>IconId::ChevronRight</code>（树折叠态）；<code>ChevronUp</code> / <code>ChevronDown</code> 排序指示（ChevronDown 既有）。折线目录 core::iconPolylines 扩展，命令层零改动。</p></div>
+      <div class="mode-card"><h4>token 依据（gallery v1 精确值）</h4><p>bg <code>#18181b</code> · surface <code>#27272e</code> · surface-alt <code>#2e2e36</code> · line <code>#3b3b45</code> · accent <code>#568cf0</code> · accent-soft <code>#2e3c60</code> · accent-content <code>#a8c5fa</code> · ink <code>#f1f1f4</code> · muted <code>#a1a1aa</code>——取自 gallery Core Dark 变体；实现走三层 token 映射（行选中 = <code>colors.accentContainer</code>，焦点 = <code>color.focus.ring</code>），本稿不新增颜色槽位。</p></div>
+      <div class="mode-card"><h4>图标新增</h4><p><code>IconId::Document</code>（文件行）与 <code>Folder</code>（默认空态）；<code>ChevronRight</code>（树折叠态）；<code>ChevronUp</code> / <code>ChevronDown</code> 排序指示（ChevronDown 既有）。折线目录 core::iconPolylines 扩展，命令层零改动。</p></div>
       <div class="mode-card"><h4>尺寸档位（视觉系统 §3.2）</h4><p>行最小高 Small 32 / Medium 40 / Large 48px，随 ControlDensity 联动；水平内边距 8/12/16；小部件圆角 4/6/8；缩进 20px/层；chevron 16px 图标 24px 命中区。</p></div>
-      <div class="mode-card"><h4>性能口径</h4><p>O(visible) 物化对齐 M3；新增基准场景 list-select-1000 / tree-10k-fold / treelist-100x5；p95 相对 M7 归档基线 ≤ +10%。</p></div>
+      <div class="mode-card"><h4>性能口径</h4><p>O(visible) 物化由千项测试覆盖；集合专用耗时场景仍为规划项，尚未验证 p95 相对基线的 +10% 目标。</p></div>
     </div>
     <footer style="text-align:left; margin-top:16px;">
-      设计文档：<code>docs/lumen-collection-controls-design.md</code> · 视觉 token 对齐 <code>design/gallery.html</code> Core Dark（变体 01）· Widget 体积预算 ≤ 800B（M7 基线 784B + 16B）
+      设计文档：<code>docs/lumen-collection-controls-design.md</code> · 视觉 token 对齐 <code>design/gallery.html</code> Core Dark（变体 01）· Widget 当前体积门槛：Release ≤ 824B / Debug ≤ 928B；ListPart 使用既有 padding
     </footer>
   </section>
 

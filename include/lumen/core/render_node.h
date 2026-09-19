@@ -107,6 +107,16 @@ struct RenderNode {
 
     [[nodiscard]] Rect rect() const { return Rect{offset, size}; }
 
+    // List rows share this local clip for paint, hit testing and semantics.
+    [[nodiscard]] Rect contentClipRect() const {
+        if (type == WidgetType::List) {
+            return Rect{Offset{padding.left, padding.top},
+                Size{std::max(0.0F, size.width - padding.horizontal()),
+                     std::max(0.0F, size.height - padding.vertical())}};
+        }
+        return Rect{Offset{}, size};
+    }
+
     // 节点最终样式的公共段（背景/前景/边框/文本等）。
     [[nodiscard]] const CommonResolvedStyle& commonStyle() const {
         return core::commonStyle(style);

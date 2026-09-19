@@ -12,12 +12,13 @@
 // 行 = Row 容器（collectionRow=true）：hover/pressed/选中/焦点环由
 // StyleResolver 与 painter 的集合行路径驱动（Tabs/Dropdown 等既有
 // selected 语义不受影响）。应用经 attach 接线后把 makeList(this) 放入
-// 树；行 handler 在 buildItem 时按需注册（幂等，O(visible)）。
+// 树；每个控制器只注册一组行点击/激活/焦点 sink，不随滚动物化累积。
 // UI 线程独占。
 
 #include <cstddef>
 #include <functional>
 #include <string>
+#include <unordered_map>
 
 #include "lumen/app/app_shell.h"
 #include "lumen/core/virtual_list.h"
@@ -30,6 +31,7 @@ namespace lumen::widgets {
 
 class ListController final : public core::VirtualListSource {
   public:
+    ListController();
     // 滚动对齐语义单一定义于 collection.h（List/Tree/TreeList 公用）。
     using ScrollAlignment = ::lumen::widgets::ScrollAlignment;
 
@@ -39,9 +41,13 @@ class ListController final : public core::VirtualListSource {
     void setItemBuilder(std::function<core::Widget(std::size_t)> builder);
     // index → stable key（默认 "i<index>"；key 是选择集/焦点/语义身份）。
     void setKeyOf(std::function<std::string(std::size_t)> keyOf);
+    // 禁用元数据，不构建屏外行即可查询。动态禁用规则应由这里提供；
+    // builder 根 enabled=false 也会禁用已物化行。
+    void setEnabledOf(std::function<bool(std::size_t)> enabledOf);
+    [[nodiscard]] bool itemEnabled(std::size_t index) const;
     // 未测量项的估算行高（默认 40 = 视觉系统 Medium 档）。
     void setEstimatedExtent(float extent);
-    // 空态内容（itemCount()==0 时；默认居中 "Empty" 文本）。
+    // 空态内容（itemCount()==0 时自动布局；默认图标 + "No items"）。
     void setEmptyBuilder(std::function<core::Widget()> builder);
     // --- 选择与激活 ---
     void setSelectionMode(SelectionMode mode);
@@ -95,9 +101,9 @@ class ListController final : public core::VirtualListSource {
     // 行 key → index（不可见返回 false）。
     [[nodiscard]] bool indexOfKey(const std::string& key,
                                  std::size_t& index) const;
-    // 空态 Widget（itemCount()==0 时布局不进 VirtualList 物化路径，
-    // 由应用在 makeList 外自行呈现；此处供应用便捷取用）。
-    [[nodiscard]] core::Widget buildEmpty() const;
+    // 空态 Widget（itemCount()==0 时由 List 布局自动呈现）。
+    [[nodiscard]] core::Widget buildEmpty() const override;
+    [[nodiscard]] std::string tabStopKey() const override;
 
   private:
     [[nodiscard]] std::string keyOf(std::size_t index) const;
@@ -109,6 +115,8 @@ class ListController final : public core::VirtualListSource {
     SelectionModel selection_{};
     std::function<core::Widget(std::size_t)> itemBuilder_{};
     std::function<std::string(std::size_t)> keyOf_{};
+    std::function<bool(std::size_t)> enabledOf_{};
+    mutable std::unordered_map<std::string, bool> contentEnabled_{};
     std::function<core::Widget()> emptyBuilder_{};
     app::AppShell* shell_{nullptr};
     std::string owner_{"list"};

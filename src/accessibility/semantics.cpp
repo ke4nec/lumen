@@ -210,7 +210,9 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
     // 裁剪视口传播：clipContent（滚动视口）节点的盒子加入子树裁剪栈。
     std::vector<core::Rect> childViewports = clipViewports;
     if (node.clipContent) {
-        childViewports.push_back(core::Rect{origin, node.size});
+        auto clip = node.contentClipRect();
+        clip.origin = clip.origin + origin;
+        childViewports.push_back(clip);
     }
     for (const auto& child : node.children) {
         collectNodes(child, origin, false, options, childViewports, tree);
@@ -414,6 +416,10 @@ SemanticsActionStatus performSemanticsAction(
     }
 
     if (action == kActionActivate || action == kActionDismiss) {
+        if (action == kActionActivate && context.controller != nullptr &&
+            renderNode != nullptr && context.controller->activateCollectionRow(*renderNode)) {
+            return SemanticsActionStatus::Handled;
+        }
         // Checkbox/Switch：语义 activate 直接切换状态。
         if (context.controller != nullptr && renderNode != nullptr &&
             (renderNode->type == core::WidgetType::Checkbox ||

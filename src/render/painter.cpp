@@ -428,6 +428,21 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             // 走控件表面（焦点环/隔离带/内缩填充）；普通容器保持卡片表面。
             if (node.collectionRow) {
                 paintControlSurface(sink, rect, common);
+                if (const auto* row = std::get_if<core::ListRowResolvedStyle>(&styleSource.component)) {
+                    if (row->separatorWidth > 0.0F && common.focusWidth <= 0.0F) {
+                        const float h = std::min(row->separatorWidth, rect.size.height);
+                        sink.drawRect(Rect{Offset{origin.x, origin.y + rect.size.height - h},
+                                           Size{rect.size.width, h}}, row->separator);
+                    }
+                    if (row->markerWidth > 0.0F) {
+                        const float inset = std::min(row->markerInset, rect.size.height * 0.5F);
+                        const float xInset = std::min(common.focusWidth, rect.size.width);
+                        sink.drawRect(Rect{Offset{origin.x + xInset, origin.y + inset},
+                            Size{std::min(row->markerWidth, rect.size.width - xInset),
+                                 std::max(0.0F, rect.size.height - 2.0F * inset)}},
+                            row->selectionMarker, CornerRadius::all(row->markerWidth * 0.5F));
+                    }
+                }
             } else {
                 paintSurface(sink, rect, common);
             }
@@ -976,9 +991,17 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
     // 滚动视口裁剪：子内容不得溢出 viewport（overflow clip，plan §3.4）。
     if (node.clipContent) {
         const ScopedClip<Sink> clip{sink, rect};
-        for (const auto& child : node.children) {
-            paintNode(sink, child, origin, options, nodeAlpha);
-        }
+        const auto paintChildren = [&] {
+            for (const auto& child : node.children) {
+                paintNode(sink, child, origin, options, nodeAlpha);
+            }
+        };
+        if (node.type == WidgetType::List) {
+            auto contentClip = node.contentClipRect();
+            contentClip.origin = contentClip.origin + origin;
+            const ScopedClip<Sink> rowsClip{sink, contentClip};
+            paintChildren();
+        } else paintChildren();
         // S3（§7.2）：滚动条——Thumb 实色经 RenderNode 传递（专用 token，
         // 不再对前景乘 alpha）；可视宽 4、最小长 24、上下 inset 4、圆角
         // = 可视宽一半；长度按 viewport/content 比例并在

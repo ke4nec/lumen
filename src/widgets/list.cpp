@@ -7,17 +7,39 @@
 
 namespace lumen::widgets {
 
+ListController::ListController() {
+    base_.setEstimatedExtent(detail::kDefaultRowExtent);
+}
+
 void ListController::setItemCount(std::size_t count) {
     base_.setItemCount(count);
+    contentEnabled_.clear();
+    requestRebuild();
 }
 
 void ListController::setItemBuilder(
     std::function<core::Widget(std::size_t)> builder) {
     itemBuilder_ = std::move(builder);
+    contentEnabled_.clear();
+    requestRebuild();
 }
 
 void ListController::setKeyOf(std::function<std::string(std::size_t)> keyOf) {
     keyOf_ = std::move(keyOf);
+    contentEnabled_.clear();
+    requestRebuild();
+}
+
+void ListController::setEnabledOf(std::function<bool(std::size_t)> enabledOf) {
+    enabledOf_ = std::move(enabledOf);
+    contentEnabled_.clear();
+    requestRebuild();
+}
+
+bool ListController::itemEnabled(std::size_t index) const {
+    if (index >= itemCount() || (enabledOf_ && !enabledOf_(index))) return false;
+    const auto found = contentEnabled_.find(keyOf(index));
+    return found == contentEnabled_.end() || found->second;
 }
 
 void ListController::setEstimatedExtent(float extent) {
@@ -26,6 +48,7 @@ void ListController::setEstimatedExtent(float extent) {
 
 void ListController::setEmptyBuilder(std::function<core::Widget()> builder) {
     emptyBuilder_ = std::move(builder);
+    requestRebuild();
 }
 
 void ListController::setSelectionMode(SelectionMode mode) {
@@ -35,13 +58,13 @@ void ListController::setSelectionMode(SelectionMode mode) {
 void ListController::attach(app::AppShell& shell, std::string ownerKey) {
     shell_ = &shell;
     owner_ = std::move(ownerKey.empty() ? std::string("list") : ownerKey);
-    base_.setEstimatedExtent(detail::kDefaultRowExtent);
     // 区间选择：行序由本控制器的 key 序列给出（方向无关的闭区间）。
     selection_.setKeySequence(
         [this](const std::string& from, const std::string& to) {
             return detail::closedKeyRange(
                 base_.itemCount(),
-                [this](std::size_t i) { return keyOf(i); }, from, to);
+                [this](std::size_t i) { return keyOf(i); }, from, to,
+                [this](std::size_t i) { return itemEnabled(i); });
         });
     selection_.onSelectionChanged = [this] { requestRebuild(); };
     selection_.onCurrentChanged = [this](const std::string&) {
@@ -58,6 +81,14 @@ void ListController::attach(app::AppShell& shell, std::string ownerKey) {
     });
     shell.controller().addRowActivateSink(detail::makeRowActivateSink(
         owner_, [this](const std::string& key) { activate(key); }));
+    shell.controller().addRowFocusSink([this](const std::string& rowKey) {
+        const std::string prefix = owner_ + ":item:";
+        if (!rowKey.starts_with(prefix)) return false;
+        const std::string key = rowKey.substr(prefix.size());
+        std::size_t index = 0;
+        if (indexOfKey(key, index) && itemEnabled(index)) selection_.setCurrent(key);
+        return true;
+    });
 }
 
 void ListController::scrollToKey(const std::string& key,
@@ -67,10 +98,14 @@ void ListController::scrollToKey(const std::string& key,
         return;
     }
     detail::scrollToAligned(*this, index, align);
+    requestRebuild();
 }
 
 void ListController::setCurrentKey(const std::string& key, bool extend) {
+    std::size_t index = 0;
+    if (!indexOfKey(key, index) || !itemEnabled(index)) return;
     selection_.moveTo(key, extend);
+    scrollToKey(key, ScrollAlignment::Visible);
     if (shell_ != nullptr) {
         shell_->focus().setFocus(owner_ + ":item:" + key);
     }
@@ -79,9 +114,14 @@ void ListController::setCurrentKey(const std::string& key, bool extend) {
 
 bool ListController::handleKey(core::Key key, core::KeyModifiers modifiers,
                                char keyChar) {
+    if (shell_ != nullptr) {
+        const auto* view = core::findNodeByKey(shell_->root(), owner_);
+        if (view != nullptr && !view->enabled) return false;
+    }
     return detail::handleCollectionKeys(
         shell_, owner_, selection_, *this,
-        [this](std::size_t i) { return keyOf(i); }, key, modifiers, keyChar);
+        [this](std::size_t i) { return keyOf(i); }, key, modifiers, keyChar,
+        [this](std::size_t i) { return itemEnabled(i); });
 }
 
 bool ListController::indexOfKey(const std::string& key,
@@ -92,13 +132,27 @@ bool ListController::indexOfKey(const std::string& key,
 }
 
 core::Widget ListController::buildEmpty() const {
+    std::vector<core::Widget> children;
     if (emptyBuilder_) {
-        return emptyBuilder_();
+        children.push_back(emptyBuilder_());
+    } else {
+        auto icon = core::makeIcon(core::IconId::Folder);
+        icon.listPart = core::ListPart::EmptyIcon;
+        auto text = core::makeText("No items");
+        text.listPart = core::ListPart::EmptyText;
+        children.push_back(std::move(icon));
+        children.push_back(std::move(text));
     }
-    core::Widget text = core::makeText("Empty");
-    text.textStyle.color = core::Color{140, 140, 152, 255};
-    return core::makeColumn({std::move(text)}, core::MainAxisAlignment::Center,
-                            core::CrossAxisAlignment::Center);
+    auto empty = core::makeColumn(std::move(children),
+        core::MainAxisAlignment::Center, core::CrossAxisAlignment::Center);
+    empty.listPart = core::ListPart::Empty;
+    empty.key = owner_ + ":empty";
+    return empty;
+}
+
+std::string ListController::tabStopKey() const {
+    return selection_.currentKey().empty() ? std::string{}
+        : owner_ + ":item:" + selection_.currentKey();
 }
 
 std::string ListController::keyOf(std::size_t index) const {
@@ -110,6 +164,8 @@ std::string ListController::keyOf(std::size_t index) const {
 
 void ListController::rowClicked(const std::string& key, bool ctrl,
                                 bool shift) {
+    std::size_t index = 0;
+    if (!indexOfKey(key, index) || !itemEnabled(index)) return;
     selection_.click(key, ctrl, shift);
     if (shell_ != nullptr) {
         shell_->focus().setFocus(owner_ + ":item:" + key);
@@ -118,7 +174,8 @@ void ListController::rowClicked(const std::string& key, bool ctrl,
 }
 
 void ListController::activate(const std::string& key) {
-    if (onActivated) {
+    std::size_t index = 0;
+    if (onActivated && indexOfKey(key, index) && itemEnabled(index)) {
         onActivated(key);
     }
 }
@@ -174,9 +231,23 @@ core::Widget ListController::buildItem(std::size_t index) const {
     detail::applyCollectionRowShell(row, owner_, key,
                                     selection_.isSelected(key),
                                     "list:" + owner_ + ":" + key,
-                                    core::CrossAxisAlignment::Stretch,
+                                    core::CrossAxisAlignment::Center,
                                     "listItem");
-    row.children.push_back(itemBuilder_(index));
+    row.padding = {};
+    row.listPart = index + 1 == itemCount() ? core::ListPart::LastRow : core::ListPart::Row;
+    auto content = itemBuilder_(index);
+    if (content.enabled) contentEnabled_.erase(key);
+    else contentEnabled_[key] = false;
+    row.enabled = itemEnabled(index);
+    content.flex = 1.0F;
+    if (!row.enabled) {
+        const auto disable = [](auto&& self, core::Widget& widget) -> void {
+            widget.enabled = false;
+            for (auto& child : widget.children) self(self, child);
+        };
+        disable(disable, content);
+    }
+    row.children.push_back(std::move(content));
     return row;
 }
 

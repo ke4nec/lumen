@@ -546,6 +546,11 @@ class GalleryApp {
         };
         // Tooltip 锚点演示按钮（hover 显示气泡；点击无操作）。
         handlers["noop"] = [] {};
+        handlers["cycle-list-mode"] = [this] {
+            const auto mode = static_cast<unsigned>(collectionList_.selection().mode());
+            collectionList_.setSelectionMode(static_cast<widgets::SelectionMode>((mode + 1) % 4));
+            shell_.markDirty();
+        };
         handlers["open-navigation"] = [this] {
             dropdown_.close(shell_);
             navigationMenu_.setValue(navigator_.current());
@@ -699,6 +704,7 @@ class GalleryApp {
         // --- List：200 行资产清单（Extended 选择 + 激活回显） ---
         collectionList_.setItemCount(200);
         collectionList_.setSelectionMode(widgets::SelectionMode::Extended);
+        collectionList_.setEnabledOf([](std::size_t index) { return index % 7 != 6; });
         collectionList_.setItemBuilder([this](std::size_t index) {
             char number[8];
             std::snprintf(number, sizeof(number), "%03zu", index);
@@ -709,20 +715,35 @@ class GalleryApp {
                 std::string("asset-") + number + ".png",
                 shell_.theme().typography.body);
             name.flex = 1.0F;
+            name.textStyle.maxLines = 1;
+            name.textStyle.overflow = core::TextOverflow::Ellipsis;
             core::StyleOverrides muted;
             muted.foreground = shell_.theme().colors.contentSecondary;
             core::Widget sizeText = core::withStyleOverrides(
                 core::makeText(size), std::move(muted));
+            auto icon = core::makeIcon(core::IconId::Document);
+            icon.styleOverrides.foreground = shell_.theme().colors.contentSecondary;
+            std::vector<core::Widget> cells{std::move(icon), std::move(name)};
+            if (index % 5 == 0) {
+                auto badge = core::makeContainer(core::makeText("NEW", shell_.theme().typography.caption));
+                badge.color = shell_.theme().colors.accentContainer;
+                badge.radius = core::CornerRadius::all(shell_.theme().metrics.controlRadius[shell_.theme().metrics.baseIndex]);
+                badge.padding = core::EdgeInsets::symmetric(style::spaceToken(1), 0.0F);
+                cells.push_back(std::move(badge));
+            }
+            cells.push_back(std::move(sizeText));
             return core::makeRow(
-                {std::move(name), std::move(sizeText)},
+                std::move(cells),
                 core::MainAxisAlignment::Start,
-                core::CrossAxisAlignment::Center, 8.0F);
+                core::CrossAxisAlignment::Center,
+                shell_.theme().metrics.controlGap[shell_.theme().metrics.baseIndex]);
         });
         collectionList_.onActivated = [this](const std::string& key) {
             lastActivatedKey_ = key;
             shell_.markDirty();
         };
         collectionList_.attach(shell_, "collection-list");
+        collectionEmptyList_.attach(shell_, "collection-empty-list");
 
         // --- Tree：仓库目录骨架（键路径全局唯一；初始展开两层） ---
         collectionTreeModel_.setRoots({"tree:src", "tree:docs",
@@ -1807,6 +1828,10 @@ class GalleryApp {
     }
 
     void initializeVisualPreviews() {
+        for (const auto* name : {"Normal", "Hover", "Press", "Focus", "Selected",
+                                 "Selected+Focused", "Disabled"}) {
+            shell_.setVisualPreviewState(std::string("list-preview-") + name, previewState(name));
+        }
         for (const auto* variant : {"Filled", "Tonal", "Outline", "Ghost", "Danger"}) {
             for (const auto* name : {"Normal", "Hover", "Press", "Focus", "Foc+Prs", "Disabled"}) {
                 shell_.setVisualPreviewState(std::string("matrix-") + variant + "-" + name, previewState(name));
@@ -2456,13 +2481,43 @@ class GalleryApp {
             "List — selection & activation",
             {core::withKey(mutedLabel(collectionListStatus(), theme),
                            "collection-list-status"),
+             core::withKey(core::withOnClick(core::makeButton("Change selection mode"), "cycle-list-mode"),
+                           "collection-list-mode"),
              core::withKey(std::move(listWidget), "collection-list"),
              core::withKey(mutedLabel("Click selects; Ctrl+click toggles; "
                                       "Shift+click extends; double-click or "
                                       "Enter activates; Ctrl+A selects all.",
                                       theme),
                            "collection-list-hint")},
-            theme, "collections-list-card", "Extended · 200 rows"));
+            theme, "collections-list-card", "200 rows · every seventh row disabled"));
+
+        // Deterministic visual samples use the same ListController row shell.
+        std::vector<core::Widget> states;
+        for (const auto* name : {"Normal", "Hover", "Press", "Focus", "Selected",
+                                 "Selected+Focused", "Disabled"}) {
+            auto row = collectionList_.buildItem(0);
+            row.key = std::string("list-preview-") + name;
+            row.onClick.clear();
+            row.semanticsActions = 0;
+            row.children = {core::makeIcon(core::IconId::Document),
+                            core::makeText(name, theme.typography.body)};
+            row.children.back().flex = 1.0F;
+            row.spacing = theme.metrics.controlGap[theme.metrics.baseIndex];
+            const bool disabled = std::string(name) == "Disabled";
+            row.enabled = !disabled;
+            if (disabled) {
+                for (auto& child : row.children) child.styleOverrides.foreground = theme.list.disabledContent;
+            }
+            states.push_back(std::move(row));
+        }
+        items.push_back(sectionCard("List — state matrix",
+            {core::withKey(core::makeColumn(std::move(states), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch), "collection-list-states")},
+            theme, "collections-list-states-card", "Preview states"));
+        items.push_back(sectionCard("List — empty state",
+            {core::makeList(&collectionEmptyList_, "collection-empty-list", std::nullopt,
+                theme.metrics.minHeight[theme.metrics.baseIndex] * 3.0F)},
+            theme, "collections-list-empty-card"));
 
         // --- Tree：层级模型 + 键盘 Left/Right + 按 key 的展开状态 ---
         core::Widget treeWidget = core::withScrollbar(core::makeTree(
@@ -2501,7 +2556,8 @@ class GalleryApp {
     // Collections 状态行（选择/展开/排序实时回显；build 期读取控制器）。
     [[nodiscard]] std::string collectionListStatus() const {
         const auto& selection = collectionList_.selection();
-        std::string text = "Selected: " +
+        constexpr const char* modes[] = {"None", "Single", "Multiple", "Extended"};
+        std::string text = std::string(modes[static_cast<unsigned>(selection.mode())]) + " · Selected: " +
                            std::to_string(selection.selectedCount()) +
                            " · Current: " +
                            (selection.currentKey().empty()
@@ -3536,6 +3592,7 @@ class GalleryApp {
     CollectionTreeModel collectionTreeModel_{this};
     CollectionTableModel collectionTableModel_{this};
     widgets::ListController collectionList_{};
+    widgets::ListController collectionEmptyList_{};
     widgets::TreeController collectionTree_{};
     widgets::TreeListController collectionTable_{};
     std::string lastActivatedKey_{};

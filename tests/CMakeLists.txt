@@ -19,6 +19,7 @@ set(LUMEN_TEST_SOURCES
     # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、
     # 列宽与语义角色（docs/lumen-collection-controls-design.md）。
     collection_tests.cpp
+    list_visual_tests.cpp
     # 菜单类控件（context/menubar）：Secondary 穿透、面板/键盘/级联、
     # 语义角色（docs/lumen-menu-controls-design.md）。
     menu_tests.cpp

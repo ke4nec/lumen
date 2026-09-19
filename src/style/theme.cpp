@@ -298,6 +298,20 @@ ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors) {
     return tokens;
 }
 
+ListTokens listTokensFrom(const ColorScheme& colors) {
+    ListTokens tokens;
+    tokens.background = colors.surface;
+    tokens.hovered = colors.surfaceSunken;
+    tokens.pressed = mixColors(colors.surface, colors.accent, 0.32F);
+    tokens.selected = colors.accentContainer;
+    tokens.separator = colors.borderDefault;
+    tokens.content = colors.contentPrimary;
+    tokens.disabledContent = colors.disabledContent;
+    tokens.emptyContent = colors.contentSecondary;
+    tokens.selectionMarker = colors.accent;
+    return tokens;
+}
+
 // --- Theme 工厂 ---
 
 namespace {
@@ -573,6 +587,7 @@ Theme baseTheme(bool darkMode, ControlDensity density,
     theme.tooltip = tooltipTokensFrom(theme.colors);
     theme.dialog = dialogTokensFrom(theme.colors, theme.metrics);
     theme.scrollbar = scrollbarTokensFrom(theme.colors);
+    theme.list = listTokensFrom(theme.colors);
     theme.direction = direction;
     theme.darkMode = darkMode;
     return theme;
@@ -618,12 +633,18 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     theme.scrollbar = scrollbarTokensFrom(theme.colors);
     theme.metrics.focusRingWidth = 3.0F;
     theme.metrics.controlBorderWidth = 2.0F;
+    theme.list = listTokensFrom(theme.colors);
+    theme.list.hovered = blendOver(theme.list.background, theme.colors.hoverOverlay);
+    theme.list.pressed = blendOver(theme.list.background, theme.colors.pressedOverlay);
 }
 
 void scaleComponentSizes(Theme& theme, float factor) {
     if (factor <= 0.0F || factor == 1.0F) {
         return;
     }
+    theme.list.markerWidth *= factor;
+    theme.list.markerInset *= factor;
+    theme.list.emptyIconSize *= factor;
     for (float& value : theme.checkbox.indicatorSize) {
         value *= factor;
     }
@@ -779,6 +800,11 @@ Theme adaptPlatformTheme(const Theme& base,
         adapted.slider = sliderTokensFrom(adapted.colors);
         adapted.progressBar = progressBarTokensFrom(adapted.colors);
         adapted.tabs = tabsTokensFrom(adapted.colors);
+        adapted.list = listTokensFrom(adapted.colors);
+        if (settings.highContrast) {
+            adapted.list.hovered = blendOver(adapted.list.background, adapted.colors.hoverOverlay);
+            adapted.list.pressed = blendOver(adapted.list.background, adapted.colors.pressedOverlay);
+        }
     }
     scaleTheme(adapted, settings.fontScale);
     return adapted;

@@ -162,6 +162,17 @@ struct TabsResolvedStyle {
     bool operator==(const TabsResolvedStyle&) const = default;
 };
 
+// List row decorations are resolved once and participate in damage/animation.
+struct ListRowResolvedStyle {
+    CommonResolvedStyle common{};
+    Color separator{Color::transparent()};
+    Color selectionMarker{Color::transparent()};
+    float separatorWidth{0.0F};
+    float markerWidth{0.0F};
+    float markerInset{0.0F};
+    bool operator==(const ListRowResolvedStyle&) const = default;
+};
+
 using ComponentResolvedStyle = std::variant<CommonResolvedStyle,
                                             ButtonResolvedStyle,
                                             TextFieldResolvedStyle,
@@ -170,7 +181,8 @@ using ComponentResolvedStyle = std::variant<CommonResolvedStyle,
                                             RadioResolvedStyle,
                                             SliderResolvedStyle,
                                             ProgressBarResolvedStyle,
-                                            TabsResolvedStyle>;
+                                            TabsResolvedStyle,
+                                            ListRowResolvedStyle>;
 
 struct ResolvedStyle {
     ComponentResolvedStyle component{CommonResolvedStyle{}};
@@ -308,6 +320,9 @@ inline void scaleStyleColors(ResolvedStyle& style, float alpha) {
                                                     TabsResolvedStyle>) {
                     part.indicator = scaleColorAlpha(part.indicator, alpha);
                     part.separator = scaleColorAlpha(part.separator, alpha);
+                } else if constexpr (std::is_same_v<Part, ListRowResolvedStyle>) {
+                    part.separator = scaleColorAlpha(part.separator, alpha);
+                    part.selectionMarker = scaleColorAlpha(part.selectionMarker, alpha);
                 }
             }
         },
@@ -426,6 +441,9 @@ inline void lerpCommonStyleColors(CommonResolvedStyle& into,
                         lerpColor(fromPart.indicator, toPart.indicator, t);
                     toPart.separator =
                         lerpColor(fromPart.separator, toPart.separator, t);
+                } else if constexpr (std::is_same_v<To, ListRowResolvedStyle>) {
+                    toPart.separator = lerpColor(fromPart.separator, toPart.separator, t);
+                    // The selection marker, like the focus ring, is immediate.
                 }
             }
             (void)result;

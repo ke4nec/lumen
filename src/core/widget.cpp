@@ -79,5 +79,6 @@ bool isScrollableWidget(WidgetType type) {
 }
 
 Widget VirtualListSource::buildHeader() const { return Widget{}; }
+Widget VirtualListSource::buildEmpty() const { return Widget{}; }
 
 }  // namespace lumen::core

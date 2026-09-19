@@ -101,6 +101,9 @@ enum class ButtonVariant : std::uint8_t {
 // Theme 的 ControlDensity 一起决定最小尺寸、内边距与圆角。
 enum class ControlSize : std::uint8_t { Small, Medium, Large };
 
+// List chrome is independent of the generic interactive collectionRow flag.
+enum class ListPart : std::uint8_t { None, Row, LastRow, Empty, EmptyIcon, EmptyText };
+
 // 字段级局部样式覆盖：只在应用需要品牌定制时提供（§3.1）。空 = 全部
 // 由 Theme 派生；显式设置的值（包括透明/黑色）按字面生效。
 struct StyleOverrides {
@@ -167,6 +170,9 @@ class VirtualListSource {
     // 默认实现（返回空 Widget）在 widget.cpp 中定义（此处 Widget 尚未
     // 完整定义）。
     [[nodiscard]] virtual Widget buildHeader() const;
+    // List empty content and its single Tab stop (collection design §6).
+    [[nodiscard]] virtual Widget buildEmpty() const;
+    [[nodiscard]] virtual std::string tabStopKey() const { return {}; }
     // 内容宽度回填（列宽分配用；幂等缓存写入，viewport 变化时重排）。
     virtual void noteContentWidth(float width) const { (void)width; }
     // 源持有的滚动控制器：非空时框架直接接管该视口的滚轮/拖动滚动与
@@ -288,6 +294,7 @@ struct Widget {
     // 不受影响）。
     bool collectionRow{false};
     bool collectionShowHeader{false};
+    ListPart listPart{ListPart::None};
 
     // Splitter（splitter-design §5.1）：分栏源（widgets 层
     // SplitterController 实现 core::SplitterSource；virtualSource 同模

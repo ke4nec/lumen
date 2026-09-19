@@ -1,6 +1,6 @@
 # Lumen 集合控件设计（List / Tree / TreeList）
 
-> 文档状态：设计稿（2026-09）
+> 文档状态：已实施契约；List 视觉与交互补齐于 2026-09-19。
 > 输入：源码现状盘点（`include/lumen/core/widget.h`、`include/lumen/core/virtual_list.h`、`src/layout/layout.cpp`）、`docs/lumen-self-use-roadmap.md` M0–M12 完成记录、`docs/lumen-visual-system-design.md`（token 三层模型/尺度表/状态规则/滚动条契约）、成熟 C++ GUI 框架的列表/树控件契约。
 > 配套视觉设计稿：`design/collection-controls.html`。
 > 定位：桌面自用版控件库增强，遵循既有"Widget 不可变声明 + 应用侧控制器 + 布局期物化"架构，不引入新模块。
@@ -9,7 +9,7 @@
 
 ## 1. 背景与问题
 
-用户反馈：现有 list 控件功能太弱。经源码核对，当前集合类控件的实际能力如下：
+以下为实施前的问题盘点，保留作设计背景；当前 List / Tree / TreeList 已实现，现行契约见 §6–§11：
 
 | 控件 | 现状 | 关键缺口 |
 | --- | --- | --- |
@@ -45,7 +45,7 @@
 
 1. Lumen 无 model/view 委托系统——保持 **source 接口 + Widget 构建**（JUCE 式），不引入 Qt 级抽象。
 2. 选择状态放**应用侧控制器**（与 VirtualListController/DropdownController 同层），Widget 只携带声明——不违反"runtime state lives in Element / 控制器"的既定架构。
-3. M11 已验证**"控制器把行构建为 Button 并注册 onClick handler"**的模式（DropdownController 浮动菜单）——列表项复用该路径，点击/hover/焦点/Enter/Space 全部免费获得。
+3. 行声明采用 `Row(collectionRow=true)`，点击、焦点、按压和激活接入 `InteractionController` 的集合行通道；每个控制器注册固定数量的 sink，避免虚拟行累积常驻 handler。
 
 ## 3. 设计目标与非目标
 
@@ -83,9 +83,9 @@
 │   ListController   TreeController   TreeListController     │
 │   （持有数据、选择、展开状态、滚动；注册行 onClick）          │
 ├───────────────────────────────────────────────────────────┤
-│ core 层：VirtualListSource 布局契约（既有，零改动）          │
+│ core 层：VirtualListSource 布局契约                         │
 │   itemCount/estimatedExtent/extentOf/offsetOfIndex/        │
-│   visibleRange/buildItem/noteExtent                         │
+│   visibleRange/buildItem/noteExtent/buildEmpty/tabStopKey    │
 ├───────────────────────────────────────────────────────────┤
 │ layout 层：layoutVirtualList 引擎（既有）                   │
 │   可见区物化、extent 修正、锚点稳定、绝对定位子项            │
@@ -172,6 +172,7 @@ class ListController final : public core::VirtualListSource {
     void setItemCount(std::size_t count);
     void setItemBuilder(std::function<core::Widget(std::size_t)> builder);
     void setKeyOf(std::function<std::string(std::size_t)> keyOf); // index→stable key
+    void setEnabledOf(std::function<bool(std::size_t)> enabledOf);
     void setEstimatedExtent(float extent);
 
     // --- 选择 ---
@@ -201,11 +202,12 @@ class ListController final : public core::VirtualListSource {
 
 ### 6.2 行的构建与交互路径
 
-行 Widget 由控制器包装生成，**外层是 focusable Button**（M11 浮动菜单已验证的模式）：
+行 Widget 由控制器包装生成，外层是可聚焦集合 `Row`，由专用 `ListPart` 与 `ListRowResolvedStyle` 解析表面，不改变 Tree、菜单或旧 VirtualList 的样式：
 
 ```text
-行 = Button(key = "list:<owner>/item:<stableKey>", selected = selection.isSelected)
-     └─ 应用 builder 产物（内容自由组合）
+行 = Row(key = "<owner>:item:<stableKey>", collectionRow = true,
+         selected = selection.isSelected, listPart = Row/LastRow)
+     └─ 应用 builder 产物（flex=1，内容自由组合）
 ```
 
 - **单击**：`onClick("list:<owner>:<key>")` 经 `InteractionController` 的
@@ -213,26 +215,27 @@ class ListController final : public core::VirtualListSource {
   `selection().click(key, ctrl, shift)` 并请求重建。**不按行注册常驻
   handler**：虚拟化行序大（千/万级），注册表会随滚动无界累积；sink 恒
   O(1)。
-- **hover/pressed/焦点环**：Button 的 WidgetState 解析路径，零新增代码。
+- **hover/pressed/焦点环**：集合行的完整 identity 进入 WidgetState；控制器按 key 请求焦点后，AppShell 在行物化完成时解析成完整 identity。行填满视口内容宽度，右侧空白也参与命中。
 - **双击激活**：`InteractionController` 已有双击检测（`lastClickMs/lastClickIdentity_`），
-  新增一个 sink：`setDoubleClickSink(std::function<bool(identity)>)`——控制器匹配
-  `list:<owner>/item:` 前缀后触发 `onActivated(key)`。
-- **Enter/Space**：Button 既有激活路径直接可用（激活 handler 同 `onActivated`）。
+  `addRowActivateSink` 匹配 `<owner>:item:` 前缀后触发 `onActivated(key)`。
+- **Enter/Space**：与双击、语义 Activate 使用相同的集合行激活 sink；语义 Activate 直接激活，不隐式改变选择集。
 - **selected 视觉**：`Widget.selected` 进 `WidgetState`（视觉系统 §5 已含 selected 位），
-  行的选中背景解析为 `color.selection.background`（§10.2 的 list.row 组件 token），
+  行的选中背景解析为 `Theme.list.selected = colors.accentContainer`（§10.2），
   Core Dark 下派生值即设计稿的 `#2e3c60`；分隔线/圆角同经 token 派生。
+- **禁用**：`setEnabledOf(index)` 提供无需物化的可用性元数据；点击、激活、导航、区间选择和 Ctrl+A 均跳过禁用项。builder 根 `enabled=false` 也禁用已物化行；屏外项或动态禁用应提供 `setEnabledOf`，不能依赖尚未执行的 builder。禁用整个 List 会禁用其全部物化行。
+- **空态**：零项时布局自动调用 `buildEmpty()`，默认居中 Folder 图标和 “No items”，可用 `setEmptyBuilder` 替换内容。最小高度为两行，受显式视口约束；无需应用另写空态分支。
 
 ### 6.3 键盘契约（List 拥有焦点时）
 
 | 键 | 行为 |
 | --- | --- |
-| Up / Down | current 上/下移一行（Extended 随动修改选择；Single 选中该行；滚动按 `Visible` 对齐） |
+| Up / Down | current 上/下移到可用行（Extended 随动修改选择；Single 选中该行；滚动按 `Visible` 对齐） |
 | Home / End | current 移到首/末行，滚动对齐 `Start`/`End` |
 | PageUp / PageDown | current 移动约一视口行数（用 estimatedExtent 折算），对齐 `Visible` |
 | Ctrl+Home / Ctrl+End | 同 Home/End |
 | Enter / Space | 激活 current（`onActivated`） |
 | Ctrl+A | Extended 模式全选；Single 选中 current |
-| Tab / Shift+Tab | 离开列表（FocusManager 既有遍历，行为不变） |
+| Tab / Shift+Tab | 整个 List 只占一个 Tab 停靠点；进入可见 current（否则首个可见可用行），只更新 current；再次 Tab 离开，不逐行遍历 |
 
 **路由方式**：应用 `ShellConfig.onKey` 以焦点列表为优先目标转发（M11 `handleKey` 同模式）；未被应用消费的滚动键由 `InteractionController::scrollKey` 兜底——焦点位于源视口（List/Tree/TreeList/VirtualList）内时直接驱动该源控制器（§6.5），不再落到应用默认视口。
 
@@ -250,7 +253,7 @@ inline core::Widget makeList(const core::VirtualListSource* source,
                              float cacheExtent = 200.0F);
 ```
 
-布局实现：`WidgetType::List` 直接映射 `layoutVirtualList`（零新布局代码）；`isScrollableWidget` 纳入 List。
+布局实现：复用 `layoutVirtualList`，List 分支约束行填满内容宽度并在零项时物化空态；边框/padding 外的内部视口用于滚动对齐与 extent，首尾行保持完整可见。
 
 ### 6.5 框架级源视口滚动（滚轮/拖动/惯性）
 
@@ -446,7 +449,7 @@ class TreeListController final : public TreeController {
 
 ## 10. 视觉规格（详见 design/collection-controls.html）
 
-视觉契约完全遵循 `docs/lumen-visual-system-design.md`（token 三层模型 §3.1、尺度表 §3.2、状态规则 §5、滚动条 §7.4），本节只做行级映射，不新增颜色或尺度槽位。
+视觉契约遵循 `docs/lumen-visual-system-design.md`（token 三层模型 §3.1、尺度表 §3.2、状态规则 §5、滚动条 §7.4）；`Theme.list` 为组件层映射，复用语义颜色与既有密度尺度。
 
 ### 10.1 尺度（视觉系统 §3.2 对齐）
 
@@ -466,11 +469,13 @@ class TreeListController final : public TreeController {
 
 ```text
 list.row.background            = color.background.surface
-list.row.background.hover      = surface 层 hover 派生（surface→elevated 之间）
-list.row.background.pressed    = 覆盖 hover（状态规则 §5.3：pressed 覆盖 hover）
-list.row.background.selected   = color.selection.background
+list.row.background.hover      = colors.surfaceSunken
+list.row.background.pressed    = mix(colors.surface, colors.accent, 0.32)
+list.row.background.selected   = colors.accentContainer（不透明）
 list.row.separator             = color.border.default
 list.row.content               = color.content.primary / .disabled（disabled.content）
+list.row.selectionMarker       = colors.accent；宽 3，上下 inset 4
+list.empty.content             = colors.contentSecondary；图标 24
 tree.indent.step               = 20
 tree.chevron.hitExtent         = 24
 treelist.header.background     = color.background.surface（粘性表头）
@@ -478,7 +483,9 @@ treelist.header.content        = color.content.secondary；sortable 悬停 → c
 treelist.header.height         = 行最小高度同档
 ```
 
-焦点环：`color.focus.ring` + `focusWidth`，**内嵌绘制**（V2 实施约定：damage 不变量——控件绘制不越出节点矩形）；键盘焦点必须可见（§5 规则 4：focused 必须产生可见焦点环，不能只依赖 hover）。滚动条复用 `ScrollbarTokens`（§7.4：rest/hovered/dragged/disabled 四态）。
+List 外框为 surface、1px separator 边框、cardRadius；行 padding 纵向取 `metrics.controlPaddingY`。行绘制、命中与语义共享边框内侧的 `contentClipRect()`，滚动不能覆盖外框。分隔线最后一项省略，聚焦时由完整焦点环替代该行底线。标记尺寸与空态图标随 fontScale 缩放，线宽/圆角保持逻辑尺寸。
+
+焦点环：`color.focus.ring` + `focusWidth`，**内嵌绘制**（V2 damage 不变量）；selected 使用实色背景及左侧指示条，与焦点环独立。disabled 保留淡化的选中指示条并取消 hover/pressed/focus。高对比主题使用加强色与环宽。滚动条复用 `ScrollbarTokens`；rest 为当前渲染状态，hovered/dragged 外观仍按视觉实施任务 §7.2 保留待接线。
 
 ### 10.3 状态矩阵
 
@@ -496,7 +503,7 @@ treelist.header.height         = 行最小高度同档
 | TreeList 百行×5列 | 子节点数 = 行 × (列 + chrome)，命令数与同规模 List 的比例记录进基准报告 |
 | 语义 diff | 增删行/选择变化只 diff 变更行（identity 稳定） |
 
-基准新增场景：`list-select-1000`（滚动+连续选择）、`tree-10k-fold`（万节点折叠展开）、`treelist-100x5`。
+规划的集合专用基准场景：`list-select-1000`（滚动+连续选择）、`tree-10k-fold`（万节点折叠展开）、`treelist-100x5`。当前 scene-bench 尚未提供这些场景；本轮用千项按需物化断言验证复杂度，不宣称已验证上述耗时目标。
 
 ### 11.2 测试（Catch2，命名 `*_tests.cpp`，行为命名）
 
@@ -505,12 +512,13 @@ treelist.header.height         = 行最小高度同档
 3. **TreeController**：扁平化正确性（嵌套展开/折叠序）、惰性 hasChildren、展开后 extent 缓存 key 命中、collapseAll/expandAll 防护上限、Left/Right 键盘折叠/父级跳转。
 4. **TreeListController**：列宽分配（固定+权重+minWidth）、表头粘性（滚动后表头 y 不变）、表头点击回调、隐藏列。
 5. **语义/键盘一致性**：激活（点击≡Enter≡语义 Activate）、选择变化语义 flag、treeitem expanded value、Expand/Collapse 语义 action ≡ 键盘。
-6. **回归**：既有 ListView/VirtualList 行为与帧哈希不变；Widget 体积静态断言（Release `sizeof(Widget)` ≤ 816，Debug ≤ 920——工具链调试迭代器开销）。
+6. **回归**：既有 ListView/VirtualList 行为与帧哈希不变；Widget 体积静态断言（Release `sizeof(Widget)` ≤ 824，Debug ≤ 928；包含后续 Splitter 指针，ListPart 使用既有 padding——工具链调试迭代器开销）。
 7. **局部 damage 与全帧逐像素一致**（AppShell 真实帧管线，M3 模式）。
+8. `list_visual_tests.cpp`：三档密度/整行命中、真实按压与完整焦点 identity、屏外导航、Tab 单一停靠点、禁用元数据/整表禁用、自动空态、ThemeScope/字体缩放/高对比、分隔线与增量帧一致性。
 
 ### 11.3 示例与验收
 
-- settings 新页 `Collections`：List（千项+选择模式切换）、Tree（目录树）、TreeList（列+表头排序钩子演示）。
+- Gallery `Collections`：List（200 项、四模式切换、图标/徽标/禁用行）、七态矩阵、自动空态；Tree（目录树）、TreeList（列+表头排序钩子）。千项虚拟化由测试/基准覆盖。
 - headless 冒烟：导航、物化行数、选择流、表头回调输出。
 - 三桌面窗口 smoke 由 CI 承担（既有矩阵）。
 
@@ -518,7 +526,7 @@ treelist.header.height         = 行最小高度同档
 
 | 阶段 | 内容 | 出口条件 |
 | --- | --- | --- |
-| P1 选择模型 + List | SelectionModel、ListController、WidgetType::List、双击 sink、键盘路由、语义、测试、settings 页 | List 在四选择模式下视觉/键盘/语义一致；千项基准达标 |
+| P1 选择模型 + List | SelectionModel、ListController、WidgetType::List、双击 sink、键盘路由、语义、测试、Gallery 页 | List 在四选择模式下视觉/键盘/语义一致；千项基准达标 |
 | P2 Tree | TreeModel、TreeController、IconId::ChevronRight、树键盘契约、测试 | 万节点折叠树性能达标；展开状态跨重建保持 |
 | P3 TreeList | 列模型、表头、排序钩子、IconId::ChevronUp/Down、测试 | 表头粘性；列宽重排随窗口变化 |
 | P4 DSL/基准/收口 | `.lumen` 节点、golden 测试、基准场景归档、roadmap 完成记录 | 全部测试绿；基线归档；路线图状态更新 |

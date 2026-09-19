@@ -318,6 +318,24 @@ struct DialogTokens {
     bool operator==(const DialogTokens&) const = default;
 };
 
+// collection-controls-design §10: List-specific state surfaces and chrome.
+struct ListTokens {
+    core::Color background{39, 39, 46, 255};
+    core::Color hovered{46, 46, 54, 255};
+    core::Color pressed{54, 71, 108, 255};
+    core::Color selected{46, 60, 96, 255};
+    core::Color separator{59, 59, 69, 255};
+    core::Color content{241, 241, 244, 255};
+    core::Color disabledContent{140, 140, 152, 255};
+    core::Color emptyContent{161, 161, 170, 255};
+    core::Color selectionMarker{86, 140, 240, 255};
+    float separatorWidth{1.0F};
+    float markerWidth{3.0F};
+    float markerInset{4.0F};
+    float emptyIconSize{24.0F};
+    bool operator==(const ListTokens&) const = default;
+};
+
 struct ScrollbarTokens {
     // S3（§7.2）：rest 取 borderStrong 实色（专用 token 传递，painter 不
     // 再对前景乘 alpha）；hovered/dragged 为预留交互（未接线前常显 rest）。
@@ -353,6 +371,7 @@ struct Theme {
     TooltipTokens tooltip{};
     DialogTokens dialog{};
     ScrollbarTokens scrollbar{};
+    ListTokens list{};
     // M11：派生元数据（值语义，参与 ==）。应用直接读取，替代按色值
     // 反推（gallery/settings 旧的 pageBackground 比较启发式）。
     ThemeDirection direction{ThemeDirection::CoreDark};

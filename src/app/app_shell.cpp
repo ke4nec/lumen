@@ -1214,6 +1214,15 @@ int AppShell::focusedCaretOffset() const {
 // --- 内部 ---
 
 void AppShell::syncInteractionSnapshot() {
+    // Key-only focus requests may precede virtual row materialization. Resolve
+    // them against the current event tree, retaining pending keys until built.
+    if (!focus_.focusedKey().empty() &&
+        focus_.focusedIdentity() == focus_.focusedKey()) {
+        if (const auto* node = core::findNodeByKey(eventTree(), focus_.focusedKey())) {
+            if (node->enabled) focus_.setFocus(node->key, node->identity);
+            else focus_.clearFocus();
+        }
+    }
     interactionSnapshot_ = style::InteractionStateSnapshot{
         controller_.hoveredIdentity(), controller_.pressedIdentity(),
         focus_.focusedIdentity()};

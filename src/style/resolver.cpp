@@ -134,6 +134,17 @@ ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme,
                                const WidgetState& state) {
     ResolvedStyle resolved;
     commonStyle(resolved.component) = containerCommon(widget, theme);
+    if (widget.type == WidgetType::List) {
+        auto& common = commonStyle(resolved.component);
+        common.background = theme.list.background;
+        common.border = theme.list.separator;
+        common.borderWidth = theme.list.separatorWidth;
+        common.radius = core::CornerRadius::all(theme.metrics.cardRadius);
+        common.padding = EdgeInsets{widget.padding.left + common.borderWidth,
+                                    widget.padding.top + common.borderWidth,
+                                    widget.padding.right + common.borderWidth,
+                                    widget.padding.bottom + common.borderWidth};
+    }
     // 集合行（collection-controls-design §10.2）：Row/Container 行由集合
     // 控制器构建——选中/hover/pressed 折算与焦点环（current 行）走与
     // 控件一致的状态规则（§5：pressed 覆盖 hover；focused 必须可见）。
@@ -162,6 +173,60 @@ ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme,
     }
     applyOverrides(widget, commonStyle(resolved.component));
 
+    return resolved;
+}
+
+// List row geometry/state comes from Theme, not from its application content.
+ResolvedStyle resolveListPart(const Widget& widget, const StyleContext& context,
+                              const WidgetState& state) {
+    const Theme& theme = context.theme;
+    const auto index = sizeIndexFor(theme, widget.controlSize);
+    ResolvedStyle resolved;
+    CommonResolvedStyle common = containerCommon(widget, theme);
+    common.foreground = theme.list.emptyContent;
+    common.text = theme.typography.body;
+    common.text.color = common.foreground;
+    if (widget.listPart == core::ListPart::Empty) {
+        common.padding = EdgeInsets::symmetric(theme.metrics.controlPaddingX[index],
+                                               theme.metrics.controlPaddingY[index]);
+        resolved.minHeight = theme.metrics.minHeight[index] * 2.0F;
+        resolved.controlGap = theme.metrics.controlGap[index];
+    } else if (widget.listPart == core::ListPart::EmptyIcon) {
+        resolved.minWidth = resolved.minHeight = theme.list.emptyIconSize;
+    } else if (widget.listPart == core::ListPart::EmptyText) {
+        common.text = resolveTextStyle(widget, theme.typography.body, common.foreground);
+    } else {
+        core::ListRowResolvedStyle row;
+        common.foreground = state.disabled ? theme.list.disabledContent : theme.list.content;
+        common.text.color = common.foreground;
+        common.background = theme.list.background;
+        if (!state.disabled) {
+            common.background = state.pressed ? theme.list.pressed
+                : state.hovered ? theme.list.hovered
+                : state.selected ? theme.list.selected : theme.list.background;
+            if (state.selected && !state.pressed) common.background = theme.list.selected;
+        }
+        common.focusRing = theme.colors.focusRing;
+        common.focusWidth = focusWidthFor(state, theme);
+        common.radius = core::CornerRadius::all(theme.metrics.controlRadius[index]);
+        common.padding = EdgeInsets::symmetric(theme.metrics.controlPaddingX[index],
+                                               theme.metrics.controlPaddingY[index]);
+        row.separator = theme.list.separator;
+        row.separatorWidth = widget.listPart == core::ListPart::LastRow
+            ? 0.0F : theme.list.separatorWidth;
+        if (state.selected) {
+            row.selectionMarker = state.disabled ? theme.list.disabledContent : theme.list.selectionMarker;
+            row.markerWidth = theme.list.markerWidth;
+            row.markerInset = theme.list.markerInset;
+        }
+        applyOverrides(widget, common);
+        row.common = common;
+        resolved.component = row;
+        resolved.minHeight = theme.metrics.minHeight[index];
+        return resolved;
+    }
+    applyOverrides(widget, common);
+    resolved.component = common;
     return resolved;
 }
 
@@ -724,6 +789,9 @@ ResolvedStyle resolveStyleImpl(const Widget& widget,
                                const StyleContext& context,
                                const std::string& identity) {
     const WidgetState state = stateFor(widget, context, identity);
+    if (widget.listPart != core::ListPart::None) {
+        return resolveListPart(widget, context, state);
+    }
     switch (widget.type) {
         case WidgetType::Button:
             return resolveButton(widget, context, state);
