@@ -123,6 +123,11 @@ TEST_CASE("titlebar_controls_flush_full_height_and_rounded_window",
     const Offset closeAbs = absoluteOffset(app.root(), "window-close");
     CHECK(closeAbs.x + close->size.width ==
           Catch::Approx(1280.0F).margin(0.01F));
+    // 设计稿 caption-button 无圆角（design/gallery.html titlebar）：
+    // hover 高亮与 close 实心红均为通高直角矩形，按钮默认
+    // controlRadius 对 chrome 件归零。
+    CHECK(min->commonStyle().radius == CornerRadius::zero());
+    CHECK(close->commonStyle().radius == CornerRadius::zero());
     // 图标盒 14px（design/gallery.html caption-button svg 14px），
     // 三钮一致；描边随盒宽折算 ≈1.6。
     {

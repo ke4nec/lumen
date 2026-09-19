@@ -3318,6 +3318,10 @@ class GalleryApp {
             "", core::TextStyle{}, core::EdgeInsets{}, 0.0F, onClick,
             44.0F * scale, std::nullopt, onClick);
         button.buttonVariant = variant;
+        // 设计稿 caption-button 无圆角（design/gallery.html titlebar）：
+        // hover 高亮与 close 实心红都是通高直角矩形；按钮默认
+        // controlRadius（resolver §7.1）对 chrome 件以 overrides 归零。
+        button.styleOverrides.radius = core::CornerRadius::zero();
         // 图标盒 14px（design/gallery.html caption-button svg 14px；
         // 描边随盒宽折算 ≈1.6）。
         button.styleOverrides.iconSize = 14.0F * scale;
