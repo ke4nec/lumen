@@ -30,60 +30,65 @@ void ScrollController::scrollTo(float offset) {
     offset_ = clampOffset(offset);
 }
 
-bool ScrollController::applyWheel(float deltaY) {
+bool ScrollController::applyWheel(float wheelDelta) {
     stopFling();
-    return scrollBy(deltaY);
+    return scrollBy(wheelDelta);
 }
 
-bool ScrollController::applyDrag(float deltaY) {
-    // 内容跟随手指：手指下移（deltaY > 0）时内容向上滚回（offset 减小）。
-    // 拖动接管惯性（抓住滚动中的列表）。
+bool ScrollController::applyDrag(float dragDelta) {
+    // 内容跟随手指：指针沿轴正向拖动（delta > 0）时内容向轴起点滚回
+    //（offset 减小）。拖动接管惯性（抓住滚动中的列表）。
     stopFling();
-    return scrollBy(-deltaY * kDragRatio);
+    return scrollBy(-dragDelta * kDragRatio);
 }
 
 bool ScrollController::applyKey(Key key, float viewportExtent) {
     stopFling();
     const float page = viewportExtent > 0.0F ? viewportExtent * 0.9F
                                              : 120.0F;
-    switch (key) {
-        case Key::PageDown:
-        case Key::Down:
-            return scrollBy(page);
-        case Key::PageUp:
-        case Key::Up:
-            return scrollBy(-page);
-        case Key::Home:
-            if (offset_ == 0.0F) {
-                return false;
-            }
-            offset_ = 0.0F;
-            return true;
-        case Key::End:
-            if (offset_ == maxOffset_) {
-                return false;
-            }
-            offset_ = maxOffset_;
-            return true;
-        default:
-            return false;
+    // 方向键按活动轴取组（水平 Left/Right、纵向 Up/Down）；翻页与
+    // Home/End 两轴共用。
+    const Key forwardKey =
+        axis_ == ScrollAxis::Horizontal ? Key::Right : Key::Down;
+    const Key backwardKey =
+        axis_ == ScrollAxis::Horizontal ? Key::Left : Key::Up;
+    if (key == Key::PageDown || key == forwardKey) {
+        return scrollBy(page);
     }
+    if (key == Key::PageUp || key == backwardKey) {
+        return scrollBy(-page);
+    }
+    if (key == Key::Home) {
+        if (offset_ == 0.0F) {
+            return false;
+        }
+        offset_ = 0.0F;
+        return true;
+    }
+    if (key == Key::End) {
+        if (offset_ == maxOffset_) {
+            return false;
+        }
+        offset_ = maxOffset_;
+        return true;
+    }
+    return false;
 }
 
-bool ScrollController::semanticScroll(float deltaY) {
+bool ScrollController::semanticScroll(float delta) {
     stopFling();
-    return scrollBy(-deltaY);
+    return scrollBy(-delta);
 }
 
-void ScrollController::noteDragSample(float deltaYPixels,
+void ScrollController::noteDragSample(float dragDeltaPixels,
                                       std::uint64_t timestampMs) {
     if (!dragSampled_) {
         dragSampled_ = true;
         lastDragSampleMs_ = timestampMs;
-        pendingDragDelta_ = deltaYPixels;
+        pendingDragDelta_ = dragDeltaPixels;
         return;
     }
-    pendingDragDelta_ += deltaYPixels;
+    pendingDragDelta_ += dragDeltaPixels;
     const std::uint64_t dt =
         timestampMs >= lastDragSampleMs_ ? timestampMs - lastDragSampleMs_ : 0;
     if (dt > 0) {

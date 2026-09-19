@@ -481,6 +481,68 @@ TEST_CASE("fling_decelerates_and_stops_deterministically", "[motion]") {
     CHECK_FALSE(grab.isFlinging());
 }
 
+// --- 水平滚动轴（ScrollController 轴化；lumen-optimization-plan P2） ---
+
+TEST_CASE("horizontal_axis_controller_interprets_inputs_along_x",
+          "[motion][scroll]") {
+    lumen::core::ScrollController scroll(lumen::core::ScrollAxis::Horizontal);
+    CHECK(scroll.axis() == lumen::core::ScrollAxis::Horizontal);
+    scroll.updateExtents(200.0F, 1000.0F);
+    CHECK(scroll.maxScrollOffset() == 800.0F);
+
+    // 滚轮分量：正 = 内容向右滚（offset 增大）。
+    REQUIRE(scroll.applyWheel(120.0F));
+    CHECK(scroll.offset() == 120.0F);
+
+    // 键盘：水平取 Left/Right 组；Page/Home/End 两轴共用。
+    REQUIRE(scroll.applyKey(lumen::core::Key::Right, 200.0F));
+    CHECK(scroll.offset() == 300.0F);
+    REQUIRE(scroll.applyKey(lumen::core::Key::Left, 200.0F));
+    CHECK(scroll.offset() == 120.0F);
+    REQUIRE(scroll.applyKey(lumen::core::Key::PageDown, 200.0F));
+    CHECK(scroll.offset() == 300.0F);
+    // 纵向方向键不属于本轴（交由其他视口/焦点消费）。
+    CHECK_FALSE(scroll.applyKey(lumen::core::Key::Down, 200.0F));
+    CHECK(scroll.offset() == 300.0F);
+
+    // 拖动：指针沿 +x 拖动 → 内容向起点滚回。
+    REQUIRE(scroll.applyDrag(50.0F));
+    CHECK(scroll.offset() == 250.0F);
+
+    // 语义滚动分量：符号约定同滚轮。
+    REQUIRE(scroll.semanticScroll(-90.0F));
+    CHECK(scroll.offset() == 340.0F);
+
+    REQUIRE(scroll.applyKey(lumen::core::Key::End, 200.0F));
+    CHECK(scroll.offset() == 800.0F);
+    REQUIRE(scroll.applyKey(lumen::core::Key::Home, 200.0F));
+    CHECK(scroll.offset() == 0.0F);
+    // 到边后同向输入不再变化。
+    CHECK_FALSE(scroll.applyDrag(50.0F));
+}
+
+TEST_CASE("horizontal_axis_fling_uses_same_physics", "[motion][scroll]") {
+    lumen::core::ScrollController scroll(lumen::core::ScrollAxis::Horizontal);
+    scroll.updateExtents(200.0F, 2000.0F);
+
+    // 指针沿 -x 快速拖动（向左甩）→ 内容获得向右滚的惯性。
+    scroll.noteDragSample(-30.0F, 100);
+    scroll.noteDragSample(-30.0F, 110);
+    REQUIRE(scroll.endDrag(120));
+    REQUIRE(scroll.isFlinging());
+
+    float previous = scroll.offset();
+    bool stillFlinging = true;
+    for (std::uint64_t t = 140; stillFlinging; t += 16) {
+        stillFlinging = scroll.stepFling(t);
+        CHECK(scroll.offset() >= previous);
+        previous = scroll.offset();
+        CHECK(scroll.offset() <= scroll.maxScrollOffset());
+    }
+    CHECK_FALSE(scroll.isFlinging());
+    CHECK(scroll.offset() > 0.0F);
+}
+
 namespace {
 
 // 可滚动页面：列表视口 + 应用侧 ScrollController（含拖动/惯性接线）。
