@@ -192,6 +192,14 @@ TEST_CASE("style_theme_reduce_animation_zeroes_motion", "[style]") {
     CHECK(theme.motion.dialogTransitionMs == 0);
     CHECK(theme.motion.navigatorTransitionMs == 0);
     CHECK(theme.motion.caretBlinkHalfPeriodMs == 0);
+    // Spin/StatusBar 控件（lumen-{spin,statusbar}-design §10）：视觉动效
+    // 归零；输入/内容节律（自动重复、瞬态驻留）保留。
+    CHECK(theme.motion.statusbarMessageFadeMs == 0);
+    CHECK(theme.motion.progressIndeterminateCycleMs == 0);
+    CHECK(theme.motion.statusbarBusyCycleMs == 0);
+    CHECK(theme.motion.spinRepeatDelayMs == 500);
+    CHECK(theme.motion.spinRepeatIntervalMs == 60);
+    CHECK(theme.motion.statusbarMessageTimeoutMs == 4000);
 }
 
 TEST_CASE("style_theme_density_selects_metric_column", "[style]") {

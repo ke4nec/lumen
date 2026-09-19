@@ -123,6 +123,8 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.icon = static_cast<std::uint8_t>(widget.icon);
     node.transitionAlpha = widget.transitionAlpha;
     node.showScrollbar = widget.showScrollbar;
+    node.progressIndeterminate = widget.progressIndeterminate;
+    node.iconRotation = widget.iconRotation;
     node.elevation = widget.elevation > 0.0F ? widget.elevation : core::commonStyle(node.style).elevation;
     if (node.elevation > 0.0F) {
         // §4.5 阴影分级：层级数（1..3）查表得到 offset/blur/alpha；

@@ -37,6 +37,17 @@ enum class IconId : std::uint8_t {
     Restore,
     Document,
     Folder,
+    // Spin/ToolBar/StatusBar 控件（lumen-toolbar-design §8 候选、
+    // lumen-statusbar-design §9.1，2026-09）：工具栏命令图标与状态栏
+    // busy/grip（追加在尾部，保持既有 ID 值不变）。Busy 为 3/4 圆弧
+    //（旋转经 Widget.iconRotation 逐 tick 驱动）。
+    Undo,
+    Redo,
+    Play,
+    Grid,
+    Settings,
+    Busy,
+    Grip,
 };
 
 // 图标的归一化折线组（0..1 坐标；stroke 绘制，无填充）。

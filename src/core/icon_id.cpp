@@ -16,7 +16,7 @@ using Catalog = std::vector<Line>;
 const std::vector<Catalog>& catalog() {
     static const std::vector<Catalog> kCatalog = [] {
         std::vector<Catalog> table(
-            static_cast<std::size_t>(IconId::Folder) + 1);
+            static_cast<std::size_t>(IconId::Grip) + 1);
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
@@ -107,6 +107,79 @@ const std::vector<Catalog>& catalog() {
                           Offset{0.50F, 0.38F}, Offset{0.88F, 0.38F},
                           Offset{0.88F, 0.78F}, Offset{0.12F, 0.78F},
                           Offset{0.12F, 0.25F}}}};
+        // Spin/ToolBar/StatusBar 控件（2026-09）：16 栅格设计后归一。
+        // Undo/Redo：左/右弯钩箭头（design/toolbar.html SVG 同形）。
+        table[static_cast<std::size_t>(IconId::Undo)] =
+            Catalog{Line{{Offset{0.33F, 0.29F}, Offset{0.17F, 0.46F},
+                          Offset{0.33F, 0.63F}}},
+                    Line{{Offset{0.17F, 0.46F}, Offset{0.58F, 0.46F},
+                          Offset{0.79F, 0.46F}, Offset{0.79F, 0.70F},
+                          Offset{0.63F, 0.79F}}}};
+        table[static_cast<std::size_t>(IconId::Redo)] =
+            Catalog{Line{{Offset{0.67F, 0.29F}, Offset{0.83F, 0.46F},
+                          Offset{0.67F, 0.63F}}},
+                    Line{{Offset{0.83F, 0.46F}, Offset{0.42F, 0.46F},
+                          Offset{0.21F, 0.46F}, Offset{0.21F, 0.70F},
+                          Offset{0.37F, 0.79F}}}};
+        // Play：实心观感的三角（stroke 闭合）。
+        table[static_cast<std::size_t>(IconId::Play)] =
+            Catalog{Line{{Offset{0.33F, 0.21F}, Offset{0.75F, 0.50F},
+                          Offset{0.33F, 0.79F}, Offset{0.33F, 0.21F}}}};
+        // Grid：2×2 方框。
+        table[static_cast<std::size_t>(IconId::Grid)] =
+            Catalog{Line{{Offset{0.17F, 0.17F}, Offset{0.45F, 0.17F},
+                          Offset{0.45F, 0.45F}, Offset{0.17F, 0.45F},
+                          Offset{0.17F, 0.17F}}},
+                    Line{{Offset{0.55F, 0.17F}, Offset{0.83F, 0.17F},
+                          Offset{0.83F, 0.45F}, Offset{0.55F, 0.45F},
+                          Offset{0.55F, 0.17F}}},
+                    Line{{Offset{0.17F, 0.55F}, Offset{0.45F, 0.55F},
+                          Offset{0.45F, 0.83F}, Offset{0.17F, 0.83F},
+                          Offset{0.17F, 0.55F}}},
+                    Line{{Offset{0.55F, 0.55F}, Offset{0.83F, 0.55F},
+                          Offset{0.83F, 0.83F}, Offset{0.55F, 0.83F},
+                          Offset{0.55F, 0.55F}}}};
+        // Settings：中心圆 + 八向辐条（齿轮的扁平近似）。
+        table[static_cast<std::size_t>(IconId::Settings)] =
+            Catalog{Line{{Offset{0.50F, 0.36F}, Offset{0.59F, 0.41F},
+                          Offset{0.59F, 0.59F}, Offset{0.50F, 0.64F},
+                          Offset{0.41F, 0.59F}, Offset{0.41F, 0.41F},
+                          Offset{0.50F, 0.36F}}},
+                    Line{{Offset{0.50F, 0.17F}, Offset{0.50F, 0.30F}}},
+                    Line{{Offset{0.50F, 0.70F}, Offset{0.50F, 0.83F}}},
+                    Line{{Offset{0.17F, 0.50F}, Offset{0.30F, 0.50F}}},
+                    Line{{Offset{0.70F, 0.50F}, Offset{0.83F, 0.50F}}},
+                    Line{{Offset{0.27F, 0.27F}, Offset{0.36F, 0.36F}}},
+                    Line{{Offset{0.64F, 0.64F}, Offset{0.73F, 0.73F}}},
+                    Line{{Offset{0.73F, 0.27F}, Offset{0.64F, 0.36F}}},
+                    Line{{Offset{0.36F, 0.64F}, Offset{0.27F, 0.73F}}}};
+        // Busy：3/4 圆弧（24 段折线逼近；旋转经 iconRotation 逐 tick 驱动，
+        // 静止态保留"进行中"形状——statusbar-design §10）。
+        {
+            Catalog busy;
+            Line arc;
+            constexpr float kCx = 0.5F;
+            constexpr float kCy = 0.5F;
+            constexpr float kRadius = 0.34F;
+            constexpr int kSegments = 24;
+            // 起点 135°，顺时针 270°（3/4 弧，开口朝右下）。
+            constexpr float kStart = 0.75F * 3.1415927F;
+            constexpr float kSweep = 1.5F * 3.1415927F;
+            for (int i = 0; i <= kSegments; ++i) {
+                const float angle =
+                    kStart + kSweep * static_cast<float>(i) / kSegments;
+                arc.push_back(Offset{kCx + kRadius * std::cos(angle),
+                                     kCy + kRadius * std::sin(angle)});
+            }
+            busy.push_back(std::move(arc));
+            table[static_cast<std::size_t>(IconId::Busy)] = std::move(busy);
+        }
+        // Grip：右下角 resize 斜纹（3 条 45° 短线；纯视觉件，命中归平台
+        // resize 边——statusbar-design §9.1）。
+        table[static_cast<std::size_t>(IconId::Grip)] =
+            Catalog{Line{{Offset{0.58F, 0.92F}, Offset{0.92F, 0.58F}}},
+                    Line{{Offset{0.71F, 0.92F}, Offset{0.92F, 0.71F}}},
+                    Line{{Offset{0.45F, 0.92F}, Offset{0.92F, 0.45F}}}};
         return table;
     }();
     return kCatalog;

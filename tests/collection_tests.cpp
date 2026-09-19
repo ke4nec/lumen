@@ -701,15 +701,16 @@ TEST_CASE("collection_selected_row_resolves_selection_background",
 
 TEST_CASE("list_widget_stays_within_size_budget", "[collection]") {
     // M7 体积门槛（实测口径）：Release 基线 800B，集合字段 +16B → 816B；
-    // Splitter 源指针 +8B → 824B（方向 bool 进既有 packed 区，零增量）；
+    // Splitter 源指针 +8B → 824B（方向 bool 进既有 bool 簇空槽，零增量）；
     // P2 水平滚动轴标志（ScrollAxis，bool 簇无空槽）+1B 触发对齐 → +8B
-    // = 832B。Debug 构建的 MSVC STL _ITERATOR_DEBUG_LEVEL=2 令每个容器
-    // （std::string/std::vector）膨胀 +8B，属工具链开销而非 Widget
-    // 声明增长，故按构建模式分别断言。
+    // = 832B；Spin/StatusBar 控件（2026-09）progressIndeterminate bool
+    // + iconRotation float → +8B = 840B。Debug 构建的 MSVC STL
+    // _ITERATOR_DEBUG_LEVEL=2 令每个容器（std::string/std::vector）膨胀
+    // +8B，属工具链开销而非 Widget 声明增长，故按构建模式分别断言。
 #ifdef NDEBUG
-    CHECK(sizeof(Widget) <= 832);
+    CHECK(sizeof(Widget) <= 840);
 #else
-    CHECK(sizeof(Widget) <= 936);
+    CHECK(sizeof(Widget) <= 944);
 #endif
 }
 

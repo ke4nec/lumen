@@ -96,6 +96,12 @@ enum class ButtonVariant : std::uint8_t {
     // caption-button.close）：rest 幽灵；hover 实心 statusError +
     // onError 反色。尾部追加保持既有值不变（IconId/SemanticsRole 先例）。
     WindowClose,
+    // Spin/ToolBar/StatusBar 控件（2026-09）：chrome 命令钮——rest 幽灵；
+    // hover 表面派生 + 前景提亮 primary；pressed = List pressed（surface/
+    // accent 0.32 混合，design/{spin,toolbar,statusbar}.html 同语言）；
+    // checked（toggle 项）= accentContainer 持久底 + primary（悬停不改变
+    // checked 底）。尾部追加保持既有值不变。
+    Chrome,
 };
 
 // 控件尺寸档位（Small/Compact、Medium/Comfortable、Large/Touch）；与
@@ -339,6 +345,14 @@ struct Widget {
     float elevation{0.0F};  // 层级（ElevationTokens；0 = 无阴影）
     float transitionAlpha{1.0F};  // 控件转场透明度（reduceAnimation 恒 1）
     StyleOverrides styleOverrides{};
+    // StatusBar（statusbar-design §5.3）：ProgressBar 的 indeterminate 声明
+    //（true 时忽略值，绘制 16px 往返段；相位经 scrollOffset 0..1 逐 tick
+    // 驱动——控件复用既有字段通道，零新增几何字段）。默认 false 保持
+    // determinate 绘制不变。
+    bool progressIndeterminate{false};
+    // 图标旋转（弧度；绕节点中心，painter 归一化坐标折线旋转后绘制——
+    // 命令层零改动，busy 弧等持钟动画用）。默认 0。
+    float iconRotation{0.0F};
 
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
     // handler in the app's HandlerRegistry. `bindPrefix` preserves the
@@ -688,6 +702,12 @@ inline Widget withTransitionAlpha(Widget child, float alpha) {
     return child;
 }
 
+// 图标旋转（弧度，绕节点中心；busy 弧等持钟动画逐 tick 驱动）。
+inline Widget withIconRotation(Widget child, float radians) {
+    child.iconRotation = radians;
+    return child;
+}
+
 inline Widget withScrollbar(Widget child, bool show = true) {
     child.showScrollbar = show;
     return child;
@@ -723,13 +743,17 @@ inline Widget makeSlider(std::string bind, std::string key = {},
 }
 
 // ProgressBar：进度 0..100（value 或 bind）；无交互，语义 value。
+// indeterminate（statusbar-design §5.3）：true 时忽略值，绘制 16px 往返
+// 段（相位经 scrollOffset 0..1 逐 tick 驱动；reduceAnimation 静止中段）。
 inline Widget makeProgressBar(std::string value, std::string key = {},
-                              std::optional<float> width = std::nullopt) {
+                              std::optional<float> width = std::nullopt,
+                              bool indeterminate = false) {
     Widget widget;
     widget.type = WidgetType::ProgressBar;
     widget.text = std::move(value);  // 值复用 text（bind 时 applyBinds 覆盖）
     widget.key = std::move(key);
     widget.width = width;
+    widget.progressIndeterminate = indeterminate;
     return widget;
 }
 

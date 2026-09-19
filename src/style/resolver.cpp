@@ -47,6 +47,10 @@ const ButtonVariantTokens& variantTokens(const ButtonTokens& tokens,
         // resolveButton 内按 statusError/onError 覆写）。
         case core::ButtonVariant::WindowClose:
             return tokens.ghost;
+        // chrome 命令钮（Spin/ToolBar/StatusBar）：base 取 Ghost（rest 同
+        // 幽灵；hover/pressed/checked 在 resolveButton 内按稿件语言覆写）。
+        case core::ButtonVariant::Chrome:
+            return tokens.ghost;
     }
     return tokens.filled;
 }
@@ -337,11 +341,20 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
         common.background = Color::transparent();
         common.foreground = theme.colors.contentSecondary;
     }
+    // chrome 命令钮（Spin/ToolBar/StatusBar，design/{spin,toolbar,
+    // statusbar}.html）：rest 幽灵；hover 表面派生 + 前景提亮 primary；
+    // pressed = List pressed（surface/accent 0.32 混合）；checked（toggle
+    // 项）= accentContainer 持久底 + primary，悬停不改变 checked 底。
+    const bool chrome = widget.buttonVariant == core::ButtonVariant::Chrome;
+    if (chrome) {
+        common.background = Color::transparent();
+        common.foreground = theme.colors.contentSecondary;
+    }
 
     if (state.disabled) {
         common.background =
             (outlined || widget.buttonVariant == core::ButtonVariant::Ghost ||
-             windowClose)
+             windowClose || chrome)
                 ? Color::transparent()
                 : theme.colors.disabledBackground;
         common.foreground = theme.colors.disabledContent;
@@ -356,6 +369,15 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
         if (windowClose) {
             common.foreground = theme.button.windowClose.content;
         }
+        if (chrome) {
+            common.background = theme.list.pressed;
+            common.foreground = theme.colors.contentPrimary;
+        }
+    } else if (chrome && widget.checked) {
+        // toggle 持久底（design/toolbar.html .is-checked：accentContainer
+        // + ink；悬停不改变 checked 底——形状/底色即状态）。
+        common.background = theme.colors.accentContainer;
+        common.foreground = theme.colors.contentPrimary;
     } else if (state.hovered) {
         if (windowClose) {
             common.background = theme.button.windowClose.background;
@@ -363,6 +385,9 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
         } else {
             common.background =
                 blendOver(common.background, theme.colors.hoverOverlay);
+            if (chrome) {
+                common.foreground = theme.colors.contentPrimary;
+            }
         }
     }
     common.focusWidth = focusWidthFor(widget, state, theme);

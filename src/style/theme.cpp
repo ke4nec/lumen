@@ -105,6 +105,13 @@ void MotionTokens::reduceAnimation() {
     menuOpenFadeMs = 0;
     menuHighlightSlideMs = 0;
     menuSubmenuHoverMs = 0;
+    statusbarMessageFadeMs = 0;
+    progressIndeterminateCycleMs = 0;
+    statusbarBusyCycleMs = 0;
+    // spinRepeatDelayMs/IntervalMs 与 statusbarMessageTimeoutMs 不归零：
+    // 自动重复节奏与瞬态消息驻留是输入/内容节律而非视觉过渡
+    //（lumen-spin-design §10、lumen-statusbar-design §10——减少动画只停
+    // 视觉动效与位移，不停输入节律；消息淡切归零 = 即时切换）。
 }
 
 // --- Primitive → semantic ---

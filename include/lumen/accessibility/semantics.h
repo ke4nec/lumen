@@ -43,6 +43,11 @@ enum class SemanticsRole : std::uint8_t {
     Menu,
     MenuItem,
     Splitter,
+    // Spin/ToolBar/StatusBar 控件（lumen-{spin,toolbar,statusbar}-design
+    // §7，2026-09）：追加在尾部，同上约束。
+    SpinButton,
+    Toolbar,
+    StatusBar,
 };
 
 [[nodiscard]] const char* semanticsRoleName(SemanticsRole role);

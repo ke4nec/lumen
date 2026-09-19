@@ -570,9 +570,6 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             if (bar == nullptr) {
                 break;
             }
-            const std::string& raw = node.text;
-            const float position = std::clamp(
-                static_cast<float>(std::atoi(raw.c_str())), 0.0F, 100.0F);
             const float trackHeight = bar->trackHeight;
             const float trackY =
                 origin.y + (node.size.height - trackHeight) * 0.5F;
@@ -580,6 +577,34 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                 Rect{Offset{origin.x, trackY},
                      Size{node.size.width, trackHeight}},
                 bar->track, CornerRadius::all(trackHeight * 0.5F));
+            if (node.progressIndeterminate) {
+                // StatusBar（statusbar-design §5.3/§10）：indeterminate 往返
+                // 段——16px 段在轨道内往返（相位 = scrollOffset 0..1，控制
+                // 器逐 tick 驱动）。scrollOffset < 0 = reduceAnimation 哨
+                // 兵：静止中段 40% 宽半透明带（"进行中"形状语义保留，不靠
+                // 运动传达唯一信息）。
+                const bool reduced = node.scrollOffset < 0.0F;
+                const float segment =
+                    reduced ? node.size.width * 0.4F
+                            : std::min(16.0F, node.size.width * 0.4F);
+                if (node.size.width > segment + 1.0F) {
+                    const float x =
+                        reduced
+                            ? origin.x + (node.size.width - segment) * 0.5F
+                            : origin.x +
+                                  std::clamp(node.scrollOffset, 0.0F, 1.0F) *
+                                      (node.size.width - segment);
+                    sink.drawRect(
+                        Rect{Offset{x, trackY}, Size{segment, trackHeight}},
+                        reduced ? core::scaleColorAlpha(bar->fill, 153)
+                                : bar->fill,
+                        CornerRadius::all(trackHeight * 0.5F));
+                }
+                break;
+            }
+            const std::string& raw = node.text;
+            const float position = std::clamp(
+                static_cast<float>(std::atoi(raw.c_str())), 0.0F, 100.0F);
             const float fillWidth =
                 node.size.width * position / 100.0F;
             if (fillWidth > 0.5F) {
@@ -734,13 +759,37 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             // M6：矢量图标（语义 ID → 折线目录；颜色继承前景、线宽默认
             // token，风格可用 textStyle 覆盖）。装饰性：无语义标签不进
             // 语义树（semantics 跳过空 label 的 Icon）。
+            // iconRotation（statusbar-design §10 busy 弧）：归一化坐标绕
+            // 盒中心旋转后绘制——命令层与三后端零改动（折线即数据）。
             const auto iconId = static_cast<core::IconId>(node.icon);
             if (iconId != core::IconId::None) {
                 const std::vector<std::vector<Offset>>& polylines =
                     core::iconPolylines(iconId);
                 if (!polylines.empty()) {
-                    sink.drawIcon(polylines, rect, common.foreground,
-                                  node.iconStrokeWidth);
+                    if (node.iconRotation != 0.0F) {
+                        const float sinR = std::sin(node.iconRotation);
+                        const float cosR = std::cos(node.iconRotation);
+                        std::vector<std::vector<Offset>> rotated;
+                        rotated.reserve(polylines.size());
+                        for (const auto& line : polylines) {
+                            std::vector<Offset> points;
+                            points.reserve(line.size());
+                            for (const Offset& p : line) {
+                                const float dx = p.x - 0.5F;
+                                const float dy = p.y - 0.5F;
+                                points.push_back(Offset{
+                                    0.5F + dx * cosR - dy * sinR,
+                                    0.5F + dx * sinR + dy * cosR});
+                            }
+                            rotated.push_back(std::move(points));
+                        }
+                        sink.drawIcon(std::move(rotated), rect,
+                                      common.foreground,
+                                      node.iconStrokeWidth);
+                    } else {
+                        sink.drawIcon(polylines, rect, common.foreground,
+                                      node.iconStrokeWidth);
+                    }
                 }
             }
             break;

@@ -89,6 +89,11 @@ struct RenderNode {
     float scrollbarInset{4.0F};
     // M6：图标线宽（IconTheme 折算）。
     float iconStrokeWidth{1.5F};
+    // StatusBar（statusbar-design §5.3）：indeterminate 进度声明与往返段
+    // 相位（scrollOffset 复用为 0..1 相位）。
+    bool progressIndeterminate{false};
+    // 图标旋转（弧度，绕节点中心；Widget.iconRotation 布局期复制）。
+    float iconRotation{0.0F};
 
     // 视觉系统声明状态：interaction/semantics 的可用性与选中语义。
     bool enabled{true};

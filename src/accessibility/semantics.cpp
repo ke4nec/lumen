@@ -261,6 +261,12 @@ const char* semanticsRoleName(SemanticsRole role) {
             return "menuItem";
         case SemanticsRole::Splitter:
             return "splitter";
+        case SemanticsRole::SpinButton:
+            return "spinButton";
+        case SemanticsRole::Toolbar:
+            return "toolbar";
+        case SemanticsRole::StatusBar:
+            return "statusBar";
     }
     return "unknown";
 }
@@ -291,6 +297,11 @@ bool semanticsRoleFromName(const std::string& name, SemanticsRole* out) {
         {"menuItem", SemanticsRole::MenuItem},
         {"menu_item", SemanticsRole::MenuItem},
         {"splitter", SemanticsRole::Splitter},
+        {"spinButton", SemanticsRole::SpinButton},
+        {"spin_button", SemanticsRole::SpinButton},
+        {"toolbar", SemanticsRole::Toolbar},
+        {"statusBar", SemanticsRole::StatusBar},
+        {"status_bar", SemanticsRole::StatusBar},
     };
     for (const auto& [key, role] : kTable) {
         if (name == key) {

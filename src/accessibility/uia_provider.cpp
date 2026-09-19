@@ -140,6 +140,12 @@ CONTROLTYPEID controlTypeFor(SemanticsRole role) {
             return UIA_SliderControlTypeId;
         case SemanticsRole::ProgressBar:
             return UIA_ProgressBarControlTypeId;
+        case SemanticsRole::SpinButton:
+            return UIA_SpinnerControlTypeId;
+        case SemanticsRole::Toolbar:
+            return UIA_ToolBarControlTypeId;
+        case SemanticsRole::StatusBar:
+            return UIA_StatusBarControlTypeId;
         case SemanticsRole::Group:
             return UIA_GroupControlTypeId;
         case SemanticsRole::Window:

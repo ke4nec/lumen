@@ -163,6 +163,17 @@ struct MotionTokens {
     std::uint32_t menuOpenFadeMs{120};
     std::uint32_t menuHighlightSlideMs{90};
     std::uint32_t menuSubmenuHoverMs{0};
+    // Spin/ToolBar/StatusBar 控件（lumen-{spin,toolbar,statusbar}-design
+    // §10，2026-09）。spinRepeatDelayMs/IntervalMs 是按住 stepper 的自动
+    // 重复节奏——输入行为而非视觉过渡，reduceAnimation **不归零**（与
+    // 其余字段不同，见 theme.cpp 注释）；其余四项为视觉动效，随
+    // reduceAnimation 归零。
+    std::uint32_t spinRepeatDelayMs{500};
+    std::uint32_t spinRepeatIntervalMs{60};
+    std::uint32_t statusbarMessageFadeMs{120};
+    std::uint32_t statusbarMessageTimeoutMs{4000};
+    std::uint32_t progressIndeterminateCycleMs{1400};
+    std::uint32_t statusbarBusyCycleMs{1200};
 
     void reduceAnimation();
 
