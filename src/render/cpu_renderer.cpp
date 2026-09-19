@@ -727,19 +727,141 @@ void CpuRenderer::drawIcon(std::vector<std::vector<core::Offset>> polylines,
     }
 }
 
+void CpuRenderer::boxBlurPass(std::vector<float>& src,
+                              std::vector<float>& dst, int width, int height,
+                              int radius, bool horizontal) {
+    const float norm = 1.0F / static_cast<float>(2 * radius + 1);
+    if (horizontal) {
+        for (int y = 0; y < height; ++y) {
+            const float* row =
+                &src[static_cast<std::size_t>(y) * width];
+            float* out = &dst[static_cast<std::size_t>(y) * width];
+            float sum = 0.0F;
+            for (int i = 0; i <= std::min(radius, width - 1); ++i) {
+                sum += row[i];
+            }
+            for (int x = 0; x < width; ++x) {
+                out[x] = sum * norm;
+                const int add = x + radius + 1;
+                const int remove = x - radius;
+                if (add < width) {
+                    sum += row[add];
+                }
+                if (remove >= 0) {
+                    sum -= row[remove];
+                }
+            }
+        }
+    } else {
+        for (int x = 0; x < width; ++x) {
+            float sum = 0.0F;
+            for (int i = 0; i <= std::min(radius, height - 1); ++i) {
+                sum += src[static_cast<std::size_t>(i) * width + x];
+            }
+            for (int y = 0; y < height; ++y) {
+                dst[static_cast<std::size_t>(y) * width + x] = sum * norm;
+                const int add = y + radius + 1;
+                const int remove = y - radius;
+                if (add < height) {
+                    sum += src[static_cast<std::size_t>(add) * width + x];
+                }
+                if (remove >= 0) {
+                    sum -= src[static_cast<std::size_t>(remove) * width + x];
+                }
+            }
+        }
+    }
+}
+
 void CpuRenderer::drawShadow(core::Rect elevatedBox, core::Color color,
                              core::Offset offset, float blur) {
-    (void)blur;  // CPU 无模糊：扁平面近似。
-    if (color.a == 0) {
+    if (color.a == 0 || elevatedBox.size.width <= 0.0F ||
+        elevatedBox.size.height <= 0.0F) {
         return;
     }
-    // 降级：token 阴影色的偏移矩形（透明度衰减，视觉近似层级）。
-    core::Color flat = color;
-    flat.a = static_cast<std::uint8_t>(std::lround(
-        static_cast<float>(flat.a) * 0.5F));
-    fillLogicalRect(core::Rect{elevatedBox.origin + offset,
-                               elevatedBox.size},
-                    flat, {});
+    if (blur <= 0.0F) {
+        // blur=0 防御路径：token 阴影色的偏移扁平面（保留 M6 降级行为）。
+        core::Color flat = color;
+        flat.a = static_cast<std::uint8_t>(std::lround(
+            static_cast<float>(flat.a) * 0.5F));
+        fillLogicalRect(core::Rect{elevatedBox.origin + offset,
+                                   elevatedBox.size},
+                        flat, {});
+        return;
+    }
+    // 软阴影：偏移矩形 → 设备像素 alpha 掩膜 → 3 次 H+V 可分离 box
+    // blur 近似高斯 → 以阴影色逐像素 coverage 混合。σ 与
+    // SkiaRenderer::drawShadow 的 kNormal_SkBlurStyle（blur*0.5*scale）
+    // 同口径；damage 层早已按 blur*2+1 外扩（core/damage.cpp），命令/
+    // 序列化零改动。box 宽 = σ*sqrt(12/3+1) = σ*sqrt(5)（标准 3-pass
+    // 高斯近似）；掩膜域扩 3σ+半径，高斯尾之外清零。
+    const float scale = deviceScale_;
+    const float sigma = blur * 0.5F * scale;
+    const int radius = std::max(1, static_cast<int>(std::lround(
+        (sigma * 2.2360679F - 1.0F) * 0.5F)));
+    const int spread =
+        static_cast<int>(std::lround(sigma * 3.0F)) + radius + 2;
+    const float rectX = (elevatedBox.origin.x + offset.x) * scale;
+    const float rectY = (elevatedBox.origin.y + offset.y) * scale;
+    const float rectW = elevatedBox.size.width * scale;
+    const float rectH = elevatedBox.size.height * scale;
+    const auto [x0, y0, x1, y1] = rasterBounds(
+        rectX - static_cast<float>(spread),
+        rectY - static_cast<float>(spread),
+        rectX + rectW + static_cast<float>(spread),
+        rectY + rectH + static_cast<float>(spread));
+    const int width = x1 - x0;
+    const int height = y1 - y0;
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    shadowMask_.assign(static_cast<std::size_t>(width) *
+                           static_cast<std::size_t>(height),
+                       0.0F);
+    // 矩形 coverage：盒式滤波边界（各轴 min(边距,1) 相乘）。
+    for (int py = y0; py < y1; ++py) {
+        const float cy = static_cast<float>(py) + 0.5F;
+        const float fy = std::clamp(
+            std::min(cy - rectY, rectY + rectH - cy), 0.0F, 1.0F);
+        if (fy <= 0.0F) {
+            continue;
+        }
+        for (int px = x0; px < x1; ++px) {
+            const float cx = static_cast<float>(px) + 0.5F;
+            const float fx = std::clamp(
+                std::min(cx - rectX, rectX + rectW - cx), 0.0F, 1.0F);
+            if (fx <= 0.0F) {
+                continue;
+            }
+            shadowMask_[static_cast<std::size_t>(py - y0) * width +
+                        static_cast<std::size_t>(px - x0)] = fx * fy;
+        }
+    }
+    shadowScratch_.assign(shadowMask_.size(), 0.0F);
+    for (int pass = 0; pass < 3; ++pass) {
+        boxBlurPass(shadowMask_, shadowScratch_, width, height, radius,
+                    true);
+        boxBlurPass(shadowScratch_, shadowMask_, width, height, radius,
+                    false);
+    }
+    for (int py = y0; py < y1; ++py) {
+        for (int px = x0; px < x1; ++px) {
+            const float cov = std::clamp(
+                shadowMask_[static_cast<std::size_t>(py - y0) * width +
+                            static_cast<std::size_t>(px - x0)],
+                0.0F, 1.0F);
+            if (cov <= 0.0F) {
+                continue;
+            }
+            if (cov >= 1.0F) {
+                blendPixel(px, py, color);
+            } else {
+                blendCoveragePixel(
+                    px, py, color,
+                    static_cast<std::uint8_t>(std::lround(cov * 255.0F)));
+            }
+        }
+    }
 }
 
 void CpuRenderer::drawImage(ImageId id, core::Rect destination) {

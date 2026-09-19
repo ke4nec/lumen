@@ -30,6 +30,11 @@ class CpuRenderer final : public Renderer {
 
     void setDeviceScale(float scale) override;
 
+    // 透明窗口（WindowDesc.transparent）：清屏色改为全透明（圆角外的
+    // 像素不被不透明底填充；呈现路径按像素 alpha 交给合成器）。不透明
+    // 窗口保持默认深底（无合成器依赖）。
+    void setClearColor(core::Color clear) { clearColor_ = clear; }
+
     // 系统字体光栅（窗口路径经 AppShell::setFontManager 转发；空 = 占
     // 位 5x7 点阵字）。注入后 drawText 使用 SystemFontManager 的系统字
     // 形位图（Windows 优先 GDI 雅黑，其他平台回退 stb），排版
@@ -77,8 +82,9 @@ class CpuRenderer final : public Renderer {
     void drawIcon(std::vector<std::vector<core::Offset>> polylines,
                   core::Rect box, core::Color color,
                   float strokeWidth) override;
-    // M6：阴影降级 —— 无模糊：token 阴影色的偏移扁平面（确定性近似；
-    // 命令与 Skia/GPU 一致，像素由后端能力决定）。
+    // M6：阴影 —— 软模糊：偏移矩形的 alpha 掩膜经可分离 box blur 近似
+    // 高斯（σ 与 SkiaRenderer 的 kNormal_SkBlurStyle 同口径），再以
+    // token 阴影色逐像素 coverage 混合；blur=0 时退回偏移扁平面。
     void drawShadow(core::Rect elevatedBox, core::Color color,
                     core::Offset offset, float blur) override;
     void endFrame() override;
@@ -118,6 +124,9 @@ class CpuRenderer final : public Renderer {
     void drawPlaceholderGlyph(std::uint32_t codePoint, float glyphX,
                               float topY, float lineHeight, float glyphScale,
                               float advance, core::TextStyle style);
+    // 软阴影的单向 box blur（滑动窗口，域外计 0——能量守恒的卷积语义）。
+    void boxBlurPass(std::vector<float>& src, std::vector<float>& dst,
+                     int width, int height, int radius, bool horizontal);
 
     float deviceScale_;
     core::Color clearColor_;
@@ -133,6 +142,9 @@ class CpuRenderer final : public Renderer {
     std::map<ImageId, PixelBuffer> images_{};
     ImageId nextImageId_{1};
     std::shared_ptr<const text::SystemFontManager> systemFonts_{};
+    // 软阴影 scratch（按命令尺寸重灌，避免逐命令分配）。
+    std::vector<float> shadowMask_{};
+    std::vector<float> shadowScratch_{};
 };
 
 }  // namespace lumen::render

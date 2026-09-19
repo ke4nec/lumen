@@ -408,8 +408,11 @@ Card 使用 surface/elevated surface 和 elevation token。ScrollView/ListView �
   以 16px 基准档定：`strokeWidth = 1.8`（对齐设计稿 1.7–2.0；1.5 在 16px + AA 下
   偏细发糊，2026-09 调整）；圆弧几何以 ≥24 段折线逼近，多段图元（如 Search 的
   镜圆与手柄）在相接处共享端点（不得留缝）。
-- `ElevationTokens`：保存层级、阴影颜色、偏移和模糊半径。当前 Renderer 不支持阴影
-  时，组件可先使用边框/表面层级表达，不得在控件中散落阴影常量。
+- `ElevationTokens`：保存层级、阴影颜色、偏移和模糊半径。三后端共用同一
+  `DrawShadow` 命令：Skia/GPU 按 `kNormal_SkBlurStyle`（σ = blur×0.5×scale）
+  模糊；CPU 以 3-pass 可分离 box blur 近似同一 σ（blur=0 时退偏移扁平面），
+  damage 口径按 `blur×2+1` 外扩覆盖模糊尾。Renderer 完全不支持阴影的平台，
+  组件可退回边框/表面层级表达，不得在控件中散落阴影常量。
 - `MotionTokens`：保存状态过渡、Dialog、Navigator 的时长和曲线。`reduceAnimation`
   将所有时长解析为零，并继续使用现有 FrameScheduler 的可访问性规则。
 - 响应式布局：Theme 提供 density 和组件尺度，窗口宽度断点由 layout/style context

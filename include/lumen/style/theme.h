@@ -116,7 +116,8 @@ struct Metrics {
 };
 
 // 阴影/层级 token（§4.5 分级目标）：三级抬升各自的 offset/blur/alpha；
-// 颜色恒为黑色（shadowColor）。CPU 后端维持扁平降级；高对比模式把各级
+// 颜色恒为黑色（shadowColor）。CPU 后端以 3-pass box blur 近似高斯
+//（σ 与 Skia 同口径，blur=0 退扁平面）；高对比模式把各级
 // alpha 置 0（阴影不承担唯一层级信息）。
 struct ElevationShadowParams {
     core::Offset offset{0.0F, 0.0F};

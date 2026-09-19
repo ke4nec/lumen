@@ -8,6 +8,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -173,11 +174,156 @@ TEST_CASE("elevated_node_records_shadow_command", "[visual][m6]") {
     for (const auto& command : commands.commands()) {
         if (command.type == render::CommandType::DrawShadow) {
             sawShadow = true;
-            // 命令一致性：CPU/Skia/GPU 收到同一份（CPU 内部降级）。
+            // 命令一致性：CPU/Skia/GPU 收到并消费同一份数据。
             CHECK(command.color.a > 0);
         }
     }
     CHECK(sawShadow);
+}
+
+// --- 阴影软模糊（CPU 3-pass box blur 近似，σ 与 Skia 同口径） ---
+
+namespace {
+
+// 白底 + 纯黑阴影：像素强度 = 1 - r/255（红色通道测量 bg 全 255），
+// 即 coverage × color.a 的合成结果。
+float shadowStrengthAt(const render::CpuRenderer& renderer, int width,
+                       int x, int y) {
+    const std::size_t offset =
+        (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+         static_cast<std::size_t>(x)) *
+        4;
+    return 1.0F - static_cast<float>(renderer.pixels().rgba[offset]) /
+                      255.0F;
+}
+
+}  // namespace
+
+TEST_CASE("cpu_soft_shadow_blurs_monotonically_beyond_edges",
+          "[visual][m6]") {
+    render::CpuRenderer renderer(1.0F, Color{255, 255, 255});
+    renderer.beginFrame(Size{400.0F, 300.0F});
+    renderer.drawShadow(Rect{Offset{50.0F, 50.0F}, Size{200.0F, 100.0F}},
+                        Color{0, 0, 0, 255}, Offset{0.0F, 4.0F}, 12.0F);
+    renderer.endFrame();
+
+    // 偏移后矩形 y∈[54,154]、x∈[50,250]；σ = blur*0.5*scale = 6。
+    // 深处覆盖≈1；跨过边缘单调衰减；3σ 之外≈0。
+    CHECK(shadowStrengthAt(renderer, 400, 150, 100) > 0.95F);
+    float previous = shadowStrengthAt(renderer, 400, 150, 150);
+    for (int y = 151; y <= 180; ++y) {
+        const float strength = shadowStrengthAt(renderer, 400, 150, y);
+        CHECK(strength <= previous + 0.01F);
+        previous = strength;
+    }
+    CHECK(shadowStrengthAt(renderer, 400, 150, 175) < 0.02F);
+    previous = shadowStrengthAt(renderer, 400, 245, 100);
+    for (int x = 246; x <= 275; ++x) {
+        const float strength = shadowStrengthAt(renderer, 400, x, 100);
+        CHECK(strength <= previous + 0.01F);
+        previous = strength;
+    }
+    CHECK(shadowStrengthAt(renderer, 400, 275, 100) < 0.02F);
+}
+
+TEST_CASE("cpu_soft_shadow_conserves_energy_within_tolerance",
+          "[visual][m6]") {
+    render::CpuRenderer renderer(1.0F, Color{255, 255, 255});
+    renderer.beginFrame(Size{400.0F, 300.0F});
+    renderer.drawShadow(Rect{Offset{50.0F, 50.0F}, Size{200.0F, 100.0F}},
+                        Color{0, 0, 0, 255}, Offset{0.0F, 4.0F}, 12.0F);
+    renderer.endFrame();
+    // box blur 卷积守恒（域外计 0）：总强度 ≈ 矩形面积；±30% 容差带
+    // 防过糊/欠糊回归。
+    double total = 0.0;
+    for (int y = 0; y < 300; ++y) {
+        for (int x = 0; x < 400; ++x) {
+            total += shadowStrengthAt(renderer, 400, x, y);
+        }
+    }
+    CHECK(total == Approx(200.0 * 100.0).epsilon(0.30));
+}
+
+TEST_CASE("cpu_soft_shadow_extent_stays_within_damage_outset",
+          "[visual][m6]") {
+    render::CpuRenderer renderer(1.0F, Color{255, 255, 255});
+    renderer.beginFrame(Size{400.0F, 300.0F});
+    // blur=24：damage 口径外扩 blur*2+1 = 49（core/damage.cpp）；可见
+    // 模糊尾（≈2.5σ）必须落在该外扩内，局部 damage 才不漏刷。
+    const Rect box{Offset{60.0F, 40.0F}, Size{180.0F, 120.0F}};
+    const Offset shadowOffset{0.0F, 8.0F};
+    renderer.drawShadow(box, Color{0, 0, 0, 255}, shadowOffset, 24.0F);
+    renderer.endFrame();
+    const float outset = 24.0F * 2.0F + 1.0F;
+    const Rect painted{box.origin + shadowOffset, box.size};
+    int minX = 400;
+    int minY = 300;
+    int maxX = -1;
+    int maxY = -1;
+    for (int y = 0; y < 300; ++y) {
+        for (int x = 0; x < 400; ++x) {
+            if (shadowStrengthAt(renderer, 400, x, y) > 0.0F) {
+                minX = std::min(minX, x);
+                minY = std::min(minY, y);
+                maxX = std::max(maxX, x);
+                maxY = std::max(maxY, y);
+            }
+        }
+    }
+    REQUIRE(maxX >= minX);
+    CHECK(static_cast<float>(minX) >= painted.left() - outset);
+    CHECK(static_cast<float>(minY) >= painted.top() - outset);
+    CHECK(static_cast<float>(maxX) < painted.right() + outset);
+    CHECK(static_cast<float>(maxY) < painted.bottom() + outset);
+    // 模糊确实发生了：绘制范围超出矩形本体。
+    CHECK(minY < static_cast<int>(painted.top()));
+    CHECK(maxY >= static_cast<int>(painted.bottom()));
+}
+
+TEST_CASE("cpu_soft_shadow_sigma_scales_with_device_scale",
+          "[visual][m6]") {
+    const auto edgeFalloffDistance = [](float scale) {
+        render::CpuRenderer renderer(scale, Color{255, 255, 255});
+        renderer.beginFrame(Size{400.0F, 300.0F});
+        renderer.drawShadow(
+            Rect{Offset{50.0F, 50.0F}, Size{200.0F, 100.0F}},
+            Color{0, 0, 0, 255}, Offset{0.0F, 4.0F}, 12.0F);
+        renderer.endFrame();
+        const int deviceWidth = static_cast<int>(400.0F * scale);
+        const float rectBottomDevice = (50.0F + 4.0F + 100.0F) * scale;
+        const int sampleX = static_cast<int>(150.0F * scale);
+        int last = -1;
+        const int yLimit = static_cast<int>(300.0F * scale);
+        for (int y = static_cast<int>(rectBottomDevice); y < yLimit; ++y) {
+            if (shadowStrengthAt(renderer, deviceWidth, sampleX, y) >=
+                0.05F) {
+                last = y;
+            }
+        }
+        REQUIRE(last >= 0);
+        return static_cast<float>(last) - rectBottomDevice + 1.0F;
+    };
+    const float d1 = edgeFalloffDistance(1.0F);
+    const float d2 = edgeFalloffDistance(2.0F);
+    // σ = blur*0.5*scale：scale=2 的衰减距离约 2×（±25% 像素量化容差）。
+    CHECK(d2 == Approx(2.0F * d1).epsilon(0.25));
+}
+
+TEST_CASE("cpu_shadow_without_blur_keeps_flat_plane_fallback",
+          "[visual][m6]") {
+    render::CpuRenderer renderer(1.0F, Color{255, 255, 255});
+    renderer.beginFrame(Size{400.0F, 300.0F});
+    renderer.drawShadow(Rect{Offset{50.0F, 50.0F}, Size{200.0F, 100.0F}},
+                        Color{0, 0, 0, 200}, Offset{0.0F, 4.0F}, 0.0F);
+    renderer.endFrame();
+    // blur=0 防御路径：内部均匀半强度扁平面，边界 1px 内硬切。
+    const float half = 200.0F / 255.0F * 0.5F;
+    CHECK(shadowStrengthAt(renderer, 400, 150, 100) ==
+          Approx(half).epsilon(0.02));
+    CHECK(shadowStrengthAt(renderer, 400, 249, 153) ==
+          Approx(half).epsilon(0.02));
+    CHECK(shadowStrengthAt(renderer, 400, 251, 100) == 0.0F);
+    CHECK(shadowStrengthAt(renderer, 400, 150, 155) == 0.0F);
 }
 
 // --- 滚动条 ---

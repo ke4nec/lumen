@@ -917,7 +917,8 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   - Dropdown 为树内展开（无浮动层/模态菜单键盘导航）；Tooltip 为常驻
     节点（显隐由应用 rebuild 控制，无 hover 延迟驱动）。
   - CPU 阴影为扁平面近似（无模糊）；图标光栅为方形笔刷（无圆帽/
-    抗锯齿近似）。
+    抗锯齿近似）。（2026-09-19 追记：图标 AA/圆帽与 CPU 软阴影
+    blur 已随后续按需优化收口，见 §10「既有能力优化」完成记录。）
   - Radio 组互斥由应用写值管理（框架不内置组语义）。
 - 回滚点：M5 合入后的提交（见 M5 完成记录）。
 
@@ -1467,6 +1468,42 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   下划线直达），无渐入；打开动效进行中（≤120ms）以键盘展开子菜
   单时，级联锚取自当前（上升中）行位置，残留 ≤6px 偏差至关闭
   （键盘竞态窗口，指针路径不涉及）。
+
+### 既有能力优化（2026-09-19，计划见 docs/lumen-optimization-plan.md）
+
+#### P1 CPU 阴影软模糊（2026-09-19）
+
+- 完成日期：2026-09-19
+- 提交号：（本变更提交，见 Git 历史 `feat(render)`）
+- 变更：
+  - `CpuRenderer::drawShadow`（src/render/cpu_renderer.cpp）从
+    「(void)blur 偏移扁平面（alpha×0.5）」升级为软阴影：偏移矩形 →
+    设备像素 alpha 掩膜（盒式滤波 AA 边界）→ 3 次 H+V 可分离 box
+    blur 近似高斯（σ = blur×0.5×deviceScale，与 SkiaRenderer 的
+    `kNormal_SkBlurStyle, blur*0.5*scale` 同口径；box 宽 =
+    σ×sqrt(5)，域外计 0 的能量守恒卷积）→ 以阴影色逐像素 coverage
+    混合（复用 blendCoveragePixel）。掩膜/行缓冲为渲染器成员
+    scratch（shadowMask_/shadowScratch_），无逐命令分配。
+  - `blur=0` 防御路径保留 M6 扁平面行为；高对比 alpha=0 早退不变。
+  - RenderCommand/序列化/token/damage 口径零改动（damage 层本就按
+    blur×2+1 外扩）；Skia/GPU 像素零变化。
+  - 文档：theme.h ElevationTokens 注释与 visual-system-design §8
+    的「CPU 扁平降级」表述更新为软阴影口径；M6 已知限制追记收口。
+- 测试：新增 `tests/visual_m6_tests.cpp` 5 用例——边缘单调衰减
+  （纵/横两向 + 3σ 外≈0）、能量守恒（±30% 容差带）、绘制范围落在
+  damage 外扩 blur×2+1 内（局部 damage 不漏刷的直接像素证明）、
+  σ 随 deviceScale 线性（scale=2 衰减距离≈2×）、blur=0 扁平面
+  回归（内部均匀半强度 + 硬边）。本地 Windows CPU Debug 全量
+  `599/599`（594 既有 + 5 新增；**零既有哈希变化**——headless 哈希
+  路径首帧不含 elevation，含阴影场景无帧断言）；bench card-grid
+  场景无 elevation，A/B 验证帧 hash 与改动前一致。
+- 平台：动效平台无关（CPU 软件路径）；本地 Windows 全量验证，
+  Linux/macOS 与 Skia/GPU 构建以 CI 为事实来源（命令同源，后端
+  像素各自消费）。
+- 已知限制：box blur 为高斯近似（核形状非逐位一致 Skia，σ 口径
+  一致）；垂直 pass 为列跨步访存（掩膜面板量级微秒级，未做转置
+  优化）。
+- 回滚点：`cac1259 fix(icons): Search 几何与描边权重清晰度`（P1 前）。
 
 ### Gallery 设计稿尺度优化对齐（2026-09-16）
 
