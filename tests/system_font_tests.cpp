@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <memory>
 
 #include "lumen/render/cpu_renderer.h"
@@ -194,4 +195,35 @@ TEST_CASE("system_font_layout_keeps_ltr_visual_order",
             previous = glyph.xOffsetPx;
         }
     }
+}
+
+TEST_CASE("system_font_advance_is_not_pixel_quantized",
+          "[text][system-fonts]") {
+    // 横向步进曾取 GDI GGO_METRICS 的 gmCellIncX——整数量化步进逐字形
+    // 累积把字距系统性撑歪（标题栏 "L u m e n" 肉眼可辨，渲染 PNG 评审
+    // 定位）。现在度量与位图同源走字体设计值（stb hmtx 分数步进），
+    // 本测试钉住：常用字形/字号组合中必须出现非整数步进。
+    const auto fonts = loadSystemFonts();
+    if (fonts == nullptr) {
+        SUCCEED("environment has no system fonts; nothing to measure");
+        return;
+    }
+    bool sawFractional = false;
+    for (const float size : {13.0F, 14.0F, 15.0F, 16.0F, 17.0F}) {
+        text::FontQuery query;
+        query.sizePx = size;
+        for (const char32_t codePoint :
+             {U'L', U'u', U'm', U'e', U'n', U'W', U'G', U'a'}) {
+            text::GlyphMetrics metrics{};
+            if (!fonts->glyphMetrics(query, codePoint, &metrics)) {
+                continue;
+            }
+            const float advancePx = metrics.advanceEm * size;
+            const float fractional = advancePx - std::floor(advancePx);
+            if (fractional > 0.05F && fractional < 0.95F) {
+                sawFractional = true;
+            }
+        }
+    }
+    CHECK(sawFractional);
 }

@@ -1,10 +1,12 @@
 // 桌面系统字体后端（系统字形优先；CPU-only 可用）。
 //
 // Windows 窗口默认走占位 5x7 点阵字，与设计稿差距主因。CPU 窗口路径
-// 现在优先通过 GDI 获取系统字形（Windows 雅黑优先），非 Windows 或
-// GDI 不可用时经 stb_truetype 读取系统字体文件；度量/回退与
+// 经 stb_truetype 读取系统字体文件（Windows 雅黑/Segoe 优先）提供真实
+// 字形：横向步进与轮廓位图同为字体设计值，避免 GDI 整数量化步进把字
+// 距撑歪（GDI 仅承担行高 tmAscent/tmDescent）；度量/回退与
 // defaultFontStackFor 同序，并向 CpuRenderer 提供灰度字形位图。headless
-// /测试默认仍用占位（确定性帧哈希不受影响），窗口路径经 fontFactory 注入。
+// /测试默认仍用占位（确定性帧哈希不受影响），窗口路径经 setFontManager
+// 注入。
 
 #include "lumen/text/system_font_manager.h"
 
@@ -161,11 +163,6 @@ std::string familyFromNameTable(const stbtt_fontinfo& info) {
 }
 
 #ifdef _WIN32
-struct GdiGlyphMetrics {
-    float advancePx{0.0F};
-    float ascentPx{0.0F};
-    float descentPx{0.0F};
-};
 
 // GetTextFaceW 可能返回本地化族名（如“微软雅黑”），不能直接与英文
 // 查询比较。读取 GDI 实际选中字体的英文 name 记录，避免把别名误报
@@ -320,27 +317,10 @@ class SystemFontManagerImpl final : public SystemFontManager {
         if (face == nullptr) {
             return false;
         }
-#ifdef _WIN32
-        // Windows：位图走 GDI 光栅，度量也必须走 GDI，否则 stb advance
-        // 与 GDI 位图宽度系统性漂移，文本看起来“挤在一起”。同一字体/
-        // 字重/字号下 GDI 的 gmCellIncX 与位图同源，布局 pen 与绘制对齐。
-        {
-            const float size =
-                query.sizePx > 0.0F ? query.sizePx : 14.0F;
-            GdiGlyphMetrics glyph;
-            float ascentPx = 0.0F;
-            float descentPx = 0.0F;
-            if (gdiGlyphMetrics(*face, query, codePoint, size, &glyph) &&
-                gdiVertical(*face, query, size, &ascentPx, &descentPx) &&
-                size > 0.0F) {
-                out->advanceEm = glyph.advancePx / size;
-                out->ascentEm = std::max(ascentPx, glyph.ascentPx) / size;
-                out->descentEm = std::max(descentPx, glyph.descentPx) / size;
-                return true;
-            }
-            // GDI 失败（如增补平面表情）回退 stb，与位图回退路径一致。
-        }
-#endif
+        // 横向步进与位图都取字体设计值（stb hmtx/轮廓光栅）：曾用 GDI
+        // GGO_METRICS 的 gmCellIncX（整数量化步进）配 GDI grid-fit 位图，
+        // 逐字形累积把字距系统性撑歪（14px 下 "Lumen" 的字符节奏肉眼
+        // 可辨地偏离设计稿）；度量和墨宽必须同一坐标系。
         const int glyph = stbtt_FindGlyphIndex(
             &face->info, static_cast<int>(codePoint));
         if (glyph == 0) {
@@ -567,16 +547,9 @@ class SystemFontManagerImpl final : public SystemFontManager {
                                         const FontQuery& query,
                                         int codePoint, float pixelHeight,
                                         GlyphBitmap* out) const {
-#ifdef _WIN32
-        // Prefer the platform rasterizer on Windows.  GDI's gray glyph
-        // bitmap is the same system font path used by desktop controls and
-        // keeps small UI text from looking like a scaled pixel font.
-        if (codePoint <= 0xFFFF &&
-            rasterizeWindows(face, query, static_cast<wchar_t>(codePoint),
-                             pixelHeight, out)) {
-            return true;
-        }
-#endif
+        // 字形光栅一律走 stb（无 hinting 的设计值灰度位图），与
+        // glyphMetrics 的设计步进同源；曾优先 GDI 光栅，其 grid-fit 墨宽
+        // 与设计步进不一致导致字距失真（CPU 渲染管线，非系统控件路径）。
         const float scale =
             stbtt_ScaleForMappingEmToPixels(&face.info, pixelHeight);
         int x0 = 0;
@@ -706,7 +679,7 @@ class SystemFontManagerImpl final : public SystemFontManager {
         }
         {
             std::lock_guard<std::mutex> lock(cacheMutex_);
-            if (gdiVerticalCache_.size() >= kMaxGdiMetricsCache) {
+            if (gdiVerticalCache_.size() >= kMaxGdiCacheSize) {
                 gdiVerticalCache_.clear();
             }
             gdiVerticalCache_.emplace(key, std::make_pair(ascent, descent));
@@ -720,154 +693,7 @@ class SystemFontManagerImpl final : public SystemFontManager {
         return true;
     }
 
-    // GDI advance 与字形上下界（逻辑像素）。增补平面回退 stb。
-    [[nodiscard]] bool gdiGlyphMetrics(const FaceEntry& face,
-                                     const FontQuery& query, char32_t codePoint,
-                                     float sizePx, GdiGlyphMetrics* out) const {
-        if (out == nullptr || sizePx <= 0.0F || sizePx > 256.0F ||
-            codePoint > 0xFFFF) {
-            return false;
-        }
-        const std::size_t faceIndex =
-            static_cast<std::size_t>(&face - faces_.data());
-        const auto quantized =
-            static_cast<std::uint32_t>(std::lround(sizePx * 16.0F));
-        const std::uint64_t key =
-            ((static_cast<std::uint64_t>(faceIndex) & 0xFFULL) << 56) |
-            ((static_cast<std::uint64_t>(
-                  static_cast<std::uint32_t>(codePoint)) & 0xFFFFFFULL)
-             << 32) |
-            ((static_cast<std::uint64_t>(quantized) & 0xFFFFFFULL) << 8) |
-            ((static_cast<std::uint64_t>(
-                  std::clamp(static_cast<int>(query.weight), 100, 900) / 100) &
-              0x0FULL)
-             << 1) |
-            (query.italic ? 1ULL : 0ULL);
-        {
-            std::lock_guard<std::mutex> lock(cacheMutex_);
-            if (const auto it = gdiGlyphCache_.find(key);
-                it != gdiGlyphCache_.end()) {
-                *out = it->second;
-                return true;
-            }
-        }
-        HDC dc = CreateCompatibleDC(nullptr);
-        if (dc == nullptr) {
-            return false;
-        }
-        HGDIOBJ previous = nullptr;
-        HFONT font = createGdiFont(dc, face, query, sizePx, &previous);
-        if (font == nullptr) {
-            DeleteDC(dc);
-            return false;
-        }
-        GLYPHMETRICS metrics{};
-        MAT2 matrix{};
-        matrix.eM11.value = 1;
-        matrix.eM22.value = 1;
-        const DWORD result = GetGlyphOutlineW(
-            dc, static_cast<wchar_t>(codePoint), GGO_METRICS, &metrics, 0,
-            nullptr, &matrix);
-        const float advance =
-            result == GDI_ERROR
-                ? -1.0F
-                : static_cast<float>(metrics.gmCellIncX);
-        SelectObject(dc, previous);
-        DeleteObject(font);
-        DeleteDC(dc);
-        if (advance < 0.0F) {
-            return false;
-        }
-        const GdiGlyphMetrics glyph{
-            advance, std::max(0.0F, static_cast<float>(metrics.gmptGlyphOrigin.y)),
-            std::max(0.0F, static_cast<float>(metrics.gmBlackBoxY) -
-                               static_cast<float>(metrics.gmptGlyphOrigin.y))};
-        {
-            std::lock_guard<std::mutex> lock(cacheMutex_);
-            if (gdiGlyphCache_.size() >= kMaxGdiMetricsCache) {
-                gdiGlyphCache_.clear();
-            }
-            gdiGlyphCache_.emplace(key, glyph);
-        }
-        *out = glyph;
-        return true;
-    }
 
-    [[nodiscard]] bool rasterizeWindows(const FaceEntry& face,
-                                               const FontQuery& query,
-                                               wchar_t codePoint,
-                                               float pixelHeight,
-                                               GlyphBitmap* out) const {
-        if (out == nullptr || pixelHeight <= 0.0F || face.family.empty()) {
-            return false;
-        }
-        HDC dc = CreateCompatibleDC(nullptr);
-        if (dc == nullptr) {
-            return false;
-        }
-        HGDIOBJ previous = nullptr;
-        const HFONT font = createGdiFont(dc, face, query, pixelHeight, &previous);
-        if (font == nullptr) {
-            DeleteDC(dc);
-            return false;
-        }
-        GLYPHMETRICS metrics{};
-        MAT2 matrix{};
-        // Keep the native GDI transform.  GGO_GRAY8_BITMAP scanlines are
-        // already ordered top-to-bottom for this matrix; reversing them
-        // turns every glyph upside down before it reaches the framebuffer.
-        matrix.eM11.value = 1;
-        matrix.eM22.value = 1;
-        const DWORD format = GGO_GRAY8_BITMAP;
-        const DWORD bytes = GetGlyphOutlineW(dc, codePoint, format, &metrics,
-                                             0, nullptr, &matrix);
-        if (bytes == GDI_ERROR || metrics.gmBlackBoxX <= 0 ||
-            metrics.gmBlackBoxY <= 0) {
-            SelectObject(dc, previous);
-            DeleteObject(font);
-            DeleteDC(dc);
-            return false;
-        }
-        const int width = static_cast<int>(metrics.gmBlackBoxX);
-        const int glyphHeight = static_cast<int>(metrics.gmBlackBoxY);
-        const int rowStride = (width + 3) & ~3;
-        const std::size_t requiredBytes = static_cast<std::size_t>(rowStride) *
-                                           static_cast<std::size_t>(glyphHeight);
-        std::vector<std::uint8_t> raw(
-            std::max<std::size_t>(static_cast<std::size_t>(bytes),
-                                  requiredBytes));
-        if (GetGlyphOutlineW(dc, codePoint, format, &metrics,
-                             static_cast<DWORD>(raw.size()), raw.data(),
-                             &matrix) == GDI_ERROR) {
-            SelectObject(dc, previous);
-            DeleteObject(font);
-            DeleteDC(dc);
-            return false;
-        }
-        GlyphBitmap bitmap;
-        bitmap.width = width;
-        bitmap.height = glyphHeight;
-        bitmap.bearingX = metrics.gmptGlyphOrigin.x;
-        bitmap.bearingTop = metrics.gmptGlyphOrigin.y;
-        bitmap.coverage.assign(static_cast<std::size_t>(width) *
-                                   static_cast<std::size_t>(glyphHeight),
-                               0);
-        for (int row = 0; row < glyphHeight; ++row) {
-            const int sourceRow = row;
-            for (int col = 0; col < width; ++col) {
-                const std::uint8_t level =
-                    raw[static_cast<std::size_t>(sourceRow * rowStride + col)];
-                bitmap.coverage[static_cast<std::size_t>(row * width + col)] =
-                    static_cast<std::uint8_t>(
-                        std::min(255, static_cast<int>(level) * 255 / 64));
-            }
-        }
-        *out = std::move(bitmap);
-        SelectObject(dc, previous);
-        DeleteObject(font);
-        DeleteDC(dc);
-        return true;
-    }
 #endif
 
     // 字体文件字节（faces_ 的 stbtt_fontinfo 指向其中；构造后不再
@@ -878,9 +704,8 @@ class SystemFontManagerImpl final : public SystemFontManager {
     mutable std::mutex cacheMutex_{};
     mutable std::unordered_map<std::uint64_t, GlyphBitmap> bitmapCache_{};
 #ifdef _WIN32
-    // GDI 度量缓存（与位图同源；布局热路径命中，避免每 cluster 建 DC）。
-    static constexpr std::size_t kMaxGdiMetricsCache = 8192;
-    mutable std::unordered_map<std::uint64_t, GdiGlyphMetrics> gdiGlyphCache_{};
+    // GDI 行高度量缓存（热路径命中，避免每 cluster 建 DC）与替换族记录。
+    static constexpr std::size_t kMaxGdiCacheSize = 8192;
     mutable std::unordered_map<std::uint64_t, std::pair<float, float>>
         gdiVerticalCache_{};
     mutable std::unordered_set<std::string> gdiSubstitutions_{};
