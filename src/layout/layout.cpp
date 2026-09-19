@@ -99,6 +99,7 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.semanticsActions = widget.semanticsActions;
     node.checked = widget.checked;
     node.scrollOffset = widget.scrollOffset;
+    node.scrollAxis = widget.scrollAxis;
     node.imageId = widget.imageId;
     node.imageSource = widget.imageSource;
     // 值控件复用 RenderNode::text：绑定值由 applyBinds 写入，未绑定值
@@ -145,9 +146,15 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
          widget.type == WidgetType::Tree ||
          widget.type == WidgetType::TreeList)) {
         node.scrollbarThickness = styleContext.theme.scrollbar.thickness;
-        node.scrollbarThumbWidth = styleContext.theme.scrollbar.thumbWidth;
+        const auto& scrollbar = styleContext.theme.scrollbar;
+        const bool hovered = !identity.empty() && styleContext.interaction.hoveredScrollbarIdentity == identity;
+        const bool dragged = !identity.empty() && styleContext.interaction.draggedScrollbarIdentity == identity;
+        node.scrollbarThumbWidth = widget.enabled && (hovered || dragged)
+            ? scrollbar.activeThumbWidth : scrollbar.thumbWidth;
         node.scrollbarMinLength = styleContext.theme.scrollbar.minLength;
-        node.scrollbarColor = styleContext.theme.scrollbar.rest;
+        node.scrollbarInset = scrollbar.inset;
+        node.scrollbarColor = !widget.enabled ? scrollbar.disabled
+            : dragged ? scrollbar.dragged : hovered ? scrollbar.hovered : scrollbar.rest;
     }
     node.enabled = widget.enabled;
     node.invalid = widget.invalid;
@@ -929,8 +936,9 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
     return node;
 }
 
-// v0.3 阶段8D (plan §3.4): 滚动视口。子内容主轴（纵向）不受限，横向
-// 受视口约束；scrollOffset 应用到子 offset（夹取到 [0, scrollExtent]），
+// v0.3 阶段8D (plan §3.4): 滚动视口。内容在活动主轴上不受限、交叉轴
+// 受视口约束（纵向=宽 ≤ 视口、高不限；水平为镜像，lumen-scroll-design
+// §3）；scrollOffset 应用到子 offset 对应轴（夹取到 [0, scrollExtent]），
 // painter 按视口裁剪（RenderNode.clipContent）。
 RenderNode layoutScrollView(const Widget& widget,
                             const Constraints& constraints,
@@ -941,6 +949,8 @@ RenderNode layoutScrollView(const Widget& widget,
         style::resolveStyle(widget, styleContext, identity);
     const EdgeInsets& padding = core::commonStyle(resolved).padding;
     const Constraints outer = constraints.deflate(widget.margin);
+    const bool horizontal =
+        widget.scrollAxis == core::ScrollAxis::Horizontal;
 
     float viewportWidth =
         widget.width.has_value()
@@ -963,27 +973,51 @@ RenderNode layoutScrollView(const Widget& widget,
     }
 
     const Widget& child = widget.children.front();
-    // 内容约束：宽 ≤ 视口 - padding，高不限（滚动视口语义）。
-    const float contentMaxWidth =
-        std::max(0.0F, viewportWidth - padding.horizontal());
-    Constraints childConstraints{0.0F, contentMaxWidth, 0.0F,
+    // 内容约束（活动主轴不限；交叉轴 ≤ 视口 - padding）。
+    Constraints childConstraints{0.0F, Constraints::unbounded().maxWidth,
+                                 0.0F,
                                  Constraints::unbounded().maxHeight};
+    if (horizontal) {
+        childConstraints.maxHeight =
+            std::max(0.0F, viewportHeight - padding.vertical());
+    } else {
+        childConstraints.maxWidth =
+            std::max(0.0F, viewportWidth - padding.horizontal());
+    }
     RenderNode childNode = layoutSingle(child, childConstraints, styleContext,
                                         childIdentity(identity, child, 0));
-    const float contentHeight = childNode.size.height +
-                                child.margin.vertical() +
-                                padding.vertical();
-    if (widget.shrinkWrap && !widget.height.has_value()) {
-        viewportHeight = clampFloat(contentHeight, outer.minHeight, outer.maxHeight);
-        node.size.height = viewportHeight;
+    const float contentMain =
+        horizontal
+            ? childNode.size.width + child.margin.horizontal() +
+                  padding.horizontal()
+            : childNode.size.height + child.margin.vertical() +
+                  padding.vertical();
+    if (widget.shrinkWrap &&
+        !(horizontal ? widget.width.has_value() : widget.height.has_value())) {
+        const float clamped =
+            clampFloat(contentMain, horizontal ? outer.minWidth : outer.minHeight,
+                       horizontal ? outer.maxWidth : outer.maxHeight);
+        if (horizontal) {
+            viewportWidth = clamped;
+            node.size.width = viewportWidth;
+        } else {
+            viewportHeight = clamped;
+            node.size.height = viewportHeight;
+        }
     }
     const float scrollExtent =
-        std::max(0.0F, contentHeight - viewportHeight);
+        std::max(0.0F, contentMain - (horizontal ? viewportWidth : viewportHeight));
     const float offset = std::clamp(widget.scrollOffset, 0.0F, scrollExtent);
 
-    childNode.offset = Offset{
-        padding.left + child.margin.left,
-        padding.top + child.margin.top - offset};
+    if (horizontal) {
+        childNode.offset = Offset{
+            padding.left + child.margin.left - offset,
+            padding.top + child.margin.top};
+    } else {
+        childNode.offset = Offset{
+            padding.left + child.margin.left,
+            padding.top + child.margin.top - offset};
+    }
     node.children.push_back(std::move(childNode));
     node.scrollExtent = scrollExtent;
     node.scrollOffset = offset;

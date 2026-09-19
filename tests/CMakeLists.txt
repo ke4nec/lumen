@@ -11,6 +11,7 @@ set(LUMEN_TEST_SOURCES
     resource_manager_tests.cpp
     interaction_tests.cpp
     wheel_routing_tests.cpp
+    scrollbar_tests.cpp
     counter_integration_tests.cpp
     counter_fallback_tests.cpp
     # M2：应用壳（runApp/AppShell）headless 验收——Fake host 驱动。

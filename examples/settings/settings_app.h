@@ -983,6 +983,7 @@ class SettingsApp {
         }
         switch (phase) {
             case core::ScrollDragPhase::Begin:
+                scroll->cancelDrag();
                 return true;
             case core::ScrollDragPhase::Update:
                 if (viewport != nullptr) {
@@ -1003,7 +1004,12 @@ class SettingsApp {
                 }
                 return false;
             case core::ScrollDragPhase::Cancel:
-                scroll->stopFling();
+                if (viewport) scroll->cancelDrag();
+                else {
+                    scroll_.cancelDrag();
+                    dialogScroll_.cancelDrag();
+                    library_.scroll().cancelDrag();
+                }
                 return false;
         }
         return false;
@@ -1018,6 +1024,10 @@ class SettingsApp {
         }
         if (library_.scroll().isFlinging()) {
             active = library_.scroll().stepFling(nowMs) || active;
+            shell.markDirty();
+        }
+        if (dialogScroll_.isFlinging()) {
+            active = dialogScroll_.stepFling(nowMs) || active;
             shell.markDirty();
         }
         return active;

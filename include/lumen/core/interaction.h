@@ -52,11 +52,12 @@ enum class ScrollDragPhase { Begin, Update, End, Cancel };
 
 // 指针悬停期望的系统光标形状（core 语义层；平台适配层映射
 // platform::SystemCursor 并调用 ApplicationHost::setCursor——core 不含
-// 平台类型）。当前仅分隔条声明特殊形状（splitter-design §7）；默认 Arrow。
+// 平台类型）。分隔条与滚动条声明特殊形状；默认 Arrow。
 enum class PointerCursor : std::uint8_t {
     Arrow,
     ResizeEW,  // 水平 Splitter 分隔条（左右分栏）
     ResizeNS,  // 垂直 Splitter 分隔条（上下分栏）
+    PointingHand,  // Scrollbar thumb, including its wider hit area.
 };
 
 // v0.3 阶段8B (plan §3.2): TextField 编辑模型升级为 selection/composing。
@@ -122,10 +123,14 @@ class InteractionController {
                                          Offset position, Offset delta)>;
     void setWheelSink(WheelSink sink);
     // 返回 sink 的消费状态（M5 收口：语义滚动回执不再恒成功）。
+    // modifiers 参与 Shift+纵轮 → 水平视口横向分量的投影
+    //（lumen-scroll-design §4；默认无修饰键，既有调用零改动）。
     [[nodiscard]] bool wheel(const RenderNode& root, Offset position,
-                             Offset delta);
-    // 键盘滚动（无编辑焦点时的 PageUp/PageDown/Up/Down/Home/End）→
-    // wheelSink（hit 为聚焦节点或空）；返回 sink 消费状态。
+                             Offset delta,
+                             KeyModifiers modifiers = kModifierNone);
+    // 键盘滚动（无编辑焦点时的 PageUp/PageDown/Up/Down/Home/End；
+    // 焦点在水平视口时含 Left/Right）→ wheelSink（hit 为聚焦节点或
+    // 空）；返回 sink 消费状态。
     [[nodiscard]] bool scrollKey(const RenderNode& root, Key key);
 
     // --- 集合控件：源视口框架级滚动（collection-controls-design §6.5） ---
@@ -258,12 +263,17 @@ class InteractionController {
     // 分隔条拖动期间保持拖动方向（指针可能移出 12px 轨道）。宿主适配层
     // 轮询并映射系统光标。
     [[nodiscard]] PointerCursor pointerCursor() const {
+        if (!scrollbarDragIdentity_.empty()) return PointerCursor::PointingHand;
         if (splitterDragActive()) {
             return splitterDragHorizontal_ ? PointerCursor::ResizeEW
                                            : PointerCursor::ResizeNS;
         }
         return hoverCursor_;
     }
+    [[nodiscard]] const std::string& hoveredScrollbarIdentity() const { return hoveredScrollbarIdentity_; }
+    [[nodiscard]] const std::string& draggedScrollbarIdentity() const { return scrollbarDragIdentity_; }
+    // Re-evaluate stationary pointers after layout changes or scrollbars disappear.
+    void refreshPointer(const RenderNode& root);
     // Drag displacement from the press anchor to the latest move.
     [[nodiscard]] Offset dragDelta() const {
         return dragCurrent_ - dragAnchor_;
@@ -355,6 +365,16 @@ class InteractionController {
     std::string hoveredIdentity_{};
     // hover 命中链推导的光标（分隔条 ResizeEW/NS；见 pointerCursor）。
     PointerCursor hoverCursor_{PointerCursor::Arrow};
+    std::string hoveredScrollbarIdentity_{};
+    std::string scrollbarDragIdentity_{};
+    float scrollbarGrabFraction_{0.0F};
+    bool scrollbarPressActive_{false};
+    // Pair Cancel only with the application sink that received Begin.
+    bool scrollbarDragUsesSink_{false};
+    Offset pointerPosition_{};
+    bool hasPointerPosition_{false};
+    void updatePointerHover(const RenderNode& root, Offset position);
+    void moveScrollbar(const RenderNode& root, Offset position, std::uint64_t timestampMs);
     // Click target armed at pointer down: nearest onClick node identity.
     std::string armedOnClick_{};
     std::string armedKey_{};
@@ -386,9 +406,6 @@ class InteractionController {
     bool scrollDragging_{false};
     std::string scrollDragIdentity_{};
     Offset scrollLastPoint_{};
-    // 滚动条拇指拖拽：起点落在拇指上时位移按拇指→内容比例换算后
-    // 再进 sink（拇指跟手 1:1）；内容区拖拽仍是 1:1 跟手。
-    bool scrollDragOnThumb_{false};
     // M6 Slider 拖拽：起点落在滑块上时锁定目标（identity 跨重建），
     // 移动每拍按位置设值（旋钮跟手），释放再落一次终值。
     std::string sliderDragIdentity_;

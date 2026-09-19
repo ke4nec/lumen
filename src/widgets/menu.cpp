@@ -346,9 +346,14 @@ void ContextMenuController::openAnchored(app::AppShell& shell,
                         core::Offset delta) {
             return scrollOrClose(root, hit, delta.y);
         },
-        [this, &shell](const core::RenderNode*, const core::RenderNode* viewport,
-                       core::Offset, core::Offset,
+        [this, &shell, scrollOrClose](const core::RenderNode* root, const core::RenderNode* viewport,
+                       core::Offset, core::Offset delta,
                        core::ScrollDragPhase phase, std::uint64_t) {
+            // Scrollbar dragging uses the same persisted offset as wheels.
+            if (phase == core::ScrollDragPhase::Update && root && viewport &&
+                shell.controller().draggedScrollbarIdentity() == viewport->identity) {
+                return scrollOrClose(*root, viewport, -delta.y);
+            }
             // 拖动起点在菜单滚动视口内 → 首版无菜单内拖拽滚动，无操作
             //（长菜单面板内拖动不得把菜单拖关）；其余 Begin（防御：overlay
             // 内当前没有其他滚动视口，barrier 拖动不触发滚动拖拽路径）

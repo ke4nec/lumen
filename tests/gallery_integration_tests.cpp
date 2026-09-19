@@ -12,6 +12,7 @@
 #include "gallery_app.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/interaction.h"
+#include "lumen/core/scrollbar.h"
 #include "lumen/core/state.h"
 #include "lumen/render/frame_scheduler.h"
 
@@ -746,6 +747,63 @@ TEST_CASE("gallery_collections_wheel_scrolls_inner_collection", "[gallery]") {
     const RenderNode* table = findNodeByKey(app.root(), "collection-table");
     REQUIRE(table != nullptr);
     CHECK(table->scrollOffset == 120.0F);
+}
+
+TEST_CASE("gallery_inner_scrollview_owns_wheel_and_thumb_without_moving_page", "[gallery][scrollbar]") {
+    GalleryApp app;
+    app.setView({1024, 768});
+    static_cast<void>(app.renderFrame());
+    go(app, "nav-lists");
+    scrollIntoView(app, "gallery-scrollview");
+    const float outer = app.scroll().offset();
+    const auto position = absoluteOffset(app.root(), "gallery-scrollview");
+    REQUIRE(findNodeByKey(app.root(), "gallery-scrollview")->scrollExtent >= 30);
+    CHECK(app.shell().wheel(position + Offset{20, 20}, {0, 30}));
+    static_cast<void>(app.renderFrame());
+    CHECK(findNodeByKey(app.root(), "gallery-scrollview")->scrollOffset == Catch::Approx(30));
+    CHECK(app.scroll().offset() == outer);
+    CHECK(app.shell().wheel(position + Offset{20, 20}, {0, -20}));
+    static_cast<void>(app.renderFrame());
+    CHECK(findNodeByKey(app.root(), "gallery-scrollview")->scrollOffset == Catch::Approx(10));
+    const auto bar = scrollbarGeometry(*findNodeByKey(app.root(), "gallery-scrollview"));
+    REQUIRE(bar);
+    const auto point = position + bar->thumbHit.origin + Offset{1, bar->thumbHit.size.height * .5F};
+    app.shell().pointerMove(point);
+    CHECK(app.shell().pointerCursor() == PointerCursor::PointingHand);
+    app.shell().pointerDown(point);
+    app.shell().pointerMove(point + Offset{0, 8});
+    static_cast<void>(app.renderFrame());
+    CHECK(findNodeByKey(app.root(), "gallery-scrollview")->scrollOffset > 10);
+    CHECK(app.scroll().offset() == outer);
+    app.shell().pointerUp(point + Offset{0, 8});
+    CHECK(app.scroll().offset() == outer);
+}
+
+TEST_CASE("gallery_scrollbar_cancel_does_not_seed_the_next_content_fling", "[gallery][scrollbar][review]") {
+    GalleryApp app;
+    app.setView({1024, 768});
+    static_cast<void>(app.renderFrame());
+    go(app, "nav-lists");
+    const auto* viewport = findNodeByKey(app.root(), "gallery-list");
+    REQUIRE(viewport);
+    const auto bar = scrollbarGeometry(*viewport);
+    REQUIRE(bar);
+    const auto origin = absoluteOffset(app.root(), "gallery-list");
+    const auto point = origin + bar->thumbHit.origin + Offset{1, bar->thumbHit.size.height * .5F};
+    app.shell().tick(100);
+    app.shell().pointerDown(point);
+    app.shell().tick(110);
+    app.shell().pointerMove(point + Offset{0, 20});
+    app.shell().pointerCancel();
+    static_cast<void>(app.renderFrame());
+    REQUIRE(app.scroll().offset() > 0);
+    // One content sample and release in the same tick has no measured velocity.
+    app.shell().tick(120);
+    const auto content = origin + Offset{4, 100};
+    app.shell().pointerDown(content);
+    app.shell().pointerMove(content + Offset{0, -12});
+    app.shell().pointerUp(content + Offset{0, -12});
+    CHECK_FALSE(app.scroll().isFlinging());
 }
 
 TEST_CASE("gallery_wheel_over_empty_collections_scrolls_outer_page", "[gallery][wheel-routing]") {

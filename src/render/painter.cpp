@@ -1,6 +1,7 @@
 #include "lumen/render/painter.h"
 
 #include "lumen/core/text_field.h"
+#include "lumen/core/scrollbar.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1002,40 +1003,12 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             const ScopedClip<Sink> rowsClip{sink, contentClip};
             paintChildren();
         } else paintChildren();
-        // S3（§7.2）：滚动条——Thumb 实色经 RenderNode 传递（专用 token，
-        // 不再对前景乘 alpha）；可视宽 4、最小长 24、上下 inset 4、圆角
-        // = 可视宽一半；长度按 viewport/content 比例并在
-        // [minLength, trackLength] 夹取（短视口不越界）。
-        if (node.scrollbarThickness > 0.0F &&
-            node.scrollExtent > 0.0F && node.scrollbarColor.a > 0) {
-            const float inset = node.scrollbarThickness -
-                                        node.scrollbarThumbWidth;
-            const float trackTop = origin.y + inset;
-            const float trackLength = std::max(
-                0.0F, node.size.height - 2.0F * inset);
-            const float fraction =
-                node.size.height / (node.size.height + node.scrollExtent);
-            // [minLength, trackLength] 夹取：短视口时最小值不越界。
-            const float thumbHeight = std::min(
-                std::max(trackLength * fraction, node.scrollbarMinLength),
-                trackLength);
-            if (thumbHeight > 0.0F && trackLength > 0.0F) {
-                const float scrollable = trackLength - thumbHeight;
-                const float progress = node.scrollExtent > 0.0F
-                                           ? node.scrollOffset /
-                                                 node.scrollExtent
-                                           : 0.0F;
-                const float thumbY = trackTop + progress * scrollable;
-                sink.drawRect(
-                    Rect{Offset{origin.x + node.size.width -
-                                    node.scrollbarThickness +
-                                    (node.scrollbarThickness -
-                                     node.scrollbarThumbWidth) * 0.5F,
-                                thumbY},
-                         Size{node.scrollbarThumbWidth, thumbHeight}},
-                    core::scaleColorAlpha(node.scrollbarColor, nodeAlpha),
-                    CornerRadius::all(node.scrollbarThumbWidth * 0.5F));
-            }
+        // Scroll design §5: the same geometry owns paint and pointer input.
+        if (const auto bar = core::scrollbarGeometry(node)) {
+            auto thumb = bar->thumb;
+            thumb.origin = thumb.origin + origin;
+            sink.drawRect(thumb, core::scaleColorAlpha(node.scrollbarColor, nodeAlpha),
+                CornerRadius::all(std::min(thumb.size.width, thumb.size.height) * 0.5F));
         }
     } else {
         for (const auto& child : node.children) {

@@ -7,6 +7,7 @@
 
 #include "lumen/core/geometry.h"
 #include "lumen/core/icon_id.h"
+#include "lumen/core/scroll.h"
 
 namespace lumen::core {
 
@@ -222,6 +223,10 @@ struct Widget {
     // 命中点落在该节点且最深命中非交互控件时可拖动移窗；其上的按钮/
     // 菜单项因更深的命中链自然排除。
     bool windowDrag{false};
+    // 滚动视口活动主轴（lumen-scroll-design §2：单视口单活动轴，默认
+    // 纵向；VirtualList/Tree 等纵向虚拟化源保持默认。M7 体积预算：与
+    // box-model bool 簇同槽）。
+    ScrollAxis scrollAxis{ScrollAxis::Vertical};
     EdgeInsets padding{};
     EdgeInsets margin{};
 
@@ -614,6 +619,11 @@ inline Widget makeListView(Widget child, std::string key = {},
 
 inline Widget withScrollOffset(Widget widget, float offset) {
     widget.scrollOffset = offset;
+    return widget;
+}
+
+inline Widget withScrollAxis(Widget widget, ScrollAxis axis) {
+    widget.scrollAxis = axis;
     return widget;
 }
 

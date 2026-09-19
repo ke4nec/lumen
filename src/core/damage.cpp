@@ -23,13 +23,15 @@ bool sameNodeFields(const RenderNode& a, const RenderNode& b) {
            a.semanticsActions == b.semanticsActions &&
            a.clipContent == b.clipContent &&
            a.scrollOffset == b.scrollOffset &&
-           a.scrollExtent == b.scrollExtent && a.checked == b.checked &&
+           a.scrollExtent == b.scrollExtent && a.scrollAxis == b.scrollAxis &&
+           a.checked == b.checked &&
            a.imageId == b.imageId && a.imageSource == b.imageSource &&
            a.enabled == b.enabled && a.invalid == b.invalid &&
            a.selected == b.selected &&
            a.scrollbarColor == b.scrollbarColor &&
            a.scrollbarThumbWidth == b.scrollbarThumbWidth &&
            a.scrollbarMinLength == b.scrollbarMinLength &&
+           a.scrollbarInset == b.scrollbarInset &&
            a.iconStrokeWidth == b.iconStrokeWidth && a.icon == b.icon &&
            a.transitionAlpha == b.transitionAlpha && a.elevation == b.elevation &&
            a.shadowColor == b.shadowColor && a.shadowOffset == b.shadowOffset &&

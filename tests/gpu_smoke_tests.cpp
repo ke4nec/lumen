@@ -13,6 +13,7 @@
 #include <SDL3/SDL_opengl.h>
 
 #include "lumen/core/widget.h"
+#include "lumen/core/scrollbar.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/painter.h"
 #include "lumen/render/renderer.h"
@@ -52,6 +53,70 @@ struct VideoSession {
 using TestWindow = std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)>;
 
 }  // namespace
+
+TEST_CASE("gpu_scrollbar_states_and_axes_match_tokens_at_both_scales", "[gpu][scrollbar]") {
+    using namespace lumen;
+    using namespace lumen::core;
+    std::string diagnostics;
+    if (!render::probeSkiaGpuAvailable(&diagnostics)) SKIP("GPU unavailable: " << diagnostics);
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow("lumen-scrollbar-test", 240, 200,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN), SDL_DestroyWindow);
+    REQUIRE(window);
+    render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    desc.widthPixels = 240;
+    desc.heightPixels = 200;
+    desc.allowSwap = false;
+    auto renderer = render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer);
+    const auto theme = style::Theme::dark();
+    accessibility::AccessibilitySettings settings;
+    style::InteractionStateSnapshot interaction;
+    style::StyleContext context{theme, interaction, settings, 1};
+    for (const float scale : {1.0F, 2.0F}) {
+        for (const auto axis : {ScrollAxis::Vertical, ScrollAxis::Horizontal}) {
+            FrameInfo info;
+            info.viewport = {240 / scale, 200 / scale};
+            info.deviceScale = scale;
+            auto widget = withScrollbar(makeScrollView(makeContainerLeaf(800.0F, 800.0F), "scroll",
+                info.viewport.width, info.viewport.height));
+            widget.scrollAxis = axis;
+            widget.scrollOffset = 80;
+            const auto rest = LayoutEngine::layout(widget, Constraints::tight(info.viewport), context);
+            for (int state = 0; state < 4; ++state) {
+                CAPTURE(scale, static_cast<int>(axis), state);
+                interaction.hoveredScrollbarIdentity = state == 1 ? rest.identity : "";
+                interaction.draggedScrollbarIdentity = state == 2 ? rest.identity : "";
+                widget.enabled = state != 3;
+                const auto tree = LayoutEngine::layout(widget, Constraints::tight(info.viewport), context);
+                const auto geometry = scrollbarGeometry(tree);
+                REQUIRE(geometry);
+                renderer->submit(recordScene(tree), info);
+                REQUIRE(render::skiaGpuRendererAlive(*renderer));
+                std::vector<unsigned char> pixels(240 * 200 * 4);
+                glReadBuffer(GL_BACK);
+                glReadPixels(0, 0, 240, 200, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                REQUIRE(glGetError() == GL_NO_ERROR);
+                const auto thumb = geometry->thumb;
+                const int x = static_cast<int>((thumb.origin.x + thumb.size.width * .5F) * scale);
+                const int y = static_cast<int>((thumb.origin.y + thumb.size.height * .5F) * scale);
+                const auto at = ((199 - y) * 240 + x) * 4;
+                const Color actual{pixels[at], pixels[at + 1], pixels[at + 2], pixels[at + 3]};
+                const Color expected = state == 3 ? theme.scrollbar.disabled : state == 2 ? theme.scrollbar.dragged
+                    : state == 1 ? theme.scrollbar.hovered : theme.scrollbar.rest;
+                CHECK(actual == expected);
+                // Hover/pressed only expand thickness; the axial position is stable.
+                const auto original = scrollbarGeometry(rest);
+                REQUIRE(original);
+                CHECK((axis == ScrollAxis::Horizontal ? thumb.origin.x : thumb.origin.y) ==
+                      (axis == ScrollAxis::Horizontal ? original->thumb.origin.x : original->thumb.origin.y));
+            }
+            interaction = {};
+        }
+    }
+}
 
 TEST_CASE("gpu_probe_reports_availability_with_diagnostics", "[gpu]") {
     std::string diagnostics;

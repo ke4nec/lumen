@@ -3,7 +3,7 @@
 #include <cstdint>
 
 #include "lumen/core/geometry.h"
-#include "lumen/core/interaction.h"
+#include "lumen/core/windowing.h"
 
 namespace lumen::core {
 
@@ -63,6 +63,8 @@ class ScrollController {
     }
     // 新输入接管（滚轮/键盘/再次拖动）：立即停止惯性。
     void stopFling();
+    // 取消拖动或由新输入接管：清除速度样本，避免污染下一次内容拖动。
+    void cancelDrag();
 
     [[nodiscard]] float offset() const { return offset_; }
     [[nodiscard]] float viewportExtent() const { return viewportExtent_; }

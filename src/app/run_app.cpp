@@ -210,6 +210,8 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                 return platform::SystemCursor::ResizeEW;
             case core::PointerCursor::ResizeNS:
                 return platform::SystemCursor::ResizeNS;
+            case core::PointerCursor::PointingHand:
+                return platform::SystemCursor::PointingHand;
             case core::PointerCursor::Arrow:
                 break;
         }
@@ -308,8 +310,10 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                     break;
                 case HostEventType::Wheel:
                     // 消费状态可用于诊断/冒泡（M5 收口）；runApp 自身不
-                    // 区分（输入帧照常请求）。
-                    (void)shell.wheel(event.position, event.scrollDelta);
+                    // 区分（输入帧照常请求）。modifiers 供 Shift+纵轮的
+                    // 水平视口投影（lumen-scroll-design §4）。
+                    (void)shell.wheel(event.position, event.scrollDelta,
+                                      event.modifiers);
                     scheduler.requestFrame(render::FrameReason::Input,
                                            event.window);
                     break;
@@ -382,6 +386,7 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
             // maxFrames 测量/冒烟模式强制全量重绘：damage 统计归零但像素
             // 与局部路径一致（局部/全量像素等价由测试断言），保证帧间可比。
             (void)shell.renderFrame(options.maxFrames != 0);
+            syncPointerCursor();
             // Rebuild may start a checked/hover blend on this very frame.
             scheduler.setAnimationsActive(shell.animationsActive());
             // 渲染器失效（GPU 上下文丢失等）：回退策略替换渲染器（可

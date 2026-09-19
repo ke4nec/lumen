@@ -7,6 +7,7 @@
 // 事件泵冒烟。
 
 #include <catch2/catch_test_macros.hpp>
+#include <SDL3/SDL.h>
 
 #include <cstdlib>
 #include <optional>
@@ -24,6 +25,45 @@ using lumen::platform::WindowDesc;
 using lumen::platform::hostStageName;
 
 using namespace lumen;
+
+TEST_CASE("sdl_wheel_axes_and_flipped_events_preserve_framework_direction", "[platform][scrollbar]") {
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    platform::Sdl3ApplicationHost host;
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow({});
+    REQUIRE(id.has_value());
+    core::HostEvent output;
+    while (host.pollEvent(output)) {}
+    struct RestoreModifiers {
+        SDL_Keymod previous{SDL_GetModState()};
+        ~RestoreModifiers() { SDL_SetModState(previous); }
+    } restoreModifiers;
+    SDL_SetModState(SDL_KMOD_SHIFT);
+    for (const bool flipped : {false, true}) {
+        for (const float direction : {-1.0F, 1.0F}) {
+            SDL_Event event{};
+            event.type = SDL_EVENT_MOUSE_WHEEL;
+            event.wheel.windowID = static_cast<SDL_WindowID>(id->value);
+            event.wheel.x = direction * (flipped ? -1.0F : 1.0F);
+            event.wheel.y = event.wheel.x;
+            event.wheel.direction = flipped ? SDL_MOUSEWHEEL_FLIPPED : SDL_MOUSEWHEEL_NORMAL;
+            REQUIRE(SDL_PushEvent(&event));
+            bool found = false;
+            while (host.pollEvent(output)) {
+                if (output.type != core::HostEventType::Wheel) continue;
+                CHECK(output.scrollDelta.x == 40.0F * direction);
+                CHECK(output.scrollDelta.y == -40.0F * direction);
+                CHECK((output.modifiers & core::kModifierShift) != 0U);
+                found = true;
+            }
+            REQUIRE(found);
+        }
+    }
+}
 
 namespace {
 

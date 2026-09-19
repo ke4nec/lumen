@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lumen · 滚动条</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 48px; background: #18181b; color: #f1f1f4; font: 14px/1.6 system-ui, "Microsoft YaHei", sans-serif; }
+  main { max-width: 960px; margin: auto; }
+  h1 { margin: 0 0 8px; font-size: 28px; font-weight: 600; }
+  p { color: #a1a1aa; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px; }
+  section { padding: 20px; border: 1px solid #3b3b45; border-radius: 12px; background: #27272e; }
+  h2 { margin: 0 0 16px; font-size: 16px; }
+  .viewport { height: 264px; position: relative; background: #18181b; border-radius: 8px; overflow: hidden; }
+  .content { width: 100%; height: 100%; overflow: auto; scrollbar-width: none; }
+  .content::-webkit-scrollbar { display: none; }
+  .row { height: 44px; padding: 10px 24px 10px 16px; border-bottom: 1px solid #303039; }
+  .row:nth-child(4) { background: #2e3c60; border-left: 3px solid #568cf0; padding-left: 13px; }
+  .horizontal .items { display: flex; width: max-content; gap: 12px; padding: 16px 24px 30px 16px; }
+  .card { width: 144px; height: 196px; padding: 16px; border-radius: 8px; border: 1px solid #3b3b45; background: #27272e; }
+  .card b { display: block; margin-bottom: 64px; font-size: 28px; color: #a8c5fa; }
+  .track { position: absolute; right: 0; top: 4px; bottom: 4px; width: 16px; }
+  .thumb { position: absolute; width: 16px; cursor: pointer; touch-action: none; }
+  .thumb::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; right: 4px; border-radius: 4px; background: #8c8c98; }
+  .thumb:hover::after, .thumb.dragged::after { left: 3px; right: 3px; border-radius: 5px; background: #f1f1f4; }
+  .thumb.dragged::after { background: #568cf0; }
+  .horizontal .track { top: auto; bottom: 0; left: 4px; right: 4px; width: auto; height: 16px; }
+  .horizontal .thumb { width: auto; height: 16px; }
+  .horizontal .thumb::after { left: 0; right: 0; top: 4px; bottom: 4px; }
+  .horizontal .thumb:hover::after, .horizontal .thumb.dragged::after { top: 3px; bottom: 3px; }
+  output { display: block; margin-top: 12px; color: #a1a1aa; font-variant-numeric: tabular-nums; }
+  .spec { margin-top: 24px; padding: 20px; border-top: 1px solid #3b3b45; color: #a1a1aa; }
+  a { color: #a8c5fa; }
+  @media(max-width:700px) { body { padding:24px; } .grid { grid-template-columns:1fr; } }
+</style>
+<main>
+  <h1>滚动条</h1>
+  <p>移到滑块上，手形与加粗提示可拖动；按住后向下或向右移动，滚动到后面的内容。</p>
+  <div class="grid">
+    <section><h2>垂直 · 列表</h2><div class="viewport"><div class="content"><div class="items"></div></div><div class="track"><div class="thumb"></div></div></div><output></output></section>
+    <section><h2>水平 · 卡片</h2><div class="viewport horizontal"><div class="content"><div class="items"></div></div><div class="track"><div class="thumb"></div></div></div><output></output></section>
+  </div>
+  <div class="spec">Comfortable：16px 命中轨道 · 8px 静止滑块 · 10px 悬停/拖动滑块 · 24px 最小长度 · 4px 轴向内距。单击轨道空白翻页；拖动释放即停。<br>Compact：12/6/8 · Touch：24/10/12。实现规格：<a href="../docs/lumen-scroll-design.md">滚动系统设计 §5</a>。</div>
+</main>
+<script>
+document.querySelectorAll('.viewport').forEach(view => {
+  const horizontal = view.classList.contains('horizontal');
+  const content = view.querySelector('.content'), items = view.querySelector('.items');
+  const track = view.querySelector('.track'), thumb = view.querySelector('.thumb');
+  const output = view.parentElement.querySelector('output');
+  for (let i = 0; i < 20; ++i) {
+    const item = document.createElement('div');
+    item.className = horizontal ? 'card' : 'row';
+    if (horizontal) { const number = document.createElement('b'); number.textContent = String(i + 1).padStart(2,'0'); item.append(number, '项目文件'); }
+    else item.textContent = '项目文件 ' + String(i + 1).padStart(2,'0');
+    items.append(item);
+  }
+  const geometry = () => {
+    const size = horizontal ? content.clientWidth : content.clientHeight;
+    const extent = (horizontal ? content.scrollWidth : content.scrollHeight) - size;
+    const length = horizontal ? track.clientWidth : track.clientHeight;
+    const thumbLength = Math.min(length, Math.max(24, length * size / (size + extent)));
+    return { extent, length, thumbLength, travel: length - thumbLength, size };
+  };
+  const offset = () => horizontal ? content.scrollLeft : content.scrollTop;
+  const scroll = value => { if (horizontal) content.scrollLeft = value; else content.scrollTop = value; };
+  const refresh = () => {
+    const g = geometry(), start = g.extent > 0 ? offset() / g.extent * g.travel : 0;
+    thumb.style[horizontal ? 'width' : 'height'] = g.thumbLength + 'px';
+    thumb.style[horizontal ? 'left' : 'top'] = start + 'px';
+    track.hidden = g.extent <= 0;
+    output.textContent = '滚动位置 ' + Math.round(offset()) + ' / ' + g.extent;
+  };
+  let grab = null;
+  thumb.onpointerdown = e => {
+    if (e.button !== 0) return;
+    const r = thumb.getBoundingClientRect();
+    grab = horizontal ? (e.clientX-r.left)/r.width : (e.clientY-r.top)/r.height;
+    thumb.setPointerCapture(e.pointerId); thumb.classList.add('dragged'); e.preventDefault(); e.stopPropagation();
+  };
+  thumb.onpointermove = e => {
+    if (grab === null) return;
+    const r = track.getBoundingClientRect(), g = geometry();
+    scroll(((horizontal ? e.clientX-r.left : e.clientY-r.top) - grab*g.thumbLength) / g.travel * g.extent);
+  };
+  thumb.onpointerup = thumb.onpointercancel = thumb.onlostpointercapture = () => { grab = null; thumb.classList.remove('dragged'); };
+  track.onpointerdown = e => {
+    if (e.target !== track || e.button !== 0) return;
+    const r = thumb.getBoundingClientRect();
+    const before = horizontal ? e.clientX < r.left : e.clientY < r.top;
+    scroll(offset() + geometry().size * .9 * (before ? -1 : 1));
+  };
+  view.addEventListener('wheel', e => {
+    const delta = horizontal ? (e.deltaX || (e.shiftKey ? e.deltaY : 0)) : e.deltaY;
+    if (delta) { scroll(offset() + delta); e.preventDefault(); }
+  }, {passive:false});
+  content.addEventListener('scroll', refresh);
+  new ResizeObserver(refresh).observe(view);
+  refresh();
+});
+</script>
+</html>

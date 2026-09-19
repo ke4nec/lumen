@@ -31,7 +31,7 @@ void ScrollController::scrollTo(float offset) {
 }
 
 bool ScrollController::applyWheel(float wheelDelta) {
-    stopFling();
+    cancelDrag();
     return scrollBy(wheelDelta);
 }
 
@@ -43,7 +43,7 @@ bool ScrollController::applyDrag(float dragDelta) {
 }
 
 bool ScrollController::applyKey(Key key, float viewportExtent) {
-    stopFling();
+    cancelDrag();
     const float page = viewportExtent > 0.0F ? viewportExtent * 0.9F
                                              : 120.0F;
     // 方向键按活动轴取组（水平 Left/Right、纵向 Up/Down）；翻页与
@@ -76,7 +76,7 @@ bool ScrollController::applyKey(Key key, float viewportExtent) {
 }
 
 bool ScrollController::semanticScroll(float delta) {
-    stopFling();
+    cancelDrag();
     return scrollBy(-delta);
 }
 
@@ -84,6 +84,7 @@ void ScrollController::noteDragSample(float dragDeltaPixels,
                                       std::uint64_t timestampMs) {
     if (!dragSampled_) {
         dragSampled_ = true;
+        dragVelocityPxMs_ = 0.0F;
         lastDragSampleMs_ = timestampMs;
         pendingDragDelta_ = dragDeltaPixels;
         return;
@@ -141,6 +142,14 @@ bool ScrollController::stepFling(std::uint64_t nowMs) {
 }
 
 void ScrollController::stopFling() { flingVelocityPxMs_ = 0.0F; }
+
+void ScrollController::cancelDrag() {
+    stopFling();
+    dragSampled_ = false;
+    lastDragSampleMs_ = 0;
+    pendingDragDelta_ = 0.0F;
+    dragVelocityPxMs_ = 0.0F;
+}
 
 float ScrollController::visibleFraction() const {
     if (contentExtent_ <= 0.0F) {

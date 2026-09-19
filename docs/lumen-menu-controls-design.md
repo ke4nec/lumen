@@ -204,6 +204,8 @@ interaction.addSecondaryPressSink([&](chain, pos) {
 
 **超长菜单**：面板最大高度 = 视口高 − 2×8px；超出时面板内部经 ScrollView 兜底（overlay builder 已支持 wheel sink 注入），滚动跟随高亮项（`Visible` 对齐）。专用滚动箭头区不做。
 
+滚动条按 `lumen-scroll-design.md` §5 支持手形悬停、轨道翻页和捕获拖动。按住滚动条期间，指针经过菜单行或其他菜单栏项不触发悬停级联/切换；释放后恢复正常悬停规则。
+
 **悬停级联（M14 已实现）**：菜单打开期间悬停 `hasSubmenu` 项即自动展开子级（`MotionTokens::menuSubmenuHoverMs` 默认 0 = 立即，原生菜单惯例；担心掠过误弹的应用可设 300 之类去抖——去抖期内移走/移到其他项不展开）；悬停同级**其他**项则收起级联回到该层（含键盘展开的级联；级联源行自身不动，指针在源行与子面板间往返稳定）；点击 / Right 仍为立即展开。计时经 overlay animate sink 逐 tick 步进（pointer sink 无钟武装、首拍盖章，与打开动效同口径）。
 
 **关闭时机**：barrier 点击、滚轮（任意位置）、窗口 resize（overlay builder 重求值后若锚定越界则关闭）、`close()` 显式调用。模态期间主树指针/键盘全部 NotHandled（M11 语义模态边界，M12 已统一）。**barrier 仅输入模态、视觉透明**——菜单不是对话框，不压暗内容（Dialog scrim 只属于 Dialog；Dropdown 浮动菜单同口径）。

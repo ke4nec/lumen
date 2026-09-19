@@ -8,6 +8,7 @@ add_library(lumen-core STATIC
     text_field.cpp
     icon_id.cpp
     scroll.cpp
+    scrollbar.cpp
     virtual_list.cpp
     damage.cpp
     tween.cpp

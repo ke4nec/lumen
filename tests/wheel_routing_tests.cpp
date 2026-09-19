@@ -20,6 +20,8 @@ struct FlatTree final : widgets::TreeModel {
 struct NestedScrollApp {
     WidgetType kind{WidgetType::List};
     bool intermediate{false};
+    bool horizontal{false};
+    float contentWidth{200.0F};
     std::size_t count{1};
     ScrollController outerScroll;
     ScrollController innerScroll;
@@ -56,10 +58,11 @@ struct NestedScrollApp {
             else if (kind == WidgetType::Tree) inner = makeTree(&tree, "inner", 200, 100);
             else if (kind == WidgetType::TreeList) inner = makeTreeList(&table, nullptr, false, "inner", 200, 100);
             else {
-                auto content = makeContainerLeaf(200, static_cast<float>(count) * 40.0F);
+                auto content = makeContainerLeaf(contentWidth, static_cast<float>(count) * 40.0F);
                 inner = kind == WidgetType::ListView
                     ? makeListView(std::move(content), "inner", 200, 100)
                     : makeScrollView(std::move(content), "inner", 200, 100);
+                inner.scrollAxis = horizontal ? ScrollAxis::Horizontal : ScrollAxis::Vertical;
                 inner.scrollOffset = innerScroll.offset();
             }
             // Intentionally hidden scrollbar: range, not decoration, owns input.
@@ -72,9 +75,10 @@ struct NestedScrollApp {
             REQUIRE(target != nullptr);
             sinkTargets.push_back(target->key);
             auto& controller = target->key == "inner" ? innerScroll : outerScroll;
-            const float viewport = target->size.height;
+            const bool xAxis = target->scrollAxis == ScrollAxis::Horizontal;
+            const float viewport = xAxis ? target->size.width : target->size.height;
             controller.updateExtents(viewport, viewport + target->scrollExtent);
-            const bool changed = controller.applyWheel(delta.y);
+            const bool changed = controller.applyWheel(xAxis ? delta.x : delta.y);
             if (changed) shell.markDirty();
             return changed;
         };
@@ -140,6 +144,32 @@ TEST_CASE("wheel_keeps_scrollable_children_in_charge_with_hidden_scrollbars", "[
         CHECK(app.shell.wheel({50, 30}, {0, 30}));
         CHECK(app.outerScroll.offset() == 30);
     }
+}
+
+TEST_CASE("wheel_bubbling_recomputes_axis_from_original_delta", "[scroll][wheel-routing]") {
+    NestedScrollApp app;
+    app.kind = WidgetType::ScrollView;
+    app.horizontal = true;
+    app.contentWidth = 500;
+    app.frame();
+    REQUIRE(app.node("inner").scrollExtent == 300);
+    CHECK(app.shell.wheel({50, 30}, {0, 25}));
+    CHECK(app.outerScroll.offset() == 25);
+    CHECK(app.innerScroll.offset() == 0);
+    app.outerScroll.scrollTo(0);
+    app.shell.markDirty();
+    app.frame();
+    CHECK(app.shell.wheel({50, 30}, {0, 40}, kModifierShift));
+    CHECK(app.innerScroll.offset() == 40);
+    CHECK(app.outerScroll.offset() == 0);
+    CHECK(app.shell.wheel({50, 30}, {15, 25}));
+    CHECK(app.innerScroll.offset() == 55);
+    CHECK(app.outerScroll.offset() == 0);
+    app.contentWidth = 200;
+    app.shell.markDirty();
+    app.frame();
+    CHECK(app.shell.wheel({50, 30}, {0, 20}, kModifierShift));
+    CHECK(app.outerScroll.offset() == 20);
 }
 
 TEST_CASE("wheel_bubbling_stays_inside_modal_event_tree", "[scroll][wheel-routing]") {

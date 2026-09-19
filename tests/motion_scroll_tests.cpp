@@ -18,7 +18,9 @@
 #include "lumen/core/scroll.h"
 #include "lumen/core/state.h"
 #include "lumen/core/style.h"
+#include "lumen/core/widget.h"
 #include "lumen/dsl/dsl.h"
+#include "lumen/layout/layout.h"
 #include "lumen/render/render_commands.h"
 #include "lumen/style/theme.h"
 
@@ -521,6 +523,22 @@ TEST_CASE("horizontal_axis_controller_interprets_inputs_along_x",
     CHECK_FALSE(scroll.applyDrag(50.0F));
 }
 
+TEST_CASE("cancelled_scroll_drag_drops_velocity_before_the_next_gesture", "[motion][scroll][review]") {
+    lumen::core::ScrollController scroll;
+    scroll.updateExtents(200, 2000);
+    scroll.noteDragSample(-30, 100);
+    scroll.noteDragSample(-30, 110);
+    scroll.cancelDrag();
+    scroll.noteDragSample(12, 120);
+    CHECK_FALSE(scroll.endDrag(120));
+    scroll.noteDragSample(-30, 200);
+    scroll.noteDragSample(-30, 210);
+    REQUIRE(scroll.endDrag(210));
+    scroll.cancelDrag();
+    CHECK_FALSE(scroll.isFlinging());
+    CHECK_FALSE(scroll.endDrag(220));
+}
+
 TEST_CASE("horizontal_axis_fling_uses_same_physics", "[motion][scroll]") {
     lumen::core::ScrollController scroll(lumen::core::ScrollAxis::Horizontal);
     scroll.updateExtents(200.0F, 2000.0F);
@@ -541,6 +559,64 @@ TEST_CASE("horizontal_axis_fling_uses_same_physics", "[motion][scroll]") {
     }
     CHECK_FALSE(scroll.isFlinging());
     CHECK(scroll.offset() > 0.0F);
+}
+
+TEST_CASE("horizontal_scroll_view_mirrors_constraints_and_applies_x_offset",
+          "[motion][scroll]") {
+    namespace core = lumen::core;
+    // 宽行（1000x80）放进 300x200 水平视口。
+    const auto page = [](core::ScrollAxis axis, float offset) {
+        core::Widget content = core::makeContainer(core::makeText("wide"));
+        content.width = 1000.0F;
+        content.height = 80.0F;
+        core::Widget view = core::makeScrollView(std::move(content), "hscroll",
+                                                 300.0F, 200.0F);
+        view.scrollAxis = axis;
+        view.scrollOffset = offset;
+        return view;
+    };
+    const auto layout = [&page](core::ScrollAxis axis, float offset) {
+        // 宽松约束（min=0）：视口自身 300x200 可小于外层可用 400x300。
+        return lumen::layout::LayoutEngine::layout(
+            page(axis, offset),
+            core::Constraints{0.0F, 400.0F, 0.0F, 300.0F});
+    };
+
+    // 水平：主轴（宽）不受限 → 内容保持 1000；extent = 1000 - 300。
+    const auto root = layout(core::ScrollAxis::Horizontal, 0.0F);
+    REQUIRE(root.children.size() == 1);
+    CHECK(root.size.width == 300.0F);
+    CHECK(root.size.height == 200.0F);
+    CHECK(root.scrollAxis == core::ScrollAxis::Horizontal);
+    CHECK(root.clipContent);
+    CHECK(root.children.front().size.width == 1000.0F);
+    CHECK(root.scrollExtent == 700.0F);
+    // offset 应用到 X；Y 不动。
+    const auto scrolled = layout(core::ScrollAxis::Horizontal, 250.0F);
+    CHECK(scrolled.children.front().offset.x == -250.0F);
+    CHECK(scrolled.children.front().offset.y == 0.0F);
+    // 夹取到 extent。
+    const auto clamped = layout(core::ScrollAxis::Horizontal, 900.0F);
+    CHECK(clamped.children.front().offset.x == -700.0F);
+    CHECK(clamped.scrollOffset == 700.0F);
+
+    // 交叉轴受限：更高的子内容被钳到视口高（水平视口的镜像约束）。
+    core::Widget tall = core::makeContainer(core::makeText("tall"));
+    tall.width = 1000.0F;
+    tall.height = 500.0F;
+    core::Widget view = core::makeScrollView(std::move(tall), "tall", 300.0F,
+                                             200.0F);
+    view.scrollAxis = core::ScrollAxis::Horizontal;
+    const auto tallRoot = lumen::layout::LayoutEngine::layout(
+        std::move(view),
+        core::Constraints{0.0F, 400.0F, 0.0F, 300.0F});
+    CHECK(tallRoot.children.front().size.height == 200.0F);
+
+    // 纵向默认路径零变化：同内容按纵向约束（宽钳到视口、无纵向可滚）。
+    const auto vertical = layout(core::ScrollAxis::Vertical, 0.0F);
+    CHECK(vertical.scrollAxis == core::ScrollAxis::Vertical);
+    CHECK(vertical.children.front().size.width == 300.0F);
+    CHECK(vertical.scrollExtent == 0.0F);
 }
 
 namespace {
@@ -736,9 +812,8 @@ TEST_CASE("drag_on_scrollbar_thumb_tracks_finger", "[motion]") {
     REQUIRE(viewport->scrollExtent > 0.0F);
     scroll.updateExtents(viewport->size.height,
                          viewport->size.height + viewport->scrollExtent);
-    // painter 同式推拇指几何（初始 offset=0，拇指贴轨道顶）。
-    const float inset =
-        viewport->scrollbarThickness - viewport->scrollbarThumbWidth;
+    // 滚动设计 §5：轨道 inset 独立于 hover 时变化的滑块厚度。
+    const float inset = viewport->scrollbarInset;
     const float trackLength = viewport->size.height - 2.0F * inset;
     REQUIRE(trackLength > 0.0F);
     const float fraction = viewport->size.height /

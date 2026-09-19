@@ -53,6 +53,9 @@ struct RenderNode {
     bool clipContent{false};     // ScrollView/ListView/VirtualList 视口裁剪
     float scrollOffset{0.0F};    // 当前滚动偏移（已应用到子 offset）
     float scrollExtent{0.0F};    // 可滚动的最大范围（内容-视口）
+    // 活动主轴（lumen-scroll-design §2）：scrollOffset/scrollExtent 与
+    // painter 滚动条、交互层输入分量都沿该轴解释（默认纵向）。
+    ScrollAxis scrollAxis{ScrollAxis::Vertical};
     bool checked{false};         // Checkbox/Switch 状态
     // 虚拟化视口（VirtualList/List/Tree/TreeList）携带数据源：交互层
     // 滚轮/拖动滚动据此直接驱动源控制器的 ScrollController，应用无需
@@ -79,11 +82,11 @@ struct RenderNode {
     Offset shadowOffset{};
     float shadowBlur{0.0F};
     float scrollbarThickness{0.0F};
-    // S3（§7.2）：滚动条 Thumb 的实色（ScrollbarTokens.rest）与可视宽
-    //（区别于轨道厚度）。
+    // Resolved scrollbar state color/width; thickness is the wider hit track.
     Color scrollbarColor{};
     float scrollbarThumbWidth{0.0F};
     float scrollbarMinLength{24.0F};
+    float scrollbarInset{4.0F};
     // M6：图标线宽（IconTheme 折算）。
     float iconStrokeWidth{1.5F};
 

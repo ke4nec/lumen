@@ -356,11 +356,12 @@ TEST_CASE("splitter_divider_carries_splitter_semantics",
 
 TEST_CASE("splitter_widget_size_budget", "[core][widgets][splitter]") {
     // M7 体积门槛（实测口径）：集合控件后 Release 基线 816B，Splitter
-    // 源指针 +8B → 824B（Debug 工具链调试迭代器开销分档同集合规则）。
+    // 源指针 +8B → 824B；P2 水平滚动轴标志 +1B 触发对齐 → 832B
+    //（Debug 工具链调试迭代器开销分档同集合规则）。
 #ifdef NDEBUG
-    CHECK(sizeof(Widget) <= 824);
+    CHECK(sizeof(Widget) <= 832);
 #else
-    CHECK(sizeof(Widget) <= 928);
+    CHECK(sizeof(Widget) <= 936);
 #endif
 }
 

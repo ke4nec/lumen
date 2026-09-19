@@ -1,6 +1,7 @@
 #include "lumen/core/interaction.h"
 
 #include "lumen/core/scroll.h"
+#include "lumen/core/scrollbar.h"
 #include "lumen/core/splitter.h"
 #include "lumen/core/text_field.h"
 
@@ -37,70 +38,6 @@ bool absoluteOffsetOf(const RenderNode& tree, const RenderNode& target,
         }
     }
     return false;
-}
-
-// 滚动条拇指矩形（局部坐标；与 render/painter.cpp §7.2 同式）：
-// 无可见拇指时返回 nullopt。
-std::optional<Rect> scrollbarThumbRect(const RenderNode& node) {
-    if (node.scrollbarThickness <= 0.0F || node.scrollExtent <= 0.0F ||
-        node.scrollbarColor.a == 0 || node.scrollbarThumbWidth <= 0.0F) {
-        return std::nullopt;
-    }
-    const float inset = node.scrollbarThickness - node.scrollbarThumbWidth;
-    const float trackLength =
-        std::max(0.0F, node.size.height - 2.0F * inset);
-    if (trackLength <= 0.0F) {
-        return std::nullopt;
-    }
-    const float fraction =
-        node.size.height / (node.size.height + node.scrollExtent);
-    const float thumbHeight = std::min(
-        std::max(trackLength * fraction, node.scrollbarMinLength),
-        trackLength);
-    if (thumbHeight <= 0.0F) {
-        return std::nullopt;
-    }
-    const float scrollable = trackLength - thumbHeight;
-    const float progress = node.scrollExtent > 0.0F
-                               ? node.scrollOffset / node.scrollExtent
-                               : 0.0F;
-    const float thumbY =
-        inset + std::clamp(progress, 0.0F, 1.0F) * scrollable;
-    const float thumbX =
-        node.size.width - node.scrollbarThickness +
-        (node.scrollbarThickness - node.scrollbarThumbWidth) * 0.5F;
-    return Rect{Offset{thumbX, thumbY},
-                Size{node.scrollbarThumbWidth, thumbHeight}};
-}
-
-// 拇指位移 → 内容偏移的换算比（scrollExtent/可滚轨道长）；无可见拇指
-// 或轨道被拇指占满时返回 nullopt（调用方退化为普通内容拖拽）。
-std::optional<float> scrollbarThumbRatio(const RenderNode& node) {
-    const auto thumb = scrollbarThumbRect(node);
-    if (!thumb.has_value()) {
-        return std::nullopt;
-    }
-    const float inset = node.scrollbarThickness - node.scrollbarThumbWidth;
-    const float trackLength =
-        std::max(0.0F, node.size.height - 2.0F * inset);
-    const float scrollable = trackLength - thumb->size.height;
-    if (scrollable <= 0.0F) {
-        return std::nullopt;
-    }
-    return node.scrollExtent / scrollable;
-}
-
-// 按下点是否落在拇指上：x 取整列宽、y 在拇指上下各放宽 2px（4px 宽的
-// 拇指直接点中太苛刻）。
-bool pressOnScrollbarThumb(const RenderNode& node, Offset local) {
-    const auto thumb = scrollbarThumbRect(node);
-    if (!thumb.has_value()) {
-        return false;
-    }
-    return local.x >= node.size.width - node.scrollbarThickness &&
-           local.x <= node.size.width &&
-           local.y >= thumb->origin.y - 2.0F &&
-           local.y <= thumb->origin.y + thumb->size.height + 2.0F;
 }
 
 // 命中链上 hover 的承载节点：最深的有效可交互控件（disabled 不承载，
@@ -154,6 +91,11 @@ const RenderNode* hitTestChain(const RenderNode& node, Offset position,
     }
     if (!Rect{Offset{}, node.size}.contains(position)) {
         return nullptr;
+    }
+    // Scrollbar chrome is painted above all children, including nested viewports.
+    if (const auto bar = scrollbarGeometry(node); bar && bar->track.contains(position)) {
+        chain.push_back(&node);
+        return &node;
     }
     if (node.clipContent && !node.contentClipRect().contains(position)) {
         chain.push_back(&node);
@@ -296,6 +238,72 @@ bool InteractionController::canRedo() const {
 
 // --- 指针 ---
 
+void InteractionController::updatePointerHover(const RenderNode& root, Offset position) {
+    pointerPosition_ = position;
+    hasPointerPosition_ = true;
+    std::vector<const RenderNode*> chain;
+    const auto* target = hitTestChain(root, position, chain);
+    hoveredKey_.clear();
+    hoveredIdentity_.clear();
+    hoveredScrollbarIdentity_.clear();
+    hoverCursor_ = cursorFromChain(chain);
+    if (target) {
+        if (const auto bar = scrollbarGeometry(*target)) {
+            Offset origin{};
+            if (absoluteOffsetOf(root, *target, {}, origin) && bar->track.contains(position - origin)) {
+                if (target->enabled && bar->travel > 0.0F && bar->thumbHit.contains(position - origin)) {
+                    hoveredScrollbarIdentity_ = target->identity;
+                    hoverCursor_ = PointerCursor::PointingHand;
+                }
+                return;
+            }
+        }
+    }
+    if (const auto* hover = hoverTargetOf(chain)) {
+        hoveredKey_ = hover->key;
+        hoveredIdentity_ = hover->identity;
+    }
+}
+
+void InteractionController::refreshPointer(const RenderNode& root) {
+    if (!scrollbarDragIdentity_.empty()) {
+        const auto* viewport = findNodeByIdentity(root, scrollbarDragIdentity_);
+        const auto bar = viewport ? scrollbarGeometry(*viewport) : std::nullopt;
+        if (!viewport || !viewport->enabled || !bar || bar->travel <= 0.0F) {
+            pointerCancel();
+            return;
+        }
+    }
+    if (hasPointerPosition_) updatePointerHover(root, pointerPosition_);
+}
+
+void InteractionController::moveScrollbar(const RenderNode& root, Offset position,
+                                           std::uint64_t timestampMs) {
+    const auto* viewport = findNodeByIdentity(root, scrollbarDragIdentity_);
+    const auto bar = viewport ? scrollbarGeometry(*viewport) : std::nullopt;
+    Offset origin{};
+    if (!viewport || !viewport->enabled || !bar || bar->travel <= 0.0F ||
+        !absoluteOffsetOf(root, *viewport, {}, origin)) {
+        pointerCancel();
+        return;
+    }
+    const bool horizontal = viewport->scrollAxis == ScrollAxis::Horizontal;
+    const Offset local = position - origin;
+    const float point = horizontal ? local.x : local.y;
+    const float start = horizontal ? bar->track.origin.x : bar->track.origin.y;
+    const float length = horizontal ? bar->thumb.size.width : bar->thumb.size.height;
+    const float offset = std::clamp((point - start - scrollbarGrabFraction_ * length) / bar->travel,
+                                   0.0F, 1.0F) * viewport->scrollExtent;
+    const float delta = offset - viewport->scrollOffset;
+    if (viewport->virtualSource && viewport->virtualSource->scrollController()) {
+        if (viewport->virtualSource->scrollController()->applyWheel(delta)) requestRebuild();
+    } else if (scrollDragSink_) {
+        // Existing drag sinks consume content displacement, opposite to offset.
+        scrollDragSink_(&root, viewport, position,
+            horizontal ? Offset{-delta, 0} : Offset{0, -delta}, ScrollDragPhase::Update, timestampMs);
+    }
+}
+
 void InteractionController::pointerDown(const RenderNode& root,
                                         Offset position,
                                         std::uint64_t timestampMs,
@@ -303,15 +311,7 @@ void InteractionController::pointerDown(const RenderNode& root,
                                         PointerButton button) {
     std::vector<const RenderNode*> chain;
     const RenderNode* target = hitTestChain(root, position, chain);
-    // hover 状态照常更新（Secondary 亦更新；menu-controls-design §6.2）。
-    if (const RenderNode* hover = hoverTargetOf(chain)) {
-        hoveredKey_ = hover->key;
-        hoveredIdentity_ = hover->identity;
-    } else {
-        hoveredKey_.clear();
-        hoveredIdentity_.clear();
-    }
-    hoverCursor_ = cursorFromChain(chain);
+    updatePointerHover(root, position);
     // 菜单类控件（menu-controls-design §6.2）：Secondary（右键）不进入
     // 点击/按压/拖动/聚焦路径——右键只属于上下文菜单通道；Middle 同样
     // 无语义。进行中的主键手势状态不受影响（§6.2”不进入 press/armed/
@@ -335,7 +335,9 @@ void InteractionController::pointerDown(const RenderNode& root,
     armedIdentity_.clear();
     scrollDragging_ = false;
     scrollDragIdentity_.clear();
-    scrollDragOnThumb_ = false;
+    scrollbarDragIdentity_.clear();
+    scrollbarPressActive_ = false;
+    scrollbarDragUsesSink_ = false;
     scrollDragSource_ = nullptr;
     sliderDragIdentity_.clear();
     splitterDragIdentity_.clear();
@@ -353,6 +355,40 @@ void InteractionController::pointerDown(const RenderNode& root,
         selection_ = {};
         composingActive_ = false;
         return;
+    }
+
+    if (const auto bar = scrollbarGeometry(*target)) {
+        Offset origin{};
+        if (absoluteOffsetOf(root, *target, {}, origin) && bar->track.contains(position - origin)) {
+            scrollbarPressActive_ = true;
+            dragging_ = true;  // Track/thumbnail gestures never activate content.
+            if (!target->enabled) return;
+            const bool horizontal = target->scrollAxis == ScrollAxis::Horizontal;
+            const Offset local = position - origin;
+            if (bar->thumbHit.contains(local) && bar->travel > 0.0F) {
+                scrollbarDragIdentity_ = target->identity;
+                scrollbarGrabFraction_ = horizontal
+                    ? (local.x - bar->thumb.origin.x) / bar->thumb.size.width
+                    : (local.y - bar->thumb.origin.y) / bar->thumb.size.height;
+                if (target->virtualSource && target->virtualSource->scrollController()) {
+                    target->virtualSource->scrollController()->cancelDrag();
+                } else if (scrollDragSink_) {
+                    scrollbarDragUsesSink_ = true;
+                    scrollDragSink_(&root, target, position, {}, ScrollDragPhase::Begin, timestampMs);
+                }
+            } else if (!bar->thumbHit.contains(local)) {
+                const float point = horizontal ? local.x : local.y;
+                const float start = horizontal ? bar->thumb.origin.x : bar->thumb.origin.y;
+                const float amount = (point < start ? -0.9F : 0.9F) *
+                    (horizontal ? target->size.width : target->size.height);
+                if (target->virtualSource && target->virtualSource->scrollController()) {
+                    (void)scrollSourceViewport(*target->virtualSource->scrollController(), amount);
+                } else if (wheelSink_) {
+                    wheelSink_(root, target, position, horizontal ? Offset{amount, 0} : Offset{0, amount});
+                }
+            }
+            return;
+        }
     }
 
     // Nearest enabled button in the target chain gets the pressed state;
@@ -557,23 +593,15 @@ bool InteractionController::setSplitterValue(const RenderNode& node,
 void InteractionController::pointerMove(const RenderNode& root,
                                         Offset position,
                                         std::uint64_t timestampMs) {
-    // hover 跟踪与按压状态独立：未按下时也更新命中（visual-system §5）。
-    {
-        std::vector<const RenderNode*> chain;
-        (void)hitTestChain(root, position, chain);
-        if (const RenderNode* hover = hoverTargetOf(chain)) {
-            hoveredKey_ = hover->key;
-            hoveredIdentity_ = hover->identity;
-        } else {
-            hoveredKey_.clear();
-            hoveredIdentity_.clear();
-        }
-        hoverCursor_ = cursorFromChain(chain);
-    }
+    updatePointerHover(root, position);
     if (!pressActive_) {
         return;
     }
     dragCurrent_ = position;
+    if (!scrollbarDragIdentity_.empty()) {
+        moveScrollbar(root, position, timestampMs);
+        return;
+    }
     const Offset delta = dragCurrent_ - dragAnchor_;
     // Splitter 分隔条拖拽（splitter-design §7.1）：直接跟手，无 slop——
     // 命中分隔条即意图明确；位移逐拍写入源（内部钳制），请求重建下一帧
@@ -610,7 +638,7 @@ void InteractionController::pointerMove(const RenderNode& root,
             }
             if (!overDraggableSlider) {
                 for (const RenderNode* node : chain) {
-                    if (isScrollableWidget(node->type)) {
+                    if (isScrollableWidget(node->type) && node->enabled && node->scrollExtent > 0.0F) {
                         scrollDragging_ = true;
                         scrollDragIdentity_ = node->identity;
                         scrollLastPoint_ = dragAnchor_;
@@ -621,17 +649,9 @@ void InteractionController::pointerMove(const RenderNode& root,
                             node->virtualSource != nullptr
                                 ? node->virtualSource->scrollController()
                                 : nullptr;
-                        // 起点落在拇指上 → 后续 Update 按拇指映射换算
-                        //（跟手 1:1）；否则内容拖拽 1:1。
-                        Offset viewportOrigin{};
-                        if (absoluteOffsetOf(root, *node, Offset{},
-                                             viewportOrigin)) {
-                            scrollDragOnThumb_ = pressOnScrollbarThumb(
-                                *node, dragAnchor_ - viewportOrigin);
+                        if (scrollDragSource_ != nullptr) {
+                            scrollDragSource_->cancelDrag();
                         } else {
-                            scrollDragOnThumb_ = false;
-                        }
-                        if (scrollDragSource_ == nullptr) {
                             scrollDragSink_(&root, node, dragAnchor_, Offset{},
                                             ScrollDragPhase::Begin, timestampMs);
                         }
@@ -646,20 +666,15 @@ void InteractionController::pointerMove(const RenderNode& root,
         scrollLastPoint_ = position;
         if (const RenderNode* viewport =
                 findNodeByIdentity(root, scrollDragIdentity_)) {
-            if (scrollDragOnThumb_) {
-                // 拇指跟手：手指位移即拇指位移，内容按比例反向换算
-                //（手指下移 → offset 增大；与内容拖拽反号）。
-                // 比例每拍按当前树重算（拖动中重建导致几何变化时仍成立）；
-                // 拇指中途消失则退化为普通内容拖拽（不换算不断流）。
-                if (const auto ratio = scrollbarThumbRatio(*viewport)) {
-                    move.y = -move.y * *ratio;
-                    move.x = 0.0F;
-                }
-            }
             if (scrollDragSource_ != nullptr) {
-                // 框架路径：内容 1:1 跟手（拇指换算已在 move 上完成）。
-                scrollDragSource_->noteDragSample(move.y, timestampMs);
-                if (scrollDragSource_->applyDrag(move.y)) {
+                // 框架路径：内容 1:1 跟手，分量按视口活动轴取
+                //（滑块使用独立捕获路径，lumen-scroll-design §4）。
+                const float dragDelta =
+                    viewport->scrollAxis == ScrollAxis::Horizontal
+                        ? move.x
+                        : move.y;
+                scrollDragSource_->noteDragSample(dragDelta, timestampMs);
+                if (scrollDragSource_->applyDrag(dragDelta)) {
                     requestRebuild();
                 }
             } else {
@@ -707,6 +722,17 @@ void InteractionController::pointerUp(const RenderNode& root,
     if (button != PointerButton::Primary) {
         return;
     }
+    updatePointerHover(root, position);
+    // A cancelled or missing press has no release action, including Slider/toggle.
+    if (!pressActive_) return;
+    const std::string releasedScrollbar = scrollbarDragIdentity_;
+    const bool releasedScrollbarPress = scrollbarPressActive_;
+    if (!releasedScrollbar.empty()) moveScrollbar(root, position, timestampMs);
+    // moveScrollbar can cancel an invalid target and already notify its owner.
+    const bool releasedScrollbarUsesSink = scrollbarDragUsesSink_;
+    scrollbarDragIdentity_.clear();
+    scrollbarPressActive_ = false;
+    scrollbarDragUsesSink_ = false;
     const std::string armedOnClick = std::move(armedOnClick_);
     const std::string armedKey = std::move(armedKey_);
     const std::string armedIdentity = std::move(armedIdentity_);
@@ -723,7 +749,6 @@ void InteractionController::pointerUp(const RenderNode& root,
     selecting_ = false;
     scrollDragging_ = false;
     scrollDragIdentity_.clear();
-    scrollDragOnThumb_ = false;
     sliderDragIdentity_.clear();
     // Splitter 分隔条释放：拖动状态解除（无惯性/无终值落点；干净单击
     // 继续走下方 fired 路径参与双击复位检测）。松手即失焦：本次按压建
@@ -736,6 +761,14 @@ void InteractionController::pointerUp(const RenderNode& root,
     if (!pressSplitterIdentity.empty() &&
         focus_.focusedIdentity() == pressSplitterIdentity) {
         focus_.clearFocus();
+    }
+    if (releasedScrollbarPress) {
+        if (releasedScrollbarUsesSink && scrollDragSink_) {
+            if (const auto* viewport = findNodeByIdentity(root, releasedScrollbar)) {
+                scrollDragSink_(&root, viewport, position, {}, ScrollDragPhase::Cancel, timestampMs);
+            }
+        }
+        return;
     }
     if (wasScrollDragging) {
         // 拖动滚动释放：应用 sink 决定是否起惯性（End 携带释放时间戳）。
@@ -868,14 +901,24 @@ void InteractionController::pointerCancel() {
         focus_.clearFocus();
     }
     hoverCursor_ = PointerCursor::Arrow;
+    hoveredKey_.clear();
+    hoveredIdentity_.clear();
+    hoveredScrollbarIdentity_.clear();
+    hasPointerPosition_ = false;
+    const bool cancelledScrollbarUsesSink = scrollbarDragUsesSink_;
+    scrollbarPressActive_ = false;
+    scrollbarDragIdentity_.clear();
+    scrollbarDragUsesSink_ = false;
+    if (cancelledScrollbarUsesSink && scrollDragSink_) {
+        scrollDragSink_(nullptr, nullptr, {}, {}, ScrollDragPhase::Cancel, 0);
+    }
     if (scrollDragging_) {
         scrollDragging_ = false;
         scrollDragIdentity_.clear();
-        scrollDragOnThumb_ = false;
         // 取消：停止惯性，不触发 End（无释放速度语义）。框架路径直接
         // 停源控制器；应用路径经 sink。
         if (scrollDragSource_ != nullptr) {
-            scrollDragSource_->stopFling();
+            scrollDragSource_->cancelDrag();
             scrollDragSource_ = nullptr;
         } else if (scrollDragSink_) {
             scrollDragSink_(nullptr, nullptr, Offset{}, Offset{},
@@ -1475,6 +1518,9 @@ void InteractionController::addPointerMoveSink(PointerMoveSink sink) {
 
 void InteractionController::notifyPointerMove(const RenderNode& root,
                                               Offset position) {
+    // Scrollbar capture owns the pointer; crossing menu rows/bars must not
+    // change the menu tree or replace the captured viewport.
+    if (scrollbarPressActive_) return;
     for (const auto& sink : pointerMoveSinks_) {
         sink(root, position);
     }
@@ -1544,7 +1590,7 @@ const RenderNode* findIdentityChain(const RenderNode& node,
 }
 
 bool InteractionController::wheel(const RenderNode& root, Offset position,
-                                  Offset delta) {
+                                  Offset delta, KeyModifiers modifiers) {
     std::vector<const RenderNode*> chain;
     const RenderNode* hit = hitTestChain(root, position, chain);
     if (hit == nullptr) {
@@ -1554,19 +1600,29 @@ bool InteractionController::wheel(const RenderNode& root, Offset position,
     // whose content fits cannot consume wheel input, regardless of whether
     // scrollbar decoration is enabled. Stay within this event tree (modal).
     for (const RenderNode* viewport : chain) {
-        if (!isScrollableWidget(viewport->type) || !(viewport->scrollExtent > 0.0F)) {
+        if (!isScrollableWidget(viewport->type) || !viewport->enabled || !(viewport->scrollExtent > 0.0F)) {
             continue;
         }
-        if (delta.y == 0.0F) continue;
+        // Recompute from the original event for every ancestor: projecting
+        // Shift+Y for a horizontal child must not erase Y for its parent.
+        Offset effective = delta;
+        const bool horizontal = viewport->scrollAxis == ScrollAxis::Horizontal;
+        if (horizontal) {
+            float x = delta.x;
+            if (x == 0.0F && (modifiers & kModifierShift) != 0U) x = delta.y;
+            effective = Offset{x, 0.0F};
+        }
+        const float amount = horizontal ? effective.x : effective.y;
+        if (amount == 0.0F) continue;
 
         // An overflowing viewport still owns its axis at either endpoint;
         // preserve the established no-chaining policy at scroll boundaries.
         if (viewport->virtualSource != nullptr) {
             if (auto* scroller = viewport->virtualSource->scrollController()) {
-                return scrollSourceViewport(*scroller, delta.y);
+                return scrollSourceViewport(*scroller, amount);
             }
         }
-        return wheelSink_ ? wheelSink_(root, viewport, position, delta) : false;
+        return wheelSink_ ? wheelSink_(root, viewport, position, effective) : false;
     }
     return false;
 }
@@ -1579,21 +1635,54 @@ bool InteractionController::scrollKey(const RenderNode& root, Key key) {
         focused = findIdentityChain(root, focus_.focusedIdentity(),
                                     focusChain);
     }
-    float dy = 0.0F;
+    // 聚焦链上最近的滚动视口决定 Left/Right 是否属于本轴
+    //（lumen-scroll-design §4：水平视口才消费 Left/Right；纵向视口
+    // 的 Left/Right 不属于滚动，交还应用键处理）。
+    const RenderNode* targetViewport = nullptr;
+    if (focused != nullptr) {
+        for (const RenderNode* node : focusChain) {
+            if (isScrollableWidget(node->type)) {
+                targetViewport = node;
+                break;
+            }
+        }
+    }
+    const bool horizontal =
+        targetViewport != nullptr &&
+        targetViewport->scrollAxis == ScrollAxis::Horizontal;
+    float amount = 0.0F;
     switch (key) {
         case Key::PageDown:
+            amount = 120.0F;
+            break;
         case Key::Down:
-            dy = 120.0F;
+            if (horizontal) return false;
+            amount = 120.0F;
             break;
         case Key::PageUp:
+            amount = -120.0F;
+            break;
         case Key::Up:
-            dy = -120.0F;
+            if (horizontal) return false;
+            amount = -120.0F;
+            break;
+        case Key::Right:
+            if (!horizontal) {
+                return false;
+            }
+            amount = 120.0F;
+            break;
+        case Key::Left:
+            if (!horizontal) {
+                return false;
+            }
+            amount = -120.0F;
             break;
         case Key::Home:
-            dy = -1e9F;
+            amount = -1e9F;
             break;
         case Key::End:
-            dy = 1e9F;
+            amount = 1e9F;
             break;
         default:
             return false;
@@ -1609,7 +1698,7 @@ bool InteractionController::scrollKey(const RenderNode& root, Key key) {
             if (scroller == nullptr) {
                 continue;
             }
-            if (scrollSourceViewport(*scroller, dy)) {
+            if (scrollSourceViewport(*scroller, amount)) {
                 return true;
             }
             return false;
@@ -1618,7 +1707,10 @@ bool InteractionController::scrollKey(const RenderNode& root, Key key) {
     if (!wheelSink_) {
         return false;
     }
-    return wheelSink_(root, focused, Offset{}, Offset{0.0F, dy});
+    // 水平视口的键盘滚动以 X 分量表达（sink 按轴消费）。
+    return wheelSink_(root, focused, Offset{},
+                      horizontal ? Offset{amount, 0.0F}
+                                 : Offset{0.0F, amount});
 }
 
 // --- 剪贴板/编辑值 ---

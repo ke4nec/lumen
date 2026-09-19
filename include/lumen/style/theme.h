@@ -349,15 +349,16 @@ struct TreeTokens {
 };
 
 struct ScrollbarTokens {
-    // S3（§7.2）：rest 取 borderStrong 实色（专用 token 传递，painter 不
-    // 再对前景乘 alpha）；hovered/dragged 为预留交互（未接线前常显 rest）。
+    // Visual system §7.4 / scroll design §5: visible thumb and wider hit track.
     core::Color rest{161, 161, 170, 255};
-    core::Color hovered{161, 161, 170, 255};
-    core::Color dragged{161, 161, 170, 255};
-    float thickness{8.0F};     // 轨道宽（命中预留）
-    float thumbWidth{4.0F};    // 可视 Thumb 宽
+    core::Color hovered{228, 228, 231, 255};
+    core::Color dragged{86, 140, 240, 255};
+    core::Color disabled{140, 140, 152, 255};
+    float thickness{16.0F};    // Cross-axis hit track; does not reserve layout space.
+    float thumbWidth{8.0F};
+    float activeThumbWidth{10.0F};
     float minLength{24.0F};
-    float inset{4.0F};         // 上下内距
+    float inset{4.0F};         // 两轴各自的首尾内距。
     // 圆角 = 可视宽度一半（painter 推导）。
 
     bool operator==(const ScrollbarTokens&) const = default;
@@ -436,7 +437,8 @@ struct Theme {
 [[nodiscard]] TooltipTokens tooltipTokensFrom(const ColorScheme& colors);
 [[nodiscard]] DialogTokens dialogTokensFrom(const ColorScheme& colors,
                                             const Metrics& metrics);
-[[nodiscard]] ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors);
+[[nodiscard]] ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors,
+    ControlDensity density = ControlDensity::Comfortable);
 
 // density → 基准档索引（0/1/2）。
 [[nodiscard]] std::uint8_t densityBaseIndex(ControlDensity density);

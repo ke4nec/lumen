@@ -31,6 +31,8 @@ struct InteractionStateSnapshot {
     std::string hoveredIdentity{};
     std::string pressedIdentity{};
     std::string focusedIdentity{};
+    std::string hoveredScrollbarIdentity{};
+    std::string draggedScrollbarIdentity{};
 
     [[nodiscard]] WidgetState stateFor(const std::string& identity,
                                        bool disabled, bool checked,

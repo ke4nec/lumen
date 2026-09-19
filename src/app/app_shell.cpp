@@ -314,6 +314,8 @@ void AppShell::setOverlay(core::Widget overlay) {
 void AppShell::setOverlayBuilder(
     std::function<std::optional<core::Widget>()> builder, WheelSink wheel,
     ScrollDragSink drag, AnimateSink animate) {
+    // Cancel against the current event tree/sink before installing the new modal.
+    controller_.pointerCancel();
     overlayBuilder_ = std::move(builder);
     overlayWheel_ = std::move(wheel);
     overlayDrag_ = std::move(drag);
@@ -372,11 +374,13 @@ void AppShell::pointerCancel() {
     controller_.pointerCancel();
 }
 
-bool AppShell::wheel(core::Offset position, core::Offset delta) {
+bool AppShell::wheel(core::Offset position, core::Offset delta,
+                     core::KeyModifiers modifiers) {
     dismissTooltips();
     rebuildIfDirty();
     overlayWheelForwarded_ = false;
-    const bool handled = controller_.wheel(eventTree(), position, delta);
+    const bool handled =
+        controller_.wheel(eventTree(), position, delta, modifiers);
     // 模态 overlay 兜底（menu-controls-design §6.4"滚轮（任意位置）关
     // 闭"）：命中链无滚动视口时 controller 不调用 sink，overlay 就收不
     // 到滚轮——此处以空 hit 直调一次（菜单外滚轮关闭；Dropdown 等对空
@@ -1223,9 +1227,11 @@ void AppShell::syncInteractionSnapshot() {
             else focus_.clearFocus();
         }
     }
+    controller_.refreshPointer(eventTree());
     interactionSnapshot_ = style::InteractionStateSnapshot{
         controller_.hoveredIdentity(), controller_.pressedIdentity(),
-        focus_.focusedIdentity()};
+        focus_.focusedIdentity(), controller_.hoveredScrollbarIdentity(),
+        controller_.draggedScrollbarIdentity()};
 }
 
 const text::FontManager& AppShell::textFontSource() const {

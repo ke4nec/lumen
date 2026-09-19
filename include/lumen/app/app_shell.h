@@ -220,8 +220,11 @@ class AppShell {
     void pointerUp(core::Offset position,
                    core::PointerButton button = core::PointerButton::Primary);
     void pointerCancel();
-    // 返回 sink 消费状态（M5 收口：语义滚动回执同源）。
-    [[nodiscard]] bool wheel(core::Offset position, core::Offset delta);
+    // 返回 sink 消费状态（M5 收口：语义滚动回执同源）。modifiers 参与
+    // Shift+纵轮 → 水平视口投影（lumen-scroll-design §4；默认无修饰键）。
+    [[nodiscard]] bool wheel(core::Offset position, core::Offset delta,
+                             core::KeyModifiers modifiers =
+                                 core::kModifierNone);
     // 自定义标题栏（lumen-titlebar-design §4.1）：逻辑点是否窗口拖拽区
     //（caption）。runApp 在 WindowDesc.customTitleBar 时注册给宿主
     // hit-test；判定走事件树命中链（overlay 活跃期 = 模态层不可拖），

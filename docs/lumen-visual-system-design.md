@@ -424,6 +424,18 @@ Escape/返回键、modal barrier、焦点恢复和关闭 action 保持当前 8D 
 Card 使用 surface/elevated surface 和 elevation token。ScrollView/ListView 的滚动条
 使用 scrollbar token，定义 rest、hovered、dragged 和 disabled 状态。
 
+滚动条是覆盖在内容上方的附属部件，绘制与命中共享 `ScrollbarGeometry`，
+适用于 ScrollView/ListView/VirtualList/List/Tree/TreeList 及菜单、下拉和弹窗视口。
+Compact/Comfortable/Touch 的命中轨道厚度为 12/16/24，可视滑块厚度为 6/8/10，
+悬停或拖动厚度为 8/10/12；默认桌面档为 16px 命中、8px 可视、10px 活动状态。
+两轴同值并随字体缩放一次，DPI 在渲染边界换算；minLength=24、inset=4 独立取 token，
+悬停加粗不改变滑块长度、滚动映射和内容布局。短视口几何夹取到视口内。
+rest/hovered/dragged/disabled 分别取 borderStrong/contentPrimary/accent/disabledContent。
+进入滑块的完整命中区域即显示 PointingHand，按住拖出轨道仍保持手形和拖动状态；
+松开、取消、隐藏、禁用或内容不再溢出时恢复正确光标。滑块拖动无 slop、无释放惯性，
+轨道空白处单击向该方向翻页；滚动条优先于底下的按钮、文字和集合行命中。
+无溢出不显示；auto-hide 仍为预留。具体输入与验收见 `lumen-scroll-design.md` §4/§5/§7。
+
 ## 8. 图标、阴影、动效和响应式扩展
 
 第一轮代码先实现颜色、排版、尺寸、圆角、边框、焦点环和控件状态；完整设计系统

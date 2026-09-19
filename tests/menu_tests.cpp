@@ -525,6 +525,9 @@ TEST_CASE("menu_bar_builds_row_and_opens_anchored_below",
     const RenderNode* panel =
         findNodeByKey(*shell.overlayRoot(), "menubar:panel:0");
     REQUIRE(panel != nullptr);
+    // Opening the menu rebuilds the main tree; the pre-click node is stale.
+    fileItem = findNodeByKey(shell.root(), "menu:bar:file");
+    REQUIRE(fileItem != nullptr);
     const float barBottom = absoluteOffset(shell.root(), "menu:bar:file").y +
                             fileItem->size.height;
     CHECK(panel->offset.y >= barBottom);

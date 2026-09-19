@@ -965,9 +965,12 @@ class GalleryApp {
         core::ScrollController* scroll = &scroll_;
         if (viewport && viewport->key == std::string(kDialogKey) + "-body-scroll") {
             scroll = &dialogScroll_;
+        } else if (viewport && viewport->key == "gallery-scrollview") {
+            scroll = &scrollViewScroll_;
         }
         switch (phase) {
             case core::ScrollDragPhase::Begin:
+                scroll->cancelDrag();
                 return true;
             case core::ScrollDragPhase::Update:
                 if (viewport != nullptr) {
@@ -988,7 +991,12 @@ class GalleryApp {
                 }
                 return false;
             case core::ScrollDragPhase::Cancel:
-                scroll->stopFling();
+                if (viewport) scroll->cancelDrag();
+                else {
+                    scroll_.cancelDrag();
+                    dialogScroll_.cancelDrag();
+                    scrollViewScroll_.cancelDrag();
+                }
                 return false;
         }
         return false;
@@ -997,18 +1005,22 @@ class GalleryApp {
     bool advanceFling(app::AppShell& shell, std::uint64_t nowMs) {
         // 源视口（library_/collections）的惯性由框架 advanceSourceFling
         // 推进（AppShell::tick 内）；这里只推进应用侧外层滚动。
-        if (scroll_.isFlinging()) {
-            shell.markDirty();
-            return scroll_.stepFling(nowMs);
+        bool active = false;
+        for (auto* scroll : {&scroll_, &dialogScroll_, &scrollViewScroll_}) {
+            if (scroll->isFlinging()) {
+                shell.markDirty();
+                active = scroll->stepFling(nowMs) || active;
+            }
         }
-        return false;
+        return active;
     }
 
     bool scrollWheel(const core::RenderNode& root, const core::RenderNode* hit,
                      float deltaY) {
-        if (hit && hit->key == std::string(kDialogKey) + "-body-scroll") {
-            dialogScroll_.updateExtents(hit->size.height, hit->size.height + hit->scrollExtent);
-            const bool changed = dialogScroll_.applyWheel(deltaY);
+        if (hit && (hit->key == std::string(kDialogKey) + "-body-scroll" || hit->key == "gallery-scrollview")) {
+            auto& scroll = hit->key == "gallery-scrollview" ? scrollViewScroll_ : dialogScroll_;
+            scroll.updateExtents(hit->size.height, hit->size.height + hit->scrollExtent);
+            const bool changed = scroll.applyWheel(deltaY);
             if (changed) shell_.markDirty();
             return changed;
         }
@@ -2443,6 +2455,8 @@ class GalleryApp {
                              core::CrossAxisAlignment::Start,
                              style::spaceToken(2)),
             "gallery-scrollview", std::nullopt, 140.0F);
+        scrollView.scrollOffset = scrollViewScroll_.offset();
+        scrollView.showScrollbar = true;
         items.push_back(sectionCard(
             "ScrollView (fixed viewport)",
             {core::withKey(std::move(scrollView), "gallery-scrollview")},
@@ -3639,6 +3653,7 @@ class GalleryApp {
 
     core::ScrollController scroll_{};
     core::ScrollController dialogScroll_{};
+    core::ScrollController scrollViewScroll_{};
     widgets::FormController form_{};
     widgets::NavigatorController navigator_{"home"};
     bool darkMode_{true};

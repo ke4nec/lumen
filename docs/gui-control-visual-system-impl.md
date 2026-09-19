@@ -304,3 +304,23 @@
 - 新增回归分别覆盖路由透明帧/中间帧之后的终帧 hover 重建，以及状态色动画终帧的无关内容重建；修复前两类像素断言均失败。
 - 连续局部重绘测试改为与独立 Gallery 实例的完整绘制比较（1/1.5/2 DPI），避免在被测实例上插入完整重绘、掩盖缓存残留。Windows CPU Debug 完整构建及 CTest **486/486** 通过；日志 `build/gallery-regression/moving-ctest-debug.log`。
 - Debug/Release Gallery 均已重建。真实 SDL 窗口、系统字体、`maxFrames=0` 下，Debug 慢首帧后移动鼠标、Release 正常/慢首帧期间及之后移动鼠标、Release 静止等待均通过最终像素与完整绘制一致性检查；[复现的漏刷帧](../build/gallery-regression/buttons-moving-before.png)、[修复后的提交帧](../build/gallery-regression/buttons-moving-after-debug.png)。证据来自完整重绘校验前的 framebuffer，日志为 `build/gallery-regression/route-moving-*.log` 和 `route-stationary-final.log`。
+
+
+## 滚动条命中、状态与方向修复（2026-09-19）
+
+- 对齐视觉系统 §7.4 与滚动设计 §4/§5：六类滚动视口及菜单、下拉、弹窗共用 `ScrollbarGeometry`，绘制、命中与拖动从同一份几何推导。默认命中轨道 16px、可视滑块 8px，悬停/拖动加粗到 10px；Compact/Touch 分别为 12/6/8 和 24/10/12，随字体缩放一次。
+- 接入 hovered/dragged/disabled token 与系统手形光标；完整滑块命中区域都可直接捕获，拖出视口继续跟手，释放不产生惯性。轨道单击翻页，滚动条优先于底下内容命中，隐藏/禁用/溢出消失后取消捕获并清理光标。悬停加粗不改变轴向位置。
+- 修复水平滑块误走内容拖动而反向的问题，以及 SDL 水平滚轮错误复用纵向符号翻转的问题。Gallery Lists 内层 ScrollView 使用独立控制器和 offset，避免修改外层页面位置；长菜单滑块拖动写回各层滚动状态。
+- 同步交互稿 `design/scrollbar-controls.html` 和集合设计稿。新增回归覆盖六类视口、横纵方向、命中扩展、状态/密度/缩放、菜单/下拉、嵌套视口与内容防误触、失效取消、宿主光标映射、SDL NORMAL/FLIPPED 输入，以及 CPU/GPU 输出。
+- Windows / VS 2026：隔离目录 `build/scrollbar-fix/cpu` 的 Debug 全量 CTest **648/648**、`build/scrollbar-fix/gpu` 的 Skia/GPU Release 全量 CTest **666/666** 通过；GPU 滚动条用例实际执行 **99 个断言**，未跳过。系统字体的横纵静止/悬停/拖动共 6 帧已导出核对，局部与完整重绘一致；原生 Gallery 窗口 3 帧短跑通过。构建日志、测试日志和 `scrollbar-states.png` 在 `build/scrollbar-fix/`，生成物不提交。
+- 未验证：Linux/macOS 本机桌面与真实触控板手感；auto-hide 仍为预留，有溢出时常显。此前 S3/S5 的 hovered/dragged 预留记录以本条完成记录为准。
+
+
+### 滚动条 review 追补（2026-09-19）
+
+- 修复取消后松键仍能设置落点 Slider/切换控件的问题；无有效按压的释放不产生控件动作。源滚动条取消不再错误发送到应用 sink，替换模态 overlay builder 前先取消原捕获，避免取消通知送给新弹层。
+- 拖动滚动条时暂停菜单行/菜单栏的被动悬停派发，越轨拖动不再切换菜单而丢失捕获。恢复普通悬停后仍可切换菜单。
+- 新增 `ScrollController::cancelDrag()`，清除取消手势的速度样本；框架源控制器和 Gallery/Settings 均接入，避免下一次内容拖动误用上次滑块速度起惯性。
+- SDL 滚轮事件补齐实时修饰键，Shift+纵轮可真实驱动水平视口；水平视口拒绝 Up/Down，保留 Left/Right 和翻页键。
+- 先补用例复现上述路径，再修复：专项 8 例、75 断言通过。另修正菜单锚定测试跨重建使用旧 RenderNode 指针的偶发失败。最终 Windows CPU Debug 全量 **655/655**、Skia/GPU Release 全量 **673/673**，GPU 滚动条回读实际执行（99 断言），原生系统字体窗口 3 帧短跑通过。
+- 证据：`build/scrollbar-fix/review-before-tests.log`、`review-menu-before.log`、`review-after-tests.log`、`review-{cpu,gpu}-ctest.log` 和 `review-native-smoke.log`。Linux/macOS 实机及真实触控板仍未验证。

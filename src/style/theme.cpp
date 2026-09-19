@@ -1,6 +1,7 @@
 #include "lumen/style/theme.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace lumen::style {
@@ -293,12 +294,17 @@ DialogTokens dialogTokensFrom(const ColorScheme& colors,
     return tokens;
 }
 
-ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors) {
+ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors, ControlDensity density) {
     // S3（§7.2）：rest 取 borderStrong 实色。
     ScrollbarTokens tokens;
     tokens.rest = colors.borderStrong;
-    tokens.hovered = colors.borderStrong;
-    tokens.dragged = colors.borderStrong;
+    tokens.hovered = colors.contentPrimary;
+    tokens.dragged = colors.accent;
+    tokens.disabled = colors.disabledContent;
+    const auto index = densityBaseIndex(density);
+    tokens.thickness = std::array{12.0F, 16.0F, 24.0F}[index];
+    tokens.thumbWidth = std::array{6.0F, 8.0F, 10.0F}[index];
+    tokens.activeThumbWidth = std::array{8.0F, 10.0F, 12.0F}[index];
     return tokens;
 }
 
@@ -590,7 +596,7 @@ Theme baseTheme(bool darkMode, ControlDensity density,
     theme.tabs = tabsTokensFrom(theme.colors);
     theme.tooltip = tooltipTokensFrom(theme.colors);
     theme.dialog = dialogTokensFrom(theme.colors, theme.metrics);
-    theme.scrollbar = scrollbarTokensFrom(theme.colors);
+    theme.scrollbar = scrollbarTokensFrom(theme.colors, theme.metrics.density);
     theme.list = listTokensFrom(theme.colors);
     theme.tree.row = theme.list;
     theme.tree.chevronContent = theme.colors.contentSecondary;
@@ -636,7 +642,7 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     theme.progressBar = progressBarTokensFrom(theme.colors);
     theme.tabs = tabsTokensFrom(theme.colors);
     theme.tooltip = tooltipTokensFrom(theme.colors);
-    theme.scrollbar = scrollbarTokensFrom(theme.colors);
+    theme.scrollbar = scrollbarTokensFrom(theme.colors, theme.metrics.density);
     theme.metrics.focusRingWidth = 3.0F;
     theme.metrics.controlBorderWidth = 2.0F;
     theme.list = listTokensFrom(theme.colors);
@@ -651,6 +657,11 @@ void scaleComponentSizes(Theme& theme, float factor) {
         return;
     }
     theme.list.markerWidth *= factor;
+    theme.scrollbar.thickness *= factor;
+    theme.scrollbar.thumbWidth *= factor;
+    theme.scrollbar.activeThumbWidth *= factor;
+    theme.scrollbar.minLength *= factor;
+    theme.scrollbar.inset *= factor;
     theme.list.markerInset *= factor;
     theme.list.emptyIconSize *= factor;
     theme.tree.row.markerWidth *= factor;
@@ -814,6 +825,7 @@ Theme adaptPlatformTheme(const Theme& base,
         adapted.slider = sliderTokensFrom(adapted.colors);
         adapted.progressBar = progressBarTokensFrom(adapted.colors);
         adapted.tabs = tabsTokensFrom(adapted.colors);
+        adapted.scrollbar = scrollbarTokensFrom(adapted.colors, adapted.metrics.density);
         adapted.list = listTokensFrom(adapted.colors);
         if (settings.highContrast) {
             adapted.list.hovered = blendOver(adapted.list.background, adapted.colors.hoverOverlay);

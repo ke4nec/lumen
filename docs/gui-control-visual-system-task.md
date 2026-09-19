@@ -96,7 +96,7 @@
 2. `resolveStyleImpl` 对 Radio、Slider、ProgressBar、Dropdown、Tabs、Tooltip 等目前回落到通用容器解析。存在绘制分支不等于已经覆盖交互状态。
 3. `ProgressBar` 没有不确定进度模式；`Radio` 没有框架级组管理；`DropdownController::Option` 当前只有 value / label，没有禁用项或分组选项。
 4. `FormController` 保存错误字符串，不是 Warning / Success 多级校验模型。辅助说明由应用组合，不能声称新增一个颜色就完成了校验模型扩展。
-5. `withScrollbar` 控制视口的附属绘制；当前没有专用 Thumb 拖动/自动隐藏状态机。rest / hovered / dragged / minLength token 已声明，尚需核对消费链，不能据此宣称这些交互已实现。
+5. `withScrollbar` 控制视口的附属滚动条。2026-09-19 已接入 Thumb 悬停、捕获拖动和 rest / hovered / dragged / disabled token（§7.2）；自动隐藏计时仍未实现，不能宣称已有 auto-hide。
 6. 当前焦点环在 painter 中内嵌绘制；不要依据旧头文件中的“外扩”注释直接增加越界绘制。阴影另有绘制范围处理。
 7. 当前 Icon 通道不等于任意前后插槽；ImageId 为 0 不区分加载与失败；`TextStyle.lineHeight` 是倍数，不能把绝对像素行高直接赋给它。
 8. 当前 CPU 阴影为扁平降级，Skia 使用模糊；headless 占位字体输出不能证明真实系统字体、IME 或跨后端视觉一致。
@@ -392,10 +392,10 @@ Row 的按钮组 gap 8，Column 的字段组 gap 16，Grid 的面板 gap 16。�
 
 Scrollbar 继续作为 `withScrollbar` 启用的附属部件：
 
-- 无溢出不显示；存在溢出时默认常显，轨道透明。宽度 token 8、可视 Thumb 4、最小长度 24、上下 inset 4、圆角为可视宽度一半。
+- 无溢出不显示；存在溢出时默认常显，轨道透明。命中轨道 12/16/24、可视 Thumb 6/8/10、悬停/拖动 Thumb 8/10/12（Compact/Comfortable/Touch）；最小长度 24、轴向 inset 4、圆角为可视宽度一半。字号缩放一次，默认桌面为 16/8/10。
 - Thumb 长度按 viewport/content 比例计算，在 `[minLength, trackLength]` 内夹取；短视口时不得因 24 px 最小值越界。offset 到位置的映射与滚动范围一致。
-- rest 颜色取 borderStrong，通过专用 token 传递到 RenderNode；不再在 painter 将 contentPrimary 随意乘 alpha。
-- hovered / dragging / auto-hide 为 §11 预留交互；没有真实命中与事件接线前维持常显，不能做“看起来可拖但拖不动”的扩展演示。
+- rest/hovered/dragged/disabled 分别取 borderStrong/contentPrimary/accent/disabledContent，通过专用 token 传递到 RenderNode；不在 painter 随意乘 alpha。
+- hovered / dragging 已接入（2026-09-19，`lumen-scroll-design.md` §5）：滑块完整命中区显示手形，拖动独占且跨重建跟手，释放不产生惯性；轨道单击翻页，取消/隐藏/禁用清除捕获。auto-hide 仍为 §11 预留。绘制、命中、拖动共用几何，覆盖横纵两轴及所有滚动视口。
 
 ### 7.3 FocusScope 与 ThemeScope
 
@@ -520,7 +520,7 @@ ThemeScope 内颜色、部件、字体、度量必须来自同一局部 Theme；
 | Checkbox indeterminate | 三态值、循环/切换规则、语义与绑定兼容 | 本轮验收二态；未来横线标记不得与勾号混淆 |
 | Form warning / success | 分级校验模型、清理和提交策略 | 当前 errors/invalid 不扩张 |
 | 不确定 ProgressBar | 模式和值域、可暂停调度、减少动画的静态替代 | 本轮确定进度 |
-| Scrollbar hover / drag / auto-hide | 命中区、捕获、取消、滚动同步、计时生命周期 | 本轮常显附属绘制，token 补齐消费 |
+| Scrollbar auto-hide | 显隐计时生命周期 | hover/drag、命中捕获、取消和滚动同步已接入；无溢出隐藏，有溢出常显 |
 | Radio 组、Tabs 方向键、Dropdown 禁用项/分组 | 选择模型、导航与语义协议 | 保留已有应用/controller 所有权 |
 | Image fit、圆角裁剪、加载/失败区分 | 资源状态、采样规则与跨后端裁剪 | 保留默认拉伸和未就绪占位 |
 | focus-visible、三档 MotionMode、Spring | 输入来源、偏好适配与完整调度 | 沿用 focused、reduceAnimation、Tween |
