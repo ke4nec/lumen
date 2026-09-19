@@ -1552,10 +1552,15 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     `ButtonVariant::WindowClose`（枚举尾部追加，IconId/SemanticsRole
     先例）：rest 幽灵（透明底 + 次要前景）、hover 实心
     `statusError` + `onError` 反色、pressed 叠压暗、disabled 透明
-    （Windows 惯例；取 Theme 错误色 token，非 mock 硬编码色）。栏项
-    切 Small 档（32px）——Medium 项 + 下划线 + padding 会撑到 46px
-    挤满 caption（观感复核经渲染 PNG 视觉评审 + 节点几何核对：
-    48/38/28 三层高度与图标居中全部达标）。
+    （Windows 惯例）。栏项切 Small 档（32px）——Medium 项 + 下划线 +
+    padding 会撑到 46px 挤满 caption（观感复核经渲染 PNG 视觉评审 +
+    节点几何核对：48/38/28 三层高度与图标居中全部达标）。
+  - **按钮外形逐像素对齐（复核第二轮）**：图标盒 16 → 14px
+    （`StyleOverrides.iconSize` 覆盖，描边折算 ≈1.6；M7 体积预算内
+    float 位）；窗口三字形按稿 SVG 24 栅格逐坐标归一（Close X 原
+    偏大 37% → 7..17、Maximize 6..18、Minimize 5..19）；close hover
+    红改专用 `ButtonTokens.windowClose`（#c42b1c + 白，系统 chrome
+    常量、深浅同值——原 statusError #E05A60 偏亮）。
   - **透明圆角窗口**：`WindowDesc.transparent`（SDL_WINDOW_
     TRANSPARENT，sdl3_window/host 透传）+ `AppShell::setClearColor`
     （runApp 依 transparent 自动把 CPU 清屏转全透明）；gallery 根

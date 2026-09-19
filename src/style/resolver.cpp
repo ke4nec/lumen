@@ -292,8 +292,12 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
     button.reserveIconSpace = widget.reserveIconSpace;
     CommonResolvedStyle& common = button.common;
     // 图标部件（§6.1/§4.5）：槽位尺寸与 gap 按档位，线宽按 16px→1.5
-    // 基准比例缩放。
-    button.iconSize = theme.metrics.inlineIconSize[index];
+    // 基准比例缩放；styleOverrides.iconSize 覆盖盒宽（chrome 件对齐
+    // 设计稿 14px 等），描边同源折算保持相对权重。
+    button.iconSize =
+        widget.styleOverrides.iconSize > 0.0F
+            ? widget.styleOverrides.iconSize
+            : theme.metrics.inlineIconSize[index];
     button.iconGap = theme.metrics.controlGap[index];
     button.iconStroke =
         theme.icons.strokeWidth * button.iconSize / theme.icons.defaultSize;
@@ -339,15 +343,16 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
     } else if (state.pressed) {
         // pressed 覆盖 hover（§5 规则 3）。
         common.background = blendOver(
-            windowClose ? theme.colors.statusError : common.background,
+            windowClose ? theme.button.windowClose.background
+                        : common.background,
             theme.colors.pressedOverlay);
         if (windowClose) {
-            common.foreground = theme.colors.onError;
+            common.foreground = theme.button.windowClose.content;
         }
     } else if (state.hovered) {
         if (windowClose) {
-            common.background = theme.colors.statusError;
-            common.foreground = theme.colors.onError;
+            common.background = theme.button.windowClose.background;
+            common.foreground = theme.button.windowClose.content;
         } else {
             common.background =
                 blendOver(common.background, theme.colors.hoverOverlay);

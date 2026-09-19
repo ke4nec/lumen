@@ -227,8 +227,8 @@ TEST_CASE("style_button_variants_resolve_rest_state", "[style]") {
 
 TEST_CASE("style_window_close_variant_solid_red_on_hover", "[style]") {
     // 自定义标题栏关闭钮（Windows 惯例）：rest 幽灵（透明底 + 次要
-    // 前景）；hover 实心 statusError + onError 反色；pressed 在警示红
-    // 上叠压暗；disabled 透明底。
+    // 前景）；hover 实心 windowClose chrome 红（#c42b1c 口径，深浅同
+    // 值）+ 反色；pressed 在其上叠压暗；disabled 透明底。
     Fixture fixture;
     Widget close = lumen::core::withVariant(
         lumen::core::makeButton(""), lumen::core::ButtonVariant::WindowClose);
@@ -238,15 +238,40 @@ TEST_CASE("style_window_close_variant_solid_red_on_hover", "[style]") {
 
     fixture.interaction.hoveredIdentity = "k:x";
     const auto& hovered = buttonPart(fixture.resolve(close));
-    CHECK(hovered.common.background == fixture.theme.colors.statusError);
-    CHECK(hovered.common.foreground == fixture.theme.colors.onError);
+    CHECK(hovered.common.background ==
+          fixture.theme.button.windowClose.background);
+    CHECK(hovered.common.foreground ==
+          fixture.theme.button.windowClose.content);
+    CHECK(fixture.theme.button.windowClose.background ==
+          lumen::core::Color{196, 43, 28, 255});
 
     fixture.interaction.pressedIdentity = "k:x";
     const auto& pressed = buttonPart(fixture.resolve(close));
     CHECK(pressed.common.background ==
-          lumen::style::blendOver(fixture.theme.colors.statusError,
-                                  fixture.theme.colors.pressedOverlay));
-    CHECK(pressed.common.foreground == fixture.theme.colors.onError);
+          lumen::style::blendOver(
+              fixture.theme.button.windowClose.background,
+              fixture.theme.colors.pressedOverlay));
+    CHECK(pressed.common.foreground ==
+          fixture.theme.button.windowClose.content);
+}
+
+TEST_CASE("style_icon_size_override_scales_stroke", "[style]") {
+    // StyleOverrides.iconSize：chrome 件图标盒覆盖（窗口钮 14px），描边
+    // 随盒宽同源折算（1.8 × 14/16 ≈ 1.575，≈ 设计稿 1.6）。
+    const Fixture fixture;
+    Widget plain = lumen::core::withIcon(lumen::core::makeButton(""),
+                                         lumen::core::IconId::Close);
+    const auto& base = buttonPart(fixture.resolve(plain));
+    CHECK(base.iconSize == 16.0F);
+    CHECK(base.iconStroke == Catch::Approx(1.8F).margin(0.001F));
+
+    Widget sized = lumen::core::withIcon(lumen::core::makeButton(""),
+                                         lumen::core::IconId::Close);
+    sized.styleOverrides.iconSize = 14.0F;
+    const auto& small = buttonPart(fixture.resolve(sized));
+    CHECK(small.iconSize == 14.0F);
+    CHECK(small.iconStroke ==
+          Catch::Approx(1.8F * 14.0F / 16.0F).margin(0.001F));
 }
 
 TEST_CASE("style_button_hover_and_pressed_derive_from_base", "[style]") {

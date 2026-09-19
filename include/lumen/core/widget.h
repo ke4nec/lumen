@@ -121,12 +121,16 @@ struct StyleOverrides {
     std::optional<CornerRadius> radius{};
     std::optional<EdgeInsets> padding{};
     std::optional<TextStyle> text{};
+    // 图标盒尺寸覆盖（Button/Dropdown 内联图标档；0 = 不覆盖——
+    // 用 float 压位宽，Widget 体积预算 M7 不超）。描边按盒宽折算保
+    // 持相对权重；窗口控制钮等 chrome 件对齐设计稿 14px 用。
+    float iconSize{0.0F};
 
     [[nodiscard]] bool empty() const {
         return !background.has_value() && !foreground.has_value() &&
                !border.has_value() && !borderWidth.has_value() &&
                !radius.has_value() && !padding.has_value() &&
-               !text.has_value();
+               !text.has_value() && iconSize <= 0.0F;
     }
 
     bool operator==(const StyleOverrides&) const = default;

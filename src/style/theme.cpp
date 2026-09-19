@@ -196,6 +196,10 @@ ButtonTokens buttonTokensFrom(const ColorScheme& colors) {
     tokens.ghost.border = colors.borderStrong;
     tokens.danger.background = colors.statusError;
     tokens.danger.content = colors.onError;
+    // 窗口关闭钮（design/gallery.html .caption-button.close hover
+    // #c42b1c + 白）：系统 chrome 红常量，深浅主题同值。
+    tokens.windowClose.background = core::Color{196, 43, 28, 255};
+    tokens.windowClose.content = core::Color{255, 255, 255, 255};
     return tokens;
 }
 

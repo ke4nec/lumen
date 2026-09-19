@@ -3295,6 +3295,9 @@ class GalleryApp {
             "", core::TextStyle{}, core::EdgeInsets{}, 0.0F, onClick,
             44.0F * scale, std::nullopt, onClick);
         button.buttonVariant = variant;
+        // 图标盒 14px（design/gallery.html caption-button svg 14px；
+        // 描边随盒宽折算 ≈1.6）。
+        button.styleOverrides.iconSize = 14.0F * scale;
         return core::withIcon(std::move(button), icon);
     }
 

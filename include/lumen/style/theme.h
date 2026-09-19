@@ -186,6 +186,9 @@ struct ButtonTokens {
     ButtonVariantTokens outline{};
     ButtonVariantTokens ghost{};
     ButtonVariantTokens danger{};
+    // 窗口关闭钮 hover/pressed 实心（ButtonVariant::WindowClose；深浅
+    // 主题同值——系统 chrome 色，不随语义错误色走）。
+    ButtonVariantTokens windowClose{};
 
     bool operator==(const ButtonTokens&) const = default;
 };

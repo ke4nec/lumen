@@ -20,9 +20,12 @@ const std::vector<Catalog>& catalog() {
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
+        // 窗口控制三枚字形按 design/gallery.html caption-button 的 SVG
+        // 24 栅格逐坐标归一（14px 盒渲染时与稿逐像素一致；共享方共享
+        // 同一 24 栅格设计语言）。Close：m7 7 10 10 / m17 7 7 17。
         table[static_cast<std::size_t>(IconId::Close)] =
-            Catalog{Line{{Offset{0.25F, 0.25F}, Offset{0.75F, 0.75F}}},
-                    Line{{Offset{0.75F, 0.25F}, Offset{0.25F, 0.75F}}}};
+            Catalog{Line{{Offset{0.2917F, 0.2917F}, Offset{0.7083F, 0.7083F}}},
+                    Line{{Offset{0.7083F, 0.2917F}, Offset{0.2917F, 0.7083F}}}};
         table[static_cast<std::size_t>(IconId::ChevronDown)] =
             Catalog{Line{{Offset{0.28F, 0.38F}, Offset{0.50F, 0.62F},
                   Offset{0.72F, 0.38F}}}};
@@ -41,8 +44,9 @@ const std::vector<Catalog>& catalog() {
         table[static_cast<std::size_t>(IconId::Plus)] =
             Catalog{Line{{Offset{0.50F, 0.22F}, Offset{0.50F, 0.78F}}},
                     Line{{Offset{0.22F, 0.50F}, Offset{0.78F, 0.50F}}}};
+        // Minus：M5 12 H19 → 5..19 水平线（24 栅格）。
         table[static_cast<std::size_t>(IconId::Minus)] =
-            Catalog{Line{{Offset{0.22F, 0.50F}, Offset{0.78F, 0.50F}}}};
+            Catalog{Line{{Offset{0.2083F, 0.5F}, Offset{0.7917F, 0.5F}}}};
         // Search：镜圆（24 段折线逼近）+ 45° 手柄——手柄起点取圆缘
         // （相连无缝），无镜内斜线（旧目录的脱开手柄 + 内部斜线是
         // 16px 下发糊读不清的根因）。几何按 16 栅格 (7,7) r4.25 设计。
@@ -69,10 +73,12 @@ const std::vector<Catalog>& catalog() {
         table[static_cast<std::size_t>(IconId::Info)] =
             Catalog{Line{{Offset{0.50F, 0.26F}, Offset{0.50F, 0.28F}}},
                     Line{{Offset{0.50F, 0.42F}, Offset{0.50F, 0.78F}}}};
+        // Maximize：rect(6,6,12,12,rx1) → 6..18 方框（24 栅格；rx 圆角
+        // 由描边圆角连接自然形成）。
         table[static_cast<std::size_t>(IconId::Maximize)] =
-            Catalog{Line{{Offset{0.28F, 0.28F}, Offset{0.72F, 0.28F},
-                          Offset{0.72F, 0.72F}, Offset{0.28F, 0.72F},
-                          Offset{0.28F, 0.28F}}}};
+            Catalog{Line{{Offset{0.25F, 0.25F}, Offset{0.75F, 0.25F},
+                          Offset{0.75F, 0.75F}, Offset{0.25F, 0.75F},
+                          Offset{0.25F, 0.25F}}}};
         // S4（§6.10）：图片占位——外框 + 山形折线（描边风格与目录一致）。
         table[static_cast<std::size_t>(IconId::Image)] =
             Catalog{Line{{Offset{0.18F, 0.22F}, Offset{0.82F, 0.22F},

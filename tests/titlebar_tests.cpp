@@ -14,6 +14,7 @@
 #include "lumen/core/icon_id.h"
 #include "lumen/core/widget.h"
 #include "lumen/layout/layout.h"
+#include "lumen/render/render_commands.h"
 #include "lumen/platform/application_host.h"
 #include "lumen/platform/fake_host.h"
 
@@ -122,6 +123,27 @@ TEST_CASE("titlebar_controls_flush_full_height_and_rounded_window",
     const Offset closeAbs = absoluteOffset(app.root(), "window-close");
     CHECK(closeAbs.x + close->size.width ==
           Catch::Approx(1280.0F).margin(0.01F));
+    // 图标盒 14px（design/gallery.html caption-button svg 14px），
+    // 三钮一致；描边随盒宽折算 ≈1.6。
+    {
+        const auto commands = render::recordScene(app.root());
+        int seenIcons = 0;
+        for (const auto& command : commands.commands()) {
+            if (command.type != render::CommandType::DrawIcon ||
+                command.rect.origin.y > 60.0F ||
+                command.rect.origin.x < 1100.0F) {
+                continue;
+            }
+            ++seenIcons;
+            CHECK(command.rect.size.width ==
+                  Catch::Approx(14.0F).margin(0.01F));
+            CHECK(command.rect.size.height ==
+                  Catch::Approx(14.0F).margin(0.01F));
+            CHECK(command.strokeWidth ==
+                  Catch::Approx(1.575F).margin(0.01F));
+        }
+        CHECK(seenIcons == 3);
+    }
 
     const RenderNode* root = findNodeByKey(app.root(), "root");
     const RenderNode* bar = findNodeByKey(app.root(), "gallery-titlebar");

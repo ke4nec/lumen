@@ -132,7 +132,7 @@ SDL_HitTest(point in window pixels):
 ## 5. 视觉规格（design/gallery.html）
 
 - 标题栏单行 **总高 48px（border-box：内容行 47 + 1px 底分隔线）**（替代原 56px 顶栏 + 40px 菜单栏两行）：品牌标 28×28 + 标题 14px/650 + 菜单栏（**栏项 Small 档 32px**，含下划线占位整栏 ~38px——Medium 40px 项会撑到 46px 挤满 caption）+ 弹性拖拽区（右侧状态胶囊）+ 窗口控制。
-- 窗口控制按钮 **44px 宽、通高（48px 行高）、右缘贴合窗口角**（Windows 惯例；`align-items: stretch`、右缘无 padding），图标 14px 描边 1.6；min/max hover 弱表面，close = `ButtonVariant::WindowClose`（rest 幽灵；hover 实心 `statusError` + `onError` 反色；pressed 叠压暗——实现取 Theme 错误色 token，非 mock 硬编码 #c42b1c）。
+- 窗口控制按钮 **44px 宽、通高（48px 行高）、右缘贴合窗口角**（Windows 惯例；`align-items: stretch`、右缘无 padding）。**图标盒 14px**（`StyleOverrides.iconSize` 覆盖，描边随盒宽折算 ≈1.6），**字形按稿 SVG 24 栅格逐坐标归一**（Minimize 5..19 线 / Maximize 6..18 方框 / Close 7..17 叉）；min/max hover 弱表面，close = `ButtonVariant::WindowClose`（rest 幽灵；hover 实心 `ButtonTokens.windowClose`——#c42b1c + 白，系统 chrome 红常量、深浅主题同值；pressed 叠压暗）。
 - **透明窗口圆角（已实现）**：`WindowDesc.transparent`（SDL_WINDOW_TRANSPARENT + runApp 将 CPU 清屏色转全透明）；应用内容自绘圆角——gallery 根容器四角 + 标题栏顶角 16px，对话框 scrim 同半径（`makeDialog` 的 `scrimRadius` 参数，防止全窗压暗涂进圆角外的透明像素）；**最大化圆角归零**（.is-maximized）。Windows DWM 合成良好；无合成器 X11 角落退化黑；外部渲染器（Skia/GPU）透明 clear 由后端装配负责（未接）。
 - 最大化态：窗口直角、最大化按钮切换还原图标（双层方框，`IconId::Restore`）。
 - 窗口四边 **8 逻辑 px** 透明 resize 边 + 四角 12px（平台 hit-test，视觉不呈现）。
