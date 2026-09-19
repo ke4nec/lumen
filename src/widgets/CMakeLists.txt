@@ -14,6 +14,8 @@ add_library(lumen-widgets STATIC
     spin.cpp
     # ToolBar（toolbar-design）：工具栏组合件（零新增 WidgetType）。
     toolbar.cpp
+    # StatusBar（statusbar-design）：状态栏组合件（零新增 WidgetType）。
+    statusbar.cpp
 )
 
 target_include_directories(lumen-widgets PUBLIC

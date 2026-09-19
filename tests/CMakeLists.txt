@@ -38,6 +38,9 @@ set(LUMEN_TEST_SOURCES
     # ToolBar 控件：命令激活/键盘漫游/溢出折叠/面板/tooltip/语义
     #（docs/lumen-toolbar-design.md，2026-09）。
     toolbar_tests.cpp
+    # StatusBar 控件：消息生命周期/项折叠/indeterminate/busy/语义/派生
+    #（docs/lumen-statusbar-design.md，2026-09）。
+    statusbar_tests.cpp
     # 自定义标题栏：windowDrag 物化/拖拽判定、Gallery 窗口命令/最大化态、
     # Fake host 窗口操作契约与 runApp 注册（docs/lumen-titlebar-design.md）。
     titlebar_tests.cpp
