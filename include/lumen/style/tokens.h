@@ -78,10 +78,12 @@ constexpr std::uint32_t kDurationSlowMs = 350;
 // token 冻结——名字与值不变，经别名复用）。
 using IconId = core::IconId;
 
-// 图标默认几何（渲染能力冻结，token 先行）。
+// 图标默认几何（渲染能力冻结，token 先行）。strokeWidth 以 16px 基准
+// 档定权：1.8 对齐设计稿描边（design/gallery.html 1.7–2.0、
+// menu-controls.html 1.8）——1.5 在 16px + AA 下偏细发糊。
 struct IconTheme {
     float defaultSize{16.0F};
-    float strokeWidth{1.5F};
+    float strokeWidth{1.8F};
 
     bool operator==(const IconTheme&) const = default;
 };

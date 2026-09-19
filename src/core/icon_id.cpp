@@ -3,6 +3,8 @@
 // 几何在 16x16 视觉栅格上设计后归一化；线帽/拐角由渲染后端决定
 //（圆帽优先，CPU 软件光栅为方帽近似）。每个图标 = 一组折线。
 
+#include <cmath>
+
 #include "lumen/core/icon_id.h"
 
 namespace lumen::core {
@@ -41,16 +43,29 @@ const std::vector<Catalog>& catalog() {
                     Line{{Offset{0.22F, 0.50F}, Offset{0.78F, 0.50F}}}};
         table[static_cast<std::size_t>(IconId::Minus)] =
             Catalog{Line{{Offset{0.22F, 0.50F}, Offset{0.78F, 0.50F}}}};
-        table[static_cast<std::size_t>(IconId::Search)] =
-            Catalog{Line{{Offset{0.30F, 0.30F}, Offset{0.44F, 0.44F}}},
-                    Line{{Offset{0.68F, 0.68F}, Offset{0.80F, 0.80F}}},
-                    Line{{Offset{0.44F, 0.26F}, Offset{0.34F, 0.30F},
-                          Offset{0.28F, 0.38F}, Offset{0.26F, 0.48F},
-                          Offset{0.30F, 0.58F}, Offset{0.38F, 0.62F},
-                          Offset{0.48F, 0.62F}, Offset{0.56F, 0.58F},
-                          Offset{0.60F, 0.50F}, Offset{0.60F, 0.40F},
-                          Offset{0.56F, 0.32F}, Offset{0.48F, 0.26F},
-                          Offset{0.44F, 0.26F}}}};
+        // Search：镜圆（24 段折线逼近）+ 45° 手柄——手柄起点取圆缘
+        // （相连无缝），无镜内斜线（旧目录的脱开手柄 + 内部斜线是
+        // 16px 下发糊读不清的根因）。几何按 16 栅格 (7,7) r4.25 设计。
+        {
+            Catalog search;
+            Line circle;
+            constexpr float kCx = 0.4375F;
+            constexpr float kCy = 0.4375F;
+            constexpr float kRadius = 0.2656F;
+            constexpr int kSegments = 24;
+            for (int i = 0; i <= kSegments; ++i) {
+                const float angle =
+                    6.2831853F * static_cast<float>(i) / kSegments;
+                circle.push_back(Offset{kCx + kRadius * std::cos(angle),
+                                        kCy + kRadius * std::sin(angle)});
+            }
+            search.push_back(std::move(circle));
+            const float edge = kRadius * 0.7071068F;
+            search.push_back(Line{{Offset{kCx + edge, kCy + edge},
+                                   Offset{0.8125F, 0.8125F}}});
+            table[static_cast<std::size_t>(IconId::Search)] =
+                std::move(search);
+        }
         table[static_cast<std::size_t>(IconId::Info)] =
             Catalog{Line{{Offset{0.50F, 0.26F}, Offset{0.50F, 0.28F}}},
                     Line{{Offset{0.50F, 0.42F}, Offset{0.50F, 0.78F}}}};

@@ -150,7 +150,7 @@ TEST_CASE("icon_stroke_uses_actual_glyph_box_in_wide_hosts", "[visual][regressio
             for (const auto& command : commands.commands()) {
                 if (command.type == render::CommandType::DrawIcon) {
                     sawIcon = true;
-                    CHECK(command.strokeWidth == Approx(1.5F * command.rect.size.width / 16.0F));
+                    CHECK(command.strokeWidth == Approx(1.8F * command.rect.size.width / 16.0F));
                 }
             }
             REQUIRE(sawIcon);

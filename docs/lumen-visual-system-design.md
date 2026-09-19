@@ -404,7 +404,10 @@ Card 使用 surface/elevated surface 和 elevation token。ScrollView/ListView �
 预先冻结以下扩展契约：
 
 - `IconId` 和 `IconTheme`：图标由语义 ID 表达，颜色默认继承 `foreground`，不把 SVG
-  文件路径写入控件逻辑。Renderer 后续增加 vector path 或统一 image 适配。
+  文件路径写入控件逻辑。Renderer 后续增加 vector path 或统一 image 适配。描边权重
+  以 16px 基准档定：`strokeWidth = 1.8`（对齐设计稿 1.7–2.0；1.5 在 16px + AA 下
+  偏细发糊，2026-09 调整）；圆弧几何以 ≥24 段折线逼近，多段图元（如 Search 的
+  镜圆与手柄）在相接处共享端点（不得留缝）。
 - `ElevationTokens`：保存层级、阴影颜色、偏移和模糊半径。当前 Renderer 不支持阴影
   时，组件可先使用边框/表面层级表达，不得在控件中散落阴影常量。
 - `MotionTokens`：保存状态过渡、Dialog、Navigator 的时长和曲线。`reduceAnimation`

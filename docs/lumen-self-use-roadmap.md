@@ -1372,6 +1372,102 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - 回滚点：`80429bd feat(splitter): 两窗格分栏控件与框架分隔条接管`
   （同批 Splitter 已先行合入；回退本批其余部分回到该提交）。
 
+### 菜单动效（M14 按需控件增强，2026-09-18）
+
+- 完成日期：2026-09-18
+- 设计输入：`design/menubar-variants.html`（4 版本候选稿；采纳
+  版本 A「基线精修」+ 版本 D「瞬时响应」的组合——通道全部现成、
+  成本最低；B 锚点滑移列 P2、C 纵深级联待 transform 通道激活）；
+  视觉/交互契约沿用 `docs/lumen-menu-controls-design.md` §10。
+- 变更：
+  - **MotionTokens 扩展**：`menuOpenFadeMs`（120，面板打开淡入，
+    即 §10.2 承诺的 `menu.open.fadeMs`——此前只有文档没有实现）与
+    `menuHighlightSlideMs`（90，键盘高亮动能矩形滑移）；二者随
+    `reduceAnimation()` 归零。
+  - **overlay 动效步进通道（app 层唯一接口增量）**：
+    `AppShell::setOverlayBuilder` 增加第 4 参数 `AnimateSink`
+    （`bool(std::uint64_t nowMs)`），`tick` 内与 `config.onAnimate`
+    同拍调用；返回 true 计入 `animationsActive()`（FrameScheduler
+    动画帧），`clearOverlay` 一并解除——菜单控制器持钟动画不再需要
+    应用侧 onAnimate 接线。
+  - **面板打开动效（版本 A）**：整面板 `transitionAlpha` 淡入 +
+    位移（顶级上升 6px、子菜单沿级联方向滑入 4px，同一 EaseOut 进
+    度）；动效口径 = `shell.motionEnabled()`（应用 opt-in 且已被
+    tick 驱动——不经 tick 的直驱测试/无动效应用保持即时终态，帧输
+    出与既有行为一致）。
+  - **键盘高亮动能矩形（版本 D）**：selection 背景独立矩形化并**常驻
+    承载**（动效/无动效两口径统一——与行 selected 背景同色同矩形、
+    source-over 复合等价，像素一致；行不再折算 selected，current 语义
+    由焦点表达，两配置语义一致）；动效口径下在行间滑移（跨分隔线高度
+    变形，Windows 11 marquee 同源）；焦点环仍随焦点行，hover 路径
+    不变。矩形与滚动同域（ScrollView 包整个 Stack）、与行 x/宽精确
+    对齐（column 内边距偏移同域）。
+  - **MenuBar 打开态（§10.4 补齐）**：打开的栏项切 Tonal 变体 +
+    底部 2px accent 下划线渐入（透明度等价表达 scaleX 生长——
+    transform 通道未接线；常驻 2px 占位保栏高稳定；渐入与面板同
+    `motionEnabled()` 口径门控——未开动效的应用直达终态）；关闭即
+    回 Ghost；顶级切换 = 重新锚定 + 重放打开动效（版本 A 契约）。
+    `MenuBarController::build(theme)` 恢复设计文档 §7.1 签名。
+  - **分隔线几何修正（既有缺陷）**：面板高度按 9px/条预留（1px
+    线 + 上下 4 呼吸）但分隔线 margin 实为 `symmetric(4,0)` 只占
+    1px——行实际位置与 `ensureHighlightVisible`/高度推导差 8px。
+    修正为 `symmetric(8,4)`（水平 inset 8、垂直呼吸 4，与
+    `design/menu-controls.html` msep 同口径），行位置/滚动推导/
+    动能矩形三者一致。
+  - **关闭即时（有意取舍）**：关闭不做出场淡出——瞬态命令面板的
+    关闭延迟直接吃命令分发延迟；出场动效留按需评估。
+  - **barrier 遮罩修正（既有缺陷，含 Dropdown 同源）**：菜单全窗
+    barrier 复用了 `theme.dialog.scrim`（黑 132/255），打开时整窗
+    压暗、形似模态对话框——改为视觉透明（仅输入模态，Dismiss 语
+    义保留；Dropdown 浮动菜单 barrier 同步修正）。
+  - **集合行 hover 追踪补全（框架既有缺口，含列表/树/下拉选项行）**：
+    `InteractionController` 的 hover 承载谓词只认 Button/TextField/
+    Checkbox/Switch——collectionRow 行（菜单/列表/树/下拉选项）从未
+    悬停高亮（resolver 的集合行 hover 分支一直存在但不可达）。补入
+    `collectionRow + onClick`（与可聚焦谓词同源）；disabled 行与普通
+    行不承载；按压/点击武装路径独立（onClick 链扫描）不受影响。
+  - **悬停自动展开子菜单（menu-controls §6.4 悬停级联，设计稿
+    menu-controls.html 本有级联 hover 演示）**：悬停 hasSubmenu 项
+    自动展开——`MotionTokens::menuSubmenuHoverMs` 默认 0 = 立即
+    （原生菜单惯例；应用可设 300 之类去抖，去抖期内移走/移到其他
+    项不展开，同项抖动不重置）；悬停同级其他项收起级联
+    （`Level.sourceIndex` 判定，源行不动）。pointer sink 惰性注册
+    一次（菜单行在 overlay 树，sink 自行命中 overlayRoot）；计时经
+    overlay animate sink 首拍盖章步进（与打开动效同口径，不经 tick
+    的直驱不触发）。
+  - **菜单标签单行省略号（§10.1 既有规定未接线）**：超长标签此前按
+    默认 TextStyle（maxLines=0 不限）换行、撑变行高；标签与快捷键
+    列改 `maxLines=1 + TextOverflow::Ellipsis`（TextLayout 同一布
+    局路径，与 painter 既有用法同模式）——行高稳定，动能矩形/滚动
+    推导不受超宽内容影响。
+  - **图标清晰度（Search 几何缺陷 + 描边权重）**：Search 折线手柄
+    与镜圆脱开（≈3px 缝）且镜内有一道多余斜线——16px 下读不出放
+    大镜形；重写为 24 段镜圆 + 45° 相连手柄（16 栅格 (7,7) r4.25，
+    相接处共享端点）。`IconTheme::strokeWidth` 1.5 → 1.8（对齐全部
+    设计稿 1.7–2.0；1.5 在 16px + AA 下偏细发糊，影响所有描边图
+    标：chevron/勾选/窗口钮同步变清晰）；visual-system §8 补描边
+    权重与圆弧段数契约（≥24 段、多段相接不留缝）。
+  - gallery Menus 演示页描述补动效说明。
+- 测试：新增 `tests/menu_motion_tests.cpp` 8 用例（打开淡入+上升
+  全程采样、动能矩形跨分隔线滑移中段/终态、栏 Tonal/下划线渐入与
+  切换重放、reduceAnimation 首拍终态、不经 tick 直驱即时终态回
+  归、overlay animate sink 生命周期与重开、悬停延迟展开与掠过
+  不展开、悬停同级收起/源行稳定）；中段压一次完整
+  renderFrame（painter 整树透明度 + overlay damage 冒烟）；
+  menu_tests 补 barrier 透明断言（仅输入模态）与行 hover 高亮端到
+  端断言；interaction_tests 补集合行 hover 追踪用例（含 disabled
+  行与普通行不承载）。本地 Windows CPU Debug 全量 `594/594`。
+- 平台：动效通道平台无关（CPU/Skia/GPU 同路径）；本地 Windows
+  全量验证，Linux/macOS 以 CI 为事实来源。
+- 已知限制：B 版本（pill 滑移 + 面板跨锚点连续切换）未实现（P2，
+  需打磨 overlay 连续重定位 damage 口径）；C 版本（锚点生长/
+  caret 旋转）依赖 `RenderCommand.transform` 预留通道激活；激活
+  闪烁（版本 D「闪 120ms 后关闭」）有意不做（不延迟命令分发）；
+  无动效应用（未开 `motionTransitions`）只有静态打开态（Tonal +
+  下划线直达），无渐入；打开动效进行中（≤120ms）以键盘展开子菜
+  单时，级联锚取自当前（上升中）行位置，残留 ≤6px 偏差至关闭
+  （键盘竞态窗口，指针路径不涉及）。
+
 ### Gallery 设计稿尺度优化对齐（2026-09-16）
 
 - **设计输入**：`design/gallery.html` 评审板重排为 4px 网格——正文/标签

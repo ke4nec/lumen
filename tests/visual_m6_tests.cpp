@@ -555,7 +555,7 @@ TEST_CASE("button_icon_uses_inline_tier_and_scales_stroke", "[visual][s2]") {
     REQUIRE(mediumStyle != nullptr);
     CHECK(mediumStyle->iconSize == theme.metrics.inlineIconSize[1]);
     CHECK(mediumStyle->iconGap == theme.metrics.controlGap[1]);
-    CHECK(mediumStyle->iconStroke == 1.5F);
+    CHECK(mediumStyle->iconStroke == 1.8F);  // IconTheme 基准档（visual-system §8）
 
     Widget large = withControlSize(
         withIcon(makeButton("Add", {}, {}, 0, "b2"), IconId::Plus),
@@ -567,7 +567,7 @@ TEST_CASE("button_icon_uses_inline_tier_and_scales_stroke", "[visual][s2]") {
         std::get_if<ButtonResolvedStyle>(&largeNode->style.component);
     REQUIRE(largeStyle != nullptr);
     CHECK(largeStyle->iconSize == theme.metrics.inlineIconSize[2]);
-    CHECK(largeStyle->iconStroke == Approx(1.875F));  // 1.5 × 20/16
+    CHECK(largeStyle->iconStroke == Approx(2.25F));  // 1.8 × 20/16
 }
 
 // --- S3（gui-control-visual-system-task §6.5–§6.8、§7.2） ---
