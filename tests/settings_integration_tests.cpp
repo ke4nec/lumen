@@ -942,3 +942,50 @@ TEST_CASE("settings_splitter_page_drag_keyboard_and_reset",
     CHECK(core::findNodeByKey(app.root(), "split:div:detail-split") !=
           nullptr);
 }
+
+// Spin/ToolBar/StatusBar 演示页（lumen-{spin,toolbar,statusbar}-design
+// §11.3）：路由可达、控件树落地、常驻消息冒烟。
+TEST_CASE("settings_spin_toolbar_statusbar_pages_render", "[settings]") {
+    SettingsApp app;
+    // 入口按钮位于 home 列表下部：加高视口使其全部可见。
+    app.setView(Size{800.0F, 1400.0F});
+    (void)app.renderFrame();
+
+    // Spin 页：field bind 播种 + stepper 就位。
+    app.pointerDown(centerOf(app.root(), "goto-spin-button"));
+    app.pointerUp(centerOf(app.root(), "goto-spin-button"));
+    (void)app.renderFrame();
+    REQUIRE(app.navigator().current() == "spin");
+    REQUIRE(core::findNodeByKey(app.root(), "sb-opacity") != nullptr);
+    CHECK(core::findNodeByKey(app.root(), "spin:up:sb-opacity") != nullptr);
+    CHECK(app.state().get("sb-opacity:value") == "80");
+
+    // Toolbar 页：项与溢出决策路径（settings 视口足够 → 无溢出钮）。
+    app.pointerDown(centerOf(app.root(), "back-button"));
+    app.pointerUp(centerOf(app.root(), "back-button"));
+    (void)app.renderFrame();
+    app.pointerDown(centerOf(app.root(), "goto-toolbar-button"));
+    app.pointerUp(centerOf(app.root(), "goto-toolbar-button"));
+    (void)app.renderFrame();
+    REQUIRE(app.navigator().current() == "toolbar");
+    REQUIRE(core::findNodeByKey(app.root(), "demo-tb:bar") != nullptr);
+    CHECK(core::findNodeByKey(app.root(), "demo-tb:item:new") != nullptr);
+    CHECK(core::findNodeByKey(app.root(), "demo-tb:overflow") == nullptr);
+
+    // StatusBar 页：消息动作 → 常驻消息落地。
+    app.pointerDown(centerOf(app.root(), "back-button"));
+    app.pointerUp(centerOf(app.root(), "back-button"));
+    (void)app.renderFrame();
+    app.pointerDown(centerOf(app.root(), "goto-statusbar-button"));
+    app.pointerUp(centerOf(app.root(), "goto-statusbar-button"));
+    (void)app.renderFrame();
+    REQUIRE(app.navigator().current() == "statusbar");
+    REQUIRE(core::findNodeByKey(app.root(), "demo-sb") != nullptr);
+    app.pointerDown(centerOf(app.root(), "sb-persistent-button"));
+    app.pointerUp(centerOf(app.root(), "sb-persistent-button"));
+    (void)app.renderFrame();
+    const RenderNode* msg =
+        core::findNodeByKey(app.root(), "demo-sb:msg");
+    REQUIRE(msg != nullptr);
+    CHECK(msg->text == "3 个警告：未使用的变量 x");
+}

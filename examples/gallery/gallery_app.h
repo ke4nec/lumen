@@ -50,7 +50,10 @@
 #include "lumen/widgets/list.h"
 #include "lumen/widgets/menu.h"
 #include "lumen/widgets/navigator.h"
+#include "lumen/widgets/spin.h"
 #include "lumen/widgets/splitter.h"
+#include "lumen/widgets/statusbar.h"
+#include "lumen/widgets/toolbar.h"
 #include "lumen/widgets/tree.h"
 
 namespace lumen::examples {
@@ -270,7 +273,7 @@ class GalleryApp {
     // 内容 ListView) + Footer。Body 的 Splitter 即分栏控件在窗口 chrome 的
     // 使用演示（拖动/键盘/双击复位，framework 物化分隔条）；内容页按
     // 路由切换。
-    [[nodiscard]] core::Widget buildUi() const {
+    [[nodiscard]] core::Widget buildUi() {
         const style::Theme& theme = shell_.theme();
         core::Widget titleBar = buildTitleBar(theme);
         core::Widget body;
@@ -365,6 +368,20 @@ class GalleryApp {
             if (self->menuBar_.handleKey(shell, key, modifiers, keyChar)) {
                 return true;
             }
+            // Spin 键盘契约（焦点在本字段时消费）与 ToolBar 漫游/溢出
+            // 面板键盘（Controls 页样本；design §6.2）。
+            if (self->controlsOpacity_.handleKey(shell, key, modifiers,
+                                                 keyChar)) {
+                return true;
+            }
+            if (self->controlsFontSize_.handleKey(shell, key, modifiers,
+                                                  keyChar)) {
+                return true;
+            }
+            if (self->controlsToolBar_.handleKey(shell, key, modifiers,
+                                                 keyChar)) {
+                return true;
+            }
             // 集合控件键盘契约（collection-design §6.4/§7.4）：焦点位于
             // 某集合的行内时，导航键交给该集合的控制器（Up/Down/Home/
             // End/PageUp/PageDown、树 Left/Right、Ctrl+A）。按行 key 的
@@ -402,7 +419,16 @@ class GalleryApp {
         };
         config.onWheel =
             [self](const core::RenderNode& root, const core::RenderNode* hit,
-                   core::Offset /*position*/, core::Offset delta) {
+                   core::Offset position, core::Offset delta) {
+                // Spin 滚轮步进（指针在控件上每档 ±step；design §6.3）。
+                if (self->controlsOpacity_.handleWheel(self->shell_, position,
+                                                       delta)) {
+                    return true;
+                }
+                if (self->controlsFontSize_.handleWheel(self->shell_,
+                                                        position, delta)) {
+                    return true;
+                }
                 return self->scrollWheel(root, hit, delta.y);
             };
         // M10：视口拖动滚动（触摸/指针）与惯性推进（与 settings 同形）。
@@ -414,7 +440,11 @@ class GalleryApp {
             };
         config.onAnimate = [self](app::AppShell& shell,
                                   std::uint64_t nowMs) {
-            return self->advanceFling(shell, nowMs);
+            // Spin 按住自动重复 + StatusBar 消息/进度/busy 节律。
+            bool active = self->controlsOpacity_.step(shell, nowMs);
+            active = self->controlsFontSize_.step(shell, nowMs) || active;
+            active = self->controlsStatusBar_.step(shell, nowMs) || active;
+            return self->advanceFling(shell, nowMs) || active;
         };
         config.onCloseRequested = [self](app::AppShell& shell) {
             if (self->dialogOpen_) {
@@ -503,6 +533,7 @@ class GalleryApp {
         handlers["goto-lists"] = [this] { go("lists"); };
         handlers["goto-collections"] = [this] { go("collections"); };
         handlers["goto-menus"] = [this] { go("menus"); };
+        handlers["goto-controls"] = [this] { go("controls"); };
         handlers["goto-feedback"] = [this] { go("feedback"); };
         handlers["goto-theme"] = [this] { go("theme"); };
         // 自定义标题栏：窗口命令（lumen-titlebar-design §4.4）——命令
@@ -650,6 +681,35 @@ class GalleryApp {
             return barMenuItems("sub:" + id);
         });
         menuBar_.attach(shell_);
+        // Spin/ToolBar/StatusBar（2026-09）：Controls 页样本装配。
+        controlsOpacity_.attach(shell_);
+        controlsFontSize_.setRange(12.0, 24.0);
+        controlsFontSize_.setStep(0.5);
+        controlsFontSize_.setDecimals(1);
+        controlsFontSize_.attach(shell_);
+        shell_.state().set("gal-grid", "false");
+        controlsToolBar_.setItems({
+            {"new", core::IconId::Plus, "New", "Ctrl+N"},
+            {"open", core::IconId::Folder, "Open"},
+            {"sep", core::IconId::None, "", "", true},
+            {"undo", core::IconId::Undo, "Undo", "", false, false, false,
+             false, false},
+            {"grid", core::IconId::Grid, "Grid", "", false, true},
+        });
+        controlsToolBar_.onCommand = [this](const std::string& id) {
+            lastControlsCommand_ = id;
+            if (id == "grid") {
+                const bool on = shell_.state().get("gal-grid") != "true";
+                shell_.state().set("gal-grid", on ? "true" : "false");
+                controlsToolBar_.setChecked("grid", on);
+                // toggle → StatusBar busy 联动（toolbar/statusbar-design
+                // 演示场景：同一命令由应用联动两处状态）。
+                controlsStatusBar_.setBusy(on);
+            }
+            shell_.markDirty();
+        };
+        controlsToolBar_.attach(shell_);
+        controlsStatusBar_.attach(shell_);
         const auto forwardCommand = [this](const std::string& id) {
             handleMenuCommand(id);
         };
@@ -1192,7 +1252,8 @@ class GalleryApp {
             {"Overview", "home"}, {"Buttons", "buttons"},
             {"Inputs", "inputs"},   {"Layout", "layout"},
             {"Lists", "lists"},     {"Collections", "collections"},
-            {"Menus", "menus"},     {"Feedback", "feedback"},
+            {"Menus", "menus"},     {"Controls", "controls"},
+            {"Feedback", "feedback"},
             {"Theme", "theme"},
         };
         std::vector<core::Widget> navItems;
@@ -1238,7 +1299,7 @@ class GalleryApp {
         return nav;
     }
 
-    [[nodiscard]] core::Widget buildContent(const style::Theme& theme) const {
+    [[nodiscard]] core::Widget buildContent(const style::Theme& theme) {
         std::vector<core::Widget> items;
         const std::string& route = navigator_.current();
         if (route == "buttons") {
@@ -1253,6 +1314,8 @@ class GalleryApp {
             items = buildCollectionsItems(theme);
         } else if (route == "menus") {
             items = buildMenusItems(theme);
+        } else if (route == "controls") {
+            items = buildControlsItems(theme);
         } else if (route == "feedback") {
             items = buildFeedbackItems(theme);
         } else if (route == "theme") {
@@ -2654,6 +2717,80 @@ class GalleryApp {
                (lastSortDescending_ ? " · descending" : " · ascending");
     }
 
+    // --- Controls（lumen-{spin,toolbar,statusbar}-design §11.3）---
+
+    // Controls 分区：Spin 数值步进（整数/小数）、ToolBar（命令组 +
+    // toggle + 溢出折叠）、StatusBar（消息/进度/busy）实时样本。
+    [[nodiscard]] std::vector<core::Widget> buildControlsItems(
+        const style::Theme& theme) {
+        std::vector<core::Widget> items;
+        items.push_back(core::withKey(titleText("Controls", theme),
+                                      "controls-title"));
+        items.push_back(core::withKey(
+            mutedLabel("Spin steps values with click-and-hold repeat, "
+                       "keyboard and wheel; ToolBar folds trailing items "
+                       "into an overflow panel when narrow; StatusBar "
+                       "carries transient messages, progress and busy "
+                       "rhythm. All three compose existing widgets with "
+                       "zero new widget types.",
+                       theme),
+            "controls-desc"));
+
+        items.push_back(sectionCard(
+            "Spin — bounded numeric stepping",
+            {core::makeRow(
+                 {core::makeText("Opacity", theme.typography.label),
+                  controlsOpacity_.build(theme)},
+                 core::MainAxisAlignment::Start,
+                 core::CrossAxisAlignment::Center, 16.0F),
+             core::makeRow(
+                 {core::makeText("Font size", theme.typography.label),
+                  controlsFontSize_.build(theme)},
+                 core::MainAxisAlignment::Start,
+                 core::CrossAxisAlignment::Center, 16.0F),
+             core::withKey(mutedLabel("Hold ▲/▼ for auto-repeat (500ms "
+                                      "delay, 60ms step) · type + Enter "
+                                      "commits · Esc reverts · Up/Down/"
+                                      "PgUp/PgDn/Home/End · wheel.",
+                                      theme),
+                           "controls-spin-hint")},
+            theme, "controls-spin-card"));
+
+        items.push_back(sectionCard(
+            "ToolBar — commands, toggles, overflow",
+            {controlsToolBar_.build(shell_, theme),
+             core::withKey(mutedLabel("Last command: " + lastControlsCommand_,
+                                      theme),
+                           "controls-command-label"),
+             core::withKey(mutedLabel("Tab enters the bar, Left/Right roam, "
+                                      "Enter activates; toggles hold a "
+                                      "persistent surface; narrowing the "
+                                      "window folds the tail into the "
+                                      "chevron panel.",
+                                      theme),
+                           "controls-tb-hint")},
+            theme, "controls-toolbar-card"));
+
+        controlsStatusBar_.setItems({
+            {"sep", widgets::StatusItemKind::Separator, core::IconId::None,
+             "", true, 0.0F},
+            {"cursor", widgets::StatusItemKind::Text, core::IconId::None,
+             "Ln 1, Col 1", true, 0.0F},
+        });
+        items.push_back(sectionCard(
+            "StatusBar — messages, progress, busy",
+            {controlsStatusBar_.build(theme),
+             core::withKey(mutedLabel("The \"Grid\" toggle above drives the "
+                                      "status bar busy arc; use the Inputs "
+                                      "page message actions for transient "
+                                      "status text.",
+                                      theme),
+                           "controls-sb-hint")},
+            theme, "controls-statusbar-card"));
+
+        return items;
+    }
+
     // --- Menus（menu-controls-design §11.3，对齐 design/gallery.html 增补）---
 
     // Menus 分区：ContextMenu 行级演示（右键唤起）+ chrome 菜单栏实时
@@ -3694,7 +3831,8 @@ class GalleryApp {
     // M11：下拉浮动菜单控制器（选项 + 当前值；选中回调写状态）。
     widgets::DropdownController navigationMenu_{{{"home", "Overview"}, {"buttons", "Buttons"},
         {"inputs", "Inputs"}, {"layout", "Layout"}, {"lists", "Lists"},
-        {"collections", "Collections"}, {"menus", "Menus"}, {"feedback", "Feedback"},
+        {"collections", "Collections"}, {"menus", "Menus"}, {"controls", "Controls"},
+        {"feedback", "Feedback"},
         {"theme", "Theme"}}, "home"};
     // 菜单类控件（menu-controls-design §11.3）：chrome 菜单栏（File/
     // View/Help）+ 右键菜单与最近命令回显。checkable 状态由应用维护。
@@ -3704,6 +3842,13 @@ class GalleryApp {
     // Splitter（splitter-design §10.3）：侧栏|内容主分栏（chrome 用法
     // 演示）。未手动调节时跟随 200/168 响应式断点。
     widgets::SplitterController sidebarSplitter_{200.0F};
+    // Spin/ToolBar/StatusBar 控件（lumen-{spin,toolbar,statusbar}-design
+    // §11.3）：Controls 页样本（toggle 经 StateStore 维护）。
+    widgets::SpinController controlsOpacity_{72.0, "gal-opacity"};
+    widgets::SpinController controlsFontSize_{13.0, "gal-font"};
+    widgets::ToolBarController controlsToolBar_{"gal-tb"};
+    widgets::StatusBarController controlsStatusBar_{"gal-sb"};
+    std::string lastControlsCommand_{"(none)"};
     bool sidebarUserAdjusted_{false};
     bool syncingSidebarBreakpoint_{false};
     bool sidebarVisible_{true};

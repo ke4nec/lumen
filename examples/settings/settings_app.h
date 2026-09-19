@@ -29,7 +29,10 @@
 #include "lumen/widgets/form.h"
 #include "lumen/widgets/menu.h"
 #include "lumen/widgets/navigator.h"
+#include "lumen/widgets/spin.h"
 #include "lumen/widgets/splitter.h"
+#include "lumen/widgets/statusbar.h"
+#include "lumen/widgets/toolbar.h"
 
 namespace lumen::examples {
 
@@ -196,7 +199,7 @@ class SettingsApp {
 
     // settings 页面：home = 滚动列表（开关/勾选/关于行）；form = 资料
     // 表单（校验 + 提交弹窗）。语义标签覆盖到每个控件。
-    [[nodiscard]] core::Widget buildUi() const {
+    [[nodiscard]] core::Widget buildUi() {
         const style::Theme& theme = shell_.theme();
         std::vector<core::Widget> page;
 
@@ -501,6 +504,116 @@ class SettingsApp {
                     core::makeListView(std::move(column), "settings-list"),
                     scroll_.offset()),
                 "settings-list"));
+        } else if (navigator_.current() == "spin") {
+            // Spin（spin-design §11.3）：整数/小数两实例 + 键盘/滚轮/
+            // 按住自动重复提示。
+            std::vector<core::Widget> items;
+            items.push_back(
+                core::withKey(titleText("Spin", theme), "spin-title"));
+            items.push_back(core::withKey(
+                mutedLabel("单击或按住 ▲▼ 步进 · 键入后 Enter 提交 · "
+                           "Escape 恢复 · ↑↓/PgUp/PgDn/Home/End · 滚轮",
+                           theme),
+                "spin-hint"));
+            auto spinRow = [&](const char* label, core::Widget widget,
+                               const char* hint) {
+                std::vector<core::Widget> cells;
+                cells.push_back(
+                    core::makeText(label, theme.typography.label));
+                cells.push_back(std::move(widget));
+                cells.push_back(mutedLabel(hint, theme));
+                return core::makeRow(std::move(cells),
+                                     core::MainAxisAlignment::Start,
+                                     core::CrossAxisAlignment::Center,
+                                     16.0F);
+            };
+            items.push_back(spinRow("不透明度", spinOpacity_.build(theme),
+                                    "0–100 · step 1"));
+            items.push_back(spinRow("界面字号", spinFont_.build(theme),
+                                    "12–24 · step 0.5"));
+            items.push_back(core::withKey(
+                buttonWidget("Back", "back", "back-button",
+                             core::ButtonVariant::Outline),
+                "back-button"));
+            core::Widget column = core::makeColumn(
+                std::move(items), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Start, style::spaceToken(4),
+                core::EdgeInsets::all(style::spaceToken(6)));
+            column.flex = 1.0F;
+            page.push_back(core::withKey(
+                core::withScrollOffset(
+                    core::makeListView(std::move(column), "settings-list"),
+                    scroll_.offset()),
+                "settings-list"));
+        } else if (navigator_.current() == "toolbar") {
+            // ToolBar（toolbar-design §11.3）：命令组 + toggle + 溢出
+            //（容器变窄时尾部项折叠进面板）。
+            std::vector<core::Widget> items;
+            items.push_back(
+                core::withKey(titleText("Toolbar", theme), "tb-title"));
+            items.push_back(core::withKey(
+                mutedLabel("Tab 进入后 ←→ 漫游 · Enter 激活 · toggle 持久"
+                           "底色 · 「运行」toggle 联动状态栏 busy",
+                           theme),
+                "tb-hint"));
+            items.push_back(toolBar_.build(shell_, theme));
+            items.push_back(core::withKey(
+                mutedLabel("Last command: " + lastToolbarCommand_, theme),
+                "tb-command-label"));
+            items.push_back(core::withKey(
+                buttonWidget("Back", "back", "back-button",
+                             core::ButtonVariant::Outline),
+                "back-button"));
+            core::Widget column = core::makeColumn(
+                std::move(items), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch, style::spaceToken(4),
+                core::EdgeInsets::all(style::spaceToken(6)));
+            column.flex = 1.0F;
+            page.push_back(core::withKey(
+                core::withScrollOffset(
+                    core::makeListView(std::move(column), "settings-list"),
+                    scroll_.offset()),
+                "settings-list"));
+        } else if (navigator_.current() == "statusbar") {
+            // StatusBar（statusbar-design §11.3）：消息/进度/busy/grip 演示。
+            std::vector<core::Widget> items;
+            items.push_back(core::withKey(titleText("StatusBar", theme),
+                                          "sb-title"));
+            items.push_back(core::withKey(
+                mutedLabel("瞬态消息 4s 驻留 · determinate 不补间 · "
+                           "indeterminate 往返 · busy 弧（「运行」联动）",
+                           theme),
+                "sb-hint"));
+            const auto action = [&theme](const char* label,
+                                         const char* handler) {
+                return core::withKey(
+                    buttonWidget(label, handler,
+                                 std::string(handler) + "-button",
+                                 core::ButtonVariant::Outline),
+                    std::string(handler) + "-button");
+            };
+            items.push_back(core::makeRow(
+                {action("瞬态消息", "sb-message"),
+                 action("常驻消息", "sb-persistent"),
+                 action("进度清零", "sb-progress"),
+                 action("indeterminate", "sb-indeterminate")},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Center, 8.0F));
+            items.push_back(statusBar_.build(theme));
+            items.push_back(core::withKey(
+                buttonWidget("Back", "back", "back-button",
+                             core::ButtonVariant::Outline),
+                "back-button"));
+            core::Widget column = core::makeColumn(
+                std::move(items), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch, style::spaceToken(4),
+                core::EdgeInsets::all(style::spaceToken(6)));
+            column.flex = 1.0F;
+            page.push_back(core::withKey(
+                core::withScrollOffset(
+                    core::makeListView(std::move(column), "settings-list"),
+                    scroll_.offset()),
+                "settings-list"));
         } else {
             std::vector<core::Widget> list;
             list.push_back(
@@ -547,6 +660,22 @@ class SettingsApp {
             autosave.semanticsLabel = "Autosave drafts";
             list.push_back(
                 core::withKey(std::move(autosave), "autosave-checkbox"));
+            // Spin/ToolBar/StatusBar 演示页入口（置于开关之后：不扰动
+            // 既有集成测试的布局锚点）。
+            list.push_back(core::withKey(
+                buttonWidget("Spin", "goto-spin", "goto-spin-button",
+                             core::ButtonVariant::Filled),
+                "goto-spin-button"));
+            list.push_back(core::withKey(
+                buttonWidget("Toolbar", "goto-toolbar",
+                             "goto-toolbar-button",
+                             core::ButtonVariant::Filled),
+                "goto-toolbar-button"));
+            list.push_back(core::withKey(
+                buttonWidget("StatusBar", "goto-statusbar",
+                             "goto-statusbar-button",
+                             core::ButtonVariant::Filled),
+                "goto-statusbar-button"));
             // M4：平台服务区（文件选择/通知/外部链接）。
             list.push_back(
                 core::withKey(titleText("Services", theme), "services-title"));
@@ -647,6 +776,17 @@ class SettingsApp {
             if (self->menuBar_.handleKey(shell, key, mods, keyChar)) {
                 return true;
             }
+            // Spin 键盘契约（仅焦点在本字段时消费；modal 优先级同菜单）。
+            if (self->spinOpacity_.handleKey(shell, key, mods, keyChar)) {
+                return true;
+            }
+            if (self->spinFont_.handleKey(shell, key, mods, keyChar)) {
+                return true;
+            }
+            // ToolBar 漫游/溢出面板键盘（面板打开时转发菜单契约）。
+            if (self->toolBar_.handleKey(shell, key, mods, keyChar)) {
+                return true;
+            }
             if (key == core::Key::Escape &&
                 self->navigator_.handleBack(self->dialogOpen_)) {
                 if (self->dialogOpen_) {
@@ -660,10 +800,19 @@ class SettingsApp {
             }
             return false;
         };
-        // 滚轮/键盘滚动统一汇入 ScrollController（plan §3.4）。
+        // 滚轮/键盘滚动统一汇入 ScrollController（plan §3.4）；Spin 滚轮
+        // 步进（指针在控件上每档 ±step，spin-design §6.3）。
         config.onWheel =
             [self](const core::RenderNode& root, const core::RenderNode* hit,
-                   core::Offset /*position*/, core::Offset delta) {
+                   core::Offset position, core::Offset delta) {
+                if (self->spinOpacity_.handleWheel(self->shell_, position,
+                                                   delta)) {
+                    return true;
+                }
+                if (self->spinFont_.handleWheel(self->shell_, position,
+                                                delta)) {
+                    return true;
+                }
                 return self->scrollWheel(root, hit, delta.y);
             };
         // M10：视口拖动滚动（触摸/指针）→ applyDrag + 速度采样；释放起
@@ -676,7 +825,12 @@ class SettingsApp {
             };
         config.onAnimate = [self](app::AppShell& shell,
                                   std::uint64_t nowMs) {
-            return self->advanceFling(shell, nowMs);
+            // Spin 按住自动重复 + StatusBar 消息/进度/busy 节律（控件
+            // 控制器自持相位；无活动节律时不占动画帧）。
+            bool active = self->spinOpacity_.step(shell, nowMs);
+            active = self->spinFont_.step(shell, nowMs) || active;
+            active = self->statusBar_.step(shell, nowMs) || active;
+            return self->advanceFling(shell, nowMs) || active;
         };
         // 关闭请求：modal → 路由栈 → 退出（plan §3.4 统一关闭规则）。
         // 与 onKey 同语义但不重入按键管线（一次关闭只消费一级）。
@@ -771,6 +925,52 @@ class SettingsApp {
                 }
                 return false;
             });
+        // Spin/ToolBar/StatusBar 控件（2026-09）：attach + 演示状态。
+        spinOpacity_.attach(shell_);
+        spinFont_.setRange(12.0, 24.0);
+        spinFont_.setStep(0.5);
+        spinFont_.setDecimals(1);
+        spinFont_.attach(shell_);
+        shell_.state().set("tb-grid", "false");
+        shell_.state().set("tb-run", "false");
+        toolBar_.setItems({
+            {"new", core::IconId::Plus, "新建", "Ctrl+N"},
+            {"open", core::IconId::Folder, "打开"},
+            {"sep", core::IconId::None, "", "", true},
+            {"undo", core::IconId::Undo, "撤销", "", false, false, false, false,
+             false},
+            {"run", core::IconId::Play, "运行", "F5", false, true, false, true},
+            {"grid", core::IconId::Grid, "网格", "", false, true},
+        });
+        toolBar_.onCommand = [this](const std::string& id) {
+            lastToolbarCommand_ = id;
+            // checkable 项状态由应用维护（design §5）：翻转后重建。
+            if (id == "grid" || id == "run") {
+                const std::string bind = id == "grid" ? "tb-grid" : "tb-run";
+                const bool on = shell_.state().get(bind) != "true";
+                shell_.state().set(bind, on ? "true" : "false");
+                toolBar_.setChecked(id, on);
+                // StatusBar busy 联动（toolbar/statusbar-design 演示场景）。
+                statusBar_.setBusy(id == "run" && on);
+            }
+            shell_.markDirty();
+        };
+        toolBar_.attach(shell_);
+        statusBar_.setItems({
+            widgets::StatusBarItem{.id = "busy", .kind = widgets::StatusItemKind::Busy},
+            widgets::StatusBarItem{.id = "sep1",
+                          .kind = widgets::StatusItemKind::Separator},
+            widgets::StatusBarItem{.id = "cursor",
+                          .kind = widgets::StatusItemKind::Text,
+                          .text = "Ln 1, Col 1"},
+            widgets::StatusBarItem{.id = "sep2",
+                          .kind = widgets::StatusItemKind::Separator},
+            widgets::StatusBarItem{.id = "encoding",
+                          .kind = widgets::StatusItemKind::Toggle,
+                          .text = "UTF-8"},
+        });
+        statusBar_.attach(shell_);
+
         library_.setEstimatedExtent(44.0F);
         library_.setItemBuilder([this](std::size_t index) {
             core::Widget item = core::makeText(
@@ -857,6 +1057,35 @@ class SettingsApp {
         };
         handlers["goto-splitter"] = [this] {
             navigator_.push("splitter");
+            shell_.markDirty();
+        };
+        handlers["goto-spin"] = [this] {
+            navigator_.push("spin");
+            shell_.markDirty();
+        };
+        handlers["goto-toolbar"] = [this] {
+            navigator_.push("toolbar");
+            shell_.markDirty();
+        };
+        handlers["goto-statusbar"] = [this] {
+            navigator_.push("statusbar");
+            shell_.markDirty();
+        };
+        // StatusBar 演示动作（statusbar-design §11.3）。
+        handlers["sb-message"] = [this] {
+            statusBar_.setMessage("已保存 settings.cpp", 4000);
+            shell_.markDirty();
+        };
+        handlers["sb-persistent"] = [this] {
+            statusBar_.setMessage("3 个警告：未使用的变量 x", 0);
+            shell_.markDirty();
+        };
+        handlers["sb-progress"] = [this] {
+            statusBar_.setProgress(0.0F);
+            shell_.markDirty();
+        };
+        handlers["sb-indeterminate"] = [this] {
+            statusBar_.setProgress(-1.0F);
             shell_.markDirty();
         };
         handlers["back"] = [this] {
@@ -1182,6 +1411,13 @@ class SettingsApp {
     // 垂直分栏。
     widgets::SplitterController mainSplitter_{220.0F};
     widgets::SplitterController detailSplit_{140.0F};
+    // Spin/ToolBar/StatusBar 控件（lumen-{spin,toolbar,statusbar}-design
+    // §11.3）：表单数值/命令栏（toggle 经 StateStore）/状态栏演示。
+    widgets::SpinController spinOpacity_{80.0, "sb-opacity"};
+    widgets::SpinController spinFont_{14.0, "sb-font"};
+    widgets::ToolBarController toolBar_{"demo-tb"};
+    widgets::StatusBarController statusBar_{"demo-sb"};
+    std::string lastToolbarCommand_{"(none)"};
     std::shared_ptr<void> themeScopeData_{
         style::makeThemeScopeData(style::Theme::light())};
 
