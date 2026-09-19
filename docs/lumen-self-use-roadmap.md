@@ -642,7 +642,10 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     ~39µs/次（1333×）；charFaceCache 无上限（工具应用码点量级内存
     可忽略，M7 门槛再评估缓存策略）。
   - CPU 后端消费 Skia 度量数据时（GPU→CPU 回退）文本绘制退回占位
-    度量旧路径；caret/选区几何仍出自布局。
+    度量旧路径；caret/选区几何仍出自布局。（2026-09-19 追记：GPU
+    运行时失效的回退目标已改为 Skia 软件光栅，该漂移不再被应用触
+    达——见 §10「既有能力优化」P3 记录；无 Skia 层的纯 CPU 构建本就
+    走 SystemFontManager 连续路径。）
   - 真实 IME（IBus/Fcitx/TSF）下的 undo/redo 与候选框行为待三桌面
     窗口 smoke 人工验收；headless IME 状态机已覆盖。
 - 回滚点：`d4dbb4a fix(build): 修复基准配置识别与构建命令`（M1 前）。
@@ -1250,6 +1253,26 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   只给列头点击回调，排序由应用做）；多列纯表格由 Grid 按需评估。
 - 回滚点：`3422b06 feat(gui): Gallery 对齐设计稿尺度优化`（集合链前）。
 
+### List 视觉与交互补齐（2026-09-19）
+
+- 依据：`lumen-collection-controls-design.md` §6/§10、
+  `lumen-visual-system-design.md` §3/§5 与 `design/collection-controls.html`。
+- `Theme.list` 统一行背景、分隔线、选中指示条和空态；行高/padding/圆角
+  跟随三档密度，支持局部主题、字体缩放和高对比。Gallery Collections
+  补充图标/徽标/禁用行、四模式切换、七态矩阵与自动空态。
+- 修复整行命中、按压状态、虚拟行焦点 identity、Tab 单一停靠点、语义
+  Focus 与 current 同步、Activate 接入行回调、禁用项的导航/区间/全选
+  过滤及首尾滚动对齐。
+  绘制、命中与语义统一使用边框内侧裁剪，滚动时外框保持完整。
+- 回归入口：`tests/list_visual_tests.cpp`、Gallery 集成测试，以及
+  `gpu_list_readback_preserves_selection_focus_and_scrolled_border`。
+- 本地 Windows 验证：CPU Debug `612/612`、Skia/GPU Release `628/628`
+  全量 ctest 通过；List 专项 13 用例/159 断言；GPU 像素回读实际通过，
+  未跳过。Gallery CPU 窗口 3 帧正常退出，系统字体下核对深色/浅色高对比/
+  两倍字体样本。Linux/macOS 未在本地实机验证。
+- 集合专用耗时基准仍为规划项；滚动条 hover/drag 外观沿用视觉任务中的
+  预留边界。此次修复保持 ListView、VirtualList 与 Tree 的样式契约。
+
 ### Splitter 完成记录（2026-09-18）
 
 - 完成日期：2026-09-18
@@ -1504,6 +1527,47 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   一致）；垂直 pass 为列跨步访存（掩膜面板量级微秒级，未做转置
   优化）。
 - 回滚点：`cac1259 fix(icons): Search 几何与描边权重清晰度`（P1 前）。
+
+#### P3 GPU 回退文本连续性（2026-09-19）
+
+- 完成日期：2026-09-19
+- 提交号：（本变更提交，见 Git 历史 `feat(examples)`）
+- 变更：
+  - counter（GPU 回退样板）`onRendererFailure`（examples/counter/
+    main.cpp）：Skia 构建（LUMEN_HAVE_SKIA）下回退目标从「空 setup →
+    应用壳内部 CPU 渲染器」改为 Skia 软件光栅——`skiaFallback` +
+    `skiaSoftwareSetup` 装配（present 回调/DP 同步，样板与
+    `--renderer skia` 模式一致），沿用 GPU 期同一 `SkiaFontManager`，
+    shaping/度量/光栅同源，回退后文本与光标/选区几何零漂移。纯 CPU
+    构建无此层（`skiaSoftwareSetup` 为空 std::function），回退内部
+    CPU 渲染器，行为不变。
+  - 启动期 `gpu init failed` 路径有意保持 CPU：工厂在 fontFactory
+    咨询之前失败，第 0 帧起即 SystemFontManager + CPU，天然连续
+    （run_app.cpp 装配顺序：rendererFactory → fontFactory，后者仅
+    启动咨询一次）。
+  - 诊断口径：`[diag] gpu failed (…) — falling back to skia
+    software raster|cpu`（按构建事实）。
+  - 测试期望：`counter_gpu_runtime_fallback`（Linux xvfb + GL 交换
+    失败注入）在 Skia 构建下断言 `backend=skia-raster`（原
+    `backend=cpu`；examples/counter/CMakeLists.txt 按 LUMEN_ENABLE_
+    SKIA 分流）；`counter_gpu_fallback`（探测失败→CPU）与
+    `counter_software_present_failure`（"CPU present failed" 诊断
+    契约）不变。
+- 测试：本地 Windows Skia+GPU 构建真验三路径——`--renderer gpu`
+  正常（backend=skia-gpu）、`--renderer skia`（backend=skia-raster）、
+  dummy 驱动探测失败（"gpu probe failed"→backend=cpu，与
+  counter_gpu_fallback 断言一致）；临时探活补丁强制失效跑通运行时
+  回退全链路（`gpu failed → falling back to skia software raster →
+  backend=skia-raster → frames=3 继续提交`）后还原补丁重编。CI
+  counter_gpu_runtime_fallback 以 Linux 首跑为事实来源。CPU-only 本地
+  构建全量不受影响（改动全部在 LUMEN_HAVE_SKIA 守卫内）。
+- 平台：本地 Windows（Skia+GPU 构建真验）；Linux 运行时失败注入以
+  CI 首跑为事实来源；macOS 同链路随 CI。
+- 已知限制：文本同源性由「同一 FontManager + 同一光栅器」构造保证，
+  无独立像素断言（CI 冒烟的 backend 断言为装配守卫）；run_app.cpp
+  呈现失败诊断字符串 "CPU present failed" 措辞沿用（既有 CI 契约，
+  不随回退后端改名）。
+- 回滚点：`2df25a6 feat(render)`（P1，P3 前）。
 
 ### Gallery 设计稿尺度优化对齐（2026-09-16）
 

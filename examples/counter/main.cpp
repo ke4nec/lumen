@@ -217,6 +217,45 @@ int runWindowed(CounterApp& app, const Options& options) {
     }
     runOptions.windowDesc.opengl = wantGpu && probeGpu;
     std::unique_ptr<lumen::render::Renderer> gpuRenderer;
+    // GPU 运行时失效 → Skia 软件光栅回退（与 GPU 期共用同一
+    // SkiaFontManager，shaping/度量/光栅同源——回退后文本与光标几何零
+    // 漂移）。纯 CPU 构建无此层，回退应用壳内部 CPU 渲染器；启动期
+    // init 失败同理走 CPU（第 0 帧起就是 SystemFontManager + CPU，
+    // 天然连续，不经此层）。
+#if defined(LUMEN_HAVE_SKIA)
+    std::optional<lumen::render::SkiaRenderer> skiaFallback;
+    const std::function<lumen::app::RendererSetup(
+        lumen::platform::ApplicationHost&, lumen::core::WindowId)>
+        skiaSoftwareSetup =
+            [&skiaFallback](lumen::platform::ApplicationHost& host,
+                            lumen::core::WindowId windowId) {
+                const auto metrics = host.windowMetrics(windowId);
+                const float deviceScale =
+                    metrics.has_value()
+                        ? metrics->drawableSize.width /
+                              std::max(1.0F, metrics->logicalSize.width)
+                        : 1.0F;
+                skiaFallback.emplace(deviceScale);
+                lumen::app::RendererSetup setup;
+                setup.renderer = &*skiaFallback;
+                setup.present = [&host, windowId,
+                                 &skiaFallback]() -> bool {
+                    lumen::platform::PlatformWindow* window =
+                        host.platformWindow(windowId);
+                    return window != nullptr &&
+                           window->present(skiaFallback->pixels()) ==
+                               lumen::platform::PresentResult::Ok;
+                };
+                setup.syncDeviceScale = [&skiaFallback](float scale) {
+                    skiaFallback->setDeviceScale(scale);
+                };
+                return setup;
+            };
+#else
+    const std::function<lumen::app::RendererSetup(
+        lumen::platform::ApplicationHost&, lumen::core::WindowId)>
+        skiaSoftwareSetup;
+#endif
     if (wantGpu && probeGpu) {
         runOptions.rendererFactory =
             [&gpuRenderer, &gpuDiagnostics,
@@ -272,14 +311,17 @@ int runWindowed(CounterApp& app, const Options& options) {
             return setup;
         };
         // GPU 运行时失败（上下文丢失/GL 交换失败）：销毁 GPU 资源与
-        // OpenGL 窗口，重建软件窗口回退 CPU（状态/焦点/选区保留）。
+        // OpenGL 窗口，重建软件窗口；Skia 构建回退软件光栅（状态/焦点/
+        // 选区与文本几何保留），纯 CPU 构建回退应用壳内部 CPU 渲染器。
         runOptions.onRendererFailure =
-            [&app, &gpuRenderer,
-             &runOptions](lumen::platform::ApplicationHost& host,
+            [&app, &gpuRenderer, &runOptions,
+             &skiaSoftwareSetup](lumen::platform::ApplicationHost& host,
                           lumen::core::WindowId& id)
             -> std::optional<lumen::app::RendererSetup> {
-            std::printf("[diag] gpu failed (%s) — falling back to cpu\n",
-                        gpuRenderer->stats().fallbackReason.c_str());
+            std::printf("[diag] gpu failed (%s) — falling back to %s\n",
+                        gpuRenderer->stats().fallbackReason.c_str(),
+                        skiaSoftwareSetup ? "skia software raster"
+                                          : "cpu");
             const auto metrics = host.windowMetrics(id);
             const lumen::core::Size logical =
                 metrics.has_value() ? metrics->logicalSize
@@ -300,8 +342,12 @@ int runWindowed(CounterApp& app, const Options& options) {
                 return std::nullopt;
             }
             id = *replacement;
-            // 有值的空 setup = 回退到应用壳内部 CPU 渲染器（注意不是
-            // 空 optional——那会表示回退失败）。
+            // Skia 构建：软件光栅（同源字体/度量/光栅，文本零漂移）；
+            // 否则有值的空 setup = 应用壳内部 CPU 渲染器（空 optional
+            // 才表示回退失败）。
+            if (skiaSoftwareSetup) {
+                return skiaSoftwareSetup(host, *replacement);
+            }
             return lumen::app::RendererSetup{};
         };
     }

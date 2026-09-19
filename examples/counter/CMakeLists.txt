@@ -32,10 +32,17 @@ if(LUMEN_ENABLE_GPU)
     if(TARGET lumen-gpu-present-failure)
       find_program(LUMEN_XVFB_RUN xvfb-run)
       if(LUMEN_XVFB_RUN)
+        # Skia 构建的运行时回退目标是 Skia 软件光栅（文本零漂移）；
+        # 纯 CPU 构建回退应用壳内部 CPU 渲染器。
+        if(LUMEN_ENABLE_SKIA)
+          set(COUNTER_RUNTIME_FALLBACK_BACKEND skia-raster)
+        else()
+          set(COUNTER_RUNTIME_FALLBACK_BACKEND cpu)
+        endif()
         add_test(NAME counter_gpu_runtime_fallback
             COMMAND ${LUMEN_XVFB_RUN} -a ${CMAKE_COMMAND}
                 -DCOUNTER=$<TARGET_FILE:lumen-counter>
-                -DEXPECTED_BACKEND=cpu
+                -DEXPECTED_BACKEND=${COUNTER_RUNTIME_FALLBACK_BACKEND}
                 -DFAILURE_LIBRARY=$<TARGET_FILE:lumen-gpu-present-failure>
                 -P ${PROJECT_SOURCE_DIR}/tests/counter_gpu_smoke.cmake)
         add_test(NAME counter_software_present_failure
