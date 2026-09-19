@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
 
 // 语义层共享实现（与 List 同契约）：键盘导航/滚动对齐/sink 接线/区间序列。
 #include "collection_common.h"
@@ -21,7 +22,7 @@ constexpr float kMinExtent = 1.0F;
 // Button（点击只 toggle，不改选择）；叶子行 = 等宽透明占位（列对齐）。
 // Tree 与 TreeList 共用（后者把它放进首列盒内，列宽口径一致）。
 core::Widget makeLeadWidget(const std::string& owner,
-                            const TreeController::VisibleRow& row) {
+                            const TreeController::VisibleRow& row, bool styledTree = false) {
     if (row.hasChildren) {
         core::Widget chevron = core::makeButton("");
         chevron.icon = row.expanded ? core::IconId::ChevronDown
@@ -29,13 +30,19 @@ core::Widget makeLeadWidget(const std::string& owner,
         chevron.buttonVariant = core::ButtonVariant::Ghost;
         chevron.onClick = "tree:" + owner + ":toggle:" + row.key;
         chevron.key = owner + ":chev:" + row.key;
-        chevron.width = kChevronExtent;
-        chevron.height = kChevronExtent;
+        if (styledTree) chevron.treePart = core::TreePart::Chevron;
+        else {
+            chevron.width = kChevronExtent;
+            chevron.height = kChevronExtent;
+        }
         chevron.semanticsLabel = row.expanded ? "折叠" : "展开";
         chevron.semanticsValue = row.expanded ? "true" : "false";
         return chevron;
     }
-    return core::makeContainerLeaf(kChevronExtent, 0.0F);
+    if (!styledTree) return core::makeContainerLeaf(kChevronExtent, 0.0F);
+    auto spacer = core::makeIcon(core::IconId::None);
+    spacer.treePart = core::TreePart::Spacer;
+    return spacer;
 }
 }  // namespace
 
@@ -43,10 +50,27 @@ core::Widget makeLeadWidget(const std::string& owner,
 
 void TreeController::setModel(const TreeModel* model) {
     model_ = model;
+    measured_.clear();
+    contentEnabled_.clear();
     invalidateRows();
 }
 
-void TreeController::modelChanged() { invalidateRows(); }
+void TreeController::modelChanged() {
+    contentEnabled_.clear();
+    invalidateRows();
+}
+
+void TreeController::setEmptyBuilder(std::function<core::Widget()> builder) {
+    emptyBuilder_ = std::move(builder);
+    requestRebuild();
+}
+
+bool TreeController::itemEnabled(std::size_t index) const {
+    rebuildRows();
+    if (index >= rows_.size() || model_ == nullptr || !model_->isEnabled(rows_[index].key)) return false;
+    const auto found = contentEnabled_.find(rows_[index].key);
+    return found == contentEnabled_.end() || found->second;
+}
 
 void TreeController::invalidateRows() {
     rowsDirty_ = true;
@@ -64,10 +88,8 @@ void TreeController::rebuildRows() const {
     if (model_ != nullptr) {
         // 惰性 DFS：只沿已展开分支下钻；hasChildren 为 true 而未展开
         // 的分支不物化子级（千节点目录首屏只拉可见分支）。
-        const auto isExpanded = [this](const std::string& key) {
-            return std::find(expanded_.begin(), expanded_.end(), key) !=
-                   expanded_.end();
-        };
+        const std::unordered_set<std::string> expandedKeys(expanded_.begin(), expanded_.end());
+        std::unordered_set<std::string> visited;
         struct Frame {
             const std::string parent;
             std::size_t depth;
@@ -80,8 +102,9 @@ void TreeController::rebuildRows() const {
         while (!stack.empty()) {
             const Frame frame = stack.back();
             stack.pop_back();
+            if (frame.parent.empty() || !visited.insert(frame.parent).second) continue;
             const bool branch = model_->hasChildren(frame.parent);
-            const bool expanded = branch && isExpanded(frame.parent);
+            const bool expanded = branch && expandedKeys.contains(frame.parent);
             rows_.push_back(
                 VisibleRow{frame.parent, frame.depth, branch, expanded});
             if (expanded) {
@@ -122,13 +145,31 @@ bool TreeController::isExpanded(const std::string& key) const {
 }
 
 void TreeController::applyExpansion(const std::string& key, bool expanded) {
-    const auto it = std::find(expanded_.begin(), expanded_.end(), key);
+    // Copy keys before rebuilding: callers may pass a reference into rows_.
+    const std::string target = key;
+    const std::string currentKey = selection_.currentKey();
+    std::size_t current = 0, parent = 0;
+    bool hidesCurrent = false;
+    if (!expanded && indexOfKey(target, parent) && indexOfKey(currentKey, current) && current > parent) {
+        hidesCurrent = true;
+        for (std::size_t i = parent + 1; i <= current; ++i) {
+            if (rows_[i].depth <= rows_[parent].depth) { hidesCurrent = false; break; }
+        }
+    }
+    const auto it = std::find(expanded_.begin(), expanded_.end(), target);
     if (expanded && it == expanded_.end()) {
-        expanded_.push_back(key);
+        expanded_.push_back(target);
         invalidateRows();
     } else if (!expanded && it != expanded_.end()) {
         expanded_.erase(it);
         invalidateRows();
+    }
+    if (hidesCurrent) {
+        selection_.setCurrent(target);
+        if (shell_ != nullptr && shell_->focus().focusedKey() == owner_ + ":item:" + currentKey) {
+            shell_->focus().setFocus(owner_ + ":item:" + target);
+        }
+        scrollToKey(target, ScrollAlignment::Visible);
     }
 }
 
@@ -136,38 +177,22 @@ bool TreeController::expandAll(std::size_t maxRows) {
     if (model_ == nullptr) {
         return false;
     }
-    // 保守防护：全部展开的可见行数超限时拒绝（防万级目录误触）。
-    const auto countAll = [this](const std::string& parent) {
-        std::function<std::size_t(const std::string&)> count =
-            [&](const std::string& node) -> std::size_t {
-            const std::size_t children = model_->childCount(node);
-            std::size_t total = children;
-            for (std::size_t i = 0; i < children; ++i) {
-                total += count(model_->childAt(node, i));
-            }
-            return total;
-        };
-        return count(parent);
-    };
-    // 根可见行数（折叠态）先行展开；超限直接拒绝。递归收集用
-    // std::function（MSVC 对自递归泛型 lambda 推导受限）。
+    // Bounded iterative traversal: do not enumerate the rest of a huge model
+    // before rejecting; duplicate/cyclic keys cannot recurse indefinitely.
+    struct Frame { std::string key; std::size_t next{0}; };
+    std::vector<Frame> stack{{"", 0}};
+    std::unordered_set<std::string> visited;
     std::vector<std::string> all;
-    std::function<void(const std::string&)> collect =
-        [&](const std::string& node) {
-            if (model_->hasChildren(node)) {
-                all.push_back(node);
-                const std::size_t n = model_->childCount(node);
-                for (std::size_t i = 0; i < n; ++i) {
-                    collect(model_->childAt(node, i));
-                }
-            }
-        };
-    const std::size_t rootCount = model_->childCount("");
-    for (std::size_t i = 0; i < rootCount; ++i) {
-        collect(model_->childAt("", i));
-    }
-    if (countAll("") > maxRows) {
-        return false;
+    while (!stack.empty()) {
+        auto& frame = stack.back();
+        if (frame.next >= model_->childCount(frame.key)) { stack.pop_back(); continue; }
+        if (visited.size() >= maxRows) return false;
+        const std::string key = model_->childAt(frame.key, frame.next++);
+        if (key.empty() || !visited.insert(key).second) continue;
+        if (model_->hasChildren(key)) {
+            all.push_back(key);
+            stack.push_back({key, 0});
+        }
     }
     expanded_ = std::move(all);
     invalidateRows();
@@ -177,6 +202,11 @@ bool TreeController::expandAll(std::size_t maxRows) {
 void TreeController::collapseAll() {
     if (expanded_.empty()) {
         return;
+    }
+    std::size_t current = 0;
+    if (indexOfKey(selection_.currentKey(), current) && rows_[current].depth > 0) {
+        while (current > 0 && rows_[current].depth > 0) --current;
+        collapse(rows_[current].key);
     }
     expanded_.clear();
     invalidateRows();
@@ -196,7 +226,8 @@ void TreeController::attach(app::AppShell& shell, std::string ownerKey) {
             rebuildRows();
             return detail::closedKeyRange(
                 rows_.size(),
-                [this](std::size_t i) { return rows_[i].key; }, from, to);
+                [this](std::size_t i) { return rows_[i].key; }, from, to,
+                [this](std::size_t i) { return itemEnabled(i); });
         });
     selection_.onSelectionChanged = [this] { requestRebuild(); };
     selection_.onCurrentChanged = [this](const std::string&) {
@@ -212,7 +243,19 @@ void TreeController::attach(app::AppShell& shell, std::string ownerKey) {
             if (key.empty()) {
                 return false;
             }
-            toggle(key);
+            std::size_t index = 0;
+            if (indexOfKey(key, index) && itemEnabled(index)) {
+                toggle(key);
+                // Pointer-down releases non-field focus. Restore the current
+                // row after toggling, without selecting it or the clicked branch.
+                const std::string current = selection_.currentKey();
+                if (indexOfKey(current, index) && itemEnabled(index)) {
+                    shell_->focus().setFocus(owner_ + ":item:" + current);
+                } else {
+                    selection_.setCurrent(key);
+                    shell_->focus().setFocus(owner_ + ":item:" + key);
+                }
+            }
             return true;
         }
         return detail::dispatchRowClick(
@@ -223,6 +266,23 @@ void TreeController::attach(app::AppShell& shell, std::string ownerKey) {
     });
     shell.controller().addRowActivateSink(detail::makeRowActivateSink(
         owner_, [this](const std::string& key) { activate(key); }));
+    shell.controller().addRowFocusSink([this](const std::string& rowKey) {
+        const std::string prefix = owner_ + ":item:";
+        if (!rowKey.starts_with(prefix)) return false;
+        const std::string key = rowKey.substr(prefix.size());
+        std::size_t index = 0;
+        if (indexOfKey(key, index) && itemEnabled(index)) selection_.setCurrent(key);
+        return true;
+    });
+    shell.controller().addRowExpansionSink([this](const std::string& rowKey, bool expanded) {
+        const std::string prefix = owner_ + ":item:";
+        if (!rowKey.starts_with(prefix)) return false;
+        const std::string key = rowKey.substr(prefix.size());
+        std::size_t index = 0;
+        if (!indexOfKey(key, index) || !itemEnabled(index) || !rows_[index].hasChildren) return false;
+        applyExpansion(key, expanded);
+        return true;
+    });
 }
 
 void TreeController::scrollToKey(const std::string& key,
@@ -233,24 +293,36 @@ void TreeController::scrollToKey(const std::string& key,
         return;
     }
     detail::scrollToAligned(*this, index, align);
+    requestRebuild();
+}
+
+void TreeController::setCurrentKey(const std::string& key, bool extend) {
+    std::size_t index = 0;
+    if (indexOfKey(key, index) && itemEnabled(index)) moveCurrent(key, extend);
 }
 
 void TreeController::moveCurrent(const std::string& key, bool extend) {
-    selection_.moveTo(key, extend);
+    const std::string target = key;
+    selection_.moveTo(target, extend);
+    scrollToKey(target, ScrollAlignment::Visible);
     if (shell_ != nullptr) {
-        shell_->focus().setFocus(owner_ + ":item:" + key);
+        shell_->focus().setFocus(owner_ + ":item:" + target);
     }
     requestRebuild();
 }
 
 bool TreeController::handleKey(core::Key key, core::KeyModifiers modifiers,
                                char keyChar) {
+    if (shell_ != nullptr) {
+        const auto* view = core::findNodeByKey(shell_->root(), owner_);
+        if (view != nullptr && !view->enabled) return false;
+    }
     rebuildRows();
     // 共享键位（Ctrl+A / Up / Down / Home / End / PageUp / PageDown）。
     if (detail::handleCollectionKeys(
             shell_, owner_, selection_, *this,
             [this](std::size_t i) { return rows_[i].key; }, key, modifiers,
-            keyChar)) {
+            keyChar, [this](std::size_t i) { return itemEnabled(i); })) {
         return true;
     }
     // --- 树专属键位（collection-design §7.4） ---
@@ -264,15 +336,15 @@ bool TreeController::handleKey(core::Key key, core::KeyModifiers modifiers,
     switch (key) {
         case core::Key::Left:
             // 展开 → 折叠；已折叠 → current 移到父级（Qt 契约）。
-            if (hasCurrent) {
-                const VisibleRow& row = rows_[current];
+            if (hasCurrent && itemEnabled(current)) {
+                const VisibleRow row = rows_[current];
                 if (row.expanded) {
                     collapse(row.key);
                 } else if (row.depth > 0) {
                     // 父级 = 当前行上方最近的 depth-1 行。
                     for (std::size_t i = current; i > 0; --i) {
                         if (rows_[i - 1].depth < row.depth) {
-                            moveCurrent(rows_[i - 1].key, false);
+                            if (itemEnabled(i - 1)) moveCurrent(rows_[i - 1].key, false);
                             break;
                         }
                     }
@@ -281,13 +353,15 @@ bool TreeController::handleKey(core::Key key, core::KeyModifiers modifiers,
             return true;
         case core::Key::Right:
             // 折叠 → 展开；已展开 → current 移到首个子级。
-            if (hasCurrent) {
-                const VisibleRow& row = rows_[current];
-                if (row.hasChildren && !row.expanded) {
+            if (hasCurrent && itemEnabled(current)) {
+                const VisibleRow row = rows_[current];
+                if (row.hasChildren && !row.expanded && itemEnabled(current)) {
                     expand(row.key);
                 } else if (row.expanded && current + 1 < count &&
                            rows_[current + 1].depth == row.depth + 1) {
-                    moveCurrent(rows_[current + 1].key, false);
+                    for (std::size_t i = current + 1; i < count && rows_[i].depth > row.depth; ++i) {
+                        if (itemEnabled(i)) { moveCurrent(rows_[i].key, false); break; }
+                    }
                 }
             }
             return true;
@@ -385,8 +459,22 @@ core::Widget TreeController::buildItem(std::size_t index) const {
     const VisibleRow& row = rows_[index];
 
     std::vector<core::Widget> cells;
-    cells.push_back(makeLeadWidget(owner_, row));
-    cells.push_back(buildRowContent(row));
+    cells.push_back(makeLeadWidget(owner_, row, true));
+    auto content = buildRowContent(row);
+    const auto labelOf = [](auto&& self, const core::Widget& child) -> std::string {
+        if (!child.semanticsLabel.empty()) return child.semanticsLabel;
+        if (child.type == core::WidgetType::Text) return child.text;
+        for (const auto& nested : child.children) {
+            auto label = self(self, nested);
+            if (!label.empty()) return label;
+        }
+        return {};
+    };
+    const std::string label = labelOf(labelOf, content);
+    if (content.enabled) contentEnabled_.erase(row.key);
+    else contentEnabled_[row.key] = false;
+    content.flex = 1.0F;
+    cells.push_back(std::move(content));
 
     core::Widget widget;
     detail::applyCollectionRowShell(widget, owner_, row.key,
@@ -394,23 +482,60 @@ core::Widget TreeController::buildItem(std::size_t index) const {
                                     "tree:" + owner_ + ":" + row.key,
                                     core::CrossAxisAlignment::Center,
                                     "treeItem");
+    widget.padding = {};
+    widget.treeDepth = static_cast<std::uint32_t>(row.depth);
+    widget.treePart = index + 1 == rows_.size() ? core::TreePart::LastRow : core::TreePart::Row;
+    widget.enabled = itemEnabled(index);
+    widget.semanticsLabel = label;
     if (row.hasChildren) {
         widget.semanticsValue = row.expanded ? "true" : "false";
+        widget.semanticsActions |= row.expanded ? accessibility::kActionCollapse : accessibility::kActionExpand;
     }
     widget.children = std::move(cells);
+    if (!widget.enabled) {
+        const auto disable = [](auto&& self, core::Widget& child) -> void {
+            child.enabled = false;
+            for (auto& nested : child.children) self(self, nested);
+        };
+        disable(disable, widget);
+    }
     return widget;
 }
 
+core::Widget TreeController::buildEmpty() const {
+    std::vector<core::Widget> children;
+    if (emptyBuilder_) children.push_back(emptyBuilder_());
+    else {
+        auto icon = core::makeIcon(core::IconId::Folder);
+        icon.treePart = core::TreePart::EmptyIcon;
+        auto text = core::makeText("No items");
+        text.treePart = core::TreePart::EmptyText;
+        children.push_back(std::move(icon));
+        children.push_back(std::move(text));
+    }
+    auto empty = core::makeColumn(std::move(children), core::MainAxisAlignment::Center,
+                                 core::CrossAxisAlignment::Center);
+    empty.treePart = core::TreePart::Empty;
+    empty.key = owner_ + ":empty";
+    return empty;
+}
+
+std::string TreeController::tabStopKey() const {
+    return selection_.currentKey().empty() ? std::string{} : owner_ + ":item:" + selection_.currentKey();
+}
+
 core::Widget TreeController::buildRowContent(const VisibleRow& row) const {
-    // 单列树：行内容 + 缩进（在应用 padding 基础上叠加；TreeList 覆盖
-    // 为列盒）。
+    // Tree indentation belongs to the resolved row surface; TreeList keeps
+    // its existing first-column geometry.
     core::Widget content = model_->buildRow(row.key, row.depth);
-    content.padding.left += kIndentStep * static_cast<float>(row.depth);
+    if (isTreeList()) content.padding.left += kIndentStep * static_cast<float>(row.depth);
     return content;
 }
 
 void TreeController::rowClicked(const std::string& key, bool ctrl,
                                 bool shift) {
+    std::size_t index = 0;
+    if (!indexOfKey(key, index) || !itemEnabled(index)) return;
     selection_.click(key, ctrl, shift);
     if (shell_ != nullptr) {
         shell_->focus().setFocus(owner_ + ":item:" + key);
@@ -419,7 +544,8 @@ void TreeController::rowClicked(const std::string& key, bool ctrl,
 }
 
 void TreeController::activate(const std::string& key) {
-    if (onActivated) {
+    std::size_t index = 0;
+    if (onActivated && indexOfKey(key, index) && itemEnabled(index)) {
         onActivated(key);
     }
 }
@@ -577,6 +703,9 @@ core::Widget TreeListController::buildItem(std::size_t index) const {
         widget.semanticsValue = row.expanded ? "true" : "false";
     }
     widget.children.push_back(std::move(rowCells));
+    if (row.hasChildren) {
+        widget.semanticsActions |= row.expanded ? accessibility::kActionCollapse : accessibility::kActionExpand;
+    }
     return widget;
 }
 

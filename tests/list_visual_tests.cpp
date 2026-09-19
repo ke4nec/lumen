@@ -17,6 +17,7 @@ struct ListFixture {
     accessibility::RecordingAccessibilityBridge bridge;
     app::AppShell shell{config()};
     bool enabled{true};
+    bool showFocusRing{true};
     std::size_t builds{0};
 
     app::ShellConfig config() {
@@ -24,6 +25,7 @@ struct ListFixture {
         result.initialView = {320, 240};
         result.build = [this] {
             auto view = withEnabled(makeList(&list, "list", std::nullopt, 160.0F, 0.0F), enabled);
+            view.showFocusRing = showFocusRing;
             auto after = makeButton("After");
             after.key = "after";
             after.onClick = "after";
@@ -64,6 +66,39 @@ struct ListFixture {
         frame();
     }
 };
+}
+
+// Collection design §10.2: hiding the ring preserves focus and selection.
+TEST_CASE("list_focus_ring_can_be_hidden_without_disabling_navigation", "[list-visual]") {
+    ListFixture f;
+    f.showFocusRing = false;
+    f.frame();
+    f.click(1);
+    CHECK(f.shell.focus().focusedIdentity() == f.row(1).identity);
+    CHECK(f.row(1).commonStyle().focusWidth == 0.0F);
+    CHECK(f.list.selection().isSelected("i1"));
+    const auto semantics = accessibility::buildSemanticsTree(f.shell.root(), {&f.shell.focus()});
+    REQUIRE(semantics.find(f.row(1).identity) != nullptr);
+    CHECK((semantics.find(f.row(1).identity)->flags & accessibility::kSemanticsFocused) != 0);
+    const auto& pixels = f.shell.pixels();
+    const auto y = static_cast<int>(absoluteOffset(f.shell.root(), f.row(1).key).y);
+    const auto at = (y * pixels.width + 250) * 4;
+    CHECK(Color{pixels.rgba[at], pixels.rgba[at + 1], pixels.rgba[at + 2], pixels.rgba[at + 3]} ==
+          f.shell.theme().list.selected);
+    f.shell.keyDown(Key::Down);
+    f.frame();
+    CHECK(f.list.selection().currentKey() == "i2");
+    CHECK(f.shell.focus().focusedIdentity() == f.row(2).identity);
+    CHECK(f.row(2).commonStyle().focusWidth == 0.0F);
+    const auto size = f.row(2).size;
+    f.showFocusRing = true;
+    f.shell.markDirty();
+    f.frame();
+    CHECK(f.row(2).commonStyle().focusWidth == f.shell.theme().metrics.focusRingWidth);
+    CHECK(f.row(2).size == size);
+    const auto incremental = f.shell.pixels().rgba;
+    static_cast<void>(f.shell.renderFrame(true));
+    CHECK(incremental == f.shell.pixels().rgba);
 }
 
 TEST_CASE("list_rows_fill_viewport_and_follow_density_tokens", "[list-visual]") {

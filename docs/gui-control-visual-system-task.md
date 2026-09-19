@@ -236,11 +236,11 @@ Icon 采用现有 `IconId / iconPolylines`；16 px 图标的基准描边 1.5 px�
 | 背景 | 先取变体与 checked/selected 基底，再应用 pressed，否则 hovered；disabled 使用对应禁用表面 |
 | 前景/标记 | 按当前表面取成对前景；选中、错误、禁用使用各自语义，不整体重复降低 alpha |
 | 边框 | enabled invalid 使用错误边框；其次 focused / hovered / normal；disabled 使用禁用轮廓，错误说明可保留 |
-| 焦点 | enabled focused 始终可见，与 pressed、selected、checked、invalid 并存；不能被背景状态覆盖 |
+| 焦点 | enabled focused 默认显示环，与 pressed、selected、checked、invalid 并存；显式 `showFocusRing=false` 仅关闭环绘制 |
 | 数据装饰 | checked 的勾号、Radio 内点、selected 指示、Dropdown 当前值独立保留 |
 | 编辑反馈 | caret、selection、composition 仍来自编辑状态；readOnly 保留选择/复制/焦点，拒绝编辑 |
 
-现有 focused 不区分输入来源，本轮保留所有已获得焦点的可见标识。不得为模拟“仅键盘焦点”而在鼠标点击后悄悄隐藏环。未来增加 focus-visible 输入来源需要完整事件和无障碍测试。
+现有 focused 不区分输入来源，默认保留所有已获得焦点的可见标识。应用可用 `Widget.showFocusRing=false` 或 `withFocusRing(widget, false)` 显式关闭焦点环；List/Tree/TreeList 视口传递到生成行，Tree 同时传递到箭头。该开关对鼠标、键盘与语义聚焦一致生效，不清除实际焦点、选择、导航或语义状态。不得用此开关冒充“仅键盘焦点”；未来增加 focus-visible 输入来源仍需要完整事件和无障碍测试。
 
 Checked / Selected 只作用于有对应语义的控件或行部件，不把所有 Container 自动画成选中面。Checkbox / Switch 现有 `checked || selected` 兼容路径保留；Tabs 与列表按其实际 selected 声明解析，不能在迁移中悄悄改写绑定值。
 

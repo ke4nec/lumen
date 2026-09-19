@@ -588,6 +588,8 @@ Theme baseTheme(bool darkMode, ControlDensity density,
     theme.dialog = dialogTokensFrom(theme.colors, theme.metrics);
     theme.scrollbar = scrollbarTokensFrom(theme.colors);
     theme.list = listTokensFrom(theme.colors);
+    theme.tree.row = theme.list;
+    theme.tree.chevronContent = theme.colors.contentSecondary;
     theme.direction = direction;
     theme.darkMode = darkMode;
     return theme;
@@ -636,6 +638,8 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     theme.list = listTokensFrom(theme.colors);
     theme.list.hovered = blendOver(theme.list.background, theme.colors.hoverOverlay);
     theme.list.pressed = blendOver(theme.list.background, theme.colors.pressedOverlay);
+    theme.tree.row = theme.list;
+    theme.tree.chevronContent = theme.colors.contentSecondary;
 }
 
 void scaleComponentSizes(Theme& theme, float factor) {
@@ -645,6 +649,12 @@ void scaleComponentSizes(Theme& theme, float factor) {
     theme.list.markerWidth *= factor;
     theme.list.markerInset *= factor;
     theme.list.emptyIconSize *= factor;
+    theme.tree.row.markerWidth *= factor;
+    theme.tree.row.markerInset *= factor;
+    theme.tree.row.emptyIconSize *= factor;
+    theme.tree.indentStep *= factor;
+    theme.tree.chevronHitExtent *= factor;
+    theme.tree.chevronIconSize *= factor;
     for (float& value : theme.checkbox.indicatorSize) {
         value *= factor;
     }
@@ -805,6 +815,8 @@ Theme adaptPlatformTheme(const Theme& base,
             adapted.list.hovered = blendOver(adapted.list.background, adapted.colors.hoverOverlay);
             adapted.list.pressed = blendOver(adapted.list.background, adapted.colors.pressedOverlay);
         }
+        adapted.tree.row = adapted.list;
+        adapted.tree.chevronContent = adapted.colors.contentSecondary;
     }
     scaleTheme(adapted, settings.fontScale);
     return adapted;

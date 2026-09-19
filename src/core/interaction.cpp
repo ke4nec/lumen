@@ -1215,8 +1215,8 @@ bool InteractionController::traverseFocus(const RenderNode& root,
     std::vector<Candidate> focusables;
     std::function<void(const RenderNode&, const std::string&)> collect =
         [&](const RenderNode& node, const std::string& scope) {
-            // List is one Tab stop. Arrow keys navigate its rows; Tab leaves it.
-            if (node.type == WidgetType::List && node.virtualSource != nullptr) {
+            // List/Tree use one Tab stop. Arrow keys navigate; Tab leaves.
+            if ((node.type == WidgetType::List || node.type == WidgetType::Tree) && node.virtualSource != nullptr) {
                 if (!node.enabled) return;
                 const std::string preferred = node.virtualSource->tabStopKey();
                 const RenderNode* candidate = nullptr;
@@ -1438,6 +1438,33 @@ void InteractionController::addRowFocusSink(RowFocusSink sink) {
     rowFocusSinks_.push_back(std::move(sink));
 }
 
+bool InteractionController::activateButton(const RenderNode& node) {
+    if (!node.enabled || node.type != WidgetType::Button || node.onClick.empty()) return false;
+    const std::string onClick = node.onClick;
+    for (const auto& sink : rowClickSinks_) {
+        if (sink && sink(onClick)) return true;
+    }
+    const auto handler = handlers_.find(onClick);
+    if (handler == handlers_.end()) return false;
+    // Copy before invoking: callbacks can replace the registry or rebuild.
+    const auto callback = handler->second;
+    callback();
+    return true;
+}
+
+void InteractionController::addRowExpansionSink(RowExpansionSink sink) {
+    rowExpansionSinks_.push_back(std::move(sink));
+}
+
+bool InteractionController::expandCollectionRow(const RenderNode& node, bool expanded) {
+    if (!node.enabled || !node.collectionRow) return false;
+    const std::string key = node.key;
+    for (const auto& sink : rowExpansionSinks_) {
+        if (sink && sink(key, expanded)) return true;
+    }
+    return false;
+}
+
 void InteractionController::addSecondaryPressSink(SecondaryPressSink sink) {
     secondaryPressSinks_.push_back(std::move(sink));
 }
@@ -1523,30 +1550,25 @@ bool InteractionController::wheel(const RenderNode& root, Offset position,
     if (hit == nullptr) {
         return false;
     }
-    // 命中链上最近的滚动视口承担滚动（plan §3.4 统一手势/焦点状态机）。
-    const RenderNode* viewport = nullptr;
-    for (const RenderNode* node : chain) {
-        if (isScrollableWidget(node->type)) {
-            viewport = node;
-            break;
+    // Scroll design §4: walk from the hit node to its ancestors. A viewport
+    // whose content fits cannot consume wheel input, regardless of whether
+    // scrollbar decoration is enabled. Stay within this event tree (modal).
+    for (const RenderNode* viewport : chain) {
+        if (!isScrollableWidget(viewport->type) || !(viewport->scrollExtent > 0.0F)) {
+            continue;
         }
-    }
-    if (viewport == nullptr) {
-        return false;
-    }
-    // 源视口：滚动状态在源控制器内，框架直接驱动（应用无需按 key 接
-    // 线）；已在边界时不冒泡到外层（与应用 sink 行为一致）。
-    if (viewport->virtualSource != nullptr) {
-        ScrollController* scroller =
-            viewport->virtualSource->scrollController();
-        if (scroller != nullptr) {
-            return scrollSourceViewport(*scroller, delta.y);
+        if (delta.y == 0.0F) continue;
+
+        // An overflowing viewport still owns its axis at either endpoint;
+        // preserve the established no-chaining policy at scroll boundaries.
+        if (viewport->virtualSource != nullptr) {
+            if (auto* scroller = viewport->virtualSource->scrollController()) {
+                return scrollSourceViewport(*scroller, delta.y);
+            }
         }
+        return wheelSink_ ? wheelSink_(root, viewport, position, delta) : false;
     }
-    if (!wheelSink_) {
-        return false;
-    }
-    return wheelSink_(root, viewport, position, delta);
+    return false;
 }
 
 bool InteractionController::scrollKey(const RenderNode& root, Key key) {

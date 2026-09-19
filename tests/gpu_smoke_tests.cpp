@@ -19,6 +19,7 @@
 #include "lumen/render/skia_gpu_renderer.h"
 #include "lumen/style/theme.h"
 #include "lumen/widgets/list.h"
+#include "lumen/widgets/tree.h"
 
 using lumen::core::Constraints;
 using lumen::core::Size;
@@ -297,6 +298,80 @@ TEST_CASE("gpu_list_readback_preserves_selection_focus_and_scrolled_border", "[g
             CHECK(sample(4, 20) == theme.list.selectionMarker);
             CHECK(sample(80, 0) == theme.list.separator);
             if (scroll == 0.0F) CHECK(sample(80, 1) == theme.colors.focusRing);
+        }
+    }
+}
+
+// Collection design §7/§10: indented content keeps a full-width selected
+// surface, marker and inner focus ring under GPU clipping and device scaling.
+TEST_CASE("gpu_tree_readback_preserves_indented_selection_and_border", "[gpu][tree-visual]") {
+    using namespace lumen;
+    using namespace lumen::core;
+    struct Model final : widgets::TreeModel {
+        std::size_t childCount(const std::string& key) const override {
+            return key.empty() ? 1 : key == "root" ? 12 : 0;
+        }
+        std::string childAt(const std::string& key, std::size_t i) const override {
+            return key.empty() ? "root" : "child" + std::to_string(i);
+        }
+        bool hasChildren(const std::string& key) const override { return key == "root"; }
+        Widget buildRow(const std::string&, std::size_t) const override { return makeText(""); }
+    } model;
+    std::string diagnostics;
+    if (!render::probeSkiaGpuAvailable(&diagnostics)) SKIP("GPU unavailable: " << diagnostics);
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow("lumen-tree-test", 240, 200,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN), SDL_DestroyWindow);
+    REQUIRE(window);
+    render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    desc.widthPixels = 240;
+    desc.heightPixels = 200;
+    desc.allowSwap = false;
+    auto renderer = render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer);
+    REQUIRE(renderer->capabilities().gpu);
+    const auto theme = style::Theme::dark();
+    accessibility::AccessibilitySettings settings;
+    style::InteractionStateSnapshot interaction;
+    style::StyleContext context{theme, interaction, settings, 1.0F};
+    widgets::TreeController controller;
+    controller.setModel(&model);
+    controller.expand("root");
+    controller.selection().setSelected({"child0"});
+    for (const float scale : {1.0F, 2.0F}) {
+        for (const float scroll : {0.0F, 7.0F}) {
+            for (const bool showFocusRing : {true, false}) {
+                CAPTURE(scale, scroll, showFocusRing);
+                FrameInfo info;
+                info.viewport = {240.0F / scale, 200.0F / scale};
+                info.deviceScale = scale;
+                const auto widget = withFocusRing(
+                    makeTree(&controller, "tree", info.viewport.width, info.viewport.height), showFocusRing);
+                auto tree = LayoutEngine::layout(widget, Constraints::tight(info.viewport), context);
+                const auto* row = findNodeByKey(tree, "tree:item:child0");
+                REQUIRE(row);
+                interaction.focusedIdentity = row->identity;
+                controller.scroll().scrollTo(scroll);
+                tree = LayoutEngine::layout(widget, Constraints::tight(info.viewport), context);
+                renderer->submit(recordScene(tree), info);
+                REQUIRE(render::skiaGpuRendererAlive(*renderer));
+                std::vector<unsigned char> pixels(240 * 200 * 4);
+                glReadBuffer(GL_BACK);
+                glReadPixels(0, 0, 240, 200, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                REQUIRE(glGetError() == GL_NO_ERROR);
+                const auto sample = [&](int x, int y) {
+                    const auto at = ((199 - static_cast<int>(y * scale)) * 240 +
+                                     static_cast<int>(x * scale)) * 4;
+                    return Color{pixels[at], pixels[at + 1], pixels[at + 2], 255};
+                };
+                CHECK(sample(100, 60) == theme.tree.row.selected);
+                CHECK(sample(showFocusRing ? 4 : 2, 60) == theme.tree.row.selectionMarker);
+                CHECK(sample(100, 0) == theme.tree.row.separator);
+                CHECK(sample(100, static_cast<int>(41 - scroll)) ==
+                      (showFocusRing ? theme.colors.focusRing : theme.tree.row.selected));
+            }
         }
     }
 }

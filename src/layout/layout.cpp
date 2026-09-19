@@ -231,7 +231,8 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
         }
         case WidgetType::Icon: {
             // M6：默认尺寸来自 IconTheme（token），width/height 覆盖。
-            if (widget.listPart == core::ListPart::EmptyIcon) {
+            if (widget.listPart == core::ListPart::EmptyIcon ||
+                widget.treePart == core::TreePart::EmptyIcon || widget.treePart == core::TreePart::Spacer) {
                 return Size{resolved.minWidth, resolved.minHeight};
             }
             return Size{styleContext.theme.icons.defaultSize,
@@ -692,7 +693,9 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
         (isRow ? outer.isBoundedWidth() : outer.isBoundedHeight());
 
     const std::size_t count = widget.children.size();
-    const float spacing = widget.listPart == core::ListPart::Empty
+    const float spacing = widget.listPart == core::ListPart::Empty ||
+        widget.treePart == core::TreePart::Empty || widget.treePart == core::TreePart::Row ||
+        widget.treePart == core::TreePart::LastRow
         ? resolved.controlGap : widget.spacing;
     const float baseSpacing =
         count > 0 ? spacing * static_cast<float>(count - 1) : 0.0F;
@@ -868,7 +871,7 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
             borderMain = resolvedMain;
         }
     }
-    if (!isRow && widget.listPart == core::ListPart::Empty) {
+    if (!isRow && (widget.listPart == core::ListPart::Empty || widget.treePart == core::TreePart::Empty)) {
         borderMain = clampFloat(std::max(borderMain, resolved.minHeight),
                                 outerMinMain, outerMaxMain);
     }
@@ -1089,6 +1092,14 @@ RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
     return node;
 }
 
+void configureTreeParts(Widget& widget, core::ControlSize size, bool showFocusRing) {
+    if (widget.treePart != core::TreePart::None) {
+        widget.controlSize = size;
+        widget.showFocusRing = widget.showFocusRing && showFocusRing;
+    }
+    for (auto& child : widget.children) configureTreeParts(child, size, showFocusRing);
+}
+
 // M3：VirtualList。数据源（itemCount/estimatedExtent/extentOf/
 // scrollOffset/buildItem/noteExtent）驱动：可见区（含缓存）经
 // buildItem 物化，子项绝对定位在内容坐标（offsetOfIndex），滚动偏移
@@ -1108,7 +1119,8 @@ void materializeVirtualRows(RenderNode& node,
                             const EdgeInsets& padding, float contentMaxWidth,
                             float cacheExtent, float rowsViewport,
                             float rangeShift, float childBaseY,
-                            float contentExtentPad) {
+                            float contentExtentPad, core::ControlSize controlSize,
+                            bool showFocusRing) {
     struct MaterializedItem {
         RenderNode node;
         EdgeInsets margin;
@@ -1127,7 +1139,11 @@ void materializeVirtualRows(RenderNode& node,
                 continue;
             }
             Widget item = source->buildItem(i);
-            if (node.type == WidgetType::List && !node.enabled) {
+            if (item.collectionRow) item.showFocusRing = item.showFocusRing && showFocusRing;
+            if (node.type == WidgetType::Tree) {
+                configureTreeParts(item, controlSize, showFocusRing);
+            }
+            if ((node.type == WidgetType::List || node.type == WidgetType::Tree) && !node.enabled) {
                 const auto disable = [](auto&& self, Widget& widget) -> void {
                     widget.enabled = false;
                     for (auto& child : widget.children) self(self, child);
@@ -1137,7 +1153,7 @@ void materializeVirtualRows(RenderNode& node,
             if (t_prepareItem != nullptr && *t_prepareItem) {
                 (*t_prepareItem)(item);
             }
-            if (node.type == WidgetType::List && item.collectionRow) {
+            if ((node.type == WidgetType::List || node.type == WidgetType::Tree) && item.collectionRow) {
                 const auto rowStyle = style::resolveStyle(item, styleContext,
                     childIdentity(identity, item, i));
                 const auto foreground = core::commonStyle(rowStyle).foreground;
@@ -1155,13 +1171,13 @@ void materializeVirtualRows(RenderNode& node,
                 for (auto& child : item.children) inherit(inherit, child);
             }
             const Constraints childConstraints{
-                node.type == WidgetType::List ? contentMaxWidth : 0.0F,
+                (node.type == WidgetType::List || node.type == WidgetType::Tree) ? contentMaxWidth : 0.0F,
                 contentMaxWidth, 0.0F,
                 Constraints::unbounded().maxHeight};
             RenderNode childNode = layoutSingle(
                 item, childConstraints, styleContext,
                 childIdentity(identity, item, i));
-            if (node.type == WidgetType::List && !item.enabled) {
+            if ((node.type == WidgetType::List || node.type == WidgetType::Tree) && !item.enabled) {
                 const core::Color disabled = childNode.commonStyle().foreground;
                 const auto tint = [disabled](auto&& self, RenderNode& child) -> void {
                     child.enabled = false;
@@ -1219,7 +1235,7 @@ RenderNode layoutVirtualList(const Widget& widget,
     node.clipContent = true;
 
     const VirtualListSource* source = widget.virtualSource;
-    const bool list = widget.type == WidgetType::List;
+    const bool list = widget.type == WidgetType::List || widget.type == WidgetType::Tree;
     const float rowsViewport = list
         ? std::max(0.0F, viewportHeight - padding.vertical()) : viewportHeight;
     if (source != nullptr) {
@@ -1228,8 +1244,9 @@ RenderNode layoutVirtualList(const Widget& widget,
     if (source == nullptr || source->itemCount() == 0) {
         node.scrollExtent = 0.0F;
         node.scrollOffset = 0.0F;
-        if (source != nullptr && widget.type == WidgetType::List) {
+        if (source != nullptr && list) {
             Widget empty = source->buildEmpty();
+            if (widget.type == WidgetType::Tree) configureTreeParts(empty, widget.controlSize, widget.showFocusRing);
             if (t_prepareItem != nullptr && *t_prepareItem) (*t_prepareItem)(empty);
             const float width = std::max(0.0F, viewportWidth - padding.horizontal());
             const float height = std::max(0.0F, viewportHeight - padding.vertical());
@@ -1248,7 +1265,7 @@ RenderNode layoutVirtualList(const Widget& widget,
         /*rowsViewport=*/rowsViewport,
         /*rangeShift=*/list ? 0.0F : padding.top,
         /*childBaseY=*/padding.top,
-        /*contentExtentPad=*/list ? 0.0F : padding.vertical());
+        /*contentExtentPad=*/list ? 0.0F : padding.vertical(), widget.controlSize, widget.showFocusRing);
     return node;
 }
 
@@ -1331,7 +1348,7 @@ RenderNode layoutTreeList(const Widget& widget,
         /*rowsViewport=*/rowsViewport,
         /*rangeShift=*/0.0F,
         /*childBaseY=*/padding.top + headerHeight,
-        /*contentExtentPad=*/0.0F);
+        /*contentExtentPad=*/0.0F, widget.controlSize, widget.showFocusRing);
     if (headerHeight > 0.0F) {
         node.children.push_back(std::move(headerNode));
     }

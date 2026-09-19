@@ -10,6 +10,7 @@ set(LUMEN_TEST_SOURCES
     frame_scheduler_tests.cpp
     resource_manager_tests.cpp
     interaction_tests.cpp
+    wheel_routing_tests.cpp
     counter_integration_tests.cpp
     counter_fallback_tests.cpp
     # M2：应用壳（runApp/AppShell）headless 验收——Fake host 驱动。
@@ -20,6 +21,7 @@ set(LUMEN_TEST_SOURCES
     # 列宽与语义角色（docs/lumen-collection-controls-design.md）。
     collection_tests.cpp
     list_visual_tests.cpp
+    tree_visual_tests.cpp
     # 菜单类控件（context/menubar）：Secondary 穿透、面板/键盘/级联、
     # 语义角色（docs/lumen-menu-controls-design.md）。
     menu_tests.cpp

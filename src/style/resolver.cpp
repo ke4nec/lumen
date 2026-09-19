@@ -112,8 +112,8 @@ WidgetState stateFor(const Widget& widget, const StyleContext& context,
                                         widget.invalid, widget.selected);
 }
 
-float focusWidthFor(const WidgetState& state, const Theme& theme) {
-    if (state.disabled || !state.focused) {
+float focusWidthFor(const Widget& widget, const WidgetState& state, const Theme& theme) {
+    if (!widget.showFocusRing || state.disabled || !state.focused) {
         return 0.0F;
     }
     return theme.metrics.focusRingWidth;
@@ -134,11 +134,12 @@ ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme,
                                const WidgetState& state) {
     ResolvedStyle resolved;
     commonStyle(resolved.component) = containerCommon(widget, theme);
-    if (widget.type == WidgetType::List) {
+    if (widget.type == WidgetType::List || widget.type == WidgetType::Tree) {
         auto& common = commonStyle(resolved.component);
-        common.background = theme.list.background;
-        common.border = theme.list.separator;
-        common.borderWidth = theme.list.separatorWidth;
+        const auto& tokens = widget.type == WidgetType::Tree ? theme.tree.row : theme.list;
+        common.background = tokens.background;
+        common.border = tokens.separator;
+        common.borderWidth = tokens.separatorWidth;
         common.radius = core::CornerRadius::all(theme.metrics.cardRadius);
         common.padding = EdgeInsets{widget.padding.left + common.borderWidth,
                                     widget.padding.top + common.borderWidth,
@@ -167,7 +168,7 @@ ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme,
             common.background = blendOver(common.background,
                                            theme.colors.hoverOverlay);
         }
-        common.focusWidth = focusWidthFor(state, theme);
+        common.focusWidth = focusWidthFor(widget, state, theme);
         // 行最小高度（视觉系统 §3.2 尺度表）：布局把行钳到该下限。
         resolved.minHeight = theme.metrics.minHeight[theme.metrics.baseIndex];
     }
@@ -178,46 +179,51 @@ ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme,
 
 // List row geometry/state comes from Theme, not from its application content.
 ResolvedStyle resolveListPart(const Widget& widget, const StyleContext& context,
-                              const WidgetState& state) {
+                              const WidgetState& state, core::ListPart part,
+                              const ListTokens& tokens) {
     const Theme& theme = context.theme;
     const auto index = sizeIndexFor(theme, widget.controlSize);
     ResolvedStyle resolved;
     CommonResolvedStyle common = containerCommon(widget, theme);
-    common.foreground = theme.list.emptyContent;
+    common.foreground = tokens.emptyContent;
     common.text = theme.typography.body;
     common.text.color = common.foreground;
-    if (widget.listPart == core::ListPart::Empty) {
+    if (part == core::ListPart::Empty) {
         common.padding = EdgeInsets::symmetric(theme.metrics.controlPaddingX[index],
                                                theme.metrics.controlPaddingY[index]);
         resolved.minHeight = theme.metrics.minHeight[index] * 2.0F;
         resolved.controlGap = theme.metrics.controlGap[index];
-    } else if (widget.listPart == core::ListPart::EmptyIcon) {
-        resolved.minWidth = resolved.minHeight = theme.list.emptyIconSize;
-    } else if (widget.listPart == core::ListPart::EmptyText) {
+    } else if (part == core::ListPart::EmptyIcon) {
+        resolved.minWidth = resolved.minHeight = tokens.emptyIconSize;
+    } else if (part == core::ListPart::EmptyText) {
         common.text = resolveTextStyle(widget, theme.typography.body, common.foreground);
     } else {
         core::ListRowResolvedStyle row;
-        common.foreground = state.disabled ? theme.list.disabledContent : theme.list.content;
+        common.foreground = state.disabled ? tokens.disabledContent : tokens.content;
         common.text.color = common.foreground;
-        common.background = theme.list.background;
+        common.background = tokens.background;
         if (!state.disabled) {
-            common.background = state.pressed ? theme.list.pressed
-                : state.hovered ? theme.list.hovered
-                : state.selected ? theme.list.selected : theme.list.background;
-            if (state.selected && !state.pressed) common.background = theme.list.selected;
+            common.background = state.pressed ? tokens.pressed
+                : state.hovered ? tokens.hovered
+                : state.selected ? tokens.selected : tokens.background;
+            if (state.selected && !state.pressed) common.background = tokens.selected;
         }
         common.focusRing = theme.colors.focusRing;
-        common.focusWidth = focusWidthFor(state, theme);
+        common.focusWidth = focusWidthFor(widget, state, theme);
         common.radius = core::CornerRadius::all(theme.metrics.controlRadius[index]);
         common.padding = EdgeInsets::symmetric(theme.metrics.controlPaddingX[index],
                                                theme.metrics.controlPaddingY[index]);
-        row.separator = theme.list.separator;
-        row.separatorWidth = widget.listPart == core::ListPart::LastRow
-            ? 0.0F : theme.list.separatorWidth;
+        if (widget.treePart == core::TreePart::Row || widget.treePart == core::TreePart::LastRow) {
+            common.padding.left += static_cast<float>(widget.treeDepth) * theme.tree.indentStep;
+            resolved.controlGap = theme.metrics.controlGap[index];
+        }
+        row.separator = tokens.separator;
+        row.separatorWidth = part == core::ListPart::LastRow
+            ? 0.0F : tokens.separatorWidth;
         if (state.selected) {
-            row.selectionMarker = state.disabled ? theme.list.disabledContent : theme.list.selectionMarker;
-            row.markerWidth = theme.list.markerWidth;
-            row.markerInset = theme.list.markerInset;
+            row.selectionMarker = state.disabled ? tokens.disabledContent : tokens.selectionMarker;
+            row.markerWidth = tokens.markerWidth;
+            row.markerInset = tokens.markerInset;
         }
         applyOverrides(widget, common);
         row.common = common;
@@ -228,6 +234,38 @@ ResolvedStyle resolveListPart(const Widget& widget, const StyleContext& context,
     applyOverrides(widget, common);
     resolved.component = common;
     return resolved;
+}
+
+ResolvedStyle resolveTreePart(const Widget& widget, const StyleContext& context,
+                              const WidgetState& state) {
+    using core::TreePart;
+    using core::ListPart;
+    const auto& theme = context.theme;
+    if (widget.treePart == TreePart::Chevron || widget.treePart == TreePart::Spacer) {
+        ResolvedStyle resolved;
+        core::ButtonResolvedStyle button;
+        auto& common = button.common;
+        common.background = !state.disabled && state.pressed ? theme.tree.row.pressed
+            : !state.disabled && state.hovered ? theme.tree.row.hovered : Color::transparent();
+        common.foreground = state.disabled ? theme.tree.row.disabledContent
+            : state.hovered || state.pressed ? theme.tree.row.content : theme.tree.chevronContent;
+        common.focusRing = theme.colors.focusRing;
+        common.focusWidth = focusWidthFor(widget, state, theme);
+        common.radius = core::CornerRadius::all(theme.metrics.controlRadius[sizeIndexFor(theme, widget.controlSize)]);
+        common.text = theme.typography.body;
+        common.text.color = common.foreground;
+        button.iconSize = theme.tree.chevronIconSize;
+        button.iconStroke = theme.icons.strokeWidth * button.iconSize / theme.icons.defaultSize;
+        applyOverrides(widget, common);
+        resolved.component = button;
+        resolved.minWidth = resolved.minHeight = theme.tree.chevronHitExtent;
+        return resolved;
+    }
+    const auto part = widget.treePart == TreePart::Row ? ListPart::Row
+        : widget.treePart == TreePart::LastRow ? ListPart::LastRow
+        : widget.treePart == TreePart::Empty ? ListPart::Empty
+        : widget.treePart == TreePart::EmptyIcon ? ListPart::EmptyIcon : ListPart::EmptyText;
+    return resolveListPart(widget, context, state, part, theme.tree.row);
 }
 
 ResolvedStyle resolveText(const Widget& widget, const Theme& theme) {
@@ -315,7 +353,7 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
                 blendOver(common.background, theme.colors.hoverOverlay);
         }
     }
-    common.focusWidth = focusWidthFor(state, theme);
+    common.focusWidth = focusWidthFor(widget, state, theme);
     // §6.1：不透明填充与焦点环颜色接近时，环内侧预留 1 px 表面隔离带
     //（几何不受聚焦影响——文字按节点居中，不随环带位移）。
     if (common.focusWidth > 0.0F && common.background.a == 255) {
@@ -383,7 +421,7 @@ ResolvedStyle resolveTextField(const Widget& widget,
         }
     }
     field.focused = state.focused && !state.disabled;
-    common.focusWidth = focusWidthFor(state, theme);
+    common.focusWidth = focusWidthFor(widget, state, theme);
     common.text = resolveTextStyle(widget, theme.typography.body,
                                    common.foreground);
 
@@ -447,7 +485,7 @@ ResolvedStyle resolveCheckbox(const Widget& widget,
         if (state.hovered) checkbox.indicatorOutline = theme.colors.focusRing;
         if (state.invalid) checkbox.indicatorOutline = theme.colors.statusError;
     }
-    common.focusWidth = focusWidthFor(state, theme);
+    common.focusWidth = focusWidthFor(widget, state, theme);
     common.text = resolveTextStyle(widget, theme.typography.label,
                                    common.foreground);
 
@@ -506,7 +544,7 @@ ResolvedStyle resolveSwitch(const Widget& widget, const StyleContext& context,
         if (state.hovered) control.trackOutline = theme.colors.focusRing;
         if (state.invalid) control.trackOutline = theme.colors.statusError;
     }
-    common.focusWidth = focusWidthFor(state, theme);
+    common.focusWidth = focusWidthFor(widget, state, theme);
     common.text = resolveTextStyle(widget, theme.typography.label,
                                    common.foreground);
 
@@ -560,7 +598,7 @@ ResolvedStyle resolveSlider(const Widget& widget, const StyleContext& context,
             slider.thumbOutline = theme.colors.focusRing;
         }
     }
-    common.focusWidth = focusWidthFor(state, theme);
+    common.focusWidth = focusWidthFor(widget, state, theme);
 
     ResolvedStyle resolved;
     resolved.component = slider;
@@ -657,7 +695,7 @@ ResolvedStyle resolveDropdown(const Widget& widget,
         common.background =
             blendOver(common.background, theme.colors.hoverOverlay);
     }
-    common.focusWidth = focusWidthFor(state, theme);
+    common.focusWidth = focusWidthFor(widget, state, theme);
     common.text = resolveTextStyle(widget, theme.typography.label,
                                    common.foreground);
 
@@ -754,7 +792,7 @@ ResolvedStyle resolveRadio(const Widget& widget, const StyleContext& context,
             radio.indicatorChecked = theme.colors.statusError;
         }
     }
-    common.focusWidth = focusWidthFor(state, theme);
+    common.focusWidth = focusWidthFor(widget, state, theme);
     common.text = resolveTextStyle(widget, theme.typography.label,
                                    common.foreground);
 
@@ -789,8 +827,11 @@ ResolvedStyle resolveStyleImpl(const Widget& widget,
                                const StyleContext& context,
                                const std::string& identity) {
     const WidgetState state = stateFor(widget, context, identity);
+    if (widget.treePart != core::TreePart::None) {
+        return resolveTreePart(widget, context, state);
+    }
     if (widget.listPart != core::ListPart::None) {
-        return resolveListPart(widget, context, state);
+        return resolveListPart(widget, context, state, widget.listPart, context.theme.list);
     }
     switch (widget.type) {
         case WidgetType::Button:

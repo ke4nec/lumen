@@ -104,6 +104,12 @@ enum class ControlSize : std::uint8_t { Small, Medium, Large };
 // List chrome is independent of the generic interactive collectionRow flag.
 enum class ListPart : std::uint8_t { None, Row, LastRow, Empty, EmptyIcon, EmptyText };
 
+// Tree has its own chrome contract; generic collection rows and TreeList retain
+// their existing styling. Depth affects content padding, never the row surface.
+enum class TreePart : std::uint8_t {
+    None, Row, LastRow, Chevron, Spacer, Empty, EmptyIcon, EmptyText
+};
+
 // 字段级局部样式覆盖：只在应用需要品牌定制时提供（§3.1）。空 = 全部
 // 由 Theme 派生；显式设置的值（包括透明/黑色）按字面生效。
 struct StyleOverrides {
@@ -286,6 +292,9 @@ struct Widget {
     // collectionSelectionMode 为声明值（0=None/1=Single/2=Multiple/
     // 3=Extended；真实选择状态在控制器，Widget 只承载语义声明）。
     std::uint8_t collectionSelectionMode{0};
+    // Visual only: keep focus/navigation/semantics when the ring is hidden.
+    // Collection viewports forward this to generated rows (visual-system §6.1).
+    bool showFocusRing{true};
     // TreeList 列向量指针（应用拥有的 std::vector<TreeListColumn>；
     // themeOverride 同模式）与表头显隐。
     const void* collectionColumns{nullptr};
@@ -295,6 +304,8 @@ struct Widget {
     bool collectionRow{false};
     bool collectionShowHeader{false};
     ListPart listPart{ListPart::None};
+    TreePart treePart{TreePart::None};
+    std::uint32_t treeDepth{0};
 
     // Splitter（splitter-design §5.1）：分栏源（widgets 层
     // SplitterController 实现 core::SplitterSource；virtualSource 同模
@@ -664,6 +675,11 @@ inline Widget withTransitionAlpha(Widget child, float alpha) {
 
 inline Widget withScrollbar(Widget child, bool show = true) {
     child.showScrollbar = show;
+    return child;
+}
+
+inline Widget withFocusRing(Widget child, bool show = true) {
+    child.showFocusRing = show;
     return child;
 }
 

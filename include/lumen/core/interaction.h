@@ -171,6 +171,9 @@ class InteractionController {
     // Tab entry updates a List's current item without selecting or activating.
     using RowFocusSink = std::function<bool(const std::string& rowKey)>;
     void addRowFocusSink(RowFocusSink sink);
+    using RowExpansionSink = std::function<bool(const std::string& rowKey, bool expanded)>;
+    void addRowExpansionSink(RowExpansionSink sink);
+    bool expandCollectionRow(const RenderNode& node, bool expanded);
 
     // --- 菜单类控件：Secondary（右键）按下 sink（menu-controls-design
     // §6.2）。命中链不做 enabled 过滤（对禁用行弹“属性”类菜单合法）；
@@ -212,6 +215,8 @@ class InteractionController {
     void focusNode(const RenderNode& node);
     // Collection semantics Activate shares the double-click/Enter callback.
     bool activateCollectionRow(const RenderNode& node);
+    // Semantic activation shares dynamic click sinks with pointer/keyboard.
+    bool activateButton(const RenderNode& node);
     // 语义 setValue：将 Slider 值限制到 0..100 后写回绑定状态。
     bool setSliderValue(const RenderNode& node, const std::string& value);
     // Splitter 语义 setValue：百分比映射到最近布局的可用长。
@@ -328,6 +333,7 @@ class InteractionController {
     std::vector<RowActivateSink> rowActivateSinks_{};
     std::vector<RowClickSink> rowClickSinks_{};
     std::vector<RowFocusSink> rowFocusSinks_{};
+    std::vector<RowExpansionSink> rowExpansionSinks_{};
     std::vector<SecondaryPressSink> secondaryPressSinks_{};
     std::vector<PointerMoveSink> pointerMoveSinks_{};
     // 源视口拖动惯性登记（弱引用源 ScrollController；End 起滑时加入，

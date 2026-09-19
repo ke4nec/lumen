@@ -13,7 +13,7 @@
 - 二维双轴联滚（同一视口同时纵横滚动）不做——单视口单活动轴；双轴留按需评估。
 - 水平虚拟化（VirtualList/TreeList 横向物化）不做；TreeList 列宽仍为固定+权重。内容超宽的整树 clip 平移（P2b）待 P2a 落地后按真实痛点评估。
 - RTL 镜像（水平滚动条/滚轮方向翻转）不做。
-- 默认纵向路径行为零变化是硬出口（既有全部 headless 帧哈希不变）。
+- 默认纵向布局与绘制保持兼容；滚轮对无滚动范围子视口的穿透修正规则见 §4。
 
 ## 2. 轴模型
 
@@ -36,6 +36,7 @@
 ## 4. 输入路由
 
 - **滚轮**：`InteractionController` 的 wheel 派发按命中视口的轴选分量——纵向视口吃 `scrollDelta.y`、水平视口吃 `scrollDelta.x`（SDL 宿主已对两轴做同一符号换算，M12 规则）。**Shift+纵轮 → 横向分量**：Shift 按下时命中水平视口则把 dy 投影为 dx（桌面惯例；FLIPPED 符号随宿主换算，不二次翻转）。`wheelSink` 签名从单 dy 扩为携带完整 `Offset` delta（默认参数兼容，PointerButton 先例）。
+- **嵌套滚轮传递**：沿命中链从子视口向父视口查找，跳过 `scrollExtent=0`（空内容或内容已完全放入）的区域，以及本次滚轮在其活动轴上没有分量的区域；找到具有滚动范围且轴匹配的最近视口后才派发。每一层都从原始 delta 计算轴分量，`showScrollbar` 仅控制装饰显隐，不决定滚动能力。支持 ScrollView/ListView/VirtualList/List/Tree/TreeList；源控制器和应用 sink 路径使用同一规则。已有滚动范围但到达端点的视口继续保持原有不向外层联滚的策略；键盘、拖动和惯性策略不因本次修复改变。传递只在当前事件树内进行，不能穿过模态 overlay 滚动背后的页面。
 - **拖动/惯性**：`ScrollDragSink` 泛化为活动轴分量（水平视口吃 dx）；fling 物理常量两轴共用（M10 确定性指数衰减不变）。
 - **滑块冲突（M10 垂直回归的镜像，必须防）**：水平视口内起点命中 enabled 且带 bind 的 Slider 时，拖动属于滑块——`setSliderByPosition` 释放设值不得被横向拖动路由劫持。回归用例 `slider_drag_inside_horizontal_scroll_view_still_sets_value` 为出口条件。
 - **键盘**：焦点在水平视口（非 TextField）时 Left/Right = 方向步进、PageUp/PageDown = 横向翻页、Home/End = 两端；纵向方向键不属于本轴（交由其他视口/焦点消费）。TextField 内 Left/Right 仍是 caret 移动（既有优先级不变）。
@@ -57,6 +58,7 @@
 - **layout**：宽内容横向 extent、offset 应用到 X、clip/shrinkWrap、纵向默认路径几何零变化。
 - **render**：横向 thumb 几何/progress/minLength；纵向像素不变。
 - **interaction**：wheel 分量路由、Shift+dy 投影、横视口内 Slider 拖动仍设值（回归）、TextField 选区路径不受影响。
+- **嵌套回归**：`wheel_routing_tests.cpp` 覆盖六类视口空/少量内容、多层祖先、隐藏滚动条、有溢出内容及端点、内容收缩与模态隔离；异轴输入随水平滚动 P2 集成验收；Gallery 集成覆盖空 List/Tree 上滚轮驱动外层页面。
 - **语义**：Recording 断言横向视口 scroll action 的 scrollDeltaX 回执。
 - **示例**：gallery 水平滚动演示区（超宽卡片行）集成用例。
 - **不变量**：既有全部 headless 帧哈希不变。

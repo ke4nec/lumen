@@ -41,6 +41,8 @@ class TreeModel {
     [[nodiscard]] virtual std::string childAt(const std::string& parent,
                                               std::size_t index) const = 0;
     [[nodiscard]] virtual bool hasChildren(const std::string& key) const = 0;
+    // Availability without materializing offscreen content (navigation/selection).
+    [[nodiscard]] virtual bool isEnabled(const std::string& key) const { (void)key; return true; }
     // 行内容（不含缩进与 chevron，由控制器注入）。
     [[nodiscard]] virtual core::Widget buildRow(const std::string& key,
                                                 std::size_t depth) const = 0;
@@ -60,6 +62,8 @@ class TreeController : public core::VirtualListSource {
     // --- 数据 ---
     void setModel(const TreeModel* model);  // 应用拥有生命周期
     void modelChanged();                    // 数据变更 → 失效扁平缓存 + 重建
+    void setEmptyBuilder(std::function<core::Widget()> builder);
+    [[nodiscard]] bool itemEnabled(std::size_t index) const;
 
     // --- 展开状态（按 key 存储；数据移动/重排不丢失） ---
     void expand(const std::string& key);
@@ -84,6 +88,7 @@ class TreeController : public core::VirtualListSource {
 
     // --- 滚动定位 ---
     void scrollToKey(const std::string& key, ScrollAlignment align);
+    void setCurrentKey(const std::string& key, bool extend = false);
 
     // --- 键盘（应用 ShellConfig.onKey 转发；树契约见设计文档 §7.4） ---
     bool handleKey(core::Key key, core::KeyModifiers modifiers,
@@ -91,6 +96,7 @@ class TreeController : public core::VirtualListSource {
 
     // --- 可见行查询（键盘导航/语义/测试） ---
     [[nodiscard]] const std::vector<VisibleRow>& visibleRows() const {
+        rebuildRows();
         return rows_;
     }
     [[nodiscard]] bool rowOfKey(const std::string& key,
@@ -106,6 +112,8 @@ class TreeController : public core::VirtualListSource {
     [[nodiscard]] std::pair<std::size_t, std::size_t> visibleRange(
         float viewportExtent, float cacheExtent) const override;
     [[nodiscard]] core::Widget buildItem(std::size_t index) const override;
+    [[nodiscard]] core::Widget buildEmpty() const override;
+    [[nodiscard]] std::string tabStopKey() const override;
     void noteExtent(std::size_t index, float extent) const override;
     void updateViewport(float viewportExtent,
                         float contentPadding) const override;
@@ -152,6 +160,8 @@ class TreeController : public core::VirtualListSource {
     void recomputeOffsets() const;
 
     const TreeModel* model_{nullptr};
+    std::function<core::Widget()> emptyBuilder_{};
+    mutable std::map<std::string, bool> contentEnabled_{};
     // 展开状态集（按 key）。
     std::vector<std::string> expanded_{};
     // 扁平化行缓存 + 前缀偏移（mutable：source 契约为 const 读）。

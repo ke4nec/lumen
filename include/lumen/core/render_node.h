@@ -109,7 +109,7 @@ struct RenderNode {
 
     // List rows share this local clip for paint, hit testing and semantics.
     [[nodiscard]] Rect contentClipRect() const {
-        if (type == WidgetType::List) {
+        if (type == WidgetType::List || type == WidgetType::Tree) {
             return Rect{Offset{padding.left, padding.top},
                 Size{std::max(0.0F, size.width - padding.horizontal()),
                      std::max(0.0F, size.height - padding.vertical())}};

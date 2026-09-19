@@ -453,11 +453,16 @@ TEST_CASE("gallery_collections_showcase_interacts", "[gallery]") {
     (void)app.renderFrame();
     go(app, "nav-collections");
 
+    // The example setting hides row rings while selection remains usable.
+    clickVisible(app, "collection-focus-rings");
+    CHECK(app.state().get("collection-focus-rings") == "false");
     // List：单击选中（Extended；current 与 selected 同步）。
     clickVisible(app, "collection-list:item:i1");
     (void)app.renderFrame();
     CHECK(app.collectionList().selection().currentKey() == "i1");
     CHECK(app.collectionList().selection().isSelected("i1"));
+    REQUIRE(findNodeByKey(app.root(), "collection-list:item:i1") != nullptr);
+    CHECK(findNodeByKey(app.root(), "collection-list:item:i1")->commonStyle().focusWidth == 0.0F);
 
     // 同行再点击两次（400ms 内第二组 down/up）→ 双击激活回显。
     clickVisible(app, "collection-list:item:i1");
@@ -504,6 +509,12 @@ TEST_CASE("gallery_collections_showcase_interacts", "[gallery]") {
         clickScrolled(app, "collection-list-mode");
         CHECK(app.collectionList().selection().mode() == mode);
     }
+    // Tree previews remain independent when the live model becomes empty.
+    app.collectionTree().setModel(nullptr);
+    (void)app.renderFrame();
+    CHECK(findNodeByKey(app.root(), "collection-tree:empty") != nullptr);
+    CHECK(findNodeByKey(app.root(), "collection-tree-states") != nullptr);
+    CHECK(findNodeByKey(app.root(), "collection-empty-tree:empty") != nullptr);
 }
 
 // TreeList 表头几何回归（collection-design §8.3/§10.3）：表头不透明、
@@ -735,6 +746,26 @@ TEST_CASE("gallery_collections_wheel_scrolls_inner_collection", "[gallery]") {
     const RenderNode* table = findNodeByKey(app.root(), "collection-table");
     REQUIRE(table != nullptr);
     CHECK(table->scrollOffset == 120.0F);
+}
+
+TEST_CASE("gallery_wheel_over_empty_collections_scrolls_outer_page", "[gallery][wheel-routing]") {
+    GalleryApp app;
+    app.setView(Size{1024.0F, 768.0F});
+    (void)app.renderFrame();
+    go(app, "nav-collections");
+    for (const auto* key : {"collection-empty-list", "collection-empty-tree"}) {
+        CAPTURE(key);
+        scrollIntoView(app, key);
+        const auto* child = findNodeByKey(app.root(), key);
+        REQUIRE(child != nullptr);
+        REQUIRE(child->scrollExtent == 0.0F);
+        const float before = app.scroll().offset();
+        REQUIRE(before >= 30.0F);
+        // The Tree card can already be at the page bottom; scroll upward.
+        CHECK(app.shell().wheel(centerOf(app.root(), key), {0, -30}));
+        (void)app.renderFrame();
+        CHECK(app.scroll().offset() == before - 30.0F);
+    }
 }
 
 // 菜单类控件（menu-controls-design §11.3，对齐 design/gallery.html 增补）：

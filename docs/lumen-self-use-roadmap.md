@@ -1273,6 +1273,52 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - 集合专用耗时基准仍为规划项；滚动条 hover/drag 外观沿用视觉任务中的
   预留边界。此次修复保持 ListView、VirtualList 与 Tree 的样式契约。
 
+### Tree 视觉与交互补齐（2026-09-19）
+
+- 依据：`lumen-collection-controls-design.md` §7/§9.3/§10、
+  `lumen-visual-system-design.md` §3/§5 与 `design/collection-controls.html`。
+- 独立 `TreePart` / `Theme.tree` 接入布局前样式解析：整行实色选中、
+  左侧标记、独立焦点环、分隔线、边框内裁剪；缩进同时移动箭头与内容，
+  叶节点保留等宽箭头槽。行尺度随密度/ControlSize，缩进、箭头和空态
+  随字体缩放，支持局部主题和高对比。
+- 修复整行命中、Tab 单停靠点、折叠后 current/焦点恢复、箭头点击保留
+  选择、屏外导航、禁用项过滤；补齐默认/自定义空态与框架语义展开折叠。
+  `expandAll` 使用有界迭代遍历，超限保留原展开集。Gallery 补充目录图标/
+  计数、默认选中节点、八态矩阵和空态；状态示例不依赖真实树模型。
+- 开发工作区阶段验证：Windows CPU Debug 全量 `629/629`、Skia/GPU Release
+  全量 `646/646` ctest 通过；Tree headless 专项 11 用例/206 断言；
+  GPU Tree 像素回读 32 断言实际通过（未跳过，含 1×/2× 与滚动裁剪）。
+  Gallery CPU 窗口 3 帧正常退出；系统字体导出核对选中+聚焦、八态/空态、
+  浅色高对比两倍字体。Linux/macOS 未在本地实机验证。
+- 边界：原生 UIA ExpandCollapse pattern 和其他平台原生语义映射未补齐；
+  集合专用耗时基准仍为规划项，万项测试验证按需物化与防护上限。
+
+### 焦点环显隐属性（2026-09-19）
+
+- `Widget.showFocusRing` 默认开启，`withFocusRing(widget, false)` 显式关闭；
+  List/Tree/TreeList 视口传递到生成行，Tree 同时传递到箭头。实际焦点、
+  选择、键盘导航及语义 focused 保留，运行时切换不改变几何。
+- 文本 DSL 的现有节点支持 `showFocusRing: false`；集合节点仍由 C++
+  构建。Gallery Collections 和 HTML 设计稿均提供显隐对照开关；视觉规范
+  同步显式覆盖契约，默认继续显示环，focus-visible 输入来源策略仍为待办。
+- 开发工作区阶段验证：Windows CPU Debug 全量 `633/633`、Skia/GPU Release 全量
+  `650/650` 通过；专项覆盖指针/键盘/语义、Tree 折叠恢复、高对比局部主题、
+  开关切换与增量帧一致性。GPU Tree 回读 60 断言实际通过，覆盖环开/关、
+  1×/2× 与滚动裁剪；系统字体导出确认关闭后的实际外观。
+
+### 无滚动范围子视口的滚轮传递修复（2026-09-19）
+
+- 滚轮沿命中链跳过空内容、内容完全放得下或本次轴分量不匹配的子视口，
+  交给最近的可滚动父级。判断使用实际 `scrollExtent`，隐藏滚动条但仍有
+  溢出内容的子视口继续正常接收滚轮；有范围但已到端点的策略保持原样。
+- 覆盖 ScrollView/ListView/VirtualList/List/Tree/TreeList、应用 sink 和
+  源控制器两条路径；模态事件树隔离保持，水平轴投影随 P2 集成。
+- `wheel_routing_tests.cpp` 和 Gallery 空 List/Tree 集成覆盖嵌套滚轮传递。
+  独立提交快照 Windows CPU Debug 全量 `635/635`、Skia/GPU Release
+  全量 `652/652` ctest 通过；Linux/macOS 未在本地实机验证。
+- 上述阶段工作区计数包含独立的标题栏/水平滚动改动；最终提交快照单独
+  构建并执行全量测试，确认本轮修复不依赖这些尚未提交的改动。
+
 ### Splitter 完成记录（2026-09-18）
 
 - 完成日期：2026-09-18

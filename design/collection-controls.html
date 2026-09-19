@@ -117,6 +117,22 @@
   details.trow > .children { margin: 0; }
   .kids-hidden { display: none; }
 
+  /* Tree §7.3：箭头和叶槽同宽，缩进由整行 padding 表达。 */
+  .tree-rows .chev { flex: 0 0 24px; margin-left: 0; }
+  .tree-rows .tree-leaf-spacer { flex: 0 0 24px; }
+  .tree-rows .chev svg { transition: none; }
+  .tree-rows .crow { cursor: default; }
+  .tree-rows .crow:focus { outline: none; box-shadow: inset 0 0 0 2px var(--app-focus); }
+  .tree-rows .crow.is-selected:focus::before { left: 2px; }
+  /* showFocusRing=false：只隐藏环，保留选择条和行分隔线。 */
+  .hide-focus-rings .crow.is-current,
+  .hide-focus-rings .tree-rows .crow:focus {
+    box-shadow: none; outline: none; border-bottom-color: var(--app-line);
+  }
+  .hide-focus-rings .crow.is-selected.is-current::before,
+  .hide-focus-rings .tree-rows .crow.is-selected:focus::before { left: 0; }
+  .hide-focus-rings .chev:focus { outline: none; }
+
   /* TreeList 表头 */
   .tl-head { display: flex; align-items: center; min-height: 40px; padding: 0 12px; background: var(--app-surface-alt); border: 1px solid var(--app-line); border-bottom: 0; border-radius: var(--card-radius) var(--card-radius) 0 0; font-size: 12px; font-weight: 650; color: var(--app-muted); letter-spacing: .02em; }
   .tl-head .hcell { display: flex; align-items: center; gap: 6px; padding: 0 8px; overflow: hidden; }
@@ -178,6 +194,7 @@
       <div class="eyebrow">Lumen Control Design · Collections</div>
       <h1>集合控件设计稿：List / Tree / TreeList</h1>
       <p class="lead">三个控件共享同一套虚拟化引擎（M3 VirtualList 布局路径）、选择模型（SelectionModel）与行交互通道（可聚焦集合 Row 与固定数量的行事件 sink）。本稿定义视觉规格、状态矩阵、选择语义与键盘契约；设计文档见 <code>docs/lumen-collection-controls-design.md</code>。</p>
+      <label><input id="show-focus-ring" type="checkbox" checked> 显示焦点环（showFocusRing）；关闭仍保留选中背景与标记</label>
     </div>
     <div class="brand-mark">L</div>
   </header>
@@ -292,7 +309,7 @@
             </div>
           </div>
           <div class="app-window-content" style="display:flex; gap:6px;">
-            <div class="row-list" style="flex:1;">
+            <div class="row-list tree-rows" style="flex:1;">
               <div class="crow is-selected is-current">
                 <button class="chev" aria-expanded="true" aria-label="展开/折叠 lumen"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
                 <span class="glyph"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
@@ -347,8 +364,8 @@
       </div>
       <div class="callouts">
         <div class="callout"><span class="no">1</span><div><strong>树 = 扁平化可见行 + VirtualList</strong> <span>TreeController 把可见节点 DFS 展开为行序列（itemCount = 可见行数），复用 M3 虚拟化引擎；折叠/展开改变行数，extent 缓存<strong>按 key</strong> 存储，折叠再展开保留实测高度。</span></div></div>
-        <div class="callout"><span class="no">2</span><div><strong>缩进步进 20px/层</strong> <span>depth × 20px 经行内 padding 注入；4 层缩进 60px 仍留足内容。缩进参考线（细竖线）为视觉增强项，首版不画。</span></div></div>
-        <div class="callout"><span class="no">3</span><div><strong>chevron 独立命中</strong> <span>16px 图标 + 24×24 命中区，行内小 Button（key = <code>tree:toggle:&lt;key&gt;</code>）：点击只 toggle 展开状态、不改变选择——文件管理器惯例。折叠 = ChevronRight，展开旋转 90°（ChevronDown）。</span></div></div>
+        <div class="callout"><span class="no">2</span><div><strong>缩进步进 20px/层</strong> <span>depth × 20px 加在行内容 padding，箭头、图标和文字一起移动；选中底色、左侧标记和焦点环保持整行宽度；depth=3 时缩进 60px 仍留足内容。缩进参考线（细竖线）为视觉增强项，首版不画。</span></div></div>
+        <div class="callout"><span class="no">3</span><div><strong>chevron 独立命中</strong> <span>16px 图标 + 24×24 命中区，行内小 Button（key = <code>&lt;owner&gt;:chev:&lt;key&gt;</code>）：点击只 toggle 展开状态、不改变选择——文件管理器惯例。折叠 = ChevronRight，展开切换为 ChevronDown（首版无旋转动画）。</span></div></div>
         <div class="callout"><span class="no">4</span><div><strong>展开状态按 key 存储</strong> <span>数据重排/同级增删不丢失展开状态；expandAll 带 10 000 可见行防护上限。</span></div></div>
         <div class="callout"><span class="no">5</span><div><strong>惰性模型</strong> <span>TreeModel 只需 childCount/childAt/hasChildren/buildRow；hasChildren 可先返回 true 而不物化子级——万节点目录首屏只拉取可见分支。</span></div></div>
       </div>
@@ -478,6 +495,20 @@
 
 </div>
 <script>
+  document.getElementById('show-focus-ring').addEventListener('change', function (e) {
+    document.querySelector('.board').classList.toggle('hide-focus-rings', !e.target.checked);
+  });
+  // 整行选择演示：选中条与焦点独立，箭头点击不改变选择。
+  document.querySelectorAll('.tree-rows .crow').forEach(function (row) {
+    row.tabIndex = 0;
+    row.addEventListener('click', function () {
+      document.querySelectorAll('.tree-rows .crow').forEach(function (other) {
+        other.classList.remove('is-selected', 'is-current');
+      });
+      row.classList.add('is-selected');
+      row.focus();
+    });
+  });
   // 树 chevron 交互演示（设计稿演示用；真实实现见设计文档 §7.3）
   document.querySelectorAll('.chev').forEach(function (btn) {
     btn.addEventListener('click', function (e) {

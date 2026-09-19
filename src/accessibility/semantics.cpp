@@ -326,6 +326,8 @@ std::string semanticsActionsName(std::uint32_t actions) {
     if ((actions & kActionDismiss) != 0) {
         append("dismiss");
     }
+    if ((actions & kActionExpand) != 0) append("expand");
+    if ((actions & kActionCollapse) != 0) append("collapse");
     return result;
 }
 
@@ -415,7 +417,18 @@ SemanticsActionStatus performSemanticsAction(
         return SemanticsActionStatus::Handled;
     }
 
+    if (action == kActionExpand || action == kActionCollapse) {
+        return context.controller != nullptr && renderNode != nullptr &&
+            context.controller->expandCollectionRow(*renderNode, action == kActionExpand)
+            ? SemanticsActionStatus::Handled : SemanticsActionStatus::NotHandled;
+    }
+
     if (action == kActionActivate || action == kActionDismiss) {
+        if (action == kActionActivate && context.controller != nullptr &&
+            renderNode != nullptr && renderNode->type == core::WidgetType::Button) {
+            return context.controller->activateButton(*renderNode)
+                ? SemanticsActionStatus::Handled : SemanticsActionStatus::NotHandled;
+        }
         if (action == kActionActivate && context.controller != nullptr &&
             renderNode != nullptr && context.controller->activateCollectionRow(*renderNode)) {
             return SemanticsActionStatus::Handled;

@@ -159,7 +159,15 @@ selected 引用不透明 accentContainer；separator/content/disabledContent/emp
 selectionMarker 引用 accent，宽 3、上下 inset 4；空态图标 24。标记与图标随
 fontScale 缩放一次；行高、padding、圆角由下表密度档派生。焦点环独立于选中条，
 禁用选中行保留淡化指示条。高对比重新派生上述颜色，不能只靠选中底色传达状态。
-`ListPart` 只用于 List 壳与空态，不改变 Tree、菜单和旧 ListView/VirtualList。
+`ListPart` 只用于 List 壳与空态。Tree 使用独立 `TreePart` 与 `Theme.tree`：
+`tree.row` 与 List 采用相同的语义颜色映射和状态优先级，可独立覆盖；复用
+`ListRowResolvedStyle` 绘制分隔线、选中条与焦点环。菜单、TreeList 和旧
+ListView/VirtualList 保持原有表面样式。
+Tree 的 `indentStep=20`、`chevronHitExtent=24`、`chevronIconSize=16` 来自
+组件 token，三档密度下不变，随 fontScale 缩放一次。箭头前景取
+`contentSecondary`，hover/pressed 取行正文色，禁用取 disabledContent。
+行内 padding/间距/圆角跟随密度及 ControlSize；depth 只增加行左 padding，
+背景、分隔线、选中条与焦点环始终覆盖完整行宽。叶节点保留等宽箭头槽。
 文件行与空态图标使用目录 `IconId::Document` / `Folder`。
 
 ### 3.2 初始尺度
@@ -254,7 +262,7 @@ struct WidgetState {
 1. `disabled` 优先级最高，禁用控件不响应点击、键盘激活或语义 action。
 2. `invalid` 影响边框、辅助文本和语义状态，但不覆盖 disabled 的可用性语义。
 3. `pressed` 覆盖 hover 的背景和前景状态。
-4. `focused` 必须产生可见焦点环；键盘焦点不能只依赖 hover 表现。
+4. `focused` 默认产生可见焦点环；应用可显式设置 `showFocusRing=false` 关闭绘制，实际焦点、键盘与语义状态保持不变。该属性不区分输入来源。
 5. `checked` 和 `selected` 只影响有对应语义的控件。
 6. 状态变化即使不改变布局，也必须改变 RenderNode 的 resolved style，以便 damage
    正确覆盖旧状态和新状态。
@@ -307,6 +315,14 @@ struct StyleOverrides {
 Button、TextField、Checkbox、Switch、Dialog 和 Container 通过 variant、control size、
 enabled、invalid、selected 及 `StyleOverrides` 表达个性化需求。`Widget` 仍是 UI
 描述值，不能被 Theme 应用过程原地修改。
+
+`Widget.showFocusRing`（默认 `true`）控制当前节点的焦点环；C++ 写法为
+`withFocusRing(widget, false)`，文本 DSL 写法为 `showFocusRing: false`。
+设在 List/Tree/TreeList 视口上时传递到内部生成的行，Tree 还传递到箭头。
+普通容器不会把它继承到任意子控件；行内应用自建按钮等保持自己的设置。
+关闭后鼠标与键盘聚焦均不绘制环，高对比模式同样尊重显式设置；hover、
+pressed、selected、语义 focused 与焦点导航保持原契约。焦点环所需几何
+预留不随此开关变化。该属性是绘制开关，`focus-visible` 输入来源策略仍为待办。
 
 现有 `makeButton()`、`makeTextField()`、`makeCheckbox()`、`makeSwitch()` builder 改为
 生成这些语义属性；`themedButton()`、`themedTextField()` 和 `applyTheme()` 删除。

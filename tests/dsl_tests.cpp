@@ -336,7 +336,7 @@ TEST_CASE("dsl_parses_visual_system_control_attributes", "[dsl]") {
     const DslParseResult parsed = parseLumen(
         "page root {\n"
         "  Column {\n"
-        "    Button(\"Save\", variant: outline, size: large, onClick: save)\n"
+        "    Button(\"Save\", variant: outline, size: large, onClick: save, showFocusRing: false)\n"
         "    TextField(bind: name, invalid: true, enabled: false)\n"
         "    Checkbox(\"A\", bind: a, selected: true)\n"
         "  }\n"
@@ -350,6 +350,7 @@ TEST_CASE("dsl_parses_visual_system_control_attributes", "[dsl]") {
     CHECK(button.buttonVariant == ButtonVariant::Outline);
     CHECK(button.controlSize == ControlSize::Large);
     CHECK(button.enabled);
+    CHECK_FALSE(button.showFocusRing);
 
     const Widget& field = column.children[1];
     CHECK(field.invalid);
@@ -357,6 +358,7 @@ TEST_CASE("dsl_parses_visual_system_control_attributes", "[dsl]") {
 
     const Widget& checkbox = column.children[2];
     CHECK(checkbox.selected);
+    CHECK(checkbox.showFocusRing);
 }
 
 TEST_CASE("dsl_rejects_invalid_visual_attributes", "[dsl]") {
@@ -369,6 +371,14 @@ TEST_CASE("dsl_rejects_invalid_visual_attributes", "[dsl]") {
         "page root { Button(\"x\", size: huge) }").ok());
     CHECK_FALSE(parseLumen(
         "page root { Button(\"x\", enabled: maybe) }").ok());
+    CHECK_FALSE(parseLumen(
+        "page root { Button(\"x\", showFocusRing: maybe) }").ok());
+}
+
+TEST_CASE("dsl_focus_ring_matches_cpp_property", "[dsl]") {
+    const auto parsed = parseLumen("page root { Button(\"Save\", showFocusRing: false) }");
+    REQUIRE(parsed.ok());
+    CHECK(parsed.root == withFocusRing(makeButton("Save"), false));
 }
 
 // --- M2：C++ builder 与 .lumen DSL 全节点对齐（能力对称验收） ---

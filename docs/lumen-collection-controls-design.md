@@ -1,6 +1,6 @@
 # Lumen 集合控件设计（List / Tree / TreeList）
 
-> 文档状态：已实施契约；List 视觉与交互补齐于 2026-09-19。
+> 文档状态：已实施契约；List、Tree 视觉与交互补齐于 2026-09-19。
 > 输入：源码现状盘点（`include/lumen/core/widget.h`、`include/lumen/core/virtual_list.h`、`src/layout/layout.cpp`）、`docs/lumen-self-use-roadmap.md` M0–M12 完成记录、`docs/lumen-visual-system-design.md`（token 三层模型/尺度表/状态规则/滚动条契约）、成熟 C++ GUI 框架的列表/树控件契约。
 > 配套视觉设计稿：`design/collection-controls.html`。
 > 定位：桌面自用版控件库增强，遵循既有"Widget 不可变声明 + 应用侧控制器 + 布局期物化"架构，不引入新模块。
@@ -267,7 +267,7 @@ inline core::Widget makeList(const core::VirtualListSource* source,
   影响）。
 - `InteractionController` 在命中链最近的可滚动视口为源视口时直接消费：
   滚轮（`wheel`）、键盘滚动（`scrollKey`，聚焦节点的最近源视口祖先）、
-  指针/触摸拖动（M10 拖动路径，含拇指跟手换算）。边界处不冒泡到外层。
+  指针/触摸拖动（M10 拖动路径，含拇指跟手换算）。已有滚动范围的视口在端点处不向外层联滚；滚轮命中空集合或内容完全放得下的集合时，跳过该视口继续向父级查找可滚动区域（`lumen-scroll-design.md` §4），与滚动条是否显式显示无关。
 - 拖动释放起的惯性由 `AppShell::tick` 调 `advanceSourceFling` 逐拍推进
   （框架登记起滑的源控制器）。
 - 框架滚动经 `setRebuildRequest`（AppShell 注入 `markDirty`）请求重建。
@@ -287,6 +287,8 @@ class TreeModel {
                                               std::size_t index) const = 0;
     // 惰性：hasChildren 可先行返回 true 而不物化子级（千节点目录场景）。
     [[nodiscard]] virtual bool hasChildren(const std::string& key) const = 0;
+    // 屏外禁用状态无需构建行即可查询；默认 true。
+    [[nodiscard]] virtual bool isEnabled(const std::string& key) const;
     // 行内容（不含缩进与 chevron，由控制器注入）。
     [[nodiscard]] virtual core::Widget buildRow(const std::string& key,
                                                 std::size_t depth) const = 0;
@@ -297,17 +299,19 @@ class TreeModel {
 ### 7.2 TreeController
 
 ```cpp
-class TreeController final : public core::VirtualListSource {
+class TreeController : public core::VirtualListSource {
   public:
-    void setModel(TreeModel* model);        // 应用拥有生命周期
+    void setModel(const TreeModel* model);  // 应用拥有生命周期
     void modelChanged();                    // 数据变更→失效扁平缓存+请求重建
+    void setEmptyBuilder(std::function<core::Widget()> builder);
+    void setCurrentKey(const std::string& key, bool extend = false);
 
     // 展开状态：按 key 存储（数据移动/重排不丢失展开）。
     void expand(const std::string& key);
     void collapse(const std::string& key);
     void toggle(const std::string& key);
     [[nodiscard]] bool isExpanded(const std::string& key) const;
-    void expandAll(std::size_t maxRows);     // 防护上限（默认 10'000 可见行）
+    bool expandAll(std::size_t maxRows = 10000); // 超限提前拒绝，原展开集不变
     void collapseAll();
 
     // 选择/激活/键盘：同 ListController（SelectionModel 复用）。共享键位、
@@ -318,8 +322,8 @@ class TreeController final : public core::VirtualListSource {
     // 可见行查询（键盘导航/语义/测试需要）。
     struct VisibleRow { std::string key; std::size_t depth;
                         bool hasChildren; bool expanded; };
-    [[nodiscard]] std::vector<VisibleRow> visibleRows() const;  // O(n) 拷贝（测试/语义用）
-    [[nodiscard]] const VisibleRow* rowAt(std::size_t index) const;
+    [[nodiscard]] const std::vector<VisibleRow>& visibleRows() const; // 先刷新缓存
+    [[nodiscard]] bool rowOfKey(const std::string& key, VisibleRow& row) const;
 };
 ```
 
@@ -330,16 +334,21 @@ class TreeController final : public core::VirtualListSource {
 ### 7.3 行构建
 
 ```text
-行 = Button(key = "tree:<owner>/item:<stableKey>", selected = …)
-     └─ Row[ padding-left = depth × indentStep,
-             chevron 按钮（有子级时，key = "tree:toggle:<key>"）,
-             应用 buildRow 产物 ]
+行 = Row(key = "<owner>:item:<stableKey>", collectionRow = true,
+         treePart = Row/LastRow, treeDepth = depth, selected = …)
+     ├─ chevron 按钮（key = "<owner>:chev:<key>"）或等宽叶节点占位
+     └─ 应用 buildRow 产物（flex=1）
 ```
 
 - **chevron**：新增 `IconId::ChevronRight`（折叠）与既有 `ChevronDown`（展开）；
   chevron 是行内独立小 Button，点击只 toggle 不选择（文件管理器惯例）。
-- **缩进**：`indentStep` = 20px（视觉规格 §10）；缩进参考线（细竖线）首版不画，留视觉增强。
-- **空态**：模型返回 0 根节点时同 List 的 emptyBuilder。
+- **整行表面**：视口边框内的完整宽度参与选择命中；不透明选中底色、左侧 3px 选中条、圆角与焦点环相互独立。选中条上下 inset 4，聚焦时向内让出环宽；失焦仍保留选中底色和条。
+- **缩进**：`Theme.tree.indentStep` = 20px（视觉规格 §10）；depth 增加行的内容 padding，箭头与应用内容一起移动，背景与选中条不缩进。叶行保留相同箭头槽。缩进参考线（细竖线）首版不画。
+- **主题**：`TreePart` 在布局前解析 `Theme.tree.row`；共享行绘制结构，不借用 ListPart。行高/padding/圆角/间距随密度及 ControlSize，箭头和缩进随 fontScale；局部 ThemeScope 与高对比有效。
+- **空态**：零根节点（含空模型）自动布局居中的 Folder + “No items”；`setEmptyBuilder` 替换内容，最小两行高，受显式视口约束。
+- **禁用**：`TreeModel::isEnabled(key)` 提供屏外可用性；builder 根 `enabled=false` 禁用已物化行。指针、激活、导航、范围选择和 Ctrl+A 跳过禁用项，整个 Tree 禁用会递归禁用物化行。模型动态变化后调用 `modelChanged()`。
+- **折叠焦点**：隐藏 current 子孙时将 current 恢复到折叠节点，原选择集保留；原焦点在该子孙行时同步恢复焦点并滚动可见。`collapseAll` 恢复到所属根节点。
+- **物化与上限**：`expandAll` 使用有界迭代遍历，超限提前返回 false；重复/循环 key 不重复遍历。key 必须全局唯一、非空。`visibleRows()` 在返回引用前刷新缓存，后续模型/展开变化会失效该引用。
 
 ### 7.4 键盘契约（Qt/QTreeView 对齐）
 
@@ -350,6 +359,9 @@ class TreeController final : public core::VirtualListSource {
 | Up / Down、Home / End、PageUp / PageDown | 同 List |
 | Enter / Space | 激活 current（`onActivated`）；折叠态 Enter 先展开再激活由应用组合 |
 | Ctrl+A | 同 List |
+| Tab / Shift+Tab | Tree 占一个行停靠点，进入 current 或首个可见可用行，仅更新 current；再次 Tab 离开，箭头不单独占 Tab 停靠点 |
+
+Left/Right 移动到父级/子级后按 Visible 对齐；`setCurrentKey` 同步选择、焦点和滚动。
 
 ## 8. TreeList 控件（树 + 列）
 
@@ -431,8 +443,8 @@ class TreeListController final : public TreeController {
 
 ### 9.2 构建器（C++ DSL 与 .lumen）
 
-- C++：`makeList/makeTree/makeTreeList` + `withSelectionMode`。
-- `.lumen` DSL：冻结节点集追加 `list` / `tree` / `treelist` 三节点
+- C++：`makeList/makeTree/makeTreeList` + `withSelectionMode` / `withFocusRing`。
+- `.lumen` DSL（规划，当前转换器尚未支持集合节点）：冻结节点集追加 `list` / `tree` / `treelist` 三节点
   （属性：`selection-mode`、`cache-extent`、`show-header`；source 由 C++ 侧
   装配，DSL 只声明——与 VirtualList 现状一致：`.lumen` 不表达数据源指针）。
 - golden 对照测试沿用 M2 模式。
@@ -447,9 +459,11 @@ class TreeListController final : public TreeController {
 
 语义值与 M5 冻结契约的兼容：`selected` flag 已在 M5 语义固化（invalid/hidden/selected）；`expanded` 是新增 value 通道用法，不改变既有节点。视口外缓存区行标 Hidden（沿用 M5 VirtualList 规则）。
 
+展开/折叠已接入框架语义 action 与 Recording bridge；chevron 的 `Activate` 与指针点击走同一动态 sink。原生 UIA ExpandCollapse pattern 以及 AT-SPI/NSAccessibility 的对应映射仍未实施，不将 headless 语义回归等同于屏幕阅读器实测。
+
 ## 10. 视觉规格（详见 design/collection-controls.html）
 
-视觉契约遵循 `docs/lumen-visual-system-design.md`（token 三层模型 §3.1、尺度表 §3.2、状态规则 §5、滚动条 §7.4）；`Theme.list` 为组件层映射，复用语义颜色与既有密度尺度。
+视觉契约遵循 `docs/lumen-visual-system-design.md`（token 三层模型 §3.1、尺度表 §3.2、状态规则 §5、滚动条 §7.4）；`Theme.list`、`Theme.tree` 为独立组件层映射，复用语义颜色与既有密度尺度。
 
 ### 10.1 尺度（视觉系统 §3.2 对齐）
 
@@ -459,7 +473,7 @@ class TreeListController final : public TreeController {
 | 行水平内边距 | 8px | 12px | 16px | 视觉系统"水平内边距"行 |
 | 行小部件圆角 | 4px | 6px | 8px | 视觉系统"小部件圆角"行（选中/current 行圆角同档） |
 | 树缩进步进 | 20px/层 | 20px/层 | 20px/层 | 4px 基础网格；4 层缩进 80px 仍留足内容（Large 行高下不变） |
-| chevron 图标 | 16×16，命中区 24×24 | 同 | 同 | 桌面指针精度；随 IconTheme.defaultSize 联动 |
+| chevron 图标 | 16×16，命中区 24×24 | 同 | 同 | Tree 由 `Theme.tree.chevronIconSize/chevronHitExtent` 控制，随 fontScale 缩放 |
 | 分隔线 | 1px，`color.border.default` | 同 | 同 | 行间 line token |
 | 空态 | 居中文本 + muted 图标，高度 ≥ 2 行最小高 | 同 | 同 | 设计稿 |
 
@@ -478,18 +492,36 @@ list.row.selectionMarker       = colors.accent；宽 3，上下 inset 4
 list.empty.content             = colors.contentSecondary；图标 24
 tree.indent.step               = 20
 tree.chevron.hitExtent         = 24
+tree.chevron.iconSize          = 16
+tree.chevron.content           = color.content.secondary
+tree.row.*                     = 与 list.row.* 相同映射（Theme.tree.row 独立覆盖）
 treelist.header.background     = color.background.surface（粘性表头）
 treelist.header.content        = color.content.secondary；sortable 悬停 → content.primary
 treelist.header.height         = 行最小高度同档
 ```
 
-List 外框为 surface、1px separator 边框、cardRadius；行 padding 纵向取 `metrics.controlPaddingY`。行绘制、命中与语义共享边框内侧的 `contentClipRect()`，滚动不能覆盖外框。分隔线最后一项省略，聚焦时由完整焦点环替代该行底线。标记尺寸与空态图标随 fontScale 缩放，线宽/圆角保持逻辑尺寸。
+List 与 Tree 外框为 surface、1px separator 边框、cardRadius；行 padding 纵向取 `metrics.controlPaddingY`。行绘制、命中与语义共享边框内侧的 `contentClipRect()`，滚动不能覆盖外框。分隔线最后一项省略，聚焦时由完整焦点环替代该行底线。标记尺寸与空态图标随 fontScale 缩放，线宽/圆角保持逻辑尺寸。
 
 焦点环：`color.focus.ring` + `focusWidth`，**内嵌绘制**（V2 damage 不变量）；selected 使用实色背景及左侧指示条，与焦点环独立。disabled 保留淡化的选中指示条并取消 hover/pressed/focus。高对比主题使用加强色与环宽。滚动条复用 `ScrollbarTokens`；rest 为当前渲染状态，hovered/dragged 外观仍按视觉实施任务 §7.2 保留待接线。
 
+**焦点环可选**：`Widget.showFocusRing` 默认 `true`；在集合视口上设置 `false`
+会关闭生成行的环，Tree 箭头同时关闭。此设置对鼠标、键盘及语义聚焦均生效，
+高对比模式也尊重显式设置。选择背景/左侧标记、hover/pressed、实际焦点、
+键盘导航、激活与语义 focused 保持不变，几何不跳变。关闭环时，选中条无需
+让出环宽，分隔线照常绘制；行内应用自建交互控件仍使用自身属性。
+
+```cpp
+auto list = core::withFocusRing(core::makeList(&listController, "files"), false);
+auto tree = core::makeTree(&treeController, "folders");
+tree.showFocusRing = false;
+```
+
+现有文本 DSL 节点支持 `showFocusRing: false`（例如 Button）；集合节点当前仍用 C++ 构建。
+Gallery Collections 的 “Show collection focus rings” 开关用于现场比较两种外观。
+
 ### 10.3 状态矩阵
 
-行状态 = 既有 `WidgetState`（§5：hovered/pressed/focused/disabled/checked/invalid/**selected**）的组合，无新增状态位。组合视觉见设计稿状态矩阵表；优先级遵循 §5：disabled > invalid > pressed > focused/hovered，checked/selected 只影响有对应语义的控件。**高对比主题下选中/current 不得只靠颜色区分**（§11 约束：焦点环与选中需有形状/边框差异）。
+行状态 = 既有 `WidgetState`（§5：hovered/pressed/focused/disabled/checked/invalid/**selected**）的组合，无新增状态位。组合视觉见设计稿状态矩阵表；优先级遵循 §5：disabled > invalid > pressed > focused/hovered，checked/selected 只影响有对应语义的控件。默认高对比主题下，焦点环与选中标记提供形状区分；应用显式关闭焦点环时，语义状态继续保留，默认外观验收与此可选外观分别测试。
 
 ## 11. 性能与测试计划
 
@@ -512,13 +544,15 @@ List 外框为 surface、1px separator 边框、cardRadius；行 padding 纵向�
 3. **TreeController**：扁平化正确性（嵌套展开/折叠序）、惰性 hasChildren、展开后 extent 缓存 key 命中、collapseAll/expandAll 防护上限、Left/Right 键盘折叠/父级跳转。
 4. **TreeListController**：列宽分配（固定+权重+minWidth）、表头粘性（滚动后表头 y 不变）、表头点击回调、隐藏列。
 5. **语义/键盘一致性**：激活（点击≡Enter≡语义 Activate）、选择变化语义 flag、treeitem expanded value、Expand/Collapse 语义 action ≡ 键盘。
-6. **回归**：既有 ListView/VirtualList 行为与帧哈希不变；Widget 体积静态断言（Release `sizeof(Widget)` ≤ 824，Debug ≤ 928；包含后续 Splitter 指针，ListPart 使用既有 padding——工具链调试迭代器开销）。
+6. **回归**：既有 ListView/VirtualList 行为与帧哈希不变；Widget 体积静态断言（Release `sizeof(Widget)` ≤ 824，Debug ≤ 928；包含后续 Splitter 指针，ListPart、TreePart/depth 使用既有 padding——工具链调试迭代器开销）。
 7. **局部 damage 与全帧逐像素一致**（AppShell 真实帧管线，M3 模式）。
 8. `list_visual_tests.cpp`：三档密度/整行命中、真实按压与完整焦点 identity、屏外导航、Tab 单一停靠点、禁用元数据/整表禁用、自动空态、ThemeScope/字体缩放/高对比、分隔线与增量帧一致性。
+9. `tree_visual_tests.cpp`：整行选中底色/标记/焦点像素、层级箭头与叶槽、密度/ControlSize/ThemeScope、独立 chevron、折叠焦点恢复、Tab/语义展开折叠、禁用/空态、有界展开与万项按需物化、边框裁剪与局部重绘一致性。
+10. `gpu_tree_readback_preserves_indented_selection_and_border`：Skia/GPU 真实像素回读，验证缩进行在 1×/2× deviceScale、滚动前后的整行选中底色、左侧标记、焦点环和视口边框。
 
 ### 11.3 示例与验收
 
-- Gallery `Collections`：List（200 项、四模式切换、图标/徽标/禁用行）、七态矩阵、自动空态；Tree（目录树）、TreeList（列+表头排序钩子）。千项虚拟化由测试/基准覆盖。
+- Gallery `Collections`：List（200 项、四模式切换、图标/徽标/禁用行）、七态矩阵、自动空态；Tree（目录图标/计数/默认选中节点）、八态矩阵和自动空态；TreeList（列+表头排序钩子）。千项/万项虚拟化由测试覆盖。
 - headless 冒烟：导航、物化行数、选择流、表头回调输出。
 - 三桌面窗口 smoke 由 CI 承担（既有矩阵）。
 

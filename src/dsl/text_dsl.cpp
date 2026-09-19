@@ -751,7 +751,7 @@ class Converter {
             return std::nullopt;
         }
         // 视觉系统声明属性（visual-system §6.1）：variant/size/enabled/
-        // invalid/selected。
+        // invalid/selected/showFocusRing。
         if (attr.name == "variant") {
             if (out.type != WidgetType::Button) {
                 return makeError(attr.pos,
@@ -792,7 +792,7 @@ class Converter {
             return std::nullopt;
         }
         if (attr.name == "enabled" || attr.name == "invalid" ||
-            attr.name == "selected") {
+            attr.name == "selected" || attr.name == "showFocusRing") {
             const auto flag = boolValue(attr);
             if (!flag.has_value()) {
                 return typeError(attr, "true or false");
@@ -801,6 +801,8 @@ class Converter {
                 out.enabled = *flag;
             } else if (attr.name == "invalid") {
                 out.invalid = *flag;
+            } else if (attr.name == "showFocusRing") {
+                out.showFocusRing = *flag;
             } else {
                 out.selected = *flag;
             }

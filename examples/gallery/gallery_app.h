@@ -486,6 +486,7 @@ class GalleryApp {
         state.set("nickname", "");
         state.set("email", "");
         state.set("notifications", "true");
+        state.set("collection-focus-rings", "true");
         state.set("autosave", "false");
         state.set("plan-free", "true");
         state.set("plan-pro", "false");
@@ -782,8 +783,10 @@ class GalleryApp {
             shell_.markDirty();
         };
         collectionTree_.attach(shell_, "collection-tree");
+        collectionEmptyTree_.attach(shell_, "collection-empty-tree");
         collectionTree_.expand("tree:src");
         collectionTree_.expand("tree:src:core");
+        collectionTree_.selection().setSelected({"tree:core:widget"});
 
         // --- TreeList：依赖清单（列系统 + 排序钩子由应用执行） ---
         collectionTableModel_.setRows({
@@ -1829,6 +1832,10 @@ class GalleryApp {
 
     void initializeVisualPreviews() {
         for (const auto* name : {"Normal", "Hover", "Press", "Focus", "Selected",
+                                 "Selected+Focused", "Disabled", "Disabled+Selected"}) {
+            shell_.setVisualPreviewState(std::string("tree-preview-") + name, previewState(name));
+        }
+        for (const auto* name : {"Normal", "Hover", "Press", "Focus", "Selected",
                                  "Selected+Focused", "Disabled"}) {
             shell_.setVisualPreviewState(std::string("list-preview-") + name, previewState(name));
         }
@@ -2471,12 +2478,16 @@ class GalleryApp {
                        "controllers, keyed by row identity.",
                        theme),
             "collections-desc"));
+        const bool showFocusRing = shell_.state().get("collection-focus-rings") != "false";
+        items.push_back(core::makeCheckbox("Show collection focus rings", "collection-focus-rings",
+                                           "collection-focus-rings"));
 
         // --- List：Extended 选择 + 双击/Enter 激活 + Ctrl+A ---
         // 内层视口常显滚动条（与外层 gallery-list 同 token 路径；内容
         // 超出固定高度时右侧出现 Thumb）。
         core::Widget listWidget = core::withScrollbar(core::makeList(
             &collectionList_, "collection-list", std::nullopt, 300.0F));
+        listWidget.showFocusRing = showFocusRing;
         items.push_back(sectionCard(
             "List — selection & activation",
             {core::withKey(mutedLabel(collectionListStatus(), theme),
@@ -2497,6 +2508,7 @@ class GalleryApp {
                                  "Selected+Focused", "Disabled"}) {
             auto row = collectionList_.buildItem(0);
             row.key = std::string("list-preview-") + name;
+            row.showFocusRing = showFocusRing;
             row.onClick.clear();
             row.semanticsActions = 0;
             row.children = {core::makeIcon(core::IconId::Document),
@@ -2522,6 +2534,7 @@ class GalleryApp {
         // --- Tree：层级模型 + 键盘 Left/Right + 按 key 的展开状态 ---
         core::Widget treeWidget = core::withScrollbar(core::makeTree(
             &collectionTree_, "collection-tree", std::nullopt, 280.0F));
+        treeWidget.showFocusRing = showFocusRing;
         items.push_back(sectionCard(
             "Tree — hierarchy & lazy model",
             {core::withKey(mutedLabel(collectionTreeStatus(), theme),
@@ -2534,10 +2547,44 @@ class GalleryApp {
                            "collection-tree-hint")},
             theme, "collections-tree-card", "Single · repo skeleton"));
 
+        std::vector<core::Widget> treeStates;
+        for (const auto* name : {"Normal", "Hover", "Press", "Focus", "Selected",
+                                 "Selected+Focused", "Disabled", "Disabled+Selected"}) {
+            auto chevron = core::makeButton("");
+            chevron.icon = core::IconId::ChevronRight;
+            chevron.treePart = core::TreePart::Chevron;
+            auto row = core::makeRow({std::move(chevron), core::makeText(name)},
+                core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center);
+            row.treePart = core::TreePart::Row;
+            row.collectionRow = true;
+            row.key = std::string("tree-preview-") + name;
+            row.showFocusRing = showFocusRing;
+            row.children.front().key = row.key + ":chevron";
+            row.children.front().showFocusRing = showFocusRing;
+            row.children.back().flex = 1.0F;
+            if (std::string(name).find("Disabled") != std::string::npos) {
+                row.enabled = false;
+                for (auto& child : row.children) {
+                    child.enabled = false;
+                    child.styleOverrides.foreground = theme.tree.row.disabledContent;
+                }
+            }
+            treeStates.push_back(std::move(row));
+        }
+        items.push_back(sectionCard("Tree — state matrix",
+            {core::withKey(core::makeColumn(std::move(treeStates), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch), "collection-tree-states")},
+            theme, "collections-tree-states-card", "Selection and focus are independent"));
+        items.push_back(sectionCard("Tree — empty state",
+            {core::makeTree(&collectionEmptyTree_, "collection-empty-tree", std::nullopt,
+                theme.metrics.minHeight[theme.metrics.baseIndex] * 3.0F)},
+            theme, "collections-tree-empty-card"));
+
         // --- TreeList：列系统 + 粘性表头 + 排序钩子 ---
         core::Widget tableWidget = core::withScrollbar(core::makeTreeList(
             &collectionTable_, &collectionTable_.columns(), true,
             "collection-table", std::nullopt, 280.0F));
+        tableWidget.showFocusRing = showFocusRing;
         items.push_back(sectionCard(
             "TreeList — columns & sticky header",
             {core::withKey(mutedLabel(collectionTableStatus(), theme),
@@ -3512,7 +3559,21 @@ class GalleryApp {
                                                !it->second.label.empty()
                                            ? it->second.label
                                            : key;
-            return core::makeText(label, app_->shell_.theme().typography.body);
+            const auto& theme = app_->shell_.theme();
+            auto icon = core::makeIcon(hasChildren(key) ? core::IconId::Folder : core::IconId::Document);
+            icon.styleOverrides.foreground = theme.tree.chevronContent;
+            auto text = core::makeText(label);
+            text.flex = 1.0F;
+            std::vector<core::Widget> parts{std::move(icon), std::move(text)};
+            if (hasChildren(key)) {
+                auto count = core::makeText(std::to_string(childCount(key)) + " items", theme.typography.caption);
+                count.styleOverrides.foreground = theme.colors.contentSecondary;
+                parts.push_back(std::move(count));
+            }
+            auto row = core::makeRow(std::move(parts), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Center, theme.metrics.controlGap[theme.metrics.baseIndex]);
+            row.semanticsLabel = label;
+            return row;
         }
 
       private:
@@ -3594,6 +3655,7 @@ class GalleryApp {
     widgets::ListController collectionList_{};
     widgets::ListController collectionEmptyList_{};
     widgets::TreeController collectionTree_{};
+    widgets::TreeController collectionEmptyTree_{};
     widgets::TreeListController collectionTable_{};
     std::string lastActivatedKey_{};
     std::string lastSortColumn_{};

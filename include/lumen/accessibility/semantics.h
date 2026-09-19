@@ -66,6 +66,8 @@ enum SemanticsActions : std::uint32_t {
     kActionSetValue = 1U << 2,
     kActionScroll = 1U << 3,
     kActionDismiss = 1U << 4,
+    kActionExpand = 1U << 5,
+    kActionCollapse = 1U << 6,
 };
 
 [[nodiscard]] std::string semanticsActionsName(std::uint32_t actions);

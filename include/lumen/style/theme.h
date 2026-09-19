@@ -336,6 +336,15 @@ struct ListTokens {
     bool operator==(const ListTokens&) const = default;
 };
 
+struct TreeTokens {
+    ListTokens row{};
+    float indentStep{20.0F};
+    float chevronHitExtent{24.0F};
+    float chevronIconSize{16.0F};
+    core::Color chevronContent{161, 161, 170, 255};
+    bool operator==(const TreeTokens&) const = default;
+};
+
 struct ScrollbarTokens {
     // S3（§7.2）：rest 取 borderStrong 实色（专用 token 传递，painter 不
     // 再对前景乘 alpha）；hovered/dragged 为预留交互（未接线前常显 rest）。
@@ -372,6 +381,7 @@ struct Theme {
     DialogTokens dialog{};
     ScrollbarTokens scrollbar{};
     ListTokens list{};
+    TreeTokens tree{};
     // M11：派生元数据（值语义，参与 ==）。应用直接读取，替代按色值
     // 反推（gallery/settings 旧的 pageBackground 比较启发式）。
     ThemeDirection direction{ThemeDirection::CoreDark};

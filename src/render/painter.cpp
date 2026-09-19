@@ -996,7 +996,7 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                 paintNode(sink, child, origin, options, nodeAlpha);
             }
         };
-        if (node.type == WidgetType::List) {
+        if (node.type == WidgetType::List || node.type == WidgetType::Tree) {
             auto contentClip = node.contentClipRect();
             contentClip.origin = contentClip.origin + origin;
             const ScopedClip<Sink> rowsClip{sink, contentClip};

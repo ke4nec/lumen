@@ -443,7 +443,8 @@ TEST_CASE("tree_row_builds_chevron_only_for_branches", "[collection]") {
     // 叶行：spacer 而非按钮。
     const Widget leaf = app.tree.buildItem(1);
     REQUIRE(leaf.children.size() == 2);
-    CHECK(leaf.children.front().type == WidgetType::Container);
+    CHECK(leaf.children.front().type != WidgetType::Button);
+    CHECK(leaf.children.front().onClick.empty());
     // treeItem 语义 + 展开值。
     CHECK(branch.semanticsRole == "treeItem");
     CHECK(branch.semanticsValue == "false");
@@ -457,8 +458,9 @@ TEST_CASE("tree_chevron_click_toggles_without_selecting", "[collection]") {
     REQUIRE(tree != nullptr);
     REQUIRE(!tree->children.empty());
     const RenderNode& row = tree->children.front();
-    // chevron 在行首（24×24）。
-    const float x = row.offset.x + 12.0F;
+    // Hit the actual themed chevron box, including the viewport border.
+    const float x = row.offset.x + row.children.front().offset.x +
+                    row.children.front().size.width * 0.5F;
     const float y = row.offset.y + row.size.height * 0.5F;
 
     app.shell.pointerDown(Offset{x, y});

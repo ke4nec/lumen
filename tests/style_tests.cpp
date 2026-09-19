@@ -422,6 +422,33 @@ TEST_CASE("style_control_size_scales_component_parts", "[style]") {
     CHECK(smallTrack.trackHeight == fixture.theme.switchControl.trackHeight[0]);
 }
 
+// Visual system §6.1: showFocusRing changes paint, not focus or geometry.
+TEST_CASE("focus_ring_visibility_is_explicit_and_preserves_control_geometry", "[style]") {
+    Fixture f;
+    f.interaction.focusedIdentity = "k:x";
+    AccessibilitySettings settings;
+    settings.highContrast = true;
+    const auto theme = Theme::fromSettings(settings, true);
+    lumen::style::ScopedThemeOverride scope(theme);
+    for (const auto type : {lumen::core::WidgetType::Button, lumen::core::WidgetType::TextField,
+                           lumen::core::WidgetType::Checkbox, lumen::core::WidgetType::Switch,
+                           lumen::core::WidgetType::Radio, lumen::core::WidgetType::Slider,
+                           lumen::core::WidgetType::Dropdown, lumen::core::WidgetType::Row}) {
+        CAPTURE(static_cast<int>(type));
+        Widget widget;
+        widget.type = type;
+        widget.collectionRow = type == lumen::core::WidgetType::Row;
+        const auto shown = f.resolve(widget);
+        CHECK(lumen::core::commonStyle(shown).focusWidth == theme.metrics.focusRingWidth);
+        widget = lumen::core::withFocusRing(std::move(widget), false);
+        const auto hidden = f.resolve(widget);
+        CHECK(lumen::core::commonStyle(hidden).focusWidth == 0.0F);
+        CHECK(hidden.minWidth == shown.minWidth);
+        CHECK(hidden.minHeight == shown.minHeight);
+        CHECK(lumen::core::commonStyle(hidden).padding == lumen::core::commonStyle(shown).padding);
+    }
+}
+
 // --- StyleOverrides：字段级覆盖与状态优先级（§10.1） ---
 
 TEST_CASE("style_overrides_override_theme_fields", "[style]") {
