@@ -10,6 +10,8 @@ add_library(lumen-widgets STATIC
     menu.cpp
     # Splitter（splitter-design）：分栏控制器（core::SplitterSource）。
     splitter.cpp
+    # Spin（spin-design）：数值步进组合件（零新增 WidgetType）。
+    spin.cpp
 )
 
 target_include_directories(lumen-widgets PUBLIC

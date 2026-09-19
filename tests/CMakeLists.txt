@@ -32,6 +32,9 @@ set(LUMEN_TEST_SOURCES
     # Splitter：布局分配/钳制、拖动/键盘/双击复位、语义
     #（docs/lumen-splitter-design.md）。
     splitter_tests.cpp
+    # Spin 控件：值模型/提交/自动重复/键盘/滚轮/禁用/Chrome 三态
+    #（docs/lumen-spin-design.md，2026-09）。
+    spin_tests.cpp
     # 自定义标题栏：windowDrag 物化/拖拽判定、Gallery 窗口命令/最大化态、
     # Fake host 窗口操作契约与 runApp 注册（docs/lumen-titlebar-design.md）。
     titlebar_tests.cpp
