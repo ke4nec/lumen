@@ -12,6 +12,8 @@ add_library(lumen-widgets STATIC
     splitter.cpp
     # Spin（spin-design）：数值步进组合件（零新增 WidgetType）。
     spin.cpp
+    # ToolBar（toolbar-design）：工具栏组合件（零新增 WidgetType）。
+    toolbar.cpp
 )
 
 target_include_directories(lumen-widgets PUBLIC

@@ -35,6 +35,9 @@ set(LUMEN_TEST_SOURCES
     # Spin 控件：值模型/提交/自动重复/键盘/滚轮/禁用/Chrome 三态
     #（docs/lumen-spin-design.md，2026-09）。
     spin_tests.cpp
+    # ToolBar 控件：命令激活/键盘漫游/溢出折叠/面板/tooltip/语义
+    #（docs/lumen-toolbar-design.md，2026-09）。
+    toolbar_tests.cpp
     # 自定义标题栏：windowDrag 物化/拖拽判定、Gallery 窗口命令/最大化态、
     # Fake host 窗口操作契约与 runApp 注册（docs/lumen-titlebar-design.md）。
     titlebar_tests.cpp
