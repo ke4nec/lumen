@@ -22,6 +22,9 @@ set(LUMEN_TEST_SOURCES
     # 菜单类控件（context/menubar）：Secondary 穿透、面板/键盘/级联、
     # 语义角色（docs/lumen-menu-controls-design.md）。
     menu_tests.cpp
+    # M14 菜单动效（menubar-variants 版本 A+D）：打开淡入/上升、高亮
+    # 动能矩形、栏 Tonal/下划线、reduceAnimation 与直驱终态。
+    menu_motion_tests.cpp
     # Splitter：布局分配/钳制、拖动/键盘/双击复位、语义
     #（docs/lumen-splitter-design.md）。
     splitter_tests.cpp

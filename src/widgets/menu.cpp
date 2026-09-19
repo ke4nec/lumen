@@ -25,6 +25,11 @@ constexpr float kMenuMaxWidthPx = 320.0F;
 constexpr float kContextMenuWidthPx = 220.0F;
 constexpr float kItemPaddingXPx = 12.0F;    // 菜单项水平内边距（Medium 档）
 constexpr float kIconSlotPx = 20.0F;        // 图标/勾选槽（16 图标 + 4）
+constexpr float kMenuSepHeightPx = 9.0F;    // 分隔线行高（1px + 上下 4）
+// M14 打开动效位移（menubar-variants 版本 A）：顶级 = 上升 6px；子菜单
+// 级联 = 沿展开方向滑入 4px（同一 openT 进度）。
+constexpr float kMenuOpenRisePx = 6.0F;
+constexpr float kSubmenuSlidePx = 4.0F;
 // 级联深度上限（防递归 submenu 构造异常；应用菜单典型 ≤ 3）。
 constexpr std::size_t kMaxCascadeDepth = 8;
 
@@ -39,6 +44,18 @@ float menuRowHeight(const style::Theme& theme) {
     return std::max(minHeight,
                     textRow + 2.0F * theme.metrics.controlPaddingY[
                                           theme.metrics.baseIndex]);
+}
+
+// 行内容坐标（含面板内边距偏移）：动能矩形与滚动跟随共用同一口径
+//（ensureHighlightVisible 同推导）。
+void itemContentRect(const MenuItems& items, std::size_t index,
+                     const style::Theme& theme, float& top, float& height) {
+    const float rowHeight = menuRowHeight(theme);
+    top = kMenuInnerPaddingPx;
+    for (std::size_t i = 0; i < index && i < items.size(); ++i) {
+        top += items[i].separator ? kMenuSepHeightPx : rowHeight;
+    }
+    height = rowHeight;
 }
 
 }  // namespace
@@ -87,6 +104,150 @@ std::size_t ContextMenuController::nextFocusable(const Level& level,
     return from;
 }
 
+void ContextMenuController::setHighlight(Level& level, std::size_t to) {
+    if (to == level.highlight) {
+        return;
+    }
+    // M14：高亮迁移记录滑移起点（hlFrom），由 stepMotion 起 表采样；
+    // 无动效口径保持原直达行为。
+    if (motion_) {
+        level.hlFrom = level.highlight;
+        level.hlAnim = true;
+        level.hlStarted = false;
+    }
+    level.highlight = to;
+}
+
+bool ContextMenuController::stepMotion(std::uint64_t nowMs, bool& active) {
+    active = false;
+    if (!motion_ || levels_.empty()) {
+        return false;
+    }
+    bool changed = false;
+    const auto step = [nowMs, &changed, &active](
+                          bool& anim, bool& started,
+                          std::uint64_t& startMs, std::uint32_t durationMs,
+                          float& value) {
+        if (!anim) {
+            return;
+        }
+        if (!started) {
+            // pending → 首拍起表：open 后未经 tick 的直驱构建保持终态。
+            started = true;
+            startMs = nowMs;
+        }
+        const std::uint64_t elapsed =
+            nowMs >= startMs ? nowMs - startMs : 0;
+        const core::Tween tween{0.0, 1.0, static_cast<double>(durationMs),
+                                core::Easing::EaseOut};
+        const float next = static_cast<float>(tween.sample(elapsed));
+        if (next != value) {
+            value = next;
+            changed = true;
+        }
+        if (tween.finished(elapsed)) {
+            anim = false;
+            started = false;
+        } else {
+            active = true;
+        }
+    };
+    for (Level& level : levels_) {
+        step(level.openAnim, level.openStarted, level.openStartMs, fadeMs_,
+             level.openT);
+        step(level.hlAnim, level.hlStarted, level.hlStartMs, slideMs_,
+             level.hlT);
+    }
+    return changed;
+}
+
+void ContextMenuController::registerHoverSink(app::AppShell& shell) {
+    // 惰性注册一次（sink 家族无注销 API；菜单关闭时 levels_ 空守卫空转，
+    // 与 MenuBar 栏切换 sink 同口径）。菜单行在 overlay 树——sink 收到
+    // 的是主树 root，这里自行对 overlayRoot 做命中。
+    if (hoverSinkRegistered_) {
+        return;
+    }
+    hoverSinkRegistered_ = true;
+    shell.controller().addPointerMoveSink(
+        [this, &shell](const core::RenderNode&, core::Offset position) {
+            if (levels_.empty() || shell.overlayRoot() == nullptr) {
+                pending_.armed = false;
+                return false;
+            }
+            std::vector<const core::RenderNode*> chain;
+            (void)core::hitTestChain(*shell.overlayRoot(), position, chain);
+            for (const core::RenderNode* node : chain) {
+                for (std::size_t l = 0; l < levels_.size(); ++l) {
+                    for (std::size_t i = 0; i < levels_[l].items.size();
+                         ++i) {
+                        if (node->key == itemKey(l, i)) {
+                            hoverMenuItem(shell, l, i);
+                            return false;
+                        }
+                    }
+                }
+            }
+            // 未命中行（分隔线/面板空白/barrier/栏）：解除待展开，不动
+            // 级联（点击外部/Esc 才关闭）。
+            pending_.armed = false;
+            return false;
+        });
+}
+
+void ContextMenuController::hoverMenuItem(app::AppShell& shell,
+                                          std::size_t level,
+                                          std::size_t index) {
+    const MenuItem& item = levels_[level].items[index];
+    // 祖先层：悬停非当前级联源的项 → 收起到该层（桌面惯例：悬停切换
+    // 级联，与键盘 Left 回退互补；源行自身不动）。
+    if (level + 1 < levels_.size() &&
+        levels_[level + 1].sourceIndex != index) {
+        while (levels_.size() > level + 1) {
+            popLevel(shell);
+        }
+    }
+    // 收起后该层即最深层：hasSubmenu 项武装自动展开（同项不重置计时
+    //——行内指针抖动不清零），其余解除。
+    if (level + 1 == levels_.size() && item.hasSubmenu && item.enabled) {
+        if (!pending_.armed || pending_.level != level ||
+            pending_.index != index) {
+            pending_ = PendingSubmenu{};
+            pending_.armed = true;
+            pending_.level = level;
+            pending_.index = index;
+        }
+        return;
+    }
+    pending_.armed = false;
+}
+
+bool ContextMenuController::stepPendingSubmenu(app::AppShell& shell,
+                                                std::uint64_t nowMs) {
+    if (!pending_.armed) {
+        return false;
+    }
+    if (!pending_.started) {
+        // pending → 首拍起表（pointer sink 无钟；与打开动效同口径）。
+        pending_.started = true;
+        pending_.armedAtMs = nowMs;
+    }
+    const std::uint64_t elapsed =
+        nowMs >= pending_.armedAtMs ? nowMs - pending_.armedAtMs : 0;
+    if (submenuHoverMs_ == 0 || elapsed >= submenuHoverMs_) {
+        const std::size_t level = pending_.level;
+        const std::size_t index = pending_.index;
+        pending_.armed = false;
+        // 展开前再验（计时期间层级/项可能已变）。
+        if (level < levels_.size() && level + 1 == levels_.size() &&
+            index < levels_[level].items.size()) {
+            expandSubmenu(shell, level, index);
+        }
+        return false;
+    }
+    return true;  // 计时中：保持动画帧粒度 tick（到点即触发）
+}
+
 void ContextMenuController::open(app::AppShell& shell,
                                  core::Offset position, MenuItems items,
                                  SubmenuProvider submenu,
@@ -115,9 +276,24 @@ void ContextMenuController::openAnchored(app::AppShell& shell,
     overlayTheme_ = anchorTheme != nullptr
                         ? std::optional<style::Theme>(*anchorTheme)
                         : std::nullopt;
+    // M14 动效口径（menubar-variants 版本 A+D）：motionEnabled = 应用
+    // opt-in 且已被 tick 驱动（直驱测试保持即时终态）；时长快照自唤起
+    // 主题（reduceAnimation 归零 = 首拍即达终态）。
+    motion_ = shell.motionEnabled();
+    const style::Theme& sourceTheme =
+        anchorTheme != nullptr ? *anchorTheme : shell.theme();
+    fadeMs_ = sourceTheme.motion.menuOpenFadeMs;
+    slideMs_ = sourceTheme.motion.menuHighlightSlideMs;
+    submenuHoverMs_ = sourceTheme.motion.menuSubmenuHoverMs;
+    pending_.armed = false;
+    registerHoverSink(shell);
     levels_.push_back(
         Level{std::move(items), 0, anchor});
     levels_.back().highlight = firstFocusable(levels_.back());
+    levels_.back().hlFrom = levels_.back().highlight;
+    if (motion_) {
+        levels_.back().openAnim = true;  // pending：首次 stepMotion 起表
+    }
     registerHandlers(shell);
     // 滚轮：命中菜单滚动视口 → 滚动；其余（hit 为空 = 菜单外/无滚动视
     // 口，AppShell::wheel 的 overlay 兜底直调）→ 关闭（menu-controls-
@@ -188,6 +364,20 @@ void ContextMenuController::openAnchored(app::AppShell& shell,
             }
             close(shell);
             return true;
+        },
+        [this, &shell](std::uint64_t nowMs) {
+            // M14：面板动效采样 + 悬停展开计时 + 宿主附加动效链
+            //（MenuBar 下划线）；值变化即 markDirty（终拍也重建，避免
+            // 0.99 残帧）。pending 计时保持动画帧粒度的 tick。
+            bool active = false;
+            if (stepMotion(nowMs, active)) {
+                shell.markDirty();
+            }
+            active = stepPendingSubmenu(shell, nowMs) || active;
+            if (onAnimate) {
+                active = onAnimate(nowMs) || active;
+            }
+            return active;
         });
     shell.rebuildIfDirty();  // overlay 布局落地，供焦点定位。
     refreshOverlay(shell);
@@ -197,6 +387,7 @@ void ContextMenuController::close(app::AppShell& shell) {
     if (levels_.empty()) {
         return;
     }
+    pending_.armed = false;
     levels_.clear();
     eraseHandlers(shell);
     shell.clearOverlay();
@@ -289,6 +480,12 @@ void ContextMenuController::expandSubmenu(app::AppShell& shell,
     }
     levels_.push_back(Level{std::move(items), 0, anchor});
     levels_.back().highlight = firstFocusable(levels_.back());
+    levels_.back().hlFrom = levels_.back().highlight;
+    levels_.back().sourceIndex = index;
+    pending_.armed = false;
+    if (motion_) {
+        levels_.back().openAnim = true;  // 级联滑入（同一 pending 口径）
+    }
     for (std::size_t i = 0; i < levels_.back().items.size(); ++i) {
         const MenuItem& item = levels_.back().items[i];
         if (item.separator) {
@@ -308,6 +505,7 @@ void ContextMenuController::popLevel(app::AppShell& shell) {
     if (levels_.size() <= 1) {
         return;
     }
+    pending_.armed = false;
     const std::size_t l = levels_.size() - 1;
     for (std::size_t i = 0; i < levels_[l].items.size(); ++i) {
         shell.handlers().erase(itemKey(l, i));
@@ -347,7 +545,8 @@ void ContextMenuController::ensureHighlightVisible(app::AppShell& shell,
     const float rowHeight = menuRowHeight(theme);
     float itemTop = kMenuInnerPaddingPx;
     for (std::size_t i = 0; i < levels_[level].highlight; ++i) {
-        itemTop += levels_[level].items[i].separator ? 9.0F : rowHeight;
+        itemTop += levels_[level].items[i].separator ? kMenuSepHeightPx
+                                                     : rowHeight;
     }
     const float itemBottom = itemTop + rowHeight;
     float next = levels_[level].scrollOffset;
@@ -368,15 +567,15 @@ bool ContextMenuController::handleKey(app::AppShell& shell, core::Key key,
     Level& deep = levels_.back();
     switch (key) {
         case core::Key::Down:
-            deep.highlight = nextFocusable(deep, deep.highlight, +1);
+            setHighlight(deep, nextFocusable(deep, deep.highlight, +1));
             refreshOverlay(shell);
             return true;
         case core::Key::Up:
-            deep.highlight = nextFocusable(deep, deep.highlight, -1);
+            setHighlight(deep, nextFocusable(deep, deep.highlight, -1));
             refreshOverlay(shell);
             return true;
         case core::Key::Home:
-            deep.highlight = firstFocusable(deep);
+            setHighlight(deep, firstFocusable(deep));
             refreshOverlay(shell);
             return true;
         case core::Key::End: {
@@ -388,7 +587,7 @@ bool ContextMenuController::handleKey(app::AppShell& shell, core::Key key,
                     break;
                 }
             }
-            deep.highlight = last;
+            setHighlight(deep, last);
             refreshOverlay(shell);
             return true;
         }
@@ -435,26 +634,28 @@ bool ContextMenuController::handleKey(app::AppShell& shell, core::Key key,
     if ((mods & core::kModifierAlt) != 0 && keyChar != 0) {
         const char want = static_cast<char>(std::tolower(
             static_cast<unsigned char>(keyChar)));
-        for (std::size_t i = 0; i < deep.items.size(); ++i) {
-            const MenuItem& item = deep.items[i];
-            if (item.mnemonic != 0 && item.enabled && !item.separator &&
-                std::tolower(static_cast<unsigned char>(item.mnemonic)) ==
-                    want) {
-                deep.highlight = i;
-                activate(shell, levels_.size() - 1, i);
-                return true;
+            for (std::size_t i = 0; i < deep.items.size(); ++i) {
+                const MenuItem& item = deep.items[i];
+                if (item.mnemonic != 0 && item.enabled && !item.separator &&
+                    std::tolower(static_cast<unsigned char>(item.mnemonic)) ==
+                        want) {
+                    setHighlight(deep, i);
+                    activate(shell, levels_.size() - 1, i);
+                    return true;
+                }
             }
-        }
     }
     return false;
 }
 
 core::Widget ContextMenuController::buildOverlay(const style::Theme& theme,
                                                  core::Size view) const {
-    // 全窗 barrier：点击关闭（makeDialog 模态模式）。
+    // 全窗 barrier：仅输入模态（点击关闭 + makeDialog 的事件/语义模态
+    // 边界），视觉透明——菜单不是对话框，不压暗内容（Dialog scrim 只
+    // 属于 Dialog；menu-controls-design §6.4）。
     core::Widget barrier = core::makeContainerLeaf(
         view.width, view.height, core::EdgeInsets{}, core::EdgeInsets{},
-        theme.dialog.scrim);
+        core::Color::transparent());
     barrier.onClick = owner_ + "-dismiss";
     barrier.semanticsRole = "dialog";
     barrier.semanticsActions = accessibility::kActionDismiss;
@@ -490,7 +691,7 @@ core::Widget ContextMenuController::buildPanel(
 
     float contentHeight = 0.0F;
     for (const auto& item : level.items) {
-        contentHeight += item.separator ? 9.0F : rowHeight;  // 1px + 上下 4
+        contentHeight += item.separator ? kMenuSepHeightPx : rowHeight;
     }
     const float wanted =
         contentHeight + 2.0F * kMenuInnerPaddingPx;
@@ -499,6 +700,7 @@ core::Widget ContextMenuController::buildPanel(
     // 不足翻上/左；栏锚 = 下方 + 4 间隙，不足翻上；统一 8px 视口钳制。
     float menuHeight = 0.0F;
     core::Offset origin{};
+    bool placeRight = true;  // 子菜单级联方向（滑入位移随载荷）
     if (pointerAnchor) {
         const float availBelow =
             view.height - kWindowMarginPx - level.anchor.origin.y;
@@ -536,7 +738,7 @@ core::Widget ContextMenuController::buildPanel(
                                  level.anchor.size.width;
         const float availLeft =
             level.anchor.origin.x - kWindowMarginPx;
-        const bool placeRight = availRight >= kMenuMinWidthPx ||
+        placeRight = availRight >= kMenuMinWidthPx ||
                                 availRight >= availLeft;
         menuHeight = std::min(
             wanted, view.height - 2.0F * kWindowMarginPx);
@@ -553,19 +755,34 @@ core::Widget ContextMenuController::buildPanel(
     origin.x = std::clamp(origin.x, kWindowMarginPx,
                           std::max(kWindowMarginPx,
                                    view.width - kWindowMarginPx - menuWidth));
+    // M14 打开动效（版本 A）：淡入（整面板 transitionAlpha）+ 位移——顶级
+    // 上升 6px、子菜单沿级联方向滑入 4px（同一 openT 进度，EaseOut）。
+    // 钳制后叠加：终态 = 精确钳位，过程中的瞬时越界随进度收敛。
+    if (level.openT < 1.0F) {
+        if (levelIndex == 0) {
+            origin.y += (1.0F - level.openT) * kMenuOpenRisePx;
+        } else {
+            origin.x += (1.0F - level.openT) *
+                        (placeRight ? kSubmenuSlidePx : -kSubmenuSlidePx);
+        }
+    }
 
-    // 行（collectionRow：hover/焦点/selected 背景经 WidgetState 解析，
-    // 与集合行同路径；键盘高亮 = selected + 焦点）。
+    // 行（collectionRow：hover/焦点/背景经 WidgetState 解析，与集合行
+    // 同路径）。M14：键盘高亮背景统一由动能矩形承载（两口径像素等价
+    // ——同色同矩形，source-over 复合一致；current 语义由焦点表达，
+    // §8.1 契约本未列 selected），行不再折算 selected。
     std::vector<core::Widget> rows;
     rows.reserve(level.items.size());
     for (std::size_t i = 0; i < level.items.size(); ++i) {
         const MenuItem& item = level.items[i];
         if (item.separator) {
+            // 分隔线：1px 线 + 上下 4 呼吸（kMenuSepHeightPx=9）+ 水平
+            // inset 8（§10.1；design/menu-controls.html msep 同口径）。
             core::Widget sep = core::makeContainerLeaf(
                 std::max(0.0F, menuWidth - 2.0F * kMenuInnerPaddingPx -
                                    2.0F * kItemPaddingXPx),
                 1.0F,
-                core::EdgeInsets{}, core::EdgeInsets::symmetric(4.0F, 0.0F),
+                core::EdgeInsets{}, core::EdgeInsets::symmetric(8.0F, 4.0F),
                 theme.colors.borderDefault);
             rows.push_back(std::move(sep));
             continue;
@@ -575,7 +792,6 @@ core::Widget ContextMenuController::buildPanel(
         row.key = itemKey(levelIndex, i);
         row.onClick = row.key;  // handler 由控制器注册
         row.collectionRow = true;
-        row.selected = i == level.highlight;
         row.checked = item.checkable && item.checked;
         row.enabled = item.enabled;
         row.crossAxis = core::CrossAxisAlignment::Center;
@@ -600,14 +816,19 @@ core::Widget ContextMenuController::buildPanel(
         core::Widget slot = core::makeIcon(slotIcon, {}, 16.0F, 16.0F);
         row.children.push_back(
             core::makeContainer(std::move(slot), kIconSlotPx, std::nullopt));
-        // 标签（flex 吃满中段）。
+        // 标签（flex 吃满中段）。§10.1：超宽省略号——单行 + Ellipsis，
+        // 不换行（行高稳定；TextStyle 未着色回落角色前景色）。
         core::Widget label = core::makeText(item.label);
         label.flex = 1.0F;
+        label.textStyle.maxLines = 1;
+        label.textStyle.overflow = core::TextOverflow::Ellipsis;
         row.children.push_back(std::move(label));
-        // 快捷键列（仅展示；muted）。
+        // 快捷键列（仅展示；muted；同样单行省略）。
         if (!item.shortcut.empty()) {
             core::Widget sc = core::makeText(item.shortcut);
             sc.textStyle.color = theme.colors.contentSecondary;
+            sc.textStyle.maxLines = 1;
+            sc.textStyle.overflow = core::TextOverflow::Ellipsis;
             row.children.push_back(std::move(sc));
         }
         // 子菜单级联指示。
@@ -621,15 +842,49 @@ core::Widget ContextMenuController::buildPanel(
         std::move(rows), core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Stretch, 0.0F,
         core::EdgeInsets::all(kMenuInnerPaddingPx));
+    core::Widget content = std::move(column);
+    const bool highlightFocusable =
+        !level.items.empty() && !level.items[level.highlight].separator &&
+        level.items[level.highlight].enabled;
+    if (highlightFocusable) {
+        // M14 高亮动能矩形（版本 D）——常驻承载键盘高亮背景（动效/经典
+        // 两口径统一：与行 selected 背景同色同矩形、source-over 复合等
+        // 价；语义 current 由焦点表达）。置于行下方（Stack 先序 = 底层，
+        // 命中/绘制后序优先，行 hover/焦点环不受影响），动效口径下在行
+        // 间滑移（hlFrom → highlight，跨分隔线高度变形）；内容坐标与滚
+        // 动同域（ScrollView 包整个 Stack）。x 与行对齐（column 内边距
+        // 偏移）。
+        float fromTop = 0.0F;
+        float fromHeight = 0.0F;
+        float toTop = 0.0F;
+        float toHeight = 0.0F;
+        itemContentRect(level.items, level.hlFrom, theme, fromTop,
+                        fromHeight);
+        itemContentRect(level.items, level.highlight, theme, toTop,
+                        toHeight);
+        const float top = fromTop + (toTop - fromTop) * level.hlT;
+        const float height =
+            fromHeight + (toHeight - fromHeight) * level.hlT;
+        core::Widget highlight = core::makeContainerLeaf(
+            std::max(0.0F, menuWidth - 2.0F * kMenuInnerPaddingPx), height,
+            core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.selectionBackground,
+            owner_ + ":hl:" + std::to_string(levelIndex));
+        content = core::makeStack(
+            {core::withStackPosition(
+                 std::move(highlight),
+                 core::Offset{kMenuInnerPaddingPx, top}),
+             std::move(content)});
+    }
     // 超长菜单：封顶滚动（ScrollView 兜底；键盘高亮按行高推导滚入）。
     const bool needsScroll = wanted > menuHeight + 0.5F;
     if (needsScroll) {
         const float maxOffset = std::max(0.0F, wanted - menuHeight);
-        column = core::withScrollOffset(
-            core::makeScrollView(std::move(column), scrollKey(levelIndex),
+        content = core::withScrollOffset(
+            core::makeScrollView(std::move(content), scrollKey(levelIndex),
                                  std::nullopt, menuHeight),
             std::clamp(level.scrollOffset, 0.0F, maxOffset));
-        column.showScrollbar = true;
+        content.showScrollbar = true;
     }
     core::Widget menu;
     menu.type = core::WidgetType::Container;
@@ -642,8 +897,9 @@ core::Widget ContextMenuController::buildPanel(
     if (!needsScroll) {
         menu.height = menuHeight;
     }
+    menu.transitionAlpha = level.openT;  // M14 打开淡入（终态恒 1）
     menu.semanticsRole = "menu";
-    menu.children.push_back(std::move(column));
+    menu.children.push_back(std::move(content));
     menu = core::withStackPosition(std::move(menu), origin);
     menu.key = owner_ + ":panel:" + std::to_string(levelIndex);
     return menu;
@@ -669,16 +925,35 @@ void MenuBarController::setSubmenuProvider(SubmenuProvider submenu) {
     submenu_ = std::move(submenu);
 }
 
-core::Widget MenuBarController::build() const {
+core::Widget MenuBarController::build(const style::Theme& theme) const {
     std::vector<core::Widget> items;
     items.reserve(menus_.size());
+    const bool open = menu_.isOpen();
     for (std::size_t i = 0; i < menus_.size(); ++i) {
         core::Widget item = core::makeButton(menus_[i].title);
-        item.buttonVariant = core::ButtonVariant::Ghost;
+        // M14 打开态（版本 A）：打开项 = Tonal 变体（§10.4），其余 Ghost。
+        item.buttonVariant =
+            open && i == openIndex_ ? core::ButtonVariant::Tonal
+                                    : core::ButtonVariant::Ghost;
         item.alignContentStart = true;
         item.key = barKey(i);
         item.onClick = item.key;  // attach 注册打开/切换
-        items.push_back(std::move(item));
+        // 下划线（2px accent）：常驻占位保持栏高稳定（关闭 alpha 0），
+        // 打开项随打开动效渐入（无动效口径 = 直达 1）。
+        core::Widget underline = core::makeContainerLeaf(
+            std::nullopt, 2.0F, core::EdgeInsets{}, core::EdgeInsets{},
+            theme.colors.accent);
+        if (open && i == openIndex_) {
+            underline.key = barKey(i) + ":ul";
+            underline.transitionAlpha = underlineT_;
+        } else {
+            underline.transitionAlpha = 0.0F;
+        }
+        core::Widget wrap = core::makeColumn(
+            {std::move(item), std::move(underline)},
+            core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Stretch, 0.0F);
+        items.push_back(std::move(wrap));
     }
     core::Widget bar = core::makeRow(
         std::move(items), core::MainAxisAlignment::Start,
@@ -704,6 +979,10 @@ void MenuBarController::attach(app::AppShell& shell) {
         if (onCommand) {
             onCommand(id);
         }
+    };
+    // M14：下划线动效挂在菜单 overlay 的 animate 链上（菜单关闭即解除）。
+    menu_.onAnimate = [this, &shell](std::uint64_t nowMs) {
+        return stepUnderline(shell, nowMs);
     };
     shell.controller().addPointerMoveSink(
         [this, &shell](const core::RenderNode& root, core::Offset position) {
@@ -739,9 +1018,57 @@ void MenuBarController::openMenu(app::AppShell& shell, std::size_t index) {
     const core::Rect anchor{core::absoluteOffset(shell.root(), barKey(index)),
                             barItem->size};
     openIndex_ = index;
+    // M14：下划线渐入重新武装（pending：首次 stepUnderline 起表；切换
+    // 顶级菜单 = 重放打开动效——版本 A 契约）。与面板同口径门控——
+    // 未开 motionTransitions 的应用保持静态打开态（直达 1）。
+    underlineFadeMs_ = shell.theme().motion.menuOpenFadeMs;
+    underlineAnim_ = shell.motionEnabled();
+    underlineStarted_ = false;
+    if (!underlineAnim_) {
+        underlineT_ = 1.0F;
+    }
     menu_.setFocusRestoreKey(barKey(index));
     menu_.openAnchored(shell, anchor, std::move(items), submenu_, nullptr,
                        "menubar");
+}
+
+bool MenuBarController::stepUnderline(app::AppShell& shell,
+                                       std::uint64_t nowMs) {
+    if (!underlineAnim_) {
+        return false;
+    }
+    if (!menu_.isOpen()) {
+        underlineAnim_ = false;
+        underlineStarted_ = false;
+        return false;
+    }
+    if (!underlineStarted_) {
+        // pending → 首拍起表：open 后未经 tick 的直驱构建保持终态。
+        underlineStarted_ = true;
+        underlineStartMs_ = nowMs;
+    }
+    const std::uint64_t elapsed =
+        nowMs >= underlineStartMs_ ? nowMs - underlineStartMs_ : 0;
+    const core::Tween tween{0.0, 1.0,
+                            static_cast<double>(underlineFadeMs_),
+                            core::Easing::EaseOut};
+    const float next = static_cast<float>(tween.sample(elapsed));
+    if (next != underlineT_) {
+        underlineT_ = next;
+        shell.markDirty();  // 栏在主树：值变化即重建采样
+    }
+    if (tween.finished(elapsed)) {
+        underlineAnim_ = false;
+        underlineStarted_ = false;
+        return false;
+    }
+    return true;
+}
+
+void MenuBarController::close(app::AppShell& shell) {
+    underlineAnim_ = false;
+    underlineStarted_ = false;
+    menu_.close(shell);
 }
 
 bool MenuBarController::handleKey(app::AppShell& shell, core::Key key,

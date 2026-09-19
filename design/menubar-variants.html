@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen 菜单栏优化设计稿 · 4 版本（含动效）</title>
+<meta name="description" content="Lumen MenuBar 优化设计稿：4 个版本候选（基线精修 / 锚点滑移 / 纵深级联 / 瞬时响应），每版含可交互动效演示与动效参数表，映射到 Tween / MotionTokens / transitionAlpha 既有通道。">
+<style>
+  :root {
+    color-scheme: light;
+    /* 评审板（与 design/menu-controls.html / gallery.html 一致的板面语言） */
+    --board-bg: #e9edf3;
+    --board-grid: rgba(42, 58, 82, .045);
+    --board-ink: #172033;
+    --board-muted: #69758b;
+    --board-line: #d8dee8;
+    --board-card: rgba(255, 255, 255, .86);
+    --board-shadow: 0 24px 70px rgba(31, 48, 77, .12);
+    --board-accent: #2864b7;
+    --board-accent-soft: #e8f0ff;
+    --radius-xl: 24px;
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+    --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    /* 拟真应用：Core Dark（gallery.html 变体 01 的精确 token 值） */
+    --app-bg: #18181b;
+    --app-surface: #27272e;
+    --app-surface-alt: #2e2e36;
+    --app-ink: #f1f1f4;
+    --app-muted: #a1a1aa;
+    --app-line: #3b3b45;
+    --app-accent: #568cf0;
+    --app-accent-content: #a8c5fa;
+    --app-accent-soft: #2e3c60;
+    --card-radius: 8px;
+    --control-radius: 6px;
+    /* 菜单面板（menu.* 组件 token 的 Core Dark 派生值） */
+    --menu-bg: var(--app-surface-alt);
+    --menu-line: var(--app-line);
+    --menu-hover: rgba(255, 255, 255, .055);
+    --menu-current: var(--app-accent-soft);
+    /* ---- 动效参数（4 版本；全部可被「慢放」与 reduceAnimation 缩放/归零） ---- */
+    --mx: 1;                                        /* 慢放倍率（body.slowmo = 4） */
+    --eo: cubic-bezier(.5, 1, .89, 1);              /* ≈ core::Easing::EaseOut（二次） */
+    --eio: cubic-bezier(.65, 0, .35, 1);            /* ≈ core::Easing::EaseInOut（三次） */
+    --mA-open: 120ms; --mA-rise: 120ms; --mA-out: 80ms; --mA-ul: 120ms;
+    --mB-open: 140ms; --mB-slide: 160ms; --mB-cross: 80ms; --mB-crossDelay: 40ms;
+    --mC-open: 150ms; --mC-out: 100ms; --mC-sub: 120ms; --mC-delay: 60ms; --mC-caret: 150ms;
+    --mD-shadow: 80ms; --mD-marquee: 90ms; --mD-flash: 120ms;
+  }
+  body.slowmo { --mx: 4; }
+  * { box-sizing: border-box; }
+  html { min-width: 320px; background: var(--board-bg); }
+  body {
+    margin: 0; min-height: 100vh; color: var(--board-ink);
+    font-family: var(--font-ui);
+    background-color: var(--board-bg);
+    background-image: linear-gradient(var(--board-grid) 1px, transparent 1px), linear-gradient(90deg, var(--board-grid) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  button { font: inherit; }
+  button:focus-visible, [tabindex]:focus-visible, a:focus-visible { outline: 3px solid #4e86db; outline-offset: 3px; }
+
+  .board { width: min(1280px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 48px; }
+  .board-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+  .eyebrow { display: flex; align-items: center; gap: 9px; color: var(--board-accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+  .eyebrow::before { content: ""; width: 22px; height: 2px; background: currentColor; border-radius: 2px; }
+  h1 { margin: 8px 0; max-width: 780px; font-size: clamp(26px, 3vw, 36px); line-height: 1.2; letter-spacing: -.035em; }
+  .lead { max-width: 860px; margin: 0; color: var(--board-muted); font-size: 14px; line-height: 1.6; }
+  .brand-mark { display: grid; place-items: center; width: 40px; height: 40px; color: white; font-size: 20px; font-weight: 900; letter-spacing: -.12em; border-radius: 12px; background: linear-gradient(135deg, #2864b7, #6f9ee8); box-shadow: 0 10px 24px rgba(40, 100, 183, .24); }
+
+  .board-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 0 0 10px; }
+  .tool { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; color: var(--board-ink); border: 1px solid var(--board-line); border-radius: 999px; background: var(--board-card); cursor: pointer; }
+  .tool input { accent-color: var(--board-accent); }
+  .tool-note { color: var(--board-muted); font-size: 12px; }
+  .ver-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 22px; }
+  .ver-nav a { padding: 6px 13px; color: var(--board-accent); font-size: 12.5px; font-weight: 700; text-decoration: none; border: 1px solid #c6d6ee; border-radius: 999px; background: var(--board-accent-soft); transition: background .15s ease, color .15s ease; }
+  .ver-nav a:hover { background: #d6e5fb; }
+
+  .panel { border: 1px solid var(--board-line); border-radius: var(--radius-xl); background: rgba(250, 252, 255, .68); box-shadow: var(--board-shadow); padding: 20px; margin-bottom: 18px; scroll-margin-top: 16px; }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; margin: 0 4px 14px; }
+  .panel-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+  .panel-title .chip { padding: 3px 8px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--board-accent); border: 1px solid #c6d6ee; border-radius: 999px; background: var(--board-accent-soft); }
+  .panel-sub { margin-top: 4px; color: var(--board-muted); font-size: 12.5px; }
+  .replay { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; color: var(--board-accent); font-size: 12.5px; font-weight: 700; border: 1px solid #c6d6ee; border-radius: 999px; background: #fff; cursor: pointer; transition: background .15s ease; }
+  .replay:hover { background: var(--board-accent-soft); }
+  .panel-body { display: grid; gap: 16px; grid-template-columns: minmax(0, 490px) minmax(0, 1fr); align-items: start; }
+  @media (max-width: 940px) { .panel-body { grid-template-columns: 1fr; } }
+
+  /* ===== 拟真应用窗口（Core Dark，四版本共用骨架） ===== */
+  .app-window { position: relative; border-radius: 16px; overflow: hidden; background: var(--app-bg); color: var(--app-ink); box-shadow: 0 20px 48px rgba(7, 8, 14, .2); }
+  .app-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; padding: 12px 20px; border-bottom: 1px solid var(--app-line); background: var(--app-surface); }
+  .app-brand { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; font-weight: 650; }
+  .app-brand .brand-mini { flex: 0 0 28px; display: grid; place-items: center; height: 28px; color: #000; font-size: 14px; font-weight: 800; border-radius: 7px; background: var(--app-accent); }
+  .app-brand span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-actions { display: flex; align-items: center; gap: 4px; }
+  .win-btn { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--app-muted); cursor: pointer; border: 1px solid transparent; border-radius: 6px; background: transparent; transition: color .16s ease, background .16s ease, border-color .16s ease; }
+  .win-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .win-btn:hover { color: var(--app-ink); border-color: var(--app-line); background: var(--app-surface-alt); }
+  .win-btn.close:hover { color: #b4233c; border-color: rgba(180, 35, 60, .3); background: rgba(180, 35, 60, .1); }
+  .app-window-content { display: flex; flex-direction: column; gap: 10px; padding: 14px; min-height: 340px; }
+
+  /* 通用内容行（Medium 40px） */
+  .row-list { display: grid; gap: 0; background: var(--app-surface); border: 1px solid var(--app-line); border-radius: var(--card-radius); overflow: hidden; }
+  .crow { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 12px; font-size: 13.5px; border-bottom: 1px solid var(--app-line); }
+  .crow:last-child { border-bottom: 0; }
+  .crow .glyph { flex: 0 0 18px; display: grid; place-items: center; color: var(--app-muted); }
+  .crow .glyph svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .crow .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crow .meta { flex-shrink: 0; color: var(--app-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .crow.is-selected { background: var(--app-accent-soft); }
+
+  .demo-hint { display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 8px 12px; color: var(--app-accent-content); font-size: 12px; border: 1px dashed rgba(86, 140, 240, .5); border-radius: var(--control-radius); background: rgba(86, 140, 240, .08); }
+  .demo-hint svg { flex-shrink: 0; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ===== 菜单栏与面板（四版本共用基础形态） ===== */
+  .menubar { position: relative; display: flex; align-items: stretch; gap: 2px; min-height: 40px; padding: 0 8px; background: var(--app-surface); border-bottom: 1px solid var(--app-line); }
+  .mb-anchor { position: relative; display: flex; align-items: stretch; }
+  .mb-item { position: relative; display: flex; align-items: center; min-height: 32px; margin: 4px 0; padding: 4px 12px; color: var(--app-ink); font-size: 13px; border: 0; border-radius: var(--control-radius); background: transparent; cursor: pointer; transition: background calc(120ms * var(--mx)) var(--eo), color calc(120ms * var(--mx)) var(--eo); }
+  .mb-item:hover { background: var(--menu-hover); }
+  .mb-item u { text-decoration-thickness: 2px; text-underline-offset: 3px; } /* mnemonic 下划线仅为演示（实现侧 §14.2 首版不渲染） */
+
+  .menu { position: absolute; z-index: 40; min-width: 220px; max-width: 320px; padding: 4px; color: var(--app-ink); font-size: 13px; background: var(--menu-bg); border: 1px solid var(--menu-line); border-radius: var(--card-radius); box-shadow: 0 4px 12px rgba(0, 0, 0, .45), 0 12px 32px rgba(0, 0, 0, .25); }
+  .mb-anchor > .menu { top: calc(100% + 4px); left: 0; }
+  .mi { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 4px 12px; color: inherit; text-align: left; border: 0; border-radius: var(--control-radius); background: transparent; cursor: pointer; transition: background calc(120ms * var(--mx)) var(--eo); }
+  .mi:hover { background: var(--menu-hover); }
+  .mi .slot { flex: 0 0 20px; display: grid; place-items: center; color: var(--app-muted); }
+  .mi .slot svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .mi .slot .check { color: var(--app-accent-content); }
+  .mi .mlabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mi .sc { flex-shrink: 0; margin-left: 24px; color: var(--app-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mi .subchev { flex: 0 0 16px; display: grid; place-items: center; margin-left: 12px; color: var(--app-muted); }
+  .mi .subchev svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .mi.is-disabled { color: rgba(241, 241, 244, .4); cursor: default; }
+  .mi.is-disabled .slot, .mi.is-disabled .subchev, .mi.is-disabled .sc { color: rgba(241, 241, 244, .3); }
+  .mi.is-disabled:hover { background: transparent; }
+  .msep { height: 1px; margin: 4px 8px; background: var(--app-line); }
+  .submenu-anchor { position: relative; }
+  .submenu-anchor > .menu { top: -5px; left: calc(100% - 6px); min-width: 180px; }
+  .submenu-anchor.flip > .menu { left: auto; right: calc(100% - 6px); } /* 右缘不足翻左（§6.3 钳制演示） */
+
+  /* ============ 版本 A · 基线精修 ============ */
+  .vA .mb-anchor::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 1px 1px 0 0; background: var(--app-accent); transform: scaleX(0); transform-origin: center; transition: transform calc(var(--mA-ul) * var(--mx)) var(--eo); }
+  .vA .mb-anchor.is-open::after { transform: scaleX(1); }
+  .vA .mb-anchor.is-open .mb-item { background: var(--app-accent-soft); }
+  .vA .menu { opacity: 0; visibility: hidden; transform: translateY(6px); pointer-events: none; transition: opacity calc(var(--mA-out) * var(--mx)) var(--eo), transform 0s calc(var(--mA-out) * var(--mx)), visibility 0s calc(var(--mA-out) * var(--mx)); }
+  .vA .submenu-anchor > .menu { transform: translateX(4px); }
+  .vA .menu.is-open, .vA .submenu-anchor:hover > .menu { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: opacity calc(var(--mA-open) * var(--mx)) var(--eo), transform calc(var(--mA-rise) * var(--mx)) var(--eo), visibility 0s; }
+
+  /* ============ 版本 B · 锚点滑移 ============ */
+  .vB .menubar { gap: 4px; }
+  .vB .mb-item { position: relative; z-index: 1; }
+  .vB .mb-pill { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 8px; width: 60px; border-radius: var(--control-radius); background: var(--app-accent-soft); opacity: 0; transition: left calc(var(--mB-slide) * var(--mx)) var(--eio), width calc(var(--mB-slide) * var(--mx)) var(--eio), opacity calc(var(--mB-slide) * var(--mx)) var(--eo); }
+  .vB .menubar.is-open .mb-pill { opacity: 1; }
+  .vB .mb-anchor.is-open .mb-item { color: var(--app-accent-content); }
+  .vB .menu { opacity: 0; visibility: hidden; transform: translateY(4px); pointer-events: none; transition: opacity calc(var(--mB-cross) * var(--mx)) var(--eo), transform 0s calc(var(--mB-cross) * var(--mx)), visibility 0s calc(var(--mB-cross) * var(--mx)); }
+  .vB .submenu-anchor > .menu { transform: translateX(10px); }
+  .vB .menu.is-open, .vB .submenu-anchor:hover > .menu { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: opacity calc(var(--mB-open) * var(--mx)) var(--eo), transform calc(var(--mB-open) * var(--mx)) var(--eo), visibility 0s; }
+  .vB .mB-panel { display: grid; top: calc(100% + 4px); left: 8px; width: 264px; min-width: 0; max-width: none; }
+  .vB .mB-panel.is-open { transition: opacity calc(var(--mB-open) * var(--mx)) var(--eo), transform calc(var(--mB-open) * var(--mx)) var(--eo), left calc(var(--mB-slide) * var(--mx)) var(--eio), visibility 0s; }
+  .mB-view { grid-area: 1 / 1; opacity: 0; pointer-events: none; transition: opacity calc(var(--mB-cross) * var(--mx)) var(--eo); }
+  .mB-view.active { opacity: 1; pointer-events: auto; transition: opacity calc(var(--mB-cross) * var(--mx)) var(--eo) calc(var(--mB-crossDelay) * var(--mx)); }
+
+  /* ============ 版本 C · 纵深级联 ============ */
+  .vC .mb-anchor.is-open .mb-item { background: var(--app-accent-soft); }
+  .vC .mb-item .caret { display: grid; place-items: center; margin-left: 7px; color: var(--app-muted); }
+  .vC .mb-item .caret svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform calc(var(--mC-caret) * var(--mx)) var(--eo); }
+  .vC .mb-anchor.is-open .caret svg { transform: rotate(180deg); }
+  .vC .menu { transform-origin: 0 0; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity calc(var(--mC-out) * var(--mx)) var(--eo), transform 0s calc(var(--mC-out) * var(--mx)), visibility 0s calc(var(--mC-out) * var(--mx)); }
+  .vC .mb-anchor > .menu { transform: scale(.96); }
+  .vC .submenu-anchor > .menu { transform: translateX(12px); top: -6px; } /* 级联上叠父面板 -6px */
+  .vC .menu.is-open, .vC .submenu-anchor:hover > .menu { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: opacity calc(var(--mC-open) * var(--mx)) var(--eo), transform calc(var(--mC-open) * var(--mx)) var(--eo), visibility 0s; }
+  .vC .submenu-anchor:hover > .menu { transition-delay: calc(var(--mC-delay) * var(--mx)); }
+
+  /* ============ 版本 D · 瞬时响应 ============ */
+  .vD .mb-item { transition: color calc(80ms * var(--mx)) var(--eo); }
+  .vD .mb-item:hover { background: transparent; color: var(--app-ink); }
+  .vD .mb-anchor::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 1px 1px 0 0; background: var(--app-accent); transform: scaleX(0); }
+  .vD .mb-anchor.is-open::after { transform: scaleX(1); }        /* 0ms 即现，无过渡 */
+  .vD .mb-anchor.is-open .mb-item { color: var(--app-accent-content); }
+  .vD .menu { opacity: 1; visibility: hidden; pointer-events: none; box-shadow: 0 1px 3px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .2); transition: box-shadow calc(var(--mD-shadow) * var(--mx)) var(--eo), visibility 0s; }
+  .vD .menu.is-open, .vD .submenu-anchor:hover > .menu { visibility: visible; pointer-events: auto; box-shadow: 0 4px 12px rgba(0, 0, 0, .45), 0 12px 32px rgba(0, 0, 0, .25); } /* 阴影 L1→L2 ramp，内容 0ms 即现 */
+  .vD .mi { transition: none; }
+  .vD .menu > .mi, .vD .menu > .submenu-anchor, .vD .menu > .msep { position: relative; z-index: 1; }
+  .vD .menu > .mi:hover, .vD .menu > .submenu-anchor > .mi:hover { background: transparent; } /* 高亮交给动能矩形 */
+  .vD .submenu-anchor > .menu .mi:hover { background: var(--menu-hover); }
+  .marquee { position: absolute; z-index: 0; left: 4px; right: 4px; top: 4px; height: 32px; border-radius: var(--control-radius); background: var(--menu-current); box-shadow: inset 0 0 0 2px var(--app-accent); transition: top calc(var(--mD-marquee) * var(--mx)) var(--eo), height calc(var(--mD-marquee) * var(--mx)) var(--eo), background calc(var(--mD-flash) * var(--mx)) ease; }
+  .vD .menu.is-flash .marquee { background: #3d5380; } /* 激活闪 120ms 后关闭 */
+
+  /* ===== 注释与表格 ===== */
+  .callouts { display: grid; gap: 10px; }
+  .callout { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 12px 14px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--board-card); font-size: 12.5px; }
+  .callout .no { display: grid; place-items: center; width: 22px; height: 22px; color: var(--board-accent); font-size: 11px; font-weight: 800; border: 1.5px solid currentColor; border-radius: 50%; }
+  .callout strong { color: var(--board-ink); }
+  .callout span { color: var(--board-muted); line-height: 1.55; }
+
+  table.spec { width: 100%; border-collapse: collapse; background: var(--board-card); border: 1px solid var(--board-line); border-radius: var(--radius-md); overflow: hidden; font-size: 12.5px; }
+  table.spec caption { caption-side: top; text-align: left; padding: 0 4px 8px; color: var(--board-muted); font-size: 12px; font-weight: 650; }
+  table.spec th, table.spec td { padding: 8px 12px; border-bottom: 1px solid var(--board-line); text-align: left; vertical-align: top; line-height: 1.5; }
+  table.spec tr:last-child td { border-bottom: 0; }
+  table.spec thead th { color: var(--board-muted); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: rgba(23, 32, 51, .03); }
+  table.spec td code, table.spec td kbd { padding: 1px 6px; font-size: 11.5px; border: 1px solid var(--board-line); border-radius: 5px; background: #fff; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  kbd { box-shadow: 0 1.5px 0 var(--board-line); }
+  table.motion { margin-top: 14px; }
+
+  .mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 14px; }
+  .mode-card { padding: 12px 14px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--board-card); font-size: 12.5px; }
+  .mode-card h4 { margin: 0 0 6px; font-size: 12.5px; }
+  .mode-card p { margin: 0; color: var(--board-muted); line-height: 1.55; }
+  .recommend { margin-top: 14px; padding: 14px 16px; border: 1.5px solid #b9cff0; border-radius: var(--radius-md); background: var(--board-accent-soft); font-size: 13px; line-height: 1.75; color: #1d3a63; }
+  .recommend strong { color: #17406e; }
+
+  footer { margin-top: 26px; color: var(--board-muted); font-size: 12px; text-align: center; line-height: 1.7; }
+  footer code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+
+  /* 页面自身对系统 reduce motion 的呼应（评审板层；控件层的等价物 = MotionTokens::reduceAnimation） */
+  @media (prefers-reduced-motion: reduce) {
+    .menu, .mi, .mb-item, .mb-pill, .mB-view, .marquee, .vC .caret svg, .vA .mb-anchor::after, .vD .mb-anchor::after { transition: none !important; transition-delay: 0s !important; }
+  }
+</style>
+</head>
+<body>
+<div class="board">
+
+  <header class="board-header">
+    <div>
+      <div class="eyebrow">Lumen Control Design · MenuBar Optimization</div>
+      <h1>菜单栏优化设计稿：4 个版本（含动效）</h1>
+      <p class="lead">在 <code>docs/lumen-menu-controls-design.md</code> §10.4 既有 MenuBar 视觉（Ghost 栏项 + Tonal 打开态 + 120ms 淡入）基础上，给出四个优化方向候选。四版本共用同一面板规格、键盘/语义契约与「零新增 WidgetType / RenderCommand」不变量，差异集中在<strong>栏形态与动效语言</strong>；每版含可交互演示与动效参数表（时长/曲线均映射到 <code>core::Tween</code> 与 <code>MotionTokens</code> 既有通道，<code>reduceAnimation</code> 一键归零）。落地建议见文末对比矩阵。</p>
+      <p class="lead" style="margin-top:8px; padding:10px 14px; border:1.5px solid #b9cff0; border-radius:10px; background:var(--board-accent-soft); color:#1d3a63;"><strong>实现状态（2026-09-18）：</strong>已按文末建议落地 <strong>A + D</strong> 组合（<code>menuOpenFadeMs=120</code> 淡入+上升/级联滑入、<code>menuHighlightSlideMs=90</code> 高亮动能矩形、栏 Tonal + 下划线渐入），实现口径见 <code>docs/lumen-self-use-roadmap.md</code> 菜单动效完成记录。实现侧等价表达与取舍：下划线以透明度渐入替代 scaleX 生长（transform 通道未接线）；关闭即时不出场淡出（不延迟命令分发）；激活闪烁未实现；B 列 P2、C 待通道激活。</p>
+    </div>
+    <div class="brand-mark">L</div>
+  </header>
+
+  <div class="board-tools">
+    <label class="tool"><input type="checkbox" id="slowmo"> 慢放 4×（动效评审）</label>
+    <span class="tool-note">演示：点击栏项打开 · 打开后 hover 相邻栏项切换 · Esc / 点击空白关闭 · 勾选项原地翻转（不关菜单）</span>
+  </div>
+  <nav class="ver-nav">
+    <a href="#ver-a">A 基线精修</a>
+    <a href="#ver-b">B 锚点滑移</a>
+    <a href="#ver-c">C 纵深级联</a>
+    <a href="#ver-d">D 瞬时响应</a>
+    <a href="#compare">对比与建议</a>
+  </nav>
+
+  <!-- ============ 版本 A ============ -->
+  <section class="panel vA" id="ver-a">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">版本 A · 基线精修 <span class="chip">低成本 · 直接落地</span></div>
+        <div class="panel-sub">保留 Ghost 栏项与 Tonal 打开态 · 新增锚定下划线（120ms 中心生长）· 面板打开 = 淡入 120ms + 6px 上升 EaseOut · 关闭仅淡出 80ms</div>
+      </div>
+      <button class="replay" id="replay-A" type="button">↻ 重播动效</button>
+    </div>
+    <div class="panel-body">
+      <div class="app-window" id="mockA"></div>
+      <div class="callouts">
+        <div class="callout"><span class="no">1</span><div><strong>形态：打开态从「仅背景」到「背景 + 位置」</strong> <span>保留 Ghost 栏项与 Tonal 打开态不动，新增 2px accent 下划线锚定打开项（宽度≈栏项文字区，中心生长）——hover 切换时视线跟随下划线即可定位，长栏辨识度提升。</span></div></div>
+        <div class="callout"><span class="no">2</span><div><strong>动效：升起淡入、关闭不坠落</strong> <span>打开 = fade 120ms（<code>menu.open.fadeMs</code> 既有 token）+ 6px 上升 EaseOut；关闭仅淡出 80ms、无位移——避免「菜单掉下去」的错觉；顶级切换 = 重新锚定并重放打开动效。</span></div></div>
+        <div class="callout"><span class="no">3</span><div><strong>成本最低</strong> <span>fade 走 <code>transitionAlpha</code> 现成通道（M10）；上升是打开帧内的一次性偏移采样（Tween 持钟）；下划线为栏内单元素重排采样。零新增渲染能力、零新增命令，可直接并入下一版默认行为。</span></div></div>
+      </div>
+    </div>
+    <table class="spec motion">
+      <caption>版本 A 动效规格 · 时长经 MotionTokens 派生，reduceAnimation 归零</caption>
+      <thead><tr><th style="width:150px;">动效</th><th style="width:280px;">参数 / 曲线</th><th>Lumen 实现映射</th></tr></thead>
+      <tbody>
+        <tr><td>栏项打开下划线</td><td>120ms · EaseOut · scaleX 0→1（中心生长）</td><td>栏内单元素：Tween 采样重排（<code>kDurationFastMs</code> 档）</td></tr>
+        <tr><td>面板打开</td><td>fade 120ms + translateY 6px→0 · EaseOut</td><td>fade = <code>transitionAlpha</code>（M10 现成）；上升 = 打开帧偏移采样</td></tr>
+        <tr><td>面板关闭</td><td>仅 fade 80ms（无位移）</td><td><code>transitionAlpha</code></td></tr>
+        <tr><td>子菜单级联</td><td>fade 120ms + 4px 右移 · EaseOut</td><td>同面板路径（懒构建后同动效）</td></tr>
+        <tr><td>顶级切换</td><td>无连续动效：重新锚定 + 重放打开动效</td><td>overlay 重建（既有路径）</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ 版本 B ============ -->
+  <section class="panel vB" id="ver-b">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">版本 B · 锚点滑移 <span class="chip">连续性 · P2 演进</span></div>
+        <div class="panel-sub">栏指示器 = 单 pill 滑移（160ms EaseInOut）· 面板跨栏连续滑移 + 内容交叉淡入（80ms/80ms）· 打开 = 淡入 140ms + 4px 上升</div>
+      </div>
+      <button class="replay" id="replay-B" type="button">↻ 重播动效</button>
+    </div>
+    <div class="panel-body">
+      <div class="app-window" id="mockB"></div>
+      <div class="callouts">
+        <div class="callout"><span class="no">1</span><div><strong>形态：指示器收敛为单 pill</strong> <span>栏项不再逐个换背景——一条 accent-soft pill 在栏项间滑移（left/width 160ms EaseInOut），栏项本体仅文字变 accent-content。栏视觉更轻，「当前在哪」由一个运动元素连续表达。</span></div></div>
+        <div class="callout"><span class="no">2</span><div><strong>动效：切换不重建面板</strong> <span>Left/Right 或 hover 切换顶级菜单时面板不关闭重开——整体滑至新锚点（160ms EaseInOut），内容交叉淡入（旧 80ms 出 / 新 80ms 入、入延迟 40ms），pill 同步滑移。拖过栏即「浏览」，连续感最强。</span></div></div>
+        <div class="callout"><span class="no">3</span><div><strong>成本中等，建议 P2</strong> <span>需要 overlay 每帧重定位（<code>setOverlayBuilder</code> 重求值路径）与双层内容透明度——M11 路径全部现成，但连续重排的 damage 口径需要专门打磨与测试。</span></div></div>
+      </div>
+    </div>
+    <table class="spec motion">
+      <caption>版本 B 动效规格 · 时长经 MotionTokens 派生，reduceAnimation 归零</caption>
+      <thead><tr><th style="width:150px;">动效</th><th style="width:280px;">参数 / 曲线</th><th>Lumen 实现映射</th></tr></thead>
+      <tbody>
+        <tr><td>栏 pill 指示器</td><td>160ms · EaseInOut · left/width 滑移</td><td>栏内单元素：Tween 采样重排（<code>kDurationNormalMs</code> 档）</td></tr>
+        <tr><td>面板打开</td><td>fade 140ms + translateY 4px→0 · EaseOut</td><td><code>transitionAlpha</code> + 偏移采样</td></tr>
+        <tr><td>顶级切换（面板滑移）</td><td>面板 left 滑至新锚点 160ms · EaseInOut</td><td>overlay 每帧重定位（<code>setOverlayBuilder</code> 重求值）</td></tr>
+        <tr><td>内容交叉淡入</td><td>旧 80ms 出 / 新 80ms 入（入延迟 40ms）</td><td>双层 <code>transitionAlpha</code>（同 tooltip 淡入淡出模式）</td></tr>
+        <tr><td>子菜单级联</td><td>fade 120ms + 10px 右移 · EaseOut</td><td>同面板路径</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ 版本 C ============ -->
+  <section class="panel vC" id="ver-c">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">版本 C · 纵深级联 <span class="chip">层级感 · 依赖 transform 通道</span></div>
+        <div class="panel-sub">面板自锚点左下「生长」（scale 0.96→1 · 150ms EaseOut）· 子菜单上叠 -6px、elevation 逐级 +1、级联延迟 60ms · 栏项 caret 打开时旋转 180°</div>
+      </div>
+      <button class="replay" id="replay-C" type="button">↻ 重播动效</button>
+    </div>
+    <div class="panel-body">
+      <div class="app-window" id="mockC"></div>
+      <div class="callouts">
+        <div class="callout"><span class="no">1</span><div><strong>形态：生长方向与锚定关系一致</strong> <span>面板以栏项左下为原点从 0.96 生长到 1（fade 150ms 同步），打开方向即面板来源方向；子菜单上叠父面板 -6px 且 elevation 逐级 +1（L2→L3）——层级表达最强，最接近 macOS 语感。</span></div></div>
+        <div class="callout"><span class="no">2</span><div><strong>动效：级联时序可读</strong> <span>子菜单 fade 120ms + 12px 右移、延迟 60ms 展开——深层菜单「接续而来」而非同时闪现；栏项 caret 旋转 150°/180° 段作为打开信号。关闭仅淡出 100ms。</span></div></div>
+        <div class="callout"><span class="no">3</span><div><strong>依赖最强：scale/rotate 通道</strong> <span>scale 与旋转依赖 <code>RenderCommand.transform</code>（v0.2 预留字段，未接线）——需先激活该通道，或以尺寸插值重排近似（成本高、文字缩放失真）；caret 可降级为两态图标（上/下各一帧）。四版本中唯一需要渲染层增量者。</span></div></div>
+      </div>
+    </div>
+    <table class="spec motion">
+      <caption>版本 C 动效规格 · 时长经 MotionTokens 派生，reduceAnimation 归零</caption>
+      <thead><tr><th style="width:150px;">动效</th><th style="width:280px;">参数 / 曲线</th><th>Lumen 实现映射</th></tr></thead>
+      <tbody>
+        <tr><td>面板打开（生长）</td><td>scale 0.96→1（原点=锚点左下）+ fade · 150ms EaseOut</td><td><code>RenderCommand.transform</code> 预留通道（需激活）或尺寸插值近似</td></tr>
+        <tr><td>栏项 caret</td><td>rotate 0→180° · 150ms EaseOut</td><td>transform 通道；可降级两态图标（上下各一帧）</td></tr>
+        <tr><td>子菜单级联</td><td>fade 120ms + 12px 右移 · 延迟 60ms · EaseOut</td><td><code>transitionAlpha</code> + 延迟采样（<code>Tween</code> 起点偏移）</td></tr>
+        <tr><td>级联重叠（非动效）</td><td>子面板上叠父面板 -6px · elevation +1/级</td><td>布局常量 + <code>DrawShadow</code> 既有（L2→L3）</td></tr>
+        <tr><td>面板关闭</td><td>仅 fade 100ms（无缩放回收）</td><td><code>transitionAlpha</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ 版本 D ============ -->
+  <section class="panel vD" id="ver-d">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">版本 D · 瞬时响应 <span class="chip">零延迟 · 键盘重度</span></div>
+        <div class="panel-sub">内容首帧即现（0ms）· 仅阴影 80ms ramp（L1→L2）· 键盘高亮 = 动能矩形滑移 90ms EaseOut · 栏 hover 不换背景、下划线 0ms 即现</div>
+      </div>
+      <button class="replay" id="replay-D" type="button">↻ 重播动效</button>
+    </div>
+    <div class="panel-body">
+      <div class="app-window" id="mockD"></div>
+      <div class="callouts">
+        <div class="callout"><span class="no">1</span><div><strong>形态：为感知延迟做减法</strong> <span>面板内容首帧即现（无淡入），仅阴影在 80ms 内从小档升到 L2；栏 hover 只变文字色不换背景，打开下划线 0ms 即现——高频/键盘用户与低端机上的「点了就到」。</span></div></div>
+        <div class="callout"><span class="no">2</span><div><strong>动效：集中在「移动的高亮」</strong> <span>键盘/指针高亮 = 一块动能矩形在项间滑移（90ms EaseOut、跨分隔线高度变形，Windows 11 marquee 同源）——视线跟随单元素运动的成本低于逐项闪变；激活 = 高亮闪 120ms 后关闭。</span></div></div>
+        <div class="callout"><span class="no">3</span><div><strong>成本最低、兼容最好</strong> <span>全部动效 = 单个高亮矩形的重排采样（现成模式）+ 阴影参数插值（<code>DrawShadow</code> 既有）；零新增通道，且天然最接近 <code>reduceAnimation</code> 形态——也可作为 MotionPref「instant」档的实现蓝本。</span></div></div>
+      </div>
+    </div>
+    <table class="spec motion">
+      <caption>版本 D 动效规格 · 时长经 MotionTokens 派生，reduceAnimation 归零</caption>
+      <thead><tr><th style="width:150px;">动效</th><th style="width:280px;">参数 / 曲线</th><th>Lumen 实现映射</th></tr></thead>
+      <tbody>
+        <tr><td>面板打开</td><td>内容 0ms 即现 · 仅阴影 80ms ramp（L1→L2）</td><td><code>transitionAlpha</code> 恒 1；阴影参数插值（<code>DrawShadow</code> 既有）</td></tr>
+        <tr><td>高亮矩形滑移</td><td>top/height 90ms · EaseOut · 跨 separator 高度变形</td><td>单矩形 Tween 采样重排（<code>kDurationFastMs</code> 档）</td></tr>
+        <tr><td>栏打开下划线</td><td>0ms 即现（无过渡）</td><td>—</td></tr>
+        <tr><td>激活闪烁</td><td>高亮背景闪 120ms 后关闭</td><td><code>transitionAlpha</code>/背景插值</td></tr>
+        <tr><td>reduceAnimation</td><td>天然合规（本版本≈零动效）</td><td><code>MotionTokens::reduceAnimation</code> 既有规则</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ 对比与建议 ============ -->
+  <section class="panel" id="compare">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">对比矩阵与落地建议</div>
+        <div class="panel-sub">四版本共享面板尺度（§10.1）、键盘契约（§6.4）、语义契约（§8）与零新增不变量 · 差异仅在栏形态与动效语言</div>
+      </div>
+    </div>
+    <table class="spec">
+      <thead><tr><th style="width:120px;">版本</th><th style="width:130px;">方向</th><th>打开 / 切换动效</th><th style="width:250px;">实现通道</th><th style="width:70px;">成本</th><th style="width:190px;">建议</th></tr></thead>
+      <tbody>
+        <tr><td><strong>A 基线精修</strong></td><td>打开态指示补齐</td><td>升起淡入 120ms；下划线中心生长；切换重放打开动效</td><td><code>transitionAlpha</code> + 一次性偏移采样（全现成）</td><td>低</td><td>默认采纳</td></tr>
+        <tr><td><strong>B 锚点滑移</strong></td><td>连续性优先</td><td>pill 滑移 160ms；面板跨锚点滑移 + 内容交叉淡入</td><td>overlay 重定位采样 + 双层 <code>transitionAlpha</code></td><td>中</td><td>P2 演进（体验最佳）</td></tr>
+        <tr><td><strong>C 纵深级联</strong></td><td>层级表达</td><td>锚点生长 150ms；级联延迟 60ms；caret 旋转</td><td>scale/rotate 依赖 <code>transform</code> 预留通道</td><td>中高</td><td>通道激活后再评估</td></tr>
+        <tr><td><strong>D 瞬时响应</strong></td><td>感知延迟最低</td><td>内容 0ms；高亮动能滑移 90ms；激活闪 120ms</td><td>单矩形重排采样 + 阴影插值（现成）</td><td>低</td><td>并入默认（高亮滑移）</td></tr>
+      </tbody>
+    </table>
+    <div class="recommend">
+      <strong>建议组合落地：</strong>默认形态取 <strong>A</strong>（下划线打开态 + 升起淡入），并把 <strong>D</strong> 的高亮动能滑移并入同一版交付——两者通道全部现成，合并成本 ≈ 单独做 A；<strong>B</strong> 的 pill 滑移与面板连续切换体验最佳，列为 P2（需打磨 overlay 连续重定位的 damage 口径）；<strong>C</strong> 依赖 <code>RenderCommand.transform</code> 预留通道激活，暂缓。所有版本动效时长经 <code>MotionTokens</code> 派生，<code>reduceAnimation</code> 一键归零（本页评审板亦响应系统 reduce motion）。<br><strong>✅ 已按此建议实现 A+D（2026-09-18）</strong>——详见页首实现状态说明。
+    </div>
+    <div class="mode-grid">
+      <div class="mode-card"><h4>通道 1 · fade / 透明度（现成）</h4><p><code>Widget.transitionAlpha</code>（M10 转场通道）：A/B/C 的淡入淡出、B 的内容交叉、D 的激活闪烁。<code>menu.open.fadeMs = 120</code> 既有先例。</p></div>
+      <div class="mode-card"><h4>通道 2 · 位移 / 尺寸（现成）</h4><p>控制器持钟 <code>core::Tween</code> 采样 + 每帧 overlay 重排（<code>setOverlayBuilder</code> 重求值）：上升/右移、B 的 pill 与面板滑移、D 的高亮矩形、A 的下划线。</p></div>
+      <div class="mode-card"><h4>通道 3 · scale / rotate（预留未接线）</h4><p><code>RenderCommand.transform</code> 为 v0.2 预留字段：C 的生长与 caret 旋转需要先激活该通道；尺寸插值重排可近似但有文字失真。</p></div>
+      <div class="mode-card"><h4>通道 4 · reduceAnimation（既有规则）</h4><p><code>MotionTokens::reduceAnimation</code> 全部时长归零、FrameScheduler 不空转（M12 规则）；四版本的动效均只做「表达增强」，不承载信息——归零不损失可用性。</p></div>
+    </div>
+    <footer style="text-align:left; margin-top:16px;">
+      配套：<code>docs/lumen-menu-controls-design.md</code>（§10.4 MenuBar 视觉 → 本稿为其优化候选） · 现行设计稿 <code>design/menu-controls.html</code> · 动效映射 <code>core::Tween</code>（<code>Easing::{EaseOut, EaseInOut}</code>）· <code>MotionTokens</code>（<code>kDurationFastMs=100 / kDurationNormalMs=200</code> 档）· 面板行高示例取 Small 32px 档（§3.2）· mnemonic 下划线仅为演示（实现侧首版不渲染，§14.2）
+    </footer>
+  </section>
+
+  <footer>
+    Lumen Control Design · MenuBar Optimization · 2026-09 · 零新增 WidgetType / RenderCommand 不变量保持
+  </footer>
+</div>
+
+<noscript><div style="padding:16px; text-align:center; color:#8b2525; font-family:sans-serif;">本设计稿的四个版本演示需要启用 JavaScript。</div></noscript>
+
+<script>
+// 演示交互（设计稿演示用；真实实现见 docs/lumen-menu-controls-design.md §6/§7 与各版本动效表）
+(function () {
+  'use strict';
+
+  var ICONS = {
+    check: '<svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg>',
+    chev: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+    caret: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
+    doc: '<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>',
+    folder: '<svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+    download: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>',
+    sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    plus: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6"/><path d="M20 20l-3.5-3.5"/></svg>',
+    minus: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M8 11h6"/><path d="M20 20l-3.5-3.5"/></svg>',
+    reset: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></svg>'
+  };
+
+  // 四版本共用同一菜单数据（对比公平；栏项 mnemonic 下划线仅为演示）
+  var MENUS = [
+    { title: '文件', mnemonic: 'F', items: [
+      { label: '新建窗口', sc: 'Ctrl+N' },
+      { label: '打开…', icon: 'download', sc: 'Ctrl+O' },
+      { sep: true },
+      { label: '保存', sc: 'Ctrl+S' },
+      { label: '另存为…', sc: 'Ctrl+Shift+S', disabled: true },
+      { sep: true },
+      { label: '退出', sc: 'Ctrl+Q' }
+    ] },
+    { title: '编辑', mnemonic: 'E', items: [
+      { label: '撤销', sc: 'Ctrl+Z' },
+      { label: '重做', sc: 'Ctrl+Shift+Z', disabled: true },
+      { sep: true },
+      { label: '剪切', sc: 'Ctrl+X' },
+      { label: '复制', sc: 'Ctrl+C' },
+      { label: '粘贴', sc: 'Ctrl+V' },
+      { sep: true },
+      { label: '全选', sc: 'Ctrl+A' }
+    ] },
+    { title: '视图', mnemonic: 'V', items: [
+      { label: '显示侧栏', check: true, sc: 'Ctrl+B' },
+      { label: '显示状态栏', check: true },
+      { sep: true },
+      { label: '密度', sub: [
+        { label: '紧凑（32px）' },
+        { label: '舒适（40px）', check: true },
+        { label: '触摸（48px）' }
+      ], flip: true },
+      { label: '主题', icon: 'sun', sub: [
+        { label: '跟随系统', check: true },
+        { label: '浅色' },
+        { label: '深色' }
+      ], flip: true },
+      { sep: true },
+      { label: '放大', icon: 'plus', sc: 'Ctrl+=' },
+      { label: '缩小', icon: 'minus', sc: 'Ctrl+-' },
+      { label: '重置缩放', icon: 'reset', sc: 'Ctrl+0' }
+    ] }
+  ];
+
+  var WINBTNS =
+    '<button class="win-btn" aria-label="最小化"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>' +
+    '<button class="win-btn" aria-label="最大化"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>' +
+    '<button class="win-btn close" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
+
+  var ROWS =
+    '<div class="crow"><span class="glyph">' + ICONS.doc + '</span><span class="name">menubar-variants.html</span><span class="meta">2026-09-18</span></div>' +
+    '<div class="crow is-selected"><span class="glyph">' + ICONS.doc + '</span><span class="name">lumen-menu-controls-design.md</span><span class="meta">2026-09-17</span></div>' +
+    '<div class="crow"><span class="glyph">' + ICONS.folder + '</span><span class="name">design/</span><span class="meta">10 项</span></div>' +
+    '<div class="crow"><span class="glyph">' + ICONS.doc + '</span><span class="name">lumen-visual-system-design.md</span><span class="meta">2026-09-13</span></div>';
+
+  function el(tag, cls, html) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+  function slotHtml(it) {
+    if (it.check) return '<span class="check">' + ICONS.check + '</span>';
+    if (it.icon) return ICONS[it.icon];
+    return '';
+  }
+  function miHtml(it) {
+    return '<span class="slot">' + slotHtml(it) + '</span><span class="mlabel">' + it.label + '</span>' +
+      (it.sc ? '<span class="sc">' + it.sc + '</span>' : '');
+  }
+
+  var controllers = [];
+
+  function buildMock(id, variant, autoDelay) {
+    var root = document.getElementById(id);
+    var ctrl = { variant: variant, open: -1, last: 2, root: root };
+    controllers.push(ctrl);
+
+    root.appendChild(el('div', 'app-topbar',
+      '<div class="app-brand"><span class="brand-mini">L</span><span>lumen · 工具窗 — 菜单栏优化 ' + variant + '</span></div>' +
+      '<div class="app-actions">' + WINBTNS + '</div>'));
+
+    var bar = el('div', 'menubar');
+    var anchors = [];
+    MENUS.forEach(function (m) {
+      var a = el('div', 'mb-anchor');
+      var btn = el('button', 'mb-item', '<u>' + m.title[0] + '</u>' + m.title.slice(1) + '(' + m.mnemonic + ')');
+      if (variant === 'C') btn.insertAdjacentHTML('beforeend', '<span class="caret">' + ICONS.caret + '</span>');
+      a.appendChild(btn);
+      bar.appendChild(a);
+      anchors.push(a);
+    });
+
+    var panels = [], bpanel = null, views = null, pill = null;
+
+    function appendItems(parent, items) {
+      items.forEach(function (it) {
+        if (it.sep) { parent.appendChild(el('div', 'msep')); return; }
+        if (it.sub) {
+          var wrap = el('div', 'submenu-anchor' + (it.flip ? ' flip' : ''));
+          wrap.appendChild(el('button', 'mi', miHtml(it) + '<span class="subchev">' + ICONS.chev + '</span>'));
+          var sub = el('div', 'menu');
+          appendItems(sub, it.sub);
+          wrap.appendChild(sub);
+          parent.appendChild(wrap);
+          return;
+        }
+        var b = el('button', 'mi' + (it.disabled ? ' is-disabled' : ''), miHtml(it));
+        if (!it.disabled) b.addEventListener('click', function () {
+          if (it.check) { it.check = !it.check; b.querySelector('.slot').innerHTML = slotHtml(it); } // checked 由应用维护：翻转不关菜单
+          else ctrl.activate();
+        });
+        parent.appendChild(b);
+      });
+    }
+
+    if (variant === 'B') {
+      pill = el('div', 'mb-pill');
+      bar.appendChild(pill);
+      bpanel = el('div', 'menu mB-panel');
+      views = MENUS.map(function (m) {
+        var v = el('div', 'mB-view');
+        appendItems(v, m.items);
+        bpanel.appendChild(v);
+        return v;
+      });
+      bar.appendChild(bpanel);
+    } else {
+      MENUS.forEach(function (m, i) {
+        var p = el('div', 'menu');
+        if (variant === 'D') p.appendChild(el('div', 'marquee'));
+        appendItems(p, m.items);
+        anchors[i].appendChild(p);
+        panels.push(p);
+      });
+    }
+    root.appendChild(bar);
+
+    var content = el('div', 'app-window-content');
+    content.appendChild(el('div', 'row-list', ROWS));
+    content.insertAdjacentHTML('beforeend',
+      '<div class="demo-hint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v.01M12 11v5"/></svg>' +
+      '点击栏项打开 · 打开后 hover 相邻栏项切换 · Esc / 点击空白关闭 · 勾选项原地翻转</div>');
+    root.appendChild(content);
+
+    // D：动能高亮矩形跟随直接子行
+    if (variant === 'D') {
+      panels.forEach(function (p) {
+        p.addEventListener('mouseover', function (e) {
+          var mi = e.target.closest('.mi');
+          if (!mi || mi.parentElement !== p) return;
+          var mq = p.querySelector('.marquee');
+          mq.style.top = mi.offsetTop + 'px';
+          mq.style.height = mi.offsetHeight + 'px';
+        });
+      });
+    }
+
+    function closeAll() {
+      ctrl.open = -1;
+      anchors.forEach(function (a) { a.classList.remove('is-open'); });
+      bar.classList.remove('is-open');
+      panels.forEach(function (p) { p.classList.remove('is-open', 'is-flash'); });
+      if (bpanel) bpanel.classList.remove('is-open');
+    }
+
+    function openAt(i) {
+      ctrl.last = i; ctrl.open = i;
+      if (variant === 'B') {
+        var btn = anchors[i].querySelector('.mb-item');
+        var left = anchors[i].offsetLeft;
+        if (!bar.classList.contains('is-open')) {
+          pill.style.transition = 'none';                      // 首次打开：pill 即时就位
+          pill.style.left = left + 'px';
+          pill.style.width = btn.offsetWidth + 'px';
+          void pill.offsetWidth;
+          pill.style.transition = '';
+        } else {
+          pill.style.left = left + 'px';
+          pill.style.width = btn.offsetWidth + 'px';
+        }
+        bar.classList.add('is-open');
+        var maxLeft = bar.clientWidth - bpanel.offsetWidth - 8; // 视口钳制（§6.3）
+        bpanel.style.left = Math.max(4, Math.min(left, maxLeft)) + 'px';
+        bpanel.classList.add('is-open');
+        views.forEach(function (v, k) { v.classList.toggle('active', k === i); });
+      } else {
+        anchors.forEach(function (a, k) { a.classList.toggle('is-open', k === i); });
+        panels.forEach(function (p, k) { p.classList.toggle('is-open', k === i); });
+        if (variant === 'D') {
+          var first = panels[i].querySelectorAll(':scope > .mi')[0];
+          var mq = panels[i].querySelector('.marquee');
+          if (first && mq) { mq.style.top = first.offsetTop + 'px'; mq.style.height = first.offsetHeight + 'px'; }
+        }
+      }
+    }
+
+    ctrl.closeAll = closeAll;
+    ctrl.activate = function () {
+      if (variant === 'D' && ctrl.open >= 0) {                  // 激活闪 120ms 后关闭
+        panels[ctrl.open].classList.add('is-flash');
+        setTimeout(closeAll, 170);
+      } else closeAll();
+    };
+    ctrl.replay = function () {
+      var i = ctrl.last;
+      closeAll();
+      setTimeout(function () { openAt(i); }, 260);
+    };
+
+    anchors.forEach(function (a, i) {
+      a.querySelector('.mb-item').addEventListener('click', function () {
+        if (ctrl.open === i) closeAll(); else openAt(i);
+      });
+      a.addEventListener('mouseenter', function () {            // 打开期间 hover 切换（桌面惯例）
+        if (ctrl.open >= 0 && ctrl.open !== i) openAt(i);
+      });
+    });
+
+    setTimeout(function () { openAt(2); }, autoDelay);          // 首屏自动打开「视图」（最丰富）
+    return ctrl;
+  }
+
+  var SPECS = [['mockA', 'A', 300], ['mockB', 'B', 700], ['mockC', 'C', 1100], ['mockD', 'D', 1500]];
+  SPECS.forEach(function (s) { buildMock(s[0], s[1], s[2]); });
+
+  document.addEventListener('pointerdown', function (e) {       // barrier：点击外部关闭
+    controllers.forEach(function (c) { if (c.open >= 0 && !c.root.contains(e.target)) c.closeAll(); });
+  });
+  document.addEventListener('keydown', function (e) {           // Esc 关闭（演示单级语义）
+    if (e.key === 'Escape') controllers.forEach(function (c) { if (c.open >= 0) c.closeAll(); });
+  });
+  document.getElementById('slowmo').addEventListener('change', function () {
+    document.body.classList.toggle('slowmo', this.checked);
+  });
+  ['A', 'B', 'C', 'D'].forEach(function (v) {
+    document.getElementById('replay-' + v).addEventListener('click', function () {
+      controllers.filter(function (c) { return c.variant === v; })[0].replay();
+    });
+  });
+})();
+</script>
+</body>
+</html>

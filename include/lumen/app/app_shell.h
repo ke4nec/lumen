@@ -66,6 +66,11 @@ using ScrollDragSink = std::function<bool(
     core::Offset position, core::Offset delta,
     core::ScrollDragPhase phase, std::uint64_t timestampMs)>;
 
+// M14：overlay 动效步进 sink（overlay 控制器持钟动画——菜单淡入/高亮
+// 滑移等）。每 tick 调用；返回 true = 仍有活动动画（继续请求动画帧）。
+// sink 内自备 shell 引用（markDirty 触发 overlay builder 重采样）。
+using AnimateSink = std::function<bool(std::uint64_t nowMs)>;
+
 // 应用壳配置：build + 应用级钩子（平台无关）。
 struct ShellConfig {
     // UI 模板构建：每次重建调用（读当前应用状态返回新 Widget 树）。
@@ -184,8 +189,11 @@ class AppShell {
     // 已知限制：IME 候选框查询/惯性滚动仍走主树（菜单场景无文本字段）。
     void setOverlay(core::Widget overlay);
     // Re-evaluated after main-tree layout, so anchored menus follow resize/theme.
+    // animate（M14）：overlay 控制器的时间驱动步进（菜单动效等）；随
+    // clearOverlay 一并解除。
     void setOverlayBuilder(std::function<std::optional<core::Widget>()> builder,
-                           WheelSink wheel = {}, ScrollDragSink drag = {});
+                           WheelSink wheel = {}, ScrollDragSink drag = {},
+                           AnimateSink animate = {});
     void clearOverlay();
     [[nodiscard]] bool hasOverlay() const {
         return overlayTemplate_.has_value();
@@ -405,6 +413,7 @@ class AppShell {
     // 一次兜底——见 wheel 实现）。
     bool overlayWheelForwarded_{false};
     ScrollDragSink overlayDrag_{};
+    AnimateSink overlayAnimate_{};
     std::optional<core::RenderNode> overlayRoot_{};
     core::RenderNode previousOverlayRoot_{};
     bool hasPreviousOverlayRoot_{false};

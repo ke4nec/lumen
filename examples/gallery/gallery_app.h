@@ -1040,7 +1040,7 @@ class GalleryApp {
         brand.key = "gallery-brand";
 
         core::Widget menus =
-            core::withKey(menuBar_.build(), "gallery-menubar");
+            core::withKey(menuBar_.build(theme), "gallery-menubar");
 
         // 拖拽区：弹性空白（窗口拖动 hit-test 的主要落点），右端状态
         // 胶囊 + 视口尺寸（≥1024 显示）。
@@ -2512,7 +2512,11 @@ class GalleryApp {
                        "separators, checkable items, shortcut display and "
                        "lazy submenus. The bar under the window title is "
                        "the live MenuBar; right-click targets below (or any "
-                       "content row) for the context menu.",
+                       "content row) for the context menu. Open bar items "
+                       "turn tonal with an accent underline; panels fade "
+                       "and rise in while the keyboard highlight slides "
+                       "between rows (motion tokens; reduce-animation "
+                       "instant).",
                        theme),
             "menus-desc"));
 

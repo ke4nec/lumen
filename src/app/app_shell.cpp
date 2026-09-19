@@ -312,10 +312,12 @@ void AppShell::setOverlay(core::Widget overlay) {
 }
 
 void AppShell::setOverlayBuilder(
-    std::function<std::optional<core::Widget>()> builder, WheelSink wheel, ScrollDragSink drag) {
+    std::function<std::optional<core::Widget>()> builder, WheelSink wheel,
+    ScrollDragSink drag, AnimateSink animate) {
     overlayBuilder_ = std::move(builder);
     overlayWheel_ = std::move(wheel);
     overlayDrag_ = std::move(drag);
+    overlayAnimate_ = std::move(animate);
     dirty_ = true;
     fullRepaintPending_ = true;
 }
@@ -325,6 +327,7 @@ void AppShell::clearOverlay() {
     overlayBuilder_ = {};
     overlayWheel_ = {};
     overlayDrag_ = {};
+    overlayAnimate_ = {};
     if (!overlayTemplate_.has_value() && !overlayRoot_.has_value()) {
         return;
     }
@@ -495,6 +498,7 @@ void AppShell::rebuildIfDirty() {
             overlayBuilder_ = {};
             overlayWheel_ = {};
             overlayDrag_ = {};
+            overlayAnimate_ = {};
             overlayRoot_.reset();
             hasPreviousOverlayRoot_ = false;
             fullRepaintPending_ = true;
@@ -701,6 +705,11 @@ void AppShell::tick(std::uint64_t nowMs) {
     animating = controller_.advanceSourceFling(nowMs) || animating;
     if (config_.onAnimate) {
         animating = config_.onAnimate(*this, nowMs) || animating;
+    }
+    // M14：overlay 控制器持钟动效（菜单淡入/高亮滑移）；随 overlay 建立/
+    // 清除装配，返回 true 时保持动画帧调度。
+    if (overlayAnimate_ && overlayAnimate_(nowMs)) {
+        animating = true;
     }
     animationsActive_ = animating || !stateBlends_.empty();
 }

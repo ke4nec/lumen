@@ -415,7 +415,7 @@ class SettingsApp {
             std::vector<core::Widget> items;
             items.push_back(
                 core::withKey(titleText("Menus", theme), "menus-title"));
-            items.push_back(core::withKey(menuBar_.build(), "menubar"));
+            items.push_back(core::withKey(menuBar_.build(theme), "menubar"));
             items.push_back(core::withKey(
                 mutedLabel("Last command: " + lastMenuCommand_, theme),
                 "menu-command-label"));

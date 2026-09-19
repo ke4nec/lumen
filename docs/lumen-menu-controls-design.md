@@ -204,7 +204,9 @@ interaction.addSecondaryPressSink([&](chain, pos) {
 
 **超长菜单**：面板最大高度 = 视口高 − 2×8px；超出时面板内部经 ScrollView 兜底（overlay builder 已支持 wheel sink 注入），滚动跟随高亮项（`Visible` 对齐）。专用滚动箭头区不做。
 
-**关闭时机**：barrier 点击、滚轮（任意位置）、窗口 resize（overlay builder 重求值后若锚定越界则关闭）、`close()` 显式调用。模态期间主树指针/键盘全部 NotHandled（M11 语义模态边界，M12 已统一）。
+**悬停级联（M14 已实现）**：菜单打开期间悬停 `hasSubmenu` 项即自动展开子级（`MotionTokens::menuSubmenuHoverMs` 默认 0 = 立即，原生菜单惯例；担心掠过误弹的应用可设 300 之类去抖——去抖期内移走/移到其他项不展开）；悬停同级**其他**项则收起级联回到该层（含键盘展开的级联；级联源行自身不动，指针在源行与子面板间往返稳定）；点击 / Right 仍为立即展开。计时经 overlay animate sink 逐 tick 步进（pointer sink 无钟武装、首拍盖章，与打开动效同口径）。
+
+**关闭时机**：barrier 点击、滚轮（任意位置）、窗口 resize（overlay builder 重求值后若锚定越界则关闭）、`close()` 显式调用。模态期间主树指针/键盘全部 NotHandled（M11 语义模态边界，M12 已统一）。**barrier 仅输入模态、视觉透明**——菜单不是对话框，不压暗内容（Dialog scrim 只属于 Dialog；Dropdown 浮动菜单同口径）。
 
 ### 6.5 集合控件集成（P2 便捷层）
 
@@ -256,7 +258,7 @@ class MenuBarController {
 | 节点 | role | 状态/动作 |
 | --- | --- | --- |
 | 菜单面板 | `menu`（新 role） | 模态期间作为根语义附加子树（overlay 既有路径） |
-| 菜单项 | `menuitem`（新 role） | label = 项文本；`checked` flag（checkable 项）；`Activate` action ≡ Enter ≡ 单击 |
+| 菜单项 | `menuitem`（新 role） | label = 项文本；`checked` flag（checkable 项）；`Activate` action ≡ Enter ≡ 单击；current 由**焦点**表达（不暴露 `selected`——M14 起高亮背景由动能矩形常驻承载，两配置语义一致） |
 | 子菜单项 | `menuitem` | 另带 semanticsValue `hasSubmenu="true"`；Activate = 展开（同键盘） |
 | 分隔线 | 不进语义树 | 纯视觉（既无 label 也无 action；屏幕阅读器惯例跳过） |
 | 菜单栏 | 既有 role 复用 | 栏 = Group；栏项 = Button（label 含 mnemonic 去除标记后的文本） |
@@ -319,6 +321,13 @@ menu.open.fadeMs            = 120（对齐 tooltipFadeMs；reduceAnimation 归�
 
 菜单打开淡入经 M10 转场驱动（overlay 根 `transitionAlpha`），`reduceAnimation` 零时长直达（FrameScheduler 既有规则）。
 
+**M14 动效实现口径（2026-09-18，`design/menubar-variants.html` 版本 A+D 已落地）**：
+
+- `MotionTokens::menuOpenFadeMs = 120`：整面板淡入 + 位移（顶级上升 6px、子菜单沿级联方向滑入 4px，同一 EaseOut 进度），经 overlay animate sink（`setOverlayBuilder` 第 4 参数）逐 tick 采样；不经 tick 的直驱输出保持即时终态（与状态过渡 `motionEnabled()` 同口径）。
+- `MotionTokens::menuHighlightSlideMs = 90`：键盘高亮 = 动能矩形滑移。高亮背景**常驻**由独立 selection 矩形承载（动效/无动效两口径统一——与行 selected 背景同色同矩形、source-over 复合等价，像素一致；跨分隔线高度变形；焦点环仍随焦点行）；行不再折算 `selected`（§8.1 契约：menuitem 的 current 语义由焦点表达，`kSemanticsSelected` 不暴露——两配置下语义一致）。
+- 关闭即时（不出场淡出）：瞬态命令面板的关闭延迟直接吃命令分发延迟，有意不做。
+- 分隔线几何：1px 线 + 上下 4 呼吸（共 9px 占位）+ 水平 inset 8（本稿 msep 同口径）。
+
 ### 10.3 状态矩阵
 
 | 状态组合 | 背景 | 前景/内容 | 指示 |
@@ -336,6 +345,8 @@ menu.open.fadeMs            = 120（对齐 tooltipFadeMs；reduceAnimation 归�
 ### 10.4 MenuBar 视觉
 
 栏项 = Ghost Button（rest 透明、hover surface 派生、打开时 Tonal 态表示激活）；栏高 = 控件最小高度档（32/40/48）；栏与内容间 1px `color.border.default` 分隔。菜单面板规格同 ContextMenu（锚定改为栏项下方）。
+
+**M14 打开态指示（已实现）**：打开的栏项在 Tonal 之上叠加底部 2px accent 下划线（常驻 2px 占位保栏高稳定；随 `menuOpenFadeMs` 渐入——transform 通道未接线，以透明度等价表达宽度生长）；顶级切换 = 重新锚定并重放打开动效；关闭即回 Ghost、下划线消失。`MenuBarController::build(const style::Theme&)` 提供 accent/动效口径。
 
 ## 11. 性能与测试计划
 
@@ -355,7 +366,8 @@ menu.open.fadeMs            = 120（对齐 tooltipFadeMs；reduceAnimation 归�
 4. **子菜单**：懒构建只调用被展开的 provider、级联定位翻转、Left 回父级、Escape 逐级关闭。
 5. **语义**：menu/menuitem role 树、checked flag、Activate ≡ Enter ≡ 单击同 handler 回执（RecordingBridge）、模态期主树 NotHandled、分隔线缺席。
 6. **MenuBar**：栏 Widget 组合（Ghost 按钮/键/key 前缀）、hover 切换、Left/Right 顶级切换、Alt+keyChar 打开、Esc 焦点恢复栏项。
-7. **回归**：gallery/settings 哈希不变；reduceAnimation 菜单零时长；高对比/density/fontScale 派生（style 既有用例模式）。
+7. **M14 动效**（`tests/menu_motion_tests.cpp`）：打开淡入+上升全程采样（含 renderFrame 冒烟）、动能矩形跨分隔线滑移、栏 Tonal/下划线渐入与切换重放、reduceAnimation 首拍终态、不经 tick 直驱即时终态回归、overlay animate sink 生命周期。
+8. **回归**：gallery/settings 哈希不变；reduceAnimation 菜单零时长；高对比/density/fontScale 派生（style 既有用例模式）。
 
 ### 11.3 示例与验收
 

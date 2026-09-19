@@ -153,6 +153,15 @@ struct MotionTokens {
     std::uint32_t caretBlinkHalfPeriodMs{530};
     std::uint32_t tooltipDelayMs{400};
     std::uint32_t tooltipFadeMs{120};
+    // M14 菜单动效（design/menubar-variants.html 版本 A+D）：menuOpenFadeMs
+    // = 面板打开淡入（上升/级联滑入共用同一进度，menu-controls-design
+    // §10.2 的 menu.open.fadeMs）；menuHighlightSlideMs = 键盘高亮动能
+    // 矩形滑移（跨分隔线高度变形）。menuSubmenuHoverMs = 悬停 hasSubmenu
+    // 项自动展开的去抖——默认 0 = 悬停即展开（原生菜单惯例；担心掠过
+    // 误弹的应用可设 300 之类）。
+    std::uint32_t menuOpenFadeMs{120};
+    std::uint32_t menuHighlightSlideMs{90};
+    std::uint32_t menuSubmenuHoverMs{0};
 
     void reduceAnimation();
 

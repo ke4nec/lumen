@@ -212,6 +212,80 @@ TEST_CASE("context_menu_barrier_click_closes", "[widgets][menu]") {
     CHECK(app.commands.empty());
 }
 
+TEST_CASE("context_menu_barrier_is_transparent_input_modal",
+          "[widgets][menu]") {
+    // barrier 仅输入模态：视觉透明（不压暗内容——Dialog scrim 只属于
+    // 对话框），Dismiss 语义保留。
+    MenuApp app;
+    app.openSample();
+    const RenderNode* barrier =
+        findNodeByKey(*app.shell.overlayRoot(), "ctx-menu-barrier");
+    REQUIRE(barrier != nullptr);
+    CHECK(barrier->commonStyle().background ==
+          core::Color::transparent());
+    CHECK(barrier->semanticsActions == accessibility::kActionDismiss);
+    CHECK(barrier->rect().size == app.shell.view());
+}
+
+TEST_CASE("context_menu_rows_hover_highlight", "[widgets][menu]") {
+    // 集合行 hover 追踪（interaction 侧 collectionRow 谓词）：悬停行
+    // 解析为 hoverOverlay 背景，未悬停行保持透明；禁用行不承载。
+    MenuApp app;
+    app.openSample();
+    const RenderNode* hovered = app.overlayItem(0, 2);   // 剪切
+    const RenderNode* other = app.overlayItem(0, 4);     // 排序方式
+    REQUIRE(hovered != nullptr);
+    REQUIRE(other != nullptr);
+    app.shell.pointerMove(absoluteOffset(*app.shell.overlayRoot(),
+                                         hovered->key) +
+                          Offset{hovered->size.width * 0.5F,
+                                 hovered->size.height * 0.5F});
+    (void)app.shell.renderFrame();
+    hovered = app.overlayItem(0, 2);
+    other = app.overlayItem(0, 4);
+    REQUIRE(hovered != nullptr);
+    REQUIRE(other != nullptr);
+    CHECK(hovered->commonStyle().background ==
+          app.shell.theme().colors.hoverOverlay);
+    CHECK(other->commonStyle().background == core::Color::transparent());
+}
+
+TEST_CASE("menu_long_label_ellipsizes_single_line", "[widgets][menu]") {
+    // §10.1：超宽标签单行省略号——不换行、行高与常规行一致（动能
+    // 矩形/滚动推导都以行高稳定为前提）。
+    MenuApp app;
+    MenuItems items{
+        MenuItem{.id = "short", .label = "打开"},
+        MenuItem{.id = "long",
+                 .label = "一个特别长的菜单项标签用于验证超宽省略号不换行"},
+        MenuItem{.id = "sc", .label = "快捷",
+                 .shortcut = "Ctrl+Shift+Alt+Delete"},
+    };
+    app.context.open(app.shell, Offset{100.0F, 100.0F}, std::move(items));
+    const RenderNode* shortRow = app.overlayItem(0, 0);
+    const RenderNode* longRow = app.overlayItem(0, 1);
+    REQUIRE(shortRow != nullptr);
+    REQUIRE(longRow != nullptr);
+    CHECK(longRow->size.height ==
+          Catch::Approx(shortRow->size.height).margin(0.01F));
+    CHECK(longRow->size.height > 0.0F);
+    // 标签样式接线：单行 + Ellipsis（行内第 2 子 = slot 容器之后的
+    // 文本节点）。
+    REQUIRE(longRow->children.size() >= 2);
+    const RenderNode* labelNode = nullptr;
+    for (const auto& child : longRow->children) {
+        if (child.type == WidgetType::Text) {
+            labelNode = &child;
+            break;
+        }
+    }
+    REQUIRE(labelNode != nullptr);
+    CHECK(labelNode->commonStyle().text.maxLines == 1);
+    CHECK(labelNode->commonStyle().text.overflow ==
+          core::TextOverflow::Ellipsis);
+    CHECK(labelNode->size.height <= longRow->size.height);
+}
+
 TEST_CASE("context_menu_checkable_and_shortcut_display_only",
           "[widgets][menu]") {
     MenuApp app;
@@ -435,7 +509,7 @@ TEST_CASE("menu_bar_builds_row_and_opens_anchored_below",
     });
     bar.attach(shell);
     // 栏并入主树。
-    Widget page = makeColumn({bar.build()}, MainAxisAlignment::Start,
+    Widget page = makeColumn({bar.build(shell.theme())}, MainAxisAlignment::Start,
                              CrossAxisAlignment::Start);
     shell.swapRoot(std::move(page));
     shell.rebuildIfDirty();
@@ -476,7 +550,7 @@ TEST_CASE("menu_bar_alt_mnemonic_opens_menu", "[widgets][menu]") {
         return MenuItems{MenuItem{.id = "new", .label = "新建窗口"}};
     });
     bar.attach(shell);
-    shell.swapRoot(makeColumn({bar.build()}, MainAxisAlignment::Start,
+    shell.swapRoot(makeColumn({bar.build(shell.theme())}, MainAxisAlignment::Start,
                               CrossAxisAlignment::Start));
     shell.rebuildIfDirty();
 
@@ -504,7 +578,7 @@ TEST_CASE("menu_bar_hover_switches_open_top_level_menu",
     std::string fired;
     bar.onCommand = [&](const std::string& id) { fired = id; };
     bar.attach(shell);
-    shell.swapRoot(makeColumn({bar.build()}, MainAxisAlignment::Start,
+    shell.swapRoot(makeColumn({bar.build(shell.theme())}, MainAxisAlignment::Start,
                               CrossAxisAlignment::Start));
     shell.rebuildIfDirty();
 

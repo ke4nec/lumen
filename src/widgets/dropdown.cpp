@@ -209,10 +209,12 @@ bool DropdownController::handleKey(app::AppShell& shell, core::Key key) {
 
 core::Widget DropdownController::buildOverlay(const style::Theme& theme,
                                               core::Size view) const {
-    // 全窗 barrier：点击关闭（同 makeDialog 模态模式）。
+    // 全窗 barrier：仅输入模态（点击关闭 + 事件/语义模态边界），视觉
+    // 透明——浮动菜单不压暗内容（Dialog scrim 只属于 Dialog；与菜单类
+    // 控件同口径，menu-controls-design §6.4）。
     core::Widget barrier = core::makeContainerLeaf(
         view.width, view.height, core::EdgeInsets{}, core::EdgeInsets{},
-        theme.dialog.scrim);
+        core::Color::transparent());
     barrier.onClick = dropdownKey_ + "-dismiss";
     barrier.semanticsRole = "dialog";
     barrier.semanticsActions = accessibility::kActionDismiss;

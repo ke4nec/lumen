@@ -101,6 +101,9 @@ void MotionTokens::reduceAnimation() {
     caretBlinkHalfPeriodMs = 0;
     tooltipDelayMs = 0;
     tooltipFadeMs = 0;
+    menuOpenFadeMs = 0;
+    menuHighlightSlideMs = 0;
+    menuSubmenuHoverMs = 0;
 }
 
 // --- Primitive → semantic ---
