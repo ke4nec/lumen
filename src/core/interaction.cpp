@@ -104,7 +104,10 @@ bool pressOnScrollbarThumb(const RenderNode& node, Offset local) {
 }
 
 // 命中链上 hover 的承载节点：最深的有效可交互控件（disabled 不承载，
-// 容器不参与——避免整页 hover 抖动触发无谓重建，visual-system §5）。
+// 普通容器不参与——避免整页 hover 抖动触发无谓重建，visual-system §5）。
+// 集合行例外（collection-controls-design §6.2，与可聚焦谓词同源）：
+// collectionRow + onClick 的 Row/Container 行承载 hover——菜单/列表/
+// 下拉选项行的 hover 高亮（resolver 既有分支，此前追踪门未纳入）。
 const RenderNode* hoverTargetOf(const std::vector<const RenderNode*>& chain) {
     for (const RenderNode* node : chain) {
         if (!node->enabled) {
@@ -118,6 +121,9 @@ const RenderNode* hoverTargetOf(const std::vector<const RenderNode*>& chain) {
                 return node;
             default:
                 break;
+        }
+        if (node->collectionRow && !node->onClick.empty()) {
+            return node;
         }
     }
     return nullptr;

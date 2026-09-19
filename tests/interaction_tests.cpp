@@ -574,3 +574,41 @@ TEST_CASE("hover_tracking_follows_pointer", "[interaction]") {
     controller.pointerUp(root, centerOf(root, "btn"));
     CHECK(controller.hoveredKey() == "btn");
 }
+
+TEST_CASE("hover_tracking_covers_collection_rows", "[interaction]") {
+    // 集合行承载 hover（与可聚焦谓词同源）：collectionRow + onClick 的
+    // 行获得 hover 高亮；disabled 行与普通行不承载（菜单/列表行 hover
+    // 的追踪门——此前只认 Button/TextField/Checkbox/Switch）。
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    Widget row;
+    row.type = WidgetType::Row;
+    row.key = "row";
+    row.onClick = "row-click";
+    row.collectionRow = true;
+    row.width = 120.0F;
+    row.height = 40.0F;
+    Widget disabledRow = row;
+    disabledRow.key = "row-disabled";
+    disabledRow.enabled = false;
+    Widget plain;
+    plain.type = WidgetType::Row;
+    plain.key = "plain";
+    plain.onClick = "plain-click";
+    plain.width = 120.0F;
+    plain.height = 40.0F;
+    Widget ui = makeColumn({std::move(row), std::move(disabledRow),
+                            std::move(plain)});
+    const RenderNode root = layoutOf(ui);
+
+    controller.pointerMove(root, Offset{60.0F, 20.0F});
+    CHECK(controller.hoveredKey() == "row");
+    // disabled 行不承载（跳过，不落到父容器）。
+    controller.pointerMove(root, Offset{60.0F, 60.0F});
+    CHECK(controller.hoveredIdentity().empty());
+    // 普通行（未标记 collectionRow）不承载 hover。
+    controller.pointerMove(root, Offset{60.0F, 100.0F});
+    CHECK(controller.hoveredIdentity().empty());
+}
