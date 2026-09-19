@@ -244,11 +244,15 @@ core::Widget DropdownController::buildOverlay(const style::Theme& theme,
 
     // 选项（§6.7）：全部 Ghost（hover 状态面/键盘焦点环由交互态表达）；
     // 当前值 Tonal + 尾随 Check（16px 勾选列）。移动高亮不立即改值。
+    // Up/Down 的高亮行即 focusNode 目标（refreshOverlay），Ghost rest 底
+    // 透明、环是唯一焦点指示——键盘重度表面显式开环（visual-system
+    // §6.1，与 makeDialog actions 同口径；showFocusRing 默认关闭）。
     std::vector<core::Widget> buttons;
     buttons.reserve(options_.size());
     for (std::size_t i = 0; i < options_.size(); ++i) {
         const bool isCurrent = options_[i].value == value_;
         core::Widget option = core::makeButton(options_[i].label);
+        option.showFocusRing = true;
         option.buttonVariant = isCurrent
                                    ? core::ButtonVariant::Tonal
                                    : core::ButtonVariant::Ghost;

@@ -559,6 +559,30 @@ struct TreeListApp {
     }
 };
 
+// TreeList 的 chevron 是独立 Tab 停靠点（行/chevron 各自停靠，不像
+// Tree 的单一停靠）：视口 showFocusRing 经 configureTreeParts 传递到行
+// 内 chevron（与 Tree 箭头同契约，collection-design §10.2）——默认关闭
+// 聚焦不画环，开启后画环。
+TEST_CASE("treelist_chevron_follows_viewport_focus_ring_setting",
+          "[collection]") {
+    TreeListApp app;
+    const auto chevronFocusWidth = [&app](bool rings) {
+        Widget view = makeTreeList(&app.treeList, &app.treeList.columns(),
+                                   true, "deps", 360.0F, 360.0F);
+        view.showFocusRing = rings;
+        app.shell.swapRoot(std::move(view));
+        (void)app.shell.renderFrame();
+        app.shell.focus().setFocus("deps:chev:root1");
+        (void)app.shell.renderFrame();
+        const auto* chev = findNodeByKey(app.shell.root(), "deps:chev:root1");
+        REQUIRE(chev != nullptr);
+        return chev->commonStyle().focusWidth;
+    };
+    CHECK(chevronFocusWidth(false) == 0.0F);
+    CHECK(chevronFocusWidth(true) ==
+          app.shell.theme().metrics.focusRingWidth);
+}
+
 TEST_CASE("treelist_distributes_fixed_and_weighted_column_widths",
           "[collection]") {
     TreeListApp app;

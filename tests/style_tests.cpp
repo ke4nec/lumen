@@ -294,13 +294,37 @@ TEST_CASE("style_button_hover_and_pressed_derive_from_base", "[style]") {
 
 TEST_CASE("style_button_focused_gets_visible_ring", "[style]") {
     Fixture fixture;
-    const Widget button = lumen::core::makeButton("OK");
+    const Widget button = lumen::core::withFocusRing(lumen::core::makeButton("OK"), true);
     fixture.interaction.focusedIdentity = "k:x";
     const auto& focused = buttonPart(fixture.resolve(button));
     CHECK(focused.common.focusWidth == fixture.theme.metrics.focusRingWidth);
     CHECK(focused.common.focusRing == fixture.theme.colors.focusRing);
     // 键盘焦点环不依赖 hover 表现（§5 规则 4）。
     CHECK(focused.common.background == fixture.theme.button.filled.background);
+}
+
+TEST_CASE("style_button_focused_hides_ring_by_default", "[style]") {
+    Fixture fixture;
+    const Widget button = lumen::core::makeButton("OK");
+    CHECK_FALSE(button.showFocusRing);
+    fixture.interaction.focusedIdentity = "k:x";
+    const auto& focused = buttonPart(fixture.resolve(button));
+    // 默认不绘制环，但表面保持不变（焦点导航与语义 focused 另由集合测试覆盖）。
+    CHECK(focused.common.focusWidth == 0.0F);
+    CHECK(focused.common.background == fixture.theme.button.filled.background);
+}
+
+TEST_CASE("style_slider_builder_opts_into_focus_ring", "[style]") {
+    // §6.5：thumb 焦点环是 Slider 的设计内焦点指示（端点恒定预留 r+f，
+    // 聚焦与否不重定位）；方向键调节目标无其他聚焦反馈——makeSlider
+    // 显式开环（§6.1 键盘件），聚焦即画环。
+    Fixture fixture;
+    const Widget slider = lumen::core::makeSlider("volume");
+    CHECK(slider.showFocusRing);
+    fixture.interaction.focusedIdentity = "k:x";
+    const auto resolved = fixture.resolve(slider);
+    CHECK(lumen::core::commonStyle(resolved).focusWidth ==
+          fixture.theme.metrics.focusRingWidth);
 }
 
 TEST_CASE("style_button_disabled_wins_over_all_states", "[style]") {
@@ -329,7 +353,7 @@ TEST_CASE("style_textfield_states_resolve", "[style]") {
     CHECK(!rest.focused);
 
     Fixture focusedFixture;
-    Widget focusedField = lumen::core::makeTextField("", "hint");
+    Widget focusedField = lumen::core::withFocusRing(lumen::core::makeTextField("", "hint"), true);
     focusedFixture.interaction.focusedIdentity = "k:x";
     const auto& focused = fieldPart(focusedFixture.resolve(focusedField));
     CHECK(focused.focused);
@@ -383,8 +407,8 @@ TEST_CASE("style_checkbox_states_resolve", "[style]") {
 
     Fixture focusedFixture;
     focusedFixture.interaction.focusedIdentity = "k:x";
-    const auto& focused =
-        checkboxPart(focusedFixture.resolve(lumen::core::makeCheckbox("A", "a")));
+    const auto& focused = checkboxPart(focusedFixture.resolve(
+        lumen::core::withFocusRing(lumen::core::makeCheckbox("A", "a"), true)));
     CHECK(focused.common.focusWidth == fixture.theme.metrics.focusRingWidth);
 
     Widget disabled = lumen::core::withEnabled(
@@ -463,11 +487,13 @@ TEST_CASE("focus_ring_visibility_is_explicit_and_preserves_control_geometry", "[
         Widget widget;
         widget.type = type;
         widget.collectionRow = type == lumen::core::WidgetType::Row;
-        const auto shown = f.resolve(widget);
-        CHECK(lumen::core::commonStyle(shown).focusWidth == theme.metrics.focusRingWidth);
-        widget = lumen::core::withFocusRing(std::move(widget), false);
+        // 默认关闭：不绘制环（焦点导航与语义 focused 另由集合测试覆盖）。
         const auto hidden = f.resolve(widget);
         CHECK(lumen::core::commonStyle(hidden).focusWidth == 0.0F);
+        // 显式开启才绘制环。
+        widget = lumen::core::withFocusRing(std::move(widget), true);
+        const auto shown = f.resolve(widget);
+        CHECK(lumen::core::commonStyle(shown).focusWidth == theme.metrics.focusRingWidth);
         CHECK(hidden.minWidth == shown.minWidth);
         CHECK(hidden.minHeight == shown.minHeight);
         CHECK(lumen::core::commonStyle(hidden).padding == lumen::core::commonStyle(shown).padding);
@@ -606,8 +632,8 @@ TEST_CASE("style_identity_stable_across_rebuilds", "[style]") {
 TEST_CASE("style_focus_ring_does_not_change_layout_size", "[style]") {
     // 焦点环可见但不影响布局尺寸（§10.3）——同一控件 focused/rest 布局
     // 尺寸一致，仅 resolved style 变化。
-    const Widget button = lumen::core::makeButton(
-        "OK", lumen::core::TextStyle{}, lumen::core::EdgeInsets{}, 0.0F, "ok");
+    const Widget button = lumen::core::withFocusRing(lumen::core::makeButton(
+        "OK", lumen::core::TextStyle{}, lumen::core::EdgeInsets{}, 0.0F, "ok"), true);
     const Theme theme = Theme::dark();
     const AccessibilitySettings settings;
     const InteractionStateSnapshot idle;
@@ -1106,7 +1132,7 @@ TEST_CASE("style_button_focus_isolation_band_on_opaque_fill", "[style]") {
     Fixture fixture;
     fixture.interaction.focusedIdentity = "k:x";
     const auto& filled = buttonPart(fixture.resolve(
-        lumen::core::makeButton("OK")));
+        lumen::core::withFocusRing(lumen::core::makeButton("OK"), true)));
     CHECK(filled.common.focusWidth > 0.0F);
     CHECK(filled.common.focusIsolation == fixture.theme.colors.surface);
 
@@ -1139,8 +1165,8 @@ TEST_CASE("style_key_state_combinations_stay_distinguishable", "[style]") {
     Fixture focusFixture;
     focusFixture.interaction.focusedIdentity = "k:x";
     const auto& invalidFocused = fieldPart(focusFixture.resolve(
-        lumen::core::withInvalid(
-            lumen::core::makeTextField("x", "hint"))));
+        lumen::core::withFocusRing(lumen::core::withInvalid(
+            lumen::core::makeTextField("x", "hint")), true)));
     CHECK(invalidFocused.common.border ==
           focusFixture.theme.textField.borderInvalid);
     CHECK(invalidFocused.common.focusWidth ==
@@ -1152,7 +1178,7 @@ TEST_CASE("style_key_state_combinations_stay_distinguishable", "[style]") {
     pressFixture.interaction.focusedIdentity = "k:x";
     pressFixture.interaction.pressedIdentity = "k:x";
     const auto& pressedFocused = buttonPart(pressFixture.resolve(
-        lumen::core::makeButton("OK")));
+        lumen::core::withFocusRing(lumen::core::makeButton("OK"), true)));
     CHECK(pressedFocused.common.focusWidth > 0.0F);
     CHECK(pressedFocused.common.background ==
           lumen::style::blendOver(

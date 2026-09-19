@@ -105,9 +105,9 @@ TEST_CASE("choice_targets_reserve_focus_space_without_resizing_parts", "[visual]
             settings.highContrast = highContrast;
             const auto theme = style::Theme::fromSettings(settings, true, density);
             for (const auto size : {ControlSize::Small, ControlSize::Medium, ControlSize::Large}) {
-                for (auto widget : {makeCheckbox("", "a", "cb", true),
-                                     makeSwitch("", "b", "sw", true),
-                                     makeRadio("", "c", "radio", true)}) {
+                for (auto widget : {withFocusRing(makeCheckbox("", "a", "cb", true), true),
+                                     withFocusRing(makeSwitch("", "b", "sw", true), true),
+                                     withFocusRing(makeRadio("", "c", "radio", true), true)}) {
                     widget.controlSize = size;
                     const auto normal = layoutControl(widget, theme);
                     const auto focused = layoutControl(widget, theme, true);
@@ -522,6 +522,41 @@ TEST_CASE("visual_dropdown_wheel_resize_and_theme_stay_in_sync", "[visual][regre
     CHECK(std::get<ButtonResolvedStyle>(option->style.component).alignContentStart);
     dropdown.close(shell);
     CHECK(shell.focus().focusedKey() == "pick");
+}
+
+TEST_CASE("visual_dropdown_keyboard_highlight_keeps_focus_ring", "[visual][regression]") {
+    // Up/Down 的高亮行即 focusNode 目标，Ghost 选项 rest 底透明、焦点环是
+    // 唯一指示（§6.7）——showFocusRing 默认关闭后，浮动菜单选项作为键盘
+    // 重度表面显式开环（visual-system §6.1，与 makeDialog actions 同口径）。
+    app::ShellConfig config;
+    config.initialView = {320, 280};
+    config.caretBlink = false;
+    config.build = [] { return makeStack({withStackPosition(makeDropdown("0", "open", "pick", 180), {40, 90})}); };
+    app::AppShell shell(config);
+    std::vector<widgets::DropdownController::Option> options;
+    for (int i = 0; i < 4; ++i) {
+        options.push_back({std::to_string(i), "Option " + std::to_string(i)});
+    }
+    widgets::DropdownController dropdown(options, "0");
+    (void)shell.renderFrame();
+    dropdown.open(shell, "pick");
+    (void)shell.renderFrame();
+    // 打开即聚焦当前值行（opt-0）：环可见。
+    const auto* initial = findNodeByKey(*shell.overlayRoot(), "pick-opt-0");
+    REQUIRE(initial != nullptr);
+    CHECK(initial->commonStyle().focusWidth ==
+          shell.theme().metrics.focusRingWidth);
+    // Down 移动高亮到 opt-1：环跟随移动，原行恢复无环。
+    REQUIRE(dropdown.handleKey(shell, Key::Down));
+    (void)shell.renderFrame();
+    const auto* highlighted = findNodeByKey(*shell.overlayRoot(), "pick-opt-1");
+    REQUIRE(highlighted != nullptr);
+    CHECK(highlighted->commonStyle().focusWidth ==
+          shell.theme().metrics.focusRingWidth);
+    CHECK(findNodeByKey(*shell.overlayRoot(), "pick-opt-0")
+              ->commonStyle()
+              .focusWidth == 0.0F);
+    dropdown.close(shell);
 }
 
 TEST_CASE("visual_tooltip_ports_out_of_clip_flips_and_cancels_on_press", "[visual][regression]") {

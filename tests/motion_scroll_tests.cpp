@@ -345,9 +345,10 @@ ShellConfig hoverConfig(bool* goFlag) {
         using namespace lumen::dsl;
         namespace core = lumen::core;
         Widget page = core::withKey(
-            container(column({core::withKey(
-                                  button("Go", onClick("go")), "go-button")}),
-                      Color::fromRGBA(24, 24, 27)),
+            container(column({core::withKey(core::withFocusRing(
+                                   button("Go", onClick("go")), true),
+                               "go-button")}),
+                       Color::fromRGBA(24, 24, 27)),
             "page");
         page.key = "root";
         (void)goFlag;

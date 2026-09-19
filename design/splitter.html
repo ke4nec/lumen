@@ -97,7 +97,7 @@
   .divider.v { cursor: ns-resize; }
   .divider.v::before { left: 0; right: 0; top: calc(50% - .5px); height: 1px; width: 100%; }
   .divider.v:hover::before, .divider.v.is-drag::before, .divider.v:focus-visible::before { top: calc(50% - 1.5px); height: 3px; background: var(--sp-line-hover); }
-  .divider:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--app-accent); } /* 内嵌 focus ring（V2 不变量） */
+  .divider:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--app-accent); } /* 分隔条为框架物化 chrome，布局期恒 showFocusRing=true（visual-system §6.1 键盘表面；3px 线由 focusWidth>0 驱动）。内嵌环不越出节点矩形（V2 不变量） */
   /* 命中区扩展：视觉线 1–3px，命中 = max(track, hitExtent) */
   .divider.h::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - var(--sp-hit) / 2); width: var(--sp-hit); }
   .divider.v::after { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - var(--sp-hit) / 2); height: var(--sp-hit); }
@@ -167,6 +167,7 @@
       <div class="eyebrow">Lumen Control Design · Splitter</div>
       <h1>Splitter 控件设计稿：分栏调节</h1>
       <p class="lead">两窗格 + 框架物化的分隔条 chrome：位置存绝对像素（GTK position 模式）、拖动框架直接接管（源视口滚动同先例）、分隔条可聚焦可键盘调节。本稿定义布局算法、分隔条状态、键盘/语义契约；设计文档见 <code>docs/lumen-splitter-design.md</code>，视觉 token 对齐 <code>docs/lumen-visual-system-design.md</code>。</p>
+      <p style="margin:8px 0 0;color:var(--board-muted);font-size:12.5px;">分隔条为框架物化 chrome：键盘焦点环恒开启（visual-system §6.1），无应用级开关。</p>
     </div>
     <div class="brand-mark">L</div>
   </header>
@@ -251,7 +252,7 @@
       <div class="state-card"><div class="track-sample"></div><b>rest</b><span>1px <code>color.border.strong</code> 居中于 6px 轨道</span></div>
       <div class="state-card"><div class="track-sample hov"></div><b>hover</b><span>3px <code>color.accent</code> · 光标 ResizeEW/NS</span></div>
       <div class="state-card"><div class="track-sample drag"><span class="ghost"></span></div><b>drag</b><span>3px accent 保持 · 两窗格逐拍实时重排（无 ghost 预览，虚影仅示意窗格变化）</span></div>
-      <div class="state-card"><div class="track-sample foc"></div><b>focused（键盘）</b><span>3px accent + 内嵌 focus ring（V2 不变量：不越出节点矩形）</span></div>
+      <div class="state-card"><div class="track-sample foc"></div><b>focused（键盘）</b><span>3px accent + 内嵌 focus ring（框架物化 chrome 布局期恒 showFocusRing=true——3px 线由 focusWidth&gt;0 驱动；V2 不变量：不越出节点矩形）</span></div>
     </div>
     <div class="mode-grid" style="margin-bottom:14px;">
       <div class="mode-card"><h4>token 依据（gallery v1 精确值）</h4><p>线 rest <code>#8c8c98</code>（border.strong）/ hover <code>#568cf0</code>（accent）；surface <code>#27272e</code>、选中 <code>#2e3c60</code>——实现走三层 token 映射（<code>splitter.line.color = color.border.strong</code> 等），本稿不新增颜色槽位。</p></div>

@@ -92,6 +92,14 @@ core::Widget makeDialog(core::Widget body, core::Widget actions,
                             !actions.children.empty() || !actions.text.empty() ||
                             !actions.key.empty();
     if (hasActions) {
+        // 对话框是键盘重度表面（visual-system §6.1）：动作按钮是 Enter/Esc
+        // 的键盘激活目标，默认关闭的焦点环在这里显式开启；正文内容保持
+        // 控件自身设置。
+        const auto enableFocusRing = [](auto&& self, core::Widget& widget) -> void {
+            widget.showFocusRing = true;
+            for (auto& child : widget.children) self(self, child);
+        };
+        enableFocusRing(enableFocusRing, actions);
         sections.push_back(std::move(actions));
     }
     core::Widget padded = core::makeColumn(std::move(sections),

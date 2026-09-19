@@ -219,12 +219,14 @@ class SettingsApp {
             items.push_back(core::withKey(
                 core::makeProgressBar(shell_.state().get("progress")),
                 "progress-bar"));
-            core::Widget radioA =
-                core::makeRadio("Compact", "mode-a", "mode-a");
+            // 设置页是键盘重度表面（visual-system §6.1）：radio/switch/
+            // checkbox 没有其他焦点指示，显式开启焦点环。
+            core::Widget radioA = core::withFocusRing(
+                core::makeRadio("Compact", "mode-a", "mode-a"), true);
             radioA.checked =
                 shell_.state().get("mode-a") == "true";
-            core::Widget radioB =
-                core::makeRadio("Full", "mode-b", "mode-b");
+            core::Widget radioB = core::withFocusRing(
+                core::makeRadio("Full", "mode-b", "mode-b"), true);
             radioB.checked =
                 shell_.state().get("mode-b") == "true";
             items.push_back(
@@ -533,14 +535,15 @@ class SettingsApp {
                              "goto-library-button",
                              core::ButtonVariant::Filled),
                 "goto-library-button"));
-            core::Widget notifications =
+            core::Widget notifications = core::withFocusRing(
                 core::makeSwitch("Notifications", "notifications",
-                                 "notifications-switch");
+                                 "notifications-switch"), true);
             notifications.semanticsLabel = "Enable notifications";
             list.push_back(core::withKey(std::move(notifications),
                                          "notifications-switch"));
-            core::Widget autosave = core::makeCheckbox("Autosave", "autosave",
-                                                       "autosave-checkbox");
+            core::Widget autosave = core::withFocusRing(
+                core::makeCheckbox("Autosave", "autosave",
+                                   "autosave-checkbox"), true);
             autosave.semanticsLabel = "Autosave drafts";
             list.push_back(
                 core::withKey(std::move(autosave), "autosave-checkbox"));

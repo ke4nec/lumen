@@ -338,7 +338,7 @@ TEST_CASE("dsl_parses_visual_system_control_attributes", "[dsl]") {
         "  Column {\n"
         "    Button(\"Save\", variant: outline, size: large, onClick: save, showFocusRing: false)\n"
         "    TextField(bind: name, invalid: true, enabled: false)\n"
-        "    Checkbox(\"A\", bind: a, selected: true)\n"
+        "    Checkbox(\"A\", bind: a, selected: true, showFocusRing: true)\n"
         "  }\n"
         "}");
     REQUIRE(parsed.ok());
@@ -358,6 +358,7 @@ TEST_CASE("dsl_parses_visual_system_control_attributes", "[dsl]") {
 
     const Widget& checkbox = column.children[2];
     CHECK(checkbox.selected);
+    // 默认 false（§6.1）；显式属性才能翻转，双向解析都要有覆盖。
     CHECK(checkbox.showFocusRing);
 }
 

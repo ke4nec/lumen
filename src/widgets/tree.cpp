@@ -686,7 +686,11 @@ core::Widget TreeListController::buildItem(std::size_t index) const {
         core::Widget cell = box.children.empty()
                                 ? core::Widget{}
                                 : std::move(box.children.front());
-        inner.children.push_back(makeLeadWidget(owner_, row));
+        // styledTree=true：chevron 带 treePart 标记，materializeVirtualRows
+        // 对 TreeList 同样经 configureTreeParts 传递视口 showFocusRing/
+        // controlSize（与 Tree 箭头同契约；TreeList chevron 是独立 Tab
+        // 停靠点，漏传会在默认关环下聚焦不可见）。
+        inner.children.push_back(makeLeadWidget(owner_, row, true));
         inner.children.push_back(std::move(cell));
         box.children.clear();
         box.children.push_back(std::move(inner));

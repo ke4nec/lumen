@@ -225,6 +225,23 @@ TEST_CASE("splitter_keyboard_steps_and_edges", "[widgets][splitter]") {
     CHECK(app.splitter.offset() == Catch::Approx(48.0F));
 }
 
+// Tab 聚焦分隔条：painter 的 3px accent 线由 focusWidth>0 驱动（painter
+// splitter 分支），环关闭时聚焦态会退回 1px rest 线不可见——框架 chrome
+// 与 makeDialog actions 同口径显式开环（visual-system §6.1）。
+TEST_CASE("splitter_keyboard_focus_paints_active_line", "[widgets][splitter]") {
+    SplitterApp app;
+    app.shell.setView(Size{400.0F, 300.0F});
+    app.shell.keyDown(Key::Tab);
+    REQUIRE(app.shell.focus().focusedKey() == "split:div:main");
+    (void)app.shell.renderFrame();
+    const auto* divider = findNodeByKey(app.shell.root(), "split:div:main");
+    REQUIRE(divider != nullptr);
+    CHECK(divider->commonStyle().focusWidth ==
+          app.shell.theme().metrics.focusRingWidth);
+    CHECK(divider->commonStyle().focusRing ==
+          app.shell.theme().colors.focusRing);
+}
+
 // 松手即失焦（高亮跟鼠标走）：按压期间建焦（拖住时方向键可用），
 // 释放/取消即清除；Tab/语义聚焦不经过按压路径，不受影响。
 TEST_CASE("splitter_releases_focus_on_pointer_up", "[widgets][splitter]") {

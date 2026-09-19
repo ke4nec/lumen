@@ -454,8 +454,7 @@ TEST_CASE("gallery_collections_showcase_interacts", "[gallery]") {
     (void)app.renderFrame();
     go(app, "nav-collections");
 
-    // The example setting hides row rings while selection remains usable.
-    clickVisible(app, "collection-focus-rings");
+    // Rings are off by default; selection remains usable without them.
     CHECK(app.state().get("collection-focus-rings") == "false");
     // List：单击选中（Extended；current 与 selected 同步）。
     clickVisible(app, "collection-list:item:i1");

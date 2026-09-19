@@ -168,7 +168,14 @@ ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme,
             common.background = blendOver(common.background,
                                            theme.colors.hoverOverlay);
         }
-        common.focusWidth = focusWidthFor(widget, state, theme);
+        // 焦点环对菜单行抑制（semanticsRole="menuItem"）：current 指示
+        // 由动能矩形承载，环叠在选中底色上双指示冗余且过亮；集合行保持
+        // 底+环视觉——聚焦可见性由背景色块满足（§5 规则 4）。零新增
+        // Widget 字段（体积预算）。
+        common.focusWidth =
+            widget.collectionRow && widget.semanticsRole == "menuItem"
+                ? 0.0F
+                : focusWidthFor(widget, state, theme);
         // 行最小高度（视觉系统 §3.2 尺度表）：布局把行钳到该下限。
         resolved.minHeight = theme.metrics.minHeight[theme.metrics.baseIndex];
     }

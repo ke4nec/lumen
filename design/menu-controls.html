@@ -110,7 +110,7 @@
   .mi .sc { flex-shrink: 0; margin-left: 24px; color: var(--app-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .mi .subchev { flex: 0 0 16px; display: grid; place-items: center; margin-left: 12px; color: var(--app-muted); }
   .mi .subchev svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .mi.is-current { background: var(--menu-current); box-shadow: inset 0 0 0 2px var(--app-accent); } /* 键盘高亮 = selection 背景 + 内嵌 focus ring */
+  .mi.is-current { background: var(--menu-current); } /* 键盘高亮 = selection 背景（M14 动能矩形承载，无焦点环：环叠底色双指示冗余） */
   .mi.is-current .slot, .mi.is-current .subchev, .mi.is-current .sc { color: var(--app-ink); }
   .mi.is-disabled { color: rgba(241, 241, 244, .4); cursor: default; }
   .mi.is-disabled .slot, .mi.is-disabled .subchev, .mi.is-disabled .sc { color: rgba(241, 241, 244, .3); }
@@ -304,7 +304,7 @@
         <div class="callout"><span class="no">1</span><div><strong>零新增 WidgetType / RenderCommand</strong> <span>菜单面板 = overlay 上的 Container + Button 行；行 hover / pressed / 焦点 / 语义 Activate 复用 Button 的 WidgetState 路径（M11 DropdownController + 集合控件行双重验证）。框架侧唯一缝隙：<code>PointerButton</code> 从 HostEvent 穿透到 InteractionController + <code>SecondaryPressSink</code>。</span></div></div>
         <div class="callout"><span class="no">2</span><div><strong>快捷键只展示、不执行</strong> <span>右侧 muted 文本列（间隙 ≥ 24px，tabular-nums）；实际按键分发在应用 <code>onKey</code>——框架不建全局加速键表（非目标 §3）。</span></div></div>
         <div class="callout"><span class="no">3</span><div><strong>checkable = 图标槽形状指示</strong> <span>勾选显示 <code>IconId::Check</code>（16px 图标 / 20px 槽），checked 状态由应用维护（点击 → onCommand → 应用翻转 → 刷新面板）。高对比主题下不得只靠颜色（视觉系统 §11）。</span></div></div>
-        <div class="callout"><span class="no">4</span><div><strong>键盘高亮 = selection 背景 + 内嵌 focus ring</strong> <span>与集合控件 current 行同视觉（本稿「剪切」行）；<code>Up/Down</code> 跳过分隔线与禁用项、不环绕；Enter 激活、Right 展开子菜单、Left 回父级、Esc 逐级关闭。</span></div></div>
+        <div class="callout"><span class="no">4</span><div><strong>键盘高亮 = selection 背景，无焦点环</strong> <span>动能矩形常驻承载（M14；菜单行永不叠环，聚焦可见性由色块满足）。<code>Up/Down</code> 跳过分隔线与禁用项、不环绕；Enter 激活、Right 展开子菜单、Left 回父级、Esc 逐级关闭。</span></div></div>
         <div class="callout"><span class="no">5</span><div><strong>定位与级联</strong> <span>原点 = 指针 + (2,2)px；右/下缘不足翻左/上；clamp 视口 8px 边距。子菜单 = 父行右缘 + 0、顶对齐，右缘不足翻左——钳制算法与 Dropdown 共享私有实现。</span></div></div>
         <div class="callout"><span class="no">6</span><div><strong>分隔线不进语义树</strong> <span>1px <code>color.border.default</code>、水平 inset 8px；不可聚焦、无 label/action（屏幕阅读器惯例跳过）。</span></div></div>
       </div>
@@ -389,8 +389,8 @@
       <tbody>
         <tr><td>normal</td><td>透明（面板 elevated 底）</td><td>ink</td><td>icon 槽（无 = 空槽对齐）</td></tr>
         <tr><td>hover</td><td>surface→elevated hover 派生</td><td>ink</td><td>—</td></tr>
-        <tr><td>current（键盘高亮）</td><td>color.selection.background（#2e3c60）</td><td>ink</td><td>内嵌 focus ring · color.focus.ring（§5 规则 4）</td></tr>
-        <tr><td>hover + current</td><td>current 覆盖（§5 规则 3 同源）</td><td>ink</td><td>内嵌 focus ring</td></tr>
+        <tr><td>current（键盘高亮）</td><td>color.selection.background（#2e3c60，动能矩形承载）</td><td>ink</td><td>无焦点环（M14：环叠底色冗余；可见性由色块满足）</td></tr>
+        <tr><td>hover + current</td><td>current 覆盖（§5 规则 3 同源）</td><td>ink</td><td>无焦点环（同上）</td></tr>
         <tr><td>checked（checkable）</td><td>不变</td><td>ink</td><td>图标槽 Check 形状（HC 下不靠颜色，§11）</td></tr>
         <tr><td>disabled</td><td>不变</td><td>color.disabled.content</td><td>命中拒绝 + 键盘跳过 + 语义一致（优先级最高）</td></tr>
         <tr><td>separator</td><td>—</td><td>—</td><td>1px color.border.default · inset 8px · 不进语义树</td></tr>

@@ -262,7 +262,7 @@ struct WidgetState {
 1. `disabled` 优先级最高，禁用控件不响应点击、键盘激活或语义 action。
 2. `invalid` 影响边框、辅助文本和语义状态，但不覆盖 disabled 的可用性语义。
 3. `pressed` 覆盖 hover 的背景和前景状态。
-4. `focused` 默认产生可见焦点环；应用可显式设置 `showFocusRing=false` 关闭绘制，实际焦点、键盘与语义状态保持不变。该属性不区分输入来源。
+4. `focused` 默认不绘制焦点环；仅当节点显式设置 `showFocusRing=true` 时绘制可见焦点环。实际焦点、键盘导航与语义状态不受绘制开关影响。该属性不区分输入来源（鼠标/键盘/语义聚焦一致生效）。
 5. `checked` 和 `selected` 只影响有对应语义的控件。
 6. 状态变化即使不改变布局，也必须改变 RenderNode 的 resolved style，以便 damage
    正确覆盖旧状态和新状态。
@@ -316,13 +316,21 @@ Button、TextField、Checkbox、Switch、Dialog 和 Container 通过 variant、c
 enabled、invalid、selected 及 `StyleOverrides` 表达个性化需求。`Widget` 仍是 UI
 描述值，不能被 Theme 应用过程原地修改。
 
-`Widget.showFocusRing`（默认 `true`）控制当前节点的焦点环；C++ 写法为
-`withFocusRing(widget, false)`，文本 DSL 写法为 `showFocusRing: false`。
-设在 List/Tree/TreeList 视口上时传递到内部生成的行，Tree 还传递到箭头。
+`Widget.showFocusRing`（默认 `false`）控制当前节点的焦点环；需要可见环时用 C++
+`withFocusRing(widget, true)` 显式开启，文本 DSL 写法为 `showFocusRing: true`。
+设在 List/Tree/TreeList 视口上时传递到内部生成的行，Tree/TreeList 还传递到箭头。
 普通容器不会把它继承到任意子控件；行内应用自建按钮等保持自己的设置。
-关闭后鼠标与键盘聚焦均不绘制环，高对比模式同样尊重显式设置；hover、
-pressed、selected、语义 focused 与焦点导航保持原契约。焦点环所需几何
-预留不随此开关变化。该属性是绘制开关，`focus-visible` 输入来源策略仍为待办。
+默认关闭时鼠标与键盘聚焦均不绘制环，仅显式开启才绘制；hover、pressed、
+selected、语义 focused 与焦点导航保持原契约。焦点环所需几何预留不随此
+开关变化。该属性是绘制开关，`focus-visible` 输入来源策略仍为待办。
+键盘重度表面（设置页、集合、菜单、对话框）如需键盘可见性应显式开启；
+高对比模式下关闭环的表面仍须靠选中底色与形状区分，不得只靠颜色。
+框架自建的键盘件不走应用 opt-in，构建期恒开启：`makeTabs` 为页签按钮
+统一开环（Tab 停靠点、聚焦无其他指示；上下文设置覆盖子按钮自身声明），
+`makeSlider` 开环（thumb 环是
+§6.5 设计内焦点指示），Splitter 分隔条（布局期物化 chrome，3px accent
+线由 focusWidth>0 驱动，关环则键盘聚焦不可见），`makeDialog` actions、
+Dropdown 浮动菜单选项（Enter/Esc/Up/Down 的键盘激活目标）。
 
 现有 `makeButton()`、`makeTextField()`、`makeCheckbox()`、`makeSwitch()` builder 改为
 生成这些语义属性；`themedButton()`、`themedTextField()` 和 `applyTheme()` 删除。
@@ -526,7 +534,7 @@ rest/hovered/dragged/disabled 分别取 borderStrong/contentPrimary/accent/disab
 ### 10.3 交互和无障碍测试
 
 - disabled 控件不响应 pointer、keyboard 或 semantics activate/setValue。
-- focus ring 在键盘焦点和语义焦点下可见且不会影响布局尺寸。
+- 显式开启焦点环的控件在键盘焦点和语义焦点下可见且不会影响布局尺寸；默认关闭时焦点导航与语义 focused 保持可用，仅不绘制环。
 - Checkbox/Switch 的 checked 视觉和 semantics flags 同步。
 - TextField invalid 状态与 FormController 错误信息同步。
 - Dialog 关闭、Escape/返回键、焦点恢复和 modal barrier 保持当前契约。
@@ -561,7 +569,7 @@ ctest --test-dir build --output-on-failure -C Debug
   的不可变结果。
 - 控件几何只能由 layout 使用的 resolved metrics 决定，painter 不得重新计算控件尺寸。
 - 状态视觉变化必须进入 RenderNode diff，否则 Preserve/damage 模式会留下旧像素。
-- 颜色对比度、焦点环和 disabled 状态必须在 high contrast 下仍可区分，不能只依赖颜色。
+- 颜色对比度、焦点环和 disabled 状态必须在 high contrast 下仍可区分，不能只依赖颜色。关闭焦点环的表面仍须靠选中底色与形状区分；键盘重度表面应显式开启焦点环。
 - 图标、阴影和动效扩展不得改变现有 `RenderCommandList` 的 CPU/Skia/GPU 回退不变量。
 - Theme 只接收 host 提供的能力和指标，不接触 native handle；不为暂缓的移动平台增加专属契约。
 
@@ -586,6 +594,20 @@ V1（样式基础和当前控件迁移）与 V2（状态、交互和无障碍联
 - V1/V2 当时的验收记录：Windows CPU Debug 为 303 个用例，SDL-free mobile-core 为
   291 个用例；counter/settings headless 与窗口 smoke 正常。Skia Release 还需
   通过 `skia_paints_counter_frame_consistently` 后才能作为完整后端门槛。
+- 焦点环默认关闭（2026-09-19 追记）：§5/§6.1 改为默认不绘制、显式
+  `showFocusRing=true` 才绘制。代码已同步（`widget.h:306` 默认 `false`；
+  集合/树生成行继承视口设置；`gallery` 状态矩阵与焦点语义测试显式开启；
+  `gallery` 集合开关默认关闭）。`design/gallery.html` 已同步为默认无环 +
+  开关对比。键盘重度表面的开启落点：`makeDialog` 对 actions 子树显式
+  开启（动作按钮是 Enter/Esc 的键盘激活目标），Dropdown 浮动菜单选项
+  显式开启（Up/Down 高亮行即 focusNode 目标，Ghost rest 底透明、环是
+  唯一指示），`makeTabs` 为页签按钮统一开启（Tab 停靠点无其他聚焦
+  指示），`makeSlider` 开启（§6.5 thumb 环），Splitter 分隔条布局期
+  恒开启（3px accent 线由 focusWidth>0 驱动），TreeList chevron 与
+  Tree 箭头同契约随视口传递（chevron 是独立 Tab 停靠点），settings
+  示例页 radio/switch/checkbox 显式开启（无其他焦点指示）；正文与
+  常规表面保持默认关闭。
+  保持默认关闭。
 
 以上为历史实施记录，后续实现状态以自用路线图为准。mobile-core 数量只说明当时
 通用实验配置的验证情况，不代表 Android/iOS 支持或本次复测结果。

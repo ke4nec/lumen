@@ -60,6 +60,9 @@
     .compare-button { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 16px; color: white; background: var(--board-accent); font-size: 13px; font-weight: 650; box-shadow: 0 6px 14px rgba(40, 100, 183, .2); }
     .compare-button:hover { transform: translateY(-1px); box-shadow: 0 9px 18px rgba(40, 100, 183, .26); }
     .compare-button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+    .control-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .ring-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 12px; color: var(--board-muted); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+    .ring-toggle input { width: 16px; height: 16px; accent-color: var(--board-accent); }
 
     .design-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px; padding: 18px 21px; margin-bottom: 18px; border: 1px solid var(--board-line); border-radius: var(--radius-lg); background: rgba(255, 255, 255, .64); }
     .summary-kicker { margin-bottom: 5px; color: var(--board-accent); font-size: 11px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
@@ -193,14 +196,18 @@
     .mi .msc { flex-shrink: 0; margin-left: 16px; color: var(--app-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .mi .mchev { flex: 0 0 14px; display: grid; place-items: center; margin-left: 12px; color: var(--app-muted); }
     .mi .mchev svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .mi.is-current { background: var(--menu-current); box-shadow: inset 0 0 0 2px var(--app-accent); }
+    /* 焦点环默认关闭（visual-system §5/§6.1）：is-current 默认只给选中底，
+       显式开启（body.show-focus-rings，对应 Widget.showFocusRing=true）才叠加内嵌环。 */
+    .mi.is-current { background: var(--menu-current); }
+    body.show-focus-rings .mi.is-current { box-shadow: inset 0 0 0 2px var(--app-accent); }
     .mi.is-disabled { color: color-mix(in srgb, var(--app-ink) 40%, transparent); cursor: default; }
     .mi.is-disabled .msc, .mi.is-disabled .mchev { color: color-mix(in srgb, var(--app-muted) 45%, transparent); }
     .mi.is-disabled:hover { background: transparent; }
     .msep { height: 1px; margin: 4px 8px; background: var(--app-line); }
     .ctx-menu { top: 0; left: 0; }
     /* Splitter（design/splitter.html）：侧栏与内容之间的框架分隔条——视觉线 1px（rest）→ 3px
-       （hover/drag，accent），轨道 6px、命中区扩展 16px、内嵌 focus ring。 */
+       （hover/drag/focus，accent），轨道 6px、命中区扩展 16px；分隔条为框架物化
+       chrome，键盘焦点指示恒开启（visual-system §6.1，不受“显示焦点环”开关影响）。 */
     .app-splitter { position: relative; flex: 0 0 6px; z-index: 5; padding: 0; border: 0; background: transparent; cursor: ew-resize; }
     .app-splitter::before { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - .5px); width: 1px; background: var(--app-line-strong); transition: background .12s ease; }
     .app-splitter:hover::before, .app-splitter.is-drag::before, .app-splitter:focus-visible::before { left: calc(50% - 1.5px); width: 3px; background: var(--app-accent); }
@@ -211,6 +218,7 @@
     .menu-mini .mm { display: flex; align-items: center; gap: 8px; min-height: 20px; padding: 0 7px; color: var(--app-muted); font-size: 11px; border-radius: 4px; white-space: nowrap; }
     .menu-mini .mm kbd { margin-left: auto; padding: 0 4px; color: var(--app-muted); font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; border: 1px solid var(--app-line); border-radius: 4px; background: var(--app-bg); }
     .menu-mini .mm.is-current { color: var(--app-accent-content, var(--app-accent)); background: var(--app-accent-soft); }
+    body.show-focus-rings .menu-mini .mm.is-current { box-shadow: inset 0 0 0 2px var(--app-accent); }
     .menu-mini .mm.is-disabled { opacity: .45; }
     .mini-splitter { display: grid; grid-template-columns: minmax(0, 1fr) 3px minmax(0, 1fr); gap: 5px; width: 100%; height: 36px; }
     .mini-splitter span { min-width: 0; border: 1px solid var(--app-line); border-radius: 4px; background: var(--app-accent-soft); }
@@ -347,6 +355,7 @@
       .board-header { display: block; }
       .header-meta { margin-top: 16px; }
       .control-bar { align-items: stretch; flex-direction: column; gap: 12px; }
+      .control-actions { align-self: stretch; justify-content: space-between; }
       .compare-button { align-self: flex-start; }
       .design-summary { grid-template-columns: minmax(0, 1fr); gap: 12px; }
       .summary-tags { justify-content: flex-start; }
@@ -357,6 +366,7 @@
       .variant-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 4px; }
       .variant-tab { padding: 8px; }
       .variant-tab .tab-index { display: none; }
+      .control-actions { flex-direction: column; align-items: stretch; }
       .compare-button { width: 100%; justify-content: center; }
       .stage { padding: 8px; }
       .stage-topline { padding: 4px; }
@@ -386,7 +396,10 @@
         <button class="variant-tab" role="tab" aria-selected="false" data-variant="v3"><span class="tab-index">03</span>Aurora Signal</button>
         <button class="variant-tab" role="tab" aria-selected="false" data-variant="v4"><span class="tab-index">04</span>Utility Contrast</button>
       </div>
-      <button class="compare-button" id="compareToggle" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>Compare all</span></button>
+      <div class="control-actions">
+        <label class="ring-toggle" title="对应 Widget.showFocusRing=true；默认关闭，仅选中底（Splitter 分隔条为框架 chrome 恒开环，不受此开关影响）"><input id="ringToggle" type="checkbox">显示焦点环</label>
+        <button class="compare-button" id="compareToggle" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>Compare all</span></button>
+      </div>
     </section>
 
     <section class="design-summary" aria-live="polite">
@@ -419,7 +432,7 @@
     <section class="handoff">
       <article class="handoff-card"><h3>自定义标题栏与文字尺度</h3><p>无边框窗口：标题栏一条 48 px（品牌 + 应用菜单 + 拖拽区 + 窗口控制），替代系统标题栏 + 菜单栏两行。空白区域可拖动移窗、双击最大化；窗口控制按钮 44×32 通高贴合右上角，close hover 为警示红。主操作、导航与菜单项高 40 px，紧凑样本 32 px；正文 14 px、辅助 12 px，4 px 网格。</p></article>
       <article class="handoff-card"><h3>按可用空间重排</h3><p>侧栏为 200 / 168 / 64 px，宽画板下可拖动侧栏与内容之间的 Splitter 分隔条调整（双击复位，断点宽度优先）；主内容不足 720 px 时上下排列，组件卡按最小 176 px 重排。窗口四边保留 8 px 透明 resize 边与 12 px 角（平台 hit-test，视觉不可见）；最大化时窗口直角、控制按钮切换还原图标。</p></article>
-      <article class="handoff-card"><h3>评审与实现边界</h3><p>可切换设计方向、比较模式和导航选中态；标题栏空白双击演示最大化态，菜单栏点击/hover 切换、右键内容区唤起 ContextMenu、分隔条可拖动。菜单与分栏规格以 <code>docs/lumen-menu-controls-design.md</code>、<code>docs/lumen-splitter-design.md</code> 为准；标题栏规格见 <code>docs/lumen-titlebar-design.md</code>（平台 hit-test 契约与窗口操作）。</p></article>
+      <article class="handoff-card"><h3>评审与实现边界</h3><p>可切换设计方向、比较模式和导航选中态；焦点环默认关闭（<code>View</code> 菜单 <code>Reset pane layout</code> 默认只给选中底），勾选控制栏“显示焦点环”对比 <code>showFocusRing=true</code> 的内嵌环——开关对照菜单 current/集合行；Splitter 分隔条为框架物化 chrome，键盘焦点指示恒开启不受开关影响。标题栏空白双击演示最大化态，菜单栏点击/hover 切换、右键内容区唤起 ContextMenu、分隔条可拖动。菜单与分栏规格以 <code>docs/lumen-menu-controls-design.md</code>、<code>docs/lumen-splitter-design.md</code> 为准；标题栏规格见 <code>docs/lumen-titlebar-design.md</code>（平台 hit-test 契约与窗口操作）；焦点环规则见 <code>docs/lumen-visual-system-design.md §5/§6.1</code>。</p></article>
     </section>
 
     <footer class="design-footer"><span><strong>Design output</strong> · <code>design/gallery.html</code></span><span>Four directions · one comparison surface</span></footer>
@@ -606,6 +619,10 @@
         updatePalettes();
       };
       document.querySelectorAll('.variant-tab').forEach((tab) => tab.addEventListener('click', () => setVariant(tab.dataset.variant)));
+      // 焦点环 opt-in 对比（visual-system §6.1）：默认关闭，仅选中底；勾选后叠加内嵌环。
+      document.getElementById('ringToggle').addEventListener('change', (event) => {
+        body.classList.toggle('show-focus-rings', event.target.checked);
+      });
       compareToggle.addEventListener('click', () => {
         const compare = body.classList.toggle('is-compare');
         compareToggle.querySelector('span').textContent = compare ? 'Single view' : 'Compare all';

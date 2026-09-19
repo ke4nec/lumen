@@ -250,6 +250,16 @@ TEST_CASE("context_menu_rows_hover_highlight", "[widgets][menu]") {
     CHECK(other->commonStyle().background == core::Color::transparent());
 }
 
+TEST_CASE("menu_rows_suppress_focus_ring", "[widgets][menu]") {
+    // 菜单行 current 指示由动能矩形承载：焦点行不叠 2px 内嵌环（环叠
+    // 选中底色双指示冗余且过亮；集合行保持底+环视觉不受影响）。
+    MenuApp app;
+    app.openSample();
+    const RenderNode* focused = app.overlayItem(0, 0);
+    REQUIRE(focused != nullptr);
+    CHECK(focused->commonStyle().focusWidth == 0.0F);
+}
+
 TEST_CASE("menu_long_label_ellipsizes_single_line", "[widgets][menu]") {
     // §10.1：超宽标签单行省略号——不换行、行高与常规行一致（动能
     // 矩形/滚动推导都以行高稳定为前提）。

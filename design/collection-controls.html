@@ -187,14 +187,14 @@
 </style>
 </head>
 <body>
-<div class="board">
+<div class="board hide-focus-rings">
 
   <header class="board-header">
     <div>
       <div class="eyebrow">Lumen Control Design · Collections</div>
       <h1>集合控件设计稿：List / Tree / TreeList</h1>
       <p class="lead">三个控件共享同一套虚拟化引擎（M3 VirtualList 布局路径）、选择模型（SelectionModel）与行交互通道（可聚焦集合 Row 与固定数量的行事件 sink）。本稿定义视觉规格、状态矩阵、选择语义与键盘契约；设计文档见 <code>docs/lumen-collection-controls-design.md</code>。</p>
-      <label><input id="show-focus-ring" type="checkbox" checked> 显示焦点环（showFocusRing）；关闭仍保留选中背景与标记</label>
+      <label><input id="show-focus-ring" type="checkbox"> 显示焦点环（showFocusRing，默认关闭）；关闭仍保留选中背景与标记</label>
     </div>
     <div class="brand-mark">L</div>
   </header>
@@ -270,7 +270,7 @@
       </div>
       <div class="callouts">
         <div class="callout"><span class="no">1</span><div><strong>行 = focusable Row</strong> <span>key = <code>&lt;owner&gt;:item:&lt;stableKey&gt;</code>；hover / pressed / 焦点环基于完整 identity 解析；Enter 与双击使用 addRowActivateSink。整行占满可用宽度。</span></div></div>
-        <div class="callout"><span class="no">2</span><div><strong>选中 = <code>Widget.selected</code> 状态位</strong> <span>背景解析为语义 token <code>colors.accentContainer</code>（Core Dark 派生 <code>#2e3c60</code>）；current 行叠加内嵌 focus ring（<code>color.focus.ring</code>，内嵌绘制不越出节点矩形——V2 damage 不变量）——与选中不互斥。</span></div></div>
+        <div class="callout"><span class="no">2</span><div><strong>选中 = <code>Widget.selected</code> 状态位</strong> <span>背景解析为语义 token <code>colors.accentContainer</code>（Core Dark 派生 <code>#2e3c60</code>）；显式开启时 current 行叠加内嵌 focus ring（<code>color.focus.ring</code>，内嵌绘制不越出节点矩形——V2 damage 不变量）——与选中不互斥。</span></div></div>
         <div class="callout"><span class="no">3</span><div><strong>行高与栅格（视觉系统 §3.2）</strong> <span>行最小高度 Small 32 / Medium 40（桌面默认，本稿）/ Large 48；水平内边距 8 / 12 / 16；小部件圆角 4 / 6 / 8；行间 1px <code>color.border.default</code> 分隔线。密度由应用显式声明，不随平台隐式改变。</span></div></div>
         <div class="callout"><span class="no">4</span><div><strong>双击 = 激活</strong> <span>InteractionController 既有双击检测扩展 DoubleClickSink；单击只做选择。Enter 与语义 Activate 同一 <code>onActivated(key)</code> 回调。</span></div></div>
         <div class="callout"><span class="no">5</span><div><strong>虚拟化</strong> <span>直接复用 <code>layoutVirtualList</code>（M3）：千项 O(visible) 物化、实测 extent 修正、锚点稳定。List 补充整行宽度、自动空态与边框内滚动对齐。</span></div></div>
@@ -476,8 +476,8 @@
         <tr><td>hover</td><td>surface-alt</td><td>ink</td><td>无</td></tr>
         <tr><td>pressed</td><td>accent-soft（增强）</td><td>ink</td><td>无 · pressed 覆盖 hover（§5 规则 3）</td></tr>
         <tr><td>selected</td><td>colors.accentContainer（#2e3c60）</td><td>ink</td><td>左侧 3px 指示条</td></tr>
-        <tr><td>current（列表有焦点）</td><td>不变</td><td>ink</td><td>内嵌 focus ring · color.focus.ring（§5 规则 4：键盘焦点必须可见）</td></tr>
-        <tr><td>selected + current</td><td>colors.accentContainer</td><td>ink</td><td>指示条 + 独立内嵌 focus ring</td></tr>
+        <tr><td>current（列表有焦点，显式开启）</td><td>不变</td><td>ink</td><td>内嵌 focus ring · color.focus.ring（§5/§6.1：默认关闭，showFocusRing=true 才绘制；键盘重度表面应开启）</td></tr>
+        <tr><td>selected + current</td><td>colors.accentContainer</td><td>ink</td><td>指示条 + 独立内嵌 focus ring（开启时）</td></tr>
         <tr><td>disabled</td><td>surface</td><td>color.disabled.content</td><td>无 · 命中/键盘/语义一致拒绝（disabled 优先级最高）</td></tr>
         <tr><td>高对比主题</td><td>选中实底 + 边框</td><td>提高对比</td><td>形状差异区分选中/current——不得只靠颜色（视觉系统 §11 约束）</td></tr>
       </tbody>

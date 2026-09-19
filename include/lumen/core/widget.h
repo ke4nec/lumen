@@ -302,8 +302,9 @@ struct Widget {
     // 3=Extended；真实选择状态在控制器，Widget 只承载语义声明）。
     std::uint8_t collectionSelectionMode{0};
     // Visual only: keep focus/navigation/semantics when the ring is hidden.
+    // Default off (visual-system §5/§6.1); opt in with withFocusRing(..., true).
     // Collection viewports forward this to generated rows (visual-system §6.1).
-    bool showFocusRing{true};
+    bool showFocusRing{false};
     // TreeList 列向量指针（应用拥有的 std::vector<TreeListColumn>；
     // themeOverride 同模式）与表头显隐。
     const void* collectionColumns{nullptr};
@@ -715,6 +716,9 @@ inline Widget makeSlider(std::string bind, std::string key = {},
     widget.bind = std::move(bind);
     widget.key = std::move(key);
     widget.width = width;
+    // 方向键调节目标（§6.5）：thumb 焦点环是设计内焦点指示（端点恒定
+    // 预留 r+f），且 Slider 无其他聚焦反馈——键盘件显式开环（§6.1）。
+    widget.showFocusRing = true;
     return widget;
 }
 
@@ -775,6 +779,10 @@ inline Widget makeTabs(std::vector<Widget> tabButtons, std::string key = {},
     widget.type = WidgetType::Tabs;
     widget.key = std::move(key);
     widget.width = width;
+    // Tabs 上下文为页签按钮开环（§6.8）：页签是 Tab 键停靠点、聚焦态无
+    // 其他指示（selected 底部指示条只随选中）；与 makeDialog actions
+    // 同口径的键盘表面 opt-in（§6.1）。
+    for (auto& tab : tabButtons) tab.showFocusRing = true;
     widget.children = std::move(tabButtons);
     return widget;
 }

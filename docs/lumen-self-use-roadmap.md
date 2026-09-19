@@ -1295,12 +1295,12 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 
 ### 焦点环显隐属性（2026-09-19）
 
-- `Widget.showFocusRing` 默认开启，`withFocusRing(widget, false)` 显式关闭；
+- `Widget.showFocusRing` 默认关闭，`withFocusRing(widget, true)` 显式开启；
   List/Tree/TreeList 视口传递到生成行，Tree 同时传递到箭头。实际焦点、
   选择、键盘导航及语义 focused 保留，运行时切换不改变几何。
-- 文本 DSL 的现有节点支持 `showFocusRing: false`；集合节点仍由 C++
-  构建。Gallery Collections 和 HTML 设计稿均提供显隐对照开关；视觉规范
-  同步显式覆盖契约，默认继续显示环，focus-visible 输入来源策略仍为待办。
+- 文本 DSL 的现有节点支持 `showFocusRing: true`；集合节点仍由 C++
+  构建。Gallery Collections 和 HTML 设计稿均提供显隐对照开关（默认关闭）；
+  视觉规范同步默认关闭契约，focus-visible 输入来源策略仍为待办。
 - 开发工作区阶段验证：Windows CPU Debug 全量 `633/633`、Skia/GPU Release 全量
   `650/650` 通过；专项覆盖指针/键盘/语义、Tree 折叠恢复、高对比局部主题、
   开关切换与增量帧一致性。GPU Tree 回读 60 断言实际通过，覆盖环开/关、
@@ -1561,6 +1561,33 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     偏大 37% → 7..17、Maximize 6..18、Minimize 5..19）；close hover
     红改专用 `ButtonTokens.windowClose`（#c42b1c + 白，系统 chrome
     常量、深浅同值——原 statusError #E05A60 偏亮）。
+  - **菜单行焦点环抑制（复核第三轮，渲染 PNG 定位）**：键盘高亮行
+    叠 2px 内嵌 focus ring（集合行 current 规范带过来的）在选中底色
+    上双指示冗余且环比底色亮、观感突兀——resolver 集合行分支按
+    `semanticsRole == "menuItem"` 置零 focusWidth（零新增 Widget 字
+    字段，体积预算不动）；current 指示由动能矩形单独承载，聚焦可见
+    性由底色块满足（§5 规则 4）；menu-controls-design §10.3 状态
+    矩阵与高对比段同步更新。
+  - **键盘重度表面焦点环开启（复核第四轮）**：默认关闭后，无选中底色
+    的键盘激活目标失去唯一焦点指示——`makeDialog` 对 actions 子树
+    显式 `showFocusRing=true`（Enter/Esc 目标，§6.1 对话框条目），
+    settings 示例页 radio/switch/checkbox 显式开启（无其他焦点指示，
+    正文与按钮维持默认关闭）；DSL 解析测试恢复 `showFocusRing: true`
+    显式开启断言（默认值翻转后原断言退化为只测默认值）。复核补漏
+    （评审定位）：Dropdown 浮动菜单选项同样显式开启——Up/Down 高亮行
+    即 `focusNode` 目标，Ghost 选项 rest 底透明、环是唯一指示
+    （dropdown.cpp buildOverlay；visual_regression_tests 补高亮行
+    focusWidth 断言）。
+  - **框架键盘件统一开环（复核第五轮）**：默认关闭遍历框架自建键盘
+    表面收尾——Splitter 分隔条布局期恒开环（painter 的 3px accent 线
+    由 focusWidth>0 驱动，关环时键盘聚焦退回 1px rest 线不可见）；
+    `makeTabs` 为页签按钮统一开环（§6.8，页签是 Tab 停靠点、聚焦无
+    其他指示）；`makeSlider` 开环（§6.5 thumb 环是设计内焦点指示、
+    端点恒定预留 r+f）；TreeList chevron 改走 treePart 物化
+    （makeLeadWidget styledTree=true，几何 24=chevronHitExtent 不变）
+    并把 configureTreeParts 传递扩展到 TreeList（chevron 是独立 Tab
+    停靠点，此前不随视口传递、默认关环下聚焦不可见；空态同口径）。
+    splitter/visual_m6/style/collection 各补断言。
   - **透明圆角窗口**：`WindowDesc.transparent`（SDL_WINDOW_
     TRANSPARENT，sdl3_window/host 透传）+ `AppShell::setClearColor`
     （runApp 依 transparent 自动把 CPU 清屏转全透明）；gallery 根
@@ -1568,12 +1595,14 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     `makeDialog` 增 `scrimRadius` 参数（gallery 传同半径——全窗
     scrim 不再把压暗色涂进圆角外的透明像素）。main.cpp 开
     `transparent`。
-- 测试：style_tests 补 WindowClose 变体三态解析；titlebar_tests 补
-  chrome 对齐用例（48px 行高/按钮通高 44 宽/右缘贴合视口/根与标题
-  栏圆角 16/最大化归零）。本地 Windows CPU Debug 全量 `616/616`
-  （含并行 List 装饰工作的新用例）。
+- 测试：style_tests 补 WindowClose 变体三态解析、iconSize 覆盖与描
+  边折算；titlebar_tests 补 chrome 对齐用例（48px 行高/按钮通高 44
+  宽/右缘贴合视口/图标盒 14/根与标题栏圆角 16/最大化归零）；
+  menu_tests 补菜单行焦点环抑制断言、visual_regression_tests 补下拉
+  高亮行 focusWidth 断言。本地 Windows CPU Debug 全量 `663/663`
+  （含并行滚动条工作的新用例与焦点环统一四条新断言）。
 - 已知限制：无合成器的 X11 会话角落退化为黑；Skia/GPU 后端的透明
-  clear 未接（按需评估）；close hover 取 `statusError`（深浅主题
+  clear 未接（按需评估）；close hover 为 `ButtonTokens.windowClose`（#c42b1c，深浅主题
   派生）而非 mock 硬编码 #c42b1c。
 
 ### 既有能力优化（2026-09-19，计划见 docs/lumen-optimization-plan.md）

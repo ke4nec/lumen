@@ -236,11 +236,11 @@ Icon 采用现有 `IconId / iconPolylines`；16 px 图标的基准描边 1.5 px�
 | 背景 | 先取变体与 checked/selected 基底，再应用 pressed，否则 hovered；disabled 使用对应禁用表面 |
 | 前景/标记 | 按当前表面取成对前景；选中、错误、禁用使用各自语义，不整体重复降低 alpha |
 | 边框 | enabled invalid 使用错误边框；其次 focused / hovered / normal；disabled 使用禁用轮廓，错误说明可保留 |
-| 焦点 | enabled focused 默认显示环，与 pressed、selected、checked、invalid 并存；显式 `showFocusRing=false` 仅关闭环绘制 |
+| 焦点 | enabled focused 默认不显示环，仅显式 `showFocusRing=true` 绘制，与 pressed、selected、checked、invalid 并存 |
 | 数据装饰 | checked 的勾号、Radio 内点、selected 指示、Dropdown 当前值独立保留 |
 | 编辑反馈 | caret、selection、composition 仍来自编辑状态；readOnly 保留选择/复制/焦点，拒绝编辑 |
 
-现有 focused 不区分输入来源，默认保留所有已获得焦点的可见标识。应用可用 `Widget.showFocusRing=false` 或 `withFocusRing(widget, false)` 显式关闭焦点环；List/Tree/TreeList 视口传递到生成行，Tree 同时传递到箭头。该开关对鼠标、键盘与语义聚焦一致生效，不清除实际焦点、选择、导航或语义状态。不得用此开关冒充“仅键盘焦点”；未来增加 focus-visible 输入来源仍需要完整事件和无障碍测试。
+现有 focused 不区分输入来源，默认不绘制焦点环。应用可用 `Widget.showFocusRing=true` 或 `withFocusRing(widget, true)` 显式开启焦点环；List/Tree/TreeList 视口传递到生成行，Tree/TreeList 同时传递到箭头（chevron）。该开关对鼠标、键盘与语义聚焦一致生效，不清除实际焦点、选择、导航或语义状态。不得用此开关冒充“仅键盘焦点”；未来增加 focus-visible 输入来源仍需要完整事件和无障碍测试。
 
 Checked / Selected 只作用于有对应语义的控件或行部件，不把所有 Container 自动画成选中面。Checkbox / Switch 现有 `checked || selected` 兼容路径保留；Tabs 与列表按其实际 selected 声明解析，不能在迁移中悄悄改写绑定值。
 
@@ -251,10 +251,10 @@ Checked / Selected 只作用于有对应语义的控件或行部件，不把所�
 | 组合 | 可见结果 |
 | --- | --- |
 | Hovered + Pressed | 只有 pressed 背景，不累计两个 overlay |
-| Focused + Pressed | pressed 表面 + 独立焦点环 |
+| Focused + Pressed（显式开启） | pressed 表面 + 独立焦点环 |
 | Checked / Selected + Hovered | 原选中标记 + hover，不回到未选外观 |
 | Checked / Selected + Disabled | 弱化表面/文字，仍看得出原数据值 |
-| Invalid + Focused | 错误边框/说明 + 清楚的焦点环，不用错误红代替焦点全部语义 |
+| Invalid + Focused（显式开启） | 错误边框/说明 + 清楚的焦点环，不用错误红代替焦点全部语义 |
 | ReadOnly + Focused | 正常可读的值 + 焦点/选区；没有可编辑反馈 |
 | Theme 切换时 Pressed | 使用新主题合法颜色，释放/取消一次完成，无旧主题残影 |
 
@@ -349,7 +349,7 @@ Radio 沿用布尔绑定与应用互斥。本轮覆盖鼠标/键盘切换和组�
 
 ### 6.8 Tabs
 
-默认采用平面页签行：透明底、label、水平 padding 12，最小高度 40，页签间 gap 4，底部分隔线 borderDefault。当前项为 accentContent，并在页签底部保留 2 px accent 指示条；其余项 contentSecondary。hover 有状态面，focused 独立画环，selected+focused 同时可见。
+默认采用平面页签行：透明底、label、水平 padding 12，最小高度 40，页签间 gap 4，底部分隔线 borderDefault。当前项为 accentContent，并在页签底部保留 2 px accent 指示条；其余项 contentSecondary。hover 有状态面，focused 独立画环（`makeTabs` 上下文为页签按钮统一 `showFocusRing=true`——页签是 Tab 停靠点、聚焦无其他指示，§6.1 键盘表面口径；该上下文设置覆盖子按钮自身声明，需个别关闭的页签在构建后修改 `children[i].showFocusRing`），selected+focused 同时可见。
 
 继续以已有 Button 子节点与 selected 声明表达选中；由 Tabs 上下文解析页签外观，或用统一组件 token 的组合器实现，不能在 Gallery 给每个按钮手写颜色。内容切换由应用管理。Tab 导航/激活沿用现有行为，不宣称已经有 roving-tabindex 或方向键组选中协议。
 

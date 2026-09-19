@@ -247,7 +247,7 @@ splitter.divider.focusRing  = color.focus.ring + focusWidth（内嵌）
 | rest | 1px `border.strong` 线居中于轨道 | 命中区 = max(t, hitExtent) |
 | hover | 3px accent 线 | 光标 ResizeEW/NS（能力可用时） |
 | drag | 3px accent 线 + 两窗格实时重排 | 逐拍 setOffset + 重建 |
-| focused（键盘） | 3px accent 线 + 内嵌 focus ring | 方向键 ±步进；Home/End |
+| focused（键盘） | 3px accent 线 + 内嵌 focus ring（分隔条为框架物化 chrome，布局期恒 `showFocusRing=true`——3px 线本身由 focusWidth>0 驱动，关环会让键盘聚焦退回 1px rest 线不可见；visual-system §6.1 键盘表面口径） | 方向键 ±步进；Home/End |
 | 窗格低于最小 | 分隔条顶住（钳制） | 继续拖动无位移 |
 | 高对比主题 | 线宽提升 + 形状差异（1→3px 变化保留） | 不得只靠颜色（§11） |
 
@@ -263,7 +263,7 @@ splitter.divider.focusRing  = color.focus.ring + focusWidth（内嵌）
 
 1. **布局**：offset 精确分配两窗格、min 钳制（两侧）、极端窄窗比例压缩不重叠、嵌套（水平套垂直）几何、窗口 resize 后 keep-offset 钳制、initialOffset 播种只发生一次。
 2. **拖动**：命中 `split:div:` 进入拖动、逐拍 setOffset + 单帧重排、边界顶住、pointerCancel 复位干净、不抢占 Slider/滚动拖动/文本选区（既有回归）。
-3. **键盘**：±16px 步进、Home/End、焦点环可见、Tab 离开。
+3. **键盘**：±16px 步进、Home/End、Tab 聚焦时 3px accent 线可见（focusWidth>0 驱动）、Tab 离开。
 4. **双击**：reset 回 initialOffset；双击不与单击路径冲突。
 5. **语义**：value 百分比文本随几何同步、SetValue ≡ 键盘、四层一致性断言。
 6. **回归**：既有全部测试与帧哈希不变（新 WidgetType 不触旧路径）；Widget 体积静态断言 bump 到 824。

@@ -1129,7 +1129,8 @@ RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
 void configureTreeParts(Widget& widget, core::ControlSize size, bool showFocusRing) {
     if (widget.treePart != core::TreePart::None) {
         widget.controlSize = size;
-        widget.showFocusRing = widget.showFocusRing && showFocusRing;
+        // 生成的树 chrome（行/箭头）继承视口设置；行内应用自建内容保持自身设置。
+        widget.showFocusRing = showFocusRing;
     }
     for (auto& child : widget.children) configureTreeParts(child, size, showFocusRing);
 }
@@ -1173,8 +1174,12 @@ void materializeVirtualRows(RenderNode& node,
                 continue;
             }
             Widget item = source->buildItem(i);
-            if (item.collectionRow) item.showFocusRing = item.showFocusRing && showFocusRing;
-            if (node.type == WidgetType::Tree) {
+            // 生成的行继承视口设置（行无用户级开关；t_prepareItem 仍可在其后逐行覆盖）。
+            if (item.collectionRow) item.showFocusRing = showFocusRing;
+            // Tree/TreeList 行内 treePart chrome（chevron/spacer）同口径继承
+            // 视口设置：TreeList 的 chevron 是独立 Tab 停靠点（非单一停靠
+            // 遍历），漏传会在默认关环下聚焦不可见。
+            if (node.type == WidgetType::Tree || node.type == WidgetType::TreeList) {
                 configureTreeParts(item, controlSize, showFocusRing);
             }
             if ((node.type == WidgetType::List || node.type == WidgetType::Tree) && !node.enabled) {
@@ -1280,7 +1285,10 @@ RenderNode layoutVirtualList(const Widget& widget,
         node.scrollOffset = 0.0F;
         if (source != nullptr && list) {
             Widget empty = source->buildEmpty();
-            if (widget.type == WidgetType::Tree) configureTreeParts(empty, widget.controlSize, widget.showFocusRing);
+            if (widget.type == WidgetType::Tree ||
+                widget.type == WidgetType::TreeList) {
+                configureTreeParts(empty, widget.controlSize, widget.showFocusRing);
+            }
             if (t_prepareItem != nullptr && *t_prepareItem) (*t_prepareItem)(empty);
             const float width = std::max(0.0F, viewportWidth - padding.horizontal());
             const float height = std::max(0.0F, viewportHeight - padding.vertical());
@@ -1470,6 +1478,11 @@ RenderNode layoutSplitter(const Widget& widget, const Constraints& constraints,
                                accessibility::kActionSetValue;
     divider.enabled = widget.enabled;
     divider.buttonVariant = core::ButtonVariant::Ghost;
+    // 键盘步进目标（Tab 聚焦）：painter 的 3px accent 线由 focusWidth>0
+    // 驱动（painter.cpp splitter 分支），环关着聚焦态就退回 1px rest 线
+    // 完全不可见——框架 chrome 与 makeDialog actions/dropdown 选项同口径
+    // 显式开环（visual-system §6.1）。
+    divider.showFocusRing = true;
 
     const std::string leadId =
         childIdentity(identity, widget.children[0], 0);

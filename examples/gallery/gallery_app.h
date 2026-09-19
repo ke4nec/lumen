@@ -486,7 +486,7 @@ class GalleryApp {
         state.set("nickname", "");
         state.set("email", "");
         state.set("notifications", "true");
-        state.set("collection-focus-rings", "true");
+        state.set("collection-focus-rings", "false");
         state.set("autosave", "false");
         state.set("plan-free", "true");
         state.set("plan-pro", "false");
@@ -1888,6 +1888,8 @@ class GalleryApp {
         for (const auto& state : states) {
             auto cell = prototype;
             const auto snapshot = previewState(state);
+            // State matrix explicitly demonstrates Focus states: opt in to the ring.
+            cell.showFocusRing = snapshot.focused;
             cell.key = "sample-" + name + "-" + state;
             cell.enabled = false;
             cell.bind.clear();
@@ -2074,6 +2076,8 @@ class GalleryApp {
                 core::Widget cell = core::makeButton(label);
                 cell.buttonVariant = variant;
                 cell.enabled = false; // Preview state affects style only.
+                // State matrix explicitly demonstrates Focus: opt in to the ring.
+                cell.showFocusRing = column.focused;
                 cells.push_back(core::makeColumn(
                     {mutedLabel(column.label, theme),
                      core::withKey(std::move(cell), key)},
@@ -2492,7 +2496,7 @@ class GalleryApp {
                        "controllers, keyed by row identity.",
                        theme),
             "collections-desc"));
-        const bool showFocusRing = shell_.state().get("collection-focus-rings") != "false";
+        const bool showFocusRing = shell_.state().get("collection-focus-rings") == "true";
         items.push_back(core::makeCheckbox("Show collection focus rings", "collection-focus-rings",
                                            "collection-focus-rings"));
 
@@ -2522,7 +2526,9 @@ class GalleryApp {
                                  "Selected+Focused", "Disabled"}) {
             auto row = collectionList_.buildItem(0);
             row.key = std::string("list-preview-") + name;
-            row.showFocusRing = showFocusRing;
+            // 状态矩阵按状态演示 Focus（与按钮矩阵同口径）：聚焦行显式
+            // 开环，不受页面开关影响——开关只对照交互式 List/Tree 视口。
+            row.showFocusRing = previewState(name).focused;
             row.onClick.clear();
             row.semanticsActions = 0;
             row.children = {core::makeIcon(core::IconId::Document),
@@ -2572,9 +2578,12 @@ class GalleryApp {
             row.treePart = core::TreePart::Row;
             row.collectionRow = true;
             row.key = std::string("tree-preview-") + name;
-            row.showFocusRing = showFocusRing;
+            // 状态矩阵按状态演示 Focus（与按钮矩阵同口径）：聚焦行显式
+            // 开环，不受页面开关影响——开关只对照交互式 List/Tree 视口。
+            const bool rowFocused = previewState(name).focused;
+            row.showFocusRing = rowFocused;
             row.children.front().key = row.key + ":chevron";
-            row.children.front().showFocusRing = showFocusRing;
+            row.children.front().showFocusRing = rowFocused;
             row.children.back().flex = 1.0F;
             if (std::string(name).find("Disabled") != std::string::npos) {
                 row.enabled = false;

@@ -504,24 +504,29 @@ List 与 Tree 外框为 surface、1px separator 边框、cardRadius；行 paddin
 
 焦点环：`color.focus.ring` + `focusWidth`，**内嵌绘制**（V2 damage 不变量）；selected 使用实色背景及左侧指示条，与焦点环独立。disabled 保留淡化的选中指示条并取消 hover/pressed/focus。高对比主题使用加强色与环宽。滚动条复用 `ScrollbarTokens`；rest 为当前渲染状态，hovered/dragged 外观仍按视觉实施任务 §7.2 保留待接线。
 
-**焦点环可选**：`Widget.showFocusRing` 默认 `true`；在集合视口上设置 `false`
-会关闭生成行的环，Tree 箭头同时关闭。此设置对鼠标、键盘及语义聚焦均生效，
-高对比模式也尊重显式设置。选择背景/左侧标记、hover/pressed、实际焦点、
-键盘导航、激活与语义 focused 保持不变，几何不跳变。关闭环时，选中条无需
-让出环宽，分隔线照常绘制；行内应用自建交互控件仍使用自身属性。
+**焦点环可选（默认关闭）**：`Widget.showFocusRing` 默认 `false`；在集合视口上设置
+`true` 才会绘制生成行的环，Tree/TreeList 箭头（chevron）同时开启——TreeList 的
+chevron 是独立 Tab 停靠点（行/箭头各自停靠，不像 Tree 的单一停靠），传递经
+`configureTreeParts` 与 Tree 同契约。此设置对鼠标、键盘及语义聚焦均生效。
+选择背景/左侧标记、hover/pressed、实际焦点、键盘导航、激活与语义 focused 保持不变，
+几何不跳变。关闭环时，选中条无需让出环宽，分隔线照常绘制；行内应用自建交互控件
+仍使用自身属性。键盘重度列表页应显式开启。
 
 ```cpp
-auto list = core::withFocusRing(core::makeList(&listController, "files"), false);
+auto list = core::withFocusRing(core::makeList(&listController, "files"), true);
 auto tree = core::makeTree(&treeController, "folders");
-tree.showFocusRing = false;
+tree.showFocusRing = true;
 ```
 
-现有文本 DSL 节点支持 `showFocusRing: false`（例如 Button）；集合节点当前仍用 C++ 构建。
-Gallery Collections 的 “Show collection focus rings” 开关用于现场比较两种外观。
+现有文本 DSL 节点支持 `showFocusRing: true`（例如 Button）；集合节点当前仍由 C++
+构建。Gallery Collections 的 “Show collection focus rings” 开关（默认关闭）用于
+现场比较两种外观——开关只作用于交互式 List/Tree/TreeList 视口；页面底部的状态
+矩阵预览行按状态显式开环（Focus/Selected+Focused 行绘制环，与按钮状态矩阵同
+口径），不受开关影响。
 
 ### 10.3 状态矩阵
 
-行状态 = 既有 `WidgetState`（§5：hovered/pressed/focused/disabled/checked/invalid/**selected**）的组合，无新增状态位。组合视觉见设计稿状态矩阵表；优先级遵循 §5：disabled > invalid > pressed > focused/hovered，checked/selected 只影响有对应语义的控件。默认高对比主题下，焦点环与选中标记提供形状区分；应用显式关闭焦点环时，语义状态继续保留，默认外观验收与此可选外观分别测试。
+行状态 = 既有 `WidgetState`（§5：hovered/pressed/focused/disabled/checked/invalid/**selected**）的组合，无新增状态位。组合视觉见设计稿状态矩阵表；优先级遵循 §5：disabled > invalid > pressed > focused/hovered，checked/selected 只影响有对应语义的控件。默认（环关闭）外观下选中标记提供形状区分；显式开启焦点环时环与标记双指示，语义状态两种外观下均保留，分别测试。
 
 ## 11. 性能与测试计划
 

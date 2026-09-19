@@ -39,8 +39,9 @@ ShellConfig counterConfig() {
         namespace core = lumen::core;
         Widget page = container(
             column({core::withKey(text("Count: ", bind("counter")),
-                                  "count-text"),
-                    core::withKey(button("Go", onClick("go")), "go-button"),
+                                   "count-text"),
+                    core::withKey(core::withFocusRing(button("Go", onClick("go")), true),
+                                  "go-button"),
                     core::withKey(text_field(bind("name"), placeholder("Name")),
                                   "name-field")}),
             lumen::core::Color::fromRGBA(24, 24, 27));

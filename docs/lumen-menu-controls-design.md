@@ -269,7 +269,7 @@ class MenuBarController {
 
 - 单击 ≡ Enter ≡ 语义 Activate 触发同一 `onCommand(id)`。
 - checkable 勾选视觉（Check 图标）≡ `checked` 语义 flag ≡ 应用状态翻转。
-- 键盘高亮项必有可见指示（§10.3，焦点环内嵌——视觉系统 §5 规则 4）。
+- 键盘高亮项必有可见指示（§10.3，选中底色块常驻——视觉系统 §5 规则 4；菜单行永不叠焦点环）。
 - barrier/Esc/Tab 关闭后主树焦点恢复到指定 key（`DropdownController` 值行恢复同模式）。
 - 模态期间主树节点 Activate/滚动语义 NotHandled（M12 统一规则回归）。
 
@@ -336,13 +336,13 @@ menu.open.fadeMs            = 120（对齐 tooltipFadeMs；reduceAnimation 归�
 | --- | --- | --- | --- |
 | normal | 透明（面板 elevated 底） | ink | — |
 | hover | surface hover 派生 | ink | — |
-| current（键盘高亮） | `color.selection.background` | ink | **内嵌 focus ring**（`color.focus.ring`）——与集合控件 current 行同视觉，规则 4 合规 |
-| hover + current | current 覆盖 hover（§5 规则 3 同源） | ink | 内嵌 focus ring |
+| current（键盘高亮） | `color.selection.background`（动能矩形承载） | ink | **无焦点环**（M14：resolver 对 `collectionRow && semanticsRole=="menuItem"` 的行置零 focusWidth——零新增 Widget 字段；环叠选中底色双指示冗余，聚焦可见性由选中底色块满足，规则 4 合规） |
+| hover + current | current 覆盖 hover（§5 规则 3 同源） | ink | 无焦点环（同上） |
 | checked（checkable） | 不变 | ink | 图标槽 Check 图标（`Widget.checked` → 既有状态位） |
 | disabled | 不变 | `color.disabled.content` | 命中拒绝 + 键盘跳过 + 语义一致 |
 | separator | — | — | 1px 线，不可聚焦 |
 
-高对比主题：勾选必须有 Check 图标形状（不是色块）；current 的 focus ring 保持可见——**不得只靠背景色区分**（视觉系统 §11 约束）。
+高对比主题：勾选必须有 Check 图标形状（不是色块）；current 的选中底色块保持可见——**不得只靠细微色差区分**（视觉系统 §11 约束；高对比派生加大 selection 与表面的对比）。
 
 ### 10.4 MenuBar 视觉
 

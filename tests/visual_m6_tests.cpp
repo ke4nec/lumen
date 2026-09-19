@@ -508,6 +508,17 @@ TEST_CASE("tabs_layout_as_row_and_carry_children", "[controls][m6]") {
           tabsNode->children[0].offset.x);
 }
 
+TEST_CASE("tabs_builder_opts_tab_buttons_into_focus_ring", "[controls][m6]") {
+    // §6.8：页签是 Tab 停靠点、聚焦态无其他指示（底部指示条只随选中），
+    // makeTabs 上下文为子按钮统一开环（§6.1 键盘表面 opt-in；普通按钮
+    // 默认关闭不受影响）。
+    Widget tabs = makeTabs({makeButton("General"), makeButton("About")}, "tabs");
+    REQUIRE(tabs.children.size() == 2);
+    CHECK(tabs.children[0].showFocusRing);
+    CHECK(tabs.children[1].showFocusRing);
+    CHECK_FALSE(makeButton("plain").showFocusRing);
+}
+
 TEST_CASE("tooltip_paints_text_and_surface", "[controls][m6]") {
     Widget tip = makeTooltip("Save changes (Ctrl+S)", "tip");
     Widget page;
@@ -1021,6 +1032,33 @@ TEST_CASE("dialog_card_uses_border_elevation_and_padding", "[visual][s4]") {
     REQUIRE(card->children.size() == 1);
     CHECK(card->children[0].padding.left ==
           Approx(theme.dialog.padding.left));
+}
+
+TEST_CASE("dialog_actions_opt_in_focus_ring", "[visual][s4]") {
+    // 键盘重度表面（visual-system §6.1）：默认焦点环关闭后，对话框动作
+    // 按钮是 Enter/Esc 的键盘激活目标且无其他焦点指示，makeDialog 对
+    // actions 子树显式开启；正文内容保持控件自身设置（默认不画环）。
+    const lumen::style::Theme theme = lumen::style::Theme::dark();
+    Widget body = makeText("Body");
+    Widget actions = withKey(makeButton("Close"), "dlg-close");
+    actions.onClick = "dismiss-dialog";
+    const Widget dialog = lumen::widgets::makeDialog(
+        std::move(body), std::move(actions), theme, "dismiss", "dlg",
+        Size{400.0F, 300.0F});
+    const auto findWidget = [](auto&& self, const Widget& widget,
+                               const std::string& key) -> const Widget* {
+        if (widget.key == key) return &widget;
+        for (const auto& child : widget.children) {
+            if (const Widget* found = self(self, child, key)) return found;
+        }
+        return nullptr;
+    };
+    const Widget* close = findWidget(findWidget, dialog, "dlg-close");
+    REQUIRE(close != nullptr);
+    CHECK(close->showFocusRing);
+    const Widget* bodyText = findWidget(findWidget, dialog, "dlg-body-scroll");
+    REQUIRE(bodyText != nullptr);
+    CHECK_FALSE(bodyText->showFocusRing);
 }
 
 TEST_CASE("dropdown_overlay_inherits_anchor_scope_theme", "[visual][s4]") {
