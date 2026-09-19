@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>选择控件 hover 反馈对比:现状(焦点蓝) vs 备选(中性灰)</title>
+<style>
+  /* 颜色与几何取自 lumen Core Dark(gallery v1)+ Theme token:
+     page #18181b · surface #27272e · surface-alt #2e2e36 · line #3b3b45
+     accent #568cf0 · ink #f1f1f4 · muted #a1a1aa(borderStrong 近似 #62626d)
+     focusRing #96b9fa(blue300)· controlBorderWidth 1px
+     checkbox/radio indicator 18 r4 · switch track 36x20 knob 14 inset 3
+     slider thumb 18 track 4 */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #18181b; color: #f1f1f4;
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 32px 40px 64px;
+  }
+  h1 { font-size: 20px; margin-bottom: 6px; }
+  .sub { color: #a1a1aa; font-size: 13px; margin-bottom: 28px; }
+  h2 { font-size: 15px; margin: 30px 0 12px; color: #a8c5fa; }
+  .cards { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card {
+    flex: 1 1 380px; background: #27272e; border: 1px solid #3b3b45;
+    border-radius: 12px; padding: 20px 24px 24px;
+  }
+  .card h3 { font-size: 14px; margin-bottom: 4px; }
+  .card .desc { color: #a1a1aa; font-size: 12px; margin-bottom: 18px; }
+  .row { display: flex; align-items: center; gap: 28px; padding: 10px 0; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .cell small { color: #a1a1aa; font-size: 11px; }
+
+  /* ---- 控件(静态) ---- */
+  .cb, .rd { width: 18px; height: 18px; border-radius: 4px; background: #2e2e36;
+             border: 1px solid #62626d; }
+  .rd { border-radius: 50%; }
+  .sw { width: 36px; height: 20px; border-radius: 999px; background: #2e2e36;
+        border: 1px solid #62626d; position: relative; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px;
+               width: 14px; height: 14px; border-radius: 50%; background: #f1f1f4; }
+  .sl { width: 120px; height: 18px; position: relative; }
+  .sl .track { position: absolute; top: 7px; left: 0; right: 0; height: 4px;
+               border-radius: 2px; background: #3b3b45; }
+  .sl .fill { position: absolute; top: 7px; left: 0; width: 55%; height: 4px;
+              border-radius: 2px; background: #568cf0; }
+  .sl .thumb { position: absolute; top: 0; left: 55%; margin-left: -9px;
+               width: 18px; height: 18px; border-radius: 50%;
+               background: #27272e; border: 1px solid #62626d; }
+
+  /* ---- 方案 A:现状 —— hover 轮廓取 focusRing 蓝(resolver.cpp:497/556/608/797) ---- */
+  .va .demo:hover .cb, .va .demo:hover .rd { border-color: #96b9fa; }
+  .va .demo:hover .sw { border-color: #96b9fa; }
+  .va .demo:hover .thumb { border-color: #96b9fa; }
+
+  /* ---- 方案 B:备选 —— hover 轮廓取中性灰(contentSecondary) ---- */
+  .vb .demo:hover .cb, .vb .demo:hover .rd { border-color: #a1a1aa; }
+  .vb .demo:hover .sw { border-color: #a1a1aa; }
+  .vb .demo:hover .thumb { border-color: #a1a1aa; }
+
+  /* ---- 焦点参考(显式开启 showFocusRing=true 才有):环在部件外侧 2px、隔 2px ---- */
+  .cb.focused, .rd.focused {
+    outline: 2px solid #96b9fa; outline-offset: 2px; border-color: #62626d; }
+  .sw.focused { outline: 2px solid #96b9fa; outline-offset: 2px; border-color: #62626d; }
+  .thumb.focused { outline: 2px solid #96b9fa; outline-offset: 2px; border-color: #62626d; }
+
+  /* ---- 表格用的独立作用域 hover 类(不依赖祖先) ---- */
+  .hover-a.cb, .hover-a.rd { border-color: #96b9fa; }
+  .hover-a.sw { border-color: #96b9fa; }
+  .hover-a.thumb { border-color: #96b9fa; }
+  .hover-b.cb, .hover-b.rd { border-color: #a1a1aa; }
+  .hover-b.sw { border-color: #a1a1aa; }
+  .hover-b.thumb { border-color: #a1a1aa; }
+
+  /* ---- 实时悬停区:真 :hover ---- */
+  .live .demo { display: flex; align-items: center; gap: 24px; padding: 14px 16px;
+                background: #2e2e36; border-radius: 8px; margin-top: 10px; }
+  .va .demo .cb, .va .demo .rd { transition: border-color .12s; }
+  .va .demo:hover .cb, .va .demo:hover .rd { border-color: #96b9fa; }
+  .va .demo:hover .sw { border-color: #96b9fa; }
+  .va .demo:hover .thumb { border-color: #96b9fa; }
+  .vb .demo:hover .cb, .vb .demo:hover .rd { border-color: #a1a1aa; }
+  .vb .demo:hover .sw { border-color: #a1a1aa; }
+  .vb .demo:hover .thumb { border-color: #a1a1aa; }
+  .live .hint { color: #a1a1aa; font-size: 12px; margin-top: 8px; }
+
+  table { border-collapse: collapse; margin-top: 6px; }
+  th, td { padding: 10px 18px; text-align: center; border-bottom: 1px solid #3b3b45; }
+  th { color: #a1a1aa; font-size: 12px; font-weight: 600; }
+  td:first-child { text-align: left; color: #a1a1aa; font-size: 12px; }
+  .note { margin-top: 24px; background: #27272e; border: 1px solid #3b3b45;
+          border-radius: 12px; padding: 16px 20px; font-size: 13px; color: #d4d4d8; }
+  .note b { color: #f1f1f4; }
+  .note .risk { color: #f9a8a8; }
+  .note .ok { color: #88e9b2; }
+</style>
+</head>
+<body>
+  <h1>选择控件 hover 反馈对比</h1>
+  <p class="sub">Core Dark token · medium 密度几何 · 修改点仅一处:hover 时部件轮廓色(resolver.cpp:497/556/608/797,现为 <code>colors.focusRing</code>)</p>
+
+  <h2>一、实时悬停(把鼠标放上去感受)</h2>
+  <div class="cards live">
+    <div class="card va">
+      <h3>方案 A —— 现状:hover = 焦点蓝 #96b9fa</h3>
+      <div class="desc">轮廓色与键盘焦点环同色;宽度同为描边(1px 部件轮廓 / 2px 焦点环)。</div>
+      <div class="demo">
+        <div class="cb"></div>
+        <div class="sw"></div>
+        <div class="rd"></div>
+        <div class="sl"><div class="track"></div><div class="fill"></div><div class="thumb"></div></div>
+      </div>
+      <div class="hint">↑ 悬停时轮廓变蓝</div>
+    </div>
+    <div class="card vb">
+      <h3>方案 B —— 备选:hover = 中性灰 #a1a1aa</h3>
+      <div class="desc">轮廓提亮为 contentSecondary 灰;蓝色只留给焦点/选中/accent。</div>
+      <div class="demo">
+        <div class="cb"></div>
+        <div class="sw"></div>
+        <div class="rd"></div>
+        <div class="sl"><div class="track"></div><div class="fill"></div><div class="thumb"></div></div>
+      </div>
+      <div class="hint">↑ 悬停时轮廓变灰</div>
+    </div>
+  </div>
+
+  <h2>二、静态三态逐像素对比</h2>
+  <table>
+    <tr>
+      <th>控件(medium)</th>
+      <th>rest</th>
+      <th>方案 A:hover</th>
+      <th>方案 B:hover</th>
+      <th>focused 参考(显式开启才有)</th>
+    </tr>
+    <tr>
+      <td>Checkbox 18×18 r4</td>
+      <td><div class="cb" style="margin:auto"></div></td>
+      <td><div class="cb hover-a" style="margin:auto"></div></td>
+      <td><div class="cb hover-b" style="margin:auto"></div></td>
+      <td><div class="cb focused" style="margin:auto"></div></td>
+    </tr>
+    <tr>
+      <td>Switch 36×20 · knob 14</td>
+      <td><div class="sw" style="margin:auto"></div></td>
+      <td><div class="sw hover-a" style="margin:auto"></div></td>
+      <td><div class="sw hover-b" style="margin:auto"></div></td>
+      <td><div class="sw focused" style="margin:auto"></div></td>
+    </tr>
+    <tr>
+      <td>Radio 18×18</td>
+      <td><div class="rd" style="margin:auto"></div></td>
+      <td><div class="rd hover-a" style="margin:auto"></div></td>
+      <td><div class="rd hover-b" style="margin:auto"></div></td>
+      <td><div class="rd focused" style="margin:auto"></div></td>
+    </tr>
+    <tr>
+      <td>Slider thumb 18 · track 4</td>
+      <td><div class="sl"><div class="track"></div><div class="fill"></div><div class="thumb"></div></div></td>
+      <td><div class="sl"><div class="track"></div><div class="fill"></div><div class="thumb hover-a"></div></div></td>
+      <td><div class="sl"><div class="track"></div><div class="fill"></div><div class="thumb hover-b"></div></div></td>
+      <td><div class="sl"><div class="track"></div><div class="fill"></div><div class="thumb focused"></div></div></td>
+    </tr>
+  </table>
+
+  <h2>三、静态对比(作用域修正版)</h2>
+  <div class="cards">
+    <div class="card va">
+      <h3>方案 A:hover = 焦点蓝(现状)</h3>
+      <div class="row"><div class="cell"><div class="cb"></div><small>rest</small></div>
+        <div class="cell"><div class="cb hover-a"></div><small>hover → 蓝</small></div>
+        <div class="cell"><div class="cb focused"></div><small>focused(环)</small></div></div>
+      <div class="row"><div class="cell"><div class="sw"></div><small>rest</small></div>
+        <div class="cell"><div class="sw hover-a"></div><small>hover → 蓝</small></div>
+        <div class="cell"><div class="sw focused"></div><small>focused(环)</small></div></div>
+      <div class="row"><div class="cell"><div class="rd"></div><small>rest</small></div>
+        <div class="cell"><div class="rd hover-a"></div><small>hover → 蓝</small></div>
+        <div class="cell"><div class="rd focused"></div><small>focused(环)</small></div></div>
+    </div>
+    <div class="card vb">
+      <h3>方案 B:hover = 中性灰(备选)</h3>
+      <div class="row"><div class="cell"><div class="cb"></div><small>rest</small></div>
+        <div class="cell"><div class="cb hover-b"></div><small>hover → 灰</small></div>
+        <div class="cell"><div class="cb focused"></div><small>focused(环)</small></div></div>
+      <div class="row"><div class="cell"><div class="sw"></div><small>rest</small></div>
+        <div class="cell"><div class="sw hover-b"></div><small>hover → 灰</small></div>
+        <div class="cell"><div class="sw focused"></div><small>focused(环)</small></div></div>
+      <div class="row"><div class="cell"><div class="rd"></div><small>rest</small></div>
+        <div class="cell"><div class="rd hover-b"></div><small>hover → 灰</small></div>
+        <div class="cell"><div class="rd focused"></div><small>focused(环)</small></div></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>判断要点</b><br>
+    <span class="risk">方案 A 的混淆点:</span>hover 蓝与 focused 的环同色——扫过控件时出现的蓝轮廓,与键盘焦点环(同色、同为描边)无法区分;唯一差别是环在部件外侧且有 2px 间隔。slider 在 hover 与<b>拖动中</b>都是这个蓝,和 accent 拉杆也在争语义。<br>
+    <span class="ok">方案 B 的收益:</span>蓝色恢复为「焦点 / 选中 / accent」专用语义,hover 是中性的"这里可交互";与已落地的"焦点环默认关闭"策略同一方向(蓝色更稀缺、更可读)。<br>
+    <span class="ok">方案 B 的代价:</span>灰轮廓比蓝轮廓弱一档,hover 可供性提示变含蓄;若嫌弱,可叠加指示器底色轻微提亮(等价 hoverOverlay 的做法)增强。
+  </div>
+</body>
+</html>
