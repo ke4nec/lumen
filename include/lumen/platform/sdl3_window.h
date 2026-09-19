@@ -25,6 +25,9 @@ struct Sdl3WindowDesc {
     // 自定义标题栏（lumen-titlebar-design §4）：以 SDL_WINDOW_BORDERLESS
     // 创建（无系统边框/标题栏）；resize 与拖拽由宿主 hit-test 提供。
     bool customTitleBar{false};
+    // 透明窗口（design/gallery.html 圆角主界面）：SDL_WINDOW_TRANSPARENT，
+    // 按像素 alpha 交桌面合成器（应用清屏全透明 + 内容自绘圆角）。
+    bool transparent{false};
 };
 
 // Creates an SDL3-backed window. Returns nullptr on failure; SDL's error is

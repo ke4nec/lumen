@@ -38,13 +38,15 @@ class NavigatorController {
 // Dialog 构建：modal barrier + FocusScope 内容卡（plan §3.4 overlay、
 // modal barrier、Escape 与焦点恢复）。barrier 点击触发 onDismiss
 // handler；内容包裹 FocusScope 使 Tab 遍历不逃出 dialog。视觉全部来自
-// Theme 的 DialogTokens（visual-system §7.4）。
+// Theme 的 DialogTokens（visual-system §7.4）。scrimRadius：透明窗口应
+// 用传入窗口圆角——scrim 全窗矩形会把压暗色涂进圆角外的透明像素。
 [[nodiscard]] core::Widget makeDialog(core::Widget content,
                                       const style::Theme& theme,
                                       std::string onDismiss,
                                       std::string key = {},
                                       core::Size windowSize = core::Size{
-                                          800.0F, 600.0F});
+                                          800.0F, 600.0F},
+                                      float scrimRadius = 0.0F);
 
 // Body scrolls within the available height; actions remain outside its clip.
 // The caller owns bodyScrollOffset, routed from the <key>-body-scroll viewport.
@@ -52,6 +54,7 @@ class NavigatorController {
                                       const style::Theme& theme,
                                       std::string onDismiss, std::string key,
                                       core::Size windowSize,
-                                      float bodyScrollOffset = 0.0F);
+                                      float bodyScrollOffset = 0.0F,
+                                      float scrimRadius = 0.0F);
 
 }  // namespace lumen::widgets

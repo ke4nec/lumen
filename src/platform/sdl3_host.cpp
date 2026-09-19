@@ -702,6 +702,7 @@ std::optional<core::WindowId> Sdl3ApplicationHost::createWindow(
     windowDesc.opengl = desc.opengl;
     windowDesc.softwarePresentation = desc.softwarePresentation;
     windowDesc.customTitleBar = desc.customTitleBar;
+    windowDesc.transparent = desc.transparent;
     auto window = createSdl3Window(windowDesc);
     if (window == nullptr) {
         return std::nullopt;

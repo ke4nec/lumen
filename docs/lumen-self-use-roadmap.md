@@ -1492,6 +1492,39 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   单时，级联锚取自当前（上升中）行位置，残留 ≤6px 偏差至关闭
   （键盘竞态窗口，指针路径不涉及）。
 
+### Gallery 窗口 chrome 对齐设计稿（2026-09-19）
+
+- 完成日期：2026-09-19
+- 设计输入：`design/gallery.html`（titlebar/caption-button/gallery-
+  window 圆角与 .is-maximized）；契约见
+  `docs/lumen-titlebar-design.md` §5（本批同步更新）。
+- 变更：
+  - **窗口控制对齐**：caption 总高 48px（border-box：内容行 47 + 1px
+    分隔线；`align-items: stretch`、右缘无 padding）；窗口按钮 44px
+    宽、通高（原 44×32 居中且在 padding 内——与稿不一致）；min/max
+    保持 Ghost，close 切新
+    `ButtonVariant::WindowClose`（枚举尾部追加，IconId/SemanticsRole
+    先例）：rest 幽灵（透明底 + 次要前景）、hover 实心
+    `statusError` + `onError` 反色、pressed 叠压暗、disabled 透明
+    （Windows 惯例；取 Theme 错误色 token，非 mock 硬编码色）。栏项
+    切 Small 档（32px）——Medium 项 + 下划线 + padding 会撑到 46px
+    挤满 caption（观感复核经渲染 PNG 视觉评审 + 节点几何核对：
+    48/38/28 三层高度与图标居中全部达标）。
+  - **透明圆角窗口**：`WindowDesc.transparent`（SDL_WINDOW_
+    TRANSPARENT，sdl3_window/host 透传）+ `AppShell::setClearColor`
+    （runApp 依 transparent 自动把 CPU 清屏转全透明）；gallery 根
+    容器四角 + 标题栏顶角 16px 圆角（自绘），最大化归零；
+    `makeDialog` 增 `scrimRadius` 参数（gallery 传同半径——全窗
+    scrim 不再把压暗色涂进圆角外的透明像素）。main.cpp 开
+    `transparent`。
+- 测试：style_tests 补 WindowClose 变体三态解析；titlebar_tests 补
+  chrome 对齐用例（48px 行高/按钮通高 44 宽/右缘贴合视口/根与标题
+  栏圆角 16/最大化归零）。本地 Windows CPU Debug 全量 `616/616`
+  （含并行 List 装饰工作的新用例）。
+- 已知限制：无合成器的 X11 会话角落退化为黑；Skia/GPU 后端的透明
+  clear 未接（按需评估）；close hover 取 `statusError`（深浅主题
+  派生）而非 mock 硬编码 #c42b1c。
+
 ### 既有能力优化（2026-09-19，计划见 docs/lumen-optimization-plan.md）
 
 #### P1 CPU 阴影软模糊（2026-09-19）

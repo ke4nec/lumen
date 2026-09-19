@@ -413,6 +413,10 @@ int runWindowed(GalleryApp& app, const Options& options) {
     // 自定义标题栏（lumen-titlebar-design）：无边框窗口 + 自绘 caption
     //（拖拽/resize 边由平台 hit-test 提供；runApp 注册拖拽区谓词）。
     runOptions.windowDesc.customTitleBar = true;
+    // 透明窗口（design/gallery.html 圆角主界面）：根/标题栏自绘 16px
+    // 圆角（最大化归零），圆角外像素交桌面合成器；runApp 同步将 CPU
+    // 清屏色转全透明。
+    runOptions.windowDesc.transparent = true;
     runOptions.diagnostics = options.diagnostics;
     runOptions.maxFrames = options.maxFrames;
     // 桌面系统字体：窗口路径注入真实字形（Windows 雅黑优先），CPU 光

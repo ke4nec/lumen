@@ -91,6 +91,10 @@ enum class ButtonVariant : std::uint8_t {
     Outline,  // 边框按钮：透明背景 + 强边框。
     Ghost,    // 幽灵按钮：透明背景，hover/pressed 才出现容器色。
     Danger,   // 破坏性操作：错误色背景。
+    // 自定义标题栏窗口关闭钮（Windows 惯例，design/gallery.html
+    // caption-button.close）：rest 幽灵；hover 实心 statusError +
+    // onError 反色。尾部追加保持既有值不变（IconId/SemanticsRole 先例）。
+    WindowClose,
 };
 
 // 控件尺寸档位（Small/Compact、Medium/Comfortable、Large/Touch）；与

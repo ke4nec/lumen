@@ -91,6 +91,13 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
         });
     }
 
+    // 透明窗口（WindowDesc.transparent）：清屏色转全透明（CPU 路径；
+    // 应用内容自绘圆角，圆角外像素交桌面合成）。外部渲染器的透明
+    // clear 由其装配负责。
+    if (options.windowDesc.transparent) {
+        shell.setClearColor(core::Color::transparent());
+    }
+
     // 指标同步：视口/DPI 跟随宿主（后续 Resize/DpiChanged 事件刷新）。
     const auto applyMetrics = [&]() {
         const auto metrics = host.windowMetrics(*windowId);

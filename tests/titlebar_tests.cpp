@@ -2,6 +2,7 @@
 // Widget.windowDrag 物化 → AppShell::isWindowDragPoint 判定 → Gallery
 // 标题栏结构/窗口命令/最大化图标 → Fake host 平台契约 → runApp 注册。
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <functional>
@@ -90,6 +91,57 @@ TEST_CASE("titlebar_gallery_structure_marks_only_caption_row",
     const RenderNode* list = findNodeByKey(app.root(), "gallery-list");
     REQUIRE(list != nullptr);
     CHECK_FALSE(list->windowDrag);
+}
+
+TEST_CASE("titlebar_controls_flush_full_height_and_rounded_window",
+          "[titlebar][gallery]") {
+    // design/gallery.html 窗口 chrome：caption 48px 一条行；窗口控制
+    // 44px 宽、通高、右缘贴合窗口角；透明窗口圆角 16（根四角 + 标题栏
+    // 顶角），最大化归零。
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+
+    const RenderNode* row = findNodeByKey(app.root(), "gallery-titlebar-row");
+    REQUIRE(row != nullptr);
+    CHECK(row->size.height == Catch::Approx(47.0F).margin(0.01F));
+    // 总高 = 行 47 + 分隔线 1 = 48（border-box 口径）。
+    const RenderNode* bar0 = findNodeByKey(app.root(), "gallery-titlebar");
+    REQUIRE(bar0 != nullptr);
+    CHECK(bar0->size.height == Catch::Approx(48.0F).margin(0.01F));
+
+    const RenderNode* min = findNodeByKey(app.root(), "window-minimize");
+    const RenderNode* close = findNodeByKey(app.root(), "window-close");
+    REQUIRE(min != nullptr);
+    REQUIRE(close != nullptr);
+    CHECK(min->size.width == Catch::Approx(44.0F).margin(0.01F));
+    CHECK(close->size.width == Catch::Approx(44.0F).margin(0.01F));
+    // 通高（拉伸到标题栏行高），close 右缘 = 视口右缘。
+    CHECK(min->size.height == Catch::Approx(47.0F).margin(0.01F));
+    CHECK(close->size.height == Catch::Approx(47.0F).margin(0.01F));
+    const Offset closeAbs = absoluteOffset(app.root(), "window-close");
+    CHECK(closeAbs.x + close->size.width ==
+          Catch::Approx(1280.0F).margin(0.01F));
+
+    const RenderNode* root = findNodeByKey(app.root(), "root");
+    const RenderNode* bar = findNodeByKey(app.root(), "gallery-titlebar");
+    REQUIRE(root != nullptr);
+    REQUIRE(bar != nullptr);
+    CHECK(root->commonStyle().radius.topLeft ==
+          Catch::Approx(16.0F).margin(0.01F));
+    CHECK(bar->commonStyle().radius.topLeft ==
+          Catch::Approx(16.0F).margin(0.01F));
+    CHECK(bar->commonStyle().radius.bottomLeft == 0.0F);
+
+    // 最大化：圆角归零（.is-maximized）。
+    app.noteWindowMaximized(true);
+    (void)app.renderFrame();
+    root = findNodeByKey(app.root(), "root");
+    bar = findNodeByKey(app.root(), "gallery-titlebar");
+    REQUIRE(root != nullptr);
+    REQUIRE(bar != nullptr);
+    CHECK(root->commonStyle().radius.topLeft == 0.0F);
+    CHECK(bar->commonStyle().radius.topLeft == 0.0F);
 }
 
 TEST_CASE("titlebar_drag_points_exclude_interactive_controls",

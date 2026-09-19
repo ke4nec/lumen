@@ -430,6 +430,11 @@ std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
     if (desc.customTitleBar) {
         flags |= SDL_WINDOW_BORDERLESS;
     }
+    // 透明窗口（design/gallery.html 圆角主界面）：按像素 alpha 交桌面
+    // 合成器；应用侧清屏全透明 + 内容自绘圆角。
+    if (desc.transparent) {
+        flags |= SDL_WINDOW_TRANSPARENT;
+    }
     // OpenGL 窗口供 Skia GPU 适配创建 GL 上下文；此时不建 SDL 呈现器，
     // CPU present 路径返回 Rejected（v0.2 阶段7C）。
     if (desc.opengl) {

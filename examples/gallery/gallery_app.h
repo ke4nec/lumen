@@ -300,6 +300,11 @@ class GalleryApp {
         core::Widget ui = core::makeContainer(
             std::move(page), std::nullopt, std::nullopt, core::EdgeInsets{},
             core::EdgeInsets{}, theme.colors.pageBackground);
+        // 透明窗口圆角：根背景四角圆角（标题栏顶角由自身 surface 圆角
+        // 覆盖；最大化归零——design/gallery.html .is-maximized）。
+        ui.radius = windowMaximized_
+                        ? core::CornerRadius::zero()
+                        : core::CornerRadius::all(kWindowRadius);
         ui.key = "root";
 
         if (dialogOpen_) {
@@ -320,8 +325,10 @@ class GalleryApp {
                 core::MainAxisAlignment::Start,
                 core::CrossAxisAlignment::Start, style::spaceToken(3));
             core::Widget dialog = widgets::makeDialog(
-                std::move(contentDialog), std::move(close), shell_.theme(), "dismiss-dialog",
-                kDialogKey, shell_.view(), dialogScroll_.offset());
+                std::move(contentDialog), std::move(close), shell_.theme(),
+                "dismiss-dialog", kDialogKey, shell_.view(),
+                dialogScroll_.offset(),
+                windowMaximized_ ? 0.0F : kWindowRadius);
             ui = core::makeStack({std::move(ui), std::move(dialog)});
             ui.key = "root";
         }
@@ -330,6 +337,9 @@ class GalleryApp {
 
   private:
     static constexpr const char* kDialogKey = "gallery-dialog";
+    // 透明窗口圆角（design/gallery.html .gallery-window:16px；最大化归
+    // 零）：根容器四角 + 标题栏顶角 + 对话框 scrim 同半径。
+    static constexpr float kWindowRadius = 16.0F;
     static constexpr const char* kDialogCloseKey = "dialog-close";
 
     [[nodiscard]] static app::ShellConfig configFor(GalleryApp* self) {
@@ -1081,17 +1091,29 @@ class GalleryApp {
              windowButton(windowMaximized_ ? core::IconId::Restore
                                            : core::IconId::Maximize,
                           "window-maximize", theme),
-             windowButton(core::IconId::Close, "window-close", theme)},
-            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+             windowButton(core::IconId::Close, "window-close", theme,
+                          core::ButtonVariant::WindowClose)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
             0.0F);
         actions.key = "gallery-window-actions";
 
+        // 内容行（品牌/菜单/拖拽区）垂直居中；窗口控制独立在水平
+        // padding 之外——通高贴合右上角（design/gallery.html titlebar：
+        // align-items:stretch、右缘无 padding、caption 48px 一条行）。
         const float barPaddingX = compactNavigation() ? 12.0F : 16.0F;
-        core::Widget row = core::makeRow(
-            {std::move(brand), std::move(menus), std::move(drag),
-             std::move(actions)},
+        core::Widget content = core::makeRow(
+            {std::move(brand), std::move(menus), std::move(drag)},
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-            8.0F, core::EdgeInsets::symmetric(barPaddingX, 4.0F));
+            8.0F, core::EdgeInsets::only(barPaddingX, 0.0F, 0.0F, 0.0F));
+        content.flex = 1.0F;
+        core::Widget row = core::makeRow(
+            {std::move(content), std::move(actions)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+            0.0F);
+        // 行高 47 + 1px 分隔线 = 总高 48（design/gallery.html titlebar
+        // min-height 48 为 border-box：内容 47 + 底边线 1）。窗口控制
+        // 随 Stretch 通高贴合右上角。
+        row.height = 47.0F * (theme.typography.body.fontSize / 14.0F);
         row = core::withWindowDrag(std::move(row));
         row.key = "gallery-titlebar-row";
         core::Widget bottom = core::makeContainerLeaf(
@@ -1111,11 +1133,19 @@ class GalleryApp {
         core::Widget titleBar = core::makeColumn(
             std::move(barRows), core::MainAxisAlignment::Start,
             core::CrossAxisAlignment::Stretch, 0.0F);
-        return core::withKey(
-            core::makeContainer(std::move(titleBar), std::nullopt, std::nullopt,
-                                core::EdgeInsets{}, core::EdgeInsets{},
-                                theme.colors.surface),
-            "gallery-titlebar");
+        core::Widget bar = core::makeContainer(std::move(titleBar),
+                                               std::nullopt, std::nullopt,
+                                               core::EdgeInsets{},
+                                               core::EdgeInsets{},
+                                               theme.colors.surface);
+        // 透明窗口圆角（design/gallery.html gallery-window:16px，
+        // is-maximized 归零）：标题栏负责顶角（surface 底自绘圆角），
+        // 根容器负责四角兜底与底角。
+        bar.radius = windowMaximized_
+                         ? core::CornerRadius::zero()
+                         : core::CornerRadius{kWindowRadius, kWindowRadius,
+                                              0.0F, 0.0F};
+        return core::withKey(std::move(bar), "gallery-titlebar");
     }
 
     // 侧栏：分区标签 + 路由导航（当前项 Tonal 强调）+ 分隔线 + Live state
@@ -3147,17 +3177,21 @@ class GalleryApp {
             "nav-note");
     }
 
-    // 窗口控制按钮（lumen-titlebar-design §5）：图标 Button（空标签）
-    // 44×32，Ghost（hover 弱表面），Tab 可聚焦；handler 即命令 id
-    //（window-minimize/maximize/close，见 initialize）。
+    // 窗口控制按钮（lumen-titlebar-design §5 / design/gallery.html
+    // caption-button）：44px 宽、通高（外层标题栏行 Stretch 拉到 48px
+    // 行高、右缘贴合窗口角），Tab 可聚焦；handler 即命令 id
+    //（window-minimize/maximize/close，见 initialize）。close 传
+    // WindowClose 变体：rest 幽灵、hover 实心警示红 + 反色（Windows
+    // 惯例）；min/max 保持 Ghost（hover 常规表面派生）。
     [[nodiscard]] static core::Widget windowButton(
         core::IconId icon, const std::string& onClick,
-        const style::Theme& theme) {
+        const style::Theme& theme,
+        core::ButtonVariant variant = core::ButtonVariant::Ghost) {
         const float scale = theme.typography.body.fontSize / 14.0F;
         core::Widget button = core::makeButton(
             "", core::TextStyle{}, core::EdgeInsets{}, 0.0F, onClick,
-            44.0F * scale, 32.0F * scale, onClick);
-        button.buttonVariant = core::ButtonVariant::Ghost;
+            44.0F * scale, std::nullopt, onClick);
+        button.buttonVariant = variant;
         return core::withIcon(std::move(button), icon);
     }
 

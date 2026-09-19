@@ -53,15 +53,15 @@ bool NavigatorController::handleBack(bool modalOpen) {
 
 core::Widget makeDialog(core::Widget content, const style::Theme& theme,
                         std::string onDismiss, std::string key,
-                        core::Size windowSize) {
+                        core::Size windowSize, float scrimRadius) {
     return makeDialog(std::move(content), core::Widget{}, theme,
-                      std::move(onDismiss), std::move(key), windowSize);
+                      std::move(onDismiss), std::move(key), windowSize, 0.0F, scrimRadius);
 }
 
 core::Widget makeDialog(core::Widget body, core::Widget actions,
                         const style::Theme& theme, std::string onDismiss,
                         std::string key, core::Size windowSize,
-                        float bodyScrollOffset) {
+                        float bodyScrollOffset, float scrimRadius) {
     // 全屏 barrier：点击关闭；内容卡居中。§8.2：surfaceElevated +
     // radius 12 + 1px borderDefault + L3 阴影；宽度 240–420（窗口可用宽
     // 优先），高度受窗口可用高度约束（边距 ≥16）；整体 padding 24 由
@@ -76,6 +76,7 @@ core::Widget makeDialog(core::Widget body, core::Widget actions,
         windowSize.width, windowSize.height, core::EdgeInsets{},
         core::EdgeInsets{}, tokens.scrim);
     barrier.onClick = std::move(onDismiss);
+    barrier.radius = core::CornerRadius::all(std::max(0.0F, scrimRadius));
     barrier.semanticsRole = "dialog";
     barrier.semanticsActions = accessibility::kActionDismiss;
     barrier.key = key.empty() ? key : key + "-barrier";

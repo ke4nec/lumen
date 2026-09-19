@@ -935,6 +935,10 @@ core::Widget MenuBarController::build(const style::Theme& theme) const {
         item.buttonVariant =
             open && i == openIndex_ ? core::ButtonVariant::Tonal
                                     : core::ButtonVariant::Ghost;
+        // 栏项取 Small 档（32px，design/gallery.html .mb-item）——栏嵌
+        // 入 48px caption 时留呼吸；Medium（40px）+ 下划线 + padding 会
+        // 撑到 46px 挤满标题栏。
+        item.controlSize = core::ControlSize::Small;
         item.alignContentStart = true;
         item.key = barKey(i);
         item.onClick = item.key;  // attach 注册打开/切换

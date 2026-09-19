@@ -40,6 +40,12 @@ struct WindowDesc {
     // 拖拽区谓词；宿主 hit-test 另提供 resize 边（拖动/双击最大化/snap
     // 等行为由平台原生路径提供）。
     bool customTitleBar{false};
+    // 透明窗口（design/gallery.html 圆角主界面）：SDL_WINDOW_TRANSPARENT
+    // + runApp 将 CPU 清屏色转全透明——应用内容自绘圆角（根/标题栏容器
+    // CornerRadius），圆角外像素按 alpha 交桌面合成器。Windows DWM 支持
+    // 良好；无合成器的 X11 会话角落退化为黑（自用范围可接受）。外部渲
+    // 染器（Skia/GPU）的透明 clear 由后端装配负责。
+    bool transparent{false};
 };
 
 // 剪贴板服务（实现 core::ClipboardProvider，交互层直接消费）。不可用

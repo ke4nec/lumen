@@ -225,6 +225,30 @@ TEST_CASE("style_button_variants_resolve_rest_state", "[style]") {
           fixture.theme.metrics.controlBorderWidth);
 }
 
+TEST_CASE("style_window_close_variant_solid_red_on_hover", "[style]") {
+    // 自定义标题栏关闭钮（Windows 惯例）：rest 幽灵（透明底 + 次要
+    // 前景）；hover 实心 statusError + onError 反色；pressed 在警示红
+    // 上叠压暗；disabled 透明底。
+    Fixture fixture;
+    Widget close = lumen::core::withVariant(
+        lumen::core::makeButton(""), lumen::core::ButtonVariant::WindowClose);
+    const auto& rest = buttonPart(fixture.resolve(close));
+    CHECK(rest.common.background == lumen::core::Color::transparent());
+    CHECK(rest.common.foreground == fixture.theme.colors.contentSecondary);
+
+    fixture.interaction.hoveredIdentity = "k:x";
+    const auto& hovered = buttonPart(fixture.resolve(close));
+    CHECK(hovered.common.background == fixture.theme.colors.statusError);
+    CHECK(hovered.common.foreground == fixture.theme.colors.onError);
+
+    fixture.interaction.pressedIdentity = "k:x";
+    const auto& pressed = buttonPart(fixture.resolve(close));
+    CHECK(pressed.common.background ==
+          lumen::style::blendOver(fixture.theme.colors.statusError,
+                                  fixture.theme.colors.pressedOverlay));
+    CHECK(pressed.common.foreground == fixture.theme.colors.onError);
+}
+
 TEST_CASE("style_button_hover_and_pressed_derive_from_base", "[style]") {
     Fixture fixture;
     const Widget button = lumen::core::makeButton("OK");

@@ -43,6 +43,10 @@ const ButtonVariantTokens& variantTokens(const ButtonTokens& tokens,
             return tokens.ghost;
         case core::ButtonVariant::Danger:
             return tokens.danger;
+        // 窗口关闭钮：base 取 Ghost（rest 同幽灵；hover/pressed 在
+        // resolveButton 内按 statusError/onError 覆写）。
+        case core::ButtonVariant::WindowClose:
+            return tokens.ghost;
     }
     return tokens.filled;
 }
@@ -210,20 +214,41 @@ ResolvedStyle resolveButton(const Widget& widget, const StyleContext& context,
                                       theme.colors.selectionBackground);
     }
 
+    // 窗口关闭钮（Windows 惯例）：rest 幽灵（透明底 + 次要前景）；
+    // hover 实心 statusError + onError 反色；pressed 在警示红上叠加
+    // 压暗。min/max 窗口钮保持 Ghost（hover 为常规表面派生）。
+    const bool windowClose =
+        widget.buttonVariant == core::ButtonVariant::WindowClose;
+    if (windowClose) {
+        common.background = Color::transparent();
+        common.foreground = theme.colors.contentSecondary;
+    }
+
     if (state.disabled) {
-        common.background = (outlined || widget.buttonVariant == core::ButtonVariant::Ghost)
-                                ? Color::transparent()
-                                : theme.colors.disabledBackground;
+        common.background =
+            (outlined || widget.buttonVariant == core::ButtonVariant::Ghost ||
+             windowClose)
+                ? Color::transparent()
+                : theme.colors.disabledBackground;
         common.foreground = theme.colors.disabledContent;
         common.border = outlined ? theme.colors.borderDefault
                                  : Color::transparent();
     } else if (state.pressed) {
         // pressed 覆盖 hover（§5 规则 3）。
-        common.background = blendOver(common.background,
-                                      theme.colors.pressedOverlay);
+        common.background = blendOver(
+            windowClose ? theme.colors.statusError : common.background,
+            theme.colors.pressedOverlay);
+        if (windowClose) {
+            common.foreground = theme.colors.onError;
+        }
     } else if (state.hovered) {
-        common.background =
-            blendOver(common.background, theme.colors.hoverOverlay);
+        if (windowClose) {
+            common.background = theme.colors.statusError;
+            common.foreground = theme.colors.onError;
+        } else {
+            common.background =
+                blendOver(common.background, theme.colors.hoverOverlay);
+        }
     }
     common.focusWidth = focusWidthFor(state, theme);
     // §6.1：不透明填充与焦点环颜色接近时，环内侧预留 1 px 表面隔离带

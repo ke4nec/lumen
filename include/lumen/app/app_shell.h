@@ -163,6 +163,12 @@ class AppShell {
     // --- 视口/渲染器/字体（宿主与后端装配） ---
     void setView(core::Size size);
     void setDeviceScale(float scale);
+    // 透明窗口配套（WindowDesc.transparent，runApp 自动接）：CPU 路径
+    // 清屏色改全透明——圆角外的像素不被不透明底填充。外部渲染器
+    //（Skia/GPU）的透明 clear 由后端装配负责。
+    void setClearColor(core::Color clear) {
+        cpuRenderer_.setClearColor(clear);
+    }
     // 外部渲染器（Skia 光栅/GPU/测试 renderer）；nullptr 恢复内部 CPU。
     // 后端不共享 framebuffer：切换即失效绘制缓存并全量重绘。
     void setRenderer(render::Renderer* renderer);
