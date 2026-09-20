@@ -86,6 +86,10 @@ class PlatformWindow {
     virtual Event pollEvent() = 0;
     [[nodiscard]] virtual core::Size logicalSize() const = 0;
     [[nodiscard]] virtual core::Size drawableSize() const = 0;
+    // Alpha plan §3.5: transparent hosts accept Premultiplied/Opaque directly;
+    // opaque hosts accept Straight/Opaque directly. Other modes convert once.
+    // Only structural validation occurs per frame; callers modifying external
+    // buffers must validatePixelBuffer(Content) before publishing them.
     virtual PresentResult present(const render::PixelBuffer& buffer);
     virtual void setPresentDiagnosticsEnabled(bool /*enabled*/) {}
     [[nodiscard]] virtual PresentStats presentStats() const { return {}; }

@@ -104,6 +104,7 @@ TEST_CASE("resource_manager_loads_png_asynchronously", "[resource]") {
     CHECK(pixels->height == 4);
     CHECK(pixels->rgba.size() == 64);
     CHECK(pixels->rgba[0] == 200);
+    CHECK(pixels->alphaMode == lumen::render::AlphaMode::Straight);
     CHECK(manager.diagnostics().loads == 1);
 }
 
@@ -120,6 +121,7 @@ TEST_CASE("resource_manager_loads_raw_format", "[resource]") {
     CHECK(pixels->height == 2);
     CHECK(pixels->rgba.size() == 24);
     CHECK(pixels->rgba[0] == 90);
+    CHECK(pixels->alphaMode == lumen::render::AlphaMode::Straight);
 }
 
 TEST_CASE("resource_manager_reports_missing_file_failure", "[resource]") {

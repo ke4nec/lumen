@@ -634,15 +634,13 @@ class SkiaGpuRenderer final : public Renderer {
     }
 
     void uploadImage(ImageId id, const PixelBuffer& pixels) {
-        if (pixels.width <= 0 || pixels.height <= 0 ||
-            pixels.rgba.size() !=
-                static_cast<std::size_t>(pixels.width) *
-                    static_cast<std::size_t>(pixels.height) * 4U) {
+        if (id == 0 || !validatePixelBuffer(pixels)) {
             return;
         }
+        const SkAlphaType alpha = pixels.alphaMode == AlphaMode::Straight ? kUnpremul_SkAlphaType
+            : pixels.alphaMode == AlphaMode::Opaque ? kOpaque_SkAlphaType : kPremul_SkAlphaType;
         const SkImageInfo info = SkImageInfo::Make(
-            pixels.width, pixels.height, kRGBA_8888_SkColorType,
-            kUnpremul_SkAlphaType);
+            pixels.width, pixels.height, kRGBA_8888_SkColorType, alpha);
         const SkPixmap pixmap(info, pixels.rgba.data(),
                               static_cast<std::size_t>(pixels.width) * 4);
         sk_sp<SkImage> image = SkImages::RasterFromPixmapCopy(pixmap);

@@ -7,6 +7,7 @@ set(LUMEN_TEST_SOURCES
     element_tests.cpp
     render_tests.cpp
     alpha_reference_tests.cpp
+    alpha_mode_tests.cpp
     render_command_tests.cpp
     frame_scheduler_tests.cpp
     resource_manager_tests.cpp

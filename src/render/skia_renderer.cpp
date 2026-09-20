@@ -131,23 +131,40 @@ RendererCapabilities SkiaRenderer::capabilities() const {
 }
 
 ImageId SkiaRenderer::registerImage(PixelBuffer image) {
-    if (image.width <= 0 || image.height <= 0 ||
-        image.rgba.size() !=
-            static_cast<std::size_t>(image.width) *
-                static_cast<std::size_t>(image.height) * 4) {
-        return 0;  // Invalid buffers are rejected; 0 is never a valid id.
+    while (impl_->images.contains(impl_->nextImageId)) {
+        ++impl_->nextImageId;
     }
-    // Straight (non-premultiplied) RGBA matches CpuRenderer's blending
-    // contract; Skia premultiplies internally when copying the raster.
-    const SkImageInfo info = SkImageInfo::Make(
-        image.width, image.height, kRGBA_8888_SkColorType,
-        kUnpremul_SkAlphaType);
-    const SkPixmap pixmap(info, image.rgba.data(),
-                          static_cast<std::size_t>(image.width) * 4);
-    const ImageId id = impl_->nextImageId++;
-    impl_->images.emplace(id, SkImages::RasterFromPixmapCopy(pixmap));
+    const ImageId id = impl_->nextImageId;
+    if (!storeImage(id, image)) {
+        return 0;
+    }
+    ++impl_->nextImageId;
     return id;
 }
+
+bool SkiaRenderer::storeImage(ImageId id, const PixelBuffer& image) {
+    if (id == 0 || !validatePixelBuffer(image)) {
+        return false;
+    }
+    const SkAlphaType alpha = image.alphaMode == AlphaMode::Straight ? kUnpremul_SkAlphaType
+        : image.alphaMode == AlphaMode::Opaque ? kOpaque_SkAlphaType : kPremul_SkAlphaType;
+    const SkImageInfo info = SkImageInfo::Make(image.width, image.height,
+                                             kRGBA_8888_SkColorType, alpha);
+    const SkPixmap pixmap(info, image.rgba.data(), static_cast<std::size_t>(image.width) * 4);
+    auto raster = SkImages::RasterFromPixmapCopy(pixmap);
+    if (!raster) {
+        return false;
+    }
+    impl_->images.insert_or_assign(id, std::move(raster));
+    return true;
+}
+
+void SkiaRenderer::onUploadImage(ImageId id, const PixelBuffer& image) {
+    if (storeImage(id, image)) {
+        ++stats_.uploads;
+    }
+}
+void SkiaRenderer::onUnloadImage(ImageId id) { unregisterImage(id); }
 
 void SkiaRenderer::beginFrame(core::Size viewport) {
     beginFrame(viewport, FrameMode::Clear);
@@ -522,6 +539,8 @@ void SkiaRenderer::drawImage(ImageId id, core::Rect destination) {
         destination.size.height * impl_->deviceScale);
     impl_->paint.setStyle(SkPaint::kFill_Style);
     impl_->paint.setAntiAlias(true);
+    // Images own their alpha; do not inherit the previous Color draw's alpha.
+    impl_->paint.setAlphaf(1.0F);
     // Nearest-neighbor sampling matches CpuRenderer's blit (consistency).
     impl_->canvas->drawImageRect(
         it->second, dest,
@@ -542,11 +561,16 @@ void SkiaRenderer::endFrame() {
         static_cast<std::size_t>(info.width()) *
             static_cast<std::size_t>(info.height()) * 4,
         0);
-    // The raster surface is created as RGBA_8888, so readPixels copies
-    // straight into the RGBA snapshot on all platforms.
-    impl_->surface->readPixels(
-        info, snapshot_.rgba.data(), static_cast<std::size_t>(info.width()) * 4,
-        0, 0);
+    // Readback uses the surface's premultiplied RGBA_8888 representation.
+    if (!impl_->surface->readPixels(info, snapshot_.rgba.data(),
+                                    static_cast<std::size_t>(info.width()) * 4, 0, 0)) {
+        snapshot_ = {};
+        return;
+    }
+    // All drawing is source-over; an opaque clear proves the whole frame
+    // remains opaque, including Preserve (the clear color is immutable).
+    snapshot_.alphaMode = impl_->clearColor.a == 255 ? AlphaMode::Opaque
+                                                    : AlphaMode::Premultiplied;
 }
 
 }  // namespace lumen::render

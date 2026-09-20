@@ -1,5 +1,7 @@
 #include "lumen/render/renderer.h"
 
+#include <algorithm>
+#include <limits>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -10,33 +12,82 @@
 
 namespace lumen::render {
 
-void premultiplyRgbaInPlace(PixelBuffer& buffer) {
-    const std::size_t pixels =
-        static_cast<std::size_t>(buffer.width) *
-        static_cast<std::size_t>(buffer.height);
-    if (buffer.rgba.size() < pixels * 4) {
-        return;
+const char* alphaModeName(AlphaMode mode) {
+    switch (mode) {
+        case AlphaMode::Straight: return "straight";
+        case AlphaMode::Premultiplied: return "premultiplied";
+        case AlphaMode::Opaque: return "opaque";
     }
-    for (std::size_t i = 0; i < pixels; ++i) {
-        std::uint8_t* rgba = &buffer.rgba[i * 4];
-        const unsigned a = rgba[3];
-        if (a == 255) {
-            continue;
-        }
-        rgba[0] = static_cast<std::uint8_t>((rgba[0] * a + 127U) / 255U);
-        rgba[1] = static_cast<std::uint8_t>((rgba[1] * a + 127U) / 255U);
-        rgba[2] = static_cast<std::uint8_t>((rgba[2] * a + 127U) / 255U);
-        if (a == 0) {
-            rgba[0] = rgba[1] = rgba[2] = 0;
-        }
-    }
+    return "invalid";
 }
 
-void premultiplyRgbaInto(PixelBuffer& destination, const PixelBuffer& source) {
-    destination.width = source.width;
-    destination.height = source.height;
-    destination.rgba = source.rgba;
-    premultiplyRgbaInPlace(destination);
+bool validatePixelBuffer(const PixelBuffer& buffer, PixelValidation validation) {
+    if (buffer.width <= 0 || buffer.height <= 0 ||
+        (buffer.alphaMode != AlphaMode::Straight &&
+         buffer.alphaMode != AlphaMode::Premultiplied && buffer.alphaMode != AlphaMode::Opaque)) {
+        return false;
+    }
+    const auto width = static_cast<std::size_t>(buffer.width);
+    const auto height = static_cast<std::size_t>(buffer.height);
+    if (width > std::numeric_limits<std::size_t>::max() / 4U / height ||
+        buffer.rgba.size() != width * height * 4U) {
+        return false;
+    }
+    if (validation == PixelValidation::Content && buffer.alphaMode != AlphaMode::Straight) {
+        for (std::size_t i = 0; i < buffer.rgba.size(); i += 4) {
+            const auto a = buffer.rgba[i + 3];
+            if ((buffer.alphaMode == AlphaMode::Opaque && a != 255) ||
+                buffer.rgba[i] > a || buffer.rgba[i + 1] > a || buffer.rgba[i + 2] > a) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+namespace {
+bool convertRgba(PixelBuffer& destination, const PixelBuffer& source, AlphaMode target,
+                 PixelValidation validation) {
+    // Validate before mutating, including for aliases and already-converted data.
+    if (!validatePixelBuffer(source, validation)) {
+        return false;
+    }
+    if (&destination != &source) {
+        destination.rgba = source.rgba;
+        destination.width = source.width;
+        destination.height = source.height;
+        destination.alphaMode = source.alphaMode;
+    }
+    if (destination.alphaMode == target || destination.alphaMode == AlphaMode::Opaque) {
+        return true;
+    }
+    for (std::size_t i = 0; i < destination.rgba.size(); i += 4) {
+        const unsigned a = destination.rgba[i + 3];
+        for (std::size_t c = 0; c < 3; ++c) {
+            auto& channel = destination.rgba[i + c];
+            channel = static_cast<std::uint8_t>(target == AlphaMode::Premultiplied
+                ? (channel * a + 127U) / 255U
+                : a == 0 ? 0 : std::min(255U, (channel * 255U + a / 2U) / a));
+        }
+    }
+    destination.alphaMode = target;
+    return true;
+}
+}  // namespace
+
+bool premultiplyRgbaInPlace(PixelBuffer& buffer, PixelValidation validation) {
+    return convertRgba(buffer, buffer, AlphaMode::Premultiplied, validation);
+}
+bool premultiplyRgbaInto(PixelBuffer& destination, const PixelBuffer& source,
+                        PixelValidation validation) {
+    return convertRgba(destination, source, AlphaMode::Premultiplied, validation);
+}
+bool unpremultiplyRgbaInPlace(PixelBuffer& buffer, PixelValidation validation) {
+    return convertRgba(buffer, buffer, AlphaMode::Straight, validation);
+}
+bool unpremultiplyRgbaInto(PixelBuffer& destination, const PixelBuffer& source,
+                          PixelValidation validation) {
+    return convertRgba(destination, source, AlphaMode::Straight, validation);
 }
 
 RendererCapabilities Renderer::capabilities() const {
@@ -66,6 +117,7 @@ void Renderer::submit(const RenderCommandList& commands, const FrameInfo& info) 
         clipToDamage = true;
     }
 
+    stats_.uploads = 0;
     beginFrame(info.viewport);
     if (clipToDamage) {
         save();
@@ -109,9 +161,10 @@ void Renderer::submit(const RenderCommandList& commands, const FrameInfo& info) 
                            command.strokeWidth);
                 break;
             case CommandType::UploadImage:
+                onUploadImage(command.image, command.pixels);
+                break;
             case CommandType::UnloadImage:
-                // 资源生命周期命令只有原生 submit 实现（CpuRenderer 等）
-                // 消费；纯即时路径后端通过 registerImage 管理资源。
+                onUnloadImage(command.image);
                 break;
         }
     }

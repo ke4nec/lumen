@@ -134,30 +134,35 @@ void clickVisible(GalleryApp& app, const char* key) {
     app.pointerUp(point);
 }
 
+// Export is an explicit compatibility boundary. Rendering never makes this copy.
+bool writeStraightFrame(const std::string& path, const lumen::render::PixelBuffer& source) {
+    lumen::render::PixelBuffer pixels;
+    if (!lumen::render::unpremultiplyRgbaInto(pixels, source)) {
+        return false;
+    }
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(pixels.rgba.data()),
+              static_cast<std::streamsize>(pixels.rgba.size()));
+    std::ofstream metadata(path + ".txt");
+    metadata << "width=" << pixels.width << "\nheight=" << pixels.height
+             << "\nalpha_mode=straight\n";
+    out.close();
+    metadata.close();
+    return out.good() && metadata.good();
+}
+
 int runHeadless(GalleryApp& app, const std::string& dumpFrame) {
     app.setView(lumen::core::Size{1024.0F, 768.0F});
     std::printf("frame0 %016llx route=%s\n",
                 static_cast<unsigned long long>(app.renderFrame()),
                 app.navigator().current().c_str());
     if (!dumpFrame.empty()) {
-        // 首帧原始 RGBA（宽高固定 1024×768；转换 PNG 由外部脚本完成）。
-        std::ofstream out(dumpFrame, std::ios::binary);
-        if (!out) {
-            std::fprintf(stderr, "dump-frame: cannot open '%s' for writing\n",
-                         dumpFrame.c_str());
-        } else {
-            const lumen::render::PixelBuffer& pixels = app.pixels();
-            out.write(reinterpret_cast<const char*>(pixels.rgba.data()),
-                      static_cast<std::streamsize>(pixels.rgba.size()));
-            out.close();
-            if (!out) {
-                std::fprintf(stderr, "dump-frame: short write to '%s'\n",
-                             dumpFrame.c_str());
-            } else {
-                std::printf("dump %s %dx%d\n", dumpFrame.c_str(),
-                            pixels.width, pixels.height);
-            }
+        if (!writeStraightFrame(dumpFrame, app.pixels())) {
+            std::fprintf(stderr, "dump-frame: failed to export '%s'\n", dumpFrame.c_str());
+            return 5;
         }
+        std::printf("dump %s %dx%d\n", dumpFrame.c_str(), app.pixels().width,
+                    app.pixels().height);
     }
 
     // Buttons：点击变体按钮，计数 +1。
@@ -375,11 +380,8 @@ int runSample(GalleryApp& app, const Options& options) {
     const auto hash = app.renderFrame();
     const auto& pixels = app.pixels();
     if (!options.dumpFrame.empty()) {
-        std::ofstream out(options.dumpFrame, std::ios::binary);
-        out.write(reinterpret_cast<const char*>(pixels.rgba.data()),
-                  static_cast<std::streamsize>(pixels.rgba.size()));
-        if (!out) return 5;
-        std::ofstream metadata(options.dumpFrame + ".txt");
+        if (!writeStraightFrame(options.dumpFrame, pixels)) return 5;
+        std::ofstream metadata(options.dumpFrame + ".txt", std::ios::app);
         metadata << "route=" << options.sampleRoute << "\nkey=" << options.sampleKey
                  << "\nlogical=" << options.width << 'x' << options.height
                  << "\npixels=" << pixels.width << 'x' << pixels.height

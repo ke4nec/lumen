@@ -31,12 +31,11 @@ class SkiaRenderer final : public Renderer {
 
     void setDeviceScale(float scale);
 
-    // RGBA snapshot of the last frame (written by endFrame); feed it to
+    // Premultiplied/Opaque snapshot of the last completed frame; feed it to
     // PlatformWindow::present or frameHash for backend comparisons.
     [[nodiscard]] const PixelBuffer& pixels() const { return snapshot_; }
 
-    // Uploads an image for drawImage(); straight (non-premultiplied) RGBA,
-    // the same contract CpuRenderer::registerImage implements.
+    // Validated mode-aware upload. Invalid content returns 0 without mutation.
     ImageId registerImage(PixelBuffer image);
     // Frees a registered image; drawing a freed id is a no-op (resource
     // lifecycle, plan 阶段6).
@@ -71,6 +70,9 @@ class SkiaRenderer final : public Renderer {
     [[nodiscard]] RendererCapabilities capabilities() const override;
 
   private:
+    bool storeImage(ImageId id, const PixelBuffer& image);
+    void onUploadImage(ImageId id, const PixelBuffer& image) override;
+    void onUnloadImage(ImageId id) override;
     struct Impl;
     std::unique_ptr<Impl> impl_;
     PixelBuffer snapshot_{};

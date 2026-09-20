@@ -85,6 +85,9 @@ ResourceHandle ResourceManager::requestImage(const std::string& path,
 }
 
 ResourceHandle ResourceManager::registerImage(PixelBuffer image) {
+    if (!validatePixelBuffer(image)) {
+        return {};
+    }
     const std::size_t index = acquireSlot();
     Slot& slot = slots_[index];
     slot.state = ResourceState::Ready;

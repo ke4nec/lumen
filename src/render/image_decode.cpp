@@ -70,6 +70,7 @@ bool decodeRaw(const std::vector<std::uint8_t>& bytes, PixelBuffer& out) {
     out.width = static_cast<int>(width);
     out.height = static_cast<int>(height);
     out.rgba.assign(cursor, end);
+    out.alphaMode = AlphaMode::Straight;
     return true;
 }
 
@@ -98,6 +99,7 @@ ResourceError decodeImageFile(const std::string& path, PixelBuffer& out) {
     const std::size_t byteCount =
         static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4U;
     out.rgba.assign(decoded, decoded + byteCount);
+    out.alphaMode = AlphaMode::Straight;
     stbi_image_free(decoded);
     return ResourceError::None;
 }

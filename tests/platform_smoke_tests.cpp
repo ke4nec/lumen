@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdlib>
+#include <SDL3/SDL.h>
 
 #include "lumen/platform/sdl3_host.h"
 #include "lumen/platform/sdl3_window.h"
@@ -86,6 +87,68 @@ TEST_CASE("platform_present_diagnostics_count_actual_conversion", "[platform][al
         window->setPresentDiagnosticsEnabled(false);
         REQUIRE(window->present(pixels) == lumen::platform::PresentResult::Ok);
         CHECK(window->presentStats().copiedBytes == 0);
+    }
+}
+
+// Alpha plan §3.5: exercise all six dispatches on both SDL paths, with exact
+// RGB readback. Dummy-driver coverage verifies dispatch, not desktop compositing.
+TEST_CASE("platform_alpha_matrix_preserves_rgb_and_releases_compatibility_scratch",
+          "[platform][alpha]") {
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    using lumen::render::AlphaMode;
+    for (bool software : {false, true}) {
+        for (bool transparent : {false, true}) {
+            CAPTURE(software, transparent);
+            Sdl3WindowDesc desc;
+            desc.width = 2;
+            desc.height = 2;
+            desc.transparent = transparent;
+            desc.softwarePresentation = software;
+            auto window = lumen::platform::createSdl3Window(desc);
+            REQUIRE(window);
+            window->setPresentDiagnosticsEnabled(true);
+            // Repeated compatibility -> direct transitions must release the copy.
+            for (auto mode : {AlphaMode::Straight, AlphaMode::Premultiplied, AlphaMode::Opaque,
+                              AlphaMode::Premultiplied, AlphaMode::Straight, AlphaMode::Opaque}) {
+                CAPTURE(mode);
+                const std::uint8_t alpha = mode == AlphaMode::Opaque ? 255 : 128;
+                PixelBuffer pixels{2, 2, {}, mode};
+                for (int i = 0; i < 4; ++i) {
+                    pixels.rgba.insert(pixels.rgba.end(), {
+                        mode == AlphaMode::Premultiplied ? alpha : std::uint8_t{255}, 0, 0, alpha});
+                }
+                REQUIRE(window->present(pixels) == lumen::platform::PresentResult::Ok);
+                const bool converted = transparent ? mode == AlphaMode::Straight
+                                                    : mode == AlphaMode::Premultiplied;
+                const auto stats = window->presentStats();
+                CHECK(stats.alphaConversions == (converted ? 1 : 0));
+                CHECK(stats.convertedBytes == (converted ? 16 : 0));
+                CHECK(stats.copiedBytes == stats.convertedBytes);
+                if (converted) {
+                    CHECK(stats.scratchCapacityBytes >= 16);
+                } else {
+                    CHECK(stats.scratchCapacityBytes == 0);
+                }
+                auto* native = static_cast<SDL_Window*>(window->nativeSurface().nativeWindow);
+                SDL_Surface* surface = software ? SDL_GetWindowSurface(native)
+                    : SDL_RenderReadPixels(SDL_GetRenderer(native), nullptr);
+                REQUIRE(surface);
+                Uint8 r{}, g{}, b{}, a{};
+                const bool read = SDL_ReadSurfacePixel(surface, 0, 0, &r, &g, &b, &a);
+                if (!software) SDL_DestroySurface(surface);
+                REQUIRE(read);
+                CHECK(r == (transparent ? alpha : 255));
+                CHECK(g == 0);
+                CHECK(b == 0);
+            }
+            PixelBuffer unknown{1, 1, {0, 0, 0, 0}, static_cast<AlphaMode>(255)};
+            CHECK(window->present(unknown) == lumen::platform::PresentResult::Rejected);
+            CHECK(window->presentStats().alphaConversions == 0);
+        }
     }
 }
 

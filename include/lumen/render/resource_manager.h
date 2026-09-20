@@ -92,6 +92,7 @@ class ResourceManager {
     ResourceHandle requestImage(const std::string& path,
                                 core::WindowId window = {});
     // 同步注册已解码像素（不经 worker；状态立即 Ready）。
+    // Preserves a validated input mode; invalid content returns an invalid handle.
     ResourceHandle registerImage(PixelBuffer pixels);
 
     // UI 线程 pump：应用 worker 完成事件（代数校验、缓存预算、上传排

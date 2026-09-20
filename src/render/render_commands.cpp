@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 
 #include "lumen/core/geometry.h"
@@ -18,7 +19,8 @@ namespace {
 // v4：DrawIcon/DrawShadow（M6 视觉系统 V3：折线组 + 线宽）。
 // v5：DrawRectStroke（S1 控件视觉系统 §9.2：圆角描边环带）。
 constexpr char kMagic[] = "LUMENCMD";
-constexpr std::uint32_t kVersion = 6;  // v6：ClipRounded（圆角裁剪；字段复用 radius，全字段统一写）
+// v6: ClipRounded. v7: explicit u32 pixel alpha mode; v6 remains readable.
+constexpr std::uint32_t kVersion = 7;
 
 void putU8(std::string& out, std::uint8_t value) {
     out.push_back(static_cast<char>(value));
@@ -181,11 +183,12 @@ void serializeCommand(const RenderCommand& command, std::string& out) {
     putU64(out, command.image);
     putU32(out, static_cast<std::uint32_t>(command.pixels.width));
     putU32(out, static_cast<std::uint32_t>(command.pixels.height));
+    putU32(out, static_cast<std::uint32_t>(command.pixels.alphaMode));
     putU32(out, static_cast<std::uint32_t>(command.pixels.rgba.size()));
     putBytes(out, command.pixels.rgba.data(), command.pixels.rgba.size());
 }
 
-bool deserializeCommand(Reader& reader, RenderCommand& command) {
+bool deserializeCommand(Reader& reader, RenderCommand& command, std::uint32_t version) {
     command = {};
     command.type = static_cast<CommandType>(reader.getU8());
     switch (command.type) {
@@ -296,8 +299,17 @@ bool deserializeCommand(Reader& reader, RenderCommand& command) {
     }
     command.strokeWidth = reader.getF32();
     command.image = reader.getU64();
-    command.pixels.width = static_cast<int>(reader.getU32());
-    command.pixels.height = static_cast<int>(reader.getU32());
+    const auto width = reader.getU32();
+    const auto height = reader.getU32();
+    const auto mode = version >= 7 ? reader.getU32() : 0U;
+    // Check the wire value before narrowing to the one-byte enum (256 != 0).
+    if (width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        height > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) || mode > 2U) {
+        return false;
+    }
+    command.pixels.width = static_cast<int>(width);
+    command.pixels.height = static_cast<int>(height);
+    command.pixels.alphaMode = static_cast<AlphaMode>(mode);
     const std::uint32_t byteCount = reader.getU32();
     if (reader.failed || byteCount > reader.size - reader.offset) {
         reader.failed = true;
@@ -306,6 +318,17 @@ bool deserializeCommand(Reader& reader, RenderCommand& command) {
     command.pixels.rgba.resize(byteCount);
     reader.getBytes(command.pixels.rgba.data(), byteCount);
     return !reader.failed;
+}
+
+bool validCommandPixels(const RenderCommand& command) {
+    const auto& pixels = command.pixels;
+    // Non-image commands have a canonical empty payload in both v6 and v7.
+    if (command.type != CommandType::UploadImage && pixels.width == 0 &&
+        pixels.height == 0 && pixels.rgba.empty() && pixels.alphaMode == AlphaMode::Straight) {
+        return true;
+    }
+    return pixels.rgba.size() <= std::numeric_limits<std::uint32_t>::max() &&
+           validatePixelBuffer(pixels);
 }
 
 }  // namespace
@@ -317,6 +340,9 @@ std::string serializeCommands(const RenderCommandList& list) {
     putU32(out, kVersion);
     putU32(out, static_cast<std::uint32_t>(list.size()));
     for (const auto& command : list.commands()) {
+        if (!validCommandPixels(command)) {
+            return {};
+        }
         serializeCommand(command, out);
     }
     return out;
@@ -332,7 +358,8 @@ bool deserializeCommands(const std::string& blob, RenderCommandList& out) {
     if (std::memcmp(magic, kMagic, std::strlen(kMagic)) != 0) {
         return false;
     }
-    if (reader.getU32() != kVersion) {
+    const auto version = reader.getU32();
+    if (version != 6 && version != kVersion) {
         return false;
     }
     const std::uint32_t count = reader.getU32();
@@ -343,17 +370,11 @@ bool deserializeCommands(const std::string& blob, RenderCommandList& out) {
     parsed.reserve(count);
     for (std::uint32_t i = 0; i < count; ++i) {
         RenderCommand command;
-        if (!deserializeCommand(reader, command)) {
+        if (!deserializeCommand(reader, command, version)) {
             return false;
         }
-        // 拒绝尺寸与字节数不一致的像素负载，避免回放越界。
-        if (!command.pixels.rgba.empty()) {
-            const std::uint64_t expected =
-                static_cast<std::uint64_t>(command.pixels.width) *
-                static_cast<std::uint64_t>(command.pixels.height) * 4ULL;
-            if (expected != command.pixels.rgba.size()) {
-                return false;
-            }
+        if (!validCommandPixels(command)) {
+            return false;
         }
         parsed.append(std::move(command));
     }

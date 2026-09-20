@@ -38,22 +38,42 @@ struct TextRun {
     [[nodiscard]] bool operator==(const TextRun&) const = default;
 };
 
+// Stable values are also the v7 command-stream values (alpha plan §3.1/§3.6).
+enum class AlphaMode : std::uint8_t { Straight = 0, Premultiplied = 1, Opaque = 2 };
+
 struct PixelBuffer {
     int width{0};
     int height{0};
     std::vector<std::uint8_t> rgba{};
+    // Opaque promises every A is 255; Premultiplied promises RGB <= A.
+    // Producers must preserve these invariants. A window being opaque is not
+    // proof about its input. Appending this field preserves source aggregates,
+    // but all binary consumers must recompile.
+    AlphaMode alphaMode{AlphaMode::Straight};
 
     [[nodiscard]] bool operator==(const PixelBuffer&) const = default;
 };
 
-// 直通 RGBA → 预乘 RGBA（就地，逐像素 r/g/b *= a/255 四舍五入；a=255
-// 恒等）。透明窗口呈现契约（2026-09）：DWM/合成器按预乘解释窗口表面
-// alpha——CPU 帧缓冲是直通 alpha，呈现路径先经此转换，否则圆角 AA 边
-// 带半透明像素被当预乘读出亮色毛刺（titlebar-design §7）。a=0 像素
-// 归零（预乘下 NaN/残留通道清理）。
-void premultiplyRgbaInPlace(PixelBuffer& buffer);
-// 便捷拷贝版（呈现 scratch 用；同尺寸重灌避免逐帧分配）。
-void premultiplyRgbaInto(PixelBuffer& destination, const PixelBuffer& source);
+enum class PixelValidation { Structure, Content };
+// Empty/negative sizes, overflow, wrong lengths and unknown modes are invalid.
+// Content additionally verifies RGB <= A / opaque alpha at acceptance boundaries.
+// Structure is O(1), reserved for data whose producer already guarantees content.
+[[nodiscard]] bool validatePixelBuffer(
+    const PixelBuffer& buffer, PixelValidation validation = PixelValidation::Content);
+[[nodiscard]] const char* alphaModeName(AlphaMode mode);
+
+// Mode-aware and idempotent; Opaque retains its proof. False leaves destination
+// unchanged. Into supports source == destination and reuses allocated storage.
+// A=0 becomes transparent black; unpremultiplication rounds and clamps. Low-alpha
+// quantization is lossy. Structure skips content rescanning of trusted frames.
+bool premultiplyRgbaInPlace(PixelBuffer& buffer,
+                           PixelValidation validation = PixelValidation::Content);
+bool premultiplyRgbaInto(PixelBuffer& destination, const PixelBuffer& source,
+                        PixelValidation validation = PixelValidation::Content);
+bool unpremultiplyRgbaInPlace(PixelBuffer& buffer,
+                             PixelValidation validation = PixelValidation::Content);
+bool unpremultiplyRgbaInto(PixelBuffer& destination, const PixelBuffer& source,
+                          PixelValidation validation = PixelValidation::Content);
 
 class RenderCommandList;
 
@@ -187,6 +207,10 @@ class Renderer {
     virtual void resetSurface(const RenderSurfaceDesc& desc);
 
   protected:
+    // Default replay dispatches resource commands in order, including between
+    // draws. Backends with an image cache override these (alpha plan P1).
+    virtual void onUploadImage(ImageId, const PixelBuffer&) {}
+    virtual void onUnloadImage(ImageId) {}
     // 默认 submit 适配器与子类共用的一段统计记账。
     void noteAdaptedSubmit(const RenderCommandList& commands, double submitMs,
                            std::uint64_t culledCommands, bool fullFrameFallback,

@@ -581,9 +581,11 @@ ctest --test-dir build --output-on-failure -C Debug
    `{0, 窗口圆角, 0, 0}`）：与裁剪叠加作为第二防线；窗口圆角变化
    （最大化归零）时两处同步。
 
-序列化 v6 携带 ClipRounded；damage 经 `sameNode` 的 `clipRounded` 字段
-感知开关变化。透明窗口的呈现契约（DWM 预乘 alpha）见
-`lumen-titlebar-design.md` §7——`render::premultiplyRgbaInto`。
+ClipRounded 自 v6 引入；当前命令写 v7（包含图片 alpha 模式），兼容读 v6。
+damage 经 `sameNode` 的 `clipRounded` 字段感知开关变化。透明呈现按
+`PixelBuffer.alphaMode` 选择直提或兼容转换，详见 `lumen-titlebar-design.md`
+§16 和 `lumen-premultiplied-alpha-rendering-plan.md` §3.5；宿主逐像素透明
+支持须独立验证，不能将软件 surface 更新成功等同于合成器保留 alpha。
 
 - 一次性重构允许删除旧扁平 Theme 字段和 themed helper；同一提交内必须更新示例、
   测试、DSL 和文档，保持构建可用。

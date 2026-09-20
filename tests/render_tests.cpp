@@ -680,7 +680,8 @@ TEST_CASE("premultiply_converts_straight_to_premultiplied", "[render]") {
     // 拷贝版：源保持直通。
     const PixelBuffer straight = buffer;
     PixelBuffer dst;
-    // 完整 2 像素（宽 4 的缓冲需要 8 字节以上——尺寸守卫按 width*height 计）。
+    buffer.alphaMode = lumen::render::AlphaMode::Straight;
+    // Replacing raw bytes requires declaring their actual mode again.
     buffer.rgba = {196, 43, 28, 128, 90, 90, 90, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     premultiplyRgbaInto(dst, buffer);
     CHECK(buffer.rgba[0] == 196);  // 源未被修改

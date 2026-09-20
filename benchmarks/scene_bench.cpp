@@ -831,7 +831,7 @@ void reportText(const Options& options, const std::map<std::string, PhaseStats>&
 void reportJson(const Options& options, const std::map<std::string, PhaseStats>& phases,
                 std::uint64_t finalHash, std::size_t nodeCount,
                 std::uint64_t commandCount, std::uint64_t culledCount,
-                int partialFrames) {
+                int partialFrames, lumen::render::AlphaMode alphaMode) {
     std::printf("{\n");
     std::printf("  \"benchmark\": \"lumen-scene-bench\",\n");
     std::printf("  \"backend\": \"%s\",\n", options.backend.c_str());
@@ -850,8 +850,7 @@ void reportJson(const Options& options, const std::map<std::string, PhaseStats>&
     std::printf("  \"build_type\": \"%s\",\n", jsonEscape(benchBuildType()).c_str());
     std::printf("  \"commit\": \"%s\",\n", jsonEscape(benchCommit()).c_str());
     std::printf("  \"platform\": \"%s\",\n", jsonEscape(benchPlatform()).c_str());
-    // P0 records actual representations before AlphaMode becomes public.
-    std::printf("  \"alpha_mode\": \"%s\",\n", options.backend == "cpu" ? "straight" : "premultiplied");
+    std::printf("  \"alpha_mode\": \"%s\",\n", lumen::render::alphaModeName(alphaMode));
     std::printf("  \"clear_alpha\": 255,\n  \"measurement_scope\": \"headless; paint includes submit; no present\",\n");
     std::printf("  \"phases\": {\n");
     bool first = true;
@@ -949,13 +948,13 @@ int main(int argc, char** argv) {
         output.write(reinterpret_cast<const char*>(pixels.rgba.data()), pixels.rgba.size());
         std::ofstream metadata(options.dumpFrame + ".txt");
         metadata << "width=" << pixels.width << "\nheight=" << pixels.height
-                 << "\nalpha_mode=" << (options.backend == "cpu" ? "straight" : "premultiplied") << "\n";
+                 << "\nalpha_mode=" << lumen::render::alphaModeName(pixels.alphaMode) << "\n";
         if (!output || !metadata) return 3;
     }
 
     if (options.json) {
         reportJson(options, phases, finalHash, nodeCount, app.commandCount(),
-                   app.culledCount(), partialFrames);
+                   app.culledCount(), partialFrames, app.pixels().alphaMode);
     } else {
         reportText(options, phases, finalHash, nodeCount, app.commandCount(),
                    app.culledCount(), partialFrames);

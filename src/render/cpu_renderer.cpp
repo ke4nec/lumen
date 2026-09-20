@@ -22,24 +22,6 @@ CpuRenderer::CpuRenderer(float deviceScale, core::Color clear)
     : deviceScale_(deviceScale > 0.0F ? deviceScale : 1.0F),
       clearColor_(clear) {}
 
-namespace {
-
-bool validPixelBuffer(const PixelBuffer& buffer) {
-    if (buffer.width <= 0 || buffer.height <= 0) {
-        return false;
-    }
-    const auto width = static_cast<std::size_t>(buffer.width);
-    const auto height = static_cast<std::size_t>(buffer.height);
-    if (height > std::numeric_limits<std::size_t>::max() / width) {
-        return false;
-    }
-    const auto pixels = width * height;
-    return pixels <= std::numeric_limits<std::size_t>::max() / 4U &&
-           buffer.rgba.size() == pixels * 4U;
-}
-
-}  // namespace
-
 void CpuRenderer::setDeviceScale(float scale) {
     if (scale > 0.0F && scale != deviceScale_) {
         deviceScale_ = scale;
@@ -50,8 +32,12 @@ void CpuRenderer::setDeviceScale(float scale) {
 }
 
 ImageId CpuRenderer::registerImage(PixelBuffer image) {
-    if (!validPixelBuffer(image)) {
+    // P1 bridge: the accumulator is still straight; removed in P2.
+    if (!unpremultiplyRgbaInPlace(image)) {
         return 0;
+    }
+    while (images_.contains(nextImageId_)) {
+        ++nextImageId_;
     }
     const ImageId id = nextImageId_++;
     images_.emplace(id, std::move(image));
@@ -939,7 +925,7 @@ void CpuRenderer::drawImage(ImageId id, core::Rect destination) {
         return;
     }
     const PixelBuffer& image = it->second;
-    if (!validPixelBuffer(image) ||
+    if (!validatePixelBuffer(image, PixelValidation::Structure) ||
         destination.size.width <= 0.0F || destination.size.height <= 0.0F ||
         clip_.empty()) {
         return;
@@ -1089,10 +1075,13 @@ void CpuRenderer::submit(const RenderCommandList& commands,
             case CommandType::UploadImage:
                 // 资源管理器分配的显式 id；覆盖同 id 旧数据（设备重建
                 // 后的重新上传走同一命令，plan §3.3）。
-                if (validPixelBuffer(command.pixels)) {
-                    images_.erase(command.image);
-                    images_.emplace(command.image, command.pixels);
-                    ++uploads;
+                {
+                    PixelBuffer image;
+                    // Same P1 normalization as registerImage; validate before replacing.
+                    if (command.image != 0 && unpremultiplyRgbaInto(image, command.pixels)) {
+                        images_.insert_or_assign(command.image, std::move(image));
+                        ++uploads;
+                    }
                 }
                 break;
             case CommandType::UnloadImage:

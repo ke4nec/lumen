@@ -242,7 +242,8 @@ class RenderCommandList {
 // / RenderStats / RenderSurfaceDesc 定义在 renderer.h（Renderer 直接持有）。
 
 // 二进制序列化（小端）。blob 以 magic+version 开头；反序列化校验失败返回
-// false 并且不修改 out。
+// false 并且不修改 out。写入 v7（u32 alphaMode），读取 v6/v7；v6 图片
+// 默认 Straight。无效像素负载的序列化返回空串；旧 v6 程序拒绝 v7。
 [[nodiscard]] std::string serializeCommands(const RenderCommandList& list);
 [[nodiscard]] bool deserializeCommands(const std::string& blob,
                                        RenderCommandList& out);

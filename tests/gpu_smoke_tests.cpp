@@ -118,6 +118,58 @@ TEST_CASE("gpu_scrollbar_states_and_axes_match_tokens_at_both_scales", "[gpu][sc
     }
 }
 
+// Alpha plan P1 §3.4: GPU uploads preserve the declared representation. This
+// readback is test-only; production GPU presentation still performs no readback.
+TEST_CASE("gpu_alpha_modes_survive_upload_replacement_and_unload", "[gpu][alpha]") {
+    using namespace lumen;
+    using render::AlphaMode;
+    std::string diagnostics;
+    if (!render::probeSkiaGpuAvailable(&diagnostics)) {
+        SKIP("GPU unavailable: " << diagnostics);
+    }
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow("lumen-alpha-test", 80, 16,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN), SDL_DestroyWindow);
+    REQUIRE(window);
+    render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    desc.widthPixels = 80;
+    desc.heightPixels = 16;
+    desc.allowSwap = false;
+    auto renderer = render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer);
+    render::RenderCommandList commands;
+    commands.drawRect(core::Rect::fromXYWH(0, 0, 80, 16), {0, 0, 0, 255});
+    int slot = 0;
+    for (auto mode : {AlphaMode::Straight, AlphaMode::Premultiplied, AlphaMode::Opaque}) {
+        const std::uint8_t alpha = mode == AlphaMode::Opaque ? 255 : 128;
+        commands.uploadImage(77, {1, 1,
+            {mode == AlphaMode::Premultiplied ? alpha : std::uint8_t{255}, 0, 0, alpha}, mode});
+        commands.drawImage(77, core::Rect::fromXYWH(float(slot++ * 16), 0, 16, 16));
+    }
+    commands.uploadImage(77, {1, 1, {255, 0, 0, 128}, AlphaMode::Opaque});
+    commands.drawImage(77, core::Rect::fromXYWH(48, 0, 16, 16));
+    commands.unloadImage(77);
+    commands.drawImage(77, core::Rect::fromXYWH(64, 0, 16, 16));
+    FrameInfo frame;
+    frame.viewport = {80, 16};
+    renderer->submit(commands, frame);
+    REQUIRE(render::skiaGpuRendererAlive(*renderer));
+    std::vector<unsigned char> pixels(80 * 16 * 4);
+    glReadBuffer(GL_BACK);
+    glReadPixels(0, 0, 80, 16, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    REQUIRE(glGetError() == GL_NO_ERROR);
+    const int expected[] = {128, 128, 255, 255, 0};
+    for (int i = 0; i < 5; ++i) {
+        CAPTURE(i);
+        const auto offset = (8 * 80 + i * 16 + 8) * 4;
+        CHECK(pixels[offset] == expected[i]);
+        CHECK(pixels[offset + 1] == 0);
+        CHECK(pixels[offset + 2] == 0);
+    }
+}
+
 TEST_CASE("gpu_probe_reports_availability_with_diagnostics", "[gpu]") {
     std::string diagnostics;
     const bool available = lumen::render::probeSkiaGpuAvailable(&diagnostics);
@@ -341,13 +393,17 @@ TEST_CASE("gpu_list_readback_preserves_selection_focus_and_scrolled_border", "[g
             FrameInfo info;
             info.viewport = {240.0F / scale, 200.0F / scale};
             info.deviceScale = scale;
-            const auto widget = makeList(&list, "list", info.viewport.width, info.viewport.height);
+            // visual-system §6.1: focus rings default off. This fixture
+            // explicitly tests a visible ring and its inset selection marker.
+            const auto widget = withFocusRing(
+                makeList(&list, "list", info.viewport.width, info.viewport.height), true);
             auto tree = LayoutEngine::layout(widget, Constraints::tight(info.viewport), context);
             const auto* row = findNodeByKey(tree, "list:item:i0");
             REQUIRE(row);
             interaction.focusedIdentity = row->identity;
             list.scroll().scrollTo(scroll);
             tree = LayoutEngine::layout(widget, Constraints::tight(info.viewport), context);
+            REQUIRE(findNodeByKey(tree, "list:item:i0")->commonStyle().focusWidth > 0.0F);
             renderer->submit(recordScene(tree), info);
             REQUIRE(render::skiaGpuRendererAlive(*renderer));
             std::vector<unsigned char> pixels(240 * 200 * 4);

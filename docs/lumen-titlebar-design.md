@@ -161,7 +161,7 @@ SDL_HitTest(point in window pixels):
 1. **ClipRounded 命令（§5 角部例外的框架化）**：`Widget.clipRounded`
    （+ `withRoundedClip`）→ RenderNode/layout 复制 → painter
    `ScopedRoundedClip`（门控自身表面与子树；阴影豁免——层级可越界）→
-   `ClipRounded` 命令（序列化 v6）。CPU 后端以栈式 SDF 覆盖率乘子门控
+   `ClipRounded` 命令（v6 引入；当前写 v7，兼容读 v6）。CPU 后端以栈式 SDF 覆盖率乘子门控
    像素写入（fill/span/文本/图标/图像统一收敛 blendPixel 系；无活跃
    圆角裁剪时零成本）；Skia 光栅/GPU 为 clipRRect；其余后端默认降级
    矩形裁剪。gallery 标题栏（顶角）与 footer（底角）均已声明——贴角
@@ -169,17 +169,19 @@ SDL_HitTest(point in window pixels):
 2. **footer 底角同类缺陷修复**：`buildFooter` 的方形 pageBackground
    全宽填充一直盖着根容器的底角（不透明清屏下不可见；四角不变量测试
    以透明清屏暴露）——底角半径跟随 + clipRounded 双防线。
-3. **边缘毛刺根因 = 透明窗口呈现的 alpha 契约**：CPU 帧缓冲是直通
+3. **此前边缘毛刺修复记录**：当时 CPU 帧缓冲是直通
    alpha，而 DWM/合成器按预乘解释窗口表面。software 路径
    （BLENDMODE_NONE 字节拷贝）把直通当预乘读出亮色毛刺；renderer
    路径默认不透明黑 RenderClear + BLEND 把逐像素 alpha 压实（角部
    黑边）。修复（`sdl3_window.cpp`）：`WindowDesc.transparent` 时经
    `render::premultiplyRgbaInto` 拷入 scratch 预乘再上屏；renderer
    路径清屏 alpha 归零 + 纹理 BLENDMODE_NONE（预乘字节直落帧缓冲）。
-   不透明窗口字节路径不变。AA 光栅本身无缺陷（SDF 1px 边界带，
+   当时不透明窗口字节路径不变。AA 光栅本身无缺陷（SDF 1px 边界带，
    诊断确认）。
-4. **验收**：四角不变量测试（透明清屏；hover/pressed × 三 caption 钮
+4. **当时验收**：四角不变量测试（透明清屏；hover/pressed × 三 caption 钮
    + 最大化对照，四角 alpha 恒 0）+ ClipRounded 五件套（门控/嵌套求交/
    序列化往返/submit 即时像素一致/Widget→painter 集成与 sameNode）+
    premultiply 单元；全套 ctest（Debug 716）与 Release 体积档（+8B →
    848/952）通过。
+
+2026-09-20 alpha 计划 P1 更新：呈现按 `PixelBuffer.alphaMode` 分派。透明窗口直接提交预乘/不透明帧，只为直通输入保留转换；不透明窗口直接提交直通/不透明帧，预乘兼容输入显式反预乘。SDL texture 两种窗口都显式使用 NONE。CPU 在 P1 仍为直通，Skia 读回已标记实际预乘或不透明格式，避免二次预乘。Windows 原生 software surface 实测为 XRGB、丢弃 alpha，不能从呈现成功推断透明合成已受支持；宿主支持验收见 [alpha 计划](lumen-premultiplied-alpha-rendering-plan.md) P3。

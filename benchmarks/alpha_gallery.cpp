@@ -55,9 +55,9 @@ int main(int argc, char** argv) {
                     raw.write(reinterpret_cast<const char*>(pixels.rgba.data()),
                               pixels.rgba.size());
                     std::ofstream meta(directory / (name + ".rgba.txt"));
-                    // P0 actual CPU representation. Replaced with buffer mode in P1.
                     meta << "width=" << pixels.width << "\nheight=" << pixels.height
-                         << "\nalpha_mode=straight\nfonts=placeholder\n";
+                         << "\nalpha_mode=" << lumen::render::alphaModeName(pixels.alphaMode)
+                         << "\nfonts=placeholder\n";
                     if (!raw || !meta) {
                         throw std::runtime_error("frame write failed");
                     }

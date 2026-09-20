@@ -125,7 +125,7 @@ class Sdl3Window final : public PlatformWindow {
         const auto result = presentImpl(buffer);
         presentStats_.submitMs = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count() - presentStats_.prepareMs;
-        presentStats_.scratchCapacityBytes = premultiplied_.rgba.capacity();
+        presentStats_.scratchCapacityBytes = presentScratch_.rgba.capacity();
         return result;
     }
 
@@ -140,23 +140,24 @@ class Sdl3Window final : public PlatformWindow {
             // OpenGL 窗口没有 SDL 呈现器；GPU 适配负责交换。
             return PresentResult::Rejected;
         }
-        if (buffer.width <= 0 || buffer.height <= 0 ||
-            buffer.width > std::numeric_limits<int>::max() / 4 ||
-            buffer.rgba.size() !=
-                static_cast<std::size_t>(buffer.width) *
-                    static_cast<std::size_t>(buffer.height) * 4) {
+        if (!render::validatePixelBuffer(buffer, render::PixelValidation::Structure) ||
+            buffer.width > std::numeric_limits<int>::max() / 4) {
             return PresentResult::Rejected;
         }
-        // 透明窗口呈现契约（titlebar-design §7，2026-09）：DWM/合成器
-        // 按预乘 alpha 解释窗口表面——CPU 帧缓冲是直通 alpha，先拷入
-        // scratch 预乘再上屏；否则圆角 AA 边带的半透明像素被当预乘读出
-        // 亮色毛刺。不透明窗口保持直通字节（alpha 被合成器忽略）。
+        // Alpha plan §3.5: trusted frame content, O(1) validation per present.
         const render::PixelBuffer* presentable = &buffer;
-        if (transparent_) {
+        const bool convert = transparent_ ? buffer.alphaMode == render::AlphaMode::Straight
+                                          : buffer.alphaMode == render::AlphaMode::Premultiplied;
+        if (convert) {
             const auto start = presentDiagnostics_ ? std::chrono::steady_clock::now()
                                                   : std::chrono::steady_clock::time_point{};
-            render::premultiplyRgbaInto(premultiplied_, buffer);
-            presentable = &premultiplied_;
+            const bool ok = transparent_
+                ? render::premultiplyRgbaInto(presentScratch_, buffer, render::PixelValidation::Structure)
+                : render::unpremultiplyRgbaInto(presentScratch_, buffer, render::PixelValidation::Structure);
+            if (!ok) {
+                return PresentResult::Rejected;
+            }
+            presentable = &presentScratch_;
             if (presentDiagnostics_) {
                 presentStats_.prepareMs = std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - start).count();
@@ -164,6 +165,10 @@ class Sdl3Window final : public PlatformWindow {
                 presentStats_.convertedBytes = buffer.rgba.size();
                 presentStats_.copiedBytes = buffer.rgba.size();
             }
+        } else if (presentScratch_.rgba.capacity() != 0) {
+            // Release a former compatibility copy once when returning to direct frames.
+            render::PixelBuffer{}.rgba.swap(presentScratch_.rgba);
+            presentScratch_ = {};
         }
         if (softwarePresentation_) {
             // Resize invalidates SDL's surface. Reacquire it each frame and
@@ -198,7 +203,7 @@ class Sdl3Window final : public PlatformWindow {
                 SDL_DestroyTexture(texture_);
             }
             texture_ = SDL_CreateTexture(
-                renderer_, SDL_PIXELFORMAT_ABGR8888,
+                renderer_, SDL_PIXELFORMAT_RGBA32,
                 SDL_TEXTUREACCESS_STREAMING, buffer.width, buffer.height);
             textureWidth_ = buffer.width;
             textureHeight_ = buffer.height;
@@ -214,14 +219,11 @@ class Sdl3Window final : public PlatformWindow {
                          SDL_GetError());
             return PresentResult::Rejected;
         }
-        if (transparent_) {
-            // 预乘字节直落帧缓冲：清屏 alpha 归零（RenderClear 默认不透明
-            // 黑会把逐像素 alpha 压成 255——透明窗口整体失效）+ 纹理不
-            // 混合（BLEND 会按直通 alpha 二次合成预乘字节）。
-            SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 0);
-            SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE);
-        }
-        if (!SDL_RenderClear(renderer_) ||
+        // Copy pixels exactly in both window modes; SDL's RGBA texture default
+        // is BLEND. Opaque hosts ignore source alpha, transparent hosts retain it.
+        if (!SDL_SetRenderDrawColor(renderer_, 0, 0, 0, transparent_ ? 0 : 255) ||
+            !SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE) ||
+            !SDL_RenderClear(renderer_) ||
             !SDL_RenderTexture(renderer_, texture_, nullptr, nullptr) ||
             !SDL_RenderPresent(renderer_)) {
             std::fprintf(stderr, "SDL present failed: %s\n", SDL_GetError());
@@ -445,8 +447,8 @@ class Sdl3Window final : public PlatformWindow {
     bool softwarePresentation_{false};
     // WindowDesc.transparent：呈现预乘化（见 present）。
     bool transparent_{false};
-    // 透明窗口呈现 scratch（预乘副本；pixels() 语义保持直通）。
-    render::PixelBuffer premultiplied_{};
+    // Compatibility conversion only; direct frames do not retain this copy.
+    render::PixelBuffer presentScratch_{};
     bool presentDiagnostics_{false};
     PresentStats presentStats_{};
     SDL_Texture* texture_{nullptr};

@@ -206,8 +206,7 @@ template <class Backend> int run(const Options& o) {
     }
     const auto& pixels = renderer.pixels();
     const auto drawable = window ? window->drawableSize() : core::Size{};
-    // P0 actual representation; P1 replaces this with the explicit buffer mode.
-    const char* mode = o.backend == "cpu" ? "straight" : "premultiplied";
+    const char* mode = render::alphaModeName(pixels.alphaMode);
     if (!o.dump.empty()) {
         std::ofstream out(o.dump, std::ios::binary);
         out.write(reinterpret_cast<const char*>(pixels.rgba.data()), pixels.rgba.size());

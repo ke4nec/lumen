@@ -57,7 +57,8 @@ class CpuRenderer final : public Renderer {
     }
 
     // Uploads an image for drawImage(); ids are stable and opaque. Buffers
-    // use straight (non-premultiplied) RGBA, matching SkiaRenderer.
+    // accept all validated modes. P1 temporarily normalizes to straight internally;
+    // P2 replaces that bridge with a premultiplied cache. Invalid buffers return 0.
     ImageId registerImage(PixelBuffer image);
     // Frees a registered image; drawing a freed id is a no-op (resource
     // lifecycle, plan 阶段6).
