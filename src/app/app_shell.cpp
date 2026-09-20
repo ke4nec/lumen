@@ -534,6 +534,16 @@ void AppShell::rebuildIfDirty() {
 }
 
 std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
+    paintFrame(forceFullRepaint);
+    if (externalRenderer_ != nullptr) return 0;
+    if (!frameHashValid_) {
+        lastFrameHash_ = render::frameHash(cpuRenderer_.pixels());
+        frameHashValid_ = true;
+    }
+    return lastFrameHash_;
+}
+
+void AppShell::paintFrame(bool forceFullRepaint) {
     // 交互快照变化 → 重建（resolved style 折算状态，diff 产生 damage，
     // visual-system §5 规则 6）。M10：变化前捕获旧样式供状态色过渡插值。
     syncInteractionSnapshot();
@@ -583,11 +593,9 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
         if (semanticsNeedsPush_) {
             pushSemantics();
         }
-        // 绘制缓存命中：无可见变化，跳过提交并返回上一哈希（仅内部
-        // CPU 后端的哈希有意义；外部后端恒返回 0，避免泄漏切换前的
-        // CPU 帧哈希）。
+        // No visible change: preserve both the submitted frame and its lazy hash.
         rebuiltThisFrame_ = false;
-        return externalRenderer_ == nullptr ? lastFrameHash_ : 0;
+        return;
     }
 
     std::vector<core::Rect> damage = pendingDamage_;
@@ -640,6 +648,7 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
         ++partialRepaintCount_;
     }
     renderer.submit(commands, info);
+    frameHashValid_ = false;
     frameIndex_ += 1;
     element_->clearDirtyTree();
 
@@ -657,11 +666,7 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
     // 新绘制让屏幕与树重新一致：全量回退后 damage 跟踪也重新武装。
     treeDamageValid_ = true;
     // M5：绘制落地后推送语义（仅注册了桥时构建；diff 含焦点变化）。
-    pushSemantics();    if (externalRenderer_ == nullptr) {
-        lastFrameHash_ = render::frameHash(cpuRenderer_.pixels());
-        return lastFrameHash_;
-    }
-    return 0;
+    pushSemantics();
 }
 
 void AppShell::tick(std::uint64_t nowMs) {

@@ -50,6 +50,51 @@ TEST_CASE("alpha_cpu_clear_and_publication_preserve_explicit_proofs", "[render][
     }
 }
 
+// titlebar-design §16: the span fast path must preserve the scalar clip edge,
+// including fractional DPI, unequal corners, nested clips and save/restore.
+TEST_CASE("rounded_clip_spans_match_scalar_pixel_fills", "[render][alpha][clip]") {
+    for (const float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+        for (const auto radius : {core::CornerRadius{9, 2, 5, 13},
+                                  core::CornerRadius::all(0.25F),
+                                  core::CornerRadius::all(40)}) {
+            CAPTURE(scale, radius.topLeft, radius.topRight);
+            const auto clear = core::Color::fromRGBA(20, 40, 80, 96);
+            CpuRenderer spans(scale, clear), scalar(scale, clear);
+            const auto draw = [&](CpuRenderer& renderer, bool perPixel) {
+                renderer.beginFrame({32, 24});
+                const auto fill = [&](core::Color color) {
+                    if (!perPixel) {
+                        renderer.drawRect(core::Rect::fromXYWH(0, 0, 32, 24), color);
+                        return;
+                    }
+                    // One-device-pixel boxes have no solid interior span and
+                    // exercise the existing scalar blendPixel coverage path.
+                    for (int y = 0; y < int(24 * scale); ++y) {
+                        for (int x = 0; x < int(32 * scale); ++x) {
+                            renderer.drawRect(core::Rect::fromXYWH(
+                                float(x) / scale, float(y) / scale,
+                                1.0F / scale, 1.0F / scale), color);
+                        }
+                    }
+                };
+                renderer.clipRounded(core::Rect::fromXYWH(0.3F, 0.7F, 30.8F, 22.6F), radius);
+                fill({220, 130, 40, 255});
+                renderer.save();
+                renderer.clipRounded(core::Rect::fromXYWH(3.2F, 1.6F, 24.4F, 20.2F),
+                                     core::CornerRadius{2, 8, 9, 3});
+                renderer.clipRect(core::Rect::fromXYWH(2, 3, 25, 19));
+                fill({50, 160, 240, 127});
+                renderer.restore();
+                fill({10, 200, 80, 64});
+                renderer.endFrame();
+            };
+            draw(spans, false);
+            draw(scalar, true);
+            CHECK(spans.pixels() == scalar.pixels());
+        }
+    }
+}
+
 TEST_CASE("alpha_cpu_configuration_invalidates_preserve_but_keeps_published_frame",
           "[render][alpha]") {
     CpuRenderer cpu(1, core::Color::fromRGBA(255, 0, 0, 255));
@@ -92,6 +137,29 @@ TEST_CASE("alpha_cpu_configuration_invalidates_preserve_but_keeps_published_fram
     cpu.submit(empty, info);
     CHECK(cpu.stats().fullFrameFallback);
     CHECK(cpu.pixels().alphaMode == AlphaMode::Opaque);
+}
+
+TEST_CASE("alpha_cpu_bulk_clear_preserves_pixels_outside_damage", "[render][alpha]") {
+    for (const auto clear : {core::Color{0, 0, 0, 0}, core::Color{255, 255, 255, 255},
+                            core::Color{20, 90, 180, 128}}) {
+        CpuRenderer cpu(1, clear);
+        cpu.beginFrame({17, 9});
+        cpu.drawRect(core::Rect::fromXYWH(0, 0, 17, 9), {7, 19, 31, 255});
+        cpu.endFrame();
+        cpu.beginFrame({17, 9}, CpuRenderer::FrameMode::Preserve,
+                       core::Rect::fromXYWH(3, 2, 7, 5));
+        cpu.endFrame();
+        for (int y = 0; y < 9; ++y) {
+            for (int x = 0; x < 17; ++x) {
+                const bool inside = x >= 3 && x < 10 && y >= 2 && y < 7;
+                const auto pixel = (y * 17 + x) * 4;
+                CHECK(cpu.pixels().rgba[pixel] == (inside ? product(clear.r, clear.a) : 7));
+                CHECK(cpu.pixels().rgba[pixel + 1] == (inside ? product(clear.g, clear.a) : 19));
+                CHECK(cpu.pixels().rgba[pixel + 2] == (inside ? product(clear.b, clear.a) : 31));
+                CHECK(cpu.pixels().rgba[pixel + 3] == (inside ? clear.a : 255));
+            }
+        }
+    }
 }
 
 TEST_CASE("alpha_cpu_damage_replay_matches_full_frames_and_modes", "[render][alpha]") {

@@ -385,7 +385,7 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
         if (scheduler.shouldSubmitFrame()) {
             // maxFrames 测量/冒烟模式强制全量重绘：damage 统计归零但像素
             // 与局部路径一致（局部/全量像素等价由测试断言），保证帧间可比。
-            (void)shell.renderFrame(options.maxFrames != 0);
+            shell.paintFrame(options.maxFrames != 0);
             syncPointerCursor();
             // Rebuild may start a checked/hover blend on this very frame.
             scheduler.setAnimationsActive(shell.animationsActive());
@@ -410,7 +410,7 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
                 scheduler.setWindowVisible(
                     metrics.has_value() ? metrics->visible : true);
                 // 失效提交没有产生帧：先经回退后端补一帧再继续计数。
-                (void)shell.renderFrame(true);
+                shell.paintFrame(true);
                 if (options.diagnostics) {
                     printStartupDiagnostics(
                         shell.capabilities(),

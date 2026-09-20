@@ -286,6 +286,25 @@ TEST_CASE("app_shell_rebuilds_on_view_and_scale_changes", "[app]") {
     CHECK(shell.renderFrame() == scaled);
 }
 
+TEST_CASE("app_shell_hash_tracks_frames_painted_without_hashing", "[app]") {
+    AppShell shell{counterConfig()};
+    wireCounter(shell);
+    shell.paintFrame();
+    const auto first = lumen::render::frameHash(shell.pixels());
+    CHECK(shell.renderFrame() == first);
+    shell.state().set("counter", "changed");
+    shell.paintFrame();
+    const auto changed = lumen::render::frameHash(shell.pixels());
+    REQUIRE(changed != first);
+    CHECK(shell.renderFrame() == changed);
+    shell.paintFrame(true);
+    CHECK(shell.renderFrame() == changed);
+    shell.setDeviceScale(1.25F);
+    shell.paintFrame();
+    CHECK(shell.renderFrame() == lumen::render::frameHash(shell.pixels()));
+    CHECK(shell.renderFrame() != changed);
+}
+
 TEST_CASE("app_shell_accessibility_settings_preserve_theme_direction", "[app]") {
     AppShell shell{counterConfig()};
     wireCounter(shell);

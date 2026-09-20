@@ -289,6 +289,20 @@ struct StyleContext {
 `PaintOptions` 保留 caret、selection、composition 等文字绘制瞬态数据；focused、
 pressed、hovered 等控件 chrome 状态进入 `StyleContext` 和 resolved style。
 
+布局优化不得跳过状态解析或应用构建回调。Row/Column 在交叉轴尺寸已确定、
+且主轴预算不再依赖该子项的宽松测量时，可直接按最终 Stretch 约束布局子节点：
+包括无 flex 分配、主轴显式固定的非 flex 子项，以及预算已分配的非 shrinkWrap flex 子项。
+拉伸阶段约束未变时复用本次结果，避免嵌套容器重复展开整个子树。
+交叉轴未确定、预算仍依赖宽松测量或约束确实变化时保留重新布局，换行、margin、
+ThemeScope 和虚拟项几何必须保持原有结果。该优化不跨帧缓存 Widget 或 Theme。
+
+窗口循环使用 `AppShell::paintFrame()` 提交绘制，不计算整帧校验哈希。
+现有 `renderFrame()` 保留确定性返回值契约，在实际需要返回时计算并缓存
+当前 CPU 帧哈希；新的提交使缓存失效，外部渲染器仍返回 0。
+两种入口共用状态、布局、damage、动画和语义推送流程。
+CPU 全帧及 damage 清屏按预乘 RGBA 像素批量填充；缓冲区尺寸不变时复用
+存储，避免先清零再逐通道覆写。局部清屏仅触及裁剪后的 damage 区域。
+
 ## 6. 公共类型和 API 改造
 
 这是一次明确的 API 重构，不保留旧的扁平 Theme 字段兼容层。`Theme` 名称保留，内部

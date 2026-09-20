@@ -17,6 +17,22 @@ namespace {
 using detail::decodeCodePoint;
 using detail::glyphPixel;
 
+// Repeat a premultiplied RGBA pixel without a checked vector access for every
+// channel. Used by full clears, damage clears and fully covered opaque spans.
+void fillRgba(std::uint8_t* dst, std::size_t bytes, const std::uint8_t* pixel) {
+    if (bytes == 0) return;
+    if (pixel[0] == pixel[1] && pixel[0] == pixel[2] && pixel[0] == pixel[3]) {
+        std::memset(dst, pixel[0], bytes);
+        return;
+    }
+    std::memcpy(dst, pixel, 4);
+    for (std::size_t filled = 4; filled < bytes;) {
+        const auto count = std::min(filled, bytes - filled);
+        std::memcpy(dst + filled, dst, count);
+        filled += count;
+    }
+}
+
 }  // namespace
 
 CpuRenderer::CpuRenderer(float deviceScale, core::Color clear)
@@ -103,28 +119,17 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
         if (damage.size.width > 0.0F && damage.size.height > 0.0F) {
             const auto dirty = pixelRect(damage);
             for (int y = dirty.y0; y < dirty.y1; ++y) {
-                std::size_t offset = (static_cast<std::size_t>(y) * width +
-                                      dirty.x0) * 4;
-                for (int x = dirty.x0; x < dirty.x1; ++x) {
-                    buffer_.rgba[offset] = clearBytes[0];
-                    buffer_.rgba[offset + 1] = clearBytes[1];
-                    buffer_.rgba[offset + 2] = clearBytes[2];
-                    buffer_.rgba[offset + 3] = clearBytes[3];
-                    offset += 4;
-                }
+                const auto offset = (static_cast<std::size_t>(y) * width + dirty.x0) * 4;
+                fillRgba(buffer_.rgba.data() + offset,
+                         static_cast<std::size_t>(dirty.x1 - dirty.x0) * 4, clearBytes);
             }
         }
     } else {
         buffer_.width = width;
         buffer_.height = height;
         buffer_.alphaMode = clearColor_.a == 255 ? AlphaMode::Opaque : AlphaMode::Premultiplied;
-        buffer_.rgba.assign(bytes, 0);
-        for (std::size_t i = 0; i + 3 < buffer_.rgba.size(); i += 4) {
-            buffer_.rgba[i] = clearBytes[0];
-            buffer_.rgba[i + 1] = clearBytes[1];
-            buffer_.rgba[i + 2] = clearBytes[2];
-            buffer_.rgba[i + 3] = clearBytes[3];
-        }
+        buffer_.rgba.resize(bytes);
+        fillRgba(buffer_.rgba.data(), bytes, clearBytes);
     }
     frameMatchesConfig_ = true;
     backDamage_.reset();
@@ -151,13 +156,8 @@ CpuRenderer::ClipRects CpuRenderer::rasterBounds(float left, float top,
             std::min(clip.y1, static_cast<int>(std::ceil(bottom)))};
 }
 
-void CpuRenderer::fillSpan(int y, int x0, int x1, core::Color color) {
-    // Callers supply a fully covered span already intersected with the clip.
+void CpuRenderer::fillCoveredSpan(int y, int x0, int x1, core::Color color) {
     if (x0 >= x1 || color.a == 0) return;
-    if (roundedActive_) {
-        for (int x = x0; x < x1; ++x) blendPixel(x, y, color);
-        return;
-    }
     if (color.a != 255) {
         const unsigned r = detail::mul255(color.r, color.a);
         const unsigned g = detail::mul255(color.g, color.a);
@@ -167,16 +167,9 @@ void CpuRenderer::fillSpan(int y, int x0, int x1, core::Color color) {
     }
     auto* dst = buffer_.rgba.data() +
         (static_cast<std::size_t>(y) * buffer_.width + x0) * 4;
-    dst[0] = color.r;
-    dst[1] = color.g;
-    dst[2] = color.b;
-    dst[3] = 255;
+    const std::uint8_t pixel[]{color.r, color.g, color.b, 255};
     const auto bytes = static_cast<std::size_t>(x1 - x0) * 4;
-    for (std::size_t filled = 4; filled < bytes;) {
-        const auto count = std::min(filled, bytes - filled);
-        std::memcpy(dst + filled, dst, count);
-        filled += count;
-    }
+    fillRgba(dst, bytes, pixel);
 }
 
 void CpuRenderer::save() {
@@ -379,6 +372,32 @@ std::pair<int, int> solidSpan(const DeviceShape& inset, float y) {
 
 }  // namespace
 
+void CpuRenderer::fillSpan(int y, int x0, int x1, core::Color color) {
+    // titlebar-design §16: preserve the original coverage at all clip edges.
+    // Intersect conservative interior spans once per scanline instead of
+    // testing every background pixel against every rounded clip shape.
+    if (x0 >= x1 || color.a == 0) return;
+    if (!roundedActive_) {
+        fillCoveredSpan(y, x0, x1, color);
+        return;
+    }
+    int covered0 = x0;
+    int covered1 = x1;
+    const float cy = static_cast<float>(y) + 0.5F;
+    for (const ClipShape& shape : clip_.back().rounded) {
+        const auto span = solidSpan(insetShape(shape, 1.0F), cy);
+        covered0 = std::max(covered0, span.first);
+        covered1 = std::min(covered1, span.second);
+        if (covered0 >= covered1) {
+            for (int x = x0; x < x1; ++x) blendPixel(x, y, color);
+            return;
+        }
+    }
+    for (int x = x0; x < covered0; ++x) blendPixel(x, y, color);
+    fillCoveredSpan(y, covered0, covered1, color);
+    for (int x = covered1; x < x1; ++x) blendPixel(x, y, color);
+}
+
 void CpuRenderer::fillLogicalRect(const core::Rect& rect, core::Color color,
                                   const core::CornerRadius& radius) {
     if (color.a == 0 || rect.size.width <= 0.0F || rect.size.height <= 0.0F) {
@@ -500,10 +519,16 @@ float CpuRenderer::roundedCoverage(int px, int py) const {
     if (clip_.empty() || clip_.back().rounded.empty()) {
         return 1.0F;
     }
+    const auto& state = clip_.back();
+    const auto& interior = state.roundedInterior;
+    if (px >= interior.x0 && px < interior.x1 &&
+        py >= interior.y0 && py < interior.y1) {
+        return 1.0F;
+    }
     const float cx = static_cast<float>(px) + 0.5F;
     const float cy = static_cast<float>(py) + 0.5F;
     float coverage = 1.0F;
-    for (const ClipShape& shape : clip_.back().rounded) {
+    for (const ClipShape& shape : state.rounded) {
         const float d = sdRoundedRect(shape, cx, cy);
         if (d >= 0.5F) {
             return 0.0F;
@@ -540,6 +565,23 @@ void CpuRenderer::clipRounded(core::Rect rect, core::CornerRadius radius) {
     const bool anyRadius = shape.rTL > 0.0F || shape.rTR > 0.0F ||
                            shape.rBL > 0.0F || shape.rBR > 0.0F;
     if (anyRadius) {
+        // Glyphs/images/icons use individual samples rather than fillSpan.
+        // Cache a conservative central rectangle so those interior samples
+        // also avoid re-evaluating every clip's SDF. Keep a full pixel inset
+        // beyond the corner radii; fractional edge coverage stays scalar.
+        ClipRects interior{
+            static_cast<int>(std::ceil(shape.x0 + std::max(shape.rTL, shape.rBL) + 0.5F)),
+            static_cast<int>(std::ceil(shape.y0 + std::max(shape.rTL, shape.rTR) + 0.5F)),
+            static_cast<int>(std::ceil(shape.x1 - std::max(shape.rTR, shape.rBR) - 1.5F)),
+            static_cast<int>(std::ceil(shape.y1 - std::max(shape.rBL, shape.rBR) - 1.5F))};
+        if (!clip_.back().rounded.empty()) {
+            const auto& previous = clip_.back().roundedInterior;
+            interior.x0 = std::max(interior.x0, previous.x0);
+            interior.y0 = std::max(interior.y0, previous.y0);
+            interior.x1 = std::min(interior.x1, previous.x1);
+            interior.y1 = std::min(interior.y1, previous.y1);
+        }
+        clip_.back().roundedInterior = interior;
         clip_.back().rounded.push_back(shape);
         roundedActive_ = true;
     }

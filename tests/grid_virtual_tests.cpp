@@ -201,6 +201,29 @@ TEST_CASE("grid_row_height_is_max_of_row_and_honors_fixed_size", "[grid]") {
 
 // --- VirtualList ---
 
+TEST_CASE("nested_fixed_stretch_lays_out_visible_items_once", "[layout][virtual-list]") {
+    // A fixed cross size does not require a loose measure plus a second
+    // identical final layout at each enclosing stretch column.
+    for (const bool flex : {false, true}) {
+        CAPTURE(flex);
+        ListSource source;
+        source.count = 3;
+        auto widget = makeVirtualList(&source, "list", std::nullopt, 120.0F, 0.0F);
+        for (int depth = 0; depth < 6; ++depth) {
+            if (flex) widget.flex = 1;
+            widget = makeColumn({std::move(widget)}, MainAxisAlignment::Start,
+                                CrossAxisAlignment::Stretch);
+        }
+        const auto root = LayoutEngine::layout(widget, tightView(200, 180));
+        const auto* list = findNodeByKey(root, "list");
+        REQUIRE(list != nullptr);
+        CHECK(list->size == Size{200, flex ? 180.0F : 120.0F});
+        CHECK(source.builtIndices == std::vector<std::size_t>{0, 1, 2});
+        REQUIRE(list->children.size() == 3);
+        CHECK(list->children[2].offset.y == 80.0F);
+    }
+}
+
 TEST_CASE("virtual_list_materializes_only_visible_window", "[virtual-list]") {
     ListSource source;
     source.count = 1000;

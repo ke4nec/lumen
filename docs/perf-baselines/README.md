@@ -80,3 +80,10 @@ CPU 初轮 P3 和正式 Skia P3 的诊断归档仍各自保留，不作为 CPU �
 后续整体 review 补上汇总器的 manifest 来源绑定与跨组计时阶段一致性检查；原 P4 的 CPU/Skia
 各 90 份报告全部通过加强后的检查，逐组数据和汇总与归档精确相同，没有重采样或改写基线。
 回归与 Linux headless 补验记录见 [续验记录](premultiplied-alpha-2026-09-20/follow-up.md)。
+
+## 5. Gallery Debug 热路径优化
+
+[2026-09-21 配对记录](gallery-debug-2026-09-21.md) 保留同一 Windows/MSVC 主机上
+CPU Debug / Release 的完整重绘、悬停和动画悬停 before/after，以及像素与测试验证。
+该记录使用 1024×768 Gallery 系统字体场景，独立于上述固定场景基线；Debug 调试
+编译开关保持不变，性能收益来自圆角内部批量填充、减少重复布局与清屏等算法改动。

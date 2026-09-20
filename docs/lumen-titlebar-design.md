@@ -166,6 +166,12 @@ SDL_HitTest(point in window pixels):
    圆角裁剪时零成本）；Skia 光栅/GPU 为 clipRRect；其余后端默认降级
    矩形裁剪。gallery 标题栏（顶角）与 footer（底角）均已声明——贴角
    chrome 子件不再依赖各自记得带角半径。
+   CPU 整段填充对每条扫描线先求所有活跃圆角裁剪的保守完全覆盖区间，
+   内部区间直接批量填充；字形/图标/图像采样先查询裁剪栈保存的保守内部
+   矩形，边缘继续走原有 SDF 与预乘混合。该优化必须
+   保持逐字节像素一致，不能以矩形裁剪替代圆角，也不能依赖 Release
+   编译优化才生效。`rounded_clip_spans_match_scalar_pixel_fills` 覆盖
+   分角半径、嵌套/恢复、矩形交集、透明叠加与 100/125/150/200% DPI。
 2. **footer 底角同类缺陷修复**：`buildFooter` 的方形 pageBackground
    全宽填充一直盖着根容器的底角（不透明清屏下不可见；四角不变量测试
    以透明清屏暴露）——底角半径跟随 + clipRounded 双防线。

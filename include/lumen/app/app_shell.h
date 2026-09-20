@@ -241,6 +241,9 @@ class AppShell {
     // paint；damage/绘制缓存同 counter 迁移前行为） ---
     void rebuildIfDirty();
     [[nodiscard]] std::uint64_t renderFrame(bool forceFullRepaint = false);
+    // Runtime rendering without a framebuffer hash. renderFrame() preserves
+    // the deterministic headless API and computes its hash only when requested.
+    void paintFrame(bool forceFullRepaint = false);
     // 时间驱动状态（caret 闪烁/转场/应用动画 onAnimate）；测试传固定时间
     // 戳保持确定性。
     void tick(std::uint64_t nowMs);
@@ -445,6 +448,7 @@ class AppShell {
     bool blinkAnchored_{false};
     std::uint64_t blinkAnchorMs_{0};
     std::uint64_t lastFrameHash_{0};
+    bool frameHashValid_{false};
     std::uint32_t partialRepaintCount_{0};
     core::Size view_{800.0F, 600.0F};
     float deviceScale_{1.0F};

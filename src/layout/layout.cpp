@@ -711,6 +711,8 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
         count > 0 ? spacing * static_cast<float>(count - 1) : 0.0F;
 
     std::vector<RenderNode> measured(count);
+    const bool stretch = widget.crossAxis == core::CrossAxisAlignment::Stretch;
+    std::vector<Constraints> measuredConstraints(stretch ? count : 0);
     std::vector<float> mainWithMargin(count, 0.0F);
     std::vector<float> crossWithMargin(count, 0.0F);
 
@@ -721,6 +723,11 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
         }
     }
     const bool distributeFlex = totalFlex > 0.0F && boundedMain;
+    // When the cross box is already fixed and no flex budget depends on the
+    // loose measurements, lay out children at their final cross size once.
+    // Otherwise keep the two-pass contract (wrapping can change main sizes).
+    const bool fixedStretch = stretch &&
+        (crossOverride.has_value() || outerMinCross == outerMaxCross);
 
     // Pass 1: inflexible children get loose content-box constraints. The
     // child accounts for its own margin inside layoutSingle().
@@ -739,6 +746,12 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
             childConstraints = Constraints{0.0F, contentMaxCross, 0.0F,
                                            contentMaxMain};
         }
+        if (fixedStretch && (!distributeFlex ||
+                            (isRow ? child.width : child.height).has_value())) {
+            if (isRow) childConstraints.minHeight = contentMaxCross;
+            else childConstraints.minWidth = contentMaxCross;
+        }
+        if (stretch) measuredConstraints[i] = childConstraints;
         measured[i] = layoutSingle(child, childConstraints, styleContext,
                                    childIdentity(identity, child, i));
         const float childMain =
@@ -775,6 +788,13 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
                 childConstraints =
                     Constraints{0.0F, contentMaxCross, child.shrinkWrap ? 0.0F : budget, budget};
             }
+            // The main budget has already been assigned. A non-shrink-wrapped
+            // flex child cannot change it when its cross constraint tightens.
+            if (fixedStretch && !child.shrinkWrap) {
+                if (isRow) childConstraints.minHeight = contentMaxCross;
+                else childConstraints.minWidth = contentMaxCross;
+            }
+            if (stretch) measuredConstraints[i] = childConstraints;
             measured[i] = layoutSingle(child, childConstraints, styleContext,
                                        childIdentity(identity, child, i));
             const float childMain =
@@ -824,8 +844,6 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
     // Stretch pass: constraints below are pre-margin budgets. layoutSingle()
     // deflates the child margin, so the resulting border box lands exactly on
     // contentBoxCross minus the margin (no double subtraction).
-    const bool stretch =
-        widget.crossAxis == core::CrossAxisAlignment::Stretch;
     if (stretch) {
         for (std::size_t i = 0; i < count; ++i) {
             const Widget& child = widget.children[i];
@@ -858,8 +876,10 @@ RenderNode layoutFlex(const Widget& widget, const Constraints& constraints,
                                                      contentMaxMain};
                 }
             }
-            measured[i] = layoutSingle(child, stretchConstraints, styleContext,
-                                       childIdentity(identity, child, i));
+            if (stretchConstraints != measuredConstraints[i]) {
+                measured[i] = layoutSingle(child, stretchConstraints, styleContext,
+                                           childIdentity(identity, child, i));
+            }
             crossWithMargin[i] =
                 (isRow ? measured[i].size.height : measured[i].size.width) +
                 (isRow ? child.margin.vertical() : child.margin.horizontal());

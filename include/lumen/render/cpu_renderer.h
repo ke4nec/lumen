@@ -125,6 +125,8 @@ class CpuRenderer final : public Renderer {
     struct ClipState {
         ClipRects rect{};
         std::vector<ClipShape> rounded{};
+        // Conservative intersection strictly inside every rounded edge.
+        ClipRects roundedInterior{};
     };
 
     [[nodiscard]] int toPixel(float logical) const;
@@ -132,6 +134,8 @@ class CpuRenderer final : public Renderer {
     [[nodiscard]] ClipRects rasterBounds(float left, float top, float right,
                                          float bottom) const;
     void fillSpan(int y, int x0, int x1, core::Color color);
+    // The whole span is inside every active clip, including rounded clips.
+    void fillCoveredSpan(int y, int x0, int x1, core::Color color);
     void blendPixel(int px, int py, core::Color color);
     // Image bytes are already premultiplied: coverage scales all four channels.
     void blendImagePixel(int px, int py, const std::uint8_t* rgba);
