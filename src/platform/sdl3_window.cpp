@@ -72,9 +72,10 @@ core::Key mapSdlKey(SDL_Keycode key) {
 class Sdl3Window final : public PlatformWindow {
   public:
     explicit Sdl3Window(SDL_Window* window, SDL_Renderer* renderer,
-                        bool softwarePresentation)
+                        bool softwarePresentation, bool transparent)
         : window_(window), renderer_(renderer),
-          softwarePresentation_(softwarePresentation) {}
+          softwarePresentation_(softwarePresentation),
+          transparent_(transparent) {}
 
     ~Sdl3Window() override {
         if (texture_ != nullptr) {
@@ -128,6 +129,15 @@ class Sdl3Window final : public PlatformWindow {
                     static_cast<std::size_t>(buffer.height) * 4) {
             return PresentResult::Rejected;
         }
+        // 透明窗口呈现契约（titlebar-design §7，2026-09）：DWM/合成器
+        // 按预乘 alpha 解释窗口表面——CPU 帧缓冲是直通 alpha，先拷入
+        // scratch 预乘再上屏；否则圆角 AA 边带的半透明像素被当预乘读出
+        // 亮色毛刺。不透明窗口保持直通字节（alpha 被合成器忽略）。
+        const render::PixelBuffer* presentable = &buffer;
+        if (transparent_) {
+            render::premultiplyRgbaInto(premultiplied_, buffer);
+            presentable = &premultiplied_;
+        }
         if (softwarePresentation_) {
             // Resize invalidates SDL's surface. Reacquire it each frame and
             // propagate the native update result (SDL_RenderPresent discards
@@ -139,9 +149,10 @@ class Sdl3Window final : public PlatformWindow {
                 return PresentResult::Rejected;
             }
             const std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> source(
-                SDL_CreateSurfaceFrom(buffer.width, buffer.height,
+                SDL_CreateSurfaceFrom(presentable->width, presentable->height,
                     SDL_PIXELFORMAT_RGBA32,
-                    const_cast<std::uint8_t*>(buffer.rgba.data()), buffer.width * 4),
+                    const_cast<std::uint8_t*>(presentable->rgba.data()),
+                    presentable->width * 4),
                 SDL_DestroySurface);
             if (source == nullptr ||
                 !SDL_SetSurfaceBlendMode(source.get(), SDL_BLENDMODE_NONE) ||
@@ -170,11 +181,18 @@ class Sdl3Window final : public PlatformWindow {
                 return PresentResult::Rejected;
             }
         }
-        if (!SDL_UpdateTexture(texture_, nullptr, buffer.rgba.data(),
-                               buffer.width * 4)) {
+        if (!SDL_UpdateTexture(texture_, nullptr, presentable->rgba.data(),
+                               presentable->width * 4)) {
             std::fprintf(stderr, "SDL_UpdateTexture failed: %s\n",
                          SDL_GetError());
             return PresentResult::Rejected;
+        }
+        if (transparent_) {
+            // 预乘字节直落帧缓冲：清屏 alpha 归零（RenderClear 默认不透明
+            // 黑会把逐像素 alpha 压成 255——透明窗口整体失效）+ 纹理不
+            // 混合（BLEND 会按直通 alpha 二次合成预乘字节）。
+            SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 0);
+            SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE);
         }
         if (!SDL_RenderClear(renderer_) ||
             !SDL_RenderTexture(renderer_, texture_, nullptr, nullptr) ||
@@ -398,6 +416,10 @@ class Sdl3Window final : public PlatformWindow {
     SDL_Window* window_{nullptr};
     SDL_Renderer* renderer_{nullptr};
     bool softwarePresentation_{false};
+    // WindowDesc.transparent：呈现预乘化（见 present）。
+    bool transparent_{false};
+    // 透明窗口呈现 scratch（预乘副本；pixels() 语义保持直通）。
+    render::PixelBuffer premultiplied_{};
     SDL_Texture* texture_{nullptr};
     int textureWidth_{0};
     int textureHeight_{0};
@@ -467,7 +489,8 @@ std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
         }
     }
     return std::make_unique<Sdl3Window>(window, renderer,
-                                       desc.softwarePresentation);
+                                       desc.softwarePresentation,
+                                       desc.transparent);
 }
 
 }  // namespace lumen::platform
