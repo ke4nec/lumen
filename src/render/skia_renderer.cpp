@@ -457,6 +457,13 @@ void SkiaRenderer::drawIcon(
         return;
     }
     const float scale = impl_->deviceScale;
+    // 图标原点设备对齐（与 CpuRenderer::drawIcon 同式，lround 口径）：半
+    // 像素原点的描边在双后端一致变 crisp，奇数高半格 chevron 不再上下
+    // 不对称；尺寸不变。
+    box.origin.x =
+        static_cast<float>(std::lround(box.origin.x * scale) / scale);
+    box.origin.y =
+        static_cast<float>(std::lround(box.origin.y * scale) / scale);
     SkPath path;
     for (const auto& polyline : polylines) {
         if (polyline.empty()) {

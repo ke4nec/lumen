@@ -453,7 +453,11 @@ rest/hovered/dragged/disabled 分别取 borderStrong/contentPrimary/accent/disab
   文件路径写入控件逻辑。Renderer 后续增加 vector path 或统一 image 适配。描边权重
   以 16px 基准档定：`strokeWidth = 1.8`（对齐设计稿 1.7–2.0；1.5 在 16px + AA 下
   偏细发糊，2026-09 调整）；圆弧几何以 ≥24 段折线逼近，多段图元（如 Search 的
-  镜圆与手柄）在相接处共享端点（不得留缝）。
+  镜圆与手柄）在相接处共享端点（不得留缝）。图标盒原点按设备像素取整
+  （`drawIcon` 内 `lround`，与字形 `toPixel` 同口径；CPU/Skia 双后端同式，
+  尺寸不变）——逻辑居中常给出半像素原点（如 Spin 奇数高半格的 chevron），
+  不取整则描边虚散、上下不对称（2026-09 Spin 像素复现，回归见 spin_tests
+  `spin_stepper_chevrons_align_to_device_pixels`）。
 - `ElevationTokens`：保存层级、阴影颜色、偏移和模糊半径。三后端共用同一
   `DrawShadow` 命令：Skia/GPU 按 `kNormal_SkBlurStyle`（σ = blur×0.5×scale）
   模糊；CPU 以 3-pass 可分离 box blur 近似同一 σ（blur=0 时退偏移扁平面），

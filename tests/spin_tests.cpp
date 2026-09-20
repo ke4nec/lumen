@@ -7,6 +7,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -386,4 +387,48 @@ TEST_CASE("spin_stepper_hover_brightens_and_pressed_uses_accent_mix",
         findNodeByKey(app.shell.root(), "spin:up:opacity");
     REQUIRE(pressed != nullptr);
     CHECK(pressed->commonStyle().background == app.shell.theme().list.pressed);
+}
+
+// chevron 设备对齐（render drawIcon 原点按设备像素取整）：奇数高半格
+//（内容 38 − 中缝 1 → 18/19）的图标逻辑居中必有一格落半像素（19px 盒装
+// 14px 图标 → 2.5），不对齐则 ▼ 比 ▲ 虚散（墨散布更广）。中间值使上下
+// 同亮度，直接对比墨量与峰值。
+TEST_CASE("spin_stepper_chevrons_align_to_device_pixels",
+          "[widgets][spin]") {
+    SpinApp app{18.0};  // 中间值：上下均非到界
+    (void)app.shell.renderFrame(true);
+    const auto& pixels = app.shell.pixels();
+    auto inkOf = [&](const RenderNode* node) {
+        const Offset origin = absoluteOffset(app.shell.root(), node->key);
+        const int x0 = static_cast<int>(origin.x);
+        const int y0 = static_cast<int>(origin.y);
+        const int w = static_cast<int>(node->size.width);
+        const int h = static_cast<int>(node->size.height);
+        unsigned peak = 0;
+        int count = 0;
+        for (int y = y0; y < y0 + h; ++y)
+            for (int x = x0; x < x0 + w; ++x) {
+                const std::size_t o =
+                    (static_cast<std::size_t>(y) * pixels.width + x) * 4;
+                const unsigned v =
+                    (unsigned(pixels.rgba[o]) * 30 +
+                     unsigned(pixels.rgba[o + 1]) * 59 +
+                     unsigned(pixels.rgba[o + 2]) * 11) /
+                    100;
+                if (v > 110) {
+                    ++count;
+                    peak = std::max(peak, v);
+                }
+            }
+        return std::pair<unsigned, int>{peak, count};
+    };
+    const RenderNode* up = findNodeByKey(app.shell.root(), "spin:up:opacity");
+    const RenderNode* down =
+        findNodeByKey(app.shell.root(), "spin:down:opacity");
+    REQUIRE(up != nullptr);
+    REQUIRE(down != nullptr);
+    const auto [upPeak, upCount] = inkOf(up);
+    const auto [downPeak, downCount] = inkOf(down);
+    CHECK(upPeak == downPeak);
+    CHECK(upCount == downCount);
 }

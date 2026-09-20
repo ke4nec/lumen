@@ -681,6 +681,14 @@ void CpuRenderer::drawIcon(std::vector<std::vector<core::Offset>> polylines,
         return;
     }
     const float scale = deviceScale_;
+    // 图标原点设备对齐（字形 toPixel 同口径 lround）：逻辑居中常给出半
+    // 像素原点（如 Spin 奇数高半格的 chevron：19px 盒装 14px 图标 → 2.5），
+    // 不对齐则描边虚散、上下不对称；尺寸不变。SkiaRenderer::drawIcon 同式
+    // 镜像，保持双后端一致。
+    box.origin.x =
+        static_cast<float>(std::lround(box.origin.x * scale) / scale);
+    box.origin.y =
+        static_cast<float>(std::lround(box.origin.y * scale) / scale);
     // 归一化 → 设备像素；线宽以设备像素计（至少覆盖 1px）。
     const float halfWidth =
         std::max(0.5F, strokeWidth * scale * 0.5F);
