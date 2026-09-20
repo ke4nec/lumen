@@ -286,7 +286,7 @@ motion.statusbar.busyCycleMs          = 1200（busy 弧一圈，linear）
 ### 11.3 示例与验收
 
 - settings 新页 `StatusBar`：编辑器场景（行列/编码/缩放 Toggle 项）+ 消息按钮（触发瞬态）+ 进度模拟（determinate → indeterminate → 完成）+ busy。
-- gallery 窗口 chrome 补状态栏样本（工具栏 toggle 联动 busy 的演示场景见 `design/toolbar.html`）。
+- gallery Controls 分区样本 + 控件清单瓦片（Grid toggle 联动 busy 弧与消息、determinate 进度项、resize grip；`design/gallery.html` live samples）。
 - headless 冒烟：消息/进度/busy 脚本输出；三桌面窗口 smoke 由 CI 承担。
 
 ## 12. 实施分期

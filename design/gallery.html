@@ -277,11 +277,12 @@
     .sb-progress { flex: 0 0 120px; height: 4px; overflow: hidden; border-radius: 999px; background: var(--app-line-strong); }
     .sb-progress::before { content: ""; display: block; width: 68%; height: 100%; border-radius: inherit; background: var(--app-accent); }
     .sb-busy { display: none; place-items: center; flex: 0 0 12px; height: 12px; }
-    .statusbar.is-busy .sb-busy, .statusbar.compact .sb-busy { display: grid; }
+    .statusbar.is-busy .sb-busy { display: grid; }
     .sb-busy svg { width: 12px; height: 12px; fill: none; stroke: var(--app-accent); stroke-width: 2; stroke-linecap: round; animation: sb-busy-arc 1.2s linear infinite; }
     @keyframes sb-busy-arc { to { transform: rotate(360deg); } }
     .sb-grip { flex: 0 0 12px; height: 12px; background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--app-line-strong) 3px 4px); }
     .statusbar.compact { height: 24px; padding: 0 8px; gap: 6px; }
+    .statusbar.compact .sb-progress { flex-basis: 64px; }
     /* Controls 样本卡：三块控件各带标题/提示，块间 1px 分隔 */
     .ctl-block + .ctl-block { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--app-line); }
     .ctl-title { margin: 0 0 10px; color: var(--app-ink); font-size: 12px; font-weight: 650; }
@@ -591,7 +592,7 @@
                 <div class="component-tile"><div class="tile-title">Menus</div><div class="tile-preview"><div class="menu-mini"><span class="mm is-current">Open<kbd>Enter</kbd></span><span class="mm">Copy path<kbd>Ctrl+C</kbd></span><span class="mm is-disabled">Paste<kbd>Ctrl+V</kbd></span></div></div></div>
                 <div class="component-tile"><div class="tile-title">Spin</div><div class="tile-preview"><div class="spin compact" aria-hidden="true"><span class="spin-field"><span class="spin-value">72</span></span><span class="spin-cluster"><span class="spin-step"><span class="chev"></span></span><span class="spin-step"><span class="chev"></span></span></span></div></div></div>
                 <div class="component-tile"><div class="tile-title">ToolBar</div><div class="tile-preview"><div class="toolbar compact" aria-hidden="true"><span class="tb-item"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span class="tb-item"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="tb-sep"></span><span class="tb-item is-checked"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 12h16M12 4v16"/></svg></span></div></div></div>
-                <div class="component-tile"><div class="tile-title">StatusBar</div><div class="tile-preview"><div class="statusbar compact" aria-hidden="true"><span class="sb-busy"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="42.4 56.5"/></svg></span><span class="sb-message">Indexing…</span><span class="sb-flex"></span><span class="sb-grip"></span></div></div></div>
+                <div class="component-tile"><div class="tile-title">StatusBar</div><div class="tile-preview"><div class="statusbar compact" aria-hidden="true"><span class="sb-message">Indexing…</span><span class="sb-flex"></span><span class="sb-progress"></span><span class="sb-grip"></span></div></div></div>
                 <div class="component-tile"><div class="tile-title">Feedback</div><div class="tile-preview"><div class="feedback-preview"><div class="feedback-row"><span>Progress</span><strong>68%</strong></div><div class="progress-track"></div></div></div></div>
               </div></section>
               <section class="panel controls-panel"><div class="panel-head"><span class="panel-title">Controls — live samples</span><span class="panel-meta">Spin · ToolBar · StatusBar</span></div>
@@ -617,7 +618,7 @@
                 <div class="ctl-block">
                   <p class="ctl-title">StatusBar — messages, progress, busy</p>
                   <div class="statusbar live"><span class="sb-busy" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="42.4 56.5"/></svg></span><span class="sb-message">Ready</span><span class="sb-flex"></span><span class="sb-progress" role="img" aria-label="Indexing · 68%"></span><span class="sb-sep"></span><span>Ln 1, Col 1</span><span class="sb-grip" aria-hidden="true"></span></div>
-                  <p class="ctl-hint">The “Grid” toggle above drives the status bar busy arc; use the Inputs page message actions for transient status text.</p>
+                  <p class="ctl-hint">The “Grid” toggle above drives the status bar busy arc and message; the progress item carries a determinate 68% sample.</p>
                 </div>
               </section>
               <section class="panel code-panel"><div class="panel-head"><span class="panel-title">C++ DSL snapshot</span><span class="panel-meta">read-only</span></div><div class="code-lines"><div class="code-line"><span class="line-no">01</span><span><span class="code-key">auto</span> gallery = <span class="code-string">makeColumn</span>({</span></div><div class="code-line"><span class="line-no">02</span><span>&nbsp;&nbsp;<span class="code-string">titleBar</span>({menus({file, view, help}), minMaxClose}),</span></div><div class="code-line"><span class="line-no">03</span><span>&nbsp;&nbsp;<span class="code-string">splitter</span>(sidebar, mainPane),</span></div><div class="code-line"><span class="line-no">04</span><span>&nbsp;&nbsp;<span class="code-string">toolBar</span>({new, open, undo, grid}),</span></div><div class="code-line"><span class="line-no">05</span><span>&nbsp;&nbsp;<span class="code-string">button</span>(<span class="code-comment">"Filled"</span>, variant::filled),</span></div><div class="code-line"><span class="line-no">06</span><span>&nbsp;&nbsp;<span class="code-string">textField</span>(<span class="code-comment">"username"</span>),</span></div><div class="code-line"><span class="line-no">07</span><span>&nbsp;&nbsp;<span class="code-string">spin</span>(<span class="code-comment">"opacity"</span>, 0, 100),</span></div><div class="code-line"><span class="line-no">08</span><span>&nbsp;&nbsp;<span class="code-string">statusBar</span>({progress, cursor}),</span></div><div class="code-line"><span class="line-no">09</span><span>&nbsp;&nbsp;<span class="code-string">virtualList</span>(<span class="code-comment">1000</span>),</span></div><div class="code-line"><span class="line-no">10</span><span>&nbsp;&nbsp;<span class="code-string">tree</span>(fileTree, <span class="code-comment">Single</span>),</span></div><div class="code-line"><span class="line-no">11</span><span>&nbsp;&nbsp;<span class="code-string">treeList</span>(deps, columns),</span></div><div class="code-line"><span class="line-no">12</span><span>});</span></div></div></section>
@@ -748,9 +749,9 @@
         if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); tabs[(index - 1 + tabs.length) % tabs.length].focus(); tabs[(index - 1 + tabs.length) % tabs.length].click(); }
         if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); const target = event.key === 'Home' ? tabs[0] : tabs[tabs.length - 1]; target.focus(); target.click(); }
       });
-      // Menus（design/menu-controls.html）：栏项点击/hover 切换、右键内容区唤起 ContextMenu、Esc/点击外部关闭。
+      // Menus（design/menu-controls.html）：栏项点击/hover 切换、右键内容区唤起 ContextMenu、Esc/点击外部关闭；ToolBar 溢出按钮（.tb-overflow）复用同一开合通道。
       const openMenu = (anchor) => {
-        const item = anchor.querySelector('.mb-item');
+        const item = anchor.querySelector('.mb-item, .tb-overflow');
         anchor.querySelector('.menu-panel').hidden = false;
         item.classList.add('is-open');
         item.setAttribute('aria-expanded', 'true');
@@ -758,16 +759,16 @@
       const closeMenus = (window) => {
         window.querySelectorAll('.menu-panel:not([hidden])').forEach((panel) => {
           panel.hidden = true;
-          const item = panel.closest('.mb-anchor')?.querySelector('.mb-item');
+          const item = panel.closest('.mb-anchor, .tb-overflow-anchor')?.querySelector('.mb-item, .tb-overflow');
           if (item) { item.classList.remove('is-open'); item.setAttribute('aria-expanded', 'false'); }
         });
       };
       document.addEventListener('click', (event) => {
         if (event.target.closest('.control-bar')) return; // 切换设计方向/比较模式不扰动演示菜单
-        const barItem = event.target.closest('.mb-item');
+        const barItem = event.target.closest('.mb-item, .tb-overflow');
         if (barItem) {
           const window = barItem.closest('.gallery-window');
-          const anchor = barItem.closest('.mb-anchor');
+          const anchor = barItem.closest('.mb-anchor, .tb-overflow-anchor');
           const wasOpen = !anchor.querySelector('.menu-panel').hidden;
           closeMenus(window);
           if (!wasOpen) openMenu(anchor);
@@ -849,6 +850,51 @@
         else if (event.key === 'End') setSidebarBasis(splitter, paneLimits(window).max);
         else return;
         event.preventDefault();
+      });
+      // Spin（lumen-spin-design §6）：点击/方向键步进 + 钳制，到界 chevron
+      // 淡化但仍可命中“顶住”（按住自动重复 500/60ms 为实机输入节奏，mockup 演示单步）。
+      const setSpin = (spin, target) => {
+        const min = parseFloat(spin.dataset.min);
+        const max = parseFloat(spin.dataset.max);
+        const decimals = parseInt(spin.dataset.decimals || '0', 10);
+        const value = Math.min(Math.max(target, min), max);
+        spin.dataset.value = value;
+        const text = value.toFixed(decimals);
+        spin.querySelector('.spin-value').textContent = text;
+        spin.setAttribute('aria-valuenow', text);
+        spin.querySelector('.spin-step[data-dir="up"]').classList.toggle('at-bound', value >= max);
+        spin.querySelector('.spin-step[data-dir="down"]').classList.toggle('at-bound', value <= min);
+      };
+      const stepSpin = (spin, steps) => setSpin(spin, parseFloat(spin.dataset.value) + steps * parseFloat(spin.dataset.step || '1'));
+      document.addEventListener('click', (event) => {
+        const step = event.target.closest('.spin-step');
+        if (step && step.dataset.dir) stepSpin(step.closest('.spin'), step.dataset.dir === 'up' ? 1 : -1);
+      });
+      document.addEventListener('keydown', (event) => {
+        const spin = event.target instanceof Element ? event.target.closest('.spin') : null;
+        if (!spin) return;
+        const steps = { ArrowUp: 1, ArrowDown: -1, PageUp: 10, PageDown: -10 }[event.key];
+        if (steps !== undefined) stepSpin(spin, steps);
+        else if (event.key === 'Home') setSpin(spin, parseFloat(spin.dataset.min));
+        else if (event.key === 'End') setSpin(spin, parseFloat(spin.dataset.max));
+        else return;
+        event.preventDefault();
+      });
+      // ToolBar → StatusBar（toolbar/statusbar-design §11.3 演示场景）：
+      // Grid toggle 持久底并联动状态栏 busy 弧（同一命令驱动两处状态）；命令点击回显。
+      document.addEventListener('click', (event) => {
+        const item = event.target.closest('[data-cmd]');
+        if (!item) return;
+        const window = item.closest('.gallery-window');
+        if (!window) return;
+        window.querySelector('.controls-panel .tb-last').textContent = item.dataset.cmd;
+        if (item.classList.contains('is-toggle')) {
+          const on = item.classList.toggle('is-checked');
+          item.setAttribute('aria-pressed', String(on));
+          const status = window.querySelector('.controls-panel .statusbar.live');
+          status.classList.toggle('is-busy', on);
+          status.querySelector('.sb-message').textContent = on ? 'Building grid overlay…' : 'Ready';
+        }
       });
       setVariant('v1');
       const sizeObserver = new ResizeObserver(() => {

@@ -284,7 +284,7 @@ tooltip.*                    = 既有 tooltip token 全量复用
 ### 11.3 示例与验收
 
 - settings 新页 `Toolbar`：文件组 + 撤销重做 + toggle（网格开关）+ 搜索入口；窄容器演示溢出。
-- gallery 窗口 chrome 补工具栏样本（标题栏下）。
+- gallery Controls 分区样本 + 控件清单瓦片（命令组/toggle/窄容器溢出；`design/gallery.html` live samples）。
 - headless 冒烟：漫游/激活/溢出脚本输出；三桌面窗口 smoke 由 CI 承担。
 
 ## 12. 实施分期
