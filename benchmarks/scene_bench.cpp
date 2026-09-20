@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
+#include <fstream>
 #include <memory>
 #include <cstdlib>
 #include <cstring>
@@ -575,6 +576,12 @@ class BenchApp {
     [[nodiscard]] const PhaseSample& reconcileSample() const { return reconcile_; }
     [[nodiscard]] const PhaseSample& layoutSample() const { return layout_; }
     [[nodiscard]] const PhaseSample& paintSample() const { return paint_; }
+    [[nodiscard]] const lumen::render::PixelBuffer& pixels() const {
+#ifdef LUMEN_BENCH_HAS_SKIA
+        if (skia_) return skia_->pixels();
+#endif
+        return renderer_.pixels();
+    }
     [[nodiscard]] std::uint64_t commandCount() const { return commandCount_; }
     [[nodiscard]] std::uint64_t culledCount() const { return culledCount_; }
 
@@ -631,6 +638,7 @@ struct Options {
     // M7：后端选择（cpu = CpuRenderer；skia = 离屏光栅 SkiaRenderer；
     // gpu 不适用 bench——GPU wait 语义在窗口路径实测）。
     std::string backend{"cpu"};
+    std::string dumpFrame{};
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -654,6 +662,8 @@ Options parseOptions(int argc, char** argv) {
             options.warmupFrames = std::max(0, std::atoi(argv[++i]));
         } else if (flag == "--json") {
             options.json = true;
+        } else if (flag == "--dump-frame" && i + 1 < argc) {
+            options.dumpFrame = argv[++i];
         } else if (flag == "--backend" && i + 1 < argc) {
             options.backend = argv[++i];
             if (options.backend != "cpu" && options.backend != "skia") {
@@ -696,7 +706,7 @@ Options parseOptions(int argc, char** argv) {
                          "usage: lumen-scene-bench [--frames N] [--warmup N] [--json] "
                          "[--scenario card-grid-6x8-1080p|virtual-list[-N]|text-heavy|"
                          "grid|semantics-diff|resource-upload] [--items N] "
-                         "[--backend cpu|skia]\n");
+                         "[--backend cpu|skia] [--dump-frame PATH]\n");
             std::exit(2);
         }
     }
@@ -840,6 +850,9 @@ void reportJson(const Options& options, const std::map<std::string, PhaseStats>&
     std::printf("  \"build_type\": \"%s\",\n", jsonEscape(benchBuildType()).c_str());
     std::printf("  \"commit\": \"%s\",\n", jsonEscape(benchCommit()).c_str());
     std::printf("  \"platform\": \"%s\",\n", jsonEscape(benchPlatform()).c_str());
+    // P0 records actual representations before AlphaMode becomes public.
+    std::printf("  \"alpha_mode\": \"%s\",\n", options.backend == "cpu" ? "straight" : "premultiplied");
+    std::printf("  \"clear_alpha\": 255,\n  \"measurement_scope\": \"headless; paint includes submit; no present\",\n");
     std::printf("  \"phases\": {\n");
     bool first = true;
     for (const auto& [name, stats] : phases) {
@@ -929,6 +942,16 @@ int main(int argc, char** argv) {
     phases["reconcile"] = summarize(reconcileSamples);
     phases["layout"] = summarize(layoutSamples);
     phases["paint"] = summarize(paintSamples);
+
+    if (!options.dumpFrame.empty()) {
+        const auto& pixels = app.pixels();
+        std::ofstream output(options.dumpFrame, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(pixels.rgba.data()), pixels.rgba.size());
+        std::ofstream metadata(options.dumpFrame + ".txt");
+        metadata << "width=" << pixels.width << "\nheight=" << pixels.height
+                 << "\nalpha_mode=" << (options.backend == "cpu" ? "straight" : "premultiplied") << "\n";
+        if (!output || !metadata) return 3;
+    }
 
     if (options.json) {
         reportJson(options, phases, finalHash, nodeCount, app.commandCount(),

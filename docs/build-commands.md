@@ -78,3 +78,31 @@ cmake -S . -B build-mobile -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUM
 cmake --build build-mobile --config Debug
 ctest --test-dir build-mobile --output-on-failure -C Debug
 ```
+
+## 4. 预乘 alpha 迁移的固定测量入口（P0，2026-09-20）
+
+启用 `LUMEN_BUILD_BENCHMARKS=ON` 后，桌面构建还提供以下目标。
+它们只增加场景、导出和观测，不改变绘制算法。Windows 多配置生成器在
+可执行文件前增加 `Release/`，文件扩展名为 `.exe`。
+
+```sh
+./build-alpha-before/benchmarks/lumen-alpha-bench --backend cpu --scenario layers --warmup 30 --frames 300
+./build-alpha-before/benchmarks/lumen-alpha-bench --backend cpu --scenario probe --present software --height 1080 --warmup 30 --frames 300
+./build-alpha-before/benchmarks/lumen-alpha-bench --backend cpu --scenario probe --present texture --height 2160 --warmup 30 --frames 300
+./build-alpha-before/benchmarks/lumen-alpha-gallery build-alpha-before/gallery
+python benchmarks/run_alpha_baseline.py --build build-alpha-before --revision SOURCE_AND_DIFF_ID --output build-alpha-before/reports --windows
+python benchmarks/alpha_frames.py build-alpha-before/reports/before-alpha-edges-1.rgba
+```
+
+- `lumen-alpha-bench` 固定 `layers`（八层半透明矩形）、`edges`（圆角、嵌套裁剪、描边、文字、图标和阴影）、`images`（一次上传后六次绘制）、`upload`（每帧重新上传同图）、`probe`（半透明纯红）五种输入。高度只允许 1080/2160，宽高比 16:9；DPI=1。`--opaque` 改用不透明黑清屏和不透明窗口。`--backend skia` 需要 Skia 构建。
+- `--present none|software|texture` 分别为 headless、真实软件表面和 SDL renderer；默认为 none。禁止以 dummy 驱动结果代替窗口验收。`vsync_requested=false` 仅表示关闭请求，系统合成器仍可能等待；报告同时记录输入和窗口实际物理尺寸。
+- `submit` 包含清屏/命令回放/帧发布；`present_prepare` 只计 Lumen 转换与副本；`host_submit` 为 present 剩余部分，包含 SDL 上传、blit 与合成器等待；`total` 已包含 submit 和整个 present，不可重复相加。命令构造、图片上传、事件泵、诊断读回、哈希与文件输出不在 total 中；上传单列冷启动与稳态耗时。
+- `PlatformWindow::setPresentDiagnosticsEnabled(true)` 才启用逐次计时。转换次数、转换字节、Lumen 复制字节、scratch capacity 属于 Lumen 格式准备，不能解释为整个 SDL/进程内存或所有上传复制成本。
+- 两个 bench 均支持 `--dump-frame PATH`，输出实际缓冲格式，配套 `.txt` 标明 `alpha_mode`；alpha bench 还输出 `.commands` 作为版本化回放证据。这些是诊断产物，和 Gallery 应用默认直通导出区分。
+- `lumen-alpha-gallery` 使用确定性占位字体，固定 Core Dark/light、DPI=1/1.25/2、透明清屏，保存普通、close hover/pressed、最大化、菜单、Controls 和 Buttons 的 42 帧及哈希。不会改变 Gallery UI 或主题数值。
+- Python 工具只需 Python 3 标准库。基线驱动顺序运行三组 warmup=30/frames=300 并检查哈希重复性；P4 使用 `--peer-build AFTER_BUILD --peer-revision AFTER_ID` 同机交错运行 before/after。采样时停止构建与其他重负载，不比较 CPU-only 与 Skia 构建。
+- `alpha_frames.py` 生成 alpha、黑底、白底、棋盘底 PNG；`--compare BASELINE.rgba` 在共同预乘表示中输出差异空间图和统计，冻结容差为 RGB 最大 4、alpha 精确相等、超差比例 0。此规则用于相同 CPU 几何迁移；不用于 CPU/Skia 不同 AA 算法。
+- P0 另发现旧 CPU 直通舍入到 256 后回绕的缺陷（图片叠加竖条）。`python benchmarks/alpha_image_reference.py build-alpha-before/reference-images.rgba --before build-alpha-before/reports/before-alpha-images-1.rgba` 生成独立目标算术参考，并要求 alpha 与旧帧完全相等。P2/P4 的 `images`/`upload` 修复应与该参考逐字节相等（`alpha_frames.py AFTER.rgba --compare build-alpha-before/reference-images.rgba --exact`），不能放大普通场景容差，也不能把旧条纹作为目标画面。最小数值复现和解释见 P0 记录。
+
+各阶段证据见 [alpha 计划](lumen-premultiplied-alpha-rendering-plan.md) 和
+[P0 记录](perf-baselines/premultiplied-alpha-2026-09-20/P0.md)。

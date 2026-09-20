@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 
 #include "lumen/core/geometry.h"
@@ -67,6 +68,18 @@ enum class PresentResult {
     DeviceLost,
 };
 
+// Opt-in diagnostics for the most recent present (alpha plan P0/§6).
+// prepareMs covers Lumen format preparation; submitMs covers the remaining
+// host call, including SDL upload/blit/compositor waits. Neither is GPU time.
+struct PresentStats {
+    double prepareMs{0.0};
+    double submitMs{0.0};
+    std::uint64_t alphaConversions{0};
+    std::uint64_t convertedBytes{0};
+    std::uint64_t copiedBytes{0};
+    std::size_t scratchCapacityBytes{0};
+};
+
 class PlatformWindow {
   public:
     virtual ~PlatformWindow() = default;
@@ -74,6 +87,8 @@ class PlatformWindow {
     [[nodiscard]] virtual core::Size logicalSize() const = 0;
     [[nodiscard]] virtual core::Size drawableSize() const = 0;
     virtual PresentResult present(const render::PixelBuffer& buffer);
+    virtual void setPresentDiagnosticsEnabled(bool /*enabled*/) {}
+    [[nodiscard]] virtual PresentStats presentStats() const { return {}; }
     // 不透明原生句柄；默认空（无平台绑定的假实现）。
     [[nodiscard]] virtual NativeSurfaceHandle nativeSurface() const {
         return {};

@@ -60,6 +60,35 @@ TEST_CASE("platform_creates_window_and_presents", "[platform]") {
     }
 }
 
+TEST_CASE("platform_present_diagnostics_count_actual_conversion", "[platform][alpha]") {
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    for (bool transparent : {false, true}) {
+        Sdl3WindowDesc desc;
+        desc.width = 4;
+        desc.height = 4;
+        desc.transparent = transparent;
+        auto window = lumen::platform::createSdl3Window(desc);
+        REQUIRE(window);
+        window->setPresentDiagnosticsEnabled(true);
+        PixelBuffer pixels{4, 4, std::vector<std::uint8_t>(64, 128)};
+        REQUIRE(window->present(pixels) == lumen::platform::PresentResult::Ok);
+        auto stats = window->presentStats();
+        CHECK(stats.alphaConversions == (transparent ? 1 : 0));
+        CHECK(stats.convertedBytes == (transparent ? 64 : 0));
+        CHECK(stats.copiedBytes == stats.convertedBytes);
+        CHECK(stats.scratchCapacityBytes >= stats.copiedBytes);
+        REQUIRE(window->present({}) == lumen::platform::PresentResult::Rejected);
+        CHECK(window->presentStats().alphaConversions == 0);
+        window->setPresentDiagnosticsEnabled(false);
+        REQUIRE(window->present(pixels) == lumen::platform::PresentResult::Ok);
+        CHECK(window->presentStats().copiedBytes == 0);
+    }
+}
+
 // M4：SDL host 平台服务（无头安全子集；对话框需真实显示环境，窗口
 // smoke/人工验收覆盖）。
 TEST_CASE("sdl_host_services_degrade_structurally", "[platform][m4]") {

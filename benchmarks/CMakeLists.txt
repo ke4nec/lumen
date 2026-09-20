@@ -18,6 +18,27 @@ if(LUMEN_ENABLE_SKIA)
     target_compile_definitions(lumen-scene-bench PRIVATE LUMEN_BENCH_HAS_SKIA=1)
 endif()
 
+# P0: real desktop presentation and fixed transparent scenes. No mobile target.
+if(NOT LUMEN_BUILD_MOBILE_CORE)
+    add_executable(lumen-alpha-gallery alpha_gallery.cpp)
+    target_include_directories(lumen-alpha-gallery PRIVATE ${PROJECT_SOURCE_DIR}/examples/gallery)
+    target_link_libraries(lumen-alpha-gallery PRIVATE lumen-app lumen-widgets lumen-dsl)
+    target_compile_features(lumen-alpha-gallery PRIVATE cxx_std_20)
+    add_executable(lumen-alpha-bench alpha_bench.cpp)
+    target_link_libraries(lumen-alpha-bench PRIVATE lumen-render lumen-platform SDL3::SDL3)
+    target_compile_features(lumen-alpha-bench PRIVATE cxx_std_20)
+    target_compile_definitions(lumen-alpha-bench PRIVATE LUMEN_BENCH_BUILD_TYPE="$<CONFIG>")
+    if(LUMEN_ENABLE_SKIA)
+        target_compile_definitions(lumen-alpha-bench PRIVATE LUMEN_BENCH_HAS_SKIA=1)
+    endif()
+    if(WIN32)
+        add_custom_command(TARGET lumen-alpha-gallery POST_BUILD COMMAND ${CMAKE_COMMAND}
+            -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:lumen-alpha-gallery>)
+        add_custom_command(TARGET lumen-alpha-bench POST_BUILD COMMAND ${CMAKE_COMMAND}
+            -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:lumen-alpha-bench>)
+    endif()
+endif()
+
 target_compile_features(lumen-scene-bench PRIVATE cxx_std_20)
 
 # The benchmark deliberately routes global new/delete through malloc/free so

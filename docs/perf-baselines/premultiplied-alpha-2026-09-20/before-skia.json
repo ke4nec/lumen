@@ -1,0 +1,2827 @@
+{
+  "environment": {
+    "revision": "e06f3d9+P0-instrumentation",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "backend": "skia",
+    "build_directory": "D:\\prj\\nono\\lumen\\build-alpha-skia-before",
+    "executables": {
+      "lumen-scene-bench": {
+        "path": "D:\\prj\\nono\\lumen\\build-alpha-skia-before\\benchmarks\\Release\\lumen-scene-bench.exe",
+        "sha256": "7fe7f064b47c8ecae5921cc2d8d6acbf0d654453e1b2b079258807597481ec80"
+      },
+      "lumen-alpha-bench": {
+        "path": "D:\\prj\\nono\\lumen\\build-alpha-skia-before\\benchmarks\\Release\\lumen-alpha-bench.exe",
+        "sha256": "ae13e6db693a8c7309869084c3647ef0b41e28610484b48db1ea4c2a8e7c326f"
+      }
+    }
+  },
+  "runs": [
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "edges",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 205.6,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "46e79f4a03debbad",
+      "source_pixel_0": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 5380.0,
+          "p95_us": 9433.9
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 5380.1,
+          "p95_us": 9434.0
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "alpha-edges"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "edges",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 193.5,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "46e79f4a03debbad",
+      "source_pixel_0": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 5510.9,
+          "p95_us": 7500.0
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 5511.1,
+          "p95_us": 7500.3
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "alpha-edges"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "edges",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 225.2,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "46e79f4a03debbad",
+      "source_pixel_0": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 6416.3,
+          "p95_us": 8565.1
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 6416.3,
+          "p95_us": 8565.3
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "alpha-edges"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "images",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 188.1,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "f8de1420aeb9b1c7",
+      "source_pixel_0": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 9881.8,
+          "p95_us": 14149.1
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 9881.9,
+          "p95_us": 14149.3
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "alpha-images"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "images",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 196.4,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "f8de1420aeb9b1c7",
+      "source_pixel_0": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 11462.1,
+          "p95_us": 15925.6
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 11462.2,
+          "p95_us": 15925.7
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "alpha-images"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "images",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 206.7,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "f8de1420aeb9b1c7",
+      "source_pixel_0": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 11882.8,
+          "p95_us": 16831.1
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 11883.0,
+          "p95_us": 16831.2
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "alpha-images"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "layers",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 214.2,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "0118b5270953a7dc",
+      "source_pixel_0": [
+        3,
+        23,
+        15,
+        24
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 17352.0,
+          "p95_us": 23440.9
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 17352.1,
+          "p95_us": 23441.1
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "alpha-layers"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "layers",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 213.9,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "0118b5270953a7dc",
+      "source_pixel_0": [
+        3,
+        23,
+        15,
+        24
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 18845.4,
+          "p95_us": 26970.0
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 18845.6,
+          "p95_us": 26970.2
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "alpha-layers"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "layers",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 225.2,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "0118b5270953a7dc",
+      "source_pixel_0": [
+        3,
+        23,
+        15,
+        24
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 19205.9,
+          "p95_us": 25146.6
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 19206.1,
+          "p95_us": 25146.8
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "alpha-layers"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "upload",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 191.4,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "f8de1420aeb9b1c7",
+      "source_pixel_0": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 10314.1,
+          "p95_us": 14218.3
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 118.6,
+          "p95_us": 187.7
+        },
+        "total": {
+          "p50_us": 10314.3,
+          "p95_us": 14218.5
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "alpha-upload"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "upload",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 205.8,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "f8de1420aeb9b1c7",
+      "source_pixel_0": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 11742.7,
+          "p95_us": 15904.0
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 102.2,
+          "p95_us": 181.6
+        },
+        "total": {
+          "p50_us": 11743.0,
+          "p95_us": 15904.2
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "alpha-upload"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "upload",
+      "presentation": "none",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        0,
+        0
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 185.3,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "f8de1420aeb9b1c7",
+      "source_pixel_0": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 11721.6,
+          "p95_us": 14927.5
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "upload": {
+          "p50_us": 50.3,
+          "p95_us": 143.2
+        },
+        "total": {
+          "p50_us": 11721.8,
+          "p95_us": 14927.6
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "alpha-upload"
+    },
+    {
+      "benchmark": "lumen-scene-bench",
+      "backend": "skia",
+      "scenario": "card-grid-6x8-1080p",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "cards": [
+        6,
+        8
+      ],
+      "nodes": 250,
+      "commands_per_frame": 769,
+      "culled_commands": 0,
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "partial_repaint_frames": 270,
+      "toolchain": "MSVC 1950",
+      "build_type": "Release",
+      "commit": "e06f3d9+P0-instrumentation",
+      "platform": "windows",
+      "alpha_mode": "premultiplied",
+      "clear_alpha": 255,
+      "measurement_scope": "headless; paint includes submit; no present",
+      "phases": {
+        "layout": {
+          "p50_us": 708.7,
+          "p95_us": 1067.2,
+          "mean_us": 770.8,
+          "allocs_p50": 3140,
+          "alloc_bytes_p50": 204471
+        },
+        "paint": {
+          "p50_us": 105439.3,
+          "p95_us": 123383.7,
+          "mean_us": 106992.3,
+          "allocs_p50": 1542,
+          "alloc_bytes_p50": 402535
+        },
+        "reconcile": {
+          "p50_us": 597.2,
+          "p95_us": 879.8,
+          "mean_us": 659.1,
+          "allocs_p50": 624,
+          "alloc_bytes_p50": 0
+        }
+      },
+      "frame_hash": "09edc860399ff860",
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "canonical-card-grid-6x8-1080p"
+    },
+    {
+      "benchmark": "lumen-scene-bench",
+      "backend": "skia",
+      "scenario": "card-grid-6x8-1080p",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "cards": [
+        6,
+        8
+      ],
+      "nodes": 250,
+      "commands_per_frame": 769,
+      "culled_commands": 0,
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "partial_repaint_frames": 270,
+      "toolchain": "MSVC 1950",
+      "build_type": "Release",
+      "commit": "e06f3d9+P0-instrumentation",
+      "platform": "windows",
+      "alpha_mode": "premultiplied",
+      "clear_alpha": 255,
+      "measurement_scope": "headless; paint includes submit; no present",
+      "phases": {
+        "layout": {
+          "p50_us": 701.6,
+          "p95_us": 1073.3,
+          "mean_us": 760.1,
+          "allocs_p50": 3145,
+          "alloc_bytes_p50": 203043
+        },
+        "paint": {
+          "p50_us": 105717.1,
+          "p95_us": 124889.1,
+          "mean_us": 107059.1,
+          "allocs_p50": 1542,
+          "alloc_bytes_p50": 402519
+        },
+        "reconcile": {
+          "p50_us": 564.7,
+          "p95_us": 916.9,
+          "mean_us": 604.3,
+          "allocs_p50": 624,
+          "alloc_bytes_p50": 0
+        }
+      },
+      "frame_hash": "09edc860399ff860",
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "canonical-card-grid-6x8-1080p"
+    },
+    {
+      "benchmark": "lumen-scene-bench",
+      "backend": "skia",
+      "scenario": "card-grid-6x8-1080p",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "cards": [
+        6,
+        8
+      ],
+      "nodes": 250,
+      "commands_per_frame": 769,
+      "culled_commands": 0,
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "partial_repaint_frames": 270,
+      "toolchain": "MSVC 1950",
+      "build_type": "Release",
+      "commit": "e06f3d9+P0-instrumentation",
+      "platform": "windows",
+      "alpha_mode": "premultiplied",
+      "clear_alpha": 255,
+      "measurement_scope": "headless; paint includes submit; no present",
+      "phases": {
+        "layout": {
+          "p50_us": 741.1,
+          "p95_us": 1228.8,
+          "mean_us": 834.4,
+          "allocs_p50": 2969,
+          "alloc_bytes_p50": 202975
+        },
+        "paint": {
+          "p50_us": 125918.3,
+          "p95_us": 155774.1,
+          "mean_us": 128264.5,
+          "allocs_p50": 1717,
+          "alloc_bytes_p50": 402571
+        },
+        "reconcile": {
+          "p50_us": 616.7,
+          "p95_us": 1015.7,
+          "mean_us": 673.8,
+          "allocs_p50": 624,
+          "alloc_bytes_p50": 0
+        }
+      },
+      "frame_hash": "09edc860399ff860",
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "canonical-card-grid-6x8-1080p"
+    },
+    {
+      "benchmark": "lumen-scene-bench",
+      "backend": "skia",
+      "scenario": "resource-upload-1080p",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "cards": [
+        6,
+        8
+      ],
+      "nodes": 9,
+      "commands_per_frame": 8,
+      "culled_commands": 0,
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "partial_repaint_frames": 75,
+      "toolchain": "MSVC 1950",
+      "build_type": "Release",
+      "commit": "e06f3d9+P0-instrumentation",
+      "platform": "windows",
+      "alpha_mode": "premultiplied",
+      "clear_alpha": 255,
+      "measurement_scope": "headless; paint includes submit; no present",
+      "phases": {
+        "layout": {
+          "p50_us": 40.5,
+          "p95_us": 58.5,
+          "mean_us": 41.1,
+          "allocs_p50": 82,
+          "alloc_bytes_p50": 7063
+        },
+        "paint": {
+          "p50_us": 2255.4,
+          "p95_us": 4520.3,
+          "mean_us": 2533.6,
+          "allocs_p50": 12,
+          "alloc_bytes_p50": 8192
+        },
+        "reconcile": {
+          "p50_us": 19.8,
+          "p95_us": 33.7,
+          "mean_us": 21.5,
+          "allocs_p50": 8,
+          "alloc_bytes_p50": 0
+        }
+      },
+      "frame_hash": "adeaf421e150d7dc",
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "canonical-resource-upload"
+    },
+    {
+      "benchmark": "lumen-scene-bench",
+      "backend": "skia",
+      "scenario": "resource-upload-1080p",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "cards": [
+        6,
+        8
+      ],
+      "nodes": 9,
+      "commands_per_frame": 8,
+      "culled_commands": 0,
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "partial_repaint_frames": 75,
+      "toolchain": "MSVC 1950",
+      "build_type": "Release",
+      "commit": "e06f3d9+P0-instrumentation",
+      "platform": "windows",
+      "alpha_mode": "premultiplied",
+      "clear_alpha": 255,
+      "measurement_scope": "headless; paint includes submit; no present",
+      "phases": {
+        "layout": {
+          "p50_us": 41.5,
+          "p95_us": 76.1,
+          "mean_us": 45.7,
+          "allocs_p50": 82,
+          "alloc_bytes_p50": 7063
+        },
+        "paint": {
+          "p50_us": 2378.0,
+          "p95_us": 5373.0,
+          "mean_us": 2871.6,
+          "allocs_p50": 12,
+          "alloc_bytes_p50": 8192
+        },
+        "reconcile": {
+          "p50_us": 20.9,
+          "p95_us": 32.8,
+          "mean_us": 22.3,
+          "allocs_p50": 8,
+          "alloc_bytes_p50": 0
+        }
+      },
+      "frame_hash": "adeaf421e150d7dc",
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "canonical-resource-upload"
+    },
+    {
+      "benchmark": "lumen-scene-bench",
+      "backend": "skia",
+      "scenario": "resource-upload-1080p",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "cards": [
+        6,
+        8
+      ],
+      "nodes": 9,
+      "commands_per_frame": 8,
+      "culled_commands": 0,
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "partial_repaint_frames": 75,
+      "toolchain": "MSVC 1950",
+      "build_type": "Release",
+      "commit": "e06f3d9+P0-instrumentation",
+      "platform": "windows",
+      "alpha_mode": "premultiplied",
+      "clear_alpha": 255,
+      "measurement_scope": "headless; paint includes submit; no present",
+      "phases": {
+        "layout": {
+          "p50_us": 49.1,
+          "p95_us": 74.8,
+          "mean_us": 51.9,
+          "allocs_p50": 82,
+          "alloc_bytes_p50": 7063
+        },
+        "paint": {
+          "p50_us": 4616.8,
+          "p95_us": 6559.4,
+          "mean_us": 4810.4,
+          "allocs_p50": 15,
+          "alloc_bytes_p50": 8256
+        },
+        "reconcile": {
+          "p50_us": 35.7,
+          "p95_us": 55.7,
+          "mean_us": 37.8,
+          "allocs_p50": 8,
+          "alloc_bytes_p50": 0
+        }
+      },
+      "frame_hash": "adeaf421e150d7dc",
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "canonical-resource-upload"
+    },
+    {
+      "benchmark": "lumen-scene-bench",
+      "backend": "skia",
+      "scenario": "text-heavy-1080p",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "cards": [
+        6,
+        8
+      ],
+      "nodes": 97,
+      "commands_per_frame": 240,
+      "culled_commands": 0,
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "partial_repaint_frames": 252,
+      "toolchain": "MSVC 1950",
+      "build_type": "Release",
+      "commit": "e06f3d9+P0-instrumentation",
+      "platform": "windows",
+      "alpha_mode": "premultiplied",
+      "clear_alpha": 255,
+      "measurement_scope": "headless; paint includes submit; no present",
+      "phases": {
+        "layout": {
+          "p50_us": 475.2,
+          "p95_us": 717.1,
+          "mean_us": 506.5,
+          "allocs_p50": 2205,
+          "alloc_bytes_p50": 95803
+        },
+        "paint": {
+          "p50_us": 442014.6,
+          "p95_us": 492130.0,
+          "mean_us": 448572.2,
+          "allocs_p50": 4431,
+          "alloc_bytes_p50": 232859
+        },
+        "reconcile": {
+          "p50_us": 169.5,
+          "p95_us": 270.4,
+          "mean_us": 174.2,
+          "allocs_p50": 205,
+          "alloc_bytes_p50": 0
+        }
+      },
+      "frame_hash": "09912646b5aabaef",
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "canonical-text-heavy"
+    },
+    {
+      "benchmark": "lumen-scene-bench",
+      "backend": "skia",
+      "scenario": "text-heavy-1080p",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "cards": [
+        6,
+        8
+      ],
+      "nodes": 97,
+      "commands_per_frame": 240,
+      "culled_commands": 0,
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "partial_repaint_frames": 252,
+      "toolchain": "MSVC 1950",
+      "build_type": "Release",
+      "commit": "e06f3d9+P0-instrumentation",
+      "platform": "windows",
+      "alpha_mode": "premultiplied",
+      "clear_alpha": 255,
+      "measurement_scope": "headless; paint includes submit; no present",
+      "phases": {
+        "layout": {
+          "p50_us": 474.6,
+          "p95_us": 737.2,
+          "mean_us": 520.7,
+          "allocs_p50": 2205,
+          "alloc_bytes_p50": 99403
+        },
+        "paint": {
+          "p50_us": 442292.8,
+          "p95_us": 502187.8,
+          "mean_us": 450377.4,
+          "allocs_p50": 4424,
+          "alloc_bytes_p50": 232823
+        },
+        "reconcile": {
+          "p50_us": 173.2,
+          "p95_us": 271.8,
+          "mean_us": 180.3,
+          "allocs_p50": 205,
+          "alloc_bytes_p50": 0
+        }
+      },
+      "frame_hash": "09912646b5aabaef",
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "canonical-text-heavy"
+    },
+    {
+      "benchmark": "lumen-scene-bench",
+      "backend": "skia",
+      "scenario": "text-heavy-1080p",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "cards": [
+        6,
+        8
+      ],
+      "nodes": 97,
+      "commands_per_frame": 240,
+      "culled_commands": 0,
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "partial_repaint_frames": 252,
+      "toolchain": "MSVC 1950",
+      "build_type": "Release",
+      "commit": "e06f3d9+P0-instrumentation",
+      "platform": "windows",
+      "alpha_mode": "premultiplied",
+      "clear_alpha": 255,
+      "measurement_scope": "headless; paint includes submit; no present",
+      "phases": {
+        "layout": {
+          "p50_us": 543.3,
+          "p95_us": 940.5,
+          "mean_us": 603.4,
+          "allocs_p50": 2206,
+          "alloc_bytes_p50": 99403
+        },
+        "paint": {
+          "p50_us": 463860.7,
+          "p95_us": 545536.3,
+          "mean_us": 478613.7,
+          "allocs_p50": 4425,
+          "alloc_bytes_p50": 232823
+        },
+        "reconcile": {
+          "p50_us": 184.2,
+          "p95_us": 359.0,
+          "mean_us": 203.3,
+          "allocs_p50": 205,
+          "alloc_bytes_p50": 0
+        }
+      },
+      "frame_hash": "09912646b5aabaef",
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "canonical-text-heavy"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 135.7,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "97289e6761c49fdc",
+      "surface_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 4537.0,
+          "p95_us": 7441.6
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 1197.0,
+          "p95_us": 1895.4
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 5839.5,
+          "p95_us": 9198.8
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "present-1080-software-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 199.4,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "97289e6761c49fdc",
+      "surface_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 4784.7,
+          "p95_us": 8910.7
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 1304.4,
+          "p95_us": 2615.3
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 6207.4,
+          "p95_us": 10261.9
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "present-1080-software-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 202.2,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "97289e6761c49fdc",
+      "surface_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 4763.8,
+          "p95_us": 6622.5
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 1293.6,
+          "p95_us": 1891.6
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 6107.0,
+          "p95_us": 8123.5
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "present-1080-software-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 224.7,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 8294400,
+      "copied_bytes_per_present": 8294400,
+      "scratch_capacity_bytes": 8294400,
+      "peak_scratch_capacity_bytes": 8294400,
+      "frame_hash": "7d00b63227afffdc",
+      "surface_pixel_0": [
+        64,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 5112.5,
+          "p95_us": 8382.6
+        },
+        "present_prepare": {
+          "p50_us": 6913.6,
+          "p95_us": 8621.4
+        },
+        "host_submit": {
+          "p50_us": 1394.8,
+          "p95_us": 3637.2
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 14022.3,
+          "p95_us": 18353.9
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "present-1080-software-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 175.0,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 8294400,
+      "copied_bytes_per_present": 8294400,
+      "scratch_capacity_bytes": 8294400,
+      "peak_scratch_capacity_bytes": 8294400,
+      "frame_hash": "7d00b63227afffdc",
+      "surface_pixel_0": [
+        64,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 5638.8,
+          "p95_us": 8138.6
+        },
+        "present_prepare": {
+          "p50_us": 7572.6,
+          "p95_us": 10837.9
+        },
+        "host_submit": {
+          "p50_us": 1361.8,
+          "p95_us": 2842.4
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 15127.3,
+          "p95_us": 20672.0
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "present-1080-software-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 263.6,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 8294400,
+      "copied_bytes_per_present": 8294400,
+      "scratch_capacity_bytes": 8294400,
+      "peak_scratch_capacity_bytes": 8294400,
+      "frame_hash": "7d00b63227afffdc",
+      "surface_pixel_0": [
+        64,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 5474.3,
+          "p95_us": 8544.4
+        },
+        "present_prepare": {
+          "p50_us": 7487.0,
+          "p95_us": 10525.1
+        },
+        "host_submit": {
+          "p50_us": 1375.7,
+          "p95_us": 4432.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 15378.0,
+          "p95_us": 19515.8
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "present-1080-software-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 158.5,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "97289e6761c49fdc",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 4801.2,
+          "p95_us": 6174.9
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 1228.2,
+          "p95_us": 1644.4
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 6069.0,
+          "p95_us": 7643.5
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "present-1080-texture-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 183.1,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "97289e6761c49fdc",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 4840.0,
+          "p95_us": 5913.7
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 1226.9,
+          "p95_us": 1537.1
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 6037.1,
+          "p95_us": 7359.0
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "present-1080-texture-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 227.5,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "97289e6761c49fdc",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 6162.6,
+          "p95_us": 7542.2
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 1313.4,
+          "p95_us": 1858.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 7494.3,
+          "p95_us": 9195.6
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "present-1080-texture-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 233.8,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 8294400,
+      "copied_bytes_per_present": 8294400,
+      "scratch_capacity_bytes": 8294400,
+      "peak_scratch_capacity_bytes": 8294400,
+      "frame_hash": "7d00b63227afffdc",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 5390.4,
+          "p95_us": 6503.1
+        },
+        "present_prepare": {
+          "p50_us": 6756.5,
+          "p95_us": 8107.5
+        },
+        "host_submit": {
+          "p50_us": 1425.7,
+          "p95_us": 2124.9
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 13676.6,
+          "p95_us": 16362.9
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "present-1080-texture-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 402.1,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 8294400,
+      "copied_bytes_per_present": 8294400,
+      "scratch_capacity_bytes": 8294400,
+      "peak_scratch_capacity_bytes": 8294400,
+      "frame_hash": "7d00b63227afffdc",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 5638.3,
+          "p95_us": 7881.6
+        },
+        "present_prepare": {
+          "p50_us": 7051.8,
+          "p95_us": 10585.7
+        },
+        "host_submit": {
+          "p50_us": 1514.7,
+          "p95_us": 2620.7
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 14142.7,
+          "p95_us": 20391.7
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "present-1080-texture-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        1920,
+        1080
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        1920,
+        1080
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 198.3,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 8294400,
+      "copied_bytes_per_present": 8294400,
+      "scratch_capacity_bytes": 8294400,
+      "peak_scratch_capacity_bytes": 8294400,
+      "frame_hash": "7d00b63227afffdc",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 5639.4,
+          "p95_us": 8366.5
+        },
+        "present_prepare": {
+          "p50_us": 7479.1,
+          "p95_us": 10203.1
+        },
+        "host_submit": {
+          "p50_us": 1596.8,
+          "p95_us": 2851.7
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 15052.3,
+          "p95_us": 19956.9
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "present-1080-texture-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 191.8,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "5fa81492b6fac558",
+      "surface_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 21080.3,
+          "p95_us": 27484.0
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 3530.6,
+          "p95_us": 6304.8
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 24882.0,
+          "p95_us": 31415.6
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "present-2160-software-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 198.6,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "5fa81492b6fac558",
+      "surface_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 19496.3,
+          "p95_us": 25703.0
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 3522.1,
+          "p95_us": 5369.7
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 23303.8,
+          "p95_us": 29564.2
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "present-2160-software-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 241.6,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "5fa81492b6fac558",
+      "surface_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 21219.1,
+          "p95_us": 26147.8
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 3931.4,
+          "p95_us": 6402.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 25510.0,
+          "p95_us": 31222.8
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "present-2160-software-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 150.0,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 33177600,
+      "copied_bytes_per_present": 33177600,
+      "scratch_capacity_bytes": 33177600,
+      "peak_scratch_capacity_bytes": 33177600,
+      "frame_hash": "08b05513b7544558",
+      "surface_pixel_0": [
+        64,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 21781.0,
+          "p95_us": 27321.0
+        },
+        "present_prepare": {
+          "p50_us": 28189.4,
+          "p95_us": 32456.9
+        },
+        "host_submit": {
+          "p50_us": 3373.0,
+          "p95_us": 5391.7
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 53763.8,
+          "p95_us": 61158.6
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "present-2160-software-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        1100
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 199.3,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 33177600,
+      "copied_bytes_per_present": 33177600,
+      "scratch_capacity_bytes": 33177600,
+      "peak_scratch_capacity_bytes": 33177600,
+      "frame_hash": "08b05513b7544558",
+      "surface_pixel_0": [
+        64,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 20419.0,
+          "p95_us": 25160.4
+        },
+        "present_prepare": {
+          "p50_us": 27245.1,
+          "p95_us": 31919.9
+        },
+        "host_submit": {
+          "p50_us": 6913.9,
+          "p95_us": 9534.8
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 53994.7,
+          "p95_us": 63454.2
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "present-2160-software-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "software",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 175.6,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 33177600,
+      "copied_bytes_per_present": 33177600,
+      "scratch_capacity_bytes": 33177600,
+      "peak_scratch_capacity_bytes": 33177600,
+      "frame_hash": "08b05513b7544558",
+      "surface_pixel_0": [
+        64,
+        0,
+        0,
+        255
+      ],
+      "surface_format": "SDL_PIXELFORMAT_XRGB8888",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "surface",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 22210.2,
+          "p95_us": 27895.9
+        },
+        "present_prepare": {
+          "p50_us": 29391.7,
+          "p95_us": 33559.8
+        },
+        "host_submit": {
+          "p50_us": 3767.8,
+          "p95_us": 6978.4
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 56077.4,
+          "p95_us": 63782.4
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "present-2160-software-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 159.8,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "5fa81492b6fac558",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 20858.8,
+          "p95_us": 24518.4
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 3179.9,
+          "p95_us": 4139.0
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 24268.5,
+          "p95_us": 28145.7
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "present-2160-texture-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 195.8,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "5fa81492b6fac558",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 22419.6,
+          "p95_us": 30824.3
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 3515.6,
+          "p95_us": 4705.3
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 26233.3,
+          "p95_us": 34867.1
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "present-2160-texture-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 255,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 158.1,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 0,
+      "converted_bytes_per_present": 0,
+      "copied_bytes_per_present": 0,
+      "scratch_capacity_bytes": 0,
+      "peak_scratch_capacity_bytes": 0,
+      "frame_hash": "5fa81492b6fac558",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        255
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 19961.4,
+          "p95_us": 24021.2
+        },
+        "present_prepare": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "host_submit": {
+          "p50_us": 3158.2,
+          "p95_us": 4181.7
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 23116.3,
+          "p95_us": 28353.1
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "present-2160-texture-opaque"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 189.9,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 33177600,
+      "copied_bytes_per_present": 33177600,
+      "scratch_capacity_bytes": 33177600,
+      "peak_scratch_capacity_bytes": 33177600,
+      "frame_hash": "08b05513b7544558",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 20697.6,
+          "p95_us": 26233.9
+        },
+        "present_prepare": {
+          "p50_us": 27877.9,
+          "p95_us": 32033.4
+        },
+        "host_submit": {
+          "p50_us": 3176.8,
+          "p95_us": 4781.3
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 52062.3,
+          "p95_us": 59374.5
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 1,
+      "case": "present-2160-texture-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 168.8,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 33177600,
+      "copied_bytes_per_present": 33177600,
+      "scratch_capacity_bytes": 33177600,
+      "peak_scratch_capacity_bytes": 33177600,
+      "frame_hash": "08b05513b7544558",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 25804.7,
+          "p95_us": 35026.4
+        },
+        "present_prepare": {
+          "p50_us": 29736.3,
+          "p95_us": 34719.4
+        },
+        "host_submit": {
+          "p50_us": 3839.6,
+          "p95_us": 6097.6
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 59554.6,
+          "p95_us": 72977.2
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 2,
+      "case": "present-2160-texture-transparent"
+    },
+    {
+      "benchmark": "lumen-alpha-bench",
+      "backend": "skia",
+      "scenario": "probe",
+      "presentation": "texture",
+      "build_type": "Release",
+      "alpha_mode": "premultiplied",
+      "physical_pixels": [
+        3840,
+        2160
+      ],
+      "clear_alpha": 0,
+      "device_scale": 1,
+      "vsync_requested": false,
+      "window_drawable_pixels": [
+        3840,
+        2160
+      ],
+      "warmup_frames": 30,
+      "measured_frames": 300,
+      "scope": "total includes submit and present; excludes upload, commands, events and diagnostics readback",
+      "cold_upload_us": 198.0,
+      "image_bytes": 262144,
+      "alpha_conversions_per_present": 1,
+      "converted_bytes_per_present": 33177600,
+      "copied_bytes_per_present": 33177600,
+      "scratch_capacity_bytes": 33177600,
+      "peak_scratch_capacity_bytes": 33177600,
+      "frame_hash": "08b05513b7544558",
+      "sdl_video_driver": "windows",
+      "sdl_renderer": "direct3d11",
+      "source_pixel_0": [
+        128,
+        0,
+        0,
+        128
+      ],
+      "phases": {
+        "submit": {
+          "p50_us": 22057.5,
+          "p95_us": 26424.2
+        },
+        "present_prepare": {
+          "p50_us": 28863.1,
+          "p95_us": 32335.6
+        },
+        "host_submit": {
+          "p50_us": 3496.5,
+          "p95_us": 5668.7
+        },
+        "upload": {
+          "p50_us": 0.0,
+          "p95_us": 0.0
+        },
+        "total": {
+          "p50_us": 54852.0,
+          "p95_us": 62076.3
+        }
+      },
+      "revision": "e06f3d9+P0-instrumentation",
+      "group": 3,
+      "case": "present-2160-texture-transparent"
+    }
+  ]
+}

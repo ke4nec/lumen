@@ -1,6 +1,7 @@
 #include "lumen/platform/sdl3_window.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <deque>
@@ -118,6 +119,23 @@ class Sdl3Window final : public PlatformWindow {
     }
 
     PresentResult present(const render::PixelBuffer& buffer) override {
+        if (!presentDiagnostics_) return presentImpl(buffer);
+        presentStats_ = {};
+        const auto start = std::chrono::steady_clock::now();
+        const auto result = presentImpl(buffer);
+        presentStats_.submitMs = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count() - presentStats_.prepareMs;
+        presentStats_.scratchCapacityBytes = premultiplied_.rgba.capacity();
+        return result;
+    }
+
+    void setPresentDiagnosticsEnabled(bool enabled) override {
+        presentDiagnostics_ = enabled;
+        presentStats_ = {};
+    }
+    [[nodiscard]] PresentStats presentStats() const override { return presentStats_; }
+
+    PresentResult presentImpl(const render::PixelBuffer& buffer) {
         if (renderer_ == nullptr && !softwarePresentation_) {
             // OpenGL 窗口没有 SDL 呈现器；GPU 适配负责交换。
             return PresentResult::Rejected;
@@ -135,8 +153,17 @@ class Sdl3Window final : public PlatformWindow {
         // 亮色毛刺。不透明窗口保持直通字节（alpha 被合成器忽略）。
         const render::PixelBuffer* presentable = &buffer;
         if (transparent_) {
+            const auto start = presentDiagnostics_ ? std::chrono::steady_clock::now()
+                                                  : std::chrono::steady_clock::time_point{};
             render::premultiplyRgbaInto(premultiplied_, buffer);
             presentable = &premultiplied_;
+            if (presentDiagnostics_) {
+                presentStats_.prepareMs = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - start).count();
+                presentStats_.alphaConversions = 1;
+                presentStats_.convertedBytes = buffer.rgba.size();
+                presentStats_.copiedBytes = buffer.rgba.size();
+            }
         }
         if (softwarePresentation_) {
             // Resize invalidates SDL's surface. Reacquire it each frame and
@@ -420,6 +447,8 @@ class Sdl3Window final : public PlatformWindow {
     bool transparent_{false};
     // 透明窗口呈现 scratch（预乘副本；pixels() 语义保持直通）。
     render::PixelBuffer premultiplied_{};
+    bool presentDiagnostics_{false};
+    PresentStats presentStats_{};
     SDL_Texture* texture_{nullptr};
     int textureWidth_{0};
     int textureHeight_{0};

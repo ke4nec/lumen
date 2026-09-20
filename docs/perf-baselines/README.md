@@ -45,3 +45,12 @@ cmake --build build-bench --config Release
 
 - 同一机器同配置下，两次运行的 `frame_hash` 必须一致（CI repeatability gate）。
 - 基线测试可在干净构建目录重复运行（见 `../build-commands.md` 统一命令表）。
+
+## 4. 预乘 alpha 迁移的独立配对记录
+
+[`premultiplied-alpha-2026-09-20/P0.md`](premultiplied-alpha-2026-09-20/P0.md)
+记录迁移前源码事实、数值规则、真实窗口转换成本与工具链。
+该目录独立保留每组三次结果及后续 before/after 配对，不覆盖上述 M0 历史基线。
+新报告的 `alpha_mode` 与帧哈希一起解释；`frameHash` 仍只计算宽高和字节。
+Windows/MSVC 本机配对不能和旧 Linux/GCC 报告直接计算性能回归率。
+计时范围、scratch 与转换计数及固定命令见 `../build-commands.md` §4。
