@@ -152,3 +152,34 @@ SDL_HitTest(point in window pixels):
 - **borderless 最大化覆盖任务栏**：依赖 SDL 的 WM_GETMINMAXINFO 工作区约束（SDL2 2.0.5+ 有此处理，SDL3 沿用）；如个别平台异常，回退策略是最大化前临时恢复系统边框（未实现，按需评估）。
 - **Wayland**：hit-test 无 `WM_NCHITTEST` 对应物，SDL 退化为软件模拟（拖动经 xdg-shell move）；能力位后续按需暴露。
 - **字体缩放**：标题栏高度与按钮尺寸按 fontScale 派生（与既有 `scaledStyle` 同口径），8px resize 边为逻辑像素。
+
+## 16. 框架化收口（2026-09 第二轮）
+
+§5"角部例外"升级为框架原语 + §7 呈现契约修复（用户报告：caption hover/
+按压破坏圆角；边缘有毛刺）：
+
+1. **ClipRounded 命令（§5 角部例外的框架化）**：`Widget.clipRounded`
+   （+ `withRoundedClip`）→ RenderNode/layout 复制 → painter
+   `ScopedRoundedClip`（门控自身表面与子树；阴影豁免——层级可越界）→
+   `ClipRounded` 命令（序列化 v6）。CPU 后端以栈式 SDF 覆盖率乘子门控
+   像素写入（fill/span/文本/图标/图像统一收敛 blendPixel 系；无活跃
+   圆角裁剪时零成本）；Skia 光栅/GPU 为 clipRRect；其余后端默认降级
+   矩形裁剪。gallery 标题栏（顶角）与 footer（底角）均已声明——贴角
+   chrome 子件不再依赖各自记得带角半径。
+2. **footer 底角同类缺陷修复**：`buildFooter` 的方形 pageBackground
+   全宽填充一直盖着根容器的底角（不透明清屏下不可见；四角不变量测试
+   以透明清屏暴露）——底角半径跟随 + clipRounded 双防线。
+3. **边缘毛刺根因 = 透明窗口呈现的 alpha 契约**：CPU 帧缓冲是直通
+   alpha，而 DWM/合成器按预乘解释窗口表面。software 路径
+   （BLENDMODE_NONE 字节拷贝）把直通当预乘读出亮色毛刺；renderer
+   路径默认不透明黑 RenderClear + BLEND 把逐像素 alpha 压实（角部
+   黑边）。修复（`sdl3_window.cpp`）：`WindowDesc.transparent` 时经
+   `render::premultiplyRgbaInto` 拷入 scratch 预乘再上屏；renderer
+   路径清屏 alpha 归零 + 纹理 BLENDMODE_NONE（预乘字节直落帧缓冲）。
+   不透明窗口字节路径不变。AA 光栅本身无缺陷（SDF 1px 边界带，
+   诊断确认）。
+4. **验收**：四角不变量测试（透明清屏；hover/pressed × 三 caption 钮
+   + 最大化对照，四角 alpha 恒 0）+ ClipRounded 五件套（门控/嵌套求交/
+   序列化往返/submit 即时像素一致/Widget→painter 集成与 sameNode）+
+   premultiply 单元；全套 ctest（Debug 716）与 Release 体积档（+8B →
+   848/952）通过。

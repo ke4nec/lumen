@@ -562,6 +562,25 @@ ctest --test-dir build --output-on-failure -C Debug
 
 ## 11. 迁移约束和风险
 
+### 11.1 圆角 chrome 作者规则（2026-09，框架化"角部例外"）
+
+自绘圆角容器（无边框窗口的标题栏/状态栏、卡片壳）内的**贴角子件**（caption
+按钮、状态栏右缘 Toggle、任何填充到容器边缘的子节点）不得以方形填充越出
+圆角——两层防线（lumen-titlebar-design §5"角部例外"）：
+
+1. **首选 `withRoundedClip(container)`**（`Widget.clipRounded` + 容器自身
+   `radius`）：子树绘制（含自身表面）按节点圆角门控（painter
+   `ScopedRoundedClip` → `ClipRounded` 命令；CPU 为 SDF 覆盖率乘子、Skia
+   为 clipRRect、其他后端默认降级矩形裁剪）。这是 CSS `overflow:hidden`
+   圆角容器的框架等价物——子件无需各自记得带角半径。
+2. **角部子件半径跟随**（显式单角半径，如 caption close 的
+   `{0, 窗口圆角, 0, 0}`）：与裁剪叠加作为第二防线；窗口圆角变化
+   （最大化归零）时两处同步。
+
+序列化 v6 携带 ClipRounded；damage 经 `sameNode` 的 `clipRounded` 字段
+感知开关变化。透明窗口的呈现契约（DWM 预乘 alpha）见
+`lumen-titlebar-design.md` §7——`render::premultiplyRgbaInto`。
+
 - 一次性重构允许删除旧扁平 Theme 字段和 themed helper；同一提交内必须更新示例、
   测试、DSL 和文档，保持构建可用。
 - `ResolvedStyle` 必须是值类型，不能保存 Theme、SDL、Skia 或平台对象指针。
