@@ -84,10 +84,15 @@
     .compare-grid .variant-canvas { display: block; min-width: 0; }
     .compare-label { margin: 0 4px 12px; color: var(--board-ink); font-size: 14px; font-weight: 650; }
 
-    /* Shared gallery mockup */
-    .gallery-window { container: gallery / inline-size; position: relative; display: flex; flex-direction: column; min-height: 720px; overflow: hidden; border-radius: 16px; isolation: isolate; line-height: 1.5; --menu-bg: var(--app-surface-alt); --menu-hover: rgba(127, 127, 127, .14); --menu-current: var(--app-accent-soft); }
-    /* 最大化态：窗口直角（平台圆角由系统在还原图态提供） */
-    .gallery-window.is-maximized { border-radius: 0; }
+    /* Shared gallery mockup — 对齐 Windows Terminal / Win11 顶层窗口：
+       外框 8px 圆角（Win11 Geometry 顶层容器标准；最大化/贴靠归零）+ 整窗
+       1px 外边框（var(--app-line)，DWM 可见框边框的自绘等价物）+ 外阴影
+       （box-shadow，透明无边框窗口丢失 DWM 阴影后的自绘补偿）。
+       边框在内容外侧：caption 按钮贴合内容区右缘（边框内侧），hover/实心
+       填充永不盖住外边框——截图中 Terminal 右上高亮无毛刺即此结构。 */
+    .gallery-window { container: gallery / inline-size; position: relative; display: flex; flex-direction: column; min-height: 720px; overflow: hidden; border: 1px solid var(--app-line); border-radius: 8px; isolation: isolate; line-height: 1.5; --menu-bg: var(--app-surface-alt); --menu-hover: rgba(127, 127, 127, .14); --menu-current: var(--app-accent-soft); }
+    /* 最大化态：窗口直角 + 去边框去阴影（贴靠工作区，平台圆角由系统在还原态提供） */
+    .gallery-window.is-maximized { border-width: 0; border-radius: 0; box-shadow: none; }
     /* 自定义标题栏（无边框窗口）：品牌 + 应用菜单 + 拖拽区 + 窗口控制
        合并为一条 48px 行。除菜单项与窗口控制外的空白均可拖动移窗
        （平台 hit-test），双击空白 = 最大化/还原；四边 8px 为透明
@@ -99,11 +104,13 @@
     .titlebar-drag { flex: 1; min-width: 24px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 0 12px; }
     .window-status { display: flex; align-items: center; gap: 8px; color: var(--app-muted); font-size: 12px; white-space: nowrap; }
     .window-status .status-pill { padding: 4px 8px; color: var(--app-accent-content, var(--app-accent)); font-weight: 600; border-radius: 999px; background: var(--app-accent-soft); }
-    /* 窗口控制（Windows 惯例）：44px 宽、通高、右缘贴合无边距；hover
-       浮起弱表面，close hover 为实心警示红。方形 hover 填充靠
-       .gallery-window overflow:hidden 裁进 16px 圆角；框架实现无圆角
-       裁剪，close 钮以单角半径跟随窗口圆角（top-right 16、最大化归零）
-       表达同一效果（lumen-titlebar-design §5 角部例外）。 */
+    /* 窗口控制（Windows 惯例）：44px 宽、通高、右缘贴合内容区（边框内侧）
+       无边距；hover 浮起弱表面，close hover 为实心警示红。方形 hover 填充靠
+       .gallery-window overflow:hidden + 1px 外边框裁进 8px 外圆角——填充止于
+       边框内侧，外圈边框线在高亮态依然完整包住（Terminal 截图行为）；框架
+       实现另以 clipRounded 子树门控 + close 钮单角半径跟随（top-right 7 =
+       外圆角 8 − 边框 1、最大化归零）表达同一效果
+       （lumen-titlebar-design §5 角部例外与窗口边框）。 */
     .caption-actions { flex-shrink: 0; display: flex; align-items: stretch; }
     .caption-button { position: relative; display: grid; place-items: center; width: 44px; padding: 0; color: var(--app-muted); cursor: pointer; border: 0; background: transparent; transition: color .14s ease, background .14s ease; }
     .caption-button svg { grid-area: 1 / 1; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -231,8 +238,10 @@
        Spin = field + 步进簇（1px 中缝、双 chevron 半高、到界淡化仍可命中顶住）；
        ToolBar = icon 通高项 + 分组分隔线（inset 8）+ toggle 持久底 + 窄宽折叠溢出
        （container query 模拟“尾部折叠进 chevron 面板”，仅 .live 样本启用）；
-       StatusBar = 薄条（消息 + determinate 进度 + busy 3/4 弧 + 项分隔线 +
-       resize grip 斜纹）。舒适档实尺 40/28，瓦片迷你紧凑档 32/24。 */
+       StatusBar = 薄条（弹性消息 + 右侧项序列：busy 3/4 弧、determinate
+       进度、项分隔线、文本项 + resize grip 斜纹贴右下角）。舒适档实尺
+       41/28（栏含 1px 分隔线），瓦片按 Small 档实尺 33/24（项 32×32、
+       进度定宽 64）——预览即真控件，档位经 setControlSize 下发。 */
     .spin { display: inline-flex; align-items: stretch; height: 40px; min-width: 148px; color: var(--app-ink); border: 1px solid var(--app-line-strong); border-radius: var(--control-radius); background: var(--app-bg); }
     .spin:focus-visible { outline: none; border-color: var(--app-accent); }
     .spin-field { display: flex; flex: 1; align-items: center; min-width: 0; padding: 0 12px; font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -266,23 +275,24 @@
       .tb-item[data-folds] { display: none; }
       .tb-overflow { display: grid; }
     }
-    .toolbar.compact { height: 32px; padding: 0 4px; }
-    .toolbar.compact .tb-item { flex-basis: 24px; }
-    .toolbar.compact .tb-item svg { width: 13px; height: 13px; }
-    .toolbar.compact .tb-sep { margin: 6px; }
+    .toolbar.compact { height: 33px; padding: 0 4px; }
+    .toolbar.compact .tb-item { flex-basis: 32px; }
+    .toolbar.compact .tb-item svg { width: 16px; height: 16px; }
+    .toolbar.compact .tb-sep { margin: 8px; }
     .statusbar { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; color: var(--app-muted); border: 1px solid var(--app-line); border-radius: calc(var(--card-radius) - 2px); background: var(--app-surface); font-size: 12px; }
     .sb-message { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sb-flex { flex: 1; }
     .sb-sep { flex: 0 0 1px; height: 12px; background: var(--app-line); }
-    .sb-progress { flex: 0 0 120px; height: 4px; overflow: hidden; border-radius: 999px; background: var(--app-line-strong); }
+    .sb-progress { flex: 0 0 120px; height: 4px; overflow: hidden; border-radius: 999px; background: var(--app-line); }
     .sb-progress::before { content: ""; display: block; width: 68%; height: 100%; border-radius: inherit; background: var(--app-accent); }
     .sb-busy { display: none; place-items: center; flex: 0 0 12px; height: 12px; }
     .statusbar.is-busy .sb-busy { display: grid; }
     .sb-busy svg { width: 12px; height: 12px; fill: none; stroke: var(--app-accent); stroke-width: 2; stroke-linecap: round; animation: sb-busy-arc 1.2s linear infinite; }
     @keyframes sb-busy-arc { to { transform: rotate(360deg); } }
-    .sb-grip { flex: 0 0 12px; height: 12px; background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--app-line-strong) 3px 4px); }
-    .statusbar.compact { height: 24px; padding: 0 8px; gap: 6px; }
+    .sb-grip { flex: 0 0 12px; height: 12px; align-self: flex-end; margin-right: -12px; background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--app-line-strong) 3px 4px); }
+    .statusbar.compact { height: 24px; padding: 0 8px; gap: 8px; }
     .statusbar.compact .sb-progress { flex-basis: 64px; }
+    .statusbar.compact .sb-grip { margin-right: -8px; }
     /* Controls 样本卡：三块控件各带标题/提示，块间 1px 分隔 */
     .ctl-block + .ctl-block { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--app-line); }
     .ctl-title { margin: 0 0 10px; color: var(--app-ink); font-size: 12px; font-weight: 650; }
@@ -499,8 +509,8 @@
     </section>
 
     <section class="handoff">
-      <article class="handoff-card"><h3>自定义标题栏与文字尺度</h3><p>无边框窗口：标题栏一条 48 px（品牌 + 应用菜单 + 拖拽区 + 窗口控制），替代系统标题栏 + 菜单栏两行。空白区域可拖动移窗、双击最大化；窗口控制按钮 44×32 通高贴合右上角，close hover 为警示红。主操作、导航与菜单项高 40 px，紧凑样本 32 px；工具栏项与 Spin 通高 40 px（瓦片迷你 32 px），状态栏薄条 28 px；正文 14 px、辅助 12 px，4 px 网格。</p></article>
-      <article class="handoff-card"><h3>按可用空间重排</h3><p>侧栏为 200 / 168 / 64 px，宽画板下可拖动侧栏与内容之间的 Splitter 分隔条调整（双击复位，断点宽度优先）；主内容不足 720 px 时上下排列，组件卡按最小 176 px 重排。窗口四边保留 8 px 透明 resize 边与 12 px 角（平台 hit-test，视觉不可见）；最大化时窗口直角、控制按钮切换还原图标。</p></article>
+      <article class="handoff-card"><h3>自定义标题栏与文字尺度</h3><p>无边框窗口：标题栏一条 48 px（品牌 + 应用菜单 + 拖拽区 + 窗口控制），替代系统标题栏 + 菜单栏两行。空白区域可拖动移窗、双击最大化；窗口控制按钮 44 px 宽通高，贴合内容区右缘（1 px 外边框内侧），hover/close 实心红止于边框内，外圈边框线在高亮态依然完整（对齐 Windows Terminal 截图）。主操作、导航与菜单项高 40 px，紧凑样本 32 px；工具栏项与 Spin 通高 40 px（瓦片迷你 32 px），状态栏薄条 28 px；正文 14 px、辅助 12 px，4 px 网格。</p></article>
+      <article class="handoff-card"><h3>按可用空间重排</h3><p>侧栏为 200 / 168 / 64 px，宽画板下可拖动侧栏与内容之间的 Splitter 分隔条调整（双击复位，断点宽度优先）；主内容不足 720 px 时上下排列，组件卡按最小 176 px 重排。窗口为 Win11 顶层形态：外框 8 px 圆角 + 整窗 1 px 边框 + 外阴影（还原态；最大化直角无边框无阴影）；四边另保留 8 px 透明 resize 边与四角 12 px 命中角（平台 hit-test，视觉不可见）；最大化时控制按钮切换还原图标。</p></article>
       <article class="handoff-card"><h3>评审与实现边界</h3><p>可切换设计方向、比较模式和导航选中态；焦点环默认关闭（<code>View</code> 菜单 <code>Reset pane layout</code> 默认只给选中底），勾选控制栏“显示焦点环”对比 <code>showFocusRing=true</code> 的内嵌环——开关对照菜单 current/集合行；Splitter 分隔条为框架物化 chrome，键盘焦点指示恒开启不受开关影响。标题栏空白双击演示最大化态，菜单栏点击/hover 切换、右键内容区唤起 ContextMenu、分隔条可拖动。菜单与分栏规格以 <code>docs/lumen-menu-controls-design.md</code>、<code>docs/lumen-splitter-design.md</code> 为准；Spin/ToolBar/StatusBar 样本（Grid 开关驱动状态栏 busy 弧、窄宽度尾部折叠进溢出面板、Spin 到界淡化顶住）以 <code>docs/lumen-spin-design.md</code>、<code>docs/lumen-toolbar-design.md</code>、<code>docs/lumen-statusbar-design.md</code> 为准；标题栏规格见 <code>docs/lumen-titlebar-design.md</code>（平台 hit-test 契约与窗口操作）；焦点环规则见 <code>docs/lumen-visual-system-design.md §5/§6.1</code>。</p></article>
     </section>
 
@@ -617,7 +627,7 @@
                 </div>
                 <div class="ctl-block">
                   <p class="ctl-title">StatusBar — messages, progress, busy</p>
-                  <div class="statusbar live"><span class="sb-busy" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="42.4 56.5"/></svg></span><span class="sb-message">Ready</span><span class="sb-flex"></span><span class="sb-progress" role="img" aria-label="Indexing · 68%"></span><span class="sb-sep"></span><span>Ln 1, Col 1</span><span class="sb-grip" aria-hidden="true"></span></div>
+                  <div class="statusbar live"><span class="sb-message">Ready</span><span class="sb-flex"></span><span class="sb-busy" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="42.4 56.5"/></svg></span><span class="sb-progress" role="img" aria-label="Indexing · 68%"></span><span class="sb-sep"></span><span>Ln 1, Col 1</span><span class="sb-grip" aria-hidden="true"></span></div>
                   <p class="ctl-hint">The “Grid” toggle above drives the status bar busy arc and message; the progress item carries a determinate 68% sample.</p>
                 </div>
               </section>

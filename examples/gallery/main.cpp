@@ -413,8 +413,9 @@ int runWindowed(GalleryApp& app, const Options& options) {
     // 自定义标题栏（lumen-titlebar-design）：无边框窗口 + 自绘 caption
     //（拖拽/resize 边由平台 hit-test 提供；runApp 注册拖拽区谓词）。
     runOptions.windowDesc.customTitleBar = true;
-    // 透明窗口（design/gallery.html 圆角主界面）：根/标题栏自绘 16px
-    // 圆角（最大化归零），圆角外像素交桌面合成器；runApp 同步将 CPU
+    // 透明窗口（design/gallery.html Terminal 对齐形态）：卡片自绘 8px
+    // 外圆角 + 1px 外边框 + L2 自绘阴影（24px 透明外边距内，最大化归零），
+    // 圆角外像素交桌面合成器；runApp 同步将 CPU
     // 清屏色转全透明。
     runOptions.windowDesc.transparent = true;
     runOptions.diagnostics = options.diagnostics;

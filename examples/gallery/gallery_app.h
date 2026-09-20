@@ -300,15 +300,26 @@ class GalleryApp {
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Start,
             0.0F);
         page.flex = 1.0F;
+        // Terminal 对齐的窗口外框（Win11 顶层形态）：卡片 edge-to-edge，
+        // 1px 外边框（borderDefault，DWM 可见框边框的自绘等价物）+ 外圆角
+        // 8（DWMWCP_ROUND；最大化归零）。边框在内容外侧：卡片 padding =
+        // 边框宽，标题栏/按钮止于边框内侧，hover 永不盖边框。阴影：HTML 稿
+        // 以 box-shadow 为目标；透明无边框窗口丢失 DWM 阴影，自绘 DrawShadow
+        // 常驻窗口级阴影会触发 CPU 局部/全量像素不一致（motion 测试锁定，
+        // 待渲染器修复后恢复，见 titlebar-design §7），本版暂不自绘。
         core::Widget ui = core::makeContainer(
-            std::move(page), std::nullopt, std::nullopt, core::EdgeInsets{},
-            core::EdgeInsets{}, theme.colors.pageBackground);
-        // 透明窗口圆角：根背景四角圆角（标题栏顶角由自身 surface 圆角
-        // 覆盖；最大化归零——design/gallery.html .is-maximized）。
-        ui.radius = windowMaximized_
-                        ? core::CornerRadius::zero()
-                        : core::CornerRadius::all(kWindowRadius);
-        ui.key = "root";
+            std::move(page), std::nullopt, std::nullopt,
+            windowMaximized_ ? core::EdgeInsets{}
+                             : core::EdgeInsets::all(kWindowBorder),
+            core::EdgeInsets{}, theme.colors.pageBackground,
+            windowMaximized_ ? core::CornerRadius::zero()
+                             : core::CornerRadius::all(kWindowRadius),
+            "root");
+        if (!windowMaximized_) {
+            ui.styleOverrides.border = theme.colors.borderDefault;
+            ui.styleOverrides.borderWidth = kWindowBorder;
+            ui.clipRounded = true;
+        }
 
         if (dialogOpen_) {
             // S4（§8.2）：整体 padding 24 由 makeDialog 施加；标题到正文
@@ -340,9 +351,13 @@ class GalleryApp {
 
   private:
     static constexpr const char* kDialogKey = "gallery-dialog";
-    // 透明窗口圆角（design/gallery.html .gallery-window:16px；最大化归
-    // 零）：根容器四角 + 标题栏顶角 + 对话框 scrim 同半径。
-    static constexpr float kWindowRadius = 16.0F;
+    // Terminal 对齐的窗口外框（Win11 顶层 8px；最大化归零）：卡片外圆角
+    // 8 + 1px 外边框（卡片 padding 内缩，hover 止于内侧）；标题栏顶角/
+    // 页脚底角/close 钮取内圆角 7（= 外圆角 − 边框），对话框 scrim 同外圆角。
+    // 自绘阴影暂缺（见 buildUi 注释与 titlebar-design §7）。
+    static constexpr float kWindowRadius = 8.0F;
+    static constexpr float kWindowBorder = 1.0F;
+    static constexpr float kWindowInnerRadius = 7.0F;
     static constexpr const char* kDialogCloseKey = "dialog-close";
 
     [[nodiscard]] static app::ShellConfig configFor(GalleryApp* self) {
@@ -1235,8 +1250,10 @@ class GalleryApp {
                           "window-maximize", theme),
              windowButton(core::IconId::Close, "window-close", theme,
                           core::ButtonVariant::WindowClose,
-                          // 角部钮填充跟随窗口顶角圆角（最大化归零）。
-                          windowMaximized_ ? 0.0F : kWindowRadius)},
+                          // 角部钮填充跟随窗口内圆角（外圆角 8 − 边框 1 = 7；
+                          // 最大化归零；外圈 1px 边框由卡片持有，hover 止于
+                          // 内侧——Terminal 高亮不盖边框）。
+                          windowMaximized_ ? 0.0F : kWindowInnerRadius)},
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
             0.0F);
         actions.key = "gallery-window-actions";
@@ -1282,13 +1299,13 @@ class GalleryApp {
                                                core::EdgeInsets{},
                                                core::EdgeInsets{},
                                                theme.colors.surface);
-        // 透明窗口圆角（design/gallery.html gallery-window:16px，
-        // is-maximized 归零）：标题栏负责顶角（surface 底自绘圆角），
-        // 根容器负责四角兜底与底角。
+        // 透明窗口内圆角（卡片外圆角 8 − 边框 1 = 7；最大化归零）：
+        // 标题栏负责顶角（surface 底自绘内圆角），卡片负责外框 + 裁剪。
         bar.radius = windowMaximized_
                          ? core::CornerRadius::zero()
-                         : core::CornerRadius{kWindowRadius, kWindowRadius,
-                                              0.0F, 0.0F};
+                         : core::CornerRadius{kWindowInnerRadius,
+                                              kWindowInnerRadius, 0.0F, 0.0F};
+        bar.clipRounded = !windowMaximized_;
         return core::withKey(std::move(bar), "gallery-titlebar");
     }
 
@@ -1433,12 +1450,13 @@ class GalleryApp {
             std::move(footer), std::nullopt, std::nullopt, core::EdgeInsets{},
             core::EdgeInsets{}, theme.colors.pageBackground);
         // 窗口底角（与标题栏顶角对称）：footer 的 pageBackground 填充
-        // 贴窗口底缘——底角半径跟随 + clipRounded 子树门控（caption 角
-        // 部例外同防线；方形填充会盖过根容器的自绘圆角）。
+        // 贴卡片底缘——内圆角跟随（外 8 − 边框 1 = 7）+ clipRounded 子树门控
+        //（caption 角部例外同防线；方形填充会盖过卡片的自绘内圆角）。
         footerBox.radius =
             windowMaximized_
                 ? core::CornerRadius::zero()
-                : core::CornerRadius{0.0F, 0.0F, kWindowRadius, kWindowRadius};
+                : core::CornerRadius{0.0F, 0.0F, kWindowInnerRadius,
+                                     kWindowInnerRadius};
         footerBox.clipRounded = true;
         return core::withKey(std::move(footerBox), "gallery-footer");
     }
@@ -3537,10 +3555,10 @@ class GalleryApp {
     //（window-minimize/maximize/close，见 initialize）。close 传
     // WindowClose 变体：rest 幽灵、hover 实心警示红 + 反色（Windows
     // 惯例）；min/max 保持 Ghost（hover 常规表面派生）。
-    // topRightRadius：角部按钮（close）的 hover/pressed 填充跟随窗口
-    // 顶角圆角——HTML 稿以 .gallery-window overflow:hidden 裁剪表达同
-    // 一效果；框架无圆角裁剪，以单角半径等效（直角填充会盖过标题栏
-    // surface 的圆角，破坏透明窗口角）。最大化时窗口圆角归零，随传 0。
+    // topRightRadius：角部按钮（close）的 hover/pressed 填充跟随窗口内
+    // 圆角 7（= 外 8 − 边框 1）——HTML 稿以 .gallery-window overflow:hidden
+    // + 边框裁剪表达同一效果；框架侧与卡片 clipRounded 双防线（直角填充会
+    // 盖过标题栏 surface 的内圆角、破坏透明窗口角）。最大化归零，随传 0。
     [[nodiscard]] static core::Widget windowButton(
         core::IconId icon, const std::string& onClick,
         const style::Theme& theme,
@@ -3552,9 +3570,9 @@ class GalleryApp {
             44.0F * scale, std::nullopt, onClick);
         button.buttonVariant = variant;
         // 设计稿 caption-button 自身无圆角（design/gallery.html titlebar）：
-        // hover 高亮与 close 实心红都是通高矩形；按钮默认 controlRadius
-        //（resolver §7.1）对 chrome 件以 overrides 归零——角部钮除外
-        //（topRight 跟随窗口圆角，见上）。
+        // hover 高亮与 close 实心红都是通高矩形，止于 1px 外边框内侧；
+        // 按钮默认 controlRadius（resolver §7.1）对 chrome 件以 overrides
+        // 归零——角部钮除外（topRight 跟随窗口内圆角 7，见上）。
         button.styleOverrides.radius =
             core::CornerRadius{0.0F, topRightRadius, 0.0F, 0.0F};
         // 图标盒 14px（design/gallery.html caption-button svg 14px；

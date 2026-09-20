@@ -96,9 +96,10 @@ TEST_CASE("titlebar_gallery_structure_marks_only_caption_row",
 
 TEST_CASE("titlebar_controls_flush_full_height_and_rounded_window",
           "[titlebar][gallery]") {
-    // design/gallery.html 窗口 chrome：caption 48px 一条行；窗口控制
-    // 44px 宽、通高、右缘贴合窗口角；透明窗口圆角 16（根四角 + 标题栏
-    // 顶角），最大化归零。
+    // design/gallery.html 窗口 chrome（Terminal 对齐）：caption 48px 一条
+    // 行；窗口控制 44px 宽、通高、右缘贴合内容区（1px 外边框内侧）；卡片
+    // edge-to-edge：外圆角 8 + 1px 外边框 + 圆角裁剪（padding 内缩），
+    // 标题栏/close 取内圆角 7；最大化边框/圆角归零。
     GalleryApp app;
     app.setView(Size{1280.0F, 800.0F});
     (void)app.renderFrame();
@@ -117,21 +118,22 @@ TEST_CASE("titlebar_controls_flush_full_height_and_rounded_window",
     REQUIRE(close != nullptr);
     CHECK(min->size.width == Catch::Approx(44.0F).margin(0.01F));
     CHECK(close->size.width == Catch::Approx(44.0F).margin(0.01F));
-    // 通高（拉伸到标题栏行高），close 右缘 = 视口右缘。
+    // 通高（拉伸到标题栏行高），close 右缘 = 视口右缘 − 外边框 1
+    //（hover 止于边框内侧，外圈边框线完整——Terminal 行为）。
     CHECK(min->size.height == Catch::Approx(47.0F).margin(0.01F));
     CHECK(close->size.height == Catch::Approx(47.0F).margin(0.01F));
     const Offset closeAbs = absoluteOffset(app.root(), "window-close");
     CHECK(closeAbs.x + close->size.width ==
-          Catch::Approx(1280.0F).margin(0.01F));
+          Catch::Approx(1280.0F - 1.0F).margin(0.01F));
     // 设计稿 caption-button 自身无圆角（design/gallery.html titlebar）：
     // hover 高亮与 close 实心红都是通高矩形，按钮默认 controlRadius 对
-    // chrome 件归零——角部钮（close）除外：topRight 跟随窗口顶角圆角
-    //（HTML 稿以 overflow:hidden 裁剪表达；框架无圆角裁剪，直角填充会
-    // 盖过标题栏 surface 圆角、破坏透明窗口角）。
+    // chrome 件归零——角部钮（close）除外：topRight 跟随窗口内圆角 7
+    //（= 外 8 − 边框 1；HTML 稿以 overflow:hidden + 边框裁剪表达；框架另以
+    // 卡片 clipRounded 子树门控双防线，直角填充会盖过标题栏内圆角）。
     CHECK(min->commonStyle().radius == CornerRadius::zero());
     CHECK(close->commonStyle().radius.topLeft == 0.0F);
     CHECK(close->commonStyle().radius.topRight ==
-          Catch::Approx(16.0F).margin(0.01F));
+          Catch::Approx(7.0F).margin(0.01F));
     CHECK(close->commonStyle().radius.bottomLeft == 0.0F);
     CHECK(close->commonStyle().radius.bottomRight == 0.0F);
     // 图标盒 14px（design/gallery.html caption-button svg 14px），
@@ -160,14 +162,21 @@ TEST_CASE("titlebar_controls_flush_full_height_and_rounded_window",
     const RenderNode* bar = findNodeByKey(app.root(), "gallery-titlebar");
     REQUIRE(root != nullptr);
     REQUIRE(bar != nullptr);
+    // 外层 root 即窗口卡片（edge-to-edge）：8px 外圆角 + 1px 外边框 +
+    // 圆角裁剪（padding=边框宽内缩内容）；标题栏取内圆角 7。
     CHECK(root->commonStyle().radius.topLeft ==
-          Catch::Approx(16.0F).margin(0.01F));
+          Catch::Approx(8.0F).margin(0.01F));
+    CHECK(root->commonStyle().borderWidth ==
+          Catch::Approx(1.0F).margin(0.01F));
+    CHECK(root->commonStyle().border == app.shell().theme().colors.borderDefault);
+    CHECK(root->clipRounded);
+    CHECK(root->size.width == Catch::Approx(1280.0F).margin(0.01F));
     CHECK(bar->commonStyle().radius.topLeft ==
-          Catch::Approx(16.0F).margin(0.01F));
+          Catch::Approx(7.0F).margin(0.01F));
     CHECK(bar->commonStyle().radius.bottomLeft == 0.0F);
 
-    // 最大化：圆角归零（.is-maximized）——窗口四角与角部 caption 钮
-    // 的填充跟随角一并归零（直角窗口无角可破坏）。
+    // 最大化：边框/圆角归零（.is-maximized）——卡片填满视口，close 右缘
+    // 回到视口右缘，角部填充跟随归零。
     app.noteWindowMaximized(true);
     (void)app.renderFrame();
     root = findNodeByKey(app.root(), "root");
@@ -177,6 +186,11 @@ TEST_CASE("titlebar_controls_flush_full_height_and_rounded_window",
     REQUIRE(bar != nullptr);
     REQUIRE(closeMax != nullptr);
     CHECK(root->commonStyle().radius.topLeft == 0.0F);
+    CHECK(root->commonStyle().borderWidth == 0.0F);
+    CHECK(root->size.width == Catch::Approx(1280.0F).margin(0.01F));
+    const Offset closeMaxAbs = absoluteOffset(app.root(), "window-close");
+    CHECK(closeMaxAbs.x + closeMax->size.width ==
+          Catch::Approx(1280.0F).margin(0.01F));
     CHECK(bar->commonStyle().radius.topLeft == 0.0F);
     CHECK(closeMax->commonStyle().radius.topRight == 0.0F);
 }
@@ -530,10 +544,10 @@ TEST_CASE("titlebar_run_app_skips_drag_region_without_custom_title_bar",
     CHECK(host.dragRegions.empty());
 }
 
-// caption 角部钮 hover 填充跟随窗口圆角（像素回归）：close hover 实心红
-// 只出现在圆角内——右上角点保持透明窗口角外（=清屏色，与对称的左上角
-// 一致）；弧下主体是 windowClose 红。修复前直角红填充盖到角点，圆角被
-// 破坏（gallery 窗口 16px 自绘圆角无 overflow 裁剪）。
+// caption 角部钮 hover 填充跟随窗口内圆角（像素回归）：close hover 实心红
+// 只出现在边框内侧——窗口角点保持透明（=清屏色，与对称角一致）；弧下主体
+// 是 windowClose 红。Terminal 对齐后卡片几何：24px 阴影边距 + 1px 边框，
+// close 止于 x=1255（=1280−24−1），外圈边框完整。
 TEST_CASE("titlebar_caption_hover_fill_follows_window_corner_pixels",
           "[titlebar][gallery]") {
     GalleryApp app;
@@ -550,14 +564,19 @@ TEST_CASE("titlebar_caption_hover_fill_follows_window_corner_pixels",
         return Color::fromRGBA(pixels.rgba[offset], pixels.rgba[offset + 1],
                                pixels.rgba[offset + 2], pixels.rgba[offset + 3]);
     };
-    // 右上角点（16px 弧外，距弧心 ≈21px）：清屏色，与左上对称角点一致
-    //——不是 windowClose 红（修复前在此处为红，圆角被盖）。
+    // 窗口角点（阴影边距外）：清屏色，与左上对称角点一致——不是 windowClose
+    // 红（修复前直角红填充盖到角点，圆角被破坏）。
     CHECK(at(static_cast<int>(pixels.width) - 1, 1) == at(1, 1));
     CHECK(at(static_cast<int>(pixels.width) - 1, 1) !=
           app.shell().theme().button.windowClose.background);
-    // 弧下主体（y=40，圆角区之外、钮内）：实心红通高填充。
-    CHECK(at(static_cast<int>(pixels.width) - 10, 40) ==
-          app.shell().theme().button.windowClose.background);
+    // 钮内主体（close 右侧内边距，避开中央 X 字形图标）：实心红通高填充。
+    const RenderNode* close = findNodeByKey(app.root(), "window-close");
+    REQUIRE(close != nullptr);
+    const Offset closeAbs = absoluteOffset(app.root(), "window-close");
+    const int hx = static_cast<int>(closeAbs.x + close->size.width - 5.0F);
+    const int hy =
+        static_cast<int>(closeAbs.y + close->size.height * 0.5F);
+    CHECK(at(hx, hy) == app.shell().theme().button.windowClose.background);
 }
 
 // 临时诊断（随后移除）：角部 AA 渐变采样。
@@ -582,11 +601,13 @@ TEST_CASE("diag_corner_alpha_ramp", "[.][diag]") {
     dump("close-hover");
 }
 
-// 四角不变量（2026-09 框架化修复的系统性验收）：透明清屏下，gallery
-// 窗口四个角点（16px 圆角外，距弧心 ~21px）在 caption 按钮的
-// hover/pressed 与最大化各状态下恒为全透明——任何贴角 chrome 的填充
-// 越出圆角都会在此暴露。角部双重防线：close 钮 topRight 半径跟随 +
-// 标题栏 clipRounded 子树门控（ClipRounded 命令）。
+// 四角不变量（2026-09 框架化修复的系统性验收，2026-09-20 Terminal 对齐
+// 升级为外框不变量）：透明清屏下，gallery 卡片四个角点（8px 外圆角之外）
+// 在 caption 按钮的 hover/pressed 各状态下恒为全透明——任何贴角 chrome 的
+// 填充越出圆角都会在此暴露。角部三重防线：卡片 1px 外边框（hover 止于内侧）
+// + close 钮 topRight 内半径 7 跟随 + 卡片/标题栏 clipRounded 子树门控
+//（ClipRounded 命令）。另断言外边框在 close hover 下依然完整（右边框中点
+// 与顶边框中点为 borderDefault 实色，而非 #c42b1c 高亮红）。
 TEST_CASE("titlebar_window_four_corners_stay_transparent",
           "[titlebar][gallery][clip]") {
     GalleryApp app;
@@ -619,7 +640,37 @@ TEST_CASE("titlebar_window_four_corners_stay_transparent",
     }
     (void)app.renderFrame(true);
 
-    // 最大化：圆角归零（直角窗口），四个角点都是内容（非透明）。
+    // 外边框完整性：close hover 下，卡片右边框中点（1279,40）与顶边框
+    // 中点（1257,0）仍为 borderDefault 实色（非高亮红 #c42b1c=196,43,28）。
+    // 卡片 edge-to-edge：原点 (0,0)，尺寸 1280×800；边框为外侧 1px 环带；
+    // close 右缘止于 x=1279（=1280−1）。
+    {
+        const auto border = app.shell().theme().colors.borderDefault;
+        const auto pixel = [&](int x, int y) {
+            const std::size_t o =
+                (static_cast<std::size_t>(y) * p.width + x) * 4;
+            return core::Color{p.rgba[o], p.rgba[o + 1], p.rgba[o + 2],
+                               p.rgba[o + 3]};
+        };
+        app.shell().setVisualPreviewState("window-close",
+                                           style::WidgetState{.hovered = true});
+        (void)app.renderFrame(true);
+        checkCorners();
+        const auto rightBorder = pixel(1279, 40);
+        const auto topBorder = pixel(1257, 0);
+        CHECK(rightBorder == border);
+        CHECK(topBorder == border);
+        // 紧贴边框内侧的 hover 像素应为高亮红（证明测试采到了正确的两列）。
+        const auto hoverInside = pixel(1278, 40);
+        CHECK(hoverInside.r == 196);
+        CHECK(hoverInside.g == 43);
+        CHECK(hoverInside.b == 28);
+        app.shell().setVisualPreviewState("window-close",
+                                           style::WidgetState{});
+        (void)app.renderFrame(true);
+    }
+
+    // 最大化：去边距/边框/阴影/圆角归零（直角窗口），四个角点都是内容。
     app.noteWindowMaximized(true);
     (void)app.renderFrame(true);
     CHECK(cornerAlpha(1, 1) != 0);
