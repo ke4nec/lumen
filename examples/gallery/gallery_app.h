@@ -1188,7 +1188,9 @@ class GalleryApp {
                                            : core::IconId::Maximize,
                           "window-maximize", theme),
              windowButton(core::IconId::Close, "window-close", theme,
-                          core::ButtonVariant::WindowClose)},
+                          core::ButtonVariant::WindowClose,
+                          // 角部钮填充跟随窗口顶角圆角（最大化归零）。
+                          windowMaximized_ ? 0.0F : kWindowRadius)},
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
             0.0F);
         actions.key = "gallery-window-actions";
@@ -3446,19 +3448,26 @@ class GalleryApp {
     //（window-minimize/maximize/close，见 initialize）。close 传
     // WindowClose 变体：rest 幽灵、hover 实心警示红 + 反色（Windows
     // 惯例）；min/max 保持 Ghost（hover 常规表面派生）。
+    // topRightRadius：角部按钮（close）的 hover/pressed 填充跟随窗口
+    // 顶角圆角——HTML 稿以 .gallery-window overflow:hidden 裁剪表达同
+    // 一效果；框架无圆角裁剪，以单角半径等效（直角填充会盖过标题栏
+    // surface 的圆角，破坏透明窗口角）。最大化时窗口圆角归零，随传 0。
     [[nodiscard]] static core::Widget windowButton(
         core::IconId icon, const std::string& onClick,
         const style::Theme& theme,
-        core::ButtonVariant variant = core::ButtonVariant::Ghost) {
+        core::ButtonVariant variant = core::ButtonVariant::Ghost,
+        float topRightRadius = 0.0F) {
         const float scale = theme.typography.body.fontSize / 14.0F;
         core::Widget button = core::makeButton(
             "", core::TextStyle{}, core::EdgeInsets{}, 0.0F, onClick,
             44.0F * scale, std::nullopt, onClick);
         button.buttonVariant = variant;
-        // 设计稿 caption-button 无圆角（design/gallery.html titlebar）：
-        // hover 高亮与 close 实心红都是通高直角矩形；按钮默认
-        // controlRadius（resolver §7.1）对 chrome 件以 overrides 归零。
-        button.styleOverrides.radius = core::CornerRadius::zero();
+        // 设计稿 caption-button 自身无圆角（design/gallery.html titlebar）：
+        // hover 高亮与 close 实心红都是通高矩形；按钮默认 controlRadius
+        //（resolver §7.1）对 chrome 件以 overrides 归零——角部钮除外
+        //（topRight 跟随窗口圆角，见上）。
+        button.styleOverrides.radius =
+            core::CornerRadius{0.0F, topRightRadius, 0.0F, 0.0F};
         // 图标盒 14px（design/gallery.html caption-button svg 14px；
         // 描边随盒宽折算 ≈1.6）。
         button.styleOverrides.iconSize = 14.0F * scale;

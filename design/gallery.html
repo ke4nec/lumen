@@ -100,7 +100,10 @@
     .window-status { display: flex; align-items: center; gap: 8px; color: var(--app-muted); font-size: 12px; white-space: nowrap; }
     .window-status .status-pill { padding: 4px 8px; color: var(--app-accent-content, var(--app-accent)); font-weight: 600; border-radius: 999px; background: var(--app-accent-soft); }
     /* 窗口控制（Windows 惯例）：44px 宽、通高、右缘贴合无边距；hover
-       浮起弱表面，close hover 为实心警示红。 */
+       浮起弱表面，close hover 为实心警示红。方形 hover 填充靠
+       .gallery-window overflow:hidden 裁进 16px 圆角；框架实现无圆角
+       裁剪，close 钮以单角半径跟随窗口圆角（top-right 16、最大化归零）
+       表达同一效果（lumen-titlebar-design §5 角部例外）。 */
     .caption-actions { flex-shrink: 0; display: flex; align-items: stretch; }
     .caption-button { position: relative; display: grid; place-items: center; width: 44px; padding: 0; color: var(--app-muted); cursor: pointer; border: 0; background: transparent; transition: color .14s ease, background .14s ease; }
     .caption-button svg { grid-area: 1 / 1; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -223,6 +226,69 @@
     .mini-splitter { display: grid; grid-template-columns: minmax(0, 1fr) 3px minmax(0, 1fr); gap: 5px; width: 100%; height: 36px; }
     .mini-splitter span { min-width: 0; border: 1px solid var(--app-line); border-radius: 4px; background: var(--app-accent-soft); }
     .mini-splitter em { border-radius: 2px; background: var(--app-accent); }
+    /* Spin/ToolBar/StatusBar（design/spin.html、toolbar.html、statusbar.html；
+       Controls 分区实时样本，规格见 docs/lumen-{spin,toolbar,statusbar}-design §9）：
+       Spin = field + 步进簇（1px 中缝、双 chevron 半高、到界淡化仍可命中顶住）；
+       ToolBar = icon 通高项 + 分组分隔线（inset 8）+ toggle 持久底 + 窄宽折叠溢出
+       （container query 模拟“尾部折叠进 chevron 面板”，仅 .live 样本启用）；
+       StatusBar = 薄条（消息 + determinate 进度 + busy 3/4 弧 + 项分隔线 +
+       resize grip 斜纹）。舒适档实尺 40/28，瓦片迷你紧凑档 32/24。 */
+    .spin { display: inline-flex; align-items: stretch; height: 40px; min-width: 148px; color: var(--app-ink); border: 1px solid var(--app-line-strong); border-radius: var(--control-radius); background: var(--app-bg); }
+    .spin:focus-visible { outline: none; border-color: var(--app-accent); }
+    .spin-field { display: flex; flex: 1; align-items: center; min-width: 0; padding: 0 12px; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .spin-cluster { display: flex; flex: 0 0 28px; flex-direction: column; border-left: 1px solid var(--app-line); }
+    .spin-step { display: grid; place-items: center; flex: 1; padding: 0; color: var(--app-muted); border: 0; background: transparent; cursor: pointer; transition: background .12s ease, color .12s ease; }
+    .spin-step:hover { color: var(--app-ink); background: var(--menu-hover); }
+    .spin-step:active { color: var(--app-ink); background: color-mix(in srgb, var(--app-accent) 32%, transparent); }
+    .spin-step.at-bound { opacity: .4; }
+    .spin.compact { height: 32px; min-width: 120px; }
+    .spin.compact .spin-field { padding: 0 8px; font-size: 12px; }
+    .spin.compact .spin-cluster { flex-basis: 24px; }
+    .spin.compact .spin-step .chev { width: 5px; height: 5px; }
+    .spin-step .chev, .tb-overflow .chev { width: 7px; height: 7px; border-top: 1.5px solid currentColor; border-left: 1.5px solid currentColor; transform: rotate(45deg); }
+    .spin-step:last-child .chev, .tb-overflow .chev { transform: rotate(225deg); }
+    .toolbar { display: flex; align-items: stretch; height: 40px; padding: 0 8px; border: 1px solid var(--app-line); border-radius: calc(var(--card-radius) - 2px); background: var(--app-surface); }
+    .toolbar.live { container: tb / inline-size; }
+    .tb-item { display: grid; place-items: center; flex: 0 0 40px; padding: 0; color: var(--app-muted); border: 0; border-radius: var(--control-radius); background: transparent; cursor: pointer; transition: background .12s ease, color .12s ease; }
+    .tb-item svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .tb-item:hover { color: var(--app-ink); background: var(--menu-hover); }
+    .tb-item:active { color: var(--app-ink); background: color-mix(in srgb, var(--app-accent) 32%, transparent); }
+    .tb-item.is-checked, .tb-item.is-checked:hover { color: var(--app-accent-content, var(--app-accent)); background: var(--app-accent-soft); }
+    .tb-item.is-disabled, .tb-item.is-disabled:hover { color: color-mix(in srgb, var(--app-ink) 40%, transparent); background: transparent; cursor: default; }
+    .tb-item:focus-visible, .tb-overflow:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--app-accent); }
+    .tb-sep { flex: 0 0 1px; margin: 8px; background: var(--app-line); }
+    .tb-overflow-anchor { position: relative; display: flex; margin-left: auto; }
+    .tb-overflow { display: none; place-items: center; width: 40px; padding: 0; color: var(--app-muted); border: 0; border-radius: var(--control-radius); background: transparent; cursor: pointer; transition: background .12s ease, color .12s ease; }
+    .tb-overflow:hover { color: var(--app-ink); background: var(--menu-hover); }
+    .tb-overflow.is-open, .tb-overflow.is-open:hover { color: var(--app-ink); background: var(--menu-current); }
+    .tb-overflow-panel { top: calc(100% + 2px); right: 0; left: auto; min-width: 200px; }
+    @container tb (max-width: 260px) {
+      .tb-item[data-folds] { display: none; }
+      .tb-overflow { display: grid; }
+    }
+    .toolbar.compact { height: 32px; padding: 0 4px; }
+    .toolbar.compact .tb-item { flex-basis: 24px; }
+    .toolbar.compact .tb-item svg { width: 13px; height: 13px; }
+    .toolbar.compact .tb-sep { margin: 6px; }
+    .statusbar { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; color: var(--app-muted); border: 1px solid var(--app-line); border-radius: calc(var(--card-radius) - 2px); background: var(--app-surface); font-size: 12px; }
+    .sb-message { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sb-flex { flex: 1; }
+    .sb-sep { flex: 0 0 1px; height: 12px; background: var(--app-line); }
+    .sb-progress { flex: 0 0 120px; height: 4px; overflow: hidden; border-radius: 999px; background: var(--app-line-strong); }
+    .sb-progress::before { content: ""; display: block; width: 68%; height: 100%; border-radius: inherit; background: var(--app-accent); }
+    .sb-busy { display: none; place-items: center; flex: 0 0 12px; height: 12px; }
+    .statusbar.is-busy .sb-busy, .statusbar.compact .sb-busy { display: grid; }
+    .sb-busy svg { width: 12px; height: 12px; fill: none; stroke: var(--app-accent); stroke-width: 2; stroke-linecap: round; animation: sb-busy-arc 1.2s linear infinite; }
+    @keyframes sb-busy-arc { to { transform: rotate(360deg); } }
+    .sb-grip { flex: 0 0 12px; height: 12px; background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--app-line-strong) 3px 4px); }
+    .statusbar.compact { height: 24px; padding: 0 8px; gap: 6px; }
+    /* Controls 样本卡：三块控件各带标题/提示，块间 1px 分隔 */
+    .ctl-block + .ctl-block { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--app-line); }
+    .ctl-title { margin: 0 0 10px; color: var(--app-ink); font-size: 12px; font-weight: 650; }
+    .ctl-row { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+    .ctl-label { color: var(--app-muted); font-size: 14px; }
+    .ctl-hint { margin: 6px 0 0; color: var(--app-muted); font-size: 12px; line-height: 1.5; }
+    .tile-preview .spin, .tile-preview .toolbar, .tile-preview .statusbar { pointer-events: none; }
     .feedback-preview { display: grid; gap: 8px; width: 100%; }
     .progress-track { height: 4px; overflow: hidden; border-radius: 999px; background: var(--app-line-strong); }
     .progress-track::before { content: ""; display: block; width: 68%; height: 100%; border-radius: inherit; background: var(--app-positive); }
@@ -303,6 +369,7 @@
     .v4 .code-key { color: #174a99; }
     .v4 .window-footer { border-top-width: 2px; }
     .v4 .menu-panel { border-width: 2px; box-shadow: none; }
+    .v4 .spin, .v4 .toolbar, .v4 .statusbar { border-width: 2px; }
 
     .handoff { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
     .handoff-card { min-width: 0; padding: 16px; border: 1px solid var(--board-line); border-radius: var(--radius-lg); background: rgba(255,255,255,.7); }
@@ -373,8 +440,9 @@
       .design-summary { padding: 16px; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .variant-tab, .compare-button, .caption-button, .mb-item, .mi { transition: none; }
+      .variant-tab, .compare-button, .caption-button, .mb-item, .mi, .tb-item, .tb-overflow, .spin-step { transition: none; }
       .compare-button:hover { transform: none; }
+      .sb-busy svg { animation: none; opacity: .5; }
     }
   </style>
 </head>
@@ -384,7 +452,7 @@
       <div>
         <div class="eyebrow">Lumen / Design board</div>
         <h1>Gallery 的四个桌面方向</h1>
-        <p class="lead">以真实 Gallery 能力为内容骨架（含自定义标题栏与 Menu、Splitter 新控件），比较四种跨平台视觉语言。单页切换用于评审细节，并排模式用于快速判断信息层级、密度和主题弹性。</p>
+        <p class="lead">以真实 Gallery 能力为内容骨架（含自定义标题栏与 Menu、Splitter、Spin / ToolBar / StatusBar 控件），比较四种跨平台视觉语言。单页切换用于评审细节，并排模式用于快速判断信息层级、密度和主题弹性。</p>
       </div>
       <div class="header-meta"><span class="brand-mark">L</span><span><strong>Desktop design study</strong><br>Windows · Linux · macOS</span></div>
     </header>
@@ -413,7 +481,7 @@
 
     <section class="stage">
       <div class="single-stage">
-        <div class="stage-topline"><div class="stage-topline-left"><span class="live-dot"></span><span>Responsive artboard · custom title bar, navigation, menu &amp; splitter states</span></div><span class="stage-topline-right" id="artboardSize">Responsive width · logical px</span></div>
+        <div class="stage-topline"><div class="stage-topline-left"><span class="live-dot"></span><span>Responsive artboard · custom title bar, navigation, menus, splitter &amp; controls samples</span></div><span class="stage-topline-right" id="artboardSize">Responsive width · logical px</span></div>
         <div class="canvas">
           <div class="variant-canvas v1 is-active" data-canvas="v1"></div>
           <div class="variant-canvas v2" data-canvas="v2"></div>
@@ -430,9 +498,9 @@
     </section>
 
     <section class="handoff">
-      <article class="handoff-card"><h3>自定义标题栏与文字尺度</h3><p>无边框窗口：标题栏一条 48 px（品牌 + 应用菜单 + 拖拽区 + 窗口控制），替代系统标题栏 + 菜单栏两行。空白区域可拖动移窗、双击最大化；窗口控制按钮 44×32 通高贴合右上角，close hover 为警示红。主操作、导航与菜单项高 40 px，紧凑样本 32 px；正文 14 px、辅助 12 px，4 px 网格。</p></article>
+      <article class="handoff-card"><h3>自定义标题栏与文字尺度</h3><p>无边框窗口：标题栏一条 48 px（品牌 + 应用菜单 + 拖拽区 + 窗口控制），替代系统标题栏 + 菜单栏两行。空白区域可拖动移窗、双击最大化；窗口控制按钮 44×32 通高贴合右上角，close hover 为警示红。主操作、导航与菜单项高 40 px，紧凑样本 32 px；工具栏项与 Spin 通高 40 px（瓦片迷你 32 px），状态栏薄条 28 px；正文 14 px、辅助 12 px，4 px 网格。</p></article>
       <article class="handoff-card"><h3>按可用空间重排</h3><p>侧栏为 200 / 168 / 64 px，宽画板下可拖动侧栏与内容之间的 Splitter 分隔条调整（双击复位，断点宽度优先）；主内容不足 720 px 时上下排列，组件卡按最小 176 px 重排。窗口四边保留 8 px 透明 resize 边与 12 px 角（平台 hit-test，视觉不可见）；最大化时窗口直角、控制按钮切换还原图标。</p></article>
-      <article class="handoff-card"><h3>评审与实现边界</h3><p>可切换设计方向、比较模式和导航选中态；焦点环默认关闭（<code>View</code> 菜单 <code>Reset pane layout</code> 默认只给选中底），勾选控制栏“显示焦点环”对比 <code>showFocusRing=true</code> 的内嵌环——开关对照菜单 current/集合行；Splitter 分隔条为框架物化 chrome，键盘焦点指示恒开启不受开关影响。标题栏空白双击演示最大化态，菜单栏点击/hover 切换、右键内容区唤起 ContextMenu、分隔条可拖动。菜单与分栏规格以 <code>docs/lumen-menu-controls-design.md</code>、<code>docs/lumen-splitter-design.md</code> 为准；标题栏规格见 <code>docs/lumen-titlebar-design.md</code>（平台 hit-test 契约与窗口操作）；焦点环规则见 <code>docs/lumen-visual-system-design.md §5/§6.1</code>。</p></article>
+      <article class="handoff-card"><h3>评审与实现边界</h3><p>可切换设计方向、比较模式和导航选中态；焦点环默认关闭（<code>View</code> 菜单 <code>Reset pane layout</code> 默认只给选中底），勾选控制栏“显示焦点环”对比 <code>showFocusRing=true</code> 的内嵌环——开关对照菜单 current/集合行；Splitter 分隔条为框架物化 chrome，键盘焦点指示恒开启不受开关影响。标题栏空白双击演示最大化态，菜单栏点击/hover 切换、右键内容区唤起 ContextMenu、分隔条可拖动。菜单与分栏规格以 <code>docs/lumen-menu-controls-design.md</code>、<code>docs/lumen-splitter-design.md</code> 为准；Spin/ToolBar/StatusBar 样本（Grid 开关驱动状态栏 busy 弧、窄宽度尾部折叠进溢出面板、Spin 到界淡化顶住）以 <code>docs/lumen-spin-design.md</code>、<code>docs/lumen-toolbar-design.md</code>、<code>docs/lumen-statusbar-design.md</code> 为准；标题栏规格见 <code>docs/lumen-titlebar-design.md</code>（平台 hit-test 契约与窗口操作）；焦点环规则见 <code>docs/lumen-visual-system-design.md §5/§6.1</code>。</p></article>
     </section>
 
     <footer class="design-footer"><span><strong>Design output</strong> · <code>design/gallery.html</code></span><span>Four directions · one comparison surface</span></footer>
@@ -491,6 +559,7 @@
             <button type="button" data-route="Lists"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1"/></svg></span><span>Lists</span></button>
             <button type="button" data-route="Collections"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v4M6 21v-2a2 2 0 0 1 2-2h8a2 2 0 0 0 2-2v-2M6 13a2 2 0 0 0 0-4 2 2 0 0 0 0 4ZM18 13a2 2 0 0 0 0-4 2 2 0 0 0 0 4Z"/><path d="M6 13v6M18 13v-2"/></svg></span><span>Collections</span></button>
             <button type="button" data-route="Menus"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span><span>Menus</span></button>
+            <button type="button" data-route="Controls"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h6M16 8h4M4 16h2M12 16h8"/><circle cx="13" cy="8" r="2.4"/><circle cx="9" cy="16" r="2.4"/></svg></span><span>Controls</span></button>
             <button type="button" data-route="Feedback"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 11a8 8 0 0 1-8 8H7l-4 3V5a2 2 0 0 1 2-2h8a8 8 0 0 1 8 8Z M8 9h8M8 13h5"/></svg></span><span>Feedback</span></button>
             <button type="button" data-route="Theme"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none"/></svg></span><span>Theme</span></button>
           </nav>
@@ -520,9 +589,38 @@
                 <div class="component-tile"><div class="tile-title">Collections</div><div class="tile-preview"><div class="collection-preview"><span class="col-row is-branch is-open"><span class="chev"></span>src</span><span class="col-row is-leaf is-selected" style="padding-left: 23px;"><span class="leaf-dot"></span>widget.cpp</span><span class="col-row is-branch" style="padding-left: 15px;"><span class="chev"></span>layout</span></div></div></div>
                 <div class="component-tile"><div class="tile-title">TreeList</div><div class="tile-preview"><div class="collection-preview"><div class="col-table-head"><span class="sortable">Name</span><span>Type</span><span>Size</span></div><span class="col-row is-leaf"><span class="leaf-dot"></span>widget.cpp</span><span class="col-row is-leaf"><span class="leaf-dot"></span>layout.cpp</span></div></div></div>
                 <div class="component-tile"><div class="tile-title">Menus</div><div class="tile-preview"><div class="menu-mini"><span class="mm is-current">Open<kbd>Enter</kbd></span><span class="mm">Copy path<kbd>Ctrl+C</kbd></span><span class="mm is-disabled">Paste<kbd>Ctrl+V</kbd></span></div></div></div>
+                <div class="component-tile"><div class="tile-title">Spin</div><div class="tile-preview"><div class="spin compact" aria-hidden="true"><span class="spin-field"><span class="spin-value">72</span></span><span class="spin-cluster"><span class="spin-step"><span class="chev"></span></span><span class="spin-step"><span class="chev"></span></span></span></div></div></div>
+                <div class="component-tile"><div class="tile-title">ToolBar</div><div class="tile-preview"><div class="toolbar compact" aria-hidden="true"><span class="tb-item"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span class="tb-item"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="tb-sep"></span><span class="tb-item is-checked"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 12h16M12 4v16"/></svg></span></div></div></div>
+                <div class="component-tile"><div class="tile-title">StatusBar</div><div class="tile-preview"><div class="statusbar compact" aria-hidden="true"><span class="sb-busy"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="42.4 56.5"/></svg></span><span class="sb-message">Indexing…</span><span class="sb-flex"></span><span class="sb-grip"></span></div></div></div>
                 <div class="component-tile"><div class="tile-title">Feedback</div><div class="tile-preview"><div class="feedback-preview"><div class="feedback-row"><span>Progress</span><strong>68%</strong></div><div class="progress-track"></div></div></div></div>
               </div></section>
-              <section class="panel code-panel"><div class="panel-head"><span class="panel-title">C++ DSL snapshot</span><span class="panel-meta">read-only</span></div><div class="code-lines"><div class="code-line"><span class="line-no">01</span><span><span class="code-key">auto</span> gallery = <span class="code-string">makeColumn</span>({</span></div><div class="code-line"><span class="line-no">02</span><span>&nbsp;&nbsp;<span class="code-string">titleBar</span>({menus({file, view, help}), minMaxClose}),</span></div><div class="code-line"><span class="line-no">03</span><span>&nbsp;&nbsp;<span class="code-string">splitter</span>(sidebar, mainPane),</span></div><div class="code-line"><span class="line-no">04</span><span>&nbsp;&nbsp;<span class="code-string">button</span>(<span class="code-comment">"Filled"</span>, variant::filled),</span></div><div class="code-line"><span class="line-no">05</span><span>&nbsp;&nbsp;<span class="code-string">textField</span>(<span class="code-comment">"username"</span>),</span></div><div class="code-line"><span class="line-no">06</span><span>&nbsp;&nbsp;<span class="code-string">virtualList</span>(<span class="code-comment">1000</span>),</span></div><div class="code-line"><span class="line-no">07</span><span>&nbsp;&nbsp;<span class="code-string">tree</span>(fileTree, <span class="code-comment">Single</span>),</span></div><div class="code-line"><span class="line-no">08</span><span>&nbsp;&nbsp;<span class="code-string">treeList</span>(deps, columns),</span></div><div class="code-line"><span class="line-no">09</span><span>});</span></div></div></section>
+              <section class="panel controls-panel"><div class="panel-head"><span class="panel-title">Controls — live samples</span><span class="panel-meta">Spin · ToolBar · StatusBar</span></div>
+                <div class="ctl-block">
+                  <p class="ctl-title">Spin — bounded numeric stepping</p>
+                  <div class="ctl-row"><span class="ctl-label">Opacity</span><div class="spin" role="spinbutton" tabindex="0" aria-label="Opacity" aria-valuemin="0" aria-valuemax="100" aria-valuenow="72" data-min="0" data-max="100" data-step="1" data-decimals="0" data-value="72"><span class="spin-field"><span class="spin-value">72</span></span><span class="spin-cluster"><button class="spin-step" type="button" data-dir="up" tabindex="-1" aria-label="Increase opacity"><span class="chev"></span></button><button class="spin-step" type="button" data-dir="down" tabindex="-1" aria-label="Decrease opacity"><span class="chev"></span></button></span></div></div>
+                  <div class="ctl-row"><span class="ctl-label">Font size</span><div class="spin" role="spinbutton" tabindex="0" aria-label="Font size" aria-valuemin="12" aria-valuemax="24" aria-valuenow="13.0" data-min="12" data-max="24" data-step="0.5" data-decimals="1" data-value="13"><span class="spin-field"><span class="spin-value">13.0</span></span><span class="spin-cluster"><button class="spin-step" type="button" data-dir="up" tabindex="-1" aria-label="Increase font size"><span class="chev"></span></button><button class="spin-step" type="button" data-dir="down" tabindex="-1" aria-label="Decrease font size"><span class="chev"></span></button></span></div></div>
+                  <p class="ctl-hint">Hold ▲/▼ for auto-repeat (500 ms delay, 60 ms step) · type + Enter commits · Esc reverts · Up/Down/PgUp/PgDn/Home/End · wheel.</p>
+                </div>
+                <div class="ctl-block">
+                  <p class="ctl-title">ToolBar — commands, toggles, overflow</p>
+                  <div class="toolbar live" role="toolbar" aria-label="Sample commands">
+                    <button class="tb-item" type="button" data-cmd="new" data-folds title="New · Ctrl+N" aria-label="New"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+                    <button class="tb-item" type="button" data-cmd="open" data-folds title="Open" aria-label="Open"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+                    <span class="tb-sep"></span>
+                    <button class="tb-item is-disabled" type="button" disabled title="Undo" aria-label="Undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+                    <button class="tb-item is-toggle" type="button" data-cmd="grid" aria-pressed="false" title="Grid" aria-label="Grid"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 12h16M12 4v16"/></svg></button>
+                    <span class="tb-overflow-anchor"><button class="tb-overflow" type="button" aria-haspopup="true" aria-expanded="false" aria-label="More commands"><span class="chev"></span></button><div class="menu-panel tb-overflow-panel" hidden><button class="mi" type="button" data-cmd="new"><span class="mslot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span class="mlabel">New</span><span class="msc">Ctrl+N</span></button><button class="mi" type="button" data-cmd="open"><span class="mslot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="mlabel">Open</span></button></div></span>
+                  </div>
+                  <p class="ctl-hint">Last command: <span class="tb-last">—</span></p>
+                  <p class="ctl-hint">Tab enters the bar, Left/Right roam, Enter activates; toggles hold a persistent surface; narrowing the window folds the tail into the chevron panel.</p>
+                </div>
+                <div class="ctl-block">
+                  <p class="ctl-title">StatusBar — messages, progress, busy</p>
+                  <div class="statusbar live"><span class="sb-busy" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="42.4 56.5"/></svg></span><span class="sb-message">Ready</span><span class="sb-flex"></span><span class="sb-progress" role="img" aria-label="Indexing · 68%"></span><span class="sb-sep"></span><span>Ln 1, Col 1</span><span class="sb-grip" aria-hidden="true"></span></div>
+                  <p class="ctl-hint">The “Grid” toggle above drives the status bar busy arc; use the Inputs page message actions for transient status text.</p>
+                </div>
+              </section>
+              <section class="panel code-panel"><div class="panel-head"><span class="panel-title">C++ DSL snapshot</span><span class="panel-meta">read-only</span></div><div class="code-lines"><div class="code-line"><span class="line-no">01</span><span><span class="code-key">auto</span> gallery = <span class="code-string">makeColumn</span>({</span></div><div class="code-line"><span class="line-no">02</span><span>&nbsp;&nbsp;<span class="code-string">titleBar</span>({menus({file, view, help}), minMaxClose}),</span></div><div class="code-line"><span class="line-no">03</span><span>&nbsp;&nbsp;<span class="code-string">splitter</span>(sidebar, mainPane),</span></div><div class="code-line"><span class="line-no">04</span><span>&nbsp;&nbsp;<span class="code-string">toolBar</span>({new, open, undo, grid}),</span></div><div class="code-line"><span class="line-no">05</span><span>&nbsp;&nbsp;<span class="code-string">button</span>(<span class="code-comment">"Filled"</span>, variant::filled),</span></div><div class="code-line"><span class="line-no">06</span><span>&nbsp;&nbsp;<span class="code-string">textField</span>(<span class="code-comment">"username"</span>),</span></div><div class="code-line"><span class="line-no">07</span><span>&nbsp;&nbsp;<span class="code-string">spin</span>(<span class="code-comment">"opacity"</span>, 0, 100),</span></div><div class="code-line"><span class="line-no">08</span><span>&nbsp;&nbsp;<span class="code-string">statusBar</span>({progress, cursor}),</span></div><div class="code-line"><span class="line-no">09</span><span>&nbsp;&nbsp;<span class="code-string">virtualList</span>(<span class="code-comment">1000</span>),</span></div><div class="code-line"><span class="line-no">10</span><span>&nbsp;&nbsp;<span class="code-string">tree</span>(fileTree, <span class="code-comment">Single</span>),</span></div><div class="code-line"><span class="line-no">11</span><span>&nbsp;&nbsp;<span class="code-string">treeList</span>(deps, columns),</span></div><div class="code-line"><span class="line-no">12</span><span>});</span></div></div></section>
             </div>
             <div>
               <section class="panel token-panel"><div class="panel-head"><span class="panel-title">Resolved tokens</span><span class="panel-meta">Current palette</span></div><div class="token-row"><span class="token-swatch" style="--swatch:var(--app-bg)"></span><span class="token-name">pageBackground</span><span class="token-value"></span></div><div class="token-row"><span class="token-swatch" style="--swatch:var(--app-accent)"></span><span class="token-name">accent</span><span class="token-value"></span></div><div class="token-row"><span class="token-swatch" style="--swatch:var(--app-positive)"></span><span class="token-name">status.success</span><span class="token-value"></span></div><div class="token-row"><span class="token-swatch" style="--swatch:var(--app-line-strong)"></span><span class="token-name">border.strong</span><span class="token-value"></span></div></section>

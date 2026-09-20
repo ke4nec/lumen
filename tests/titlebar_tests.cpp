@@ -123,11 +123,17 @@ TEST_CASE("titlebar_controls_flush_full_height_and_rounded_window",
     const Offset closeAbs = absoluteOffset(app.root(), "window-close");
     CHECK(closeAbs.x + close->size.width ==
           Catch::Approx(1280.0F).margin(0.01F));
-    // 设计稿 caption-button 无圆角（design/gallery.html titlebar）：
-    // hover 高亮与 close 实心红均为通高直角矩形，按钮默认
-    // controlRadius 对 chrome 件归零。
+    // 设计稿 caption-button 自身无圆角（design/gallery.html titlebar）：
+    // hover 高亮与 close 实心红都是通高矩形，按钮默认 controlRadius 对
+    // chrome 件归零——角部钮（close）除外：topRight 跟随窗口顶角圆角
+    //（HTML 稿以 overflow:hidden 裁剪表达；框架无圆角裁剪，直角填充会
+    // 盖过标题栏 surface 圆角、破坏透明窗口角）。
     CHECK(min->commonStyle().radius == CornerRadius::zero());
-    CHECK(close->commonStyle().radius == CornerRadius::zero());
+    CHECK(close->commonStyle().radius.topLeft == 0.0F);
+    CHECK(close->commonStyle().radius.topRight ==
+          Catch::Approx(16.0F).margin(0.01F));
+    CHECK(close->commonStyle().radius.bottomLeft == 0.0F);
+    CHECK(close->commonStyle().radius.bottomRight == 0.0F);
     // 图标盒 14px（design/gallery.html caption-button svg 14px），
     // 三钮一致；描边随盒宽折算 ≈1.6。
     {
@@ -160,15 +166,19 @@ TEST_CASE("titlebar_controls_flush_full_height_and_rounded_window",
           Catch::Approx(16.0F).margin(0.01F));
     CHECK(bar->commonStyle().radius.bottomLeft == 0.0F);
 
-    // 最大化：圆角归零（.is-maximized）。
+    // 最大化：圆角归零（.is-maximized）——窗口四角与角部 caption 钮
+    // 的填充跟随角一并归零（直角窗口无角可破坏）。
     app.noteWindowMaximized(true);
     (void)app.renderFrame();
     root = findNodeByKey(app.root(), "root");
     bar = findNodeByKey(app.root(), "gallery-titlebar");
+    const RenderNode* closeMax = findNodeByKey(app.root(), "window-close");
     REQUIRE(root != nullptr);
     REQUIRE(bar != nullptr);
+    REQUIRE(closeMax != nullptr);
     CHECK(root->commonStyle().radius.topLeft == 0.0F);
     CHECK(bar->commonStyle().radius.topLeft == 0.0F);
+    CHECK(closeMax->commonStyle().radius.topRight == 0.0F);
 }
 
 TEST_CASE("titlebar_drag_points_exclude_interactive_controls",
@@ -518,4 +528,34 @@ TEST_CASE("titlebar_run_app_skips_drag_region_without_custom_title_bar",
     options.maxFrames = 1;
     CHECK(app::runApp(app.shell(), host, options) == 0);
     CHECK(host.dragRegions.empty());
+}
+
+// caption 角部钮 hover 填充跟随窗口圆角（像素回归）：close hover 实心红
+// 只出现在圆角内——右上角点保持透明窗口角外（=清屏色，与对称的左上角
+// 一致）；弧下主体是 windowClose 红。修复前直角红填充盖到角点，圆角被
+// 破坏（gallery 窗口 16px 自绘圆角无 overflow 裁剪）。
+TEST_CASE("titlebar_caption_hover_fill_follows_window_corner_pixels",
+          "[titlebar][gallery]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+    app.shell().setVisualPreviewState(
+        "window-close", style::WidgetState{.hovered = true});
+    (void)app.renderFrame(/*forceFullRepaint=*/true);
+
+    const auto& pixels = app.pixels();
+    const auto at = [&pixels](int x, int y) {
+        const std::size_t offset =
+            (static_cast<std::size_t>(y) * pixels.width + x) * 4;
+        return Color::fromRGBA(pixels.rgba[offset], pixels.rgba[offset + 1],
+                               pixels.rgba[offset + 2], pixels.rgba[offset + 3]);
+    };
+    // 右上角点（16px 弧外，距弧心 ≈21px）：清屏色，与左上对称角点一致
+    //——不是 windowClose 红（修复前在此处为红，圆角被盖）。
+    CHECK(at(static_cast<int>(pixels.width) - 1, 1) == at(1, 1));
+    CHECK(at(static_cast<int>(pixels.width) - 1, 1) !=
+          app.shell().theme().button.windowClose.background);
+    // 弧下主体（y=40，圆角区之外、钮内）：实心红通高填充。
+    CHECK(at(static_cast<int>(pixels.width) - 10, 40) ==
+          app.shell().theme().button.windowClose.background);
 }
