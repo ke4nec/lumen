@@ -17,6 +17,8 @@
 #include "lumen/layout/layout.h"
 #include "lumen/render/painter.h"
 #include "lumen/render/renderer.h"
+#include "lumen/render/cpu_renderer.h"
+#include "lumen/render/resource_manager.h"
 #include "lumen/render/skia_gpu_renderer.h"
 #include "lumen/style/theme.h"
 #include "lumen/widgets/list.h"
@@ -168,6 +170,69 @@ TEST_CASE("gpu_alpha_modes_survive_upload_replacement_and_unload", "[gpu][alpha]
         CHECK(pixels[offset + 1] == 0);
         CHECK(pixels[offset + 2] == 0);
     }
+}
+
+TEST_CASE("gpu_alpha_resources_reupload_after_rebuild_and_cpu_fallback", "[gpu][alpha]") {
+    using namespace lumen;
+    using namespace lumen::render;
+    std::string diagnostics;
+    if (!probeSkiaGpuAvailable(&diagnostics)) {
+        SKIP("GPU unavailable: " << diagnostics);
+    }
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow("lumen-alpha-rebuild", 48, 16,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN), SDL_DestroyWindow);
+    REQUIRE(window);
+    ResourceManager resources;
+    std::vector<ResourceHandle> handles;
+    for (auto mode : {AlphaMode::Straight, AlphaMode::Premultiplied, AlphaMode::Opaque}) {
+        const std::uint8_t alpha = mode == AlphaMode::Opaque ? 255 : 128;
+        handles.push_back(resources.registerImage({1, 1,
+            {mode == AlphaMode::Premultiplied ? alpha : std::uint8_t{255}, 0, 0, alpha}, mode}));
+    }
+    const auto replay = [&] {
+        RenderCommandList commands;
+        commands.drawRect(core::Rect::fromXYWH(0, 0, 48, 16), {0, 0, 0, 255});
+        resources.appendUploads(commands);
+        for (std::size_t i = 0; i < handles.size(); ++i) {
+            commands.drawImage(resources.imageId(handles[i]), core::Rect::fromXYWH(float(i * 16), 0, 16, 16));
+        }
+        return commands;
+    };
+    FrameInfo info;
+    info.viewport = {48, 16};
+    for (int rebuild = 0; rebuild < 2; ++rebuild) {
+        SkiaGpuRendererDesc desc;
+        desc.sdlWindow = window.get();
+        desc.widthPixels = 48;
+        desc.heightPixels = 16;
+        desc.allowSwap = false;
+        auto gpu = createSkiaGpuRenderer(desc, &diagnostics);
+        REQUIRE(gpu);
+        gpu->submit(replay(), info);
+        CHECK(gpu->stats().uploads == 3);
+        REQUIRE(skiaGpuRendererAlive(*gpu));
+        std::vector<std::uint8_t> pixels(48 * 16 * 4);
+        glReadBuffer(GL_BACK);
+        glReadPixels(0, 0, 48, 16, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        REQUIRE(glGetError() == GL_NO_ERROR);
+        for (int i = 0; i < 3; ++i) {
+            CHECK(pixels[(8 * 48 + 8 + i * 16) * 4] == (i == 2 ? 255 : 128));
+        }
+        gpu.reset(); // Real context teardown, then the existing recovery notification.
+        resources.handleDeviceRebuilt();
+    }
+    CpuRenderer fallback(1, {0, 0, 0, 255});
+    fallback.submit(replay(), info);
+    CHECK(fallback.stats().uploads == 3);
+    CHECK(fallback.pixels().alphaMode == AlphaMode::Opaque);
+    for (int i = 0; i < 3; ++i) {
+        CHECK(fallback.pixels().rgba[(8 * 48 + 8 + i * 16) * 4] == (i == 2 ? 255 : 128));
+    }
+    RenderCommandList idle;
+    resources.appendUploads(idle);
+    CHECK(idle.empty());
 }
 
 TEST_CASE("gpu_probe_reports_availability_with_diagnostics", "[gpu]") {

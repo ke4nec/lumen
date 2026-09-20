@@ -1,6 +1,6 @@
 # Lumen 预乘 alpha 渲染改造计划与任务清单
 
-> 状态：P0/P1/P2 已完成；P3 待实施。before 基线已冻结，CPU 已迁移预乘累积，性能收益尚待 P4 验证。
+> 状态：P0–P3 已完成；P4 待验收。before 基线已冻结，CPU 已迁移预乘累积，性能收益尚待 P4 验证。
 > 日期：2026-09-20。源码核对基点：`8779ccd` 及编写时工作树；执行前重新核对相关实现和未提交改动。
 > 目标：应用颜色保持直通 RGBA，渲染器内部采用预乘 RGBA 累积，帧缓冲携带明确的 alpha 格式，透明窗口按格式直接呈现。
 > 范围：Windows、Linux、macOS 桌面；CPU 光栅、Skia 光栅、Skia Ganesh GPU 的共用像素边界。按既有能力优化交付，不新增里程碑编号。
@@ -186,12 +186,12 @@ Aout = As + Ad * (1 - As)
 
 ### P3：联调 Skia、桌面窗口与导出
 
-- [ ] P3.1 CPU 与 Skia 光栅使用相同格式契约，跨后端图片传递及同命令回放正确。
-- [ ] P3.2 Skia GPU 仅调整资源格式边界和必要测试，保留 Ganesh/GL 管线及资源生命周期；不引入新的 GPU 每帧读回。
-- [ ] P3.3 三桌面平台核对透明窗口的实际宿主支持；软件 surface、SDL texture、resize/最小化恢复及兼容输入分别验证。
-- [ ] P3.4 GPU 初始化失败/运行时失败后回退，模式随资源重上传正确恢复；状态、文字与呈现错误处理保持已有契约。
-- [ ] P3.5 Gallery 默认 raw 导出仍为直通；PNG 转换与元数据一致，低 alpha 精度限制有测试说明。
-- [ ] P3.6 直接路径不保留呈现转换副本，兼容路径正确复用/释放临时存储，验证不透明帧快速路径。
+- [x] P3.1 CPU 与 Skia 光栅使用相同格式契约，跨后端图片传递及同命令回放正确。
+- [x] P3.2 Skia GPU 仅调整资源格式边界和必要测试，保留 Ganesh/GL 管线及资源生命周期；不引入新的 GPU 每帧读回。
+- [x] P3.3 三桌面平台逐路径源码核对；Windows 软件 surface、SDL texture、resize/最小化恢复及兼容输入实测。Linux/macOS 与实际合成器视觉仍待平台验证，见 P3 记录。
+- [x] P3.4 GPU 初始化失败/运行时失败后回退，模式随资源重上传正确恢复；状态、文字与呈现错误处理保持已有契约。
+- [x] P3.5 Gallery 默认 raw 导出仍为直通；PNG 转换与元数据一致，低 alpha 精度限制有测试说明。
+- [x] P3.6 直接路径不保留呈现转换副本，兼容路径正确复用/释放临时存储，验证不透明帧快速路径。
 
 **出口**：CPU、Skia 光栅和 GPU 配置均可构建并通过相关完整测试；有实际窗口和导出证据。未运行的平台或硬件路径标为待验证，不能视为三平台完成。
 
@@ -375,6 +375,10 @@ p50/p95、复制/转换字节、临时内存结果：
 ### P2 / 2026-09-20
 
 基点 `ea8a0c3`；CPU 帧、清屏、source-over 与图片缓存已统一为预乘/不透明格式，删除 P1 临时直通桥接。review 修复配置失效与已发布帧状态混用、damage 同步的模式继承。完整证据见 [P2 记录](perf-baselines/premultiplied-alpha-2026-09-20/P2.md)。CPU Debug / Release 各 754/754，Skia raster 765/765，GPU 775/775，无跳过。图片两场景逐字节符合 P0 独立参考，42 张 Gallery 的 alpha 精确相等、RGB 无超差；正常 CPU 窗口四条路径转换/副本/scratch 全部为零。P2 出口满足，P3–P5 继续；尚无正式性能收益结论。
+
+### P3 / 2026-09-20
+
+基点 `d4993ef`；Skia Preserve 的半透明 clear 重复叠加先复现再修复，CPU/Skia 帧作为图片及同命令回放等价。GPU 三种模式资源经历真实上下文销毁重建与 CPU 重上传后颜色正确，无生产每帧读回。CPU Debug / Release 各 755/755，Skia raster 768/768，GPU 779/779，无跳过；日志 `build/ctest-alpha-p3.log`、`build-alpha-after/ctest-p3.log`、`build-alpha-skia-after/ctest-p3.log`、`build-gpu/ctest-alpha-p3.log`。Windows 实窗生命周期 584 断言通过，Gallery 两个导出路径保持 straight。完整证据与三桌面宿主限制见 [P3 记录](perf-baselines/premultiplied-alpha-2026-09-20/P3.md)。阶段出口满足；Windows 软件透明不支持、实际合成器视觉、Linux/macOS 及 Linux 运行时故障注入明确保留待验。
 
 最终关闭清单：
 

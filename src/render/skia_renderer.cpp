@@ -193,12 +193,16 @@ void SkiaRenderer::beginFrame(core::Size viewport, FrameMode mode,
                              impl_->lastFrame->width() == width &&
                              impl_->lastFrame->height() == height;
     const bool scoped = damage.size.width > 0.0F && damage.size.height > 0.0F;
+    // Preserved pixels replace the destination. Source-over would composite
+    // their alpha over the new translucent clear a second time (alpha plan P3).
+    SkPaint copyPaint;
+    copyPaint.setBlendMode(SkBlendMode::kSrc);
     if (canPreserve && !scoped) {
         // Pure Preserve: replay the previous frame; the caller scopes the
         // repaint with clipRect.
         impl_->canvas->drawImage(impl_->lastFrame, 0.0F, 0.0F,
                                  SkSamplingOptions(SkFilterMode::kNearest,
-                                                   SkMipmapMode::kNone));
+                                                   SkMipmapMode::kNone), &copyPaint);
         return;
     }
     impl_->canvas->clear(toSkColor(impl_->clearColor));
@@ -214,7 +218,7 @@ void SkiaRenderer::beginFrame(core::Size viewport, FrameMode mode,
         impl_->canvas->clipRect(skDamage, SkClipOp::kDifference, false);
         impl_->canvas->drawImage(impl_->lastFrame, 0.0F, 0.0F,
                                  SkSamplingOptions(SkFilterMode::kNearest,
-                                                   SkMipmapMode::kNone));
+                                                   SkMipmapMode::kNone), &copyPaint);
         impl_->canvas->restore();
     }
 }

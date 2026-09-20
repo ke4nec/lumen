@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdlib>
+#include <cstdio>
 #include <SDL3/SDL.h>
 
 #include "lumen/platform/sdl3_host.h"
@@ -148,6 +149,95 @@ TEST_CASE("platform_alpha_matrix_preserves_rgb_and_releases_compatibility_scratc
             PixelBuffer unknown{1, 1, {0, 0, 0, 0}, static_cast<AlphaMode>(255)};
             CHECK(window->present(unknown) == lumen::platform::PresentResult::Rejected);
             CHECK(window->presentStats().alphaConversions == 0);
+        }
+    }
+}
+
+// P3: opt-in native execution uses this same lifecycle, without treating a
+// successful present as evidence that the compositor preserves per-pixel alpha.
+TEST_CASE("platform_alpha_resize_restore_and_rejection_recover", "[platform][alpha]") {
+#ifdef _WIN32
+    char* nativeFlag = nullptr;
+    std::size_t nativeFlagLength = 0;
+    _dupenv_s(&nativeFlag, &nativeFlagLength, "LUMEN_ALPHA_REAL_WINDOW");
+    const bool nativeRun = nativeFlag != nullptr;
+    std::free(nativeFlag);
+#else
+    const bool nativeRun = std::getenv("LUMEN_ALPHA_REAL_WINDOW") != nullptr;
+#endif
+    if (!nativeRun) {
+#ifdef _WIN32
+        _putenv("SDL_VIDEODRIVER=dummy");
+#else
+        ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    }
+    using namespace lumen;
+    using render::AlphaMode;
+    for (bool software : {false, true}) {
+        for (bool transparent : {false, true}) {
+            CAPTURE(software, transparent);
+            Sdl3WindowDesc desc;
+            desc.width = 80;
+            desc.height = 60;
+            desc.transparent = transparent;
+            desc.softwarePresentation = software;
+            auto window = platform::createSdl3Window(desc);
+            REQUIRE(window);
+            window->setPresentDiagnosticsEnabled(true);
+            auto* native = static_cast<SDL_Window*>(window->nativeSurface().nativeWindow);
+            if (nativeRun) {
+                CHECK(std::string(SDL_GetCurrentVideoDriver()) != "dummy");
+                std::printf("alpha-window driver=%s presenter=%s transparent=%d\n",
+                    SDL_GetCurrentVideoDriver(), software ? "native-surface" : SDL_GetRendererName(SDL_GetRenderer(native)), transparent);
+            }
+            for (int width : {80, 96, 64}) {
+                REQUIRE(SDL_SetWindowSize(native, width, 60));
+                REQUIRE(SDL_SyncWindow(native));
+                for (auto mode : {AlphaMode::Straight, AlphaMode::Straight,
+                                  AlphaMode::Premultiplied, AlphaMode::Opaque}) {
+                    const std::uint8_t a = mode == AlphaMode::Opaque ? 255 : 128;
+                    PixelBuffer pixels{width, 60, {}, mode};
+                    for (int i = 0; i < width * 60; ++i) {
+                        pixels.rgba.insert(pixels.rgba.end(), {
+                            mode == AlphaMode::Premultiplied ? a : std::uint8_t{255}, 0, 0, a});
+                    }
+                    REQUIRE(window->present(pixels) == platform::PresentResult::Ok);
+                    const auto stats = window->presentStats();
+                    const bool convert = transparent ? mode == AlphaMode::Straight : mode == AlphaMode::Premultiplied;
+                    CHECK(stats.alphaConversions == (convert ? 1 : 0));
+                    CHECK(stats.copiedBytes == (convert ? pixels.rgba.size() : 0));
+                    CHECK((stats.scratchCapacityBytes == 0) == !convert);
+                    CHECK(window->present({}) == platform::PresentResult::Rejected);
+                    CHECK(window->presentStats().alphaConversions == 0);
+                    REQUIRE(window->present(pixels) == platform::PresentResult::Ok);
+                    if (software) {
+                        auto* surface = SDL_GetWindowSurface(native);
+                        REQUIRE(surface);
+                        Uint8 r{}, g{}, b{}, alpha{};
+                        REQUIRE(SDL_ReadSurfacePixel(surface, surface->w - 1, surface->h - 1, &r, &g, &b, &alpha));
+                        CHECK(r == (transparent ? a : 255));
+                        CHECK(g == 0);
+                        CHECK(b == 0);
+                        if (nativeRun && width == 80 && mode == AlphaMode::Premultiplied) {
+                            std::printf("alpha-window surface=%s RGBA=%u,%u,%u,%u\n",
+                                SDL_GetPixelFormatName(surface->format), r, g, b, alpha);
+                        }
+                    }
+                }
+                // Window managers may not implement minimize for dummy/headless sessions.
+                if (nativeRun) {
+                    REQUIRE(SDL_MinimizeWindow(native));
+                    REQUIRE(SDL_SyncWindow(native));
+                    CHECK(window->isMinimized());
+                    REQUIRE(SDL_RestoreWindow(native));
+                    REQUIRE(SDL_SyncWindow(native));
+                    CHECK_FALSE(window->isMinimized());
+                    PixelBuffer opaque{1, 1, {20, 40, 60, 255}, AlphaMode::Opaque};
+                    REQUIRE(window->present(opaque) == platform::PresentResult::Ok);
+                    CHECK(window->presentStats().scratchCapacityBytes == 0);
+                }
+            }
         }
     }
 }

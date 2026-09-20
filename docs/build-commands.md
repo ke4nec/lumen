@@ -81,6 +81,14 @@ ctest --test-dir build-mobile --output-on-failure -C Debug
 
 ## 4. 预乘 alpha 迁移的固定测量入口（P0，2026-09-20）
 
+P3 窗口生命周期回归默认随 CTest 在 dummy 驱动运行；真实桌面独立运行：
+Windows PowerShell 设置 `$env:LUMEN_ALPHA_REAL_WINDOW='1'` 后执行
+`./build-alpha-after/tests/Release/lumen-tests.exe platform_alpha_resize_restore_and_rejection_recover`，
+随后 `Remove-Item Env:LUMEN_ALPHA_REAL_WINDOW`。Linux/macOS 使用
+`LUMEN_ALPHA_REAL_WINDOW=1 ./build/tests/lumen-tests platform_alpha_resize_restore_and_rejection_recover`。
+不要设置 `SDL_VIDEODRIVER=dummy`；测试拒绝把 dummy 当作真实窗口。该测试验证呈现、
+resize、最小化恢复及模式分派；宿主透明合成仍须按 [P3](perf-baselines/premultiplied-alpha-2026-09-20/P3.md) 的限制单独验收。
+
 格式边界（P2）：`PixelBuffer.alphaMode` 默认 `Straight`；读帧应检查实际模式，`Opaque` 是全帧 A=255 的内容保证。公共转换返回 `bool`，失败不改变目标；内容校验用于接纳边界，`PixelValidation::Structure` 仅用于生产者已保证内容的内部帧。CPU 累积/图片缓存与 Skia 读回均为 `Premultiplied` / `Opaque`；读取 CPU 帧不生成直通副本。
 
 Gallery 的 `--dump-frame`（headless 与固定 sample）仍输出直通 RGBA，附带 `alpha_mode=straight`、width/height；PNG 转换可按原有 RGBA 方式读取。以下诊断 benchmark/gallery 工具保存的是实际帧模式，须先按元数据归一化。命令记录现在写 v7（像素字段依次为 width/height/alphaMode/byteCount，均 u32 小端），读 v6/v7；v6 图片默认直通，旧程序拒绝 v7。公开结构布局已变化，使用方须重编译。

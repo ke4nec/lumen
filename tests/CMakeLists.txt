@@ -77,6 +77,7 @@ if(LUMEN_BUILD_MOBILE_CORE)
 endif()
 
 if(LUMEN_ENABLE_SKIA)
+    list(APPEND LUMEN_TEST_SOURCES alpha_skia_tests.cpp)
     list(APPEND LUMEN_TEST_SOURCES skia_smoke_tests.cpp)
 endif()
 

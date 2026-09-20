@@ -220,7 +220,8 @@ class Sdl3Window final : public PlatformWindow {
             return PresentResult::Rejected;
         }
         // Copy pixels exactly in both window modes; SDL's RGBA texture default
-        // is BLEND. Opaque hosts ignore source alpha, transparent hosts retain it.
+        // is BLEND. This preserves supplied alpha in the render target; native
+        // composition still depends on the host (see the platform contract).
         if (!SDL_SetRenderDrawColor(renderer_, 0, 0, 0, transparent_ ? 0 : 255) ||
             !SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE) ||
             !SDL_RenderClear(renderer_) ||

@@ -90,6 +90,8 @@ class PlatformWindow {
     // opaque hosts accept Straight/Opaque directly. Other modes convert once.
     // Only structural validation occurs per frame; callers modifying external
     // buffers must validatePixelBuffer(Content) before publishing them.
+    // Ok means submission succeeded, not that the native surface/compositor
+    // supports per-pixel transparency (e.g. Windows native software is XRGB).
     virtual PresentResult present(const render::PixelBuffer& buffer);
     virtual void setPresentDiagnosticsEnabled(bool /*enabled*/) {}
     [[nodiscard]] virtual PresentStats presentStats() const { return {}; }

@@ -46,6 +46,15 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 逻辑与物理键/指针设备/pointer id/滚轮/取消/关闭请求）、语义树与 action
 分发、`lumen-text` 编辑模型。counter/settings 示例三平台同源。
 
+2026-09-20 预乘 alpha 联调补充：CPU 帧/缓存与 Skia 读回准确声明
+Premultiplied / Opaque；三种图片输入模式可跨后端及设备重上传。
+Windows direct3d11 texture 与原生 software 的 resize/最小化恢复已经实测。
+但 Windows 原生 software 为 XRGB8888，**不支持逐像素透明**；present 成功
+仅代表提交。Windows texture 的合成器视觉、Linux X11/Wayland 和 macOS
+桌面透明验收仍待运行；固定 SDL 在 Wayland/macOS 没有严格 native software
+framebuffer，当前无 GPU 的软件窗口回退仍有限制。证据与逐路径说明见
+[P3 联调记录](perf-baselines/premultiplied-alpha-2026-09-20/P3.md)，不据此提升三平台发布状态。
+
 ## 历史移动实验内容（暂缓，不在当前支持范围）
 
 | 平台 | 当前范围 | 已有代码 | 验证边界 |
