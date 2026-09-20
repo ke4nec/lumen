@@ -76,3 +76,7 @@ CPU 初轮 P3 和正式 Skia P3 的诊断归档仍各自保留，不作为 CPU �
 历史 M0 Linux/GCC 的哈希与本机 P0 已不同；本次只解释本机迁移前后变化，不改写 M0。
 普通 CPU 视觉容差、图片独立参考和未运行平台事项均按 P4 保留；迁移使用方式见
 [调用方说明](../lumen-alpha-migration.md)。
+
+后续整体 review 补上汇总器的 manifest 来源绑定与跨组计时阶段一致性检查；原 P4 的 CPU/Skia
+各 90 份报告全部通过加强后的检查，逐组数据和汇总与归档精确相同，没有重采样或改写基线。
+回归与 Linux headless 补验记录见 [续验记录](premultiplied-alpha-2026-09-20/follow-up.md)。

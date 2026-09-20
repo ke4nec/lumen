@@ -14,18 +14,33 @@ from run_alpha_baseline import valid_drawable
 def compare(directory):
     if any(directory.glob('*.pending')):
         raise ValueError('unfinished benchmark pair; complete it with --resume before comparing')
+    manifests = {label: json.loads((directory/f'{label}-manifest.json').read_text(encoding='utf-8'))
+                 for label in ('before', 'after')}
+    for field in ('platform', 'machine', 'processor', 'backend'):
+        if manifests['before'][field] != manifests['after'][field]:
+            raise ValueError(f'mismatched manifest {field}')
     runs = {}
     for path in directory.glob('*.json'):
         match = re.fullmatch(r'(before|after)-(.+)-(\d+)', path.stem)
         if match:
             label, case, group = match.groups()
-            runs[label, case, int(group)] = json.loads(path.read_text(encoding='utf-8'))
+            run = json.loads(path.read_text(encoding='utf-8'))
+            manifest = manifests[label]
+            if (run['revision'] != manifest['revision'] or
+                    run.get('commit', run['revision']) != manifest['revision'] or
+                    run['backend'] != manifest['backend'] or run['group'] != int(group) or
+                    run['benchmark'] not in manifest['executables']):
+                raise ValueError(f'{path.name}: report does not match its source manifest/group')
+            runs[label, case, int(group)] = run
     cases = sorted({case for _, case, _ in runs})
     groups = sorted({group for _, _, group in runs})
     if len(groups) < 3 or not cases:
         raise ValueError('at least three complete groups are required')
     summary = []
     for case in cases:
+        if any((label, case, group) not in runs
+               for label in ('before', 'after') for group in groups):
+            raise ValueError(f'{case}: incomplete before/after groups')
         pairs = [(runs['before', case, group], runs['after', case, group]) for group in groups]
         reference = pairs[0][0]
         for before, after in pairs:
@@ -37,7 +52,9 @@ def compare(directory):
                           'window_drawable_pixels', 'vsync_requested', 'scope', 'measurement_scope'):
                 if before.get(field) != after.get(field) or before.get(field) != reference.get(field):
                     raise ValueError(f'{case}: mismatched {field}')
-            if before['build_type'] != 'Release' or set(before['phases']) != set(after['phases']):
+            if (before['build_type'] != 'Release' or
+                    set(before['phases']) != set(after['phases']) or
+                    set(before['phases']) != set(reference['phases'])):
                 raise ValueError(f'{case}: mismatched build/phases')
             if before['warmup_frames'] != 30 or before['measured_frames'] != 300:
                 raise ValueError(f'{case}: expected warmup=30 and frames=300')
@@ -60,8 +77,6 @@ def compare(directory):
                            median_paired_delta_percent=median(ratios) if all(r is not None for r in ratios) else None,
                            review_groups=[g for g,r in zip(groups,ratios) if r is None or r > 10])
                 summary.append(row)
-    manifests = {label: json.loads((directory/f'{label}-manifest.json').read_text(encoding='utf-8'))
-                 for label in ('before','after')}
     compact = []
     for (label, case, group), run in sorted(runs.items()):
         compact.append(dict(label=label, case=case, **{k:v for k,v in run.items() if k!='command'}))

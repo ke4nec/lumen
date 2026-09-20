@@ -46,6 +46,15 @@ endif()
 
 target_compile_features(lumen-scene-bench PRIVATE cxx_std_20)
 
+# Report validation runs without drawing or sampling; Python remains optional.
+if(LUMEN_BUILD_TESTS)
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME alpha_baseline_report_integrity
+            COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/alpha_baseline_tests.py)
+    endif()
+endif()
+
 # The benchmark deliberately routes global new/delete through malloc/free so
 # allocation traffic can be counted. GCC's mismatched-new-delete diagnostic
 # does not account for this paired implementation.

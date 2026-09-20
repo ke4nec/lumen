@@ -16,8 +16,12 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
   list(APPEND LUMEN_PLATFORM_SOURCES
       native_services_win.cpp
       native_services_dbus.cpp
-      native_services_mac.mm
       native_services_default.cpp)
+  # A .mm extension makes GCC require cc1objplus before preprocessing its
+  # __APPLE__ guard. Non-Apple desktops must not compile the macOS source.
+  if(APPLE)
+    list(APPEND LUMEN_PLATFORM_SOURCES native_services_mac.mm)
+  endif()
 endif()
 
 add_library(lumen-platform STATIC ${LUMEN_PLATFORM_SOURCES})

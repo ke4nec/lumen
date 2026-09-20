@@ -261,12 +261,12 @@ TEST_CASE("sdl_host_services_degrade_structurally", "[platform][m4]") {
     CHECK(caps.openUrl);
     CHECK(caps.cursorShape);
     CHECK(caps.windowIcon);
-    // M12：通知能力由原生 seam 决定——Windows/Linux(libdbus)/macOS
-    // 为 true，其余平台结构化关闭。真发送不进 ctest（避免每次测试弹
-    // 真实系统通知；视觉验收人工执行），此处只断言能力位与平台一致。
+    // M12：通知能力由原生 seam 决定；dummy 只约束视频，不会关闭
+    // libdbus 或 AppKit。Linux/macOS 的能力取决于构建/原生环境，不能
+    // 因为非 Windows 就断言 false。真发送不进 ctest，避免真实通知。
 #if defined(_WIN32)
     CHECK(caps.notifications);
-#else
+#elif !defined(__linux__) && !defined(__APPLE__)
     CHECK_FALSE(caps.notifications);
 #endif
 

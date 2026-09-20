@@ -63,6 +63,13 @@ alpha 精确一致，普通 RGB 最大差 2；CPU/Skia 各三组正式配对及�
 公开像素结构需要重编译，`pixels()` 返回实际模式；命令写 v7、读 v6/v7，
 Gallery 默认导出保持 straight，见 [迁移说明](lumen-alpha-migration.md)。
 
+同日续验补充 Linux **WSL Ubuntu 24.04 / GCC 13.3 CPU Debug** 构建与 headless/dummy 测试：
+754 项中 753 通过、1 项因无系统字体跳过、0 失败；修复非 Apple 构建误编 macOS `.mm`
+文件及通知能力的旧测试假设。没有 Linux 桌面会话、Skia/GPU 或合成器新证据，
+上述实窗待验项不变。Windows CPU Release 756/756（含一个基准工具 CTest）、
+Skia/GPU Release 779/779，无跳过；详见
+[续验记录](perf-baselines/premultiplied-alpha-2026-09-20/follow-up.md)。
+
 ## 历史移动实验内容（暂缓，不在当前支持范围）
 
 | 平台 | 当前范围 | 已有代码 | 验证边界 |

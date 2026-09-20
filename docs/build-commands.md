@@ -141,6 +141,14 @@ Windows 每 200 ms 额外观察实际客户端尺寸/最小化状态，报告中
 不自动把超限判为噪声，也不替代人工 review。`median_paired_delta_percent` 为组内变化率中位数；
 `median_delta_percent` 是两端绝对耗时中位数之比，二者不可混称。
 
+汇总还核对两份 manifest 的平台/机器/处理器/后端一致，并要求各报告的 revision、
+内嵌 commit（若有）、后端、组号与记录的基准名称匹配来源。每个场景的计时阶段集合在所有组
+必须完全一致，不能将后续组新增的阶段静默丢掉。这里只校验采样记录的一致性，不重新读取
+可能已移动/重建的历史可执行文件，也不把机器字段相同当成主机负载相同的证明。
+独立回归可运行 `python -B benchmarks/alpha_baseline_tests.py -v`；启用 tests/benchmarks 且
+CMake 找到 Python 3 时，完整 CTest 自动包含 `alpha_baseline_report_integrity`。
+Python 未安装时仍可构建 C++ 目标；可用 `-DPython3_EXECUTABLE=<解释器路径>` 指定工具解释器。
+
 P4 另提供只提交像素、不执行渲染的呈现探针，用于控制宿主提交节奏：
 
 ```sh
