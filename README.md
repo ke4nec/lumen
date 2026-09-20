@@ -17,6 +17,8 @@ provider 待启动。
 统一构建/验证命令表见
 [`docs/build-commands.md`](docs/build-commands.md)，性能基线见
 [`docs/perf-baselines/README.md`](docs/perf-baselines/README.md)。
+预乘 alpha 渲染改造的待实施任务与验收标准见
+[`docs/lumen-premultiplied-alpha-rendering-plan.md`](docs/lumen-premultiplied-alpha-rendering-plan.md)。
 
 当前进度：M0 基线冻结完成（统一命令表、工具链/依赖基线、四态定义、
 `docs/perf-baselines/v0.2-cpu-scene.json` CPU 归档基线）；
