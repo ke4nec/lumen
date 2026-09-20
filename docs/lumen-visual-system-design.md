@@ -587,6 +587,12 @@ damage 经 `sameNode` 的 `clipRounded` 字段感知开关变化。透明呈现�
 §16 和 `lumen-premultiplied-alpha-rendering-plan.md` §3.5；宿主逐像素透明
 支持须独立验证，不能将软件 surface 更新成功等同于合成器保留 alpha。
 
+预乘迁移未改变 Theme 的直通颜色、圆角/阴影几何或 coverage 规则。CPU 内部帧和图片缓存
+现为预乘/不透明表示，Gallery 应用默认导出仍为直通；接口用法见
+[alpha 迁移说明](lumen-alpha-migration.md)。两主题/三 DPI 的 Gallery 与系统字体对照、
+逐帧哈希解释和冻结容差见 [P4 验收](perf-baselines/premultiplied-alpha-2026-09-20/P4.md)，
+不能把表示迁移作为修改视觉 token 或刷新未解释 golden 的理由。
+
 - 一次性重构允许删除旧扁平 Theme 字段和 themed helper；同一提交内必须更新示例、
   测试、DSL 和文档，保持构建可用。
 - `ResolvedStyle` 必须是值类型，不能保存 Theme、SDL、Skia 或平台对象指针。

@@ -31,7 +31,7 @@ class CpuRenderer final : public Renderer {
     void setDeviceScale(float scale) override;
 
     // 透明窗口（WindowDesc.transparent）：清屏色改为全透明（圆角外的
-    // 像素不被不透明底填充；呈现路径按像素 alpha 交给合成器）。不透明
+    // 像素不被不透明底填充；实际透明合成取决于宿主能力）。不透明
     // 窗口保持默认深底（无合成器依赖）。
     void setClearColor(core::Color clear);
 

@@ -134,7 +134,7 @@ SDL_HitTest(point in window pixels):
 - 标题栏单行 **总高 48px（border-box：内容行 47 + 1px 底分隔线）**（替代原 56px 顶栏 + 40px 菜单栏两行）：品牌标 28×28 + 标题 14px/650 + 菜单栏（**栏项 Small 档 32px**，含下划线占位整栏 ~38px——Medium 40px 项会撑到 46px 挤满 caption）+ 弹性拖拽区（右侧状态胶囊）+ 窗口控制。
 - 窗口控制按钮 **44px 宽、通高（48px 行高）、右缘贴合内容区（1px 外边框内侧）、直角无圆角**（Windows 惯例；`align-items: stretch`、内容右缘无 padding；hover 高亮与 close 实心红均为通高矩形，止于边框内侧——按钮默认 `controlRadius` 对 chrome 件以 `StyleOverrides.radius` 归零，design/gallery.html caption-button 无 border-radius。**角部例外（2026-09 修复，2026-09-20 Terminal 对齐升级为边框内圆角）**：HTML 稿的方形 hover 填充靠 `.gallery-window` 的 overflow:hidden + 1px 外边框裁进 8px 外圆角，外圈边框线在高亮态依然完整（Terminal 截图行为）；框架侧双防线——卡片 `clipRounded` 子树门控 + 角部钮（close）填充以单角内半径跟随——`StyleOverrides.radius = {0, 7, 0, 0}`（= 外圆角 8 − 边框 1；最大化随窗口圆角一并归零），否则直角填充盖过标题栏 surface 的自绘顶角、破坏透明窗口角）。**图标盒 14px**（`StyleOverrides.iconSize` 覆盖，描边随盒宽折算 ≈1.6），**字形按稿 SVG 24 栅格逐坐标归一**（Minimize 5..19 线 / Maximize 6..18 方框 / Close 7..17 叉）；min/max hover 弱表面，close = `ButtonVariant::WindowClose`（rest 幽灵；hover 实心 `ButtonTokens.windowClose`——#c42b1c + 白，系统 chrome 红常量、深浅主题同值；pressed 叠压暗）。
 - 标题文本 **无字距（letter-spacing 0）**：横向步进与字形位图同源取字体设计值（stb hmtx 分数步进；曾用 GDI `gmCellIncX` 整数量化步进，逐字形累积把字距撑歪），与 design/gallery.html `.window-brand`（14px/650，无 letter-spacing）同观感。
-- **透明窗口外框（Terminal 对齐，2026-09-20）**：`WindowDesc.transparent`（SDL_WINDOW_TRANSPARENT + runApp 将 CPU 清屏色转全透明）；应用内容自绘——卡片 `pageBackground` + **1px 外边框**（`borderDefault`，DWM 可见框边框的自绘等价物，高亮态依然完整包住）+ **外圆角 8px**（Win11 顶层容器标准 `DWMWCP_ROUND`，卡片 `clipRounded` 子树门控）。标题栏顶角与页脚底角取**内圆角 7**（= 8 − 1，卡片 padding=边框宽内缩内容），对话框 scrim 取外圆角 8（`makeDialog` 的 `scrimRadius` 参数，防止全窗压暗涂进圆角外的透明像素）；**最大化边框/圆角归零**（.is-maximized，贴靠工作区）。**阴影暂缺**：HTML 稿以 `box-shadow` 为目标；透明无边框窗口丢失 DWM 阴影（SDL borderless + per-pixel alpha 属 DWM"永不圆角"类，系统不给边框/阴影），自绘 `DrawShadow` 常驻窗口级阴影触发 CPU 局部/全量像素不一致（`gallery_hover_animation_partial_frames_match_full_repaint` 等 motion 测试锁定，1px 尾部包络差），待渲染器修复后恢复——本版窗口 edge-to-edge、无自绘阴影、无透明边距。Windows DWM 合成良好；无合成器 X11 角落退化黑；外部渲染器（Skia/GPU）透明 clear 由后端装配负责（未接）。
+- **透明窗口外框（Terminal 对齐，2026-09-20）**：`WindowDesc.transparent`（SDL_WINDOW_TRANSPARENT + runApp 将 CPU 清屏色转全透明）；应用内容自绘——卡片 `pageBackground` + **1px 外边框**（`borderDefault`，DWM 可见框边框的自绘等价物，高亮态依然完整包住）+ **外圆角 8px**（Win11 顶层容器标准 `DWMWCP_ROUND`，卡片 `clipRounded` 子树门控）。标题栏顶角与页脚底角取**内圆角 7**（= 8 − 1，卡片 padding=边框宽内缩内容），对话框 scrim 取外圆角 8（`makeDialog` 的 `scrimRadius` 参数，防止全窗压暗涂进圆角外的透明像素）；**最大化边框/圆角归零**（.is-maximized，贴靠工作区）。**阴影暂缺**：HTML 稿以 `box-shadow` 为目标；透明无边框窗口丢失 DWM 阴影（SDL borderless + per-pixel alpha 属 DWM"永不圆角"类，系统不给边框/阴影），自绘 `DrawShadow` 常驻窗口级阴影触发 CPU 局部/全量像素不一致（`gallery_hover_animation_partial_frames_match_full_repaint` 等 motion 测试锁定，1px 尾部包络差），待渲染器修复后恢复——本版窗口 edge-to-edge、无自绘阴影、无透明边距。宿主透明支持以 §16 的 P3/P4 验证边界为准：Windows software 不支持逐像素透明，texture 合成器视觉与 Linux/macOS 待验；外部渲染器（Skia/GPU）透明 clear 由后端装配负责（未接）。
 - 最大化态：窗口直角、最大化按钮切换还原图标（双层方框，`IconId::Restore`）。
 - 窗口四边 **8 逻辑 px** 透明 resize 边 + 四角 12px（平台 hit-test，视觉不呈现）。
 - ≤720 折叠标题文字只留品牌标；≤1024 隐藏状态胶囊（既有断点不变）。
@@ -185,3 +185,9 @@ SDL_HitTest(point in window pixels):
    848/952）通过。
 
 2026-09-20 alpha 计划 P1/P2 更新：呈现按 `PixelBuffer.alphaMode` 分派。透明窗口直接提交预乘/不透明帧，只为直通输入保留转换；不透明窗口直接提交直通/不透明帧，预乘兼容输入显式反预乘。SDL texture 两种窗口都显式使用 NONE。CPU 累积与 Skia 读回均为实际预乘或不透明格式，正常透明呈现无二次预乘或转换副本。Windows 原生 software surface 实测为 XRGB、丢弃 alpha，不能从呈现成功推断透明合成已受支持；宿主支持验收见 [alpha 计划](lumen-premultiplied-alpha-rendering-plan.md) P3。
+
+P4/P5 交付：42 张 Gallery 的两主题/三 DPI 圆角、caption 和菜单样本在共同预乘表示下
+alpha 精确一致、RGB 最大差 2；几何、token 和 HTML 稿未改变。旧直通呈现说明只作历史记录，
+当前调用方以 [迁移说明](lumen-alpha-migration.md) 为准，测量与视觉证据见
+[P4](perf-baselines/premultiplied-alpha-2026-09-20/P4.md)。Windows texture 实际合成器视觉、
+Linux/macOS 桌面仍待验，不从帧截图或 SDL 提交成功推断平台透明支持。

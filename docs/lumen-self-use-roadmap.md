@@ -1789,6 +1789,32 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - 回滚点：`286746d fix(platform): SDL 滚轮方向换算对齐平台原生手感`
   （P1 前）。
 
+### 既有能力优化：预乘 alpha 完成记录（2026-09-20）
+
+- 范围：[预乘 alpha 计划](lumen-premultiplied-alpha-rendering-plan.md) P0–P5，按阶段
+  review、修复、完整验证并提交；不新增里程碑或后端。P0–P4 分别为 `a28c26f`、
+  `ea8a0c3`、`d4993ef`、`a45ebd6`、`316127a`；P5 为本记录所在文档提交。
+- 交付：AlphaMode 随帧/资源/命令传递，CPU 累积及图片缓存预乘，Skia 上传/读回准确标记，
+  SDL 正常透明帧直接提交；修复旧 CPU 通道回绕、Skia 二次预乘和 Preserve 透明清屏重复叠加。
+  API 重编译要求、`pixels()` 与首帧例外、v7 写入/v6 兼容、显式 straight 导出见
+  [迁移说明](lumen-alpha-migration.md)。控件几何与视觉 token 未改变。
+- 验证：Windows CPU Release/Debug 各 755/755、Skia raster 768/768、GPU 779/779，
+  无跳过；P5 重新构建四配置并完成全量 CTest。P3 实窗呈现/resize/最小化恢复 584 断言，
+  GPU 三模式图片经过真实上下文销毁重建及 CPU 重上传。62 帧视觉对照 alpha 精确、普通
+  RGB 最大差 2，图片与冻结的独立参考精确相等。
+- 实测：CPU/Skia 各三组、90 次正式运行。CPU 叠层 submit p50/p95 配对变化中位数
+  -41.15%/-43.07%，正常透明转换/复制/scratch 为零，1080p/4K 分别省去约
+  7.91/31.64 MiB 格式副本；CPU 边缘 p50 约 +5.74%，256×256 straight 图片接纳
+  每次增加约 0.24 ms。Skia headless 无可靠提速结论，GPU 性能未测。
+  所有超限及追加对照、内存口径与宿主波动限制见
+  [P4 报告](perf-baselines/premultiplied-alpha-2026-09-20/P4.md)，历史 M0/P0 保留。
+- 待验/限制：Windows 原生 software 为 XRGB，不支持逐像素透明；Windows texture
+  合成器视觉、Linux X11/Wayland/macOS 桌面与 Linux 运行时 GPU/present 故障注入未跑。
+  上下文重建不等于运行时故障注入；4K drawable 不等于物理 4K 屏幕。
+  固定 SDL 在 Wayland/macOS 缺少严格 native software framebuffer，既有回退限制保留。
+  这些不改变三平台发布状态或移动端暂缓范围。
+- 回滚基点：`e06f3d9`；按计划 §10 逆序回滚阶段，模式生产/消费和 v7 兼容边界须保持一致。
+
 ### 范围调整记录（2026-09-14）
 
 - 当前 UI 只面向 Windows/Linux/macOS；M9 暂缓，不列入待实施里程碑。

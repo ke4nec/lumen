@@ -81,6 +81,10 @@ ctest --test-dir build-mobile --output-on-failure -C Debug
 
 ## 4. 预乘 alpha 迁移的固定测量入口（P0，2026-09-20）
 
+P0–P5 已交付；调用方格式、ABI 和 v6/v7 迁移见
+[迁移说明](lumen-alpha-migration.md)，正式视觉/性能结果及波动调查见
+[P4 报告](perf-baselines/premultiplied-alpha-2026-09-20/P4.md)。
+
 P3 窗口生命周期回归默认随 CTest 在 dummy 驱动运行；真实桌面独立运行：
 Windows PowerShell 设置 `$env:LUMEN_ALPHA_REAL_WINDOW='1'` 后执行
 `./build-alpha-after/tests/Release/lumen-tests.exe platform_alpha_resize_restore_and_rejection_recover`，
@@ -89,7 +93,7 @@ Windows PowerShell 设置 `$env:LUMEN_ALPHA_REAL_WINDOW='1'` 后执行
 不要设置 `SDL_VIDEODRIVER=dummy`；测试拒绝把 dummy 当作真实窗口。该测试验证呈现、
 resize、最小化恢复及模式分派；宿主透明合成仍须按 [P3](perf-baselines/premultiplied-alpha-2026-09-20/P3.md) 的限制单独验收。
 
-格式边界（P2）：`PixelBuffer.alphaMode` 默认 `Straight`；读帧应检查实际模式，`Opaque` 是全帧 A=255 的内容保证。公共转换返回 `bool`，失败不改变目标；内容校验用于接纳边界，`PixelValidation::Structure` 仅用于生产者已保证内容的内部帧。CPU 累积/图片缓存与 Skia 读回均为 `Premultiplied` / `Opaque`；读取 CPU 帧不生成直通副本。
+格式边界：`PixelBuffer.alphaMode` 默认 `Straight`；读帧应检查实际模式，`Opaque` 是全帧 A=255 的内容保证。公共转换返回 `bool`，失败不改变目标；内容校验用于接纳边界，`PixelValidation::Structure` 仅用于生产者已保证内容的内部帧。CPU 累积/图片缓存与 Skia 读回均为 `Premultiplied` / `Opaque`；读取 CPU 帧不生成直通副本。
 
 Gallery 的 `--dump-frame`（headless 与固定 sample）仍输出直通 RGBA，附带 `alpha_mode=straight`、width/height；PNG 转换可按原有 RGBA 方式读取。以下诊断 benchmark/gallery 工具保存的是实际帧模式，须先按元数据归一化。命令记录现在写 v7（像素字段依次为 width/height/alphaMode/byteCount，均 u32 小端），读 v6/v7；v6 图片默认直通，旧程序拒绝 v7。公开结构布局已变化，使用方须重编译。
 
@@ -113,8 +117,44 @@ python benchmarks/alpha_frames.py build-alpha-before/reports/before-alpha-edges-
 - 两个 bench 均支持 `--dump-frame PATH`，输出实际缓冲格式，配套 `.txt` 标明 `alpha_mode`；alpha bench 还输出 `.commands` 作为版本化回放证据。这些是诊断产物，和 Gallery 应用默认直通导出区分。
 - `lumen-alpha-gallery` 使用确定性占位字体，固定 Core Dark/light、DPI=1/1.25/2、透明清屏，保存普通、close hover/pressed、最大化、菜单、Controls 和 Buttons 的 42 帧及哈希。不会改变 Gallery UI 或主题数值。
 - Python 工具只需 Python 3 标准库。基线驱动顺序运行三组 warmup=30/frames=300 并检查哈希重复性；P4 使用 `--peer-build AFTER_BUILD --peer-revision AFTER_ID` 同机交错运行 before/after。采样时停止构建与其他重负载，不比较 CPU-only 与 Skia 构建。
+- canonical `resource-upload` 在 paint 外上传八张 120×80 图片，其现有 JSON 不导出私有 `uploadPhase_`；paint 下降不能代表上传也加速。`lumen-alpha-bench --scenario upload` 单列每帧 256×256 图片接纳成本，total 仍不含 upload。
 - `alpha_frames.py` 生成 alpha、黑底、白底、棋盘底 PNG；`--compare BASELINE.rgba` 在共同预乘表示中输出差异空间图和统计，冻结容差为 RGB 最大 4、alpha 精确相等、超差比例 0。此规则用于相同 CPU 几何迁移；不用于 CPU/Skia 不同 AA 算法。
 - P0 另发现旧 CPU 直通舍入到 256 后回绕的缺陷（图片叠加竖条）。`python benchmarks/alpha_image_reference.py build-alpha-before/reference-images.rgba --before build-alpha-before/reports/before-alpha-images-1.rgba` 生成独立目标算术参考，并要求 alpha 与旧帧完全相等。P2/P4 的 `images`/`upload` 修复应与该参考逐字节相等（`alpha_frames.py AFTER.rgba --compare build-alpha-before/reference-images.rgba --exact`），不能放大普通场景容差，也不能把旧条纹作为目标画面。最小数值复现和解释见 P0 记录。
 
-各阶段证据见 [alpha 计划](lumen-premultiplied-alpha-rendering-plan.md) 和
-[P0 记录](perf-baselines/premultiplied-alpha-2026-09-20/P0.md)。
+完整 before/after 复测需事先保留迁移前的 P0 工具/算法构建，不能用当前源码重建 before。
+下列 `BEFORE_ID` / `AFTER_ID` 应填写实际提交与差异标识，目录须使用两套对应的 Release 构建：
+
+```sh
+python benchmarks/run_alpha_baseline.py --build build-alpha-before --revision BEFORE_ID --peer-build build-alpha-after --peer-revision AFTER_ID --output build-alpha-after/paired --windows
+python benchmarks/compare_alpha_baseline.py build-alpha-after/paired build-alpha-after/paired-summary.json
+```
+
+Skia 使用独立 before/after 目录并加 `--backend skia`。`--windows` 表示增加真实窗口场景，
+不限定操作系统；桌面必须支持所选路径。驱动记录 executable SHA256、工具链和 CMakeCache。
+Windows 每 200 ms 额外观察实际客户端尺寸/最小化状态，报告中的 drawable 必须与请求一致；
+无效记录写 `.rejected.json`，不得通过改变报告尺寸纳入比较。4K drawable 不等于物理 4K 屏幕。
+
+中断后使用同一命令加 `--resume`。驱动核对来源、二进制 SHA、配置、完整命令及帧数；
+仅保留完整配对，半对或带 `.pending` 标记的配对两端全部重跑。不要手工删除该标记来接受旧/新混合结果。
+二进制重建后应使用新输出目录，不能续接原采样；本次 P4 留存报告的来源说明见基线 README。
+比较工具要求至少三组完整配对和稳定 hash/模式，保留逐组 p50/p95 与 >10% 标记，
+不自动把超限判为噪声，也不替代人工 review。`median_paired_delta_percent` 为组内变化率中位数；
+`median_delta_percent` 是两端绝对耗时中位数之比，二者不可混称。
+
+P4 另提供只提交像素、不执行渲染的呈现探针，用于控制宿主提交节奏：
+
+```sh
+./build-alpha-after/benchmarks/lumen-alpha-present-probe --host transparent --mode straight --period-ms 40
+./build-alpha-after/benchmarks/lumen-alpha-present-probe --host transparent --mode premultiplied --period-ms 40
+./build-alpha-after/benchmarks/lumen-alpha-present-probe --host opaque --mode opaque --period-ms 18
+```
+
+固定 native software、1920×1080、warmup=30/frames=300；模式可选 straight/premultiplied/opaque，
+host 可选 transparent/opaque，间隔为 0–100 ms（0 连续提交，默认 40）。透明 fixture 的 A=128，
+因此拒绝 opaque 模式；不透明 host 的三种标记使用相同 A=255 字节。间隔等待不含在 present 计时内，
+同时报告实际 frame interval、host/prepare/present 分位数和 overruns。探针拒绝 dummy、尺寸变化、
+最小化和长时间采样中断；只能补充宿主成本调查，不能替代正式渲染配对或证明透明合成器视觉。
+
+各阶段证据见 [alpha 计划](lumen-premultiplied-alpha-rendering-plan.md)、
+[P0 记录](perf-baselines/premultiplied-alpha-2026-09-20/P0.md) 和
+[P4 记录](perf-baselines/premultiplied-alpha-2026-09-20/P4.md)。

@@ -64,7 +64,7 @@ struct RenderCommand {
     TextRun textRun{};
     core::TextStyle textStyle{};
     ImageId image{0};
-    // UploadImage 携带的不可变 CPU 像素（straight RGBA）。
+    // UploadImage 携带的不可变 CPU 像素；alphaMode 随字节保留，接纳时校验。
     PixelBuffer pixels{};
     float alpha{1.0F};
     Transform2D transform{Transform2D::identity()};

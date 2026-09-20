@@ -87,7 +87,7 @@ ResourceError decodeImageFile(const std::string& path, PixelBuffer& out) {
     int width = 0;
     int height = 0;
     int channels = 0;
-    // 强制 4 通道：与 CpuRenderer/SkiaRenderer 的 straight RGBA 契约一致。
+    // 文件解码固定产出 Straight RGBA8；后端按 alphaMode 接纳和缓存。
     stbi_uc* decoded = stbi_load_from_memory(
         bytes.data(), static_cast<int>(bytes.size()), &width, &height,
         &channels, 4);

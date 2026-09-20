@@ -55,6 +55,14 @@ Windows direct3d11 texture 与原生 software 的 resize/最小化恢复已经�
 framebuffer，当前无 GPU 的软件窗口回退仍有限制。证据与逐路径说明见
 [P3 联调记录](perf-baselines/premultiplied-alpha-2026-09-20/P3.md)，不据此提升三平台发布状态。
 
+P4/P5 交付验证：Windows CPU Debug/Release 各 755/755、Skia raster Release 768/768、
+GPU Release 779/779，无跳过；GPU 三模式图片经历真实上下文销毁重建及 CPU 重上传。
+这不是 Linux 运行时 GPU/present 故障注入，后者仍待验。62 个视觉样本在统一预乘表示下
+alpha 精确一致，普通 RGB 最大差 2；CPU/Skia 各三组正式配对及收益/代价见
+[P4 报告](perf-baselines/premultiplied-alpha-2026-09-20/P4.md)。GPU 性能未测。
+公开像素结构需要重编译，`pixels()` 返回实际模式；命令写 v7、读 v6/v7，
+Gallery 默认导出保持 straight，见 [迁移说明](lumen-alpha-migration.md)。
+
 ## 历史移动实验内容（暂缓，不在当前支持范围）
 
 | 平台 | 当前范围 | 已有代码 | 验证边界 |
