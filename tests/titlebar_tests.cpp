@@ -559,3 +559,99 @@ TEST_CASE("titlebar_caption_hover_fill_follows_window_corner_pixels",
     CHECK(at(static_cast<int>(pixels.width) - 10, 40) ==
           app.shell().theme().button.windowClose.background);
 }
+
+// 临时诊断（随后移除）：角部 AA 渐变采样。
+TEST_CASE("diag_corner_alpha_ramp", "[.][diag]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+    auto dump = [&](const char* label) {
+        const auto& p = app.pixels();
+        std::printf("%s top-right corner y=0..3 x=1270..1279 (rgba):\n", label);
+        for (int y = 0; y < 4; ++y) {
+            for (int x = 1270; x < 1280; ++x) {
+                const std::size_t o = (static_cast<std::size_t>(y) * p.width + x) * 4;
+                std::printf("(%3d,%3d,%3d,%3d) ", p.rgba[o], p.rgba[o+1], p.rgba[o+2], p.rgba[o+3]);
+            }
+            std::printf("\n");
+        }
+    };
+    dump("rest");
+    app.shell().setVisualPreviewState("window-close", style::WidgetState{.hovered = true});
+    (void)app.renderFrame(true);
+    dump("close-hover");
+}
+
+// 四角不变量（2026-09 框架化修复的系统性验收）：透明清屏下，gallery
+// 窗口四个角点（16px 圆角外，距弧心 ~21px）在 caption 按钮的
+// hover/pressed 与最大化各状态下恒为全透明——任何贴角 chrome 的填充
+// 越出圆角都会在此暴露。角部双重防线：close 钮 topRight 半径跟随 +
+// 标题栏 clipRounded 子树门控（ClipRounded 命令）。
+TEST_CASE("titlebar_window_four_corners_stay_transparent",
+          "[titlebar][gallery][clip]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    app.shell().setClearColor(core::Color::fromRGBA(0, 0, 0, 0));
+    (void)app.renderFrame(/*forceFullRepaint=*/true);
+    const auto& p = app.pixels();
+    const auto cornerAlpha = [&](int x, int y) {
+        return p.rgba[(static_cast<std::size_t>(y) * p.width + x) * 4 + 3];
+    };
+    const int w = p.width;
+    const int h = p.height;
+    auto checkCorners = [&]() {
+        CHECK(cornerAlpha(1, 1) == 0);
+        CHECK(cornerAlpha(w - 2, 1) == 0);
+        CHECK(cornerAlpha(1, h - 2) == 0);
+        CHECK(cornerAlpha(w - 2, h - 2) == 0);
+    };
+
+    checkCorners();  // rest
+    for (const char* key : {"window-minimize", "window-maximize",
+                            "window-close"}) {
+        app.shell().setVisualPreviewState(key, style::WidgetState{.hovered = true});
+        (void)app.renderFrame(true);
+        checkCorners();
+        app.shell().setVisualPreviewState(key, style::WidgetState{.pressed = true});
+        (void)app.renderFrame(true);
+        checkCorners();
+        app.shell().setVisualPreviewState(key, style::WidgetState{});
+    }
+    (void)app.renderFrame(true);
+
+    // 最大化：圆角归零（直角窗口），四个角点都是内容（非透明）。
+    app.noteWindowMaximized(true);
+    (void)app.renderFrame(true);
+    CHECK(cornerAlpha(1, 1) != 0);
+    CHECK(cornerAlpha(w - 2, 1) != 0);
+    CHECK(cornerAlpha(1, h - 2) != 0);
+    CHECK(cornerAlpha(w - 2, h - 2) != 0);
+}
+
+// 临时诊断（随后移除）：底角像素来源。
+TEST_CASE("diag_bottom_corner", "[.][diag2]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    app.shell().setClearColor(core::Color::fromRGBA(0, 0, 0, 0));
+    (void)app.renderFrame(true);
+    const auto& p = app.pixels();
+    for (int y = p.height - 6; y < p.height; ++y) {
+        std::printf("y=%d: ", y);
+        for (int x = 0; x < 8; ++x) {
+            const std::size_t o = (static_cast<std::size_t>(y) * p.width + x) * 4;
+            std::printf("(%3d,%3d,%3d,%3d) ", p.rgba[o], p.rgba[o+1], p.rgba[o+2], p.rgba[o+3]);
+        }
+        std::printf("\n");
+    }
+    const RenderNode* root = findNodeByKey(app.root(), "root");
+    const RenderNode* footer = findNodeByKey(app.root(), "gallery-footer");
+    std::printf("root radius=%f footer=%p\n",
+                root ? root->commonStyle().radius.bottomLeft : -1.0F,
+                (const void*)footer);
+    if (footer != nullptr) {
+        std::printf("footer rect=%f,%f %fx%f color-override=%d\n",
+                    footer->rect().origin.x, footer->rect().origin.y,
+                    footer->size.width, footer->size.height,
+                    footer->commonStyle().background.a);
+    }
+}

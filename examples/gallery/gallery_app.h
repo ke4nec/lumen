@@ -382,6 +382,15 @@ class GalleryApp {
                                                  keyChar)) {
                 return true;
             }
+            // Overview 清单瓦片样本（对齐设计稿 component-grid 新瓦片）：
+            // Spin 键盘与 ToolBar 漫游同契约转发。
+            if (self->tileSpin_.handleKey(shell, key, modifiers, keyChar)) {
+                return true;
+            }
+            if (self->tileToolBar_.handleKey(shell, key, modifiers,
+                                             keyChar)) {
+                return true;
+            }
             // 集合控件键盘契约（collection-design §6.4/§7.4）：焦点位于
             // 某集合的行内时，导航键交给该集合的控制器（Up/Down/Home/
             // End/PageUp/PageDown、树 Left/Right、Ctrl+A）。按行 key 的
@@ -429,6 +438,10 @@ class GalleryApp {
                                                         position, delta)) {
                     return true;
                 }
+                if (self->tileSpin_.handleWheel(self->shell_, position,
+                                                delta)) {
+                    return true;
+                }
                 return self->scrollWheel(root, hit, delta.y);
             };
         // M10：视口拖动滚动（触摸/指针）与惯性推进（与 settings 同形）。
@@ -444,6 +457,7 @@ class GalleryApp {
             bool active = self->controlsOpacity_.step(shell, nowMs);
             active = self->controlsFontSize_.step(shell, nowMs) || active;
             active = self->controlsStatusBar_.step(shell, nowMs) || active;
+            active = self->tileSpin_.step(shell, nowMs) || active;
             return self->advanceFling(shell, nowMs) || active;
         };
         config.onCloseRequested = [self](app::AppShell& shell) {
@@ -702,14 +716,46 @@ class GalleryApp {
                 const bool on = shell_.state().get("gal-grid") != "true";
                 shell_.state().set("gal-grid", on ? "true" : "false");
                 controlsToolBar_.setChecked("grid", on);
-                // toggle → StatusBar busy 联动（toolbar/statusbar-design
-                // 演示场景：同一命令由应用联动两处状态）。
+                // toggle → StatusBar busy 弧 + 消息联动（toolbar/statusbar
+                // -design 演示场景：同一命令由应用联动两处状态；消息常驻
+                // 到再次切换，对齐设计稿 live sample）。
                 controlsStatusBar_.setBusy(on);
+                controlsStatusBar_.setMessage(
+                    on ? "Building grid overlay…" : "Ready");
             }
             shell_.markDirty();
         };
         controlsToolBar_.attach(shell_);
         controlsStatusBar_.attach(shell_);
+        // Controls 页 StatusBar 样本（对齐设计稿 live sample）：idle 消息
+        // "Ready" + determinate 进度 68% + resize grip；Busy/Progress 项在
+        // buildControlsItems 的 items 里声明（busy 项缺声明则 setBusy 不可见）。
+        controlsStatusBar_.setIdleMessage("Ready");
+        controlsStatusBar_.setProgress(68.0F);
+        controlsStatusBar_.setShowResizeGrip(true);
+        // Overview 清单瓦片（对齐设计稿 component-grid 三张新瓦片，预览即
+        // 真控件）：Spin 小档 + ToolBar 三项（Grid 持久选中）+ StatusBar
+        // determinate 进度/grip 样本。
+        tileSpin_.setControlSize(core::ControlSize::Small);
+        tileSpin_.setLabel("Preview opacity");
+        tileSpin_.attach(shell_);
+        tileToolBar_.setItems({
+            {"new", core::IconId::Plus, "New"},
+            {"open", core::IconId::Folder, "Open"},
+            {"sep", core::IconId::None, "", "", true},
+            {"grid", core::IconId::Grid, "Grid", "", false, true, true},
+        });
+        tileToolBar_.attach(shell_);
+        // 瓦片 StatusBar 不用常开 busy 弧——busy 旋转是持钟动画，会让
+        // Overview 永不收敛（M12 无空转约定）；以静态 determinate 进度
+        // 表达"Indexing…"（值即状态，不补间）。busy 演示归 Controls 页
+        // 的 Grid 开关联动。
+        tileStatusBar_.setIdleMessage("Indexing…");
+        tileStatusBar_.setItems(
+            {{"progress", widgets::StatusItemKind::Progress}});
+        tileStatusBar_.setProgress(68.0F);
+        tileStatusBar_.setShowResizeGrip(true);
+        tileStatusBar_.attach(shell_);
         const auto forwardCommand = [this](const std::string& id) {
             handleMenuCommand(id);
         };
@@ -1383,11 +1429,18 @@ class GalleryApp {
         core::Widget footer = core::makeColumn(
             {std::move(top), std::move(row)}, core::MainAxisAlignment::Start,
             core::CrossAxisAlignment::Stretch, 0.0F);
-        return core::withKey(
-            core::makeContainer(std::move(footer), std::nullopt, std::nullopt,
-                                core::EdgeInsets{}, core::EdgeInsets{},
-                                theme.colors.pageBackground),
-            "gallery-footer");
+        core::Widget footerBox = core::makeContainer(
+            std::move(footer), std::nullopt, std::nullopt, core::EdgeInsets{},
+            core::EdgeInsets{}, theme.colors.pageBackground);
+        // 窗口底角（与标题栏顶角对称）：footer 的 pageBackground 填充
+        // 贴窗口底缘——底角半径跟随 + clipRounded 子树门控（caption 角
+        // 部例外同防线；方形填充会盖过根容器的自绘圆角）。
+        footerBox.radius =
+            windowMaximized_
+                ? core::CornerRadius::zero()
+                : core::CornerRadius{0.0F, 0.0F, kWindowRadius, kWindowRadius};
+        footerBox.clipRounded = true;
+        return core::withKey(std::move(footerBox), "gallery-footer");
     }
 
     // --- 各分区内容 ---
@@ -1397,7 +1450,7 @@ class GalleryApp {
     // controls）。全部为真控件：点击与 StateStore 联动。主内容 <720 上下
     // 堆叠、<480 指标单列（设计稿 content 容器断点）。
     [[nodiscard]] std::vector<core::Widget> buildHomeItems(
-        const style::Theme& theme) const {
+        const style::Theme& theme) {
         std::vector<core::Widget> items;
         const bool stackColumns = contentColumnWidth() < 720.0F;
         const bool narrowMetrics = contentColumnWidth() < 480.0F;
@@ -1495,8 +1548,8 @@ class GalleryApp {
     }
 
     // Control inventory：分区瓷砖（预览即真控件，点击整格跳转分区）。
-    [[nodiscard]] core::Widget inventoryPanel(
-        const style::Theme& theme) const {
+    // 非 const：Spin 瓦片的 build 有失焦提交检测（SpinController 契约）。
+    [[nodiscard]] core::Widget inventoryPanel(const style::Theme& theme) {
         std::vector<core::Widget> tiles;
         tiles.push_back(buttonsTile(theme));
         tiles.push_back(inputsTile(theme));
@@ -1506,6 +1559,9 @@ class GalleryApp {
         tiles.push_back(listsTile(theme));
         tiles.push_back(collectionsTile(theme));
         tiles.push_back(menusTile(theme));
+        tiles.push_back(spinTile(theme));
+        tiles.push_back(toolBarTile(theme));
+        tiles.push_back(statusBarTile(theme));
         tiles.push_back(feedbackTile(theme));
         std::vector<core::Widget> body;
         body.push_back(panelHead("Control inventory", "8 sections", theme));
@@ -1518,15 +1574,21 @@ class GalleryApp {
         return panelCard(std::move(body), theme, "inventory-panel");
     }
 
-    // C++ DSL 快照（设计稿只读代码面板；行号 + 代码为静态展示）。
+    // C++ DSL 快照（设计稿只读代码面板；行号 + 代码为静态展示，与
+    // design/gallery.html code-panel 12 行快照一致）。
     [[nodiscard]] core::Widget codePanel(const style::Theme& theme) const {
         static const char* kLines[] = {
             "auto gallery = makeColumn({",
-            "  menuBar({file, view, help}),",
+            "  titleBar({menus({file, view, help}), minMaxClose}),",
             "  splitter(sidebar, mainPane),",
+            "  toolBar({new, open, undo, grid}),",
             "  button(\"Filled\", variant::filled),",
             "  textField(\"username\"),",
+            "  spin(\"opacity\", 0, 100),",
+            "  statusBar({progress, cursor}),",
             "  virtualList(1000),",
+            "  tree(fileTree, Single),",
+            "  treeList(deps, columns),",
             "});",
         };
         std::vector<core::Widget> rows;
@@ -1869,6 +1931,29 @@ class GalleryApp {
         return tileShell(
             core::withStyleOverrides(std::move(panel), std::move(overrides)),
             "Menus", theme, "tile-menus", "goto-menus");
+    }
+
+    // Controls 三瓦片（对齐设计稿 component-grid 新瓦片）：Spin/ToolBar/
+    // StatusBar 迷你真控件——命令组 + 分组分隔线 + Grid 持久选中态、
+    // determinate 进度 + grip 样本；键盘/滚轮经 ShellConfig 转发（同
+    // Controls 页）。
+    [[nodiscard]] core::Widget spinTile(const style::Theme& theme) {
+        return tileShell(core::withKey(tileSpin_.build(theme),
+                                       "tile-spin-field"),
+                         "Spin", theme, "tile-spin", "goto-controls");
+    }
+
+    [[nodiscard]] core::Widget toolBarTile(const style::Theme& theme) {
+        return tileShell(
+            core::withKey(tileToolBar_.build(shell_, theme), "tile-toolbar"),
+            "ToolBar", theme, "tile-toolbar", "goto-controls");
+    }
+
+    [[nodiscard]] core::Widget statusBarTile(
+        const style::Theme& theme) const {
+        return tileShell(
+            core::withKey(tileStatusBar_.build(theme), "tile-statusbar"),
+            "StatusBar", theme, "tile-statusbar", "goto-controls");
     }
 
     [[nodiscard]] core::Widget feedbackTile(const style::Theme& theme) const {
@@ -2774,6 +2859,10 @@ class GalleryApp {
             theme, "controls-toolbar-card"));
 
         controlsStatusBar_.setItems({
+            {"busy", widgets::StatusItemKind::Busy, core::IconId::None, "",
+             true, 0.0F},
+            {"progress", widgets::StatusItemKind::Progress, core::IconId::None,
+             "", true, 0.0F},
             {"sep", widgets::StatusItemKind::Separator, core::IconId::None,
              "", true, 0.0F},
             {"cursor", widgets::StatusItemKind::Text, core::IconId::None,
@@ -2783,9 +2872,9 @@ class GalleryApp {
             "StatusBar — messages, progress, busy",
             {controlsStatusBar_.build(theme),
              core::withKey(mutedLabel("The \"Grid\" toggle above drives the "
-                                      "status bar busy arc; use the Inputs "
-                                      "page message actions for transient "
-                                      "status text.",
+                                      "status bar busy arc and message; the "
+                                      "progress item carries a determinate "
+                                      "68% sample.",
                                       theme),
                            "controls-sb-hint")},
             theme, "controls-statusbar-card"));
@@ -3857,6 +3946,10 @@ class GalleryApp {
     widgets::SpinController controlsFontSize_{13.0, "gal-font"};
     widgets::ToolBarController controlsToolBar_{"gal-tb"};
     widgets::StatusBarController controlsStatusBar_{"gal-sb"};
+    // Overview 清单瓦片控件（对齐设计稿 component-grid 新瓦片）。
+    widgets::SpinController tileSpin_{72.0, "gal-tile-spin"};
+    widgets::ToolBarController tileToolBar_{"gal-tile-tb"};
+    widgets::StatusBarController tileStatusBar_{"gal-tile-sb"};
     std::string lastControlsCommand_{"(none)"};
     bool sidebarUserAdjusted_{false};
     bool syncingSidebarBreakpoint_{false};
