@@ -81,7 +81,7 @@ ctest --test-dir build-mobile --output-on-failure -C Debug
 
 ## 4. 预乘 alpha 迁移的固定测量入口（P0，2026-09-20）
 
-P1 格式边界：`PixelBuffer.alphaMode` 默认 `Straight`；读帧应检查实际模式，`Opaque` 是全帧 A=255 的内容保证。公共转换返回 `bool`，失败不改变目标；内容校验用于接纳边界，`PixelValidation::Structure` 仅用于生产者已保证内容的内部帧。CPU 在 P1 仍为直通累积，Skia 读回为 `Premultiplied` / `Opaque`；CPU 预乘迁移在 P2。
+格式边界（P2）：`PixelBuffer.alphaMode` 默认 `Straight`；读帧应检查实际模式，`Opaque` 是全帧 A=255 的内容保证。公共转换返回 `bool`，失败不改变目标；内容校验用于接纳边界，`PixelValidation::Structure` 仅用于生产者已保证内容的内部帧。CPU 累积/图片缓存与 Skia 读回均为 `Premultiplied` / `Opaque`；读取 CPU 帧不生成直通副本。
 
 Gallery 的 `--dump-frame`（headless 与固定 sample）仍输出直通 RGBA，附带 `alpha_mode=straight`、width/height；PNG 转换可按原有 RGBA 方式读取。以下诊断 benchmark/gallery 工具保存的是实际帧模式，须先按元数据归一化。命令记录现在写 v7（像素字段依次为 width/height/alphaMode/byteCount，均 u32 小端），读 v6/v7；v6 图片默认直通，旧程序拒绝 v7。公开结构布局已变化，使用方须重编译。
 

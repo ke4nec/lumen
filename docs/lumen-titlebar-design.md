@@ -184,4 +184,4 @@ SDL_HitTest(point in window pixels):
    premultiply 单元；全套 ctest（Debug 716）与 Release 体积档（+8B →
    848/952）通过。
 
-2026-09-20 alpha 计划 P1 更新：呈现按 `PixelBuffer.alphaMode` 分派。透明窗口直接提交预乘/不透明帧，只为直通输入保留转换；不透明窗口直接提交直通/不透明帧，预乘兼容输入显式反预乘。SDL texture 两种窗口都显式使用 NONE。CPU 在 P1 仍为直通，Skia 读回已标记实际预乘或不透明格式，避免二次预乘。Windows 原生 software surface 实测为 XRGB、丢弃 alpha，不能从呈现成功推断透明合成已受支持；宿主支持验收见 [alpha 计划](lumen-premultiplied-alpha-rendering-plan.md) P3。
+2026-09-20 alpha 计划 P1/P2 更新：呈现按 `PixelBuffer.alphaMode` 分派。透明窗口直接提交预乘/不透明帧，只为直通输入保留转换；不透明窗口直接提交直通/不透明帧，预乘兼容输入显式反预乘。SDL texture 两种窗口都显式使用 NONE。CPU 累积与 Skia 读回均为实际预乘或不透明格式，正常透明呈现无二次预乘或转换副本。Windows 原生 software surface 实测为 XRGB、丢弃 alpha，不能从呈现成功推断透明合成已受支持；宿主支持验收见 [alpha 计划](lumen-premultiplied-alpha-rendering-plan.md) P3。

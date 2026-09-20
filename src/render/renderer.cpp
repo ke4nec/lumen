@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "lumen/render/render_commands.h"
+#include "pixel_math.h"
 
 namespace lumen::render {
 
@@ -66,7 +67,7 @@ bool convertRgba(PixelBuffer& destination, const PixelBuffer& source, AlphaMode 
         for (std::size_t c = 0; c < 3; ++c) {
             auto& channel = destination.rgba[i + c];
             channel = static_cast<std::uint8_t>(target == AlphaMode::Premultiplied
-                ? (channel * a + 127U) / 255U
+                ? detail::mul255(channel, a)
                 : a == 0 ? 0 : std::min(255U, (channel * 255U + a / 2U) / a));
         }
     }

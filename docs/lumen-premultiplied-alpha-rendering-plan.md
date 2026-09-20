@@ -1,6 +1,6 @@
 # Lumen 预乘 alpha 渲染改造计划与任务清单
 
-> 状态：P0/P1 已完成；P2 待实施。before 基线已冻结，CPU 帧仍为直通，性能收益尚未验证。
+> 状态：P0/P1/P2 已完成；P3 待实施。before 基线已冻结，CPU 已迁移预乘累积，性能收益尚待 P4 验证。
 > 日期：2026-09-20。源码核对基点：`8779ccd` 及编写时工作树；执行前重新核对相关实现和未提交改动。
 > 目标：应用颜色保持直通 RGBA，渲染器内部采用预乘 RGBA 累积，帧缓冲携带明确的 alpha 格式，透明窗口按格式直接呈现。
 > 范围：Windows、Linux、macOS 桌面；CPU 光栅、Skia 光栅、Skia Ganesh GPU 的共用像素边界。按既有能力优化交付，不新增里程碑编号。
@@ -175,12 +175,12 @@ Aout = As + Ad * (1 - As)
 
 ### P2：迁移 CPU 帧缓冲、混合与图片缓存
 
-- [ ] P2.1 完整清屏与局部清屏写入预乘颜色，初始化前后缓冲的模式和不透明性证明。
-- [ ] P2.2 重写公共 source-over，分开直通 `Color` 与预乘图片入口；保留透明跳过、不透明覆写和 span 快速路径。
-- [ ] P2.3 检查 fill/stroke、系统字形/占位字形、图标、阴影、图片与圆角 clip 的全部入口；按第 3.3 节折算 coverage。
-- [ ] P2.4 两个图片上传入口统一成一次归一化；同 ID 覆盖、卸载、重上传和空/非法图片行为有回归。
-- [ ] P2.5 前后缓冲交换、damage 同步、resize/DPI/清屏色变化与 Preserve 退回全量路径携带正确模式；必要时失效旧帧。
-- [ ] P2.6 删除 P1 的 CPU 直通内部兼容分支；`pixels()` 返回真实预乘/不透明帧，不做隐藏全图转换。
+- [x] P2.1 完整清屏与局部清屏写入预乘颜色，初始化前后缓冲的模式和不透明性证明。
+- [x] P2.2 重写公共 source-over，分开直通 `Color` 与预乘图片入口；保留透明跳过、不透明覆写和 span 快速路径。
+- [x] P2.3 检查 fill/stroke、系统字形/占位字形、图标、阴影、图片与圆角 clip 的全部入口；按第 3.3 节折算 coverage。
+- [x] P2.4 两个图片上传入口统一成一次归一化；同 ID 覆盖、卸载、重上传和空/非法图片行为有回归。
+- [x] P2.5 前后缓冲交换、damage 同步、resize/DPI/清屏色变化与 Preserve 退回全量路径携带正确模式；必要时失效旧帧。
+- [x] P2.6 删除 P1 的 CPU 直通内部兼容分支；`pixels()` 返回真实预乘/不透明帧，不做隐藏全图转换。
 
 **出口**：第 5 节 CPU 算术与生命周期用例通过，全量/局部/即时/命令回放输出在相同格式下严格一致；正常透明呈现走直接路径。运行完整 CPU CTest。
 
@@ -372,6 +372,10 @@ p50/p95、复制/转换字节、临时内存结果：
 
 基点 `a28c26f`；增加 AlphaMode、校验/转换、所有资源与呈现消费者、v7/v6 读写及直通导出适配，CPU 暂时仍为直通。完整 review 与证据见 [P1 记录](perf-baselines/premultiplied-alpha-2026-09-20/P1.md)。CPU Debug / Release 均 749/749，Skia raster Release 760/760，GPU Release 770/770（无跳过），真实 GL 图片模式回归通过。GPU 门槛暴露并修复旧 List 测试未显式开启焦点环的夹具遗漏，无控件外观变更。11 个固定帧哈希与 P0 一致；Windows Skia software 红色由错误 64 恢复到 128，software/texture 均零 Lumen 转换与 scratch。阶段出口满足，P2–P5 继续；本阶段探针不作为性能收益证据。
 
+### P2 / 2026-09-20
+
+基点 `ea8a0c3`；CPU 帧、清屏、source-over 与图片缓存已统一为预乘/不透明格式，删除 P1 临时直通桥接。review 修复配置失效与已发布帧状态混用、damage 同步的模式继承。完整证据见 [P2 记录](perf-baselines/premultiplied-alpha-2026-09-20/P2.md)。CPU Debug / Release 各 754/754，Skia raster 765/765，GPU 775/775，无跳过。图片两场景逐字节符合 P0 独立参考，42 张 Gallery 的 alpha 精确相等、RGB 无超差；正常 CPU 窗口四条路径转换/副本/scratch 全部为零。P2 出口满足，P3–P5 继续；尚无正式性能收益结论。
+
 最终关闭清单：
 
 - [ ] P0–P5 出口均有记录，源码中的模式和文档一致。
@@ -393,7 +397,7 @@ p50/p95、复制/转换字节、临时内存结果：
 ## 11. 设计依据与参考
 
 - [GUI 框架基线](lumen-gui-framework-plan.md)、[桌面 GPU 与性能计划](lumen-gui-framework-plan-v0.2.md)、[当前桌面范围](lumen-self-use-roadmap.md)。
-- [视觉系统](lumen-visual-system-design.md)、[标题栏与透明窗口契约](lumen-titlebar-design.md)。旧直通路径在本计划实施完成前仍是 CPU 当前行为，不能提前把现状文档改成已预乘。
+- [视觉系统](lumen-visual-system-design.md)、[标题栏与透明窗口契约](lumen-titlebar-design.md)。P2 起 CPU 当前行为已为预乘；P0/P1 记录保留旧直通事实，后续现状说明按已完成阶段更新。
 - [性能基线与比较规则](perf-baselines/README.md)、[统一构建与验证命令](build-commands.md)。
 - [W3C Simple alpha compositing](https://www.w3.org/TR/compositing-1/#simplealphacompositing)：source-over 与预乘表示公式。
 - [Skia alpha type](https://api.skia.org/SkAlphaType_8h.html)：直通、预乘和不透明的像素解释。

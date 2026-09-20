@@ -211,7 +211,7 @@ TEST_CASE("cpu_renderer_rejects_short_image_buffers", "[render]") {
                                                          2.0F)));
 }
 
-TEST_CASE("cpu_renderer_preserves_straight_alpha_across_image_roundtrip",
+TEST_CASE("cpu_renderer_preserves_premultiplied_alpha_across_image_roundtrip",
           "[render]") {
     CpuRenderer layer(1.0F, Color::transparent());
     layer.beginFrame(Size{1.0F, 1.0F});

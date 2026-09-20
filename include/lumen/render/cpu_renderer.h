@@ -33,7 +33,7 @@ class CpuRenderer final : public Renderer {
     // 透明窗口（WindowDesc.transparent）：清屏色改为全透明（圆角外的
     // 像素不被不透明底填充；呈现路径按像素 alpha 交给合成器）。不透明
     // 窗口保持默认深底（无合成器依赖）。
-    void setClearColor(core::Color clear) { clearColor_ = clear; }
+    void setClearColor(core::Color clear);
 
     // 系统字体光栅（窗口路径经 AppShell::setFontManager 转发；空 = 占
     // 位 5x7 点阵字）。注入后 drawText 使用 SystemFontManager 的系统字
@@ -48,6 +48,7 @@ class CpuRenderer final : public Renderer {
         return systemFonts_ != nullptr;
     }
 
+    // Actual Premultiplied/Opaque framebuffer; no conversion or copy on reads.
     // Framebuffer of the last completed frame; endFrame() swaps it with the
     // drawing buffer without copying at publication. Mid-frame reads
     // see the previous completed frame; before the first completed frame the
@@ -57,8 +58,8 @@ class CpuRenderer final : public Renderer {
     }
 
     // Uploads an image for drawImage(); ids are stable and opaque. Buffers
-    // accept all validated modes. P1 temporarily normalizes to straight internally;
-    // P2 replaces that bridge with a premultiplied cache. Invalid buffers return 0.
+    // accept all validated modes and normalize once to Premultiplied/Opaque.
+    // Invalid buffers return 0. Draws never convert cached image representation.
     ImageId registerImage(PixelBuffer image);
     // Frees a registered image; drawing a freed id is a no-op (resource
     // lifecycle, plan 阶段6).
@@ -132,13 +133,16 @@ class CpuRenderer final : public Renderer {
                                          float bottom) const;
     void fillSpan(int y, int x0, int x1, core::Color color);
     void blendPixel(int px, int py, core::Color color);
+    // Image bytes are already premultiplied: coverage scales all four channels.
+    void blendImagePixel(int px, int py, const std::uint8_t* rgba);
+    // Common source-over accumulator; channels here are NOT a straight Color.
+    void compositePixel(int px, int py, unsigned r, unsigned g, unsigned b, unsigned a);
     // 灰度 coverage 混合（字形抗锯齿）：coverage 折进 alpha 后走同一
     // source-over 路径。
     void blendCoveragePixel(int px, int py, core::Color color,
                             std::uint8_t coverage);
     // 圆角裁剪覆盖率（0..1；无活跃圆角裁剪恒 1）。像素写入统一经此
-    // 门控（blendPixel/fillSpan；文本/图标/图像路径都收敛到 blendPixel
-    // 系）。
+    // 门控（Color/字形/图标走 blendPixel，图片走 blendImagePixel）。
     [[nodiscard]] float roundedCoverage(int px, int py) const;
     // 系统字体字形光栅（false = 无位图，调用方回退占位/留白）。
     bool drawSystemGlyph(std::uint32_t codePoint, const std::string& family,
@@ -162,6 +166,10 @@ class CpuRenderer final : public Renderer {
     PixelBuffer buffer_{};
     PixelBuffer front_{};
     bool hasFront_{false};
+    // Publication and reuse are separate: configuration changes invalidate
+    // Preserve without exposing an unfinished back buffer through pixels().
+    bool frontReusable_{false};
+    bool frameMatchesConfig_{false};
     // 上次局部 submit 改动的像素区域；空值表示 back 需要全量同步。
     std::optional<ClipRects> backDamage_{};
     std::vector<ClipState> clip_{};

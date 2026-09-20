@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "placeholder_font.h"
+#include "pixel_math.h"
 
 namespace lumen::render {
 namespace {
@@ -20,20 +21,32 @@ using detail::glyphPixel;
 
 CpuRenderer::CpuRenderer(float deviceScale, core::Color clear)
     : deviceScale_(deviceScale > 0.0F ? deviceScale : 1.0F),
-      clearColor_(clear) {}
+      clearColor_(clear) {
+    buffer_.alphaMode = front_.alphaMode = AlphaMode::Premultiplied;
+}
 
 void CpuRenderer::setDeviceScale(float scale) {
     if (scale > 0.0F && scale != deviceScale_) {
         deviceScale_ = scale;
         // Pixel dimensions change with the scale; the preserved previous
         // frame is stale until the next full frame.
-        hasFront_ = false;
+        frontReusable_ = false;
+        frameMatchesConfig_ = false;
+        backDamage_.reset();
+    }
+}
+
+void CpuRenderer::setClearColor(core::Color clear) {
+    if (clearColor_ != clear) {
+        clearColor_ = clear;
+        frontReusable_ = false;
+        frameMatchesConfig_ = false;
+        backDamage_.reset();
     }
 }
 
 ImageId CpuRenderer::registerImage(PixelBuffer image) {
-    // P1 bridge: the accumulator is still straight; removed in P2.
-    if (!unpremultiplyRgbaInPlace(image)) {
+    if (!premultiplyRgbaInPlace(image)) {
         return 0;
     }
     while (images_.contains(nextImageId_)) {
@@ -64,8 +77,12 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
     const std::size_t bytes =
         static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4;
     const bool canPreserve =
-        mode == FrameMode::Preserve && hasFront_ &&
+        mode == FrameMode::Preserve && hasFront_ && frontReusable_ &&
         front_.width == width && front_.height == height;
+    const std::uint8_t clearBytes[] = {
+        static_cast<std::uint8_t>(detail::mul255(clearColor_.r, clearColor_.a)),
+        static_cast<std::uint8_t>(detail::mul255(clearColor_.g, clearColor_.a)),
+        static_cast<std::uint8_t>(detail::mul255(clearColor_.b, clearColor_.a)), clearColor_.a};
     if (canPreserve) {
         // Keep the published front intact. After a partial submit only that
         // frame's damage differs between the two buffers, so synchronize it.
@@ -82,16 +99,17 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
         } else {
             buffer_ = front_;
         }
+        buffer_.alphaMode = front_.alphaMode;
         if (damage.size.width > 0.0F && damage.size.height > 0.0F) {
             const auto dirty = pixelRect(damage);
             for (int y = dirty.y0; y < dirty.y1; ++y) {
                 std::size_t offset = (static_cast<std::size_t>(y) * width +
                                       dirty.x0) * 4;
                 for (int x = dirty.x0; x < dirty.x1; ++x) {
-                    buffer_.rgba[offset] = clearColor_.r;
-                    buffer_.rgba[offset + 1] = clearColor_.g;
-                    buffer_.rgba[offset + 2] = clearColor_.b;
-                    buffer_.rgba[offset + 3] = clearColor_.a;
+                    buffer_.rgba[offset] = clearBytes[0];
+                    buffer_.rgba[offset + 1] = clearBytes[1];
+                    buffer_.rgba[offset + 2] = clearBytes[2];
+                    buffer_.rgba[offset + 3] = clearBytes[3];
                     offset += 4;
                 }
             }
@@ -99,14 +117,16 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
     } else {
         buffer_.width = width;
         buffer_.height = height;
+        buffer_.alphaMode = clearColor_.a == 255 ? AlphaMode::Opaque : AlphaMode::Premultiplied;
         buffer_.rgba.assign(bytes, 0);
         for (std::size_t i = 0; i + 3 < buffer_.rgba.size(); i += 4) {
-            buffer_.rgba[i] = clearColor_.r;
-            buffer_.rgba[i + 1] = clearColor_.g;
-            buffer_.rgba[i + 2] = clearColor_.b;
-            buffer_.rgba[i + 3] = clearColor_.a;
+            buffer_.rgba[i] = clearBytes[0];
+            buffer_.rgba[i + 1] = clearBytes[1];
+            buffer_.rgba[i + 2] = clearBytes[2];
+            buffer_.rgba[i + 3] = clearBytes[3];
         }
     }
+    frameMatchesConfig_ = true;
     backDamage_.reset();
     clip_.clear();
     clip_.push_back(ClipState{ClipRects{0, 0, buffer_.width, buffer_.height},
@@ -133,9 +153,16 @@ CpuRenderer::ClipRects CpuRenderer::rasterBounds(float left, float top,
 
 void CpuRenderer::fillSpan(int y, int x0, int x1, core::Color color) {
     // Callers supply a fully covered span already intersected with the clip.
-    if (x0 >= x1) return;
-    if (color.a != 255 || roundedActive_) {
+    if (x0 >= x1 || color.a == 0) return;
+    if (roundedActive_) {
         for (int x = x0; x < x1; ++x) blendPixel(x, y, color);
+        return;
+    }
+    if (color.a != 255) {
+        const unsigned r = detail::mul255(color.r, color.a);
+        const unsigned g = detail::mul255(color.g, color.a);
+        const unsigned b = detail::mul255(color.b, color.a);
+        for (int x = x0; x < x1; ++x) compositePixel(x, y, r, g, b, color.a);
         return;
     }
     auto* dst = buffer_.rgba.data() +
@@ -214,37 +241,50 @@ void CpuRenderer::blendPixel(int px, int py, core::Color color) {
             }
         }
     }
-    std::uint8_t* d = &buffer_.rgba[(static_cast<std::size_t>(py) *
-                                     static_cast<std::size_t>(buffer_.width) +
-                                     static_cast<std::size_t>(px)) *
-                                    4];
     if (color.a == 255) {
-        d[0] = color.r;
-        d[1] = color.g;
-        d[2] = color.b;
+        compositePixel(px, py, color.r, color.g, color.b, 255);
+    } else if (color.a != 0) {
+        compositePixel(px, py, detail::mul255(color.r, color.a),
+                       detail::mul255(color.g, color.a), detail::mul255(color.b, color.a), color.a);
+    }
+}
+
+void CpuRenderer::blendImagePixel(int px, int py, const std::uint8_t* rgba) {
+    if (clip_.empty() || rgba[3] == 0) return;
+    const auto& active = clip_.back().rect;
+    if (px < active.x0 || px >= active.x1 || py < active.y0 || py >= active.y1 ||
+        px < 0 || py < 0 || px >= buffer_.width || py >= buffer_.height) return;
+    if (roundedActive_) {
+        const float coverage = roundedCoverage(px, py);
+        if (coverage <= 0.0F) return;
+        if (coverage < 1.0F) {
+            // Preserve the existing clip rounding and scale RGB + A together.
+            const auto covered = [coverage](std::uint8_t channel) {
+                return static_cast<unsigned>(std::lround(channel * coverage));
+            };
+            compositePixel(px, py, covered(rgba[0]), covered(rgba[1]),
+                           covered(rgba[2]), covered(rgba[3]));
+            return;
+        }
+    }
+    compositePixel(px, py, rgba[0], rgba[1], rgba[2], rgba[3]);
+}
+
+void CpuRenderer::compositePixel(int px, int py, unsigned r, unsigned g, unsigned b, unsigned a) {
+    if (a == 0) return;
+    auto* d = buffer_.rgba.data() + (static_cast<std::size_t>(py) * buffer_.width + px) * 4;
+    if (a == 255) {
+        d[0] = static_cast<std::uint8_t>(r);
+        d[1] = static_cast<std::uint8_t>(g);
+        d[2] = static_cast<std::uint8_t>(b);
         d[3] = 255;
         return;
     }
-    if (color.a == 0) {
-        return;
-    }
-    const unsigned srcA = color.a;
-    const unsigned dstA = d[3];
-    const unsigned invSrcA = 255U - srcA;
-    const unsigned outA = srcA + (dstA * invSrcA + 127U) / 255U;
-    if (outA == 0U) {
-        return;
-    }
-    const auto blendChannel = [srcA, dstA, invSrcA, outA](unsigned src,
-                                                            unsigned dst) {
-        const unsigned value = src * srcA +
-                                (dst * dstA * invSrcA + 127U) / 255U;
-        return static_cast<std::uint8_t>((value + outA / 2U) / outA);
-    };
-    d[0] = blendChannel(color.r, d[0]);
-    d[1] = blendChannel(color.g, d[1]);
-    d[2] = blendChannel(color.b, d[2]);
-    d[3] = static_cast<std::uint8_t>(outA);
+    const unsigned inverse = 255U - a;
+    d[0] = static_cast<std::uint8_t>(r + detail::mul255(d[0], inverse));
+    d[1] = static_cast<std::uint8_t>(g + detail::mul255(d[1], inverse));
+    d[2] = static_cast<std::uint8_t>(b + detail::mul255(d[2], inverse));
+    d[3] = static_cast<std::uint8_t>(a + detail::mul255(d[3], inverse));
 }
 
 namespace {
@@ -443,8 +483,7 @@ void CpuRenderer::blendCoveragePixel(int px, int py, core::Color color,
         blendPixel(px, py, color);
         return;
     }
-    color.a = static_cast<std::uint8_t>(
-        (static_cast<unsigned>(color.a) * coverage + 127U) / 255U);
+    color.a = static_cast<std::uint8_t>(detail::mul255(color.a, coverage));
     blendPixel(px, py, color);
 }
 
@@ -961,11 +1000,7 @@ void CpuRenderer::drawImage(ImageId id, core::Rect destination) {
                      static_cast<std::size_t>(image.width) +
                  static_cast<std::size_t>(sx)) *
                 4;
-            blendPixel(px, py,
-                       core::Color::fromRGBA(image.rgba[offset],
-                                             image.rgba[offset + 1],
-                                             image.rgba[offset + 2],
-                                             image.rgba[offset + 3]));
+            blendImagePixel(px, py, image.rgba.data() + offset);
         }
     }
 }
@@ -975,6 +1010,7 @@ void CpuRenderer::endFrame() {
     // 下一帧绘制进入旧 front（会被 Clear/Preserve 重建）。
     std::swap(buffer_, front_);
     hasFront_ = true;
+    frontReusable_ = frameMatchesConfig_;
 }
 
 RendererCapabilities CpuRenderer::capabilities() const {
@@ -996,7 +1032,7 @@ void CpuRenderer::submit(const RenderCommandList& commands,
     bool partial = false;
     std::string fallbackReason{};
     if (wantsPartial) {
-        if (hasFront_ && front_.width == std::max(1, toPixel(info.viewport.width)) &&
+        if (hasFront_ && frontReusable_ && front_.width == std::max(1, toPixel(info.viewport.width)) &&
             front_.height == std::max(1, toPixel(info.viewport.height))) {
             partial = true;
         } else {
@@ -1077,8 +1113,8 @@ void CpuRenderer::submit(const RenderCommandList& commands,
                 // 后的重新上传走同一命令，plan §3.3）。
                 {
                     PixelBuffer image;
-                    // Same P1 normalization as registerImage; validate before replacing.
-                    if (command.image != 0 && unpremultiplyRgbaInto(image, command.pixels)) {
+                    // Same one-time premultiplication as registerImage; validate before replacing.
+                    if (command.image != 0 && premultiplyRgbaInto(image, command.pixels)) {
                         images_.insert_or_assign(command.image, std::move(image));
                         ++uploads;
                     }

@@ -61,9 +61,10 @@ TEST_CASE("alpha_reference_multilayer_quantization_budget", "[render][alpha]") {
                                                static_cast<std::uint8_t>(color[2]),
                                                static_cast<std::uint8_t>(color[3])));
             cpu.endFrame();
-            // P0 CPU output is straight. P2 changes this normalization only;
-            // integer oracle and the pre-frozen error budget stay unchanged.
-            const auto actual = premultiplied(first(cpu.pixels()));
+            // P2 output is already premultiplied; the independent P0 oracle
+            // and frozen error ceiling are unchanged. Integer accumulation is exact.
+            const auto actual = first(cpu.pixels());
+            CHECK(actual == expected);
             CHECK(actual[3] == expected[3]);
             for (int c = 0; c < 4; ++c) {
                 const auto integerError = static_cast<unsigned>(
@@ -90,7 +91,7 @@ TEST_CASE("alpha_reference_single_layer_and_image_roundtrip", "[render][alpha]")
         source.drawRect(core::Rect::fromXYWH(0, 0, 4, 4),
                         core::Color::fromRGBA(255, 64, 17, static_cast<std::uint8_t>(alpha)));
         source.endFrame();
-        const auto actual = premultiplied(first(source.pixels()));
+        const auto actual = first(source.pixels());
         CHECK(actual == premultiplied({255, 64, 17, static_cast<unsigned>(alpha)}));
         render::CpuRenderer target(1, core::Color::fromRGBA(0, 0, 0, 0));
         const auto id = target.registerImage(source.pixels());
@@ -102,11 +103,9 @@ TEST_CASE("alpha_reference_single_layer_and_image_roundtrip", "[render][alpha]")
     }
 }
 
-// P0 characterization of a pre-existing defect, NOT the target contract.
-// The old straight formula computes red=256 and wraps to zero. P1 keeps the
-// old accumulator; P2 must replace this characterization with exact oracle
-// equality after switching storage/blending together (alpha plan P0 record).
-TEST_CASE("alpha_p0_characterizes_straight_channel_overflow", "[render][alpha]") {
+// P0 reproduced red=256 -> uint8 zero. P2's premultiplied accumulator must
+// match the independent model exactly, including low-alpha follow-up draws.
+TEST_CASE("alpha_source_over_does_not_wrap_straight_channels", "[render][alpha]") {
     using namespace lumen;
     render::CpuRenderer cpu(1, core::Color::fromRGBA(0, 0, 0, 0));
     cpu.beginFrame({1, 1});
@@ -115,7 +114,7 @@ TEST_CASE("alpha_p0_characterizes_straight_channel_overflow", "[render][alpha]")
     cpu.endFrame();
     const auto expected = over({255, 0, 0, 1}, over({255, 0, 0, 128}, {}));
     CHECK(expected == Pixel{128, 0, 0, 128});
-    CHECK(first(cpu.pixels()) == Pixel{0, 0, 0, 128});
+    CHECK(first(cpu.pixels()) == expected);
 }
 
 TEST_CASE("alpha_reference_rounded_solid_edges_keep_color", "[render][alpha]") {
@@ -130,7 +129,7 @@ TEST_CASE("alpha_reference_rounded_solid_edges_keep_color", "[render][alpha]") {
     for (std::size_t i = 0; i < bytes.size(); i += 4) {
         if (bytes[i + 3] > 0 && bytes[i + 3] < 255) {
             ++edgePixels;
-            CHECK(roundedProduct(bytes[i], bytes[i + 3]) == bytes[i + 3]);
+            CHECK(bytes[i] == bytes[i + 3]);
             CHECK(bytes[i + 1] == 0);
             CHECK(bytes[i + 2] == 0);
         }
