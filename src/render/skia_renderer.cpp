@@ -226,6 +226,27 @@ void SkiaRenderer::clipRect(core::Rect rect) {
     impl_->canvas->clipRect(skRect, SkClipOp::kIntersect, false);
 }
 
+void SkiaRenderer::clipRounded(core::Rect rect, core::CornerRadius radius) {
+    if (impl_->canvas == nullptr) {
+        return;
+    }
+    SkRect skRect = SkRect::MakeXYWH(
+        rect.left() * impl_->deviceScale, rect.top() * impl_->deviceScale,
+        rect.size.width * impl_->deviceScale,
+        rect.size.height * impl_->deviceScale);
+    const float s = impl_->deviceScale;
+    // Skia 圆角序（顺时针自左上）：TL, TR, BR, BL。
+    const SkVector radii[4] = {
+        {radius.topLeft * s, radius.topLeft * s},
+        {radius.topRight * s, radius.topRight * s},
+        {radius.bottomRight * s, radius.bottomRight * s},
+        {radius.bottomLeft * s, radius.bottomLeft * s},
+    };
+    SkRRect rrect;
+    rrect.setRectRadii(skRect, radii);
+    impl_->canvas->clipRRect(rrect, SkClipOp::kIntersect, true);
+}
+
 void SkiaRenderer::drawRect(core::Rect rect, core::Color color,
                             core::CornerRadius radius) {
     if (impl_->canvas == nullptr || color.a == 0) {

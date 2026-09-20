@@ -123,7 +123,9 @@ void CpuRenderer::beginFrame(core::Size viewport, FrameMode mode,
     }
     backDamage_.reset();
     clip_.clear();
-    clip_.push_back(ClipRects{0, 0, buffer_.width, buffer_.height});
+    clip_.push_back(ClipState{ClipRects{0, 0, buffer_.width, buffer_.height},
+                              {}});
+    roundedActive_ = false;
 }
 
 CpuRenderer::ClipRects CpuRenderer::pixelRect(core::Rect rect) const {
@@ -136,7 +138,7 @@ CpuRenderer::ClipRects CpuRenderer::pixelRect(core::Rect rect) const {
 CpuRenderer::ClipRects CpuRenderer::rasterBounds(float left, float top,
                                                 float right, float bottom) const {
     if (clip_.empty()) return {};
-    const auto& clip = clip_.back();
+    const auto& clip = clip_.back().rect;
     return {std::max(clip.x0, static_cast<int>(std::floor(left))),
             std::max(clip.y0, static_cast<int>(std::floor(top))),
             std::min(clip.x1, static_cast<int>(std::ceil(right))),
@@ -146,7 +148,7 @@ CpuRenderer::ClipRects CpuRenderer::rasterBounds(float left, float top,
 void CpuRenderer::fillSpan(int y, int x0, int x1, core::Color color) {
     // Callers supply a fully covered span already intersected with the clip.
     if (x0 >= x1) return;
-    if (color.a != 255) {
+    if (color.a != 255 || roundedActive_) {
         for (int x = x0; x < x1; ++x) blendPixel(x, y, color);
         return;
     }
@@ -175,6 +177,7 @@ void CpuRenderer::restore() {
     // restores degrade to full-viewport clipping.
     if (clip_.size() > 1) {
         clip_.pop_back();
+        roundedActive_ = !clip_.empty() && !clip_.back().rounded.empty();
     }
 }
 
@@ -182,7 +185,7 @@ void CpuRenderer::clipRect(core::Rect rect) {
     if (clip_.empty()) {
         return;
     }
-    ClipRects active = clip_.back();
+    ClipRects active = clip_.back().rect;
     active.x0 = std::max(active.x0, toPixel(rect.left()));
     active.y0 = std::max(active.y0, toPixel(rect.top()));
     active.x1 = std::min(active.x1, toPixel(rect.right()));
@@ -194,19 +197,36 @@ void CpuRenderer::clipRect(core::Rect rect) {
     if (active.y1 < active.y0) {
         active.y1 = active.y0;
     }
-    clip_.back() = active;
+    clip_.back().rect = active;
 }
+
 
 void CpuRenderer::blendPixel(int px, int py, core::Color color) {
     if (clip_.empty()) {
         return;
     }
-    const ClipRects& active = clip_.back();
+    const ClipRects& active = clip_.back().rect;
     if (px < active.x0 || px >= active.x1 || py < active.y0 || py >= active.y1) {
         return;
     }
     if (px < 0 || py < 0 || px >= buffer_.width || py >= buffer_.height) {
         return;
+    }
+    if (roundedActive_) {
+        const float clipCov = roundedCoverage(px, py);
+        if (clipCov <= 0.0F) {
+            return;
+        }
+        if (clipCov < 1.0F) {
+            // 圆角边界带：裁剪覆盖率折进 alpha（source-over 语义下与
+            // 逐层覆盖率乘子等价；blendCoveragePixel 复合同理）。
+            color.a = static_cast<std::uint8_t>(std::lround(
+                std::clamp(static_cast<float>(color.a) * clipCov, 0.0F,
+                           255.0F)));
+            if (color.a == 0) {
+                return;
+            }
+        }
     }
     std::uint8_t* d = &buffer_.rgba[(static_cast<std::size_t>(py) *
                                      static_cast<std::size_t>(buffer_.width) +
@@ -244,17 +264,9 @@ void CpuRenderer::blendPixel(int px, int py, core::Color color) {
 namespace {
 
 // 圆角矩形的设备像素空间形状（AA 用；边界为实数，半径已夹取到半边
-// 长）。fill/stroke/图标共用同一距离场，边角语义跨图元一致。
-struct DeviceShape {
-    float x0{0.0F};
-    float y0{0.0F};
-    float x1{0.0F};
-    float y1{0.0F};
-    float rTL{0.0F};
-    float rTR{0.0F};
-    float rBL{0.0F};
-    float rBR{0.0F};
-};
+// 长）。fill/stroke/图标/圆角裁剪共用同一距离场，边角语义跨图元一致。
+// 类型即 CpuRenderer::ClipShape（成员函数定义处可见私有嵌套类型）。
+using DeviceShape = CpuRenderer::ClipShape;
 
 // 设备空间形状：逻辑 rect/radius × deviceScale（无 toPixel 舍入——AA
 // 覆盖率需要亚像素精度的边界）。
@@ -448,6 +460,55 @@ void CpuRenderer::blendCoveragePixel(int px, int py, core::Color color,
     color.a = static_cast<std::uint8_t>(
         (static_cast<unsigned>(color.a) * coverage + 127U) / 255U);
     blendPixel(px, py, color);
+}
+
+float CpuRenderer::roundedCoverage(int px, int py) const {
+    if (clip_.empty() || clip_.back().rounded.empty()) {
+        return 1.0F;
+    }
+    const float cx = static_cast<float>(px) + 0.5F;
+    const float cy = static_cast<float>(py) + 0.5F;
+    float coverage = 1.0F;
+    for (const ClipShape& shape : clip_.back().rounded) {
+        const float d = sdRoundedRect(shape, cx, cy);
+        if (d >= 0.5F) {
+            return 0.0F;
+        }
+        if (d > -0.5F) {
+            // 与 fillLogicalRect 边界带同口径（1px 带内线性）。
+            coverage = std::min(coverage, 0.5F - d);
+        }
+    }
+    return std::clamp(coverage, 0.0F, 1.0F);
+}
+
+void CpuRenderer::clipRounded(core::Rect rect, core::CornerRadius radius) {
+    // 圆角裁剪：栈顶追加分角形状（save 拷贝栈顶语义下嵌套自然求交），
+    // 矩形部分取外接盒与现有 scissor 求交；像素写入按 SDF 覆盖率乘子
+    // 门控（roundedCoverage）。
+    if (clip_.empty() || rect.size.width <= 0.0F ||
+        rect.size.height <= 0.0F) {
+        return;
+    }
+    ClipShape shape = deviceShapeFor(rect, radius, deviceScale_);
+    ClipRects active = clip_.back().rect;
+    active.x0 = std::max(
+        active.x0, static_cast<int>(std::floor(shape.x0 - 0.5F)));
+    active.y0 = std::max(
+        active.y0, static_cast<int>(std::floor(shape.y0 - 0.5F)));
+    active.x1 = std::min(
+        active.x1, static_cast<int>(std::ceil(shape.x1 + 0.5F)));
+    active.y1 = std::min(
+        active.y1, static_cast<int>(std::ceil(shape.y1 + 0.5F)));
+    if (active.x1 < active.x0) active.x1 = active.x0;
+    if (active.y1 < active.y0) active.y1 = active.y0;
+    clip_.back().rect = active;
+    const bool anyRadius = shape.rTL > 0.0F || shape.rTR > 0.0F ||
+                           shape.rBL > 0.0F || shape.rBR > 0.0F;
+    if (anyRadius) {
+        clip_.back().rounded.push_back(shape);
+        roundedActive_ = true;
+    }
 }
 
 // 系统字体字形：penX/baselineY 为逻辑坐标（advance 定位与 TextLayout
@@ -875,7 +936,7 @@ void CpuRenderer::drawImage(ImageId id, core::Rect destination) {
         clip_.empty()) {
         return;
     }
-    const auto& clip = clip_.back();
+    const auto& clip = clip_.back().rect;
     const int x0 = std::max(clip.x0, toPixel(destination.left()));
     const int y0 = std::max(clip.y0, toPixel(destination.top()));
     const int x1 = std::min(clip.x1, toPixel(destination.right()));
@@ -987,6 +1048,9 @@ void CpuRenderer::submit(const RenderCommandList& commands,
                 break;
             case CommandType::ClipRect:
                 clipRect(command.rect);
+                break;
+            case CommandType::ClipRounded:
+                clipRounded(command.rect, command.radius);
                 break;
             case CommandType::DrawRect:
                 drawRect(command.rect, command.color, command.radius);

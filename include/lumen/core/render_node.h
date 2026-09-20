@@ -94,6 +94,8 @@ struct RenderNode {
     bool progressIndeterminate{false};
     // 图标旋转（弧度，绕节点中心；Widget.iconRotation 布局期复制）。
     float iconRotation{0.0F};
+    // 圆角裁剪声明（Widget.clipRounded 布局期复制；painter 消费）。
+    bool clipRounded{false};
 
     // 视觉系统声明状态：interaction/semantics 的可用性与选中语义。
     bool enabled{true};

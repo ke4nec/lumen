@@ -69,7 +69,22 @@ class CpuRenderer final : public Renderer {
     void beginFrame(core::Size viewport, FrameMode mode, core::Rect damage);
     void save() override;
     void restore() override;
+    // 圆角裁剪形状（设备像素空间；与 fill/stroke 的 AA 距离场同构）。
+    // 公开：编译单元内的 SDF/形状工具函数以 DeviceShape 别名引用。
+    struct ClipShape {
+        float x0{0.0F};
+        float y0{0.0F};
+        float x1{0.0F};
+        float y1{0.0F};
+        float rTL{0.0F};
+        float rTR{0.0F};
+        float rBL{0.0F};
+        float rBR{0.0F};
+    };
+
     void clipRect(core::Rect rect) override;
+    // 圆角裁剪（Renderer 注释同）：SDF 覆盖率乘子门控栈顶像素写入。
+    void clipRounded(core::Rect rect, core::CornerRadius radius) override;
     void drawRect(core::Rect rect, core::Color color,
                   core::CornerRadius radius = {}) override;
     // S1：圆角描边（环带）——外圆角矩形包含且内圆角矩形（内缩 width）
@@ -103,6 +118,12 @@ class CpuRenderer final : public Renderer {
         int x1{0};
         int y1{0};
     };
+    // 栈式裁剪状态：scissor + 活跃圆角形状列表（save 拷贝栈顶 → 嵌套
+    // 圆角裁剪自然求交）。
+    struct ClipState {
+        ClipRects rect{};
+        std::vector<ClipShape> rounded{};
+    };
 
     [[nodiscard]] int toPixel(float logical) const;
     [[nodiscard]] ClipRects pixelRect(core::Rect rect) const;
@@ -114,6 +135,10 @@ class CpuRenderer final : public Renderer {
     // source-over 路径。
     void blendCoveragePixel(int px, int py, core::Color color,
                             std::uint8_t coverage);
+    // 圆角裁剪覆盖率（0..1；无活跃圆角裁剪恒 1）。像素写入统一经此
+    // 门控（blendPixel/fillSpan；文本/图标/图像路径都收敛到 blendPixel
+    // 系）。
+    [[nodiscard]] float roundedCoverage(int px, int py) const;
     // 系统字体字形光栅（false = 无位图，调用方回退占位/留白）。
     bool drawSystemGlyph(std::uint32_t codePoint, const std::string& family,
                          float penX, float baselineY, float fontSize,
@@ -138,7 +163,9 @@ class CpuRenderer final : public Renderer {
     bool hasFront_{false};
     // 上次局部 submit 改动的像素区域；空值表示 back 需要全量同步。
     std::optional<ClipRects> backDamage_{};
-    std::vector<ClipRects> clip_{};
+    std::vector<ClipState> clip_{};
+    // 栈顶是否携带圆角裁剪（无则像素写入零额外成本）。
+    bool roundedActive_{false};
     std::map<ImageId, PixelBuffer> images_{};
     ImageId nextImageId_{1};
     std::shared_ptr<const text::SystemFontManager> systemFonts_{};

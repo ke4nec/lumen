@@ -386,6 +386,24 @@ class SkiaGpuRenderer final : public Renderer {
                 canvas->clipRect(scaled(command.rect), SkClipOp::kIntersect,
                                  false);
                 break;
+            case CommandType::ClipRounded: {
+                // Skia 圆角序（顺时针自左上）：TL, TR, BR, BL。
+                const float s = deviceScale_;
+                SkRect skRect = scaled(command.rect);
+                const SkVector radii[4] = {
+                    {command.radius.topLeft * s, command.radius.topLeft * s},
+                    {command.radius.topRight * s,
+                     command.radius.topRight * s},
+                    {command.radius.bottomRight * s,
+                     command.radius.bottomRight * s},
+                    {command.radius.bottomLeft * s,
+                     command.radius.bottomLeft * s},
+                };
+                SkRRect rrect;
+                rrect.setRectRadii(skRect, radii);
+                canvas->clipRRect(rrect, SkClipOp::kIntersect, true);
+                break;
+            }
             case CommandType::DrawRect:
                 paintRect(canvas, command.rect, command.color, command.radius);
                 break;

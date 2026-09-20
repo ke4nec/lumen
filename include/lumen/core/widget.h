@@ -353,6 +353,13 @@ struct Widget {
     // 图标旋转（弧度；绕节点中心，painter 归一化坐标折线旋转后绘制——
     // 命令层零改动，busy 弧等持钟动画用）。默认 0。
     float iconRotation{0.0F};
+    // 圆角裁剪声明（2026-09，titlebar-design §5"角部例外"框架化）：
+    // true 时子树绘制（含自身表面）按节点 rect + radius 圆角门控
+    //（CSS overflow:hidden 语义；painter ScopedRoundedClip →
+    // ClipRounded 命令）。半径取节点自身 radius（0 = 无门控）。默认
+    // false——只应由圆角 chrome 容器（标题栏等）声明，普通内容容器
+    // 不裁剪。
+    bool clipRounded{false};
 
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
     // handler in the app's HandlerRegistry. `bindPrefix` preserves the
@@ -705,6 +712,13 @@ inline Widget withTransitionAlpha(Widget child, float alpha) {
 // 图标旋转（弧度，绕节点中心；busy 弧等持钟动画逐 tick 驱动）。
 inline Widget withIconRotation(Widget child, float radians) {
     child.iconRotation = radians;
+    return child;
+}
+
+// 圆角裁剪声明：子树绘制按节点圆角门控（配合 widget.radius 使用；
+// 圆角 chrome 容器防子件方形填充越出窗口圆角）。
+inline Widget withRoundedClip(Widget child, bool clip = true) {
+    child.clipRounded = clip;
     return child;
 }
 

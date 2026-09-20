@@ -10,6 +10,35 @@
 
 namespace lumen::render {
 
+void premultiplyRgbaInPlace(PixelBuffer& buffer) {
+    const std::size_t pixels =
+        static_cast<std::size_t>(buffer.width) *
+        static_cast<std::size_t>(buffer.height);
+    if (buffer.rgba.size() < pixels * 4) {
+        return;
+    }
+    for (std::size_t i = 0; i < pixels; ++i) {
+        std::uint8_t* rgba = &buffer.rgba[i * 4];
+        const unsigned a = rgba[3];
+        if (a == 255) {
+            continue;
+        }
+        rgba[0] = static_cast<std::uint8_t>((rgba[0] * a + 127U) / 255U);
+        rgba[1] = static_cast<std::uint8_t>((rgba[1] * a + 127U) / 255U);
+        rgba[2] = static_cast<std::uint8_t>((rgba[2] * a + 127U) / 255U);
+        if (a == 0) {
+            rgba[0] = rgba[1] = rgba[2] = 0;
+        }
+    }
+}
+
+void premultiplyRgbaInto(PixelBuffer& destination, const PixelBuffer& source) {
+    destination.width = source.width;
+    destination.height = source.height;
+    destination.rgba = source.rgba;
+    premultiplyRgbaInPlace(destination);
+}
+
 RendererCapabilities Renderer::capabilities() const {
     RendererCapabilities caps;
     caps.backendName = "adapter";
@@ -52,6 +81,9 @@ void Renderer::submit(const RenderCommandList& commands, const FrameInfo& info) 
                 break;
             case CommandType::ClipRect:
                 clipRect(command.rect);
+                break;
+            case CommandType::ClipRounded:
+                clipRounded(command.rect, command.radius);
                 break;
             case CommandType::DrawRect:
                 drawRect(command.rect, command.color, command.radius);

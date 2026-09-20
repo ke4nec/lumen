@@ -49,6 +49,9 @@ class SkiaRenderer final : public Renderer {
     void save() override;
     void restore() override;
     void clipRect(core::Rect rect) override;
+    // 圆角裁剪（Renderer 注释同）：clipRRect（AA 边界与 CPU SDF 覆盖
+    // 率门控同语义）。
+    void clipRounded(core::Rect rect, core::CornerRadius radius) override;
     void drawRect(core::Rect rect, core::Color color,
                   core::CornerRadius radius = {}) override;
     // S1：圆角描边（SkPaint stroke；内部透明，§9.2）。

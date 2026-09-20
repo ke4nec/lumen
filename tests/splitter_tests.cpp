@@ -375,11 +375,13 @@ TEST_CASE("splitter_widget_size_budget", "[core][widgets][splitter]") {
     // M7 体积门槛（实测口径）：集合控件后 Release 基线 816B，Splitter
     // 源指针 +8B → 824B；P2 水平滚动轴标志 +1B 触发对齐 → 832B；Spin/
     // StatusBar 控件（2026-09）indeterminate bool + iconRotation float
-    // → +8B = 840B（Debug 工具链调试迭代器开销分档同集合规则）。
+    // → +8B = 840B；同批 clipRounded bool（圆角裁剪声明，框架化角部
+    // 例外）触发对齐 → 848B（Debug 工具链调试迭代器开销分档同集合
+    // 规则）。
 #ifdef NDEBUG
-    CHECK(sizeof(Widget) <= 840);
+    CHECK(sizeof(Widget) <= 848);
 #else
-    CHECK(sizeof(Widget) <= 944);
+    CHECK(sizeof(Widget) <= 952);
 #endif
 }
 

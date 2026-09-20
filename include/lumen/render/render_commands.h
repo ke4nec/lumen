@@ -45,6 +45,11 @@ enum class CommandType : std::uint8_t {
     DrawShadow,  // 阴影（Skia blur；CPU 后端以 token 边框降级）
     // S1（控件视觉系统 §9.2）：圆角描边（环带；内部透明）。
     DrawRectStroke,
+    // 圆角裁剪（2026-09，lumen-titlebar-design §5"角部例外"的框架化）：
+    // 后续绘制按 rect + radius 的圆角矩形覆盖率门控（CPU 为 SDF 覆盖率
+    // 乘子，Skia 为 clipRRect）。与 ClipRect 同为栈式（Save/Restore 配
+    // 对）；语义对齐 CSS overflow:hidden 的圆角容器。
+    ClipRounded,
 };
 
 // 单条绘制命令。字段并集避免堆分配 variant；`bounds` 是命令影响的逻辑
@@ -86,6 +91,16 @@ class RenderCommandList {
     void clipRect(core::Rect rect) {
         RenderCommand& command = push(CommandType::ClipRect);
         command.rect = rect;
+        command.bounds = rect;
+        command.hasBounds = true;
+    }
+
+    // 圆角裁剪（ClipRounded 命令；半径复用 radius 字段）。bounds 取外接
+    // 矩形（保守；实际覆盖更小）。
+    void clipRounded(core::Rect rect, core::CornerRadius radius) {
+        RenderCommand& command = push(CommandType::ClipRounded);
+        command.rect = rect;
+        command.radius = radius;
         command.bounds = rect;
         command.hasBounds = true;
     }

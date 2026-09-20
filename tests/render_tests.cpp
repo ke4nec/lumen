@@ -650,3 +650,40 @@ TEST_CASE("cpu_double_buffer_returns_completed_frame", "[render][aa]") {
     }
     CHECK(pixelAt(renderer.pixels(), 5, 5) == Color::fromRGBA(0, 0, 255));
 }
+
+TEST_CASE("premultiply_converts_straight_to_premultiplied", "[render]") {
+    using lumen::render::PixelBuffer;
+    using lumen::render::premultiplyRgbaInPlace;
+    using lumen::render::premultiplyRgbaInto;
+    PixelBuffer buffer;
+    buffer.width = 4;
+    buffer.height = 1;
+    buffer.rgba = {
+        // 不透明（恒等）、半透明红、全透明（清残留）、半透明白。
+        196, 43, 28, 255,
+        196, 43, 28, 128,
+        90, 90, 90, 0,
+        255, 255, 255, 51,
+    };
+    premultiplyRgbaInPlace(buffer);
+    CHECK((buffer.rgba[0] == 196 && buffer.rgba[1] == 43 &&
+           buffer.rgba[2] == 28 && buffer.rgba[3] == 255));
+    CHECK(buffer.rgba[4] == 98);   // 196*128/255 ≈ 98.4 → 98
+    CHECK(buffer.rgba[5] == 22);   // 43*128/255 ≈ 21.6 → 22? lround: (43*128+127)/255 = 22
+    CHECK(buffer.rgba[6] == 14);   // 28*128/255 ≈ 14.06 → 14
+    CHECK(buffer.rgba[7] == 128);
+    CHECK((buffer.rgba[8] == 0 && buffer.rgba[9] == 0 &&
+           buffer.rgba[10] == 0 && buffer.rgba[11] == 0));
+    CHECK(buffer.rgba[12] == 51);  // 255*51/255
+    CHECK(buffer.rgba[13] == 51);
+    CHECK(buffer.rgba[15] == 51);
+    // 拷贝版：源保持直通。
+    const PixelBuffer straight = buffer;
+    PixelBuffer dst;
+    // 完整 2 像素（宽 4 的缓冲需要 8 字节以上——尺寸守卫按 width*height 计）。
+    buffer.rgba = {196, 43, 28, 128, 90, 90, 90, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    premultiplyRgbaInto(dst, buffer);
+    CHECK(buffer.rgba[0] == 196);  // 源未被修改
+    CHECK(dst.rgba[0] == 98);
+    (void)straight;
+}

@@ -95,6 +95,11 @@ class CommandRecorder {
         list_.clipRect(rect);
         currentClip_ = intersectClip(currentClip_, rect);
     }
+    void clipRounded(Rect rect, CornerRadius radius) {
+        // 圆角裁剪：文本/图标/阴影命令的影响区仍取外接矩形（保守）。
+        list_.clipRounded(rect, radius);
+        currentClip_ = intersectClip(currentClip_, rect);
+    }
     void drawRect(Rect rect, Color color, CornerRadius radius = {}) {
         list_.drawRect(rect, color, radius);
     }
@@ -197,6 +202,22 @@ struct ScopedClip {
     ~ScopedClip() { sink.restore(); }
     ScopedClip(const ScopedClip&) = delete;
     ScopedClip& operator=(const ScopedClip&) = delete;
+};
+
+// 圆角裁剪作用域（lumen-titlebar-design §5"角部例外"框架化）：语义对
+// 齐 CSS overflow:hidden 的圆角容器——子树绘制（含容器自身表面）按
+// 节点 rect + radius 门控。命令层 ClipRounded；CPU 为 SDF 覆盖率乘
+// 子，Skia 为 clipRRect（Renderer 默认降级为矩形裁剪）。
+template <typename Sink>
+struct ScopedRoundedClip {
+    Sink& sink;
+    ScopedRoundedClip(Sink& s, Rect rect, CornerRadius radius) : sink(s) {
+        sink.save();
+        sink.clipRounded(rect, radius);
+    }
+    ~ScopedRoundedClip() { sink.restore(); }
+    ScopedRoundedClip(const ScopedRoundedClip&) = delete;
+    ScopedRoundedClip& operator=(const ScopedRoundedClip&) = delete;
 };
 
 // 控件表面 + 焦点环 + 边框（visual-system §7/§11；S1 §9.2 描边命令）。
@@ -410,6 +431,16 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
     if (node.elevation > 0.0F && node.shadowColor.a > 0) {
         sink.drawShadow(rect, core::scaleColorAlpha(node.shadowColor, nodeAlpha),
                         node.shadowOffset, node.shadowBlur);
+    }
+
+    // 圆角裁剪（Widget.clipRounded）：作用域覆盖自身表面与全部子树
+    //（作用域对象析构于函数尾）。阴影保持在裁剪外——层级属于节点自
+    // 身，允许越出节点矩形（damage 不变量按阴影外扩计）。
+    std::optional<ScopedRoundedClip<Sink>> roundedClip;
+    if (node.clipRounded &&
+        (common.radius.topLeft > 0.0F || common.radius.topRight > 0.0F ||
+         common.radius.bottomLeft > 0.0F || common.radius.bottomRight > 0.0F)) {
+        roundedClip.emplace(sink, rect, common.radius);
     }
 
     switch (node.type) {

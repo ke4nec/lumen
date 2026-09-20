@@ -18,7 +18,7 @@ namespace {
 // v4：DrawIcon/DrawShadow（M6 视觉系统 V3：折线组 + 线宽）。
 // v5：DrawRectStroke（S1 控件视觉系统 §9.2：圆角描边环带）。
 constexpr char kMagic[] = "LUMENCMD";
-constexpr std::uint32_t kVersion = 5;
+constexpr std::uint32_t kVersion = 6;  // v6：ClipRounded（圆角裁剪；字段复用 radius，全字段统一写）
 
 void putU8(std::string& out, std::uint8_t value) {
     out.push_back(static_cast<char>(value));
@@ -200,6 +200,7 @@ bool deserializeCommand(Reader& reader, RenderCommand& command) {
         case CommandType::DrawIcon:
         case CommandType::DrawShadow:
         case CommandType::DrawRectStroke:
+        case CommandType::ClipRounded:
             break;
         default:
             reader.failed = true;

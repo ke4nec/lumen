@@ -646,3 +646,160 @@ TEST_CASE("text_commands_carry_shaped_runs_from_layout", "[render][commands]") {
     REQUIRE(lumen::render::deserializeCommands(blob, parsed));
     CHECK(parsed == shapedList);
 }
+
+// --- ClipRounded（圆角裁剪，titlebar-design §5"角部例外"框架化）---
+
+namespace {
+Color pxAt(const CpuRenderer& renderer, int x, int y) {
+    const auto& p = renderer.pixels();
+    const std::size_t o = (static_cast<std::size_t>(y) * p.width + x) * 4;
+    return Color::fromRGBA(p.rgba[o], p.rgba[o + 1], p.rgba[o + 2],
+                           p.rgba[o + 3]);
+}
+}  // namespace
+
+TEST_CASE("clip_rounded_gates_square_fill_to_corner_arc", "[render][clip]") {
+    // 方形填充在圆角裁剪下：角外保持清屏、弧内实心、边界带 AA 渐变
+    //（与直接圆角填充同口径）。
+    CpuRenderer renderer;
+    renderer.setClearColor(Color::fromRGBA(0, 0, 0, 0));
+    renderer.beginFrame(Size{100, 100});
+    renderer.save();
+    renderer.clipRounded(Rect{Offset{10, 10}, Size{80, 80}},
+                         CornerRadius::all(16));
+    renderer.drawRect(Rect{Offset{10, 10}, Size{80, 80}},
+                      Color::fromRGBA(196, 43, 28, 255));
+    renderer.restore();
+    renderer.endFrame();
+    // 角外（弧心 (26,26) r16；点距弧心 ~21）。
+    CHECK(pxAt(renderer, 11, 11) == Color::fromRGBA(0, 0, 0, 0));
+    CHECK(pxAt(renderer, 88, 11) == Color::fromRGBA(0, 0, 0, 0));
+    CHECK(pxAt(renderer, 11, 88) == Color::fromRGBA(0, 0, 0, 0));
+    CHECK(pxAt(renderer, 88, 88) == Color::fromRGBA(0, 0, 0, 0));
+    // 弧内主体（远离边界带）。
+    CHECK(pxAt(renderer, 50, 50) == Color::fromRGBA(196, 43, 28, 255));
+    CHECK(pxAt(renderer, 85, 50) == Color::fromRGBA(196, 43, 28, 255));
+    // 边界带 AA：弧对角线内侧半透明（0 < a < 255 存在渐变）。
+    int ramp = 0;
+    // 弧顶边界的水平扫描（y=11 行，弧心 (26,26) r16：跨越 x≈19）。
+    for (int x = 12; x <= 26; ++x) {
+        const int a = pxAt(renderer, x, 11).a;
+        if (a > 0 && a < 255) {
+            ++ramp;
+        }
+    }
+    CHECK(ramp >= 2);
+    // restore 后不再门控：同区域方形填充完整覆盖角。
+    renderer.beginFrame(Size{100, 100});
+    renderer.drawRect(Rect{Offset{10, 10}, Size{80, 80}},
+                      Color::fromRGBA(196, 43, 28, 255));
+    renderer.endFrame();
+    CHECK(pxAt(renderer, 11, 11) == Color::fromRGBA(196, 43, 28, 255));
+}
+
+TEST_CASE("clip_rounded_nests_and_intersects_with_rect_clip",
+          "[render][clip]") {
+    CpuRenderer renderer;
+    renderer.setClearColor(Color::fromRGBA(0, 0, 0, 0));
+    renderer.beginFrame(Size{100, 100});
+    renderer.save();
+    renderer.clipRect(Rect{Offset{0, 0}, Size{60, 100}});
+    renderer.clipRounded(Rect{Offset{10, 10}, Size{80, 80}},
+                         CornerRadius::all(16));
+    renderer.drawRect(Rect{Offset{0, 0}, Size{100, 100}},
+                      Color::fromRGBA(196, 43, 28, 255));
+    renderer.restore();
+    renderer.endFrame();
+    // 矩形裁剪右缘 60 生效：x ≥ 60 全清（圆角裁剪放行也无效）。
+    CHECK(pxAt(renderer, 70, 50) == Color::fromRGBA(0, 0, 0, 0));
+    CHECK(pxAt(renderer, 30, 50) == Color::fromRGBA(196, 43, 28, 255));
+    // 两裁剪求交后的角外。
+    CHECK(pxAt(renderer, 11, 11) == Color::fromRGBA(0, 0, 0, 0));
+}
+
+TEST_CASE("clip_rounded_command_round_trips_through_serialization",
+          "[render][commands][clip]") {
+    RenderCommandList list;
+    list.save();
+    list.clipRounded(Rect{Offset{10, 20}, Size{80, 40}},
+                     CornerRadius{4, 8, 0, 2});
+    list.restore();
+    const std::string blob = lumen::render::serializeCommands(list);
+    RenderCommandList parsed;
+    REQUIRE(lumen::render::deserializeCommands(blob, parsed));
+    const auto& commands = parsed.commands();
+    REQUIRE(commands.size() == 3);
+    CHECK(commands[1].type == CommandType::ClipRounded);
+    CHECK(commands[1].rect == Rect{Offset{10, 20}, Size{80, 40}});
+    CHECK(commands[1].radius == CornerRadius{4, 8, 0, 2});
+}
+
+TEST_CASE("clip_rounded_submit_replays_like_immediate_path",
+          "[render][commands][clip]") {
+    // 命令路径与即时路径像素一致（submit 分发 ClipRounded）。
+    CpuRenderer immediate;
+    immediate.setClearColor(Color::fromRGBA(0, 0, 0, 0));
+    immediate.beginFrame(Size{100, 100});
+    immediate.save();
+    immediate.clipRounded(Rect{Offset{10, 10}, Size{80, 80}},
+                          CornerRadius::all(16));
+    immediate.drawRect(Rect{Offset{10, 10}, Size{80, 80}},
+                       Color::fromRGBA(196, 43, 28, 255));
+    immediate.restore();
+    immediate.endFrame();
+
+    RenderCommandList list;
+    list.save();
+    list.clipRounded(Rect{Offset{10, 10}, Size{80, 80}}, CornerRadius::all(16));
+    list.drawRect(Rect{Offset{10, 10}, Size{80, 80}},
+                  Color::fromRGBA(196, 43, 28, 255));
+    list.restore();
+    CpuRenderer replayed;
+    replayed.setClearColor(Color::fromRGBA(0, 0, 0, 0));
+    FrameInfo info;
+    info.viewport = Size{100, 100};
+    replayed.submit(list, info);
+
+    CHECK(lumen::render::frameHash(immediate.pixels()) ==
+          lumen::render::frameHash(replayed.pixels()));
+}
+
+TEST_CASE("widget_clip_rounded_materializes_and_gates_subtree",
+          "[render][clip]") {
+    // 集成：Widget.clipRounded → RenderNode 复制 → painter 门控子树
+    //（含自身方形表面与方形子件）。
+    Widget fill;
+    fill.type = lumen::core::WidgetType::Container;
+    fill.width = 80;
+    fill.height = 80;
+    fill.color = Color::fromRGBA(196, 43, 28, 255);
+
+    Widget rounded;
+    rounded.type = lumen::core::WidgetType::Container;
+    rounded.width = 100;
+    rounded.height = 100;
+    rounded.radius = CornerRadius::all(16);
+    rounded.clipRounded = true;
+    rounded.color = Color::fromRGBA(39, 39, 46, 255);
+    rounded.children = {fill};
+
+    const auto root = LayoutEngine::layout(
+        rounded, Constraints::tight(Size{100, 100}));
+    REQUIRE(root.clipRounded);
+    REQUIRE(root.children[0].clipRounded == false);
+    // sameNode 对 clipRounded 差异敏感（damage 正确性）。
+    auto changed = root;
+    changed.clipRounded = false;
+    CHECK_FALSE(lumen::core::sameNode(root, changed));
+
+    CpuRenderer renderer;
+    renderer.setClearColor(Color::fromRGBA(0, 0, 0, 0));
+    renderer.beginFrame(Size{100, 100});
+    lumen::render::paintScene(renderer, root);
+    renderer.endFrame();
+    // 角外清屏（方形子件/表面被门控在弧内）。
+    CHECK(pxAt(renderer, 1, 1) == Color::fromRGBA(0, 0, 0, 0));
+    CHECK(pxAt(renderer, 98, 1) == Color::fromRGBA(0, 0, 0, 0));
+    // 主体：子件红色覆盖（方形表面未裁剪区域）。
+    CHECK(pxAt(renderer, 50, 50) == Color::fromRGBA(196, 43, 28, 255));
+}

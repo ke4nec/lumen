@@ -46,6 +46,15 @@ struct PixelBuffer {
     [[nodiscard]] bool operator==(const PixelBuffer&) const = default;
 };
 
+// 直通 RGBA → 预乘 RGBA（就地，逐像素 r/g/b *= a/255 四舍五入；a=255
+// 恒等）。透明窗口呈现契约（2026-09）：DWM/合成器按预乘解释窗口表面
+// alpha——CPU 帧缓冲是直通 alpha，呈现路径先经此转换，否则圆角 AA 边
+// 带半透明像素被当预乘读出亮色毛刺（titlebar-design §7）。a=0 像素
+// 归零（预乘下 NaN/残留通道清理）。
+void premultiplyRgbaInPlace(PixelBuffer& buffer);
+// 便捷拷贝版（呈现 scratch 用；同尺寸重灌避免逐帧分配）。
+void premultiplyRgbaInto(PixelBuffer& destination, const PixelBuffer& source);
+
 class RenderCommandList;
 
 // 一帧的提交元数据（v0.2 阶段7B, plan §3.1；v0.3 阶段8A 关联 WindowId）。
@@ -130,6 +139,14 @@ class Renderer {
     }
     virtual void drawText(TextRun run, core::TextStyle style) = 0;
     virtual void drawImage(ImageId id, core::Rect destination) = 0;
+    // 圆角裁剪（2026-09，lumen-titlebar-design §5"角部例外"框架化）：
+    // 后续绘制按 rect + radius 门控。默认降级为矩形裁剪（保守近似，
+    // 旧/测试后端兼容）；CPU（SDF 覆盖率乘子）与 Skia（clipRRect）原生
+    // 实现。
+    virtual void clipRounded(core::Rect rect, core::CornerRadius radius) {
+        (void)radius;
+        clipRect(rect);
+    }
     // M6：矢量图标（归一化折线，stroke）与阴影（Skia blur；CPU 后端
     // 以 token 指定的边框/表面降级——由 painter 决定，接口保持几何）。
     virtual void drawIcon(std::vector<std::vector<core::Offset>> polylines,
