@@ -78,6 +78,12 @@ class StatusBarController {
     // resize grip 显隐（默认 false；customTitleBar && !maximized 时应用
     // 自行开启——WindowMetrics.maximized 经 RunOptions.onEvent 维护）。
     void setShowResizeGrip(bool show);
+    // 尺度档（design §9.1）：Medium = 跟随密度档，Small/Large 相对密度
+    // 上下移一档（Spin/ToolBar 同口径）——紧凑瓦片样本需要脱离全局密度
+    // 单独取 24px 档。
+    void setControlSize(core::ControlSize size);
+    // 栏容器语义 label（design §7：由应用提供，如"状态栏"）。
+    void setSemanticsLabel(std::string label);
 
     // --- 装配与组合件 ---
     void attach(app::AppShell& shell);
@@ -105,8 +111,10 @@ class StatusBarController {
     std::string key_{};
     std::string idleMessage_{"就绪"};
     std::string message_{"就绪"};
+    std::string semanticsLabel_{};
     std::vector<StatusBarItem> items_{};
     app::AppShell* shell_{nullptr};
+    core::ControlSize controlSize_{core::ControlSize::Medium};
     float progress_{0.0F};
     bool busy_{false};
     bool showResizeGrip_{false};

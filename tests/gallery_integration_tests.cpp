@@ -922,3 +922,141 @@ TEST_CASE("gallery_splitter_breakpoint_and_user_offset", "[gallery][splitter]") 
     (void)app.renderFrame();
     CHECK(navWidth() == 168.0F);
 }
+
+// Controls 分区（lumen-{spin,toolbar,statusbar}-design §11.3）：三块样本卡
+// 内的实时控件按内容收拢，不越出卡片右缘——Spin field 的 flex 若不封顶
+// （shrinkWrap）会吞掉整行剩余宽并撑破面板。
+TEST_CASE("gallery_controls_samples_stay_within_cards",
+          "[gallery][controls]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+    click(app, "nav-controls");
+    (void)app.renderFrame();
+    REQUIRE(app.navigator().current() == "controls");
+
+    const auto* card = findNodeByKey(app.root(), "controls-spin-card");
+    REQUIRE(card != nullptr);
+    const float cardRight =
+        absoluteOffset(app.root(), "controls-spin-card").x + card->size.width;
+    for (const char* key : {"gal-opacity", "gal-font"}) {
+        const auto* spin = findNodeByKey(app.root(), key);
+        REQUIRE(spin != nullptr);
+        // spin-design §9.1 Medium：textfield 120 + 1 分隔 + stepper 28 +
+        // 1px 边框内缩两侧（border-box）。
+        CHECK(spin->size.width == Catch::Approx(151.0F).margin(0.01F));
+        CHECK(absoluteOffset(app.root(), key).x + spin->size.width <=
+              cardRight);
+    }
+    // 预览即真控件：▲ 单击按 step 步进并回写 field 文本。
+    click(app, "spin:up:gal-opacity");
+    (void)app.renderFrame();
+    const auto* field = findNodeByKey(app.root(), "gal-opacity:field");
+    REQUIRE(field != nullptr);
+    CHECK(field->text == "73");
+}
+
+// Grid toggle 联动（toolbar/statusbar-design §11.3 演示场景）：同一命令
+// 驱动命令回显、状态栏 busy 弧与消息，并与 Overview 瓦片工具栏共享状态。
+TEST_CASE("gallery_controls_grid_toggle_links_status_bar_and_tiles",
+          "[gallery][controls]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 800.0F});
+    (void)app.renderFrame();
+    click(app, "nav-controls");
+    (void)app.renderFrame();
+    REQUIRE(app.navigator().current() == "controls");
+
+    CHECK(findNodeByKey(app.root(), "gal-sb:item:busy") == nullptr);
+    click(app, "gal-tb:item:grid");
+    (void)app.renderFrame();
+    CHECK(app.state().get("gal-grid") == "true");
+    const auto* label = findNodeByKey(app.root(), "controls-command-label");
+    REQUIRE(label != nullptr);
+    CHECK(label->text == "Last command: grid");
+    const auto* message = findNodeByKey(app.root(), "gal-sb:msg");
+    REQUIRE(message != nullptr);
+    CHECK(message->text == "Building grid overlay…");
+    CHECK(findNodeByKey(app.root(), "gal-sb:item:busy") != nullptr);
+
+    // 两栏 checked 同步：瓦片工具栏与 Controls 页共用同一命令处理。
+    app.setView(Size{1280.0F, 1400.0F});
+    (void)app.renderFrame();
+    click(app, "nav-home");
+    (void)app.renderFrame();
+    REQUIRE(app.navigator().current() == "home");
+    const auto* tileGrid = findNodeByKey(app.root(), "gal-tile-tb:item:grid");
+    REQUIRE(tileGrid != nullptr);
+    CHECK(tileGrid->checked);
+}
+
+// Controls 页样本走 Comfortable 实尺（§9.1：工具栏 41 含底线、状态栏 28
+// 含顶线），且 resize grip 贴状态栏右下角（稿件 .sb-grip 负右外边距 +
+// align-self:flex-end）。
+TEST_CASE("gallery_controls_samples_use_comfortable_tiers",
+          "[gallery][controls]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 1600.0F});
+    (void)app.renderFrame();
+    click(app, "nav-controls");
+    (void)app.renderFrame();
+
+    const auto* tool = findNodeByKey(app.root(), "gal-tb:bar");
+    REQUIRE(tool != nullptr);
+    CHECK(tool->size.height == Catch::Approx(41.0F).margin(0.01F));
+    const auto* item = findNodeByKey(app.root(), "gal-tb:item:new");
+    REQUIRE(item != nullptr);
+    CHECK(item->size.width == Catch::Approx(40.0F).margin(0.01F));
+
+    const auto* bar = findNodeByKey(app.root(), "gal-sb");
+    REQUIRE(bar != nullptr);
+    CHECK(bar->size.height == Catch::Approx(28.0F).margin(0.01F));
+    const auto* grip = findNodeByKey(app.root(), "gal-sb:grip");
+    REQUIRE(grip != nullptr);
+    const Offset gripAt = absoluteOffset(app.root(), "gal-sb:grip");
+    const Offset barAt = absoluteOffset(app.root(), "gal-sb");
+    CHECK(gripAt.x + grip->size.width ==
+          Catch::Approx(barAt.x + bar->size.width).margin(0.01F));
+    CHECK(gripAt.y + grip->size.height ==
+          Catch::Approx(barAt.y + bar->size.height).margin(0.01F));
+    // 消息左缘 = 栏内边距 12（稿件 .sb-msg 不额外缩进）。
+    const auto* msg = findNodeByKey(app.root(), "gal-sb:msg");
+    REQUIRE(msg != nullptr);
+    CHECK(msg->padding.left == 0.0F);
+    CHECK(msg->padding.right == Catch::Approx(8.0F).margin(0.01F));
+}
+
+// 控件清单三张新瓦片（design/gallery.html component-grid）：预览即真控件，
+// Spin/ToolBar/StatusBar 走紧凑档（§9.1 Small：Spin 96 + 1 + 24 宽 32 高、
+// 工具栏项 32×32 栏 33、状态栏 24），StatusBar 进度项按稿件
+// .statusbar.compact 定宽 64。
+TEST_CASE("gallery_inventory_control_tiles_use_compact_tiers",
+          "[gallery][inventory]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 1400.0F});
+    (void)app.renderFrame();
+
+    const auto* spin = findNodeByKey(app.root(), "gal-tile-spin");
+    REQUIRE(spin != nullptr);
+    CHECK(spin->size.width == Catch::Approx(123.0F).margin(0.01F));
+    CHECK(spin->size.height == Catch::Approx(32.0F).margin(0.01F));
+
+    const auto* progress =
+        findNodeByKey(app.root(), "gal-tile-sb:item:progress");
+    REQUIRE(progress != nullptr);
+    CHECK(progress->size.width == Catch::Approx(64.0F).margin(0.01F));
+
+    // ToolBar 瓦片 = Small 档（§9.1：项 32×32、栏 33 含 1px 底线），
+    // StatusBar 瓦片 = Small 档（栏高 24）——稿件 .toolbar.compact /
+    // .statusbar.compact 同档；档位经 setControlSize 下发，不跟全局密度。
+    const auto* tileItem = findNodeByKey(app.root(), "gal-tile-tb:item:new");
+    REQUIRE(tileItem != nullptr);
+    CHECK(tileItem->size.width == Catch::Approx(32.0F).margin(0.01F));
+    const auto* tileBar = findNodeByKey(app.root(), "gal-tile-tb:bar");
+    REQUIRE(tileBar != nullptr);
+    CHECK(tileBar->size.height == Catch::Approx(33.0F).margin(0.01F));
+    const auto* tileStatus = findNodeByKey(app.root(), "gal-tile-sb");
+    REQUIRE(tileStatus != nullptr);
+    CHECK(tileStatus->size.height == Catch::Approx(24.0F).margin(0.01F));
+}
+

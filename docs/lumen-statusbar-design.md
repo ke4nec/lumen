@@ -132,6 +132,11 @@ class StatusBarController {
 
     // resize grip 显示条件（默认 = customTitleBar && !maximized，应用可强开）。
     void setShowResizeGrip(bool show);
+    // 尺度档（§9.1）：Medium = 跟随密度，Small/Large 相对密度上下移一档
+    //（Spin/ToolBar 同口径）——清单瓦片等紧凑样本需要脱离全局密度取档。
+    void setControlSize(core::ControlSize size);
+    // 栏容器语义 label（§7：由应用提供，如"状态栏"）。
+    void setSemanticsLabel(std::string label);
 
     // 可点击项回调（Toggle 项；id 为 StatusBarItem.id）。
     std::function<void(const std::string& id)> onItemClicked{};
@@ -286,7 +291,7 @@ motion.statusbar.busyCycleMs          = 1200（busy 弧一圈，linear）
 ### 11.3 示例与验收
 
 - settings 新页 `StatusBar`：编辑器场景（行列/编码/缩放 Toggle 项）+ 消息按钮（触发瞬态）+ 进度模拟（determinate → indeterminate → 完成）+ busy。
-- gallery Controls 分区样本 + 控件清单瓦片（Grid toggle 联动 busy 弧与消息、determinate 进度项、resize grip；`design/gallery.html` live samples）。
+- gallery Controls 分区样本 + 控件清单瓦片（Grid toggle 联动 busy 弧与消息、determinate 进度项、resize grip；`design/gallery.html` live samples）。档位分列：Controls 页 Comfortable 实尺 28、瓦片 `setControlSize(Small)` 24（进度定宽 64）。
 - headless 冒烟：消息/进度/busy 脚本输出；三桌面窗口 smoke 由 CI 承担。
 
 ## 12. 实施分期
@@ -363,3 +368,30 @@ settings 集成冒烟全绿；全套 ctest（Debug 699 用例）通过，Release
 - **语义补齐**：indeterminate 进度 `semanticsValue = "indeterminate"`（原
   值 "0" 误导）；busy 弧 `semanticsLabel = "进行中"`（Icon 带 label 进入语
   义树——§14.2 的定稿仍留 M13，先保证可感知）。
+
+### 15.2 gallery 样本对齐（2026-09 第三轮）
+
+- **尺度档下发**：新增 `setControlSize()`（§5.1）——栏高/内边距/进度宽/busy
+  弧按 `sizeIndexFor(metrics, size)` 取档（Medium = 跟随密度，Small/Large
+  相对上下移一档，Spin/ToolBar 同规则）。gallery 的 Overview 瓦片取 Small
+  （24 高、pad 8、进度定宽 64），Controls 页保持 Comfortable（28/12）——
+  稿件 `.statusbar.compact` 与实尺此前无法在同类密度下表达。
+- **消息区左缘不缩进（§5.2 补齐）**：文本内边距改右侧单侧 8px——左缘从栏水
+  平内边距起排（稿件 `.sb-msg` 无缩进），"消息区/项序列 ≥16px 呼吸"全部
+  由 8px 内边距 + 8px 行 gap 兑现在右侧，省略号亦不贴项序列。
+- **grip 贴右下角（§5.2 落实）**：显示 grip 时行的右内边距让位（0），grip
+  列去掉 2px 底部留白 → grip 右/下缘与栏外缘重合（稿件 `.sb-grip
+  {align-self:flex-end; margin-right:-pad}`）；项折叠预算相应计入 grip 占位
+  （12 + 一个 gap），此前 grip 存在时项序列可多占 20px 才折叠。
+- **语义 label**：`setSemanticsLabel()` 下发到 `statusBar` role 容器（§7
+  "label = 应用 semanticsLabel"此前无落地通道）。
+- **栏底满幅（§9.2 落实）**：`statusbar.background = surface` 记到栏容器——
+  此前整条栏无填充，父级背景不是 surface 时（页面底色 vs 栏底色分层）状态栏
+  与内容区之间没有 chrome 表面差，只剩一条顶线。
+- **稿件同步（design/statusbar.html、design/gallery.html）**：进度轨道取框
+  架既有 `progressBar.track = border.default`（determinate/indeterminate
+  同源；此前 gallery 用 `border.strong`、statusbar 用 0.6 透明 accent，与
+  同一 ProgressBar 在应用他处的观感冲突）；grip 斜线统一 `border.strong`
+  （§9.2 口径，此前 statusbar.html 误用 border.default）；Controls live 样
+  本的 busy 弧移到右侧项序列首位（§5.2 分区，与 statusbar.html `.sb-items`
+  一致）；瓦片紧凑档标注为 Small 实尺。

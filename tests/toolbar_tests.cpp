@@ -1,7 +1,8 @@
 // ToolBar 工具栏（docs/lumen-toolbar-design.md）测试：命令激活（单击 ≡
-// 面板项激活 ≡ Enter）、toggle Tonal 底、disabled 拒绝、键盘漫游（跳过
-// 分隔线与禁用项/Home/End）、溢出折叠与回位（上一帧几何二次收敛）、溢
-// 出面板打开/键盘/焦点恢复、tooltip 子树常驻、语义角色与焦点环。
+// 面板项激活 ≡ Enter）、toggle Chrome 变体 + checked 持久底、disabled 拒
+// 绝、键盘漫游（跳过分隔线与禁用项/Home/End）、溢出折叠与回位（上一帧几何
+// 二次收敛）、溢出面板打开/键盘/焦点恢复、tooltip 子树常驻、语义角色与焦
+// 点环、尺度档覆盖。
 //
 // 命名遵循项目测试规范（行为命名）。
 
@@ -306,6 +307,46 @@ TEST_CASE("toolbar_semantics_role_and_icon_only_label",
     CHECK(sawNewLabel);
 }
 
+// 栏容器 label 由应用提供（design §7："label = 应用 semanticsLabel"）——
+// 此前只有 role，读屏落到工具栏时没有名称。
+TEST_CASE("toolbar_semantics_label_comes_from_application",
+          "[widgets][toolbar]") {
+    ToolApp app;
+    app.bar.setSemanticsLabel("主工具栏");
+    app.settle();
+    const auto tree = accessibility::buildSemanticsTree(app.shell.root());
+    bool labelled = false;
+    for (const auto& [id, node] : tree.nodes) {
+        if (node.role == accessibility::SemanticsRole::Toolbar) {
+            labelled = node.label == "主工具栏";
+        }
+    }
+    CHECK(labelled);
+}
+
+// 尺度档覆盖（design §9.1）：Comfortable 密度下 Small = 相对下移一档
+//（项 32×32、栏 33 含 1px 底线、内边距 4）——清单瓦片紧凑样本的口径，
+// 与 Spin/StatusBar 的 setControlSize 同规则。
+TEST_CASE("toolbar_control_size_override_selects_compact_tier",
+          "[widgets][toolbar]") {
+    ToolApp app;
+    const RenderNode* rest = findNodeByKey(app.shell.root(), "tb:item:new");
+    REQUIRE(rest != nullptr);
+    CHECK(rest->size.width == Catch::Approx(40.0F).margin(0.01F));
+
+    app.bar.setControlSize(ControlSize::Small);
+    app.settle();
+    const RenderNode* item = findNodeByKey(app.shell.root(), "tb:item:new");
+    REQUIRE(item != nullptr);
+    CHECK(item->size.width == Catch::Approx(32.0F).margin(0.01F));
+    CHECK(item->size.height == Catch::Approx(32.0F).margin(0.01F));
+    const RenderNode* bar = findNodeByKey(app.shell.root(), "tb:bar");
+    REQUIRE(bar != nullptr);
+    CHECK(bar->size.height == Catch::Approx(33.0F).margin(0.01F));
+    // 首项左缘 = 栏水平内边距 Small 档 4（§9.1）。
+    CHECK(item->offset.x == Catch::Approx(4.0F).margin(0.01F));
+}
+
 TEST_CASE("toolbar_item_states_match_chrome_language", "[widgets][toolbar]") {
     ToolApp app;
     // hover：表面派生 + 前景提亮 primary（design §9.3/稿件 .tb-item:hover）。
@@ -341,6 +382,27 @@ TEST_CASE("toolbar_item_states_match_chrome_language", "[widgets][toolbar]") {
     CHECK(grid->commonStyle().background ==
           app.shell.theme().colors.accentContainer);
     CHECK(grid->checked);
+
+    // disabled：disabled.content 前景 + 透明底（稿件 .is-disabled；命中拒绝
+    // 与键盘跳过分别见 toolbar_disabled_item_rejects_click 与漫游用例）。
+    const RenderNode* undo = findNodeByKey(app.shell.root(), "tb:item:undo");
+    REQUIRE(undo != nullptr);
+    CHECK(undo->commonStyle().foreground ==
+          app.shell.theme().colors.disabledContent);
+    CHECK(undo->commonStyle().background == Color::transparent());
+    CHECK_FALSE(undo->enabled);
+}
+
+// 栏底满幅（§9.2 toolbar.bar.background = surface）：底色记在栏容器上——
+// 行按内容自收缩，栏宽大于内容时右段不再露出父级背景。
+TEST_CASE("toolbar_bar_surface_spans_full_bar_width", "[widgets][toolbar]") {
+    ToolApp app;
+    const RenderNode* bar = findNodeByKey(app.shell.root(), "tb:bar");
+    REQUIRE(bar != nullptr);
+    CHECK(bar->commonStyle().background == app.shell.theme().colors.surface);
+    const RenderNode* row = findNodeByKey(app.shell.root(), "tb:row");
+    REQUIRE(row != nullptr);
+    CHECK(row->size.width < bar->size.width);
 }
 
 TEST_CASE("toolbar_overflow_button_aligns_right", "[widgets][toolbar]") {

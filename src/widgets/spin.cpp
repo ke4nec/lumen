@@ -209,6 +209,27 @@ void SpinController::tapStep(int direction) {
         return;
     }
     direction > 0 ? stepUp() : stepDown();
+    focusFieldFromStepper();
+}
+
+void SpinController::focusFieldFromStepper() {
+    // 指针点 stepper 会先清掉 field 焦点（interaction 非字段命中即失焦），
+    // 按稿件 field.focus() 口径收拢回来——外框保持 focused 蓝边。键盘已在
+    // ▲/▼ 上时不动（整控件共用 focused 边框，Tab 顺序不断）。
+    if (shell_ == nullptr || !enabled_) {
+        return;
+    }
+    const std::string focusedKey = shell_->focus().focusedKey();
+    if (focusedKey == upKey() || focusedKey == downKey() ||
+        focusedKey == fieldKey()) {
+        return;
+    }
+    if (const auto* node = core::findNodeByKey(shell_->root(), fieldKey())) {
+        shell_->controller().focusNode(*node);
+        // 焦点切换改变外框边框（focused 蓝边）与 caret，需重建；值未变时
+        // setValue 无脏标记，此处补（到界点击顶住无事件也应蓝边）。
+        shell_->markDirty();
+    }
 }
 
 core::Widget SpinController::build(const style::Theme& theme) {
@@ -216,13 +237,28 @@ core::Widget SpinController::build(const style::Theme& theme) {
     const float height = theme.metrics.minHeight[index];
     const float stepperWidth = kStepperWidth[index];
     const float iconSize = kStepperIcon[index];
-    const float half = (height - 1.0F) / 2.0F;  // 中缝 1px 分隔线
+    // 边框盒：子内容内缩 1px 边框宽绘制（CSS border-box 口径）——不透明的
+    // 分隔线/hover 填充不再盖住外框描边；中缝 1px 取整拆分（floor/ceil），
+    // 使横向分隔线落在整数像素上（半像素 19.5 会虚成两行 50% 灰）。
+    const float borderW = theme.metrics.controlBorderWidth;
+    const float contentH = height - 2.0F * borderW;
+    const float upH = std::floor((contentH - 1.0F) / 2.0F);
+    const float downH = contentH - 1.0F - upH;
 
-    // 失焦提交（design §6.2：失焦 ≡ Enter；非法文本失焦恢复 committed）。
-    // 焦点变化驱动重建（AppShell lastFocusedIdentity 口径），此处检测
-    // wasFocused_ → false 的迁移。
+    // 整控件共用 focused 蓝边：field caret、Tab 到 ▲/▼、按住 stepper 任一
+    // 即蓝（稿件 field.focus() 口径：点 stepper 也要蓝）。失焦提交按整控件
+    // 口径（Spin 内 Tab 不提交，离开整控件才 ≡ Enter）。
+    const std::string focusedKey =
+        shell_ != nullptr ? shell_->focus().focusedKey() : std::string{};
+    const std::string pressedKey =
+        shell_ != nullptr ? shell_->controller().pressedKey() : std::string{};
+    const bool stepperFocused =
+        focusedKey == upKey() || focusedKey == downKey();
+    const bool stepperPressed =
+        pressedKey == upKey() || pressedKey == downKey();
     const bool focused =
-        shell_ != nullptr && shell_->focus().focusedKey() == fieldKey();
+        enabled_ && (focusedKey == fieldKey() || stepperFocused ||
+                     stepperPressed);
     if (wasFocused_ && !focused && shell_ != nullptr) {
         const std::string text = shell_->state().get(bindKey());
         if (!commitText(text)) {
@@ -235,9 +271,18 @@ core::Widget SpinController::build(const style::Theme& theme) {
 
     // field：bind 驱动文本；边框/背景抑制（外框由行承载）。disabled 时
     // 不抑制背景——resolver 的 disabledBackground 需要生效（§9.3）。
+    // shrinkWrap：外框按内容宽收拢（稿件 design/spin.html
+    // .spin{width:max-content;min-width:148}，§9.1 最小宽 120/148/176），
+    // flex 预算只在容器窄于内容时压缩 field。缺此标记时 field 会吞掉整条
+    // 行的剩余宽，Spin 作为非 flex 子节点放进 Row/Column 即撑破父容器。
     core::Widget field = core::makeTextField(
         formatValue(), "", core::TextStyle{}, core::EdgeInsets{},
         /*flex=*/1.0F, fieldKey(), std::nullopt, std::nullopt, bindKey());
+    field.shrinkWrap = true;
+    // 档位随控件（§9.1 尺度表：field 最小宽 96/120/144、水平内边距
+    // 8/12/16）——不设则 Small 档样本（Overview Spin 瓦片）按 Comfortable
+    // 折算，最小宽与内边距都落到 Medium 值。
+    field.controlSize = controlSize_;
     field.styleOverrides.borderWidth = 0.0F;
     if (enabled_) {
         field.styleOverrides.background = core::Color::transparent();
@@ -249,8 +294,12 @@ core::Widget SpinController::build(const style::Theme& theme) {
 
     // stepper 集群：半高 chrome 图标按钮（design §9.2/§9.3：hover 表面
     // 派生 + 前景提亮、pressed = List pressed；显式宽高覆盖 icon-only
-    // 方形 min；到界 chevron 淡化——overrides 在状态折算后应用，hover/
-    // pressed 同样压住，"淡化但可命中"）。
+    // 方形 min）。到界（atBound）：chevron 淡化 + hover/pressed 背景抑制
+    //（稿件 .at-bound:hover{background:transparent}——顶住无位移，不给
+    // 误导性高亮；仍可命中）。
+    // 角部直角（稿件 .spin-step 无 border-radius，§5"外缘右侧圆角随
+    // controlRadius，内缘直角"）：填充贴满半格，圆角由行的 clipRounded
+    // 裁出——按钮自带 controlRadius 时 hover/pressed 会缩成悬浮药丸。
     auto makeStepButton = [&](core::IconId icon, const std::string& k,
                               float buttonHeight, bool atBound) {
         core::Widget button =
@@ -261,22 +310,27 @@ core::Widget SpinController::build(const style::Theme& theme) {
         button.icon = icon;
         button.enabled = enabled_;
         button.styleOverrides.iconSize = iconSize;
+        button.styleOverrides.radius = core::CornerRadius::zero();
         if (atBound) {
+            // overrides 在状态折算后应用：前景淡化压住 hover/pressed 提亮，
+            // 背景透明压住 hover/pressed 填充（稿件到界无高亮口径）。
             button.styleOverrides.foreground = theme.colors.disabledContent;
+            button.styleOverrides.background = core::Color::transparent();
         }
         return button;
     };
-    core::Widget up = makeStepButton(core::IconId::ChevronUp, upKey(), half,
+    core::Widget up = makeStepButton(core::IconId::ChevronUp, upKey(), upH,
                                      atMax());
-    // field 与 stepper 的 1px 分隔线（design §9.1 cluster 左缘）。
+    // field 与 stepper 的 1px 分隔线（design §9.1 cluster 左缘）：高取内容
+    // 高（边框内），与外框描边丁字相接不再盖边。
     core::Widget fieldSep = core::makeContainerLeaf(
-        1.0F, height, core::EdgeInsets{}, core::EdgeInsets{},
+        1.0F, contentH, core::EdgeInsets{}, core::EdgeInsets{},
         theme.colors.borderDefault, key_ + ":field-sep");
     core::Widget mid = core::makeContainerLeaf(
         stepperWidth, 1.0F, core::EdgeInsets{}, core::EdgeInsets{},
         theme.colors.borderDefault, key_ + ":stepper-sep");
     core::Widget down = makeStepButton(core::IconId::ChevronDown, downKey(),
-                                       height - 1.0F - half, atMin());
+                                       downH, atMin());
     core::Widget cluster =
         core::makeColumn({std::move(up), std::move(mid), std::move(down)},
                          core::MainAxisAlignment::Start,
@@ -284,12 +338,13 @@ core::Widget SpinController::build(const style::Theme& theme) {
                          core::EdgeInsets{}, core::EdgeInsets{},
                          key_ + ":stepper", stepperWidth, std::nullopt);
 
-    // 行 = 外框（textfield token；focused/invalid 反应即时折算）。
+    // 行 = 外框（textfield token；focused/invalid 反应即时折算）。padding
+    // 内缩边框宽：子内容画在描边之内（border-box），hover/分隔线不盖边。
     core::Widget row = core::makeRow(
         {std::move(field), std::move(fieldSep), std::move(cluster)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
-        0.0F, core::EdgeInsets{}, core::EdgeInsets{}, key_, std::nullopt,
-        height);
+        0.0F, core::EdgeInsets::all(borderW), core::EdgeInsets{}, key_,
+        std::nullopt, height);
     row.color = theme.textField.background;
     row.radius = core::CornerRadius::all(theme.metrics.controlRadius[index]);
     row.styleOverrides.borderWidth = theme.metrics.controlBorderWidth;
@@ -297,6 +352,9 @@ core::Widget SpinController::build(const style::Theme& theme) {
         invalid ? theme.textField.borderInvalid
                 : focused ? theme.textField.borderFocused
                           : theme.textField.border;
+    // 稿件 .spin{overflow:hidden}：贴角的 stepper 填充按外框圆角门控
+    //（visual-system §11.1 第一防线），方形 hover/pressed 不再盖过右缘角部。
+    row.clipRounded = true;
 
     // 语义（design §7）：spinbutton role + value 文本；编辑经 field 的
     // TextField 语义（SetValue 通道既有）。Increase/Decrease 专用 action
@@ -313,8 +371,16 @@ bool SpinController::handleKey(app::AppShell& shell, core::Key key,
                                core::KeyModifiers mods, char keyChar) {
     (void)mods;
     (void)keyChar;
-    if (!attached_ || !enabled_ ||
-        shell.focus().focusedKey() != fieldKey()) {
+    if (!attached_ || !enabled_) {
+        return false;
+    }
+    // 三停靠点口径：步进键在 field 与 ▲/▼ 上都生效（Tab 到 stepper 后方向
+    // 键仍可调值，焦点不动）；Enter/Escape 只在 field 上（▲/▼ 上的 Enter
+    // 走按钮激活即 tapStep，不与提交混叠）。
+    const std::string focusedKey = shell.focus().focusedKey();
+    const bool onField = focusedKey == fieldKey();
+    const bool onStepper = focusedKey == upKey() || focusedKey == downKey();
+    if (!onField && !onStepper) {
         return false;
     }
     switch (key) {
@@ -337,6 +403,9 @@ bool SpinController::handleKey(app::AppShell& shell, core::Key key,
             setValue(max_);
             return true;
         case core::Key::Enter: {
+            if (!onField) {
+                return false;  // stepper 上的 Enter 交按钮激活（tapStep）
+            }
             const std::string text = shell.state().get(bindKey());
             if (!commitText(text)) {
                 // 非法：保持 invalid、不提交（design §6.2）。
@@ -344,6 +413,9 @@ bool SpinController::handleKey(app::AppShell& shell, core::Key key,
             return true;
         }
         case core::Key::Escape: {
+            if (!onField) {
+                return false;
+            }
             // 有可恢复内容（文本偏离或非法）才消费；否则交回应用
             //（Escape 的返回/关闭导航不被字段抢占——design §6.2）。
             const std::string text = shell.state().get(bindKey());
@@ -412,15 +484,18 @@ bool SpinController::step(app::AppShell& shell, std::uint64_t nowMs) {
     }
     if (!holdActive_) {
         // 首拍：立即步进（tap 由单击 handler 兜底，两路互斥经
-        // holdStepped_），随后 500ms 延迟进入重复节奏。
+        // holdStepped_），随后 500ms 延迟进入重复节奏。按住即把焦点收拢
+        // 到 field（tapStep 同口径），外框保持 focused 蓝边。
         holdActive_ = true;
         holdStepped_ = true;
         holdNextMs_ = nowMs + shell.theme().motion.spinRepeatDelayMs;
         stepBy(direction > 0 ? step_ : -step_);
+        focusFieldFromStepper();
         return true;
     }
     if (nowMs >= holdNextMs_) {
         stepBy(direction > 0 ? step_ : -step_);
+        focusFieldFromStepper();
         holdNextMs_ = std::max<std::uint64_t>(
             holdNextMs_ + shell.theme().motion.spinRepeatIntervalMs, nowMs);
     }

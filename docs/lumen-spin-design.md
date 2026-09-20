@@ -349,3 +349,55 @@ P1（值模型与按钮）与 P2（键盘与语义）已实施：`include/lumen/
 - **移出命中即停（§6.1）**：按住后指针移出（超过拖动 slop →
   `isDragging()`）自动重复停止、按住状态复位；释放不触发单击（拖动释放
   无 click），不会误步进。
+- **整控件按内容收拢（§9.1）**：field 的 flex 预算加 `shrinkWrap` 封顶
+  （稿件 `.spin{width:max-content;min-width:148}`）——容器宽于内容时
+  Spin 取 field 最小宽 + 1px 分隔 + stepper 宽 + 两侧 1px 边框内缩
+  （border-box 123/151/179，即 §9.1 最小宽 120/148/176 的上取整），容器
+  窄于内容时才压缩 field。此前 field
+  吞掉整行剩余宽，Spin 作为非 flex 子节点放进拉伸的 Row/Column 会撑破父
+  容器（gallery Controls 卡片右缘溢出）。
+- **档位下发到 field**：`setControlSize()` 此前只作用于 stepper 按钮与
+  行高，field 仍按密度档取 textfield token——紧凑档样本（Overview Spin
+  瓦片）的最小宽/水平内边距落到 Medium 值。现 field 与 stepper 同档。
+- **stepper 填充直角 + 外框裁剪**：按钮继承 Button 的 `controlRadius`，
+  hover/pressed 缩成悬浮药丸，与稿件 `.spin-step`（无 border-radius、填充
+  贴满半格）不符。现 stepper `radius = 0`（§5"内缘直角"），行声明
+  `clipRounded`（稿件 `.spin{overflow:hidden}` 的框架等价物，
+  visual-system §11.1 第一防线）——右缘角部由外框圆角门控，方形填充不再
+  盖过角部。
+
+### 15.2 焦点与像素对齐（2026-09 第三轮）
+
+- **整控件共用 focused 蓝边**：此前外框只认 `fieldKey` 焦点——点 ▲/▼
+  时 interaction 先清 field 焦点，外框回灰边，与稿件 `field.focus()` 口径
+  （点 stepper 也蓝）不符。现 `tapStep`/`step` 首拍按"键盘已在 ▲/▼ 上不
+  动、其余收拢到 field"聚焦（`focusFieldFromStepper` + `markDirty`，到界
+  顶住无事件也蓝）；外框 `focused = field ｜ stepper ｜ pressed`（Tab 到
+  stepper、按住期间同蓝）。`wasFocused_` 同按整控件口径，Spin 内 Tab 不
+  误提交。步进键在 field 与 stepper 上都生效（Enter/Escape 仍只 field，
+  stepper 上的 Enter 走按钮激活即 `tapStep`）。
+- **中缝 1px 取整**：`(height-2*border-1)/2` 的浮点半高（如 19.5）使横向
+  分隔线骑跨两行像素（各 50% 灰、两像素淡线即"毛刺"）。现
+  `floor`/`ceil` 整数拆分（Medium 内容高 38 → 上 18/下 19），分隔线落整
+  像素；子内容统一画在 1px 边框之内（`Row padding = borderWidth`），分隔
+  线/hover 填充与外框描边丁字相接不再盖边。
+- **到界 hover 抑制**：稿件 `.at-bound:hover{background:transparent}`——
+  顶住无位移，不给误导性高亮。现 `atBound` 的按钮追加
+  `background = transparent` 覆盖（overrides 后应用，hover/pressed 同压），
+  前景保持 `disabledContent` 淡化。
+
+### 15.3 chevron 设备对齐与小数 DPI 已知限制（2026-09 第四轮）
+
+- **chevron 上下对称（已修复）**：中缝取整后两半格仍一单一双（Medium
+  18/19），14px 图标逻辑居中在 19px 格给出 2.5 半像素原点 → ▼ 比 ▲ 虚散
+  （同峰值下墨散布 18px vs 14px，100% DPI 亦可见）。渲染器 `drawIcon`
+  原点现按设备像素取整（CPU/Skia 双后端同式，字形 `toPixel` 同口径；
+  visual-system §8），奇数高半格不再上下不对称。回归：
+  `spin_stepper_chevrons_align_to_device_pixels`（修前 14 == 18 必红）。
+- **已知限制（本次未改）**：小数 DPI（125%/150%）下 1px 外框描边的右缘/
+  下缘可能比上缘/左缘暗——子像素 AA 的固有性质（1.25px 墨摊到两列设备
+  像素、无满强度列），影响一切边框落在小数设备坐标上的 chrome，不止
+  Spin（Spin 总宽 151px 为奇数，在常用档恰好命中）。100% 下 Spin 边框逐
+  像素均匀（诊断：上下左右四边同为 `borderFocused` 实色）。描边设备对齐
+  （类浏览器 border snapping）需裁剪/描边/填充协同，且要 Skia
+  CI 验证一致性，作为视觉系统后续决策，不在本轮 sneak in。

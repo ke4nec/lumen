@@ -284,7 +284,7 @@ tooltip.*                    = 既有 tooltip token 全量复用
 ### 11.3 示例与验收
 
 - settings 新页 `Toolbar`：文件组 + 撤销重做 + toggle（网格开关）+ 搜索入口；窄容器演示溢出。
-- gallery Controls 分区样本 + 控件清单瓦片（命令组/toggle/窄容器溢出；`design/gallery.html` live samples）。
+- gallery Controls 分区样本 + 控件清单瓦片（命令组/toggle/窄容器溢出；`design/gallery.html` live samples）。档位分列：Controls 页 Comfortable 栏 41/项 40、瓦片 `setControlSize(Small)` 栏 33/项 32。
 - headless 冒烟：漫游/激活/溢出脚本输出；三桌面窗口 smoke 由 CI 承担。
 
 ## 12. 实施分期
@@ -360,3 +360,27 @@ gallery「Controls」页接入。`tests/toolbar_tests.cpp` 10 用例 + settings 
   `.has-label` 起始排列），icon-only 项保持居中。
 - **§10 溢出按钮 alpha 渐入修正**：未实现（出现/消失即布局增减，即时切
   换）——alpha 渐入需要控制器持钟 + onAnimate 链，收益低；留按需评估。
+
+### 15.2 gallery 样本对齐（2026-09 第三轮）
+
+- **尺度档下发**：新增 `setControlSize(core::ControlSize)`（§9.1 三档的应
+  用侧通道）——项尺寸/图标/gap/内边距按 `sizeIndexFor(metrics, size)` 取
+  档，Medium = 跟随密度、Small/Large 相对上下移一档（Spin/StatusBar 同规
+  则）；换档清项宽缓存并复位溢出集合（缓存宽与新档不可混用）。gallery 的
+  Overview 瓦片取 Small（栏 33、项 32×32、图标 16、pad 4、gap 2），Controls
+  页保持 Comfortable（栏 41、项 40×40）。
+- **语义 label**：新增 `setSemanticsLabel(std::string)` 下发到 `toolbar`
+  role 容器（§7 "label = 应用 semanticsLabel"此前只有 role 落地）。
+- **§5 sketch 与实现的其余缝隙**（本轮记录，不新增能力）：
+  `setItemProvider` 未实施——自用场景由应用 `setChecked(id, on)` 写回即可
+  （gallery 的 Grid toggle 即此路径）；`setChecked` 为 §5 未列的实现侧 API。
+- **栏底满幅（§9.2 落实）**：`toolbar.bar.background = surface` 从 row 移到
+  栏容器——row 按内容自收缩（溢出决策的 avail 必须读被拉伸的栏容器，§15.2），
+  底色留在 row 上时栏宽大于内容宽会露出父级背景。
+- **稿件同步（design/gallery.html）**：`.toolbar.compact` 瓦片从迷你尺寸
+  （项 24、图标 13、分隔线 inset 6）改为 §9.1 Small 档实尺（项 32、图标
+  16、inset 8、栏 33）——预览即真控件，档位与 `setControlSize(Small)` 一
+  一对应；`.statusbar.compact` 的项间 gap 同步为 8（§9.1）。
+- **瓦片 checked 态**：稿件 ToolBar 瓦片的 `.tb-item.is-checked` 是静态示
+  意，实况瓦片随 `gal-grid` 命令走（初始未选中，与 Controls 页互相同步）
+  ——预览即真控件的既有口径（Menus 瓦片的 current/disabled 同理）。

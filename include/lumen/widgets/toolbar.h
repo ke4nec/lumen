@@ -16,9 +16,10 @@
 // 游焦点、Enter/Space 激活（框架既有）、Down 打开溢出面板、Esc 关闭。
 // 焦点环恒开启（makeTabs 同口径的框架自建键盘件，visual-system §6.1）。
 //
-// toggle 激活态 = Tonal 变体（accentContainer 持久底；MenuBar 打开态同
-// 语言——设计稿的 selection 底以 accentContainer 落地，hover/pressed
-// 状态折算保持工作）。checked 由应用维护（MenuItem §5 同口径）。
+// toggle 激活态 = Chrome 变体（hover 表面派生 + 前景提亮、pressed = List
+// pressed）+ checked 持久底 accentContainer（稿件 .is-checked，与 MenuBar
+// 打开态同语言）；Widget.checked 直声明 → kSemanticsChecked 同步。checked
+// 由应用维护（MenuItem §5 同口径）。
 
 #include <functional>
 #include <map>
@@ -59,6 +60,13 @@ class ToolBarController {
 
     // toggle 项 checked 更新（应用维护状态的写回通道；id 未匹配时忽略）。
     void setChecked(const std::string& id, bool checked);
+
+    // 尺度档（design §9.1）：Medium = 跟随密度档，Small/Large 相对密度
+    // 上下移一档（Spin/StatusBar 同口径）——紧凑瓦片样本需要脱离全局密度
+    // 单独取 32px 档。
+    void setControlSize(core::ControlSize size);
+    // 栏容器语义 label（design §7：由应用提供，如"主工具栏"）。
+    void setSemanticsLabel(std::string label);
 
     // 栏 Widget（应用 build 每帧调用；shell 提供上一帧布局几何供溢出
     // 决策——menu/splitter 的 build(theme) 之上多一个壳引用）。溢出集
@@ -104,6 +112,8 @@ class ToolBarController {
                                   const style::Theme& theme) const;
 
     std::string key_{};
+    std::string semanticsLabel_{};
+    core::ControlSize controlSize_{core::ControlSize::Medium};
     std::vector<ToolBarItem> items_{};
     // 面板控制器（build 内 openOverflow 会写动画状态——mutable，MenuBar
     // build/attach 契约同口径）。

@@ -6,8 +6,10 @@
 //（menu-controls 同架构口径：widgets 层控制器 + 既有控件组合）。
 //
 // 组合结构：Row（外框 + 背景，textfield token）[ field（bind 驱动，边框
-// 抑制）, Column[ ▲, 1px 分隔线, ▼ ] ]。field 是唯一 Tab 停靠点（caret
-// 即焦点指示，焦点环保持默认关闭——visual-system §5 规则 4）。
+// 抑制）, Column[ ▲, 1px 分隔线, ▼ ] ]。Tab 顺序 field → ▲ → ▼ 三停靠点
+//（stepper 带 onClick 即参与遍历，MenuBar 栏项同口径）；整控件共用一条
+// focused 边框（field/stepper/按住任一即蓝，caret 即焦点指示，焦点环保持
+// 默认关闭——visual-system §5 规则 4）。
 //
 // 值通道：field 文本经 StateStore bind（key+":value"）携带——键入即写
 // store（框架既有编辑路径），控制器按 store 文本即时解析 invalid；Enter/
@@ -105,6 +107,9 @@ class SpinController {
     [[nodiscard]] std::optional<double> currentTextValue() const;
     void stepBy(double delta);
     void tapStep(int direction);  // stepper 单击（按住期间已步进则吞并）
+    // stepper 指针激活后把焦点收拢到 field（稿件 field.focus() 口径）——
+    // 键盘已在 ▲/▼ 上时不动（整控件共用 focused 边框，Tab 仍是三停靠点）。
+    void focusFieldFromStepper();
     double clampOrWrap(double v) const;
     double roundToDecimals(double v) const;
     void syncStore();

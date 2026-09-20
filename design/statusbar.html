@@ -30,6 +30,7 @@
     --app-ink: #f1f1f4;
     --app-muted: #a1a1aa;
     --app-line: #3b3b45;
+    --app-line-strong: #8c8c98;
     --app-accent: #568cf0;
     --app-accent-content: #a8c5fa;
     --app-accent-soft: #2e3c60;
@@ -38,7 +39,7 @@
     /* 状态栏（statusbar.* 组件 token 的 Core Dark 派生值） */
     --sb-hover: rgba(255, 255, 255, .055);
     --sb-pressed: rgba(86, 140, 240, .32);
-    --sb-track: rgba(86, 140, 240, .16);          /* 0.6 透明 accent 底（indeterminate 轨道） */
+    --sb-track: var(--app-line);                 /* 既有进度轨道 = border.default（determinate/indeterminate 同源） */
   }
   * { box-sizing: border-box; }
   html { min-width: 320px; background: var(--board-bg); }
@@ -118,7 +119,7 @@
   @keyframes busy-spin { to { transform: rotate(360deg); } }
   /* resize grip：12×12、3 条 45° 短线；纯视觉件（命中归平台 8px resize 边） */
   .sb-grip { flex: 0 0 auto; align-self: flex-end; width: 12px; height: 12px; margin-right: calc(var(--pad) * -1); background:
-    linear-gradient(135deg, transparent 0 46%, var(--app-line) 46% 54%, transparent 54% 66%, var(--app-line) 66% 74%, transparent 74% 86%, var(--app-line) 86% 94%, transparent 94%); }
+    linear-gradient(135deg, transparent 0 46%, var(--app-line-strong) 46% 54%, transparent 54% 66%, var(--app-line-strong) 66% 74%, transparent 74% 86%, var(--app-line-strong) 86% 94%, transparent 94%); }
 
   /* 密度档 */
   .statusbar.d-compact { --h: 24px; --pad: 8px; --fs: 12px; }

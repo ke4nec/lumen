@@ -64,6 +64,22 @@ void ToolBarController::setChecked(const std::string& id, bool checked) {
     }
 }
 
+void ToolBarController::setControlSize(core::ControlSize size) {
+    if (controlSize_ == size) {
+        return;
+    }
+    controlSize_ = size;
+    widthCache_.clear();  // 项宽随档变化（溢出决策缓存失效）
+    overflowIds_.clear();
+    if (shell_ != nullptr) {
+        shell_->markDirty();
+    }
+}
+
+void ToolBarController::setSemanticsLabel(std::string label) {
+    semanticsLabel_ = std::move(label);
+}
+
 void ToolBarController::registerHandlers(app::AppShell& shell) const {
     for (const auto& item : items_) {
         if (item.separator) {
@@ -112,8 +128,7 @@ float ToolBarController::itemWidth(const ToolBarItem& item,
     if (item.separator) {
         return 1.0F + 16.0F;  // 线宽 + 两侧 8px margin
     }
-    const std::uint8_t index =
-        sizeIndexFor(theme.metrics, core::ControlSize::Medium);
+    const std::uint8_t index = sizeIndexFor(theme.metrics, controlSize_);
     const float box = kBarItemSize[index];
     if (item.labelMode) {
         // 上一帧实测优先；未见过（首帧/新项）= icon + gap + 文本估算
@@ -137,8 +152,7 @@ float ToolBarController::itemWidth(const ToolBarItem& item,
 
 void ToolBarController::recomputeOverflow(app::AppShell& shell) const {
     const style::Theme& theme = shell.theme();
-    const std::uint8_t index =
-        sizeIndexFor(theme.metrics, core::ControlSize::Medium);
+    const std::uint8_t index = sizeIndexFor(theme.metrics, controlSize_);
     // 可用宽取自上一帧的栏容器（被父级拉伸；row 自收缩——折叠后变窄会
     // 造成无法回位的死锁，故不能用 row 宽做决策输入）。
     const core::RenderNode* bar = core::findNodeByKey(shell.root(), barKey());
@@ -291,8 +305,7 @@ void ToolBarController::openOverflow(app::AppShell& shell) const {
 
 core::Widget ToolBarController::build(app::AppShell& shell,
                                       const style::Theme& theme) const {
-    const std::uint8_t index =
-        sizeIndexFor(theme.metrics, core::ControlSize::Medium);
+    const std::uint8_t index = sizeIndexFor(theme.metrics, controlSize_);
     const float itemSize = kBarItemSize[index];
     const float iconSize = kBarIcon[index];
     const float gap = kBarGap[index];
@@ -371,7 +384,6 @@ core::Widget ToolBarController::build(app::AppShell& shell,
         core::CrossAxisAlignment::Center, gap,
         core::EdgeInsets::symmetric(kBarPaddingX[index], 0.0F),
         core::EdgeInsets{}, rowKey(), std::nullopt, itemSize);
-    row.color = theme.colors.surface;
 
     std::vector<core::Widget> tooltipChildren;
     for (const auto& item : items_) {
@@ -397,6 +409,9 @@ core::Widget ToolBarController::build(app::AppShell& shell,
     core::Widget stack = core::makeStack(std::move(stackChildren),
                                          core::StackAlignment::TopLeft);
     stack.semanticsRole = "toolbar";
+    if (!semanticsLabel_.empty()) {
+        stack.semanticsLabel = semanticsLabel_;
+    }
     core::Widget bar = core::makeColumn(
         {std::move(stack),
          core::makeContainerLeaf(std::nullopt, 1.0F, core::EdgeInsets{},
@@ -405,6 +420,9 @@ core::Widget ToolBarController::build(app::AppShell& shell,
                                  key_ + ":line")},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
         0.0F, core::EdgeInsets{}, core::EdgeInsets{}, barKey());
+    // 栏底满幅（§9.2 toolbar.bar.background = surface）：底色记在栏容器而非
+    // 行——行按内容自收缩，栏宽大于内容时右段会露出父级背景。
+    bar.color = theme.colors.surface;
     return bar;
 }
 

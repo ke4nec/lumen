@@ -204,6 +204,10 @@ class GalleryApp {
             return;
         }
         windowMaximized_ = maximized;
+        // 状态栏 resize grip 随最大化隐藏（statusbar-design §4.2；Controls
+        // 页与瓦片两处样本同规则）。
+        controlsStatusBar_.setShowResizeGrip(!maximized);
+        tileStatusBar_.setShowResizeGrip(!maximized);
         shell_.markDirty();
     }
     [[nodiscard]] bool windowMaximized() const { return windowMaximized_; }
@@ -468,10 +472,15 @@ class GalleryApp {
             };
         config.onAnimate = [self](app::AppShell& shell,
                                   std::uint64_t nowMs) {
-            // Spin 按住自动重复 + StatusBar 消息/进度/busy 节律。
+            // Spin 按住自动重复 + StatusBar 消息/进度/busy 节律。Controls
+            // 页不在视口时暂停状态栏持钟动画（页面未构建，旋转不可见；
+            // 离开后不再请求动画帧——M12 无空转约定，回到页面自动续转）。
             bool active = self->controlsOpacity_.step(shell, nowMs);
             active = self->controlsFontSize_.step(shell, nowMs) || active;
-            active = self->controlsStatusBar_.step(shell, nowMs) || active;
+            if (self->navigator_.current() == "controls") {
+                active = self->controlsStatusBar_.step(shell, nowMs) ||
+                         active;
+            }
             active = self->tileSpin_.step(shell, nowMs) || active;
             return self->advanceFling(shell, nowMs) || active;
         };
@@ -726,21 +735,11 @@ class GalleryApp {
             {"grid", core::IconId::Grid, "Grid", "", false, true},
         });
         controlsToolBar_.onCommand = [this](const std::string& id) {
-            lastControlsCommand_ = id;
-            if (id == "grid") {
-                const bool on = shell_.state().get("gal-grid") != "true";
-                shell_.state().set("gal-grid", on ? "true" : "false");
-                controlsToolBar_.setChecked("grid", on);
-                // toggle → StatusBar busy 弧 + 消息联动（toolbar/statusbar
-                // -design 演示场景：同一命令由应用联动两处状态；消息常驻
-                // 到再次切换，对齐设计稿 live sample）。
-                controlsStatusBar_.setBusy(on);
-                controlsStatusBar_.setMessage(
-                    on ? "Building grid overlay…" : "Ready");
-            }
-            shell_.markDirty();
+            handleControlsCommand(id);
         };
+        controlsToolBar_.setSemanticsLabel("Sample commands");
         controlsToolBar_.attach(shell_);
+        controlsStatusBar_.setSemanticsLabel("Sample status");
         controlsStatusBar_.attach(shell_);
         // Controls 页 StatusBar 样本（对齐设计稿 live sample）：idle 消息
         // "Ready" + determinate 进度 68% + resize grip；Busy/Progress 项在
@@ -749,25 +748,36 @@ class GalleryApp {
         controlsStatusBar_.setProgress(68.0F);
         controlsStatusBar_.setShowResizeGrip(true);
         // Overview 清单瓦片（对齐设计稿 component-grid 三张新瓦片，预览即
-        // 真控件）：Spin 小档 + ToolBar 三项（Grid 持久选中）+ StatusBar
-        // determinate 进度/grip 样本。
+        // 真控件）：Spin/ToolBar/StatusBar 三块都取紧凑档（稿件
+        // .spin.compact / .toolbar.compact / .statusbar.compact = §9.1
+        // Small 档 32/24，与页面样本的 Comfortable 40/28 分档）。
         tileSpin_.setControlSize(core::ControlSize::Small);
         tileSpin_.setLabel("Preview opacity");
         tileSpin_.attach(shell_);
+        tileToolBar_.setControlSize(core::ControlSize::Small);
         tileToolBar_.setItems({
             {"new", core::IconId::Plus, "New"},
             {"open", core::IconId::Folder, "Open"},
             {"sep", core::IconId::None, "", "", true},
-            {"grid", core::IconId::Grid, "Grid", "", false, true, true},
+            // checked 随 gal-grid（下方 onCommand 与 Controls 页共用同一
+            // 处理，两栏状态互相同步）。
+            {"grid", core::IconId::Grid, "Grid", "", false, true},
         });
+        tileToolBar_.onCommand = [this](const std::string& id) {
+            handleControlsCommand(id);
+        };
         tileToolBar_.attach(shell_);
+        tileToolBar_.setSemanticsLabel("Sample commands");
         // 瓦片 StatusBar 不用常开 busy 弧——busy 旋转是持钟动画，会让
         // Overview 永不收敛（M12 无空转约定）；以静态 determinate 进度
-        // 表达"Indexing…"（值即状态，不补间）。busy 演示归 Controls 页
-        // 的 Grid 开关联动。
+        // 表达"Indexing…"（值即状态，不补间；fixedWidth 64 对齐设计稿
+        // 紧凑瓦片）。busy 演示归 Controls 页的 Grid 开关联动。
+        tileStatusBar_.setControlSize(core::ControlSize::Small);
+        tileStatusBar_.setSemanticsLabel("Sample status");
         tileStatusBar_.setIdleMessage("Indexing…");
         tileStatusBar_.setItems(
-            {{"progress", widgets::StatusItemKind::Progress}});
+            {{"progress", widgets::StatusItemKind::Progress, core::IconId::None,
+              "", true, 64.0F}});
         tileStatusBar_.setProgress(68.0F);
         tileStatusBar_.setShowResizeGrip(true);
         tileStatusBar_.attach(shell_);
@@ -1566,7 +1576,9 @@ class GalleryApp {
     }
 
     // Control inventory：分区瓷砖（预览即真控件，点击整格跳转分区）。
-    // 非 const：Spin 瓦片的 build 有失焦提交检测（SpinController 契约）。
+    // 非 const：Spin/ToolBar 瓦片 build 需要可变 this——失焦提交检测与
+    // 溢出决策的 shell 几何读取（SpinController/ToolBarController 契约；
+    // shell_ 为值成员，const 方法无法转出非 const 引用）。
     [[nodiscard]] core::Widget inventoryPanel(const style::Theme& theme) {
         std::vector<core::Widget> tiles;
         tiles.push_back(buttonsTile(theme));
@@ -1582,7 +1594,11 @@ class GalleryApp {
         tiles.push_back(statusBarTile(theme));
         tiles.push_back(feedbackTile(theme));
         std::vector<core::Widget> body;
-        body.push_back(panelHead("Control inventory", "8 sections", theme));
+        // 计数随瓦片走（设计稿的 "8 sections" 写死早于 Splitter 与
+        // Spin/ToolBar/StatusBar 三张新瓦片）。
+        body.push_back(panelHead("Control inventory",
+                                 std::to_string(tiles.size()) + " sections",
+                                 theme));
         // 组件卡最小 176px、间距 12（设计稿 auto-fit 网格）：保证瓦片内
         // 迷你控件（双按钮/输入框）不被压缩裁字。
         body.push_back(core::withKey(
@@ -1952,26 +1968,24 @@ class GalleryApp {
     }
 
     // Controls 三瓦片（对齐设计稿 component-grid 新瓦片）：Spin/ToolBar/
-    // StatusBar 迷你真控件——命令组 + 分组分隔线 + Grid 持久选中态、
-    // determinate 进度 + grip 样本；键盘/滚轮经 ShellConfig 转发（同
-    // Controls 页）。
+    // StatusBar 迷你真控件。控制器 build 自带根键（gal-tile-*），不可再包
+    // withKey 改名——handleWheel/溢出/折叠决策按该键 findNodeByKey 取几何。
+    // 指针点击归瓦片跳转（inputsTile 同口径）；键盘/滚轮经 ShellConfig
+    // 转发生效（同 Controls 页）。
     [[nodiscard]] core::Widget spinTile(const style::Theme& theme) {
-        return tileShell(core::withKey(tileSpin_.build(theme),
-                                       "tile-spin-field"),
-                         "Spin", theme, "tile-spin", "goto-controls");
+        return tileShell(tileSpin_.build(theme), "Spin", theme, "tile-spin",
+                         "goto-controls");
     }
 
     [[nodiscard]] core::Widget toolBarTile(const style::Theme& theme) {
-        return tileShell(
-            core::withKey(tileToolBar_.build(shell_, theme), "tile-toolbar"),
-            "ToolBar", theme, "tile-toolbar", "goto-controls");
+        return tileShell(tileToolBar_.build(shell_, theme), "ToolBar", theme,
+                         "tile-toolbar", "goto-controls");
     }
 
     [[nodiscard]] core::Widget statusBarTile(
         const style::Theme& theme) const {
-        return tileShell(
-            core::withKey(tileStatusBar_.build(theme), "tile-statusbar"),
-            "StatusBar", theme, "tile-statusbar", "goto-controls");
+        return tileShell(tileStatusBar_.build(theme), "StatusBar", theme,
+                         "tile-statusbar", "goto-controls");
     }
 
     [[nodiscard]] core::Widget feedbackTile(const style::Theme& theme) const {
@@ -2823,6 +2837,23 @@ class GalleryApp {
     }
 
     // --- Controls（lumen-{spin,toolbar,statusbar}-design §11.3）---
+
+    // Controls 页与 Overview 瓦片两个 ToolBar 共用的命令处理：同一命令
+    // 同步两栏 checked（状态事实来源 gal-grid）并联动状态栏 busy 弧 +
+    // 消息（toolbar/statusbar-design 演示场景：同一命令驱动多处状态）。
+    void handleControlsCommand(const std::string& id) {
+        lastControlsCommand_ = id;
+        if (id == "grid") {
+            const bool on = shell_.state().get("gal-grid") != "true";
+            shell_.state().set("gal-grid", on ? "true" : "false");
+            controlsToolBar_.setChecked("grid", on);
+            tileToolBar_.setChecked("grid", on);
+            controlsStatusBar_.setBusy(on);
+            controlsStatusBar_.setMessage(
+                on ? "Building grid overlay…" : "Ready");
+        }
+        shell_.markDirty();
+    }
 
     // Controls 分区：Spin 数值步进（整数/小数）、ToolBar（命令组 +
     // toggle + 溢出折叠）、StatusBar（消息/进度/busy）实时样本。

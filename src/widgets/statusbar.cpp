@@ -23,8 +23,14 @@ constexpr float kSeparatorHeight = 12.0F;
 constexpr float kGripSize = 12.0F;
 constexpr float kMsgMinWidth = 120.0F;  // 消息保底宽（design §5.2）
 
-std::uint8_t densityIndex(const style::Theme& theme) {
-    return theme.metrics.baseIndex;
+// 尺度档（design §9.1）：Medium = 跟随密度，Small/Large 相对密度上下移
+// 一档（Spin/ToolBar 同口径）。
+std::uint8_t sizeIndexFor(const style::Metrics& metrics,
+                          core::ControlSize size) {
+    const int offset =
+        static_cast<int>(size) - static_cast<int>(core::ControlSize::Medium);
+    const int index = static_cast<int>(metrics.baseIndex) + offset;
+    return static_cast<std::uint8_t>(std::clamp(index, 0, 2));
 }
 
 }  // namespace
@@ -123,6 +129,22 @@ void StatusBarController::setShowResizeGrip(bool show) {
     }
 }
 
+void StatusBarController::setControlSize(core::ControlSize size) {
+    if (controlSize_ == size) {
+        return;
+    }
+    controlSize_ = size;
+    widthCache_.clear();  // 项宽随档变化（折叠决策缓存失效）
+    foldedIds_.clear();
+    if (shell_ != nullptr) {
+        shell_->markDirty();
+    }
+}
+
+void StatusBarController::setSemanticsLabel(std::string label) {
+    semanticsLabel_ = std::move(label);
+}
+
 void StatusBarController::registerItemHandlers(app::AppShell& shell) {
     for (const auto& item : items_) {
         if (item.kind != StatusItemKind::Toggle) {
@@ -150,7 +172,8 @@ bool StatusBarController::messageAnimating() const {
 
 void StatusBarController::recomputeFold(app::AppShell& shell) const {
     const style::Theme& theme = shell.theme();
-    const std::uint8_t index = densityIndex(theme);
+    const std::uint8_t index = sizeIndexFor(theme.metrics, controlSize_);
+    const float paddingX = theme.metrics.controlPaddingX[index];
     // 可用宽取自上一帧的栏容器（被父级拉伸；row 自收缩——折叠后变窄会
     // 造成无法回位的死锁，toolbar §15 同教训）。
     const core::RenderNode* bar = core::findNodeByKey(shell.root(), key_);
@@ -168,8 +191,13 @@ void StatusBarController::recomputeFold(app::AppShell& shell) const {
         }
     }
 
+    // 可用宽 = 栏宽 − 左右内边距 − grip 占位。grip 显示时行的右内边距
+    // 让位给 grip（贴右下角，design §5.2），故右缘预算改按 grip 宽 + 一
+    // 个项间 gap 计——grip 是行内末子，不计入会让项序列多留 20px 才被折。
+    const float padRight = showResizeGrip_ ? 0.0F : paddingX;
+    const float gripCost = showResizeGrip_ ? kGripSize + kItemGap : 0.0F;
     const float avail =
-        std::max(0.0F, bar->size.width - 2.0F * theme.metrics.controlPaddingX[index]);
+        std::max(0.0F, bar->size.width - paddingX - padRight - gripCost);
     const float msgFloor = kMsgMinWidth + 2.0F * kItemGap;  // 保底 + 呼吸
 
     auto itemsWidth = [&](const std::vector<std::string>& folded) {
@@ -260,7 +288,7 @@ void StatusBarController::recomputeFold(app::AppShell& shell) const {
 }
 
 core::Widget StatusBarController::build(const style::Theme& theme) const {
-    const std::uint8_t index = densityIndex(theme);
+    const std::uint8_t index = sizeIndexFor(theme.metrics, controlSize_);
     const float barHeight = kBarHeight[index];
     const float rowHeight = barHeight - 1.0F;  // 顶部 1px 分隔线
     const float paddingX = theme.metrics.controlPaddingX[index];
@@ -281,12 +309,14 @@ core::Widget StatusBarController::build(const style::Theme& theme) const {
                foldedIds_.end();
     };
 
-    // 消息区（弹性 + 省略号；淡切 = 节点 transitionAlpha）。8px 为
-    // 消息文本内边距（不位移节点原点——布局断言锚定 paddingX）。
+    // 消息区（弹性 + 省略号；淡切 = 节点 transitionAlpha）。右侧 8px 内
+    // 边距与行 gap 合成"消息区/项序列 ≥16px 呼吸"（design §9.1），且省略
+    // 号不贴项序列；左缘不额外缩进——稿件 .sb-msg 从栏内边距起排。
     core::Widget msg = core::makeText(message_, caption, core::EdgeInsets{},
                                       1.0F, msgKey(), std::nullopt,
                                       std::nullopt,
-                                      core::EdgeInsets::symmetric(8.0F, 0.0F));
+                                      core::EdgeInsets::only(0.0F, 0.0F,
+                                                             kItemGap, 0.0F));
     msg.transitionAlpha = msgAlpha_;
 
     std::vector<core::Widget> children;
@@ -393,11 +423,13 @@ core::Widget StatusBarController::build(const style::Theme& theme) const {
         }
     }
 
-    // resize grip：纯视觉件（命中归平台 resize 边）；右下角贴底。
+    // resize grip：纯视觉件（命中归平台 resize 边）；贴栏右下角
+    //（design §5.2 与稿件 .sb-grip{align-self:flex-end;margin-right:-pad}）
+    //——行的右内边距为它让位，项序列右缘留一个 gap 的呼吸。
     if (showResizeGrip_) {
         std::vector<core::Widget> gripColumn;
         gripColumn.push_back(core::makeContainerLeaf(
-            kGripSize, std::max(0.0F, rowHeight - kGripSize - 2.0F),
+            kGripSize, std::max(0.0F, rowHeight - kGripSize),
             core::EdgeInsets{}, core::EdgeInsets{}, core::Color::transparent(),
             key_ + ":grip-space"));
         core::Widget grip = core::makeIcon(core::IconId::Grip, key_ + ":grip",
@@ -407,15 +439,15 @@ core::Widget StatusBarController::build(const style::Theme& theme) const {
         children.push_back(core::makeColumn(
             std::move(gripColumn), core::MainAxisAlignment::Start,
             core::CrossAxisAlignment::End, 0.0F, core::EdgeInsets{},
-            core::EdgeInsets::only(0.0F, 0.0F, 2.0F, 0.0F), key_ + ":grip-col",
-            kGripSize, rowHeight));
+            core::EdgeInsets{}, key_ + ":grip-col", kGripSize, rowHeight));
     }
 
     core::Widget row = core::makeRow(
         std::move(children), core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Center, kItemGap,
-        core::EdgeInsets{paddingX, 0.0F, paddingX, 0.0F}, core::EdgeInsets{},
-        key_ + ":row", std::nullopt, rowHeight);
+        core::EdgeInsets{paddingX, 0.0F, showResizeGrip_ ? 0.0F : paddingX,
+                         0.0F},
+        core::EdgeInsets{}, key_ + ":row", std::nullopt, rowHeight);
 
     core::Widget bar = core::makeColumn(
         {core::makeContainerLeaf(std::nullopt, 1.0F, core::EdgeInsets{},
@@ -425,7 +457,13 @@ core::Widget StatusBarController::build(const style::Theme& theme) const {
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
         0.0F, core::EdgeInsets{}, core::EdgeInsets{}, key_, std::nullopt,
         barHeight);
+    // 栏底满幅（§9.2 statusbar.background = surface）：chrome 的信息降级
+    // 语言靠自身表面与内容区分开，不依赖父级背景。
+    bar.color = theme.colors.surface;
     bar.semanticsRole = "statusBar";
+    if (!semanticsLabel_.empty()) {
+        bar.semanticsLabel = semanticsLabel_;
+    }
     return bar;
 }
 

@@ -258,6 +258,56 @@ TEST_CASE("statusbar_layout_height_and_message_ellipsis",
     CHECK(msg->offset.x == Catch::Approx(12.0F).margin(0.01F));  // paddingX
 }
 
+// 消息文本左缘从栏内边距起排（稿件 .sb-msg 无额外缩进），"消息区/项序列
+// ≥16px 呼吸"（§9.1）全部记在右侧：8px 文本内边距 + 8px 行 gap（分隔线
+// 自身的 8px margin 另计）。
+TEST_CASE("statusbar_message_breathes_toward_items_not_bar_edge",
+          "[widgets][statusbar]") {
+    StatusApp app;
+    const RenderNode* msg = findNodeByKey(app.shell.root(), "status:msg");
+    REQUIRE(msg != nullptr);
+    CHECK(msg->offset.x == Catch::Approx(12.0F).margin(0.01F));  // paddingX
+    CHECK(msg->padding.left == 0.0F);
+    CHECK(msg->padding.right == Catch::Approx(8.0F).margin(0.01F));
+}
+
+// resize grip 贴栏右下角（§5.2"贴右下角"与稿件 .sb-grip
+// {align-self:flex-end; margin-right:-pad}）：行的右内边距为 grip 让位，
+// grip 右/下缘与栏外缘重合。
+TEST_CASE("statusbar_resize_grip_flush_in_bottom_right_corner",
+          "[widgets][statusbar]") {
+    StatusApp app;
+    app.bar.setShowResizeGrip(true);
+    app.settle();
+    const RenderNode* bar = findNodeByKey(app.shell.root(), "status");
+    const RenderNode* grip = findNodeByKey(app.shell.root(), "status:grip");
+    REQUIRE(bar != nullptr);
+    REQUIRE(grip != nullptr);
+    const Offset gripAt = absoluteOffset(app.shell.root(), "status:grip");
+    const Offset barAt = absoluteOffset(app.shell.root(), "status");
+    CHECK(gripAt.x + grip->size.width ==
+          Catch::Approx(barAt.x + bar->size.width).margin(0.01F));
+    CHECK(gripAt.y + grip->size.height ==
+          Catch::Approx(barAt.y + bar->size.height).margin(0.01F));
+}
+
+// 尺度档覆盖（§9.1）：Comfortable 密度下 Small = 相对下移一档（栏 24、
+// 内边距 8）——清单瓦片紧凑样本口径，与 Spin/ToolBar 同规则。
+TEST_CASE("statusbar_control_size_override_selects_compact_tier",
+          "[widgets][statusbar]") {
+    StatusApp app;
+    app.bar.setControlSize(ControlSize::Small);
+    app.settle();
+    const RenderNode* bar = findNodeByKey(app.shell.root(), "status");
+    REQUIRE(bar != nullptr);
+    CHECK(bar->size.height == Catch::Approx(24.0F).margin(0.01F));
+    const RenderNode* msg = findNodeByKey(app.shell.root(), "status:msg");
+    REQUIRE(msg != nullptr);
+    CHECK(msg->offset.x == Catch::Approx(8.0F).margin(0.01F));
+    // 文本项行高随档收窄（Touch 档才升 13px 字号）。
+    CHECK(msg->textStyle().fontSize == Catch::Approx(12.0F).margin(0.01F));
+}
+
 TEST_CASE("statusbar_semantics_role_and_toggle_action",
           "[widgets][statusbar]") {
     StatusApp app;
@@ -271,6 +321,18 @@ TEST_CASE("statusbar_semantics_role_and_toggle_action",
         findNodeByKey(app.shell.root(), "status:item:encoding");
     REQUIRE(toggle != nullptr);
     CHECK(toggle->onClick == "status:item:encoding");
+}
+
+// 栏容器 label 由应用提供（design §7："label = 应用 semanticsLabel（如
+// "状态栏"）"）——只有 role 时读屏落到状态栏没有名称。
+TEST_CASE("statusbar_semantics_label_comes_from_application",
+          "[widgets][statusbar]") {
+    StatusApp app;
+    app.bar.setSemanticsLabel("状态栏");
+    app.settle();
+    const RenderNode* bar = findNodeByKey(app.shell.root(), "status");
+    REQUIRE(bar != nullptr);
+    CHECK(bar->semanticsLabel == "状态栏");
 }
 
 TEST_CASE("statusbar_reduce_animation_stops_motion_keeps_content",
@@ -295,6 +357,15 @@ TEST_CASE("statusbar_reduce_animation_stops_motion_keeps_content",
     const RenderNode* arc = findNodeByKey(app.shell.root(), "status:item:busy");
     REQUIRE(arc != nullptr);
     CHECK(arc->iconRotation == Catch::Approx(0.0F).margin(0.001F));
+}
+
+// 栏底满幅（§9.2 statusbar.background = surface）：chrome 的信息降级语言靠
+// 自身表面与内容区分开，不依赖父级背景。
+TEST_CASE("statusbar_bar_surface_fills_bar", "[widgets][statusbar]") {
+    StatusApp app;
+    const RenderNode* bar = findNodeByKey(app.shell.root(), "status");
+    REQUIRE(bar != nullptr);
+    CHECK(bar->commonStyle().background == app.shell.theme().colors.surface);
 }
 
 TEST_CASE("statusbar_items_fold_when_narrow_and_return_when_wide",

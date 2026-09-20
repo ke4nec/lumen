@@ -269,7 +269,8 @@ TEST_CASE("spin_density_scales_stepper", "[widgets][spin]") {
     const RenderNode* up = findNodeByKey(app.shell.root(), "spin:up:opacity");
     REQUIRE(up != nullptr);
     CHECK(up->size.width == Catch::Approx(28.0F).margin(0.01F));   // Medium
-    CHECK(up->size.height == Catch::Approx(19.5F).margin(0.01F));  // 半高（中缝 1px）
+    // 内容高 = 外高 40 − 上下边框各 1；中缝 1px 取整拆分（floor），上半格 18。
+    CHECK(up->size.height == Catch::Approx(18.0F).margin(0.01F));
 
     app.spin.setControlSize(ControlSize::Large);
     app.shell.markDirty();
@@ -281,6 +282,34 @@ TEST_CASE("spin_density_scales_stepper", "[widgets][spin]") {
         findNodeByKey(app.shell.root(), "spin:up:opacity");
     REQUIRE(upLarge != nullptr);
     CHECK(upLarge->size.width == Catch::Approx(32.0F).margin(0.01F));
+}
+
+// §9.1 尺度表：控件最小宽 = 边框内缩 2 + textfield 最小宽（96/120/144）+
+// 1px 分隔线 + stepper 宽（24/28/32），且整控件按内容收拢（稿件
+// design/spin.html .spin{width:max-content}，border-box 口径）。field 的
+// flex 预算只在容器窄于内容时压缩（shrinkWrap）——否则 Spin 作为非 flex
+// 子节点放进拉伸的 Row 会吞掉整行剩余宽并撑破父容器（gallery Controls
+// 卡片溢出回归）。
+TEST_CASE("spin_sizes_to_content_not_container", "[widgets][spin]") {
+    SpinApp app{72.0};
+    const auto* row = findNodeByKey(app.shell.root(), "opacity");
+    REQUIRE(row != nullptr);
+    CHECK(row->size.width == Catch::Approx(151.0F).margin(0.01F));
+
+    app.spin.setControlSize(ControlSize::Small);
+    app.shell.markDirty();
+    app.shell.rebuildIfDirty();
+    const auto* small = findNodeByKey(app.shell.root(), "opacity");
+    REQUIRE(small != nullptr);
+    CHECK(small->size.width == Catch::Approx(123.0F).margin(0.01F));
+    CHECK(small->size.height == Catch::Approx(32.0F).margin(0.01F));
+
+    app.spin.setControlSize(ControlSize::Large);
+    app.shell.markDirty();
+    app.shell.rebuildIfDirty();
+    const auto* large = findNodeByKey(app.shell.root(), "opacity");
+    REQUIRE(large != nullptr);
+    CHECK(large->size.width == Catch::Approx(179.0F).margin(0.01F));
 }
 
 TEST_CASE("spin_semantics_role_and_value", "[widgets][spin]") {
@@ -387,6 +416,119 @@ TEST_CASE("spin_stepper_hover_brightens_and_pressed_uses_accent_mix",
         findNodeByKey(app.shell.root(), "spin:up:opacity");
     REQUIRE(pressed != nullptr);
     CHECK(pressed->commonStyle().background == app.shell.theme().list.pressed);
+}
+
+// 稿件 field.focus() 口径：点 stepper 也要整控件 focused 蓝边（此前只有点
+// 进 field 才蓝）。指针点按先清焦点，tapStep/step 收拢回 field。
+TEST_CASE("spin_stepper_click_shows_focused_border", "[widgets][spin]") {
+    SpinApp app{40.0};
+    const Offset up = app.centerOf("spin:up:opacity");
+    app.shell.pointerDown(up);
+    app.shell.pointerUp(up);
+    app.shell.rebuildIfDirty();
+    CHECK(app.shell.focus().focusedKey() == "opacity:field");
+    const RenderNode* row = findNodeByKey(app.shell.root(), "opacity");
+    REQUIRE(row != nullptr);
+    CHECK(row->commonStyle().border ==
+          app.shell.theme().textField.borderFocused);
+}
+
+// Tab 到 ▲ 后方向键仍步进（焦点不动，整控件保持蓝边）。
+TEST_CASE("spin_stepper_focused_arrows_step", "[widgets][spin]") {
+    SpinApp app{40.0};
+    app.focusField();
+    app.shell.keyDown(Key::Tab);
+    REQUIRE(app.shell.focus().focusedKey() == "spin:up:opacity");
+    app.shell.keyDown(Key::Up);
+    CHECK(app.spin.value() == 41.0);
+    CHECK(app.shell.focus().focusedKey() == "spin:up:opacity");
+    app.shell.keyDown(Key::Down);
+    CHECK(app.spin.value() == 40.0);
+}
+
+// Tab 到 ▲/▼（三停靠点）同样整控件蓝边——键盘在 stepper 上不丢焦点指示。
+TEST_CASE("spin_stepper_focus_shows_focused_border", "[widgets][spin]") {
+    SpinApp app{40.0};
+    app.focusField();
+    app.shell.keyDown(Key::Tab);
+    REQUIRE(app.shell.focus().focusedKey() == "spin:up:opacity");
+    app.shell.markDirty();
+    app.shell.rebuildIfDirty();
+    const RenderNode* row = findNodeByKey(app.shell.root(), "opacity");
+    REQUIRE(row != nullptr);
+    CHECK(row->commonStyle().border ==
+          app.shell.theme().textField.borderFocused);
+}
+
+// 到界（atBound）：chevron 淡化 + hover/pressed 背景抑制（稿件
+// .at-bound:hover{background:transparent}——顶住无位移，不给误导性高亮）。
+TEST_CASE("spin_at_bound_hover_suppresses_background", "[widgets][spin]") {
+    SpinApp app{100.0};  // 初始即 max，▲ 到界
+    app.shell.setVisualPreviewState(
+        "spin:up:opacity", style::WidgetState{.hovered = true});
+    app.shell.markDirty();
+    app.shell.rebuildIfDirty();
+    const RenderNode* up = findNodeByKey(app.shell.root(), "spin:up:opacity");
+    REQUIRE(up != nullptr);
+    CHECK(up->commonStyle().foreground ==
+          app.shell.theme().colors.disabledContent);
+    CHECK(up->commonStyle().background == core::Color::transparent());
+}
+
+// 中缝 1px 分隔线落在整数像素上（取整拆分）：线像素为实色 borderDefault，
+// 上下相邻像素为底色——半像素 19.5 时线会虚成两行各 50% 灰。
+TEST_CASE("spin_mid_separator_is_crisp_single_px", "[widgets][spin]") {
+    SpinApp app{40.0};
+    (void)app.shell.renderFrame(true);
+    const auto& pixels = app.shell.pixels();
+    const auto at = [&](int x, int y) {
+        const std::size_t o = (std::size_t(y) * pixels.width + x) * 4;
+        return core::Color::fromRGBA(pixels.rgba[o], pixels.rgba[o + 1],
+                                     pixels.rgba[o + 2], pixels.rgba[o + 3]);
+    };
+    // Medium：内容原点 y=1（边框内缩），上半格 18 → 中缝 y=19；cluster 左缘
+    // x=122（1 padding + 120 field + 1 竖线）。
+    const core::Color line = at(135, 19);
+    CHECK(line == app.shell.theme().colors.borderDefault);
+    CHECK(at(135, 18) == app.shell.theme().textField.background);
+    CHECK(at(135, 20) == app.shell.theme().textField.background);
+}
+
+// 稿件 .spin{overflow:hidden} + .spin-step 无 border-radius（§5"外缘右侧圆角
+// 随 controlRadius，内缘直角"）：stepper 填充贴满半格、由外框圆角门控。按钮
+// 自带 controlRadius 时 hover/pressed 会缩成悬浮药丸；不裁剪则方形填充又盖过
+// 右缘角部（visual-system §11.1 第一防线）。
+TEST_CASE("spin_stepper_fill_is_square_and_clipped_by_frame",
+          "[widgets][spin]") {
+    SpinApp app{72.0};
+    app.shell.markDirty();
+    app.shell.rebuildIfDirty();
+    const RenderNode* up = findNodeByKey(app.shell.root(), "spin:up:opacity");
+    REQUIRE(up != nullptr);
+    CHECK(up->commonStyle().radius == core::CornerRadius::zero());
+
+    // 行原点 (0,0)、宽 151（边框内缩 1px padding）：cluster 左缘 = 第 122
+    // 列。贴边像素的增强幅度与按钮内部同强 = 方形填充；圆角内缩时贴边像素
+    // 几乎不变。
+    const auto luma = [&](int x, int y) {
+        const auto& p = app.shell.pixels();
+        const std::size_t o = (std::size_t(y) * p.width + x) * 4;
+        return (unsigned(p.rgba[o]) * 30 + unsigned(p.rgba[o + 1]) * 59 +
+                unsigned(p.rgba[o + 2]) * 11) / 100;
+    };
+    (void)app.shell.renderFrame(true);
+    const unsigned edgeBefore = luma(122, 2);
+    const unsigned coreBefore = luma(125, 9);  // 填充参照（避开 chevron 图标）
+    const unsigned cornerBefore = luma(150, 0);  // 外框右上角
+    app.shell.setVisualPreviewState("spin:up:opacity",
+                                    style::WidgetState{.hovered = true});
+    (void)app.shell.renderFrame(true);
+    const int edgeDelta = int(luma(122, 2)) - int(edgeBefore);
+    const int coreDelta = int(luma(125, 9)) - int(coreBefore);
+    REQUIRE(coreDelta > 0);
+    CHECK(edgeDelta >= coreDelta);
+    // overflow:hidden：方形填充也不得盖过外框圆角——角部像素不随 hover 变。
+    CHECK(luma(150, 0) == cornerBefore);
 }
 
 // chevron 设备对齐（render drawIcon 原点按设备像素取整）：奇数高半格
