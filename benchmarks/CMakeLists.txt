@@ -25,6 +25,9 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
     target_link_libraries(lumen-alpha-gallery PRIVATE lumen-app lumen-widgets lumen-dsl)
     target_compile_features(lumen-alpha-gallery PRIVATE cxx_std_20)
     add_executable(lumen-alpha-bench alpha_bench.cpp)
+    add_executable(lumen-alpha-present-probe alpha_present_probe.cpp)
+    target_link_libraries(lumen-alpha-present-probe PRIVATE lumen-platform SDL3::SDL3)
+    target_compile_features(lumen-alpha-present-probe PRIVATE cxx_std_20)
     target_link_libraries(lumen-alpha-bench PRIVATE lumen-render lumen-platform SDL3::SDL3)
     target_compile_features(lumen-alpha-bench PRIVATE cxx_std_20)
     target_compile_definitions(lumen-alpha-bench PRIVATE LUMEN_BENCH_BUILD_TYPE="$<CONFIG>")
@@ -36,6 +39,8 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
             -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:lumen-alpha-gallery>)
         add_custom_command(TARGET lumen-alpha-bench POST_BUILD COMMAND ${CMAKE_COMMAND}
             -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:lumen-alpha-bench>)
+        add_custom_command(TARGET lumen-alpha-present-probe POST_BUILD COMMAND ${CMAKE_COMMAND}
+            -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:lumen-alpha-present-probe>)
     endif()
 endif()
 

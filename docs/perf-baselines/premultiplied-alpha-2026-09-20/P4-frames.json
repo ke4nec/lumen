@@ -1,0 +1,2048 @@
+[
+  {
+    "kind": "cpu",
+    "before": {
+      "path": "build-alpha-before\\reports\\before-alpha-edges-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "3302b566b6804415a954676214fa75ff76d5b34cced99f47864aec85add9591d"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-paired\\after-alpha-edges-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "8a44e72731d430ab2cdfb9f30c875d1c9c94eb39fa85f9aa787a160703cfca16"
+    },
+    "reported_render_hash_before": "0421c36e4d0b8484",
+    "reported_render_hash_after": "8271447bd4ea40c4",
+    "comparison_target": {
+      "path": "build-alpha-before\\reports\\before-alpha-edges-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "3302b566b6804415a954676214fa75ff76d5b34cced99f47864aec85add9591d"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 36596,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "cpu",
+    "before": {
+      "path": "build-alpha-before\\reports\\before-alpha-images-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "54ed38250b99419421939351957f77f126b04103613c1732aa1b559acf39b224"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-paired\\after-alpha-images-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "b9c0993e08149dbcde46a3d79b6aac8e8366deef1195d93cfa0b13ae9fd4cc36"
+    },
+    "reported_render_hash_before": "7e374223a63d46b1",
+    "reported_render_hash_after": "4cc5033f4792643d",
+    "comparison_target": {
+      "path": "build-alpha-before\\reference-images.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "b9c0993e08149dbcde46a3d79b6aac8e8366deef1195d93cfa0b13ae9fd4cc36"
+    },
+    "exact": true,
+    "reason": "P0-frozen independent image oracle; repairs legacy 256-to-0 straight-channel wrap",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 0,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "cpu",
+    "before": {
+      "path": "build-alpha-before\\reports\\before-alpha-layers-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "b342e47aab8bcdd84683a80ad1180d2546e638afee4106a334676eff40e40689"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-paired\\after-alpha-layers-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "36fac1a341616ba65b7917f06437d214bf576b1709425cbb87674ff5670108f8"
+    },
+    "reported_render_hash_before": "ce8fa6cb5b7eb4dc",
+    "reported_render_hash_after": "4bd599927fdf0edc",
+    "comparison_target": {
+      "path": "build-alpha-before\\reports\\before-alpha-layers-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "b342e47aab8bcdd84683a80ad1180d2546e638afee4106a334676eff40e40689"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 1614720,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "cpu",
+    "before": {
+      "path": "build-alpha-before\\reports\\before-alpha-upload-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "54ed38250b99419421939351957f77f126b04103613c1732aa1b559acf39b224"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-paired\\after-alpha-upload-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "b9c0993e08149dbcde46a3d79b6aac8e8366deef1195d93cfa0b13ae9fd4cc36"
+    },
+    "reported_render_hash_before": "7e374223a63d46b1",
+    "reported_render_hash_after": "4cc5033f4792643d",
+    "comparison_target": {
+      "path": "build-alpha-before\\reference-images.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "b9c0993e08149dbcde46a3d79b6aac8e8366deef1195d93cfa0b13ae9fd4cc36"
+    },
+    "exact": true,
+    "reason": "P0-frozen independent image oracle; repairs legacy 256-to-0 straight-channel wrap",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 0,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "cpu",
+    "before": {
+      "path": "build-alpha-before\\reports\\before-canonical-card-grid-6x8-1080p-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "2367f53ba7d7854e9cdd39c40b31cdf54d91556f3a54a235ee57bae80e9d539a"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-paired\\after-canonical-card-grid-6x8-1080p-1.rgba",
+      "alpha_mode": "opaque",
+      "sha256": "54d60e877a435fb12227a8cd257f3935034a5b443941844dc18098b890716634"
+    },
+    "reported_render_hash_before": "26782f10603a53fe",
+    "reported_render_hash_after": "42fe122e01f706f6",
+    "comparison_target": {
+      "path": "build-alpha-before\\reports\\before-canonical-card-grid-6x8-1080p-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "2367f53ba7d7854e9cdd39c40b31cdf54d91556f3a54a235ee57bae80e9d539a"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 3218,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "cpu",
+    "before": {
+      "path": "build-alpha-before\\reports\\before-canonical-resource-upload-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "0d7c512ff23bee4926e97d0aa37e8b6dd708ea976d8469d427511e5645fbda69"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-paired\\after-canonical-resource-upload-1.rgba",
+      "alpha_mode": "opaque",
+      "sha256": "0d7c512ff23bee4926e97d0aa37e8b6dd708ea976d8469d427511e5645fbda69"
+    },
+    "reported_render_hash_before": "adeaf421e150d7dc",
+    "reported_render_hash_after": "adeaf421e150d7dc",
+    "comparison_target": {
+      "path": "build-alpha-before\\reports\\before-canonical-resource-upload-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "0d7c512ff23bee4926e97d0aa37e8b6dd708ea976d8469d427511e5645fbda69"
+    },
+    "exact": false,
+    "reason": "raw bytes unchanged; explicit opaque framebuffer representation",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "cpu",
+    "before": {
+      "path": "build-alpha-before\\reports\\before-canonical-text-heavy-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "5cedf3301ea8502a84eac6deb7da8a225785695a5c8de84b63eb7ba4579d34dd"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-paired\\after-canonical-text-heavy-1.rgba",
+      "alpha_mode": "opaque",
+      "sha256": "f66cf688a7450a7a205a34ff89f8c89b842ef0c3f48242e41bb90aab59258a23"
+    },
+    "reported_render_hash_before": "47c72fbcaa3e7634",
+    "reported_render_hash_after": "7fe927ca269db627",
+    "comparison_target": {
+      "path": "build-alpha-before\\reports\\before-canonical-text-heavy-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "5cedf3301ea8502a84eac6deb7da8a225785695a5c8de84b63eb7ba4579d34dd"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 20343,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "skia",
+    "before": {
+      "path": "build-alpha-skia-before\\reports\\before-alpha-edges-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "0a2f839e8798a0835088f01d6c94bbfc73084cdd50e2d6bb0578799a0b540975"
+    },
+    "after": {
+      "path": "build-alpha-skia-after\\p4-paired\\after-alpha-edges-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "0a2f839e8798a0835088f01d6c94bbfc73084cdd50e2d6bb0578799a0b540975"
+    },
+    "reported_render_hash_before": "46e79f4a03debbad",
+    "reported_render_hash_after": "46e79f4a03debbad",
+    "comparison_target": {
+      "path": "build-alpha-skia-before\\reports\\before-alpha-edges-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "0a2f839e8798a0835088f01d6c94bbfc73084cdd50e2d6bb0578799a0b540975"
+    },
+    "exact": true,
+    "reason": "raw bytes unchanged; explicit premultiplied/opaque metadata",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 0,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "skia",
+    "before": {
+      "path": "build-alpha-skia-before\\reports\\before-alpha-images-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "18fdd89455b7d1d81f6d51802328b0eebb27ee209ecd945fc29680d5a0d44cde"
+    },
+    "after": {
+      "path": "build-alpha-skia-after\\p4-paired\\after-alpha-images-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "18fdd89455b7d1d81f6d51802328b0eebb27ee209ecd945fc29680d5a0d44cde"
+    },
+    "reported_render_hash_before": "f8de1420aeb9b1c7",
+    "reported_render_hash_after": "f8de1420aeb9b1c7",
+    "comparison_target": {
+      "path": "build-alpha-skia-before\\reports\\before-alpha-images-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "18fdd89455b7d1d81f6d51802328b0eebb27ee209ecd945fc29680d5a0d44cde"
+    },
+    "exact": true,
+    "reason": "raw bytes unchanged; explicit premultiplied/opaque metadata",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 0,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "skia",
+    "before": {
+      "path": "build-alpha-skia-before\\reports\\before-alpha-layers-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "980feff8c646522330036175e139f779039f9164c611dd6771afa2ea251a29f7"
+    },
+    "after": {
+      "path": "build-alpha-skia-after\\p4-paired\\after-alpha-layers-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "980feff8c646522330036175e139f779039f9164c611dd6771afa2ea251a29f7"
+    },
+    "reported_render_hash_before": "0118b5270953a7dc",
+    "reported_render_hash_after": "0118b5270953a7dc",
+    "comparison_target": {
+      "path": "build-alpha-skia-before\\reports\\before-alpha-layers-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "980feff8c646522330036175e139f779039f9164c611dd6771afa2ea251a29f7"
+    },
+    "exact": true,
+    "reason": "raw bytes unchanged; explicit premultiplied/opaque metadata",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 0,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "skia",
+    "before": {
+      "path": "build-alpha-skia-before\\reports\\before-alpha-upload-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "18fdd89455b7d1d81f6d51802328b0eebb27ee209ecd945fc29680d5a0d44cde"
+    },
+    "after": {
+      "path": "build-alpha-skia-after\\p4-paired\\after-alpha-upload-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "18fdd89455b7d1d81f6d51802328b0eebb27ee209ecd945fc29680d5a0d44cde"
+    },
+    "reported_render_hash_before": "f8de1420aeb9b1c7",
+    "reported_render_hash_after": "f8de1420aeb9b1c7",
+    "comparison_target": {
+      "path": "build-alpha-skia-before\\reports\\before-alpha-upload-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "18fdd89455b7d1d81f6d51802328b0eebb27ee209ecd945fc29680d5a0d44cde"
+    },
+    "exact": true,
+    "reason": "raw bytes unchanged; explicit premultiplied/opaque metadata",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 0,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "skia",
+    "before": {
+      "path": "build-alpha-skia-before\\reports\\before-canonical-card-grid-6x8-1080p-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "91d6ac60d0ea1343c35fd8274f60d98327f85123b69dafb26d496aae8db07f44"
+    },
+    "after": {
+      "path": "build-alpha-skia-after\\p4-paired\\after-canonical-card-grid-6x8-1080p-1.rgba",
+      "alpha_mode": "opaque",
+      "sha256": "91d6ac60d0ea1343c35fd8274f60d98327f85123b69dafb26d496aae8db07f44"
+    },
+    "reported_render_hash_before": "09edc860399ff860",
+    "reported_render_hash_after": "09edc860399ff860",
+    "comparison_target": {
+      "path": "build-alpha-skia-before\\reports\\before-canonical-card-grid-6x8-1080p-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "91d6ac60d0ea1343c35fd8274f60d98327f85123b69dafb26d496aae8db07f44"
+    },
+    "exact": true,
+    "reason": "raw bytes unchanged; explicit premultiplied/opaque metadata",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 0,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "skia",
+    "before": {
+      "path": "build-alpha-skia-before\\reports\\before-canonical-resource-upload-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "0d7c512ff23bee4926e97d0aa37e8b6dd708ea976d8469d427511e5645fbda69"
+    },
+    "after": {
+      "path": "build-alpha-skia-after\\p4-paired\\after-canonical-resource-upload-1.rgba",
+      "alpha_mode": "opaque",
+      "sha256": "0d7c512ff23bee4926e97d0aa37e8b6dd708ea976d8469d427511e5645fbda69"
+    },
+    "reported_render_hash_before": "adeaf421e150d7dc",
+    "reported_render_hash_after": "adeaf421e150d7dc",
+    "comparison_target": {
+      "path": "build-alpha-skia-before\\reports\\before-canonical-resource-upload-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "0d7c512ff23bee4926e97d0aa37e8b6dd708ea976d8469d427511e5645fbda69"
+    },
+    "exact": true,
+    "reason": "raw bytes unchanged; explicit premultiplied/opaque metadata",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 0,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "skia",
+    "before": {
+      "path": "build-alpha-skia-before\\reports\\before-canonical-text-heavy-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "301898dcc243212ca18addd4cbbba1097d65356f5071d7dca85e6ef94ae3f8f7"
+    },
+    "after": {
+      "path": "build-alpha-skia-after\\p4-paired\\after-canonical-text-heavy-1.rgba",
+      "alpha_mode": "opaque",
+      "sha256": "301898dcc243212ca18addd4cbbba1097d65356f5071d7dca85e6ef94ae3f8f7"
+    },
+    "reported_render_hash_before": "09912646b5aabaef",
+    "reported_render_hash_after": "09912646b5aabaef",
+    "comparison_target": {
+      "path": "build-alpha-skia-before\\reports\\before-canonical-text-heavy-1.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "301898dcc243212ca18addd4cbbba1097d65356f5071d7dca85e6ef94ae3f8f7"
+    },
+    "exact": true,
+    "reason": "raw bytes unchanged; explicit premultiplied/opaque metadata",
+    "max_channel_error": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "changed_pixels": 0,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 0,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-100-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "043cca3e67bd30180778f9e8ff9f8b4573acc1e2bfe3804d33b12f1e0a334ef6"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-100-buttons.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "c32007b5897c991e7097fe54a6ba182ecdcc3c03a04fbc56b578f3eacebc5063"
+    },
+    "reported_render_hash_before": "cd1db0c3191dff84",
+    "reported_render_hash_after": "9141cbd4085856a9",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-100-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "043cca3e67bd30180778f9e8ff9f8b4573acc1e2bfe3804d33b12f1e0a334ef6"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      1,
+      0
+    ],
+    "changed_pixels": 17610,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-100-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "77728d0b13ea97a1c1c218ff0a0cfd160778226f63dcee911f352687b1d6c513"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-100-controls.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "bd3e5e11d55ff65f96ec0c12839ff0515b6a5cea7b4117667cc28cf9f3f8009c"
+    },
+    "reported_render_hash_before": "2c794d6c070378e0",
+    "reported_render_hash_after": "658e0a87a88b16eb",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-100-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "77728d0b13ea97a1c1c218ff0a0cfd160778226f63dcee911f352687b1d6c513"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 14726,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-100-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "344f13a6e7855b8a46778be3825b83b8904a33fd219f9ec8bcb68ed4f77d54df"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-100-hover.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "6d4df33f66683111aec9fd7686d8a1e001dd9476e8f688041565e82728736391"
+    },
+    "reported_render_hash_before": "c94385ba02350281",
+    "reported_render_hash_after": "823d67cdc7640e64",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-100-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "344f13a6e7855b8a46778be3825b83b8904a33fd219f9ec8bcb68ed4f77d54df"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 14121,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-100-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fcab8fefbf6a6b12d3c48679cd1064679a0928aa1d60649f62cdc5f7ca416374"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-100-maximized.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "7daf076052e413669bf2a19324247c37e814bf40f444cb0e24d5fe82a0316eb1"
+    },
+    "reported_render_hash_before": "8dd84a33613654ed",
+    "reported_render_hash_after": "bd5ed0ef708b8a58",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-100-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fcab8fefbf6a6b12d3c48679cd1064679a0928aa1d60649f62cdc5f7ca416374"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 14457,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-100-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "0db0920892171e1d9fc74a892a1a9b05151171a54df3c8583f9e997c6a2197ef"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-100-menu.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "20e8680f76afae817e3c0221ed181fd2ec1bdbfacce1153a561e472852f1c839"
+    },
+    "reported_render_hash_before": "35b31e9fd2365d92",
+    "reported_render_hash_after": "80eea7047d5f440c",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-100-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "0db0920892171e1d9fc74a892a1a9b05151171a54df3c8583f9e997c6a2197ef"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 21888,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-100-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "4a07fb0d63ce33e9df03e23660974629fb97b678bf6756f20c6d6bd840f12e7c"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-100-pressed.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "311f6ab19d08872a93f3bf4ca64659f1609d4d9525ad5877bcdf8215cad52dae"
+    },
+    "reported_render_hash_before": "72d25208e1298469",
+    "reported_render_hash_after": "3a2a786f9380a660",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-100-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "4a07fb0d63ce33e9df03e23660974629fb97b678bf6756f20c6d6bd840f12e7c"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 14123,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-100-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "491da68be80afe3a53c5957080b55338093cce37a4371622acc17cd7616f7f8d"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-100-rest.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "56b056f6e467ecbf82c4a802e119ba5020a1d76a751b112c636738cbb2336962"
+    },
+    "reported_render_hash_before": "110edc5fdfa1a69",
+    "reported_render_hash_after": "39ff835353921a38",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-100-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "491da68be80afe3a53c5957080b55338093cce37a4371622acc17cd7616f7f8d"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 14147,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-125-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "90d0e0fb7fee70d380292a3b9b1ed375d3500ae1ded6360babf6e2894b618e41"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-125-buttons.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "d7a9e88a83b0343499f72527355e83e4d7ed73bc134615827e314ac50f537633"
+    },
+    "reported_render_hash_before": "6c26a260c088349e",
+    "reported_render_hash_after": "8e64971d9ccd8d6b",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-125-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "90d0e0fb7fee70d380292a3b9b1ed375d3500ae1ded6360babf6e2894b618e41"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      1,
+      2,
+      0
+    ],
+    "changed_pixels": 34107,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-125-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "a702edb440363db057218dfc5aaecc2ee85368034b5b8d1dbf0765ba57cb8b3e"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-125-controls.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "45c51129489b60e7ab4f237c20da1ff2c454bfb5f9274136dc11b4bd34f097aa"
+    },
+    "reported_render_hash_before": "e80aa9ab81348f23",
+    "reported_render_hash_after": "de2193d4c60d59c7",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-125-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "a702edb440363db057218dfc5aaecc2ee85368034b5b8d1dbf0765ba57cb8b3e"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      2,
+      0
+    ],
+    "changed_pixels": 22159,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-125-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fc9ea50178fdf03f9e6459d0042b339f2a18642a553aaa3af19127affe149861"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-125-hover.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "6720f3421e61591d7830e738926550d4f2c68ad82215606c599997ffd71efbf9"
+    },
+    "reported_render_hash_before": "cf4b027872f8439",
+    "reported_render_hash_after": "244a417dabd1b189",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-125-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fc9ea50178fdf03f9e6459d0042b339f2a18642a553aaa3af19127affe149861"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 24597,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-125-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "021593370729b6220356405733d871b3336801f2d0d8e19e2287653417e1fc57"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-125-maximized.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "16fcf2a662acc78e3f042b49c97ad4d514d0e9ff1b3ce4de8318040e571e6108"
+    },
+    "reported_render_hash_before": "4f55b3907b5a4e8a",
+    "reported_render_hash_after": "a5d3d59eee6bc7c5",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-125-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "021593370729b6220356405733d871b3336801f2d0d8e19e2287653417e1fc57"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 25517,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-125-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "26a81f4775b731f8d3d537c6d0e808dd4554d44a5dbfdff16c5fad731bc952d0"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-125-menu.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "eb8447aeea6baa59c20cf0c33225503ea99af56da29c29d18d9576653b41f564"
+    },
+    "reported_render_hash_before": "cd6979f530b23481",
+    "reported_render_hash_after": "5e269c6dfb8ef2a5",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-125-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "26a81f4775b731f8d3d537c6d0e808dd4554d44a5dbfdff16c5fad731bc952d0"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 36944,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-125-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "deca99a3c14f1dda3eb607e7400ef9c992a8fa9da28a82ce396acf32d55d8a1c"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-125-pressed.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "06ca8fd8d17c88ec5244bb1fb4ef155079883d6b19731a5161a4de9d1b254d56"
+    },
+    "reported_render_hash_before": "e1d1df4c876fc24b",
+    "reported_render_hash_after": "adb27a6ade5ab5b4",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-125-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "deca99a3c14f1dda3eb607e7400ef9c992a8fa9da28a82ce396acf32d55d8a1c"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 24563,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-125-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fe3197966df9e908ab6fd01f8add6e7d072d701d6631e73d5d52e65031dfdafa"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-125-rest.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "f733624125cffd56e7f83fc7948183ba14d330100c5ffb3c227ac60ad2195f56"
+    },
+    "reported_render_hash_before": "870b0aef877cc58d",
+    "reported_render_hash_after": "702a898259770b1d",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-125-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fe3197966df9e908ab6fd01f8add6e7d072d701d6631e73d5d52e65031dfdafa"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 24630,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-200-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "70915ce632ccfd5ae63e6c7da11f059122dada192e199f3945f54c93ba76257e"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-200-buttons.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "dc6407906ebde594a4dd798c3646d64b9736d8d2af853b50a8b63be22686b63f"
+    },
+    "reported_render_hash_before": "d6c0c285702518a2",
+    "reported_render_hash_after": "798250e9dd4e37c6",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-200-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "70915ce632ccfd5ae63e6c7da11f059122dada192e199f3945f54c93ba76257e"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      2,
+      0
+    ],
+    "changed_pixels": 28254,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-200-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "247e3f4633749762e64ac294ce71fc6f7c1635b30a293abebc4e46f08991043c"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-200-controls.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "7d9d1687e5d6f043bcff50dbc2d836b58847466f84e6e7b30988a75ec56b9440"
+    },
+    "reported_render_hash_before": "f373275e6669e9d7",
+    "reported_render_hash_after": "34d13aef67d5fe6b",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-200-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "247e3f4633749762e64ac294ce71fc6f7c1635b30a293abebc4e46f08991043c"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 21570,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-200-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fcaeb9cf9bf9c98b0aa7e470593a2f415b3f214717c6b6e3a02cbf89bcbde82f"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-200-hover.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "12fb9816ea5ffa1887a30304d81ed6405d4b8ce6fb0ea304c3c6b9ac94508c94"
+    },
+    "reported_render_hash_before": "fad01da184d78249",
+    "reported_render_hash_after": "4368a1352e4c4b42",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-200-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fcaeb9cf9bf9c98b0aa7e470593a2f415b3f214717c6b6e3a02cbf89bcbde82f"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 31203,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-200-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "b157b370071e202def0f738687a7082b5ef8c3895c97002306c7d18acad39a25"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-200-maximized.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "9c373a012adc72001c1e7c96cedcbf4d2f494845f9ef8ce0a17651622c4edb71"
+    },
+    "reported_render_hash_before": "fc2e1c1a115bd901",
+    "reported_render_hash_after": "442a95f1b12f0827",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-200-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "b157b370071e202def0f738687a7082b5ef8c3895c97002306c7d18acad39a25"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 33170,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-200-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "bc5cc82c9ecf97f447b50e6e76d1f8796d6f5b0ef51d726217fcaebb2e47f3a3"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-200-menu.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "ee3eae64909502b3fb40d9fe6f59b74eca8c58af9475debb2753e1f1d42b7361"
+    },
+    "reported_render_hash_before": "515892856e9df118",
+    "reported_render_hash_after": "ebadbb9dcf10b37e",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-200-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "bc5cc82c9ecf97f447b50e6e76d1f8796d6f5b0ef51d726217fcaebb2e47f3a3"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 60538,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-200-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "d5a0e0f4bffe01de676d2105ddc85988158c21d36a65c67a9af2256315a0dca8"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-200-pressed.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "fa1a6c84c1bf2cf4fa7620c8d3be7904deb8b97e9713ca121be495cac4ea77dc"
+    },
+    "reported_render_hash_before": "cebb5307217477e9",
+    "reported_render_hash_after": "edd88a44f3cd907a",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-200-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "d5a0e0f4bffe01de676d2105ddc85988158c21d36a65c67a9af2256315a0dca8"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 31203,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\dark-200-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "034fa6abde1e33a2e3b5cbf31cbae71e93b70471ac3ac642ceb46a385b2b1d54"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\dark-200-rest.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "68634dee8f383381a420194ad0ec9ee555b3ed1cf591f116e59e735b0436cdb1"
+    },
+    "reported_render_hash_before": "e945c6049cdb11fd",
+    "reported_render_hash_after": "cae04a469fc08122",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\dark-200-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "034fa6abde1e33a2e3b5cbf31cbae71e93b70471ac3ac642ceb46a385b2b1d54"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 31231,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-100-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "d13c12691e1d373cf6fe32628881289c3b1178e59dcb77788cc9368e9e568b53"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-100-buttons.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "e5a0e578bee6957cbf046499fa595911c6d1db4003a9ffd5673dfdfde13ca010"
+    },
+    "reported_render_hash_before": "cb3f9f7b6e6dec4d",
+    "reported_render_hash_after": "982c4e73a8a9c045",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-100-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "d13c12691e1d373cf6fe32628881289c3b1178e59dcb77788cc9368e9e568b53"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 6554,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-100-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "0d3232374eed43579705409aa5dd4e91797f4ce7db542f43b510c9a2c6693b58"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-100-controls.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "585c90de4457ffa548308f0c37965270a79a37c4c278ae8c126d233b56e96df9"
+    },
+    "reported_render_hash_before": "7081cc47be24e97c",
+    "reported_render_hash_after": "ec202267e0b03f4e",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-100-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "0d3232374eed43579705409aa5dd4e91797f4ce7db542f43b510c9a2c6693b58"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 6605,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-100-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "da121500f72b332259e6b6de62ae19e807b4132b28ded07a622838b6005c4cf6"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-100-hover.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "8c7981bc6f27d2aa46da5493bbc552fecc85e7dba88486b8c5ea5f502eec8ac1"
+    },
+    "reported_render_hash_before": "4b69c9c195817b60",
+    "reported_render_hash_after": "9f444895a1c47d97",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-100-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "da121500f72b332259e6b6de62ae19e807b4132b28ded07a622838b6005c4cf6"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 9192,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-100-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "bb0b7112a2f921ad9d45c2ea25196e57a479bd3201dcd41e4980ee746e8ff493"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-100-maximized.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "8bca9d8af8c393140da4e3ff85e700898c0743d23b11732b4497f3e0e8ee54a9"
+    },
+    "reported_render_hash_before": "4eedaccca8534a36",
+    "reported_render_hash_after": "802f6e6d89467437",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-100-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "bb0b7112a2f921ad9d45c2ea25196e57a479bd3201dcd41e4980ee746e8ff493"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 8363,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-100-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "ccae96c0bfbf3936734433b73f4ec77f6770aaf768bb1a6d3d035276d4944ed1"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-100-menu.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "953af74ff55f21b311c837e59900200cae177db069db9ec6ff8bbcfad9d78c34"
+    },
+    "reported_render_hash_before": "456e96ce7fb85e1b",
+    "reported_render_hash_after": "6b91ff4a1bad4658",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-100-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "ccae96c0bfbf3936734433b73f4ec77f6770aaf768bb1a6d3d035276d4944ed1"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 9567,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-100-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "75c7ba683dc7c52a06088290f11202270981cadbfdf317e8114b3b7e8f0236dc"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-100-pressed.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "1d37c06640fde86039fc124f656c8e8f1b810bab759d1588de55525f14dbb314"
+    },
+    "reported_render_hash_before": "e5d65efff31139a4",
+    "reported_render_hash_after": "d526ebbd4cdb0517",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-100-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "75c7ba683dc7c52a06088290f11202270981cadbfdf317e8114b3b7e8f0236dc"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 9190,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-100-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "6b45b9400ab91e0ce7afce110734114b98edbd120dae48c15bb7f15849dc6e19"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-100-rest.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "af7b6cdeb6e8d854d27cee542c0836233be53892429d89cbb7f6a4dde2b18fd0"
+    },
+    "reported_render_hash_before": "457ea9166acc0fa4",
+    "reported_render_hash_after": "14d3fd64c53e749b",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-100-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "6b45b9400ab91e0ce7afce110734114b98edbd120dae48c15bb7f15849dc6e19"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 9190,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-125-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "d8b1600161f4e40d5be2eb84110ce2ee268b7db4b494616800661d6bbf46a56c"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-125-buttons.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "40b10044f7e9bdaa46c0dbbc18d39b1ed6db7bbfd20f44d0d0484edb06de300f"
+    },
+    "reported_render_hash_before": "81a2c508105ee225",
+    "reported_render_hash_after": "734fd49865c688a0",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-125-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "d8b1600161f4e40d5be2eb84110ce2ee268b7db4b494616800661d6bbf46a56c"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 6575,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-125-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "338791ca29f6ec71b11f0b69b6cbe64654348ed2ff85d24e3cb62bccda6545e5"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-125-controls.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "f13dae62be12e9a50bcf8785c3c41c9c9add6336aca2d11afd3f9993a7406454"
+    },
+    "reported_render_hash_before": "70c0f6d48e7dcc37",
+    "reported_render_hash_after": "4fbab4f12d6dabcb",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-125-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "338791ca29f6ec71b11f0b69b6cbe64654348ed2ff85d24e3cb62bccda6545e5"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 7939,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-125-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "3b07ab9ded6cab76b87745acbbede008325de1ac15357aac0536dc348ef908c4"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-125-hover.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "ef4df867b2d05bc979426b949b79275813248fe72ef621235311685a20832dfd"
+    },
+    "reported_render_hash_before": "9cf5147c86fd743f",
+    "reported_render_hash_after": "d00e9b7facdb230a",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-125-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "3b07ab9ded6cab76b87745acbbede008325de1ac15357aac0536dc348ef908c4"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 7872,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-125-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "bb4afcfbc913e6861e543dc6d8e9432e04828fa3fb8962357f7cd864d1fb85a4"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-125-maximized.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "c09c3ec8e02c17b95b216ab4a5e7be2c6e1980e6c5bc8e549c4efe8ed895d067"
+    },
+    "reported_render_hash_before": "8a2b76c9c734900f",
+    "reported_render_hash_after": "fb0486b0b9decc4e",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-125-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "bb4afcfbc913e6861e543dc6d8e9432e04828fa3fb8962357f7cd864d1fb85a4"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 2311,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-125-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "9a4c39a1c1d4da2959fec1850bdeb49ec8199d19ec29daf6095237ffd5a7ab8b"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-125-menu.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "16b639c57fb979898904846910dcc570ca0f14df6d0703dd2d69f17783056cf2"
+    },
+    "reported_render_hash_before": "98cc17107763cc58",
+    "reported_render_hash_after": "bd27f753f15bfbc2",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-125-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "9a4c39a1c1d4da2959fec1850bdeb49ec8199d19ec29daf6095237ffd5a7ab8b"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 8172,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-125-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "0ee2edc7c0e5de52332f62e3291b7a02340a9ecdf4468d6636964d531f96657d"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-125-pressed.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "8013531b3b376bbf51ed166af9e4177bfd17b07917be221c4466b3e46e16b586"
+    },
+    "reported_render_hash_before": "94cbf74e570e5c13",
+    "reported_render_hash_after": "88208ae7be67ceac",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-125-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "0ee2edc7c0e5de52332f62e3291b7a02340a9ecdf4468d6636964d531f96657d"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 7776,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-125-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "1730fdf7a4c836d5ce573604fb2ea5bc5d79721b426512ef3f68cd72ba644a87"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-125-rest.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "e45627d0e376cc1afea198fe119ba511405bf9ded5e8b574aee8a31affb0e488"
+    },
+    "reported_render_hash_before": "d3b554f878fdbb36",
+    "reported_render_hash_after": "69a3c8394d71f120",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-125-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "1730fdf7a4c836d5ce573604fb2ea5bc5d79721b426512ef3f68cd72ba644a87"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 7872,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-200-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "6a2df0e1bd0079795eb9bcbbb2287343f738dc258535c759ec2221d44727e10e"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-200-buttons.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "95c22c3d8fff047e85729b9ed692dadcaba7fdc87997f90f61a17418d6692833"
+    },
+    "reported_render_hash_before": "16178ae6b34fccc1",
+    "reported_render_hash_after": "f5b8ac86af4a911b",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-200-buttons.rgba",
+      "alpha_mode": "straight",
+      "sha256": "6a2df0e1bd0079795eb9bcbbb2287343f738dc258535c759ec2221d44727e10e"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 20701,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-200-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "4b24c99b593feb8ad3470e7d680a7789191e502e66fe5893f6b6d5d895fa14e8"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-200-controls.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "defdffff4cfc28d282c0bf3c79c9d77d7bd5beb6c0f8cdda264ba16a7da580ef"
+    },
+    "reported_render_hash_before": "c6eca3cde9cfdc0f",
+    "reported_render_hash_after": "2fa704e027adab8a",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-200-controls.rgba",
+      "alpha_mode": "straight",
+      "sha256": "4b24c99b593feb8ad3470e7d680a7789191e502e66fe5893f6b6d5d895fa14e8"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 13696,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-200-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "1547a43c14fa9e8a0a86ebcb05112e0dcb86c946eb696ab975f07548a0a1594f"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-200-hover.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "dc6fb2324bc421b2f3c2f2c01b09d7304150950fcea7f3cdca900445b4192730"
+    },
+    "reported_render_hash_before": "1ac3e33f7eadfd9",
+    "reported_render_hash_after": "99c8114b2ea0f9bd",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-200-hover.rgba",
+      "alpha_mode": "straight",
+      "sha256": "1547a43c14fa9e8a0a86ebcb05112e0dcb86c946eb696ab975f07548a0a1594f"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      1,
+      0
+    ],
+    "changed_pixels": 12959,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-200-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "a5f924f521baa49b73a9c7294d197d62b00212a39cd272889ffa92848235e624"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-200-maximized.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "bc6909ffccfabfc924bdb05e63e8fae3c27feec125b80d8f321847ff4a74fc06"
+    },
+    "reported_render_hash_before": "ad87b00333c8c9d0",
+    "reported_render_hash_after": "8ed4739615f4c8e7",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-200-maximized.rgba",
+      "alpha_mode": "straight",
+      "sha256": "a5f924f521baa49b73a9c7294d197d62b00212a39cd272889ffa92848235e624"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 16337,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-200-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "e67824e75779c07802e5866045b2c1017d8e3eea4853fbcfb25c150d7b4ef301"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-200-menu.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "fbdac098a3c19b5ec4de85daff88781d9e7c7d8cbb0bf0b82cd8c8416439f218"
+    },
+    "reported_render_hash_before": "abd683017c280d67",
+    "reported_render_hash_after": "1c469e4ba4a2936b",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-200-menu.rgba",
+      "alpha_mode": "straight",
+      "sha256": "e67824e75779c07802e5866045b2c1017d8e3eea4853fbcfb25c150d7b4ef301"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 12204,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-200-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "8933c0c56131f8588450e546ecffa06baea969db780699261b8d3aa436801906"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-200-pressed.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "69deb6c4b2d9edeed759e0366dee5d767158a5d4e00324865a027e24d219d506"
+    },
+    "reported_render_hash_before": "c0f34ee1b26bbfc1",
+    "reported_render_hash_after": "8af1d73bd6ba0e91",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-200-pressed.rgba",
+      "alpha_mode": "straight",
+      "sha256": "8933c0c56131f8588450e546ecffa06baea969db780699261b8d3aa436801906"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 12961,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "gallery",
+    "before": {
+      "path": "build-alpha-before\\gallery\\light-200-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "6cf40a8be36e6db12cd7a33c1c9d239afc96035e6d2cc4419d46b7c73f8f9997"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-gallery\\light-200-rest.rgba",
+      "alpha_mode": "premultiplied",
+      "sha256": "e12636a65446cff7df8a62b0ab113aa5c6c4d69584cf3f74038701fbc1396db9"
+    },
+    "reported_render_hash_before": "aede49ad936f2839",
+    "reported_render_hash_after": "1731a88f0e60b76d",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery\\light-200-rest.rgba",
+      "alpha_mode": "straight",
+      "sha256": "6cf40a8be36e6db12cd7a33c1c9d239afc96035e6d2cc4419d46b7c73f8f9997"
+    },
+    "exact": false,
+    "reason": "8-bit premultiplied accumulation; identical geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 12957,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "system-fonts",
+    "before": {
+      "path": "build-alpha-before\\gallery-system\\dark-1.25.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fa59d5e900ba9998e47b77119735689e112484423dfdb8e75a55d8400954bf71"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-gallery-system\\dark-1.25.rgba",
+      "alpha_mode": "straight",
+      "sha256": "85af732fcdd3ff1717903c682521fc001a235c52976fea91c4a1e573f7aeef9a"
+    },
+    "reported_render_hash_before": "528c88795c9f3d6f",
+    "reported_render_hash_after": "f3deba326f836c7d",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery-system\\dark-1.25.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fa59d5e900ba9998e47b77119735689e112484423dfdb8e75a55d8400954bf71"
+    },
+    "exact": false,
+    "reason": "premultiplied accumulation plus explicit straight export; unchanged font geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 35851,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "system-fonts",
+    "before": {
+      "path": "build-alpha-before\\gallery-system\\dark-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "9be7a0de6e8c6fd74c222079b7adff96e8a87a89212d10e36cd51e4e33e14705"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-gallery-system\\dark-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "7bd9b3eef5409537acfd67818e4bde10a65987703240e68e6f927b19437fec62"
+    },
+    "reported_render_hash_before": "4ce58d773131fd65",
+    "reported_render_hash_after": "f17f9d44d025347d",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery-system\\dark-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "9be7a0de6e8c6fd74c222079b7adff96e8a87a89212d10e36cd51e4e33e14705"
+    },
+    "exact": false,
+    "reason": "premultiplied accumulation plus explicit straight export; unchanged font geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 19072,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "system-fonts",
+    "before": {
+      "path": "build-alpha-before\\gallery-system\\dark-2.rgba",
+      "alpha_mode": "straight",
+      "sha256": "cdedf97067e5a889849ba2c747dd1cc2ed328fbc8b50ef0e009b8233337cfd32"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-gallery-system\\dark-2.rgba",
+      "alpha_mode": "straight",
+      "sha256": "89402805283a9fc9b077865453f0d9ecf7034241743238104627f65ea1922a58"
+    },
+    "reported_render_hash_before": "358923e74dfbb953",
+    "reported_render_hash_after": "9744c717c8b79ffc",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery-system\\dark-2.rgba",
+      "alpha_mode": "straight",
+      "sha256": "cdedf97067e5a889849ba2c747dd1cc2ed328fbc8b50ef0e009b8233337cfd32"
+    },
+    "exact": false,
+    "reason": "premultiplied accumulation plus explicit straight export; unchanged font geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 54386,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "system-fonts",
+    "before": {
+      "path": "build-alpha-before\\gallery-system\\light-1.25.rgba",
+      "alpha_mode": "straight",
+      "sha256": "b6896bef3d119185f93bfffb72ab6a90d4fa4ae4171391bbc228e124379fb824"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-gallery-system\\light-1.25.rgba",
+      "alpha_mode": "straight",
+      "sha256": "5e210170adaf8add264ddd4b0473d6c866e6f0f390f8cd756d8f924f111218eb"
+    },
+    "reported_render_hash_before": "6e9b51960f3d3708",
+    "reported_render_hash_after": "ae6ac6b5a69885fe",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery-system\\light-1.25.rgba",
+      "alpha_mode": "straight",
+      "sha256": "b6896bef3d119185f93bfffb72ab6a90d4fa4ae4171391bbc228e124379fb824"
+    },
+    "exact": false,
+    "reason": "premultiplied accumulation plus explicit straight export; unchanged font geometry and alpha",
+    "max_channel_error": [
+      1,
+      1,
+      1,
+      0
+    ],
+    "changed_pixels": 16271,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "system-fonts",
+    "before": {
+      "path": "build-alpha-before\\gallery-system\\light-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fc875a68f98801639291d471be1f8277af12f451c067499da32c8f5fca72eb85"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-gallery-system\\light-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "ae3d5dc019335576324a1d93511e740b2e66d551cfc2dc3fa95118f35d1e490d"
+    },
+    "reported_render_hash_before": "aed75a0e5d6805b3",
+    "reported_render_hash_after": "ee906013c5832f17",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery-system\\light-1.rgba",
+      "alpha_mode": "straight",
+      "sha256": "fc875a68f98801639291d471be1f8277af12f451c067499da32c8f5fca72eb85"
+    },
+    "exact": false,
+    "reason": "premultiplied accumulation plus explicit straight export; unchanged font geometry and alpha",
+    "max_channel_error": [
+      1,
+      2,
+      2,
+      0
+    ],
+    "changed_pixels": 13004,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  },
+  {
+    "kind": "system-fonts",
+    "before": {
+      "path": "build-alpha-before\\gallery-system\\light-2.rgba",
+      "alpha_mode": "straight",
+      "sha256": "c19281bd7c76a224cd86d06fe3cfbdcf8bb6f1fce2799081ae261de4833a2268"
+    },
+    "after": {
+      "path": "build-alpha-after\\p4-final-gallery-system\\light-2.rgba",
+      "alpha_mode": "straight",
+      "sha256": "f2ddc56cf9b5633d120f4fe291d03719218458cc5a7d926f58608caf3771fc66"
+    },
+    "reported_render_hash_before": "68d2d6bc225017ed",
+    "reported_render_hash_after": "38413370c59296b7",
+    "comparison_target": {
+      "path": "build-alpha-before\\gallery-system\\light-2.rgba",
+      "alpha_mode": "straight",
+      "sha256": "c19281bd7c76a224cd86d06fe3cfbdcf8bb6f1fce2799081ae261de4833a2268"
+    },
+    "exact": false,
+    "reason": "premultiplied accumulation plus explicit straight export; unchanged font geometry and alpha",
+    "max_channel_error": [
+      2,
+      2,
+      1,
+      0
+    ],
+    "changed_pixels": 24538,
+    "outside_budget": 0,
+    "outside_fraction": 0.0,
+    "rgb_budget": 4,
+    "comparison": "premultiplied RGB and alpha"
+  }
+]

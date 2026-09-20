@@ -270,6 +270,15 @@ void CpuRenderer::blendImagePixel(int px, int py, const std::uint8_t* rgba) {
     compositePixel(px, py, rgba[0], rgba[1], rgba[2], rgba[3]);
 }
 
+// This scalar operation is used for each covered pixel. Inlining avoids spilling
+// seven arguments per sample on MSVC; the integer compositing rules stay shared.
+#if defined(_MSC_VER)
+__forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline)) inline
+#else
+inline
+#endif
 void CpuRenderer::compositePixel(int px, int py, unsigned r, unsigned g, unsigned b, unsigned a) {
     if (a == 0) return;
     auto* d = buffer_.rgba.data() + (static_cast<std::size_t>(py) * buffer_.width + px) * 4;

@@ -19,14 +19,15 @@ def load(path):
     if width <= 0 or height <= 0 or len(data) != width * height * 4 or mode not in ("straight", "premultiplied", "opaque"):
         raise ValueError("invalid dimensions or alpha_mode")
     if mode != "straight":
-        for i in range(0, len(data), 4):
-            if (mode == "opaque" and data[i+3] != 255) or max(data[i:i+3]) > data[i+3]:
-                raise ValueError(f"invalid {mode} pixel at {i//4}")
+        alpha = data[3::4]
+        if mode == "opaque" and any(a != 255 for a in alpha):
+            raise ValueError("invalid opaque alpha")
+        if any(any(c > a for c, a in zip(data[channel::4], alpha)) for channel in range(3)):
+            raise ValueError("invalid premultiplied RGB")
     if mode == "straight":
-        for i in range(0, len(data), 4):
-            a = data[i+3]
-            for c in range(3):
-                data[i+c] = (data[i+c]*a+127)//255
+        alpha = data[3::4]
+        for c in range(3):
+            data[c::4] = bytes((v*a+127)//255 for v,a in zip(data[c::4],alpha))
     return width, height, data
 
 
@@ -45,23 +46,29 @@ def inspect(path, compare, exact=False):
     peer = load(compare) if compare else None
     if peer and peer[:2] != (w, h):
         raise ValueError("dimension drift")
-    maxima = [0, 0, 0, 0]
-    changed = outside = 0
-    for p in range(w*h):
-        i, j = p*4, p*3
-        a = data[i+3]
-        bg = 80 if ((p%w)//16+(p//w)//16)%2 else 200
-        for c in range(3):
-            planes["alpha"][j+c] = a
-            planes["black"][j+c] = data[i+c]
-            planes["white"][j+c] = min(255, data[i+c]+255-a)
-            planes["checker"][j+c] = min(255, data[i+c]+(bg*(255-a)+127)//255)
-        if peer:
-            diff = [abs(data[i+c]-peer[2][i+c]) for c in range(4)]
-            maxima = [max(m, d) for m, d in zip(maxima, diff)]
-            changed += any(diff)
-            outside += max(diff[:3]) > (0 if exact else 4) or diff[3] != 0
-            errors[j:j+3] = bytes((min(255, max(diff)*32), 0, min(255, diff[3]*32)))
+    # Channel-wise byte operations keep the full Gallery matrix practical using
+    # only the standard library. Arithmetic/budgets are identical to P0.
+    alpha = data[3::4]
+    even = (bytes([200]*16+[80]*16)*((w+31)//32))[:w]
+    odd = (bytes([80]*16+[200]*16)*((w+31)//32))[:w]
+    background = ((even*16+odd*16)*((h+31)//32))[:w*h]
+    for c in range(3):
+        channel = data[c::4]
+        planes["alpha"][c::3] = alpha
+        planes["black"][c::3] = channel
+        # Valid premultiplied RGB<=A makes these sums <=255 without clamping.
+        planes["white"][c::3] = bytes(v+255-a for v,a in zip(channel,alpha))
+        planes["checker"][c::3] = bytes(v+(bg*(255-a)+127)//255
+                                          for v,a,bg in zip(channel,alpha,background))
+    if peer:
+        diff = [bytes(abs(a-b) for a,b in zip(data[c::4],peer[2][c::4])) for c in range(4)]
+        maxima = [max(channel) for channel in diff]
+        changed = sum(any(pixel) for pixel in zip(*diff))
+        budget = 0 if exact else 4
+        outside = sum(r>budget or g>budget or b>budget or a!=0 for r,g,b,a in zip(*diff))
+        amplify = bytes(min(255,value*32) for value in range(256))
+        errors[0::3] = bytes(map(max,zip(*diff))).translate(amplify)
+        errors[2::3] = diff[3].translate(amplify)
     for kind, plane in planes.items():
         png(Path(str(path)+f".{kind}.png"), w, h, plane)
     if peer:
