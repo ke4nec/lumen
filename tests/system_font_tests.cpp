@@ -11,19 +11,20 @@
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/text/system_font_manager.h"
 #include "lumen/text/text_layout.h"
+#include "system_font_fixture.h"
 
 using namespace lumen;
 
 namespace {
 
 std::shared_ptr<text::SystemFontManager> loadSystemFonts() {
-    std::string diagnostic;
-    auto fonts = text::createSystemFontManager(&diagnostic);
+    // 跨用例共享：默认目录全量加载在 Windows 冷缓存下可达百秒量级，
+    // 每个用例重载一次必然抖动超时；管理器只读，共享安全。
+    const auto fonts = test::sharedSystemFonts();
     if (fonts == nullptr) {
-        INFO("no system fonts: " << diagnostic);
-        return nullptr;
+        INFO("no system fonts: " << test::sharedSystemFontsDiagnostic());
     }
-    return std::shared_ptr<text::SystemFontManager>(std::move(fonts));
+    return fonts;
 }
 
 }  // namespace

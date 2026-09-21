@@ -14,6 +14,7 @@
 #include "lumen/render/painter.h"
 #include "lumen/text/system_font_manager.h"
 #include "lumen/text/text_layout.h"
+#include "system_font_fixture.h"
 
 #ifdef LUMEN_HAS_SKIA_BACKEND
 #include "lumen/render/skia_renderer.h"
@@ -32,7 +33,7 @@ using namespace lumen;
 
 TEST_CASE("system_font_text_clip_preserves_cjk_and_mixed_ink",
           "[text][system-fonts][render]") {
-    auto loaded = text::createSystemFontManager();
+    auto loaded = test::sharedSystemFonts();
     if (!loaded) {
         SKIP("No system fonts available");
     }
@@ -133,7 +134,7 @@ TEST_CASE("skia_text_clip_preserves_fallback_and_emoji_ink",
 #ifdef _WIN32
 TEST_CASE("gdi_family_validation_accepts_localized_aliases_and_weights",
           "[text][system-fonts]") {
-    const auto fonts = text::createSystemFontManager();
+    const auto fonts = test::sharedSystemFonts();
     REQUIRE(fonts);
     for (const std::string family : {"Microsoft YaHei", "microsoft yahei", "Segoe UI"}) {
         for (const auto weight : {text::FontWeight::Normal, text::FontWeight::SemiBold,

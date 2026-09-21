@@ -100,7 +100,9 @@ jobs:
       - name: Build (Debug)
         run: cmake --build build --config Debug
       - name: Test (Debug)
-        run: ctest --test-dir build --output-on-failure -C Debug --timeout 120
+        # 系统字体用例在 windows-2025 冷缓存下全量扫描字体目录（数百首选面），
+        # 首个光栅用例 I/O 可达百秒量级；300s 上限防抖，挂起仍会失败。
+        run: ctest --test-dir build --output-on-failure -C Debug --timeout 300
       - name: Headless counter smoke
         run: ./build/examples/counter/Debug/lumen-counter.exe --headless
       # v0.3 阶段8D：settings 示例（滚动/表单/弹窗/导航）headless 冒烟。
@@ -142,7 +144,8 @@ jobs:
       - name: Build (Debug)
         run: cmake --build build-a11y --config Debug
       - name: Test (Debug, incl. live UIA window smoke)
-        run: ctest --test-dir build-a11y --output-on-failure -C Debug --timeout 120
+        # 同 cpu 任务：系统字体冷扫描防抖，见上。
+        run: ctest --test-dir build-a11y --output-on-failure -C Debug --timeout 300
         env:
           LUMEN_UIA_LIVE_SMOKE: '1'
       - name: Upload test logs on failure
@@ -179,7 +182,8 @@ jobs:
       - name: Build (Release)
         run: cmake --build build-skia --config Release
       - name: Test (Release, incl. CPU/Skia consistency)
-        run: ctest --test-dir build-skia --output-on-failure -C Release --timeout 120
+        # 同 cpu 任务：系统字体冷扫描防抖，见上。
+        run: ctest --test-dir build-skia --output-on-failure -C Release --timeout 300
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -215,7 +219,8 @@ jobs:
       - name: Build (Release)
         run: cmake --build build-gpu --config Release
       - name: Test (includes forced CPU fallback and presentation)
-        run: ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180
+        # 同 cpu 任务：系统字体冷扫描防抖，见上。
+        run: ctest --test-dir build-gpu --output-on-failure -C Release --timeout 300
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
