@@ -145,6 +145,12 @@ class AppShell {
     }
     // 显式请求重建（应用侧业务状态不在 StateStore 时）。
     void markDirty() { dirty_ = true; }
+    // 待提交的内容变化独立于 animationsActive：一次性回调可以标脏后
+    // 直接静止；提前 rebuild 也不代表新树已经绘制。由 runApp 合并请求。
+    [[nodiscard]] bool hasPendingFrame() const {
+        return dirty_ || rebuiltThisFrame_ || fullRepaintPending_ ||
+               !framePainted_;
+    }
     void setVisualPreviewState(std::string key, style::WidgetState state) {
         const auto found = previewStates_.find(key);
         if (found == previewStates_.end() || !(found->second == state)) {

@@ -35,6 +35,11 @@ void FrameScheduler::requestFrame(FrameReason reason, core::WindowId window) {
 }
 
 void FrameScheduler::setAnimationsActive(bool active) {
+    // 活跃→静止：布防终拍补交（见头文件注释）。reduceAnimation 下不
+    // 在此布防；运行中开启该设置的终拍已由 setReduceAnimation 保留。
+    if (animationsActive_ && !active && !reduceAnimation_) {
+        retireFramePending_ = true;
+    }
     animationsActive_ = active;
 }
 
@@ -53,6 +58,9 @@ void FrameScheduler::setVSyncEnabled(bool vsync) {
 void FrameScheduler::setReduceAnimation(bool reduceAnimation) {
     // 可访问性设置（plan 8C：减少动画）：动画不再驱动连续帧提交；光标
     // 闪烁等视觉效果由应用侧按设置静止。
+    if (reduceAnimation && !reduceAnimation_ && animationsActive_) {
+        retireFramePending_ = true;
+    }
     reduceAnimation_ = reduceAnimation;
 }
 
@@ -70,6 +78,10 @@ std::uint32_t FrameScheduler::frameIntervalMs() const {
 
 FrameScheduler::FrameDecision FrameScheduler::evaluateFrame() const {
     FrameDecision decision;
+    // 提交过程中产生的新请求必须留给下一帧，不能再次消费（§3.2）。
+    if (frameInFlight_) {
+        return decision;
+    }
     const std::uint64_t nowMs = now();
     // 减少动画时动画不驱动提交（plan 8C 可访问性设置）。
     const bool animationsEffective = animationsActive_ && !reduceAnimation_;
@@ -106,16 +118,17 @@ FrameScheduler::FrameDecision FrameScheduler::evaluateFrame() const {
         if (sinceSubmit < interval) {
             const std::uint32_t remaining =
                 static_cast<std::uint32_t>(interval - sinceSubmit);
-            // 帧预算未到：有原因或动画在跑就等到 deadline；离散唤醒
-            //（tooltip 延迟）等到 min(预算, 时刻)；否则空闲等待。
-            if (hasPending || animationsEffective) {
+            // 帧预算未到：有原因、动画在跑或终拍待补就等到 deadline；
+            // 离散唤醒（tooltip 延迟）等到 min(预算, 时刻)；否则空闲等待。
+            if (hasPending || animationsEffective || retireFramePending_) {
                 decision.reasons = pending_;
                 decision.waitMs = remaining;
-            } else if (animationDeadlineMs_.has_value() &&
-                       nowMs < *animationDeadlineMs_) {
-                decision.waitMs = static_cast<std::uint32_t>(
-                    std::min<std::uint64_t>(remaining,
-                                            *animationDeadlineMs_ - nowMs));
+            } else if (animationDeadlineMs_.has_value()) {
+                // 已到期仍须等剩余预算，不能落入“无限空闲等待”。
+                decision.waitMs = nowMs >= *animationDeadlineMs_
+                    ? remaining
+                    : static_cast<std::uint32_t>(std::min<std::uint64_t>(
+                          remaining, *animationDeadlineMs_ - nowMs));
             } else {
                 decision.waitMs = std::nullopt;
             }
@@ -130,9 +143,10 @@ FrameScheduler::FrameDecision FrameScheduler::evaluateFrame() const {
         return decision;
     }
 
-    if (animationsEffective) {
+    if (animationsEffective || retireFramePending_) {
         // 动画 deadline：上一帧提交后经过一个帧间隔即到期（上面的节流
-        // 已经把未到期的情形挡掉）。
+        // 已经把未到期的情形挡掉）。终拍补交同一通道：动画静止后的第
+        // 一帧提交终值样本（如淡入终态），随后回到空闲。
         decision.submit = true;
         decision.reasons = kReasonBit(FrameReason::Animation);
         decision.waitMs = 0;
@@ -165,6 +179,10 @@ bool FrameScheduler::shouldSubmitFrame() {
     // 消费：pending 移入当前帧；turn 中途的新请求落在 pending（下一帧）。
     active_ = pending_;
     pending_ = 0;
+    frameInFlight_ = true;
+    // 终拍补交随本帧消费（任意提交都会绘制当前 dirty 树，终值样本一并
+    // 落地；无动画态时不再重复触发）。
+    retireFramePending_ = false;
     // 离散唤醒一次性消费（应用每轮按最新状态重设）。
     animationDeadlineMs_.reset();
     if (active_ & kReasonBit(FrameReason::Resize)) {
@@ -175,6 +193,7 @@ bool FrameScheduler::shouldSubmitFrame() {
 
 void FrameScheduler::markFrameSubmitted() {
     active_ = 0;
+    frameInFlight_ = false;
     lastSubmitMs_ = now();
     hasSubmittedOnce_ = true;
     submittedFrames_ += 1;

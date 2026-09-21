@@ -79,8 +79,71 @@ TEST_CASE("scheduler_applies_animation_deadline", "[scheduler]") {
     scheduler.markFrameSubmitted();
     CHECK(scheduler.submittedFrames() == 2);
 
-    // 动画停止后回到空闲。
+    // 动画停止：帧预算到期后补交一帧终态（终值样本落地），随后空闲。
     scheduler.setAnimationsActive(false);
+    clock.advance(16);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK(scheduler.submittedFrames() == 3);
+    clock.advance(100);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+}
+
+// 动画活跃→静止的转换补交一帧（"终拍"）：动画态不再驱动提交后，终值
+// 样本（tween 终拍 markDirty 的终态树）没有其他提交通道——不补交则屏
+// 幕停留在最后一个中间样本（慢帧率下可见：菜单淡入卡在半透明，直到
+// 下一次输入帧）。静止→静止不触发；reduceAnimation 下不触发。
+TEST_CASE("scheduler_submits_retire_frame_when_animations_end",
+          "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 0;  // 不节流，聚焦终拍语义
+    FrameScheduler scheduler{config, &clock};
+
+    // 静止→静止：无终拍可补。
+    scheduler.setAnimationsActive(false);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+
+    scheduler.setAnimationsActive(true);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+
+    // 活跃→静止：补交一帧，随后回到空闲。
+    scheduler.setAnimationsActive(false);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    CHECK(scheduler.submittedFrames() == 2);
+
+    // reduceAnimation：动画从不驱动连续提交，活跃→静止也不补交。
+    scheduler.setReduceAnimation(true);
+    scheduler.setAnimationsActive(true);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    scheduler.setAnimationsActive(false);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    CHECK(scheduler.submittedFrames() == 2);
+}
+
+// 终拍补交同样受 VSync 帧预算节流：预算内等待，预算到即提交。
+TEST_CASE("scheduler_retire_frame_respects_vsync_budget", "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 60;
+    FrameScheduler scheduler{config, &clock};
+
+    scheduler.setAnimationsActive(true);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+
+    clock.advance(8);  // 预算内
+    scheduler.setAnimationsActive(false);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    REQUIRE(scheduler.msUntilNextFrame().has_value());
+    CHECK(*scheduler.msUntilNextFrame() <= 8);
+
+    clock.advance(8);  // 预算到期
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
     clock.advance(100);
     CHECK_FALSE(scheduler.shouldSubmitFrame());
 }
@@ -181,12 +244,54 @@ TEST_CASE("scheduler_requests_during_turn_target_next_frame", "[scheduler]") {
     // 当前帧录制/提交期间到达的新事件只能请求下一帧。
     scheduler.requestFrame(FrameReason::Input);
     CHECK(scheduler.hasPendingReasons());
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
     scheduler.markFrameSubmitted();
     // 上一帧已提交，pending 属于新帧。
     CHECK(scheduler.submittedFrames() == 1);
     REQUIRE(scheduler.shouldSubmitFrame());
     scheduler.markFrameSubmitted();
     CHECK(scheduler.submittedFrames() == 2);
+}
+
+TEST_CASE("scheduler_animation_frame_cannot_reenter_before_submission",
+          "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler::Config config;
+    config.targetFps = 0;
+    FrameScheduler scheduler{config, &clock};
+
+    scheduler.setAnimationsActive(true);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    scheduler.setAnimationsActive(false);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+}
+
+TEST_CASE("scheduler_reducing_running_animation_preserves_terminal_frame",
+          "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler scheduler{{}, &clock};
+    scheduler.setAnimationsActive(true);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+
+    clock.advance(8);
+    scheduler.setReduceAnimation(true);
+    scheduler.setAnimationsActive(false);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    REQUIRE(scheduler.msUntilNextFrame().has_value());
+    CHECK(*scheduler.msUntilNextFrame() == 8);
+    scheduler.setWindowVisible(false);
+    clock.advance(100);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    scheduler.setWindowVisible(true);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
 }
 
 TEST_CASE("scheduler_resource_completion_wakes_the_loop", "[scheduler]") {
@@ -238,5 +343,27 @@ TEST_CASE("scheduler_animation_deadline_wakes_idle_loop", "[scheduler]") {
     clock.advance(100);
     REQUIRE(scheduler.shouldSubmitFrame());
     scheduler.markFrameSubmitted();
+    CHECK_FALSE(scheduler.msUntilNextFrame().has_value());
+}
+
+TEST_CASE("scheduler_due_deadline_waits_for_remaining_frame_budget",
+          "[scheduler]") {
+    ManualClock clock;
+    FrameScheduler scheduler{{}, &clock};
+    scheduler.requestFrame(FrameReason::Explicit);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+
+    scheduler.setAnimationDeadline(8);
+    CHECK(scheduler.msUntilNextFrame() == 8U);
+    clock.advance(8);
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
+    // 到期但尚被 VSync 节流，不能误判成空闲而失去下一次唤醒。
+    REQUIRE(scheduler.msUntilNextFrame().has_value());
+    CHECK(*scheduler.msUntilNextFrame() == 8);
+    clock.advance(8);
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    CHECK_FALSE(scheduler.shouldSubmitFrame());
     CHECK_FALSE(scheduler.msUntilNextFrame().has_value());
 }

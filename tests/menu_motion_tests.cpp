@@ -329,6 +329,68 @@ TEST_CASE("reduce_animation_menu_motion_reaches_end_on_first_tick",
     CHECK(marquee->offset.y == Catch::Approx(target->offset.y).margin(0.01F));
 }
 
+// 悬停展开发生在 tick 内（stepPendingSubmenu 在 stepMotion 之前）：
+// 同拍新增层级立即起表，首绘即动效起点（alpha 0 + 级联滑入位移），
+// 不得以 Level 默认终态先绘制一帧——慢帧率（Debug）下该终态闪帧
+// 呈现"子菜单先整幅出现、再消失重放动效"。键盘/直驱展开（事件阶
+// 段，展开后无同拍采样）保持即时终态口径（见下方对照段）。
+TEST_CASE("submenu_hover_expand_first_frame_starts_animation",
+          "[widgets][menu][motion]") {
+    MotionMenuApp app;
+    app.shell.tick(0);
+    app.context.open(
+        app.shell, Offset{100.0F, 100.0F}, sampleItems(),
+        [](const std::string& id) {
+            return id == "sort"
+                       ? MenuItems{MenuItem{.id = "name", .label = "名称"}}
+                       : MenuItems{};
+        });
+    app.shell.tick(200);  // 顶级打开动效完成
+    app.shell.rebuildIfDirty();
+    const RenderNode* sortRow = app.row(0, 4);
+    REQUIRE(sortRow != nullptr);
+
+    app.shell.pointerMove(
+        absoluteOffset(*app.shell.overlayRoot(), sortRow->key) +
+        Offset{sortRow->size.width * 0.5F, sortRow->size.height * 0.5F});
+    app.shell.tick(500);
+    app.shell.rebuildIfDirty();
+    REQUIRE(app.context.levelCount() == 2);
+
+    const RenderNode* panel =
+        findNodeByKey(*app.shell.overlayRoot(), "ctx:panel:1");
+    REQUIRE(panel != nullptr);
+    const float startX = panel->offset.x;
+    CHECK(panel->transitionAlpha == 0.0F);  // 首绘即淡入起点，无终态闪帧
+
+    // 同一 EaseOut 进度推进至终态：滑入位移收敛（placeRight → 终态左移）。
+    app.shell.tick(500 + 120);
+    app.shell.rebuildIfDirty();
+    panel = findNodeByKey(*app.shell.overlayRoot(), "ctx:panel:1");
+    REQUIRE(panel != nullptr);
+    CHECK(panel->transitionAlpha == 1.0F);
+    CHECK(panel->offset.x == Catch::Approx(startX - 4.0F).margin(0.01F));
+    CHECK_FALSE(app.shell.animationsActive());
+
+    // 对照：键盘展开不经本拍采样（事件阶段）——直驱重建保持即时终态。
+    app.context.close(app.shell);
+    app.shell.tick(700);
+    app.context.open(
+        app.shell, Offset{100.0F, 100.0F}, sampleItems(),
+        [](const std::string& id) {
+            return id == "sort"
+                       ? MenuItems{MenuItem{.id = "name", .label = "名称"}}
+                       : MenuItems{};
+        });
+    REQUIRE(app.context.handleKey(app.shell, Key::Down));  // 0 → 2（剪切）
+    REQUIRE(app.context.handleKey(app.shell, Key::Down));  // 2 → 4（排序）
+    REQUIRE(app.context.handleKey(app.shell, Key::Right));
+    app.shell.rebuildIfDirty();
+    panel = findNodeByKey(*app.shell.overlayRoot(), "ctx:panel:1");
+    REQUIRE(panel != nullptr);
+    CHECK(panel->transitionAlpha == 1.0F);
+}
+
 TEST_CASE("submenu_hover_expands_after_delay_and_pass_through_does_not",
           "[widgets][menu][motion]") {
     MotionMenuApp app;
@@ -371,6 +433,13 @@ TEST_CASE("submenu_hover_expands_after_delay_and_pass_through_does_not",
                                  sortRow->size.height * 0.5F});
     app.shell.tick(1000);
     CHECK(findNodeByKey(*app.shell.overlayRoot(), "ctx:m1:i0") == nullptr);
+    // 打开/高亮 tween 已结束，但 300ms 悬停计时尚未到期：必须继续
+    // 请求 tick，不能被 stepMotion 的活动态输出覆盖而退回空闲轮询。
+    app.shell.tick(1000 + 150);
+    app.shell.paintFrame();  // 消费主树焦点颜色过渡，排除无关动画源。
+    app.shell.tick(1000 + 200);
+    CHECK(app.shell.animationsActive());
+    CHECK(app.context.levelCount() == 1);
     app.shell.tick(1000 + 300);
     app.shell.rebuildIfDirty();
     CHECK(app.row(1, 0) != nullptr);

@@ -152,6 +152,14 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
     schedulerConfig.pauseWhenHidden = true;
     render::FrameScheduler scheduler{schedulerConfig, &clock};
     scheduler.requestFrame(render::FrameReason::Explicit, *windowId);
+    const auto requestPendingFrame = [&]() {
+        // 一次性 tick/业务回调和 onRebuilt 的后续重建也必须提交；动画
+        // 是否继续与内容是否待绘制是两个独立状态。已有原因继续沿用，
+        // 避免 resize 引起的 dirty 绕过原有防抖。
+        if (shell.hasPendingFrame() && !scheduler.hasPendingReasons()) {
+            scheduler.requestFrame(render::FrameReason::Explicit, *windowId);
+        }
+    };
 
     if (options.diagnostics) {
         printStartupDiagnostics(
@@ -381,6 +389,7 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
         // M11 review：离散定时唤醒（tooltip 延迟到期）——空闲等待到
         // 时刻，不占用连续动画帧。
         scheduler.setAnimationDeadline(shell.animationWakeMs());
+        requestPendingFrame();
 
         if (scheduler.shouldSubmitFrame()) {
             // maxFrames 测量/冒烟模式强制全量重绘：damage 统计归零但像素
@@ -426,6 +435,8 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
             // 必须看到刚呈现的树，回退新建窗口也在这里重启会话。
             syncTextInput();
             scheduler.markFrameSubmitted();
+            // 绘制中的 onRebuilt/呈现回调可能再次标脏：先挂下一帧再等待。
+            requestPendingFrame();
             if (options.maxFrames != 0) {
                 if (scheduler.submittedFrames() >= options.maxFrames) {
                     running = false;

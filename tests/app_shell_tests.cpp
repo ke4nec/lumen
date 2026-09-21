@@ -118,6 +118,115 @@ TEST_CASE("run_app_dispatches_pointer_and_text_into_focused_field",
 
 // --- 关闭请求策略 ---
 
+// plan-v0.2 §3.2：脏树/待绘制内容必须独立于连续动画状态请求提交。
+// 不用 maxFrames（它会人为注入 Explicit，掩盖漏帧）。检查实际呈现像素。
+TEST_CASE("run_app_presents_one_shot_changes_without_active_animation",
+          "[app][scheduler]") {
+    bool rebuildBeforeDecision = false;
+    bool repaintOnly = false;
+    SECTION("markDirty from an idle tick") {}
+    SECTION("tree rebuilt before scheduler decision") {
+        rebuildBeforeDecision = true;
+    }
+    SECTION("explicit repaint without a dirty tree") {
+        repaintOnly = true;
+    }
+
+    FakeApplicationHost host;
+    int presents = 0;
+    bool changed = false;
+    std::optional<std::uint64_t> changedAt;
+    const auto red = lumen::core::Color::fromRGBA(255, 0, 0);
+    const auto blue = lumen::core::Color::fromRGBA(0, 0, 255);
+    ShellConfig config;
+    config.caretBlink = false;
+    config.build = [&] {
+        return lumen::dsl::container(
+            lumen::dsl::text(""),
+            repaintOnly ? lumen::core::Color::transparent()
+                        : (changed ? blue : red));
+    };
+    config.onAnimate = [&](AppShell& app, std::uint64_t nowMs) {
+        if (presents == 1 && !changed) {
+            changed = true;
+            changedAt = nowMs;
+            if (repaintOnly) {
+                app.setClearColor(blue);
+                app.requestFullRepaint();
+            } else {
+                app.markDirty();
+                if (rebuildBeforeDecision) app.rebuildIfDirty();
+            }
+        }
+        if (changedAt && nowMs - *changedAt >= 64) host.pushQuit();
+        return false;  // 整个过程从未进入连续动画态，也没有 retire 边沿。
+    };
+    AppShell shell{std::move(config)};
+    shell.setClearColor(red);
+    RunOptions options;
+    options.windowDesc.width = 16;
+    options.windowDesc.height = 16;
+    options.idleWaitMs = 1;
+    options.nativeAccessibility = false;
+    options.rendererFactory = [&](auto&, auto&) {
+        RendererSetup setup;
+        setup.present = [&] {
+            ++presents;
+            const auto expected = changed ? blue : red;
+            REQUIRE(shell.pixels().rgba.size() >= 4);
+            CHECK(shell.pixels().rgba[0] == expected.r);
+            CHECK(shell.pixels().rgba[1] == expected.g);
+            CHECK(shell.pixels().rgba[2] == expected.b);
+            CHECK(shell.pixels().rgba[3] == expected.a);
+            return true;
+        };
+        return setup;
+    };
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(changed);
+    CHECK(presents == 2);
+    CHECK_FALSE(shell.animationsActive());
+}
+
+TEST_CASE("run_app_presents_followup_dirty_from_on_rebuilt", "[app][scheduler]") {
+    FakeApplicationHost host;
+    int builds = 0;
+    int presents = 0;
+    std::optional<std::uint64_t> startedAt;
+    ShellConfig config;
+    config.caretBlink = false;
+    config.build = [&] {
+        ++builds;
+        return lumen::dsl::text(builds == 1 ? "initial" : "settled");
+    };
+    config.onRebuilt = [&](AppShell& app) {
+        if (builds == 1) app.markDirty();
+    };
+    config.onAnimate = [&](AppShell&, std::uint64_t nowMs) {
+        if (!startedAt) startedAt = nowMs;
+        if (nowMs - *startedAt >= 64) host.pushQuit();
+        return false;
+    };
+    AppShell shell{std::move(config)};
+    RunOptions options;
+    options.windowDesc.width = 16;
+    options.windowDesc.height = 16;
+    options.idleWaitMs = 1;
+    options.nativeAccessibility = false;
+    options.rendererFactory = [&](auto&, auto&) {
+        RendererSetup setup;
+        setup.present = [&] {
+            ++presents;
+            CHECK(shell.root().text == (presents == 1 ? "initial" : "settled"));
+            return true;
+        };
+        return setup;
+    };
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(builds == 2);
+    CHECK(presents == 2);
+}
+
 TEST_CASE("run_app_close_request_policy_consumes_or_exits", "[app]") {
     SECTION("no policy exits on close request") {
         FakeApplicationHost host;

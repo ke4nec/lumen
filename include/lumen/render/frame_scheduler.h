@@ -69,6 +69,11 @@ class FrameScheduler {
     void requestFrame(FrameReason reason, core::WindowId window = {});
 
     // 持续动画是否活跃（tween/blink 等）。活跃时按 deadline 循环提交。
+    // 活跃→静止的转换补交一帧（"终拍"）：动画驱动的终值样本（tween 终
+    // 拍 markDirty 的终态树）在动画态本身不再驱动提交后没有落地通道，
+    // 不补交则屏幕停留在最后一个中间样本（慢帧率下可见，如菜单淡入
+    // 卡在半透明，直到下一次输入帧）。从一开始就 reduceAnimation 的
+    // 动画不驱动连续提交；运行中开启减少动画也需补交原动画的终态。
     void setAnimationsActive(bool active);
     // M11 review：一次性动画唤醒时刻（绝对毫秒，时钟与 FrameClock 同源；
     // tooltip 延迟到期等离散定时）。到达时按 Animation 原因提交一帧，
@@ -79,6 +84,7 @@ class FrameScheduler {
     // VSync 开关：开 = 按 targetFps 节流；关 = 有原因立即提交。
     void setVSyncEnabled(bool vsync);
     // 减少动画（可访问性设置，阶段8C）：动画不再驱动连续帧提交。
+    // 开启时若存在有效动画，保留一次终态提交。
     void setReduceAnimation(bool reduceAnimation);
 
     struct FrameDecision {
@@ -126,7 +132,11 @@ class FrameScheduler {
     FrameClock* clock_{nullptr};
     std::uint32_t pending_{0};
     std::uint32_t active_{0};
+    // 动画帧可无 pending 原因，不能用 active_ 位集代替提交中状态。
+    bool frameInFlight_{false};
     bool animationsActive_{false};
+    // 动画活跃→静止转换后待补交的终拍帧（见 setAnimationsActive）。
+    bool retireFramePending_{false};
     std::optional<std::uint64_t> animationDeadlineMs_{};
     bool reduceAnimation_{false};
     bool windowVisible_{true};

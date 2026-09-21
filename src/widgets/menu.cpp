@@ -374,11 +374,18 @@ void ContextMenuController::openAnchored(app::AppShell& shell,
             // M14：面板动效采样 + 悬停展开计时 + 宿主附加动效链
             //（MenuBar 下划线）；值变化即 markDirty（终拍也重建，避免
             // 0.99 残帧）。pending 计时保持动画帧粒度的 tick。
+            // 悬停展开先于采样：本拍新增层级随即被 stepMotion 起表
+            //（openT=0），同拍绘制的首帧即滑入起点——否则新层级以
+            // Level 默认终态（alpha 1、无位移）先绘制一帧，慢帧率下
+            // 呈现"先出现再被拉走重放"的闪帧。键盘/直驱展开（事件
+            // 阶段、不经本拍）仍为 pending，保持即时终态口径。
+            const bool submenuActive = stepPendingSubmenu(shell, nowMs);
             bool active = false;
             if (stepMotion(nowMs, active)) {
                 shell.markDirty();
             }
-            active = stepPendingSubmenu(shell, nowMs) || active;
+            // stepMotion 会重置其输出；悬停计时须在采样后独立合并。
+            active = submenuActive || active;
             if (onAnimate) {
                 active = onAnimate(nowMs) || active;
             }

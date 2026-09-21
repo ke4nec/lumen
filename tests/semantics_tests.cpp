@@ -351,15 +351,19 @@ TEST_CASE("frame_scheduler_honors_reduce_animation_setting", "[a11y][sched]") {
     render::FrameScheduler::Config config;
     render::FrameScheduler scheduler{config, &clock};
     scheduler.setAnimationsActive(true);
+    REQUIRE(scheduler.shouldSubmitFrame());
     scheduler.markFrameSubmitted();
 
     clock.current = 1100;
     // 动画活跃：提交帧。
     CHECK(scheduler.evaluateFrame().submit);
 
-    // 减少动画：动画不再驱动提交。
+    // plan-v0.2 §3.2：运行中减少动画先补交终态，再停止连续提交。
     scheduler.setReduceAnimation(true);
     clock.current = 1200;
+    REQUIRE(scheduler.shouldSubmitFrame());
+    scheduler.markFrameSubmitted();
+    clock.current = 1300;
     CHECK_FALSE(scheduler.evaluateFrame().submit);
     // 输入原因不受影响。
     scheduler.requestFrame(render::FrameReason::Input);

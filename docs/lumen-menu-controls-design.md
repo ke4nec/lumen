@@ -325,7 +325,8 @@ menu.open.fadeMs            = 120（对齐 tooltipFadeMs；reduceAnimation 归�
 
 **M14 动效实现口径（2026-09-18，`design/menubar-variants.html` 版本 A+D 已落地）**：
 
-- `MotionTokens::menuOpenFadeMs = 120`：整面板淡入 + 位移（顶级上升 6px、子菜单沿级联方向滑入 4px，同一 EaseOut 进度），经 overlay animate sink（`setOverlayBuilder` 第 4 参数）逐 tick 采样；不经 tick 的直驱输出保持即时终态（与状态过渡 `motionEnabled()` 同口径）。
+- 悬停等待与 tween 的活跃状态独立合并：配置非零 `menuSubmenuHoverMs` 时，即使打开/高亮动画先结束，悬停计时仍须维持 tick，直到展开或取消；采样输出不得覆盖计时状态（2026-09-21）。
+- `MotionTokens::menuOpenFadeMs = 120`：整面板淡入 + 位移（顶级上升 6px、子菜单沿级联方向滑入 4px，同一 EaseOut 进度），经 overlay animate sink（`setOverlayBuilder` 第 4 参数）逐 tick 采样；不经 tick 的直驱输出保持即时终态（与状态过渡 `motionEnabled()` 同口径）。**采样与悬停展开同拍有序**（2026-09-21）：悬停展开在 tick 内先于动效采样执行，本拍新增层级随即起表（`openT = 0`），首次绘制即动效起点——否则新层级以默认终态（alpha 1、无位移）先绘制一帧，慢帧率（Debug）下呈现"先整幅出现、再消失重放动效"的闪帧；键盘/直驱展开（事件阶段、展开后无同拍采样）保持 pending 即时终态口径不变。
 - `MotionTokens::menuHighlightSlideMs = 90`：键盘高亮 = 动能矩形滑移。高亮背景**常驻**由独立 selection 矩形承载（动效/无动效两口径统一——与行 selected 背景同色同矩形、source-over 复合等价，像素一致；跨分隔线高度变形；焦点环仍随焦点行）；行不再折算 `selected`（§8.1 契约：menuitem 的 current 语义由焦点表达，`kSemanticsSelected` 不暴露——两配置下语义一致）。
 - 关闭即时（不出场淡出）：瞬态命令面板的关闭延迟直接吃命令分发延迟，有意不做。
 - 分隔线几何：1px 线 + 上下 4 呼吸（共 9px 占位）+ 水平 inset 8（本稿 msep 同口径）。
