@@ -359,6 +359,9 @@ class AppShell {
         bool paintedOnce{false};
         bool finished{false};
         bool retire{false};  // 终值已应用到绘制帧，下一 tick 才可清除
+        // 完成回调已触发（显式标志，不依赖 moved-from 的 function 为空；
+        // 后者是工具链相关假设，AppleClang 下曾出现重复触发与永不退休）。
+        bool completionNotified{false};
         std::function<void(AppShell&)> onComplete{};
     };
     bool advanceTransitions(std::uint64_t nowMs);

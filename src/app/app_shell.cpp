@@ -809,7 +809,8 @@ bool AppShell::advanceTransitions(std::uint64_t nowMs) {
         }
         if (transition.tween.finished(elapsed)) {
             transition.finished = true;
-            if (transition.onComplete) {
+            if (transition.onComplete && !transition.completionNotified) {
+                transition.completionNotified = true;
                 completed.push_back(std::move(transition.onComplete));
             }
         }
@@ -854,7 +855,8 @@ bool AppShell::applyTransitions(std::vector<core::Rect>& damage) {
         }
         it->lastPaintedAlpha = it->sampledAlpha;
         it->paintedOnce = true;
-        it->retire = it->finished && !it->onComplete;
+        it->retire = it->finished &&
+                     (it->completionNotified || !it->onComplete);
         ++it;
     }
     const bool pending = transitionsPaintPending_;
