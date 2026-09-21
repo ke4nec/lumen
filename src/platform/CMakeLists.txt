@@ -38,6 +38,14 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
     # M12：Windows 原生 seam（DWM 强调色）。
     target_link_libraries(lumen-platform PRIVATE dwmapi)
   endif()
+  if(APPLE)
+    # M12：macOS 原生 seam（AppKit：NSColor/NSColorSpace；Foundation：
+    # NSString/NSUserNotification）；实现在 .mm 内部，公共头无 ObjC
+    # 类型，但静态库消费方链接时仍需框架，PUBLIC 传递（缺失即示例/
+    # 测试链接报 NSColor/NSString 未定义，arm64 全桌面 job 失败）。
+    target_link_libraries(lumen-platform PUBLIC
+        "-framework AppKit" "-framework Foundation")
+  endif()
   # M12：Linux libdbus（缺失时 dbus seam 编译为空实现）。
   if(UNIX AND NOT APPLE)
     find_package(PkgConfig QUIET)
