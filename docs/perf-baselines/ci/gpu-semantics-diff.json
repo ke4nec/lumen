@@ -1,0 +1,72 @@
+{
+  "benchmark": "lumen-scene-bench",
+  "backend": "gpu",
+  "scenario": "semantics-diff-1080p",
+  "viewport": [
+    1920,
+    1080
+  ],
+  "cards": [
+    6,
+    8
+  ],
+  "nodes": 121,
+  "commands_per_frame": 480,
+  "culled_commands": 0,
+  "warmup_frames": 30,
+  "measured_frames": 300,
+  "partial_repaint_frames": 110,
+  "toolchain": "15.2.0",
+  "build_type": "Release",
+  "commit": "working-tree",
+  "platform": "linux",
+  "alpha_mode": "straight",
+  "clear_alpha": 255,
+  "measurement_scope": "headless; paint includes submit; no present",
+  "phases": {
+    "frame": {
+      "p50_us": 2354.3,
+      "p95_us": 3461.1,
+      "mean_us": 2347.9,
+      "allocs_p50": 0,
+      "alloc_bytes_p50": 0
+    },
+    "gpu_wait": {
+      "p50_us": 357.0,
+      "p95_us": 657.4,
+      "mean_us": 359.9,
+      "allocs_p50": 0,
+      "alloc_bytes_p50": 0
+    },
+    "layout": {
+      "p50_us": 352.2,
+      "p95_us": 638.0,
+      "mean_us": 354.6,
+      "allocs_p50": 1173,
+      "alloc_bytes_p50": 100071
+    },
+    "paint": {
+      "p50_us": 1737.6,
+      "p95_us": 2352.9,
+      "mean_us": 1717.7,
+      "allocs_p50": 1766,
+      "alloc_bytes_p50": 328710
+    },
+    "reconcile": {
+      "p50_us": 88.2,
+      "p95_us": 220.6,
+      "mean_us": 93.6,
+      "allocs_p50": 10,
+      "alloc_bytes_p50": 0
+    },
+    "submit": {
+      "p50_us": 1555.8,
+      "p95_us": 2120.5,
+      "mean_us": 1562.3,
+      "allocs_p50": 0,
+      "alloc_bytes_p50": 0
+    }
+  },
+  "frame_hash": "88201fb960ff6465",
+  "baseline_sampling": "max of 3 canonical runs; CI current uses median of 3"
+}

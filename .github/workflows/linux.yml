@@ -157,17 +157,17 @@ jobs:
       - name: Configure (CPU-only + benchmarks)
         run: >
           cmake -S . -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_BUILD_TYPE=Release
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_BUILD_BENCHMARKS=ON
       - name: Build
-        run: cmake --build build --config Debug
+        run: cmake --build build --config Release
       - name: ccache stats
         if: always()
         run: ccache --show-stats || true
       - name: Test
-        run: ctest --test-dir build --output-on-failure -C Debug
+        run: ctest --test-dir build --output-on-failure -C Release
       - name: Headless counter smoke
         run: ./build/examples/counter/lumen-counter --headless
       # v0.3 阶段8D：settings 示例（滚动/表单/弹窗/导航）headless 冒烟。
@@ -177,32 +177,39 @@ jobs:
         run: xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter || test $? -eq 124
       - name: Windowed settings smoke (Xvfb)
         run: xvfb-run -a timeout 5 ./build/examples/settings/lumen-settings || test $? -eq 124
-      # M0 基线冻结：固定场景基准 repeatability 门槛；报告（bench-*.json）
-      # 自带 backend/scenario/toolchain/build_type/commit(GITHUB_SHA)/
-      # platform(RUNNER_OS)/frame_hash（见 benchmarks/scene_bench.cpp），
-      # 与归档基线 docs/perf-baselines/v0.2-cpu-scene.json 同场景定义；
-      # canonical 归档命令见 docs/build-commands.md（--frames 300 --warmup 30）。
-      - name: Benchmark (repeatability gate + report)
+      # M7 性能门槛：固定场景逐项比较 p50/p95、分配量、命令数和
+      # submit/GPU wait；同场景三次运行仍须保持 frame_hash 一致。
+      - name: Benchmark (CPU regression gate)
         run: |
-          ./build/benchmarks/lumen-scene-bench --frames 120 --warmup 10 --json > bench-1.json
-          ./build/benchmarks/lumen-scene-bench --frames 120 --warmup 10 --json > bench-2.json
-          h1=$(grep -o '"frame_hash": "[0-9a-f]*"' bench-1.json)
-          h2=$(grep -o '"frame_hash": "[0-9a-f]*"' bench-2.json)
-          echo "run1: $h1"; echo "run2: $h2"
-          test "$h1" = "$h2"
+          for scenario in card-grid-6x8-1080p text-heavy grid virtual-list-1000 semantics-diff; do
+            ./build/benchmarks/lumen-scene-bench --backend cpu --scenario "$scenario" \
+              --frames 300 --warmup 30 --json > "bench-cpu-$scenario.json"
+            ./build/benchmarks/lumen-scene-bench --backend cpu --scenario "$scenario" \
+              --frames 300 --warmup 30 --json > "bench-cpu-$scenario-repeat.json"
+            ./build/benchmarks/lumen-scene-bench --backend cpu --scenario "$scenario" \
+              --frames 300 --warmup 30 --json > "bench-cpu-$scenario-repeat2.json"
+            h1=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-cpu-$scenario.json")
+            h2=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-cpu-$scenario-repeat.json")
+            h3=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-cpu-$scenario-repeat2.json")
+            test "$h1" = "$h2" && test "$h1" = "$h3"
+            python3 benchmarks/check_perf_regression.py \
+              --baseline "docs/perf-baselines/ci/cpu-$scenario.json" \
+              --current "bench-cpu-$scenario.json" "bench-cpu-$scenario-repeat.json" "bench-cpu-$scenario-repeat2.json" \
+              --report "bench-cpu-$scenario-gate.json"
+          done
       - name: Upload benchmark report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cpu-benchmark-report
-          path: bench-*.json
+          path: bench-cpu-*.json
           # 短保留即时释放配额；报告仅供当次比对，归档基线在 docs/ 内。
           retention-days: 3
           compression-level: 9
           overwrite: true
       - name: Cleanup benchmark intermediates
         if: always()
-        run: rm -f bench-1.json bench-2.json bench-*.json
+        run: rm -f bench-cpu-*.json
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -244,6 +251,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_BENCHMARKS=ON
           -DLUMEN_ENABLE_SKIA=ON
       - name: Build
         run: cmake --build build-skia --config Release
@@ -254,6 +262,33 @@ jobs:
         run: ctest --test-dir build-skia --output-on-failure -C Release
       - name: Windowed Skia smoke (Xvfb)
         run: xvfb-run -a timeout 5 ./build-skia/examples/counter/lumen-counter --renderer skia || test $? -eq 124
+      - name: Benchmark (Skia regression gate)
+        run: |
+          for scenario in card-grid-6x8-1080p text-heavy grid virtual-list-1000 semantics-diff; do
+            ./build-skia/benchmarks/lumen-scene-bench --backend skia --scenario "$scenario" \
+              --frames 300 --warmup 30 --json > "bench-skia-$scenario.json"
+            ./build-skia/benchmarks/lumen-scene-bench --backend skia --scenario "$scenario" \
+              --frames 300 --warmup 30 --json > "bench-skia-$scenario-repeat.json"
+            ./build-skia/benchmarks/lumen-scene-bench --backend skia --scenario "$scenario" \
+              --frames 300 --warmup 30 --json > "bench-skia-$scenario-repeat2.json"
+            h1=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-skia-$scenario.json")
+            h2=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-skia-$scenario-repeat.json")
+            h3=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-skia-$scenario-repeat2.json")
+            test "$h1" = "$h2" && test "$h1" = "$h3"
+            python3 benchmarks/check_perf_regression.py \
+              --baseline "docs/perf-baselines/ci/skia-$scenario.json" \
+              --current "bench-skia-$scenario.json" "bench-skia-$scenario-repeat.json" "bench-skia-$scenario-repeat2.json" \
+              --report "bench-skia-$scenario-gate.json"
+          done
+      - name: Upload Skia benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skia-benchmark-report
+          path: bench-skia-*.json
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -300,6 +335,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_BENCHMARKS=ON
           -DLUMEN_ENABLE_SKIA=ON
           -DLUMEN_ENABLE_GPU=ON
       - name: Build
@@ -315,6 +351,33 @@ jobs:
           -DCOUNTER=${{ github.workspace }}/build-gpu/examples/counter/lumen-counter
           -DEXPECTED_BACKEND=skia-gpu
           -P tests/counter_gpu_smoke.cmake
+      - name: Benchmark (GPU regression gate, llvmpipe)
+        run: |
+          for scenario in card-grid-6x8-1080p text-heavy grid virtual-list-1000 semantics-diff; do
+            xvfb-run -a ./build-gpu/benchmarks/lumen-scene-bench --backend gpu --scenario "$scenario" \
+              --frames 300 --warmup 30 --json > "bench-gpu-$scenario.json"
+            xvfb-run -a ./build-gpu/benchmarks/lumen-scene-bench --backend gpu --scenario "$scenario" \
+              --frames 300 --warmup 30 --json > "bench-gpu-$scenario-repeat.json"
+            xvfb-run -a ./build-gpu/benchmarks/lumen-scene-bench --backend gpu --scenario "$scenario" \
+              --frames 300 --warmup 30 --json > "bench-gpu-$scenario-repeat2.json"
+            h1=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-gpu-$scenario.json")
+            h2=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-gpu-$scenario-repeat.json")
+            h3=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-gpu-$scenario-repeat2.json")
+            test "$h1" = "$h2" && test "$h1" = "$h3"
+            python3 benchmarks/check_perf_regression.py \
+              --baseline "docs/perf-baselines/ci/gpu-$scenario.json" \
+              --current "bench-gpu-$scenario.json" "bench-gpu-$scenario-repeat.json" "bench-gpu-$scenario-repeat2.json" \
+              --report "bench-gpu-$scenario-gate.json"
+          done
+      - name: Upload GPU benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-benchmark-report
+          path: bench-gpu-*.json
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

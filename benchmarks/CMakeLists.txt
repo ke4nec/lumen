@@ -18,6 +18,14 @@ if(LUMEN_ENABLE_SKIA)
     target_compile_definitions(lumen-scene-bench PRIVATE LUMEN_BENCH_HAS_SKIA=1)
 endif()
 
+# GPU benchmark uses the same deterministic scene pipeline with a hidden SDL
+# OpenGL window. It records submit/gpu-wait percentiles without reading pixels
+# back from the surface.
+if(LUMEN_ENABLE_GPU)
+    target_compile_definitions(lumen-scene-bench PRIVATE LUMEN_BENCH_HAS_GPU=1)
+    target_link_libraries(lumen-scene-bench PRIVATE SDL3::SDL3)
+endif()
+
 # P0: real desktop presentation and fixed transparent scenes. No mobile target.
 if(NOT LUMEN_BUILD_MOBILE_CORE)
     add_executable(lumen-alpha-gallery alpha_gallery.cpp)
@@ -52,6 +60,8 @@ if(LUMEN_BUILD_TESTS)
     if(Python3_Interpreter_FOUND)
         add_test(NAME alpha_baseline_report_integrity
             COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/alpha_baseline_tests.py)
+        add_test(NAME perf_gate_integrity
+            COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/perf_gate_tests.py)
     endif()
 endif()
 

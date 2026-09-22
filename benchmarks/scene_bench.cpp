@@ -1,11 +1,10 @@
-// Lumen fixed-scene benchmark (v0.2 阶段7A).
+// Lumen fixed-scene benchmark (v0.2 stage 7A, M7 performance gate).
 //
 // Builds a deterministic 1080p scene (1920x1080 card grid), then runs the
-// full CPU frame pipeline — reconcile, layout, damage, paint — for a fixed
-// number of frames while measuring per-phase wall time and heap allocation
-// counts. Frame hashes prove the run painted the expected pixels; the report
-// (text or --json) is saved by CI as the CPU baseline for the 10% regression
-// gate in the v0.2 plan §5.
+// full frame pipeline — reconcile, layout, damage, paint — for a fixed number
+// of frames while measuring per-phase wall time and heap allocation counts.
+// The optional GPU mode uses the same scenes with a hidden SDL OpenGL surface
+// and records submit/GPU-wait timings without a readback.
 
 #include <algorithm>
 #include <atomic>
@@ -21,8 +20,14 @@
 #include <map>
 #include <new>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
+
+#ifdef LUMEN_BENCH_HAS_GPU
+#include <SDL3/SDL.h>
+#include "lumen/render/skia_gpu_renderer.h"
+#endif
 
 #include "lumen/core/damage.h"
 #include "lumen/core/element.h"
@@ -440,8 +445,54 @@ class BenchApp {
 #else
         (void)backend;
 #endif
+#ifdef LUMEN_BENCH_HAS_GPU
+        if (backend == "gpu") {
+            if (!SDL_Init(SDL_INIT_VIDEO)) {
+                throw std::runtime_error(std::string("SDL_Init: ") + SDL_GetError());
+            }
+            sdlVideoInitialized_ = true;
+            sdlWindow_ = SDL_CreateWindow("lumen-scene-bench", 1920, 1080,
+                                          SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+            if (sdlWindow_ == nullptr) {
+                SDL_QuitSubSystem(SDL_INIT_VIDEO);
+                sdlVideoInitialized_ = false;
+                throw std::runtime_error(std::string("SDL_CreateWindow: ") + SDL_GetError());
+            }
+            lumen::render::SkiaGpuRendererDesc desc;
+            desc.sdlWindow = sdlWindow_;
+            desc.widthPixels = static_cast<int>(kViewportWidth);
+            desc.heightPixels = static_cast<int>(kViewportHeight);
+            desc.vsync = false;
+            desc.allowSwap = false;
+            std::string diagnostics;
+            gpu_ = lumen::render::createSkiaGpuRenderer(desc, &diagnostics);
+            if (gpu_ == nullptr) {
+                SDL_DestroyWindow(sdlWindow_);
+                sdlWindow_ = nullptr;
+                SDL_QuitSubSystem(SDL_INIT_VIDEO);
+                sdlVideoInitialized_ = false;
+                throw std::runtime_error("GPU renderer unavailable: " + diagnostics);
+            }
+        }
+#else
+        if (backend == "gpu") {
+            throw std::runtime_error("GPU benchmark was not compiled");
+        }
+#endif
         paintFull(previousRoot_);
         hasPrevious_ = true;
+    }
+
+    ~BenchApp() {
+#ifdef LUMEN_BENCH_HAS_GPU
+        gpu_.reset();
+        if (sdlWindow_ != nullptr) {
+            SDL_DestroyWindow(sdlWindow_);
+        }
+        if (sdlVideoInitialized_) {
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        }
+#endif
     }
 
     // One measured frame: card (frame % total) gets new content.
@@ -540,45 +591,51 @@ class BenchApp {
                 info.preservePrevious = true;
                 result.partial = true;
             }
-#ifdef LUMEN_BENCH_HAS_SKIA
             activeRenderer().submit(commands, info);
             commandCount_ = activeRenderer().stats().commandCount;
             culledCount_ = activeRenderer().stats().culledCommands;
-#else
-            renderer_.submit(commands, info);
-            commandCount_ = renderer_.stats().commandCount;
-            culledCount_ = renderer_.stats().culledCommands;
-#endif
+            const auto stats = activeRenderer().stats();
+            submitSample_.microseconds = stats.submitMs * 1000.0;
+            gpuWaitSample_.microseconds = stats.gpuWaitMs * 1000.0;
             paint_ = AllocSnapshot{}.elapsedSince(start);
         }
         element_->clearDirtyTree();
         previousRoot_ = fresh;
         hasPrevious_ = true;
-#ifdef LUMEN_BENCH_HAS_SKIA
-        result.frameHash = skia_ != nullptr
-                               ? lumen::render::frameHash(skia_->pixels())
-                               : lumen::render::frameHash(renderer_.pixels());
-#else
-        result.frameHash = lumen::render::frameHash(renderer_.pixels());
-#endif
+        result.frameHash = lumen::render::frameHash(pixels());
         result.nodeCount = countNodes(fresh);
         return result;
     }
 
     [[nodiscard]] lumen::render::Renderer& activeRenderer() {
 #ifdef LUMEN_BENCH_HAS_SKIA
-        return skia_ != nullptr ? static_cast<lumen::render::Renderer&>(*skia_)
-                                : renderer_;
-#else
-        return renderer_;
+        if (skia_ != nullptr) {
+            return *skia_;
+        }
 #endif
+#ifdef LUMEN_BENCH_HAS_GPU
+        if (gpu_ != nullptr) {
+            return *gpu_;
+        }
+#endif
+        return renderer_;
     }
     [[nodiscard]] const PhaseSample& reconcileSample() const { return reconcile_; }
     [[nodiscard]] const PhaseSample& layoutSample() const { return layout_; }
     [[nodiscard]] const PhaseSample& paintSample() const { return paint_; }
+    [[nodiscard]] const PhaseSample& submitSample() const { return submitSample_; }
+    [[nodiscard]] const PhaseSample& gpuWaitSample() const { return gpuWaitSample_; }
     [[nodiscard]] const lumen::render::PixelBuffer& pixels() const {
 #ifdef LUMEN_BENCH_HAS_SKIA
         if (skia_) return skia_->pixels();
+#endif
+#ifdef LUMEN_BENCH_HAS_GPU
+        if (gpu_ != nullptr) {
+            // GPU presentation intentionally has no readback; the benchmark
+            // still exposes a stable zero-sized hash marker for diagnostics.
+            static const lumen::render::PixelBuffer empty{};
+            return empty;
+        }
 #endif
         return renderer_.pixels();
     }
@@ -589,11 +646,7 @@ class BenchApp {
     void paintFull(const RenderNode& root) {
         lumen::render::FrameInfo info;
         info.viewport = Size{kViewportWidth, kViewportHeight};
-#ifdef LUMEN_BENCH_HAS_SKIA
         activeRenderer().submit(lumen::render::recordScene(root, {}), info);
-#else
-        renderer_.submit(lumen::render::recordScene(root, {}), info);
-#endif
     }
 
     static std::size_t countNodes(const RenderNode& node) {
@@ -619,8 +672,15 @@ class BenchApp {
     PhaseSample reconcile_{};
     PhaseSample layout_{};
     PhaseSample paint_{};
+    PhaseSample submitSample_{};
+    PhaseSample gpuWaitSample_{};
     std::uint64_t commandCount_{0};
     std::uint64_t culledCount_{0};
+#ifdef LUMEN_BENCH_HAS_GPU
+    SDL_Window* sdlWindow_{nullptr};
+    bool sdlVideoInitialized_{false};
+    std::unique_ptr<lumen::render::Renderer> gpu_{};
+#endif
 };
 
 // --- Report -----------------------------------------------------------------------
@@ -636,7 +696,7 @@ struct Options {
     // 非 0 = 当前为 virtual-list 场景（--items 更新场景名）。
     int scenarioItems{0};
     // M7：后端选择（cpu = CpuRenderer；skia = 离屏光栅 SkiaRenderer；
-    // gpu 不适用 bench——GPU wait 语义在窗口路径实测）。
+    // gpu = Skia Ganesh on a hidden SDL OpenGL surface）。
     std::string backend{"cpu"};
     std::string dumpFrame{};
 };
@@ -666,8 +726,9 @@ Options parseOptions(int argc, char** argv) {
             options.dumpFrame = argv[++i];
         } else if (flag == "--backend" && i + 1 < argc) {
             options.backend = argv[++i];
-            if (options.backend != "cpu" && options.backend != "skia") {
-                std::fprintf(stderr, "--backend expects cpu|skia\n");
+            if (options.backend != "cpu" && options.backend != "skia" &&
+                options.backend != "gpu") {
+                std::fprintf(stderr, "--backend expects cpu|skia|gpu\n");
                 std::exit(2);
             }
         } else if (flag == "--scenario" && i + 1 < argc) {
@@ -706,7 +767,7 @@ Options parseOptions(int argc, char** argv) {
                          "usage: lumen-scene-bench [--frames N] [--warmup N] [--json] "
                          "[--scenario card-grid-6x8-1080p|virtual-list[-N]|text-heavy|"
                          "grid|semantics-diff|resource-upload] [--items N] "
-                         "[--backend cpu|skia] [--dump-frame PATH]\n");
+                         "[--backend cpu|skia|gpu] [--dump-frame PATH]\n");
             std::exit(2);
         }
     }
@@ -917,9 +978,15 @@ int main(int argc, char** argv) {
     std::vector<PhaseSample> reconcileSamples;
     std::vector<PhaseSample> layoutSamples;
     std::vector<PhaseSample> paintSamples;
+    std::vector<PhaseSample> submitSamples;
+    std::vector<PhaseSample> gpuWaitSamples;
+    std::vector<PhaseSample> frameSamples;
     reconcileSamples.reserve(static_cast<std::size_t>(options.measuredFrames));
     layoutSamples.reserve(static_cast<std::size_t>(options.measuredFrames));
     paintSamples.reserve(static_cast<std::size_t>(options.measuredFrames));
+    submitSamples.reserve(static_cast<std::size_t>(options.measuredFrames));
+    gpuWaitSamples.reserve(static_cast<std::size_t>(options.measuredFrames));
+    frameSamples.reserve(static_cast<std::size_t>(options.measuredFrames));
 
     for (int frame = 0; frame < options.warmupFrames; ++frame) {
         (void)app.runFrame(frame);
@@ -929,18 +996,28 @@ int main(int argc, char** argv) {
     std::size_t nodeCount = 0;
     int partialFrames = 0;
     for (int frame = 0; frame < options.measuredFrames; ++frame) {
+        const auto frameStart = std::chrono::steady_clock::now();
         const auto result = app.runFrame(frame);
+        PhaseSample frameSample;
+        frameSample.microseconds = std::chrono::duration<double, std::micro>(
+            std::chrono::steady_clock::now() - frameStart).count();
         finalHash = result.frameHash;
         nodeCount = result.nodeCount;
         partialFrames += result.partial ? 1 : 0;
         reconcileSamples.push_back(app.reconcileSample());
         layoutSamples.push_back(app.layoutSample());
         paintSamples.push_back(app.paintSample());
+        submitSamples.push_back(app.submitSample());
+        gpuWaitSamples.push_back(app.gpuWaitSample());
+        frameSamples.push_back(frameSample);
     }
 
     phases["reconcile"] = summarize(reconcileSamples);
     phases["layout"] = summarize(layoutSamples);
     phases["paint"] = summarize(paintSamples);
+    phases["submit"] = summarize(submitSamples);
+    phases["gpu_wait"] = summarize(gpuWaitSamples);
+    phases["frame"] = summarize(frameSamples);
 
     if (!options.dumpFrame.empty()) {
         const auto& pixels = app.pixels();

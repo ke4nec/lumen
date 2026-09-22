@@ -6,6 +6,8 @@
 ## 1. 基线文件
 
 - `v0.2-cpu-scene.json`：CPU 后端、固定 1080p 卡片网格场景的归档基线。
+- `ci/`：M7 CI 门槛基线，按 CPU、Skia 光栅和 Skia Ganesh GPU 分目录命名，
+  覆盖 card-grid、text-heavy、Grid、VirtualList、semantic diff 五个固定场景。
 - 生成命令（canonical，参数、viewport、场景、后端、构建类型共同定义基线）：
 
 ```sh
@@ -20,26 +22,30 @@ cmake --build build-bench --config Release
   `build_type=Release`。
 - JSON 字段：`backend`、`scenario`、`viewport`、`warmup_frames`、
   `measured_frames`、`toolchain`、`build_type`、`frame_hash`、
-  `phases.{reconcile,layout,paint}.{p50_us,p95_us,mean_us,allocs_p50,alloc_bytes_p50}`，
+  `phases.{frame,reconcile,layout,paint,submit,gpu_wait}.{p50_us,p95_us,mean_us,allocs_p50,alloc_bytes_p50}`，
   以及 `commit`、`platform`、`nodes`、`commands_per_frame`、
   `culled_commands`、`partial_repaint_frames` 元数据。
-- CI artifact：在 Linux `cpu` 门槛 job 中，两次
-  `--frames 120 --warmup 10 --json` 运行的报告与 `frame_hash` 一致性门槛
-  一起上传（`bench-*.json`），附带 `commit`（`GITHUB_SHA`）、`platform`
-  （`RUNNER_OS`）、配置（Debug/CPU）元数据；归档基线本身的 `commit`/
-  `platform`/`toolchain` 由生成时环境写入。
+- CI artifact：Linux `cpu`、`skia`、`skia-gpu` job 对每个固定场景运行三次，
+  报告与 `frame_hash` 一致性门槛一起上传（`bench-*.json`），并调用
+  [`check_perf_regression.py`](../../benchmarks/check_perf_regression.py) 比较
+  归档基线。报告附带 `commit`（`GITHUB_SHA`）、`platform`、配置和工具链元数据；
+  归档基线本身的元数据由生成时环境写入。
 
 ## 2. 比较规则（强制）
 
-- 性能比较按“同一后端 + 同一场景 + 同一工具链 + 同一构建类型”进行。
-- CPU 复用本目录的 v0.2 基线；Skia/GPU 先各自记录 M7 初始基线；文本密集、
-  Grid、VirtualList、语义 diff 等新增场景以首次归档报告为基线。
+- 性能比较按“同一后端 + 同一场景 + 同一 viewport”进行；构建类型和工具链
+  作为报告元数据保留，跨工具链的报告不得覆盖归档基线。
+- 为降低调度噪声，`ci/` 归档基线取三次 canonical 运行各指标最大值，CI
+  当前值取三次运行中位数；这只稳定采样，不改变 10% 回归门槛。
+- CPU、Skia、GPU 各自使用 `ci/` 下的基线；文本密集、Grid、VirtualList、
+  语义 diff 等场景均进入固定门槛。
 - `GPU wait` 只在 GPU 基线中比较，不与 CPU 数值互比。
 - 禁止用不同场景（不同 viewport/卡片规模/warmup/测量帧数）或不同后端
   直接比较 p50/p95；比较结果必须记录基线文件、当前报告、后端、场景参数
   和不适用指标。
-- p50/p95 总帧时间、UI 构建、layout、paint、submit 相对适用的归档基线
-  不得恶化超过 10%（M7 门槛）；固定场景 `frame_hash` 不变表示像素路径未漂移。
+- p50/p95 的 frame、reconcile、layout、paint、submit、GPU wait，以及 p50 分配量和
+  `commands_per_frame` 相对适用的归档基线不得恶化超过 10%（M7 门槛）；节点数
+  必须保持一致，固定场景 `frame_hash` 不变表示像素路径未漂移。
 
 ## 3. 可重复性
 
