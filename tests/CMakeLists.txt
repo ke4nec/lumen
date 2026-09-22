@@ -115,6 +115,13 @@ if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND WIN32)
         ${PROJECT_SOURCE_DIR}/src/accessibility)
 endif()
 
+if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND UNIX AND NOT APPLE)
+    target_compile_definitions(lumen-tests PRIVATE
+        LUMEN_ACCESSIBILITY_PROVIDER_ATSPI=1)
+    target_include_directories(lumen-tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/accessibility)
+endif()
+
 target_include_directories(lumen-tests PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/counter
     ${PROJECT_SOURCE_DIR}/examples/settings

@@ -1,6 +1,6 @@
 # Lumen 桌面平台支持矩阵
 
-> 状态：2026-09-22 核对；保留 M0 四态定义，当前能力覆盖 M0–M8、M10–M12、M13 P1 与按需控件增强；M9 冻结，不计入当前完成范围。
+> 状态：2026-09-22 核对；保留 M0 四态定义，当前能力覆盖 M0–M8、M10–M13 provider 实施与按需控件增强；M9 冻结，不计入当前完成范围。三平台屏幕阅读器回环仍需真实桌面验收。
 > 当前产品范围（2026-09-14）：Windows/Linux/macOS 桌面；Android/iOS 暂不实现并冻结，M9 仅保留历史编号。
 > 构建命令与系统依赖的单一事实来源是
 > [`build-commands.md`](build-commands.md) 与 `.github/workflows/`。
@@ -39,8 +39,8 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 | 平台 | 窗口/输入 | 剪贴板 | 文本/IME | 无障碍 | 渲染 | CI 验证 |
 | --- | --- | --- | --- | --- | --- | --- |
 | Windows | SDL3（宿主多窗口、resize/DPI、触摸 pointer id；`runApp` 按 `WindowId` 隔离多个 `AppShell`） | SDL3 剪贴板（`platform::Clipboard`） | UTF-8 commit + IME preedit（TSF 经 SDL）；修饰键/逻辑键归一化 | 语义树 + Recording 桥；UIA 已实施，需 `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON`；未编入时能力报告 false | CPU、Skia 光栅、Skia GPU（软件回退见下表） | `windows.yml`：cpu / a11y-bridge / skia-raster / skia-gpu / package / package-skia |
-| Linux | SDL3（X11/Wayland） | 同上 | UTF-8 + IBus/Fcitx preedit（候选词锚点经 `SDL_SetTextInputArea`） | 语义树 + Recording 桥；AT-SPI 尚未实施，工厂安全降级 | 同上 | `linux.yml`：cpu / skia / skia-gpu / package / package-skia / package-skia-gpu；窗口自动化使用 Xvfb + llvmpipe |
-| macOS | SDL3（菜单关闭经统一关闭规则） | 同上 | UTF-8 + 输入法 preedit（经 SDL） | 语义树 + Recording 桥；NSAccessibility 尚未实施，工厂安全降级 | 同上 | `macos.yml`：cpu / skia-gpu / package / package-skia |
+| Linux | SDL3（X11/Wayland） | 同上 | UTF-8 + IBus/Fcitx preedit（候选词锚点经 `SDL_SetTextInputArea`） | 语义树 + Recording 桥；AT-SPI2 provider 已编入（需桌面总线），Orca 回环待验 | 同上 | `linux.yml`：cpu / skia / skia-gpu / package / package-skia / package-skia-gpu；窗口自动化使用 Xvfb + llvmpipe |
+| macOS | SDL3（菜单关闭经统一关闭规则） | 同上 | UTF-8 + 输入法 preedit（经 SDL） | 语义树 + Recording 桥；NSAccessibility provider 已编入（需 NSWindow），VoiceOver 回环待验 | 同上 | `macos.yml`：cpu / skia-gpu / package / package-skia |
 
 三平台共用：`ApplicationHost` 契约、归一化 `HostEvent`（时间戳/修饰键/
 逻辑与物理键/指针设备/pointer id/滚轮/取消/关闭请求）、语义树与 action
@@ -112,7 +112,7 @@ Skia/GPU Release 779/779，无跳过；详见
 | 编辑撤销 | `text::EditingHistory` + `InteractionController`（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y；连续单字输入/删除合并，IME 提交为单事务，preedit 不进栈） | 只读字段与 preedit 期间拒绝撤销；栈按字段 bind 隔离，容量 100 |
 | 应用壳 | `lumen-app`（`app::AppShell` 帧管线 + `app::runApp` 单/多窗口主循环；M2） | 示例只保留 build/状态/handler；支持 Fake host、外部 renderer 和应用回退钩子；GPU 失效可重建软件窗口 |
 | 剪贴板 | `platform::Clipboard` / `core::ClipboardProvider` | runApp 启动时接入宿主剪贴板（Ctrl+C/V；宿主不可用保持未注入）；`setText` 失败返回 false，编辑状态不丢 |
-| 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥 + AppShell 每帧 identity diff/焦点/action 回执驱动，M5 收口） | Windows UIA provider 在可选编译开关开启时可用；Linux AT-SPI 与 macOS NSAccessibility 尚未实施，未提供的平台工厂返回 nullptr 并给出原因 |
+| 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥 + AppShell 每帧 identity diff/焦点/action 回执驱动，M5 收口） | Windows UIA、Linux AT-SPI2、macOS NSAccessibility provider 在可选编译开关开启时编入；无桌面服务时能力如实降级，真实屏幕阅读器回环另行验收 |
 | 可访问性设置 | `PlatformCapabilities` 字段与应用 `AccessibilitySettings` | 应用设置可驱动高对比/减少动画/字体缩放；SDL 宿主尚未查询系统对应偏好，能力字段保持 false/false/1.0，不能声明自动跟随系统 |
 
 ## 当前能力与已知限制（映射到自用路线图里程碑）
@@ -129,9 +129,9 @@ Skia/GPU Release 779/779，无跳过；详见
   [滚动设计](lumen-scroll-design.md)。
 - Grid 为纵向网格（无横向滚动/跨行列合并）；Image 需应用侧资源管理器
   驱动加载（框架不管理异步资源生命周期）。
-- 平台原生无障碍桥并非同一完成状态：Windows UIA provider 已在 M13 P1
-  实施并有 headless/端到端冒烟；Linux AT-SPI 与 macOS NSAccessibility
-  仍属 M13 P2/P3 待做。三平台屏幕阅读器人工回环仍需单独验收。
+- 平台原生无障碍 provider 已在 M13 编入三桌面目标并有 headless 回归；Linux
+  AT-SPI2、macOS NSAccessibility 和 Windows UIA 的真实屏幕阅读器人工回环
+  仍需单独验收，不能由 Xvfb 或 headless CI 代替。
 - 应用主循环/damage 管线已收敛到 `lumen-app` 应用壳（M2）：新工具页只需
   提供 build/状态逻辑；`runApp` 支持单窗口兼容入口和多个 `AppWindow` 绑定，
   按 `HostEvent.window` 隔离输入、DPI、IME、renderer、语义桥和帧调度。

@@ -221,10 +221,12 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                 a11yHost, &diagnostics);
             if (runtime.nativeA11y != nullptr) {
                 shell.setAccessibilityBridge(runtime.nativeA11y.get());
-                host.noteAccessibilityBridgeActive(true);
+                host.noteAccessibilityBridgeActive(
+                    runtime.nativeA11y->available());
                 if (runtime.app.options.diagnostics) {
-                    std::printf("[diag] a11y=%s\n",
-                                runtime.nativeA11y->bridgeName().c_str());
+                    std::printf("[diag] a11y=%s%s\n",
+                                runtime.nativeA11y->bridgeName().c_str(),
+                                runtime.nativeA11y->available() ? "" : " (unavailable)");
                 }
             } else if (runtime.app.options.diagnostics && !diagnostics.empty()) {
                 std::printf("[diag] a11y=off (%s)\n", diagnostics.c_str());
@@ -342,6 +344,11 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
     bool running = true;
     while (running) {
         bool eventsPumped = false;
+        for (auto& runtime : runtimes) {
+            if (runtime.active && runtime.nativeA11y != nullptr) {
+                runtime.nativeA11y->pump();
+            }
+        }
         HostEvent event;
         while (host.pollEvent(event)) {
             eventsPumped = true;

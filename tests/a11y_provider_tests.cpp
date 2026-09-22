@@ -18,6 +18,10 @@
 #include "lumen/accessibility/semantics.h"
 #include "lumen/platform/fake_host.h"
 
+#if defined(__linux__) && defined(LUMEN_ACCESSIBILITY_PROVIDER_ATSPI)
+#include "atspi_provider.h"
+#endif
+
 #if defined(_WIN32) && defined(LUMEN_ACCESSIBILITY_PROVIDER_UIA)
 // SDK 头的 min/max 宏会破坏 core/geometry.h（numeric_limits）。
 #ifndef NOMINMAX
@@ -59,6 +63,13 @@ TEST_CASE("a11y_factory_reports_compiled_provider_honestly", "[a11y]") {
     // 编入：headless（无原生窗口）桥可用，名称与编译事实一致。
     REQUIRE(bridge != nullptr);
     CHECK(bridge->bridgeName() == name);
+    if (name == "atspi" && !bridge->available()) {
+        // A headless CI process may have libdbus but no desktop accessibility
+        // bus.  The provider remains compiled and safe, while capability is
+        // correctly reported as unavailable until a real session is present.
+        CHECK_FALSE(diagnostics.empty());
+        return;
+    }
     CHECK(bridge->available());
 }
 
@@ -70,6 +81,44 @@ TEST_CASE("fake_host_reports_accessibility_capability_on_note", "[a11y]") {
     host.noteAccessibilityBridgeActive(false);
     CHECK_FALSE(host.capabilities().accessibility);
 }
+
+#if defined(__linux__) && defined(LUMEN_ACCESSIBILITY_PROVIDER_ATSPI)
+
+TEST_CASE("atspi_provider_keeps_semantic_paths_stable", "[a11y][atspi]") {
+    accessibility::PlatformAccessibilityHost host;
+    std::string diagnostics;
+    accessibility::atspi::AtspiAccessibilityBridge bridge(host, &diagnostics);
+
+    accessibility::SemanticsTree tree;
+    tree.rootId = "window";
+    accessibility::SemanticsNode root;
+    root.id = tree.rootId;
+    root.role = accessibility::SemanticsRole::Window;
+    root.children = {"button"};
+    tree.nodes.emplace(root.id, root);
+    accessibility::SemanticsNode button;
+    button.id = "button";
+    button.role = accessibility::SemanticsRole::Button;
+    button.label = "Apply";
+    tree.nodes.emplace(button.id, button);
+
+    accessibility::SemanticsDiff diff;
+    diff.added = {"window", "button"};
+    bridge.updateTree(tree, diff, {});
+
+    CHECK(bridge.nodeCountForTesting() == 2);
+    const std::string firstPath = bridge.objectPathForTesting("button");
+    CHECK(firstPath == bridge.objectPathForTesting("button"));
+    CHECK(firstPath.find("/org/a11y/atspi/accessible/") == 0);
+
+    tree.nodes.at("button").label = "Apply now";
+    diff = {};
+    diff.changed = {"button"};
+    bridge.updateTree(tree, diff, {});
+    CHECK(firstPath == bridge.objectPathForTesting("button"));
+}
+
+#endif
 
 #if defined(_WIN32) && defined(LUMEN_ACCESSIBILITY_PROVIDER_UIA)
 

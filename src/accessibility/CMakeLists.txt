@@ -6,6 +6,14 @@ if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE)
     # Windows UIA：WM_GETOBJECT 子类化 + COM fragment 树（本地真验）。
     list(APPEND LUMEN_ACCESSIBILITY_SOURCES uia_provider.cpp)
     list(APPEND LUMEN_ACCESSIBILITY_PRIVATE_LIBS UIAutomationCore comctl32)
+  elseif(APPLE)
+    # AppKit's NSAccessibilityElement tree is implemented in ObjC++ so the
+    # public bridge contract remains free of SDK types.
+    list(APPEND LUMEN_ACCESSIBILITY_SOURCES nsaccessibility_provider.mm)
+    list(APPEND LUMEN_ACCESSIBILITY_PRIVATE_LIBS
+         "-framework AppKit" "-framework Foundation")
+  elseif(UNIX)
+    list(APPEND LUMEN_ACCESSIBILITY_SOURCES atspi_provider.cpp)
   endif()
 endif()
 
@@ -25,4 +33,26 @@ if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND WIN32)
       LUMEN_ACCESSIBILITY_PROVIDER_UIA=1)
   target_link_libraries(lumen-accessibility PRIVATE
       ${LUMEN_ACCESSIBILITY_PRIVATE_LIBS})
+endif()
+
+if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND APPLE)
+  target_compile_definitions(lumen-accessibility PRIVATE
+      LUMEN_ACCESSIBILITY_PROVIDER_NSACCESSIBILITY=1)
+  target_link_libraries(lumen-accessibility PRIVATE
+      ${LUMEN_ACCESSIBILITY_PRIVATE_LIBS})
+endif()
+
+if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND UNIX AND NOT APPLE)
+  target_compile_definitions(lumen-accessibility PRIVATE
+      LUMEN_ACCESSIBILITY_PROVIDER_ATSPI=1)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(AT_SPI_DBUS QUIET dbus-1)
+  endif()
+  if(AT_SPI_DBUS_FOUND)
+    target_compile_definitions(lumen-accessibility PRIVATE LUMEN_HAS_DBUS=1)
+    target_include_directories(lumen-accessibility PRIVATE
+        ${AT_SPI_DBUS_INCLUDE_DIRS})
+    target_link_libraries(lumen-accessibility PRIVATE ${AT_SPI_DBUS_LIBRARIES})
+  endif()
 endif()

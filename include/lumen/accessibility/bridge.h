@@ -42,6 +42,11 @@ class AccessibilityBridge {
     // 辅助技术焦点跟踪。
     virtual void setFocusedNode(const std::string& id) = 0;
 
+    // Pump platform messages owned by the UI thread.  Providers that use an
+    // external event source (AT-SPI on Linux) override this; synchronous
+    // providers keep the default no-op implementation.
+    virtual void pump() {}
+
     // M5：语义 action 结果记录（应用壳分发后回执；默认 no-op）。
     virtual void noteActionPerformed(const std::string& nodeId,
                                      std::uint32_t action,

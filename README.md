@@ -11,7 +11,7 @@ v0.2 计划
 当前只规划 Windows/Linux/macOS。Android/iOS 暂不实现并冻结，不纳入当前或后续自动任务；M9 仅保留历史编号。只有用户再次明确提出移动端需求后，才另行评估范围与方案。
 桌面自用版 M0–M8 已收口，桌面增强链 M10（动效与滚动）、M11（v0.4 视觉
 方向与控件体验）、M12（平台服务与发布补全）已完成；M13 原生无障碍
-进行中（P1 Windows UIA 已实施，P2 AT-SPI、P3 NSAccessibility 待做）。
+provider 已接入三桌面平台，真实屏幕阅读器回环仍在平台验收中。
 面向自用工具类应用的桌面路线图见
 [`docs/lumen-self-use-roadmap.md`](docs/lumen-self-use-roadmap.md)。
 统一构建/验证命令表见
@@ -28,7 +28,7 @@ v0.2 计划
 SDL-free 移动 host 接缝仍保留，但不代表当前支持移动平台。三桌面便携发布已纳入
 M8；M12 已交付 AppImage、CPU `.app` 骨架、三平台 Skia 包和 Linux GPU 包，
 Windows/macOS GPU 包与 CPack Bundle 仍待补齐；平台原生
-无障碍 M13 进行中（P1 Windows UIA 已实施）。平台能力详见
+无障碍 M13 进行中（三平台原生 provider 已接入，真实屏幕阅读器回环待验）。平台能力详见
 [`docs/support-matrix.md`](docs/support-matrix.md)。
 
 ## 结构
@@ -77,7 +77,7 @@ ctest --test-dir build-release --output-on-failure -C Release
 | `LUMEN_BUILD_BENCHMARKS` | OFF | `lumen-scene-bench` 固定场景基准 |
 | `LUMEN_ENABLE_SKIA` | OFF | Skia 光栅后端（预编译包自动拉取） |
 | `LUMEN_ENABLE_GPU` | OFF | Skia Ganesh GPU 后端（需 `LUMEN_ENABLE_SKIA`） |
-| `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` | OFF | 平台原生无障碍桥开关；M13 P1 Windows UIA 已编入（WIN32+开关），其他平台工厂返回 nullptr；语义树与 Recording 桥始终可用 |
+| `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` | OFF | 平台原生无障碍桥开关；Windows UIA、Linux AT-SPI2、macOS NSAccessibility 在对应桌面+开关下编入；无桌面服务时能力如实降级；语义树与 Recording 桥始终可用 |
 | `LUMEN_BUILD_MOBILE_CORE` | OFF | 保留的历史 SDL-free 实验配置（跳过 SDL 与桌面示例）；不属于当前产品范围，不代表 Android/iOS 工程或设备验证 |
 
 Linux（Ubuntu 24.04/26.04）先安装系统依赖（SDL3 窗口/输入、Skia
@@ -161,8 +161,8 @@ TextLayout，光标/选区/宽度不跨后端漂移。
 actions，节点 id 复用 RenderNode 稳定 identity）、identity diff（重建时
 保留辅助技术焦点）、action 分发（activate/setValue/focus/scroll/dismiss
 与键盘路径共用）。`AccessibilityBridge` 契约 + headless Recording 桥；
-Windows UIA provider 已实现，需启用 `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE`；
-Linux AT-SPI 与 macOS NSAccessibility 尚未实现，工厂返回 nullptr 并给出诊断。
+Windows UIA、Linux AT-SPI2、macOS NSAccessibility provider 均已实现，需启用
+`LUMEN_ENABLE_ACCESSIBILITY_BRIDGE`，并在真实桌面会话完成对应屏幕阅读器回环。
 应用提供的高对比/减少动画/字体缩放设置可驱动 `Theme::fromSettings` 与
 `FrameScheduler::setReduceAnimation`；SDL 宿主的系统对应偏好查询尚未接通。
 UIA 客户端端到端冒烟已有覆盖，三平台屏幕阅读器人工验收按 M13 单独记录。
