@@ -130,6 +130,22 @@ if(LUMEN_BUILD_PACKAGE)
       install(FILES assets/lumen.png
               DESTINATION share/icons/hicolor/128x128/apps
               RENAME lumen.png)
+      # Gallery 应用图标（docs/lumen-gallery-icon-design.md）：多尺寸
+      # hicolor 逐档安装——桌面 shell/图标缓存按请求尺寸选档，不放大
+      # 位图；desktop 入口与 settings 并列（20 为 125% DPI 档，hicolor
+      # 不消费，仅留在 .ico 内）。
+      install(FILES assets/lumen-gallery.desktop
+              DESTINATION share/applications)
+      foreach(size IN ITEMS 16 24 32 48 64 128 256)
+        install(FILES ${LUMEN_GALLERY_ICON_DIR}/lumen-gallery-${size}.png
+                DESTINATION share/icons/hicolor/${size}x${size}/apps
+                RENAME lumen-gallery.png)
+      endforeach()
+    endif()
+    if(APPLE)
+      # macOS 图标资源先入包（完整 .app bundle 打包接入时消费）。
+      install(FILES ${LUMEN_GALLERY_ICON_DIR}/lumen-gallery.icns
+              DESTINATION share/icons)
     endif()
   endif()
   # 打包入口：cpack 配置见 cmake/PackageConfig.cmake（平台自适应：

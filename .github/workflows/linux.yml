@@ -104,6 +104,17 @@ jobs:
             --icon-file AppDir/usr/share/icons/hicolor/128x128/apps/lumen.png \
             --output appimage
           test -f lumen-settings-x86_64.AppImage
+          # Gallery 应用图标（docs/lumen-gallery-icon-design.md §3）：install
+          # 布局内多尺寸 hicolor 供 linuxdeploy 选档；入口校验桌面文件与
+          # 图标均在包内（AppImage 图标损坏教训 8f40e98：打包内断言）。
+          test -f AppDir/usr/share/applications/lumen-gallery.desktop
+          test -f AppDir/usr/share/icons/hicolor/256x256/apps/lumen-gallery.png
+          OUTPUT=lumen-gallery-x86_64.AppImage ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --desktop-file AppDir/usr/share/applications/lumen-gallery.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/lumen-gallery.png \
+            --output appimage
+          test -f lumen-gallery-x86_64.AppImage
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:

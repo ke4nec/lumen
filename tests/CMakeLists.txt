@@ -66,6 +66,10 @@ set(LUMEN_TEST_SOURCES
     a11y_provider_tests.cpp
     settings_integration_tests.cpp
     gallery_integration_tests.cpp
+    # Gallery 应用图标（Core Dark，design/gallery-icon.html 01）：几何/
+    # 光栅分层、PNG/ICO/ICNS 容器与 runApp 窗口图标装配
+    #（docs/lumen-gallery-icon-design.md）。
+    gallery_icon_tests.cpp
     mobile_host_tests.cpp
 )
 

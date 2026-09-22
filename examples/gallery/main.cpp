@@ -4,6 +4,8 @@
 // `--dump-frame <path>` 额外把首帧像素写为 RGBA 原始数据（视觉核对用）；
 // `--max-frames N` 用于窗口级短跑验证后自动退出。
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -11,6 +13,7 @@
 #include <string>
 
 #include "gallery_app.h"
+#include "gallery_icon.h"
 #include "lumen/app/app_shell.h"
 #include "lumen/platform/sdl3_host.h"
 #include "lumen/text/system_font_manager.h"
@@ -422,6 +425,18 @@ int runWindowed(GalleryApp& app, const Options& options) {
     runOptions.windowDesc.transparent = true;
     runOptions.diagnostics = options.diagnostics;
     runOptions.maxFrames = options.maxFrames;
+    // 窗口/任务栏图标（Core Dark 方向，design/gallery-icon.html 01 与
+    // docs/lumen-gallery-icon-design.md）：按显示缩放现场光栅化任务栏
+    // 主档 48——DPI>1 时直接产出更大母版（≥48 比例几何），系统不放大
+    // 位图；exe/桌面图标资源由构建期 icon_tool 多尺寸导出。
+    runOptions.windowIcon = [dpi = options.dpi] {
+        const float scale = std::clamp(dpi, 1.0F, 2.0F);
+        const int size =
+            std::max(48, static_cast<int>(std::lround(48.0F * scale)));
+        lumen::examples::GalleryIconBitmap bitmap =
+            lumen::examples::renderGalleryIcon(size);
+        return lumen::platform::WindowIcon{size, size, std::move(bitmap.rgba)};
+    };
     // 桌面系统字体：窗口路径注入真实字形（Windows 雅黑优先），CPU 光
     // 栅经同一管理器排版+绘制；失败回退占位并诊断（headless 不注入，
     // 保持帧哈希确定性）。

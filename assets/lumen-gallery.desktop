@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Lumen Gallery
+GenericName=Lumen Widget Gallery
+Comment=Lumen self-use desktop GUI framework — widget gallery showcase (controls, layout, collections, theming)
+Exec=lumen-gallery
+Icon=lumen-gallery
+Terminal=false
+Categories=Development;

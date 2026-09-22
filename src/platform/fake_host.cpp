@@ -13,6 +13,9 @@ FakeApplicationHost::FakeApplicationHost(ManualHostClock* clock)
     capabilities_.mouse = true;
     capabilities_.touch = true;
     capabilities_.multiWindow = true;
+    // setWindowIcon 记录进 iconCalls（runApp 窗口图标装配的 headless
+    // 验收入口，gallery_icon_tests）。
+    capabilities_.windowIcon = true;
     capabilities_.adapterName = "fake";
 }
 

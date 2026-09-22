@@ -83,6 +83,26 @@ int runApp(AppShell& shell, platform::ApplicationHost& host,
         shell.controller().setClipboard(clipboard);
     }
 
+    // 窗口图标（RunOptions.windowIcon）：渲染器装配后设置——工厂可能
+    // 重建窗口（GPU 回退），图标必须落在最终窗口上。先查能力位再调
+    // provider（宿主不支持时不做无谓光栅化）；失败只诊断降级（exe/
+    // 桌面图标资源由打包层提供），不阻塞启动。
+    if (options.windowIcon && host.capabilities().windowIcon) {
+        const platform::WindowIcon icon = options.windowIcon();
+        if (icon.width > 0) {
+            const auto result = host.setWindowIcon(*windowId, icon);
+            if (options.diagnostics) {
+                if (result.ok) {
+                    std::printf("[diag] window icon: %dx%d\n", icon.width,
+                                icon.height);
+                } else {
+                    std::fprintf(stderr, "[diag] window icon: %s\n",
+                                 result.message.c_str());
+                }
+            }
+        }
+    }
+
     // 自定义标题栏（lumen-titlebar-design §4.1）：注册拖拽区谓词——命中
     // 判定在 AppShell（事件树/交互排除），宿主 hit-test 另判 resize 边。
     if (options.windowDesc.customTitleBar) {

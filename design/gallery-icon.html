@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lumen Gallery Icon · 四版设计稿</title>
+  <meta name="description" content="Lumen Widget Gallery 应用图标的四个设计方向，每个方向按光学分层重绘 16–256 px 八个出口尺寸。">
+  <style>
+    :root {
+      color-scheme: light;
+      --board-bg: #e9edf3;
+      --board-grid: rgba(42, 58, 82, .045);
+      --board-ink: #172033;
+      --board-muted: #69758b;
+      --board-line: #d8dee8;
+      --board-card: rgba(255, 255, 255, .86);
+      --board-shadow: 0 24px 70px rgba(31, 48, 77, .12);
+      --board-accent: #2864b7;
+      --radius-xl: 24px;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --radius-sm: 8px;
+      --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--board-bg); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--board-ink);
+      font-family: var(--font-ui);
+      background-color: var(--board-bg);
+      background-image: linear-gradient(var(--board-grid) 1px, transparent 1px), linear-gradient(90deg, var(--board-grid) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
+    button { font: inherit; }
+    button:focus-visible, [tabindex]:focus-visible { outline: 3px solid #4e86db; outline-offset: 3px; }
+
+    .board { width: min(1560px, calc(100% - 48px)); margin: 0 auto; padding: 24px 0 40px; }
+    .board-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+    .eyebrow { display: flex; align-items: center; gap: 9px; color: var(--board-accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    .eyebrow::before { content: ""; width: 22px; height: 2px; background: currentColor; border-radius: 2px; }
+    h1 { margin: 8px 0; max-width: 760px; font-size: clamp(28px, 3vw, 40px); line-height: 1.2; letter-spacing: -.035em; }
+    .lead { max-width: 800px; margin: 0; color: var(--board-muted); font-size: 14px; line-height: 1.6; }
+    .brand-mark { display: grid; place-items: center; width: 40px; height: 40px; color: white; font-size: 20px; font-weight: 900; letter-spacing: -.12em; border-radius: 12px; background: linear-gradient(135deg, #2864b7, #6f9ee8); box-shadow: 0 10px 24px rgba(40, 100, 183, .24); }
+    .header-meta { display: flex; align-items: center; gap: 12px; padding-top: 3px; color: var(--board-muted); font-size: 12px; white-space: nowrap; }
+    .header-meta strong { color: var(--board-ink); }
+
+    .control-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px; margin-bottom: 15px; border: 1px solid var(--board-line); border-radius: var(--radius-lg); background: var(--board-card); box-shadow: 0 8px 24px rgba(31, 48, 77, .06); backdrop-filter: blur(14px); }
+    .variant-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+    .variant-tab, .compare-button { cursor: pointer; border: 0; border-radius: 9px; transition: background .18s ease, color .18s ease, box-shadow .18s ease, transform .18s ease; }
+    .variant-tab { min-height: 40px; padding: 8px 12px; color: var(--board-muted); background: transparent; font-size: 13px; font-weight: 650; }
+    .variant-tab:hover { color: var(--board-ink); background: #f0f3f8; }
+    .variant-tab.is-active { color: var(--board-ink); background: white; box-shadow: 0 3px 12px rgba(31, 48, 77, .12); }
+    .variant-tab .tab-index { display: inline-grid; place-items: center; width: 19px; height: 19px; margin-right: 6px; color: var(--board-muted); font-size: 10px; border: 1px solid currentColor; border-radius: 50%; }
+    .variant-tab.is-active .tab-index { color: var(--board-accent); }
+    .compare-button { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 16px; color: white; background: var(--board-accent); font-size: 13px; font-weight: 650; box-shadow: 0 6px 14px rgba(40, 100, 183, .2); }
+    .compare-button:hover { transform: translateY(-1px); box-shadow: 0 9px 18px rgba(40, 100, 183, .26); }
+    .compare-button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+    .control-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .stage-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 12px; color: var(--board-muted); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+    .stage-toggle input { width: 16px; height: 16px; accent-color: var(--board-accent); }
+
+    .design-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px; padding: 18px 21px; margin-bottom: 18px; border: 1px solid var(--board-line); border-radius: var(--radius-lg); background: rgba(255, 255, 255, .64); }
+    .summary-kicker { margin-bottom: 5px; color: var(--board-accent); font-size: 11px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+    .summary-title { margin: 0; font-size: 22px; letter-spacing: -.035em; }
+    .summary-copy { margin: 5px 0 0; color: var(--board-muted); font-size: 13px; line-height: 1.5; }
+    .summary-tags { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+    .summary-tag { padding: 7px 10px; color: #59677e; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; border: 1px solid #dbe2ec; border-radius: 999px; background: rgba(255,255,255,.72); }
+
+    .stage { --panel-bg: rgba(255, 255, 255, .55); padding: 19px; border: 1px solid var(--board-line); border-radius: var(--radius-xl); background: rgba(250, 252, 255, .68); box-shadow: var(--board-shadow); }
+    /* 深色画板：只换评估背景与画板内面板 token，不动各方向图标本身 */
+    .stage.is-dark { --board-line: #32353e; --board-ink: #eef0f5; --board-muted: #9aa3b2; --panel-bg: rgba(255, 255, 255, .045); border-color: #32353e; background: #14161d; }
+    .stage-topline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; margin: 0 3px 16px; color: var(--board-muted); font-size: 12px; font-weight: 600; }
+    .stage-topline-left { display: flex; align-items: center; gap: 9px; }
+    .live-dot { flex: 0 0 7px; height: 7px; background: #36b47c; border-radius: 50%; box-shadow: 0 0 0 4px rgba(54,180,124,.13); }
+    .stage-topline-right { font-variant-numeric: tabular-nums; }
+    .variant-canvas { display: none; min-width: 0; }
+    .variant-canvas.is-active { display: block; }
+    .compare-grid { display: none; grid-template-columns: repeat(auto-fit, minmax(min(100%, 600px), 1fr)); gap: 16px; }
+    .is-compare .single-stage { display: none; }
+    .is-compare .compare-grid { display: grid; }
+    .compare-grid .variant-canvas { display: block; min-width: 0; }
+    /* 并排比较只保留标识 + 尺寸阶梯，规格与分层说明收起（内容共享，比较看识别度） */
+    .is-compare .icon-lower { display: none; }
+    .compare-label { margin: 0 4px 12px; color: var(--board-ink); font-size: 14px; font-weight: 650; }
+
+    /* ===== 应用图标本体 =====
+       双色字母标「L」：竖笔 = Column、横笔 = Row（框架两组布局原语构成 Gallery 首字母）。
+       徽章与笔画全部用百分比几何：≥48 直接比例缩放；≤32 逐尺寸手调（见各方向
+       flatten 规则与 handoff 光学校正）。条端 999px 圆角收敛为半笔宽胶囊端，
+       小尺寸无需单独调圆角。 */
+    .app-icon { position: relative; display: inline-block; flex: none; }
+    .app-icon .bar { position: absolute; border-radius: 999px; }
+    .app-icon .bar-v { left: 19%; top: 19%; width: 17%; height: 62%; z-index: 2; }
+    .app-icon .bar-h { left: 19%; top: 64%; width: 62%; height: 17%; z-index: 1; }
+    /* 02 编辑向标点（display/desktop 档才显示），其余方向 .dot 恒不渲染 */
+    .app-icon .dot { display: none; position: absolute; left: 85%; top: 71%; width: 10%; height: 10%; border-radius: 20%; z-index: 3; }
+    /* Small 档光学放大：标记盒 19–81% 外扩到 18–82%，笔画 17%→18% */
+    :is(.icon-16, .icon-20, .icon-24) .bar-v { left: 18%; top: 18%; width: 18%; height: 64%; }
+    :is(.icon-16, .icon-20, .icon-24) .bar-h { left: 18%; top: 64%; width: 64%; height: 18%; }
+    .icon-16 { width: 16px; height: 16px; }
+    .icon-20 { width: 20px; height: 20px; }
+    .icon-24 { width: 24px; height: 24px; }
+    .icon-28 { width: 28px; height: 28px; }
+    .icon-32 { width: 32px; height: 32px; }
+    .icon-48 { width: 48px; height: 48px; }
+    .icon-64 { width: 64px; height: 64px; }
+    .icon-128 { width: min(128px, 32vw); aspect-ratio: 1; height: auto; }
+    .icon-256 { width: min(256px, 62vw); aspect-ratio: 1; height: auto; }
+
+    /* 01 — Core Dark：中性双阶渐变 + 白/蓝双色（竖笔 content.primary、横笔 accent） */
+    .v1 .app-icon { border-radius: 22.5%; background: linear-gradient(180deg, #30303a 0%, #24242f 60%, #1d1d26 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), inset 0 0 0 1px rgba(255,255,255,.05); }
+    .v1 .bar-v { background: #f1f1f4; }
+    .v1 .bar-h { background: #568cf0; }
+    /* 任务栏/小图档：平面双色，去渐变与内缘线 */
+    .v1 :is(.icon-16, .icon-20, .icon-24, .icon-28, .icon-32) { background: #262630; box-shadow: none; }
+
+    /* 02 — Ink & Linen：暖纸渐变 + 墨/紫双色，横笔尾随紫色标点；纸边环 1px（大图 2px） */
+    .v2 .app-icon { border-radius: 26%; background: linear-gradient(180deg, #fffdf9, #f2ede3); box-shadow: inset 0 0 0 1px #d5cdbd; }
+    .v2 :is(.icon-128, .icon-256) { box-shadow: inset 0 0 0 2px #cbc3b2; }
+    .v2 .bar-v { background: #25252b; }
+    .v2 .bar-h { background: #6357c8; }
+    .v2 .dot { background: #6357c8; }
+    .v2 :is(.icon-64, .icon-128, .icon-256) .dot { display: block; }
+    .v2 :is(.icon-16, .icon-20, .icon-24, .icon-28, .icon-32) { background: #fbf7ef; box-shadow: inset 0 0 0 1px #d5cdbd; }
+
+    /* 03 — Aurora Signal：三向渐变 + 青/紫光晕；笔画自身渐变，仅 display 档发光 */
+    .v3 .app-icon { border-radius: 23.5%; background: radial-gradient(95% 75% at 80% 12%, rgba(89,212,245,.20), transparent 62%), radial-gradient(95% 75% at 18% 90%, rgba(128,92,255,.17), transparent 62%), linear-gradient(135deg, #0c1426 0%, #121d3a 55%, #171130 100%); box-shadow: inset 0 0 0 1px rgba(161,190,250,.15); }
+    .v3 .bar-v { background: linear-gradient(180deg, #93e8f8, #6ec9f2); }
+    .v3 .bar-h { background: linear-gradient(90deg, #7f9df8, #9a86ff); }
+    .v3 :is(.icon-128, .icon-256) .bar { filter: drop-shadow(0 0 10px rgba(114,216,247,.28)); }
+    /* 桌面档保留线性渐变去光晕 */
+    .v3 :is(.icon-48, .icon-64) { background: linear-gradient(135deg, #0d1528, #151334); box-shadow: inset 0 0 0 1px rgba(161,190,250,.12); }
+    .v3 :is(.icon-16, .icon-20, .icon-24, .icon-28, .icon-32) { background: #111a30; box-shadow: none; }
+    .v3 :is(.icon-16, .icon-20, .icon-24, .icon-28, .icon-32) .bar-v { background: #7fdcf5; }
+    .v3 :is(.icon-16, .icon-20, .icon-24, .icon-28, .icon-32) .bar-h { background: #8f8cff; }
+
+    /* 04 — Utility Contrast：白底 + 黑色恒定边环（小图 1px → 大图 4px），无渐变无光晕 */
+    .v4 .app-icon { border-radius: 12.5%; background: #ffffff; box-shadow: inset 0 0 0 2px #111827; }
+    .v4 :is(.icon-16, .icon-20, .icon-24) { box-shadow: inset 0 0 0 1px #111827; }
+    .v4 .icon-128 { box-shadow: inset 0 0 0 3px #111827; }
+    .v4 .icon-256 { box-shadow: inset 0 0 0 4px #111827; }
+    .v4 .bar-v { background: #111827; }
+    .v4 .bar-h { background: #1d55a5; }
+
+    /* 各方向 swatch token（Icon tokens 面板读取，JS 回填计算值） */
+    .v1 { --ic-badge: #262630; --ic-v: #f1f1f4; --ic-h: #568cf0; --ic-edge: rgba(255,255,255,.07); }
+    .v2 { --ic-badge: #f8f4ec; --ic-v: #25252b; --ic-h: #6357c8; --ic-edge: #d5cdbd; }
+    .v3 { --ic-badge: #121a30; --ic-v: #7fdcf5; --ic-h: #8f8cff; --ic-edge: rgba(161,190,250,.16); }
+    .v4 { --ic-badge: #ffffff; --ic-v: #111827; --ic-h: #1d55a5; --ic-edge: #111827; }
+
+    /* ===== 画板布局 ===== */
+    .icon-artboard { min-width: 0; }
+    .icon-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: center; margin-bottom: 16px; }
+    .hero-stage { display: grid; place-items: center; padding: 26px; border: 1px solid var(--board-line); border-radius: var(--radius-lg); background: var(--panel-bg); }
+    .hero-kicker { margin: 0 0 6px; color: var(--board-accent); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .hero-name { margin: 0; font-size: 24px; letter-spacing: -.03em; }
+    .hero-copy { margin: 8px 0 12px; color: var(--board-muted); font-size: 13px; line-height: 1.65; }
+    .hero-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .hero-chip { padding: 6px 10px; color: var(--board-muted); font-size: 11px; font-weight: 700; border: 1px solid var(--board-line); border-radius: 999px; background: var(--panel-bg); }
+
+    .panel { min-width: 0; padding: 16px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--panel-bg); }
+    .panel + .panel, .panel + .tier-cards, .tier-cards + .context-row { margin-top: 16px; }
+    .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 14px; }
+    .panel-title { margin: 0; font-size: 14px; font-weight: 650; }
+    .panel-meta { color: var(--board-muted); font-size: 12px; }
+
+    /* 尺寸阶梯：四组光学档，组内底对齐，跨组基线一致（min-height 对齐 256 + 标注） */
+    .ladder { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .ladder-group { min-width: 0; padding: 14px 12px 12px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--panel-bg); }
+    .ladder-tier { margin: 0; font-size: 12px; font-weight: 700; }
+    .ladder-tier-sizes { margin: 2px 0 12px; color: var(--board-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .ladder-cells { display: flex; align-items: flex-end; gap: 18px; min-height: 276px; }
+    .ladder-cell { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .ladder-size { color: var(--board-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+    /* 光学分层说明卡（四方向共享规则，差异见上方各方向 CSS 与阶梯实物） */
+    .tier-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 12px; }
+    .tier-card { min-width: 0; padding: 14px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--panel-bg); }
+    .tier-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .tier-name { margin: 0; font-size: 12px; font-weight: 700; }
+    .tier-sizes { color: var(--board-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .tier-copy { margin: 0; color: var(--board-muted); font-size: 12px; line-height: 1.6; }
+
+    /* 使用场景：任务栏 / 标题栏品牌位 / 文件列表 / 桌面 */
+    .context-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 224px), 1fr)); gap: 12px; }
+    .context-card { min-width: 0; padding: 12px; border: 1px solid var(--board-line); border-radius: var(--radius-md); background: var(--panel-bg); }
+    .ctx-title { margin: 0 0 10px; font-size: 12px; font-weight: 650; }
+    .ctx-hint { margin: 9px 0 0; color: var(--board-muted); font-size: 11px; line-height: 1.55; }
+    .taskbar-mock { display: flex; align-items: center; justify-content: center; gap: 16px; height: 46px; border: 1px solid #34353c; border-radius: 8px; background: #1c1d22; }
+    .fake-app { position: relative; width: 24px; height: 24px; flex: none; border-radius: 6px; background: #3b3e47; }
+    .fake-app::before { content: ""; position: absolute; }
+    .fa-a::before { inset: 7px; border-radius: 50%; background: #9aa2b1; }
+    .fa-b::before { left: 7px; right: 7px; top: 9px; height: 4px; border-radius: 2px; background: #8b93a3; box-shadow: 0 6px 0 #6d7482; }
+    .fa-c::before { inset: 6px; border: 2px solid #8b93a3; border-radius: 3px; }
+    .titlebar-mock { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--board-line); border-radius: 8px; background: #ffffff; }
+    .stage.is-dark .titlebar-mock { border-color: #32353e; }
+    .tbm-name { flex: 1; min-width: 0; overflow: hidden; color: #25252b; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .tbm-glyphs { display: flex; align-items: center; gap: 8px; color: #69758b; font-size: 11px; }
+    .tbm-glyphs i { font-style: normal; }
+    .list-mock { display: grid; gap: 6px; }
+    .lm-row { display: flex; align-items: center; gap: 8px; min-height: 20px; color: var(--board-muted); font-size: 12px; }
+    .fake-doc, .fake-folder { position: relative; flex: none; border: 1.5px solid #9aa2b1; }
+    .fake-doc { width: 14px; height: 16px; border-radius: 3px; }
+    .fake-folder { width: 16px; height: 11px; margin: 2px 0; border-radius: 2px; }
+    .fake-folder::before { content: ""; position: absolute; top: -4px; left: -1.5px; width: 8px; height: 3px; background: #9aa2b1; border-radius: 2px 2px 0 0; }
+    .desktop-mock { display: grid; place-items: center; padding: 16px 12px; min-height: 112px; border-radius: 8px; background: linear-gradient(135deg, #243b5e, #4a3a75); }
+    .desktop-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .desktop-label { color: #fff; font-size: 11px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.55); }
+
+    /* Icon tokens 面板 */
+    .token-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--board-line); }
+    .token-row:last-of-type { border-bottom: 0; }
+    .token-swatch { width: 12px; height: 12px; border: 1px solid var(--board-line); border-radius: 3px; background: var(--swatch); }
+    .token-name { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+    .token-value { color: var(--board-muted); font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; }
+    .spec-geometry { margin: 12px 0 0; padding-top: 12px; color: var(--board-muted); font-size: 12px; line-height: 1.6; border-top: 1px dashed var(--board-line); }
+
+    .handoff { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+    .handoff-card { min-width: 0; padding: 16px; border: 1px solid var(--board-line); border-radius: var(--radius-lg); background: rgba(255,255,255,.7); }
+    .handoff-card h3 { margin: 0 0 8px; font-size: 14px; }
+    .handoff-card p { margin: 0; color: var(--board-muted); font-size: 12px; line-height: 1.6; }
+    .handoff-card code { color: var(--board-accent); font-size: 12px; overflow-wrap: anywhere; }
+    .design-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 24px 2px 0; color: var(--board-muted); font-size: 12px; }
+    .design-footer strong { color: var(--board-ink); }
+
+    @media (max-width: 1120px) {
+      .ladder { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 980px) {
+      .board { width: calc(100% - 32px); }
+      .board-header { display: block; }
+      .header-meta { margin-top: 16px; }
+      .control-bar { align-items: stretch; flex-direction: column; gap: 12px; }
+      .control-actions { align-self: stretch; justify-content: space-between; }
+      .compare-button { align-self: flex-start; }
+      .design-summary { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      .summary-tags { justify-content: flex-start; }
+      .handoff, .compare-grid { grid-template-columns: minmax(0, 1fr); }
+      .icon-hero { grid-template-columns: minmax(0, 1fr); }
+      .hero-stage { justify-self: center; }
+    }
+    @media (max-width: 620px) {
+      .board { width: calc(100% - 24px); padding-top: 16px; }
+      .variant-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 4px; }
+      .variant-tab { padding: 8px; }
+      .variant-tab .tab-index { display: none; }
+      .control-actions { flex-direction: column; align-items: stretch; }
+      .compare-button { width: 100%; justify-content: center; }
+      .stage { padding: 8px; }
+      .stage-topline { padding: 4px; }
+      .design-summary { padding: 16px; }
+      .ladder { grid-template-columns: minmax(0, 1fr); }
+      .ladder-cells { min-height: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .variant-tab, .compare-button { transition: none; }
+      .compare-button:hover { transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="board-header">
+      <div>
+        <div class="eyebrow">Lumen / Design board</div>
+        <h1>Gallery 应用图标 · 四版设计稿</h1>
+        <p class="lead">为 Lumen Widget Gallery 准备一组跨分辨率应用图标：双色字母标「L」（竖笔 Column、横笔 Row）在四个视觉方向上演进，每个方向按 显示 / 桌面 / 任务栏 / 小图 四档光学层级重绘，覆盖 16–256 px 八个出口尺寸。单页切换评审细节，并排模式比较识别度；「深色画板」用于在深色壁纸上评估。</p>
+      </div>
+      <div class="header-meta"><span class="brand-mark">L</span><span><strong>App icon study</strong><br>Windows · Linux · macOS</span></div>
+    </header>
+
+    <section class="control-bar" aria-label="设计版本切换">
+      <div class="variant-tabs" role="tablist" aria-label="四个图标设计方向">
+        <button class="variant-tab is-active" role="tab" aria-selected="true" data-variant="v1"><span class="tab-index">01</span>Core Dark</button>
+        <button class="variant-tab" role="tab" aria-selected="false" data-variant="v2"><span class="tab-index">02</span>Ink &amp; Linen</button>
+        <button class="variant-tab" role="tab" aria-selected="false" data-variant="v3"><span class="tab-index">03</span>Aurora Signal</button>
+        <button class="variant-tab" role="tab" aria-selected="false" data-variant="v4"><span class="tab-index">04</span>Utility Contrast</button>
+      </div>
+      <div class="control-actions">
+        <label class="stage-toggle" title="切换画板底色评估深色壁纸下的识别度（不动图标本身）"><input id="stageToggle" type="checkbox">深色画板</label>
+        <button class="compare-button" id="compareToggle" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg><span>Compare all</span></button>
+      </div>
+    </section>
+
+    <section class="design-summary" aria-live="polite">
+      <div>
+        <div class="summary-kicker" id="summaryKicker">Direction 01 · recommended baseline</div>
+        <h2 class="summary-title" id="summaryTitle">Core Dark — 中性基线标识</h2>
+        <p class="summary-copy" id="summaryCopy">深色双阶渐变徽章 + 白/蓝双色 L：竖笔取 content.primary，横笔取 accent，与默认桌面主题同源。</p>
+      </div>
+      <div class="summary-tags" id="summaryTags"><span class="summary-tag">dark first</span><span class="summary-tag">two-tone L</span><span class="summary-tag">system tokens</span></div>
+    </section>
+
+    <section class="stage">
+      <div class="single-stage">
+        <div class="stage-topline"><div class="stage-topline-left"><span class="live-dot"></span><span>Icon artboard · optical tiers 16–256 px</span></div><span class="stage-topline-right">4 directions · 8 export sizes</span></div>
+        <div class="canvas">
+          <div class="variant-canvas v1 is-active" data-canvas="v1"></div>
+          <div class="variant-canvas v2" data-canvas="v2"></div>
+          <div class="variant-canvas v3" data-canvas="v3"></div>
+          <div class="variant-canvas v4" data-canvas="v4"></div>
+        </div>
+      </div>
+      <div class="compare-grid" aria-label="四方向并排比较">
+        <div class="variant-canvas v1" data-canvas="v1-compare"></div>
+        <div class="variant-canvas v2" data-canvas="v2-compare"></div>
+        <div class="variant-canvas v3" data-canvas="v3-compare"></div>
+        <div class="variant-canvas v4" data-canvas="v4-compare"></div>
+      </div>
+    </section>
+
+    <section class="handoff">
+      <article class="handoff-card"><h3>出口尺寸与平台映射</h3><p>Windows <code>.ico</code> 内嵌 16/24/32/48/64/128/256 + 独立 256 png；macOS <code>icns</code> 取 16/32/128/256（512/1024 后续按需）；Linux hicolor 16–256，512 由母版降采样。20 用于 125% DPI 列表视图；28 是 gallery 标题栏品牌位（<code>design/gallery.html</code>，非出口尺寸）。≥48 比例缩放即可，≤32 逐尺寸手调像素网格。</p></article>
+      <article class="handoff-card"><h3>光学校正规则</h3><p>小尺寸笔画 17%→18% 并外扩标记盒（约 +6% 光学放大）；≤32 去渐变、内缘线、光晕与标点，收敛为平面双色；条宽与坐标在导出时对齐设备像素（与 <code>docs/lumen-visual-system-design.md</code> §8 图标盒 <code>lround</code> 同口径）。04 的黑色边环全尺寸保留（1→4px），是唯一贯穿的描边；高对比方向双笔靠明度差区分，不依赖色相。</p></article>
+      <article class="handoff-card"><h3>评审与落地</h3><p>四方向与 <code>design/gallery.html</code> 的四个桌面方向一一对应，token 同源。<strong>方向 01 Core Dark 已选定落地</strong>：母版光栅化、多尺寸导出与运行时窗口图标见 <code>docs/lumen-gallery-icon-design.md</code>（Windows ICO 嵌 exe、Linux hicolor 多档 + <code>lumen-gallery.desktop</code>、macOS icns 随包；运行时按 DPI 现场光栅化 48×dpi）。其余方向保留评审；AppImage 图标曾在打包步骤损坏（<code>8f40e98</code>），导出后需在打包内校验。应用图标是品牌资源，不走控件 <code>IconId</code> 通道；UI 内图标仍按 §8 <code>IconTheme</code> 契约（16px 基准、strokeWidth 1.8）。</p></article>
+    </section>
+
+    <footer class="design-footer"><span><strong>Design output</strong> · <code>design/gallery-icon.html</code></span><span>Four directions · eight sizes · one file</span></footer>
+  </main>
+
+  <template id="iconTemplate">
+    <div class="icon-artboard">
+      <section class="icon-hero">
+        <div class="hero-stage" aria-hidden="true">
+          <span class="app-icon icon-256"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span>
+        </div>
+        <div class="hero-panel">
+          <p class="hero-kicker">App identity · Lumen Widget Gallery</p>
+          <h3 class="hero-name">Lumen Widget Gallery</h3>
+          <p class="hero-copy">双色字母标「L」：竖笔是 Column、横笔是 Row——框架的两组布局原语构成 Gallery 的首字母。同一识别在四个视觉方向上演进；每个方向按四档光学层级重绘，16–256 px 全部出口尺寸见下方阶梯。</p>
+          <div class="hero-chips"><span class="hero-chip">双色 L · Column × Row</span><span class="hero-chip">8 出口尺寸</span><span class="hero-chip">4 光学档位</span></div>
+        </div>
+      </section>
+
+      <section class="panel ladder-panel">
+        <div class="panel-head"><span class="panel-title">尺寸阶梯 · 16–256 px</span><span class="panel-meta">≤32 手调像素网格 · ≥48 比例缩放</span></div>
+        <div class="ladder">
+          <div class="ladder-group"><p class="ladder-tier">Display</p><p class="ladder-tier-sizes">256 · 128</p>
+            <div class="ladder-cells" aria-hidden="true">
+              <div class="ladder-cell"><span class="app-icon icon-256"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span class="ladder-size">256</span></div>
+              <div class="ladder-cell"><span class="app-icon icon-128"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span class="ladder-size">128</span></div>
+            </div>
+          </div>
+          <div class="ladder-group"><p class="ladder-tier">Desktop</p><p class="ladder-tier-sizes">64 · 48</p>
+            <div class="ladder-cells" aria-hidden="true">
+              <div class="ladder-cell"><span class="app-icon icon-64"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span class="ladder-size">64</span></div>
+              <div class="ladder-cell"><span class="app-icon icon-48"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span class="ladder-size">48</span></div>
+            </div>
+          </div>
+          <div class="ladder-group"><p class="ladder-tier">Taskbar</p><p class="ladder-tier-sizes">32 · 24 · 28 品牌位</p>
+            <div class="ladder-cells" aria-hidden="true">
+              <div class="ladder-cell"><span class="app-icon icon-32"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span class="ladder-size">32</span></div>
+              <div class="ladder-cell"><span class="app-icon icon-24"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span class="ladder-size">24</span></div>
+            </div>
+          </div>
+          <div class="ladder-group"><p class="ladder-tier">Small</p><p class="ladder-tier-sizes">20 · 16</p>
+            <div class="ladder-cells" aria-hidden="true">
+              <div class="ladder-cell"><span class="app-icon icon-20"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span class="ladder-size">20</span></div>
+              <div class="ladder-cell"><span class="app-icon icon-16"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span class="ladder-size">16</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="icon-lower">
+        <div class="tier-cards">
+          <article class="tier-card"><div class="tier-card-head"><p class="tier-name">Display</p><span class="tier-sizes">256 · 128</span></div><p class="tier-copy">全细节：badge 渐变、内缘高光 / 纸边环、光晕（03）与标点（02）。用于安装界面、关于页、商店大图。</p></article>
+          <article class="tier-card"><div class="tier-card-head"><p class="tier-name">Desktop</p><span class="tier-sizes">64 · 48</span></div><p class="tier-copy">保留渐变与边环，去掉发光与装饰细节。用于桌面、资源管理器 / 访达大图标视图。</p></article>
+          <article class="tier-card"><div class="tier-card-head"><p class="tier-name">Taskbar</p><span class="tier-sizes">32 · 28 · 24</span></div><p class="tier-copy">badge 收敛为平面色，内缘线取消；笔画保持双色。用于任务栏、标题栏品牌位、Alt-Tab。</p></article>
+          <article class="tier-card"><div class="tier-card-head"><p class="tier-name">Small</p><span class="tier-sizes">20 · 16</span></div><p class="tier-copy">纯平面双色，笔画加粗并光学放大；04 仅保留 1px 黑边环。用于文件列表与低倍 DPI 小图。</p></article>
+        </div>
+
+        <div class="context-row">
+          <div class="context-card">
+            <p class="ctx-title">任务栏 · 24</p>
+            <div class="taskbar-mock" aria-hidden="true">
+              <span class="fake-app fa-a"></span><span class="fake-app fa-b"></span>
+              <span class="app-icon icon-24"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span>
+              <span class="fake-app fa-c"></span><span class="fake-app fa-a"></span>
+            </div>
+            <p class="ctx-hint">与邻居应用并列时的识别度：双色 L 在 24 px 保持轮廓。</p>
+          </div>
+          <div class="context-card">
+            <p class="ctx-title">标题栏品牌位 · 28</p>
+            <div class="titlebar-mock" aria-hidden="true">
+              <span class="app-icon icon-28"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span>
+              <span class="tbm-name">Lumen Widget Gallery</span>
+              <span class="tbm-glyphs"><i>−</i><i>▢</i><i>✕</i></span>
+            </div>
+            <p class="ctx-hint">替换 design/gallery.html 的字母品牌块（28 px 槽位，非出口尺寸）。</p>
+          </div>
+          <div class="context-card">
+            <p class="ctx-title">文件列表 · 16</p>
+            <div class="list-mock" aria-hidden="true">
+              <span class="lm-row"><span class="app-icon icon-16"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span>lumen-gallery.exe</span></span>
+              <span class="lm-row"><span class="fake-doc"></span><span>README.md</span></span>
+              <span class="lm-row"><span class="fake-folder"></span><span>mockups</span></span>
+            </div>
+            <p class="ctx-hint">16 px 平面双色 + 光学放大，避免笔画糊成一团。</p>
+          </div>
+          <div class="context-card">
+            <p class="ctx-title">桌面快捷方式 · 48</p>
+            <div class="desktop-mock" aria-hidden="true">
+              <span class="desktop-item"><span class="app-icon icon-48"><span class="bar bar-v"></span><span class="bar bar-h"></span><i class="dot"></i></span><span class="desktop-label">Lumen Gallery</span></span>
+            </div>
+            <p class="ctx-hint">桌面档保留渐变与边环；「深色画板」可复核深色壁纸对比。</p>
+          </div>
+        </div>
+
+        <section class="panel spec-panel">
+          <div class="panel-head"><span class="panel-title">Icon tokens</span><span class="panel-meta">当前方向</span></div>
+          <div class="token-row"><span class="token-swatch" style="--swatch:var(--ic-badge)"></span><span class="token-name">badge.surface（渐变代表色）</span><span class="token-value"></span></div>
+          <div class="token-row"><span class="token-swatch" style="--swatch:var(--ic-v)"></span><span class="token-name">mark.vertical（Column 笔）</span><span class="token-value"></span></div>
+          <div class="token-row"><span class="token-swatch" style="--swatch:var(--ic-h)"></span><span class="token-name">mark.horizontal（Row 笔）</span><span class="token-value"></span></div>
+          <div class="token-row"><span class="token-swatch" style="--swatch:var(--ic-edge)"></span><span class="token-name">badge.edge</span><span class="token-value"></span></div>
+          <p class="spec-geometry"></p>
+        </section>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    (() => {
+      const definitions = {
+        v1: {
+          kicker: 'Direction 01 · recommended baseline', title: 'Core Dark — 中性基线标识',
+          copy: '深色双阶渐变徽章 + 白/蓝双色 L：竖笔取 content.primary，横笔取 accent，与默认桌面主题同源。256–48 保留渐变与内缘高光，≤32 平面双色。',
+          tags: ['dark first', 'two-tone L', 'system tokens'],
+          geometry: '几何：标记盒 19–81%（0.62）· 笔画 17%（小尺寸 18%）· 端点半圆胶囊 · 徽章圆角 22.5% · ≤32 去渐变与内缘线。'
+        },
+        v2: {
+          kicker: 'Direction 02 · editorial option', title: 'Ink & Linen — 纸面编辑标',
+          copy: '暖纸渐变徽章 + 墨/紫双色 L，横笔尾随一枚紫色标点（≥64 显示）。大圆角 26% 与 1–2px 纸边环；小尺寸去标点与渐变。',
+          tags: ['warm light', 'editorial period', 'soft radius'],
+          geometry: '几何：标记盒 19–81%（0.62）· 笔画 17%（小尺寸 18%）· 端点半圆胶囊 · 徽章圆角 26% · 标点 10% 见方（≥64）。'
+        },
+        v3: {
+          kicker: 'Direction 03 · expressive option', title: 'Aurora Signal — 光晕信号标',
+          copy: '深蓝三向渐变 + 青/紫双光晕，笔画自身为渐变并在 ≥128 发光；64/48 保留线性渐变去光晕，≤32 平面双色。',
+          tags: ['gpu aware', 'light signal', 'gradient mark'],
+          geometry: '几何：标记盒 19–81%（0.62）· 笔画 17%（小尺寸 18%）· 端点半圆胶囊 · 徽章圆角 23.5% · 光晕仅 ≥128。'
+        },
+        v4: {
+          kicker: 'Direction 04 · accessibility option', title: 'Utility Contrast — 高对比工具标',
+          copy: '白底 + 黑色恒定边环（小图 1px → 大图 4px），黑/藏青双色 L。边环是识别的一部分，所有尺寸保留；无渐变无光晕。',
+          tags: ['high contrast', 'ringed badge', 'flat only'],
+          geometry: '几何：标记盒 19–81%（0.62）· 笔画 17%（小尺寸 18%）· 端点半圆胶囊 · 徽章圆角 12.5% · 边环 1–4px 全尺寸。'
+        }
+      };
+      const template = document.getElementById('iconTemplate');
+      const singleCanvases = [...document.querySelectorAll('.single-stage [data-canvas]')];
+      const compareCanvases = [...document.querySelectorAll('.compare-grid [data-canvas]')];
+      [...singleCanvases, ...compareCanvases].forEach((canvas) => {
+        const id = canvas.dataset.canvas.split('-')[0];
+        if (compareCanvases.includes(canvas)) {
+          const label = document.createElement('h3');
+          label.className = 'compare-label';
+          label.textContent = `${id.slice(1).padStart(2, '0')} · ${definitions[id].title.split(' — ')[0]}`;
+          canvas.append(label);
+        } else {
+          canvas.id = `canvas-${id}`;
+          canvas.setAttribute('role', 'tabpanel');
+          canvas.setAttribute('aria-labelledby', `tab-${id}`);
+        }
+        canvas.append(template.content.cloneNode(true));
+        canvas.querySelector('.spec-geometry').textContent = definitions[id].geometry;
+      });
+      const body = document.body;
+      const summaryKicker = document.getElementById('summaryKicker');
+      const summaryTitle = document.getElementById('summaryTitle');
+      const summaryCopy = document.getElementById('summaryCopy');
+      const summaryTags = document.getElementById('summaryTags');
+      const compareToggle = document.getElementById('compareToggle');
+      const updatePalettes = () => {
+        const canvases = body.classList.contains('is-compare')
+          ? compareCanvases : singleCanvases.filter((canvas) => canvas.classList.contains('is-active'));
+        canvases.forEach((canvas) => canvas.querySelectorAll('.token-row').forEach((row) => {
+          // 计算值回填，保持标签与各方向 CSS token 同步。
+          const color = getComputedStyle(row.querySelector('.token-swatch')).backgroundColor;
+          const channels = color.match(/[\d.]+/g)?.map(Number);
+          let label = color;
+          if (channels && channels.length >= 3) {
+            const bytes = channels.slice(0, 3);
+            if (channels.length === 4 && channels[3] < 1) bytes.push(Math.round(channels[3] * 255));
+            label = `#${bytes.map((channel) => Math.round(channel).toString(16).padStart(2, '0')).join('')}`;
+          }
+          row.querySelector('.token-value').textContent = label;
+        }));
+      };
+      const setVariant = (id) => {
+        const definition = definitions[id];
+        document.querySelectorAll('.variant-tab').forEach((tab) => {
+          const active = tab.dataset.variant === id;
+          tab.classList.toggle('is-active', active);
+          tab.id = `tab-${tab.dataset.variant}`;
+          tab.tabIndex = active ? 0 : -1;
+          tab.setAttribute('aria-controls', `canvas-${tab.dataset.variant}`);
+          tab.setAttribute('aria-selected', String(active));
+        });
+        singleCanvases.forEach((canvas) => canvas.classList.toggle('is-active', canvas.dataset.canvas === id));
+        summaryKicker.textContent = definition.kicker;
+        summaryTitle.textContent = definition.title;
+        summaryCopy.textContent = definition.copy;
+        summaryTags.innerHTML = definition.tags.map((tag) => `<span class="summary-tag">${tag}</span>`).join('');
+        updatePalettes();
+      };
+      document.querySelectorAll('.variant-tab').forEach((tab) => tab.addEventListener('click', () => setVariant(tab.dataset.variant)));
+      // 深色画板：只换评估底色与画板内面板 token，四个方向的图标定义不变。
+      document.getElementById('stageToggle').addEventListener('change', (event) => {
+        document.querySelector('.stage').classList.toggle('is-dark', event.target.checked);
+      });
+      compareToggle.addEventListener('click', () => {
+        const compare = body.classList.toggle('is-compare');
+        compareToggle.querySelector('span').textContent = compare ? 'Single view' : 'Compare all';
+        compareToggle.setAttribute('aria-pressed', String(compare));
+        updatePalettes();
+      });
+      document.addEventListener('keydown', (event) => {
+        if (!event.target.matches('.variant-tab')) return;
+        const tabs = [...document.querySelectorAll('.variant-tab')];
+        const index = tabs.indexOf(event.target);
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') { event.preventDefault(); tabs[(index + 1) % tabs.length].focus(); tabs[(index + 1) % tabs.length].click(); }
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); tabs[(index - 1 + tabs.length) % tabs.length].focus(); tabs[(index - 1 + tabs.length) % tabs.length].click(); }
+        if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); const target = event.key === 'Home' ? tabs[0] : tabs[tabs.length - 1]; target.focus(); target.click(); }
+      });
+      setVariant('v1');
+    })();
+  </script>
+</body>
+</html>

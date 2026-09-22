@@ -507,6 +507,11 @@ struct RunOptions {
         onRendererFailure{};
     // 字体工厂（Skia 后端时返回 SkiaFontManager；返回空保持占位）。
     std::function<std::shared_ptr<text::FontManager>()> fontFactory{};
+    // 窗口图标 provider（渲染器装配后、首帧前调用一次；返回 width<=0
+    // 跳过，宿主 windowIcon 能力缺失时不调用。setWindowIcon 失败时诊断
+    // 降级，不阻塞启动——exe/桌面图标资源由打包层提供，此处只覆盖
+    // 运行时窗口/任务栏位）。
+    std::function<platform::WindowIcon()> windowIcon{};
     // 扩展轮询（热重载等；返回 true = 请求重绘）。
     std::function<bool(AppShell&, std::uint64_t nowMs)> poll{};
     // M4：宿主服务事件转发（FileDialogCompleted 等应用壳不消费的
