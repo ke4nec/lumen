@@ -142,9 +142,11 @@ if(LUMEN_BUILD_PACKAGE)
     # The Windows Skia archive needs plain zlib symbols in addition to its
     # bundled zlib.lib. Keep this private archive beside the SDK libraries so
     # exported static targets remain linkable outside the build tree.
-    install(TARGETS zlibstatic
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    set_property(TARGET zlibstatic PROPERTY INTERFACE_INCLUDE_DIRECTORIES
+                 "$<BUILD_INTERFACE:${zlib_BINARY_DIR}>;$<BUILD_INTERFACE:${zlib_SOURCE_DIR}>")
+    list(APPEND _lumen_export_targets zlibstatic)
   endif()
+  include(cmake/PackageSkia.cmake)
   if(UNIX AND NOT APPLE AND TARGET SDL3::SDL3)
     # Linux 实体 + soname 别名双实体（ZIP 归档不保留 symlink）。
     install(FILES $<TARGET_FILE:SDL3::SDL3>

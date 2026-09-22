@@ -1,21 +1,19 @@
 @PACKAGE_INIT@
 
+set_and_check(LUMEN_INCLUDE_DIR "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+set_and_check(LUMEN_LIBRARY_DIR "@PACKAGE_CMAKE_INSTALL_LIBDIR@")
+set(LUMEN_WITH_SKIA @LUMEN_ENABLE_SKIA@)
+set(LUMEN_WITH_GPU @LUMEN_ENABLE_GPU@)
+# MSVC consumers must select this CRT before creating their own targets.
+set(LUMEN_MSVC_RUNTIME_LIBRARY "@CMAKE_MSVC_RUNTIME_LIBRARY@")
+
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 
 # Static Skia targets keep their system libraries in the exported link
 # interface. Recreate the imported targets before loading LumenTargets so a
 # consumer can use the SDK without depending on the build tree's CMake state.
-if(@LUMEN_ENABLE_SKIA@)
-  if(WIN32)
-    find_library(LUMEN_ZLIBSTATIC_LIBRARY NAMES zlibstatic
-                 PATHS "@PACKAGE_CMAKE_INSTALL_LIBDIR@" NO_DEFAULT_PATH)
-    if(LUMEN_ZLIBSTATIC_LIBRARY AND NOT TARGET zlibstatic)
-      add_library(zlibstatic UNKNOWN IMPORTED)
-      set_property(TARGET zlibstatic PROPERTY IMPORTED_LOCATION
-                   "${LUMEN_ZLIBSTATIC_LIBRARY}")
-    endif()
-  endif()
+if(LUMEN_WITH_SKIA)
   if(UNIX AND NOT APPLE)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
@@ -32,11 +30,25 @@ if(@LUMEN_ENABLE_SKIA@)
                    INTERFACE_LINK_LIBRARIES "${LUMEN_FONTCONFIG_LIBRARY}")
     endif()
   endif()
-  find_dependency(ZLIB)
+  if(NOT WIN32)
+    find_dependency(ZLIB)
+  endif()
+  foreach(_archive IN ITEMS @LUMEN_SKIA_PACKAGE_ARCHIVES@)
+    string(MAKE_C_IDENTIFIER "${_archive}" _id)
+    if(NOT TARGET Lumen::skia_${_id})
+      set_and_check(_location "${LUMEN_LIBRARY_DIR}/lumen/skia/${_archive}")
+      add_library(Lumen::skia_${_id} STATIC IMPORTED)
+      set_property(TARGET Lumen::skia_${_id} PROPERTY IMPORTED_LOCATION "${_location}")
+    endif()
+  endforeach()
 endif()
 
 if(@LUMEN_ENABLE_GPU@)
   find_dependency(OpenGL)
+  # Keep GL after the archive that references it. A dependency only on
+  # lumen-render can be emitted before Skia when static targets are reordered.
+  set_property(TARGET Lumen::skia_@LUMEN_SKIA_PACKAGE_MAIN_ID@ PROPERTY
+               INTERFACE_LINK_LIBRARIES OpenGL::GL)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/LumenTargets.cmake")
@@ -51,8 +63,6 @@ if(NOT TARGET SDL3::Headers AND TARGET Lumen::Headers)
   add_library(SDL3::Headers ALIAS Lumen::Headers)
 endif()
 
-set_and_check(LUMEN_INCLUDE_DIR "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
-set_and_check(LUMEN_LIBRARY_DIR "@PACKAGE_CMAKE_INSTALL_LIBDIR@")
 set(LUMEN_PACKAGE_VERSION "@PROJECT_VERSION@")
 
 check_required_components(Lumen)

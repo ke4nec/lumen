@@ -92,14 +92,19 @@ jobs:
             ./$pkg/bin/lumen-counter --headless
             ./$pkg/bin/lumen-settings --headless
           fi
+      - name: Relocated SDK consumer
+        run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
       - name: Build AppImage (linuxdeploy)
         # M12：Linux 发布形态——TGZ 解包为 AppDir（usr/ 前缀布局），
         # linuxdeploy 组装（desktop/icon 来自 install 规则；RPATH
         # $ORIGIN/../lib 在 usr/bin↔usr/lib 相对布局下不变）。
         working-directory: build-pkg
         run: |
-          mkdir -p appimage/AppDir/usr
-          tar xzf lumen-*.tar.gz -C appimage/AppDir/usr --strip-components=1
+          mkdir -p appimage/AppDir/usr/bin appimage/AppDir/usr/lib appimage/AppDir/usr/share
+          # Runtime only: headers, static archives and CMake exports stay in the SDK.
+          cp unpack/lumen-*/bin/* appimage/AppDir/usr/bin/
+          cp -a unpack/lumen-*/lib/lib*.so* appimage/AppDir/usr/lib/
+          cp -a unpack/lumen-*/share/applications unpack/lumen-*/share/icons appimage/AppDir/usr/share/
           cd appimage
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage
@@ -487,6 +492,8 @@ jobs:
           test -f "$pkg/lib/cmake/Lumen/LumenTargets.cmake"
           ./$pkg/bin/lumen-counter --headless
           ./$pkg/bin/lumen-settings --headless
+      - name: Relocated SDK consumer
+        run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
@@ -555,6 +562,8 @@ jobs:
           ./$pkg/bin/lumen-settings --headless
           LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a \
             ./$pkg/bin/lumen-counter --renderer gpu --diagnostics --frames 2
+      - name: Relocated SDK consumer
+        run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:

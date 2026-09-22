@@ -67,6 +67,8 @@ jobs:
             ./$pkg/bin/lumen-counter --headless
             ./$pkg/bin/lumen-settings --headless
           fi
+      - name: Relocated SDK consumer
+        run: python -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
@@ -270,6 +272,8 @@ jobs:
           pkg=$(ls -d lumen-*)
           ./$pkg/bin/lumen-counter.exe --headless
           ./$pkg/bin/lumen-settings.exe --headless
+      - name: Relocated SDK consumer
+        run: python -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:

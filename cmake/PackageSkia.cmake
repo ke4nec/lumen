@@ -1,0 +1,45 @@
+# Static implementation dependencies must survive SDK relocation. Keep build
+# interfaces unchanged and install the exact archives used by this build.
+set(LUMEN_SKIA_PACKAGE_ARCHIVES "")
+if(LUMEN_ENABLE_SKIA)
+  get_filename_component(_lumen_skia_main "${LUMEN_SKIA_LIBRARY}" NAME)
+  string(MAKE_C_IDENTIFIER "${_lumen_skia_main}" LUMEN_SKIA_PACKAGE_MAIN_ID)
+  set(_lumen_skia_sources "")
+  foreach(_target IN ITEMS lumen-text lumen-render)
+    get_target_property(_links ${_target} INTERFACE_LINK_LIBRARIES)
+    set(_installed_links "")
+    foreach(_link IN LISTS _links)
+      if(IS_ABSOLUTE "${_link}" AND _link MATCHES "\\.(a|lib)$")
+        file(RELATIVE_PATH _relative "${LUMEN_SKIA_ROOT}" "${_link}")
+        if(_relative MATCHES "^\\.\\./" OR IS_ABSOLUTE "${_relative}")
+          message(FATAL_ERROR "Unpackaged static dependency: ${_link}")
+        endif()
+        get_filename_component(_file "${_link}" NAME)
+        string(MAKE_C_IDENTIFIER "${_file}" _id)
+        list(APPEND _installed_links
+          "$<BUILD_INTERFACE:${_link}>"
+          "$<INSTALL_INTERFACE:Lumen::skia_${_id}>")
+        if(NOT _link IN_LIST _lumen_skia_sources)
+          if(_file IN_LIST LUMEN_SKIA_PACKAGE_ARCHIVES)
+            message(FATAL_ERROR "Skia archive filename collision: ${_file}")
+          endif()
+          list(APPEND _lumen_skia_sources "${_link}")
+          list(APPEND LUMEN_SKIA_PACKAGE_ARCHIVES "${_file}")
+        endif()
+      else()
+        list(APPEND _installed_links "${_link}")
+      endif()
+    endforeach()
+    set_property(TARGET ${_target} PROPERTY INTERFACE_LINK_LIBRARIES "${_installed_links}")
+  endforeach()
+  install(FILES ${_lumen_skia_sources} DESTINATION ${CMAKE_INSTALL_LIBDIR}/lumen/skia)
+  # Preserve the license files delivered by the pinned prebuilt dependency.
+  file(GLOB_RECURSE _lumen_skia_licenses RELATIVE "${LUMEN_SKIA_ROOT}"
+       "${LUMEN_SKIA_ROOT}/*LICENSE*" "${LUMEN_SKIA_ROOT}/*COPYING*"
+       "${LUMEN_SKIA_ROOT}/*NOTICE*")
+  foreach(_license IN LISTS _lumen_skia_licenses)
+    get_filename_component(_directory "${_license}" DIRECTORY)
+    install(FILES "${LUMEN_SKIA_ROOT}/${_license}"
+            DESTINATION "${CMAKE_INSTALL_DOCDIR}/licenses/skia/${_directory}")
+  endforeach()
+endif()
