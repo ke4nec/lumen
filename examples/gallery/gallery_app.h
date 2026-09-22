@@ -2713,6 +2713,7 @@ class GalleryApp {
             core::ScrollAxis::Horizontal);
         horizontalScroll.scrollOffset = horizontalScroll_.offset();
         horizontalScroll.showScrollbar = true;
+        horizontalScroll.showFocusRing = true;
         items.push_back(sectionCard(
             "Horizontal ScrollView (wide cards)",
             {core::withKey(std::move(horizontalScroll),

@@ -80,7 +80,7 @@ std::uint32_t defaultActionsFor(const RenderNode& node) {
         case WidgetType::List:
         case WidgetType::Tree:
         case WidgetType::TreeList:
-            return kActionScroll;
+            return kActionFocus | kActionScroll;
         case WidgetType::Image:
             return kActionFocus;  // 可聚焦/可访问（无激活语义）
         default:

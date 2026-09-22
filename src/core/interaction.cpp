@@ -1192,8 +1192,8 @@ void InteractionController::keyDown(const RenderNode& root, Key key,
             return;
         }
     }
-    // 无编辑焦点时的滚动键：PageUp/PageDown/Up/Down/Home/End → wheelSink
-    //（plan §3.4 键盘滚动）。
+    // 无编辑焦点时的滚动键：PageUp/PageDown/方向键/Home/End → wheelSink
+    //（plan §3.4 键盘滚动）。TextField 的 Left/Right 仍由编辑路径消费。
     // Splitter 分隔条键盘（splitter-design §7.2）：聚焦分隔条时方向键
     // 步进（水平 Left/Right、垂直 Up/Down——方向不匹配时消费不滚动）、
     // Home/End 到边；先于滚动键（分隔条不属于滚动内容）。
@@ -1239,8 +1239,9 @@ void InteractionController::keyDown(const RenderNode& root, Key key,
         }
     }
     if (focusedBind_.empty() &&
-        (key == Key::PageUp || key == Key::PageDown || key == Key::Up ||
-         key == Key::Down || key == Key::Home || key == Key::End)) {
+        (key == Key::PageUp || key == Key::PageDown || key == Key::Left ||
+         key == Key::Right || key == Key::Up || key == Key::Down ||
+         key == Key::Home || key == Key::End)) {
         (void)scrollKey(root, key);
         return;
     }
@@ -1291,7 +1292,14 @@ bool InteractionController::traverseFocus(const RenderNode& root,
                  // 集合行（collection-controls-design §6.2）：Row/Container
                  // 行同样可聚焦（控制器构建，onClick 已注册）。
                  (node.collectionRow && !node.onClick.empty()));
-            if (editable || activatable) {
+            // Horizontal scroll views are keyboard destinations even when
+            // their content has no interactive child (for example a gallery
+            // of passive cards). This gives Tab a stable target for the
+            // Left/Right/Home/End scroll contract.
+            const bool horizontalScrollable =
+                node.enabled && isScrollableWidget(node.type) &&
+                node.scrollAxis == ScrollAxis::Horizontal;
+            if (editable || activatable || horizontalScrollable) {
                 focusables.push_back(Candidate{&node, scope});
             }
             const std::string childScope =
@@ -1635,14 +1643,18 @@ bool InteractionController::scrollKey(const RenderNode& root, Key key) {
         focused = findIdentityChain(root, focus_.focusedIdentity(),
                                     focusChain);
     }
+    // findIdentityChain() stores the chain from root to the focused node, so
+    // walk backwards to select the nearest scrolling viewport. This matters
+    // for a horizontal viewport nested inside an outer vertical list.
     // 聚焦链上最近的滚动视口决定 Left/Right 是否属于本轴
     //（lumen-scroll-design §4：水平视口才消费 Left/Right；纵向视口
     // 的 Left/Right 不属于滚动，交还应用键处理）。
     const RenderNode* targetViewport = nullptr;
     if (focused != nullptr) {
-        for (const RenderNode* node : focusChain) {
-            if (isScrollableWidget(node->type)) {
-                targetViewport = node;
+        for (auto node = focusChain.rbegin(); node != focusChain.rend();
+             ++node) {
+            if (isScrollableWidget((*node)->type)) {
+                targetViewport = *node;
                 break;
             }
         }
@@ -1690,11 +1702,13 @@ bool InteractionController::scrollKey(const RenderNode& root, Key key) {
     // 聚焦节点的最近源视口祖先由框架直接滚动（集合控件行聚焦时的
     // Home/End/PageUp 语义与滚轮一致）。
     if (focused != nullptr) {
-        for (const RenderNode* node : focusChain) {
-            if (node->virtualSource == nullptr) {
+        for (auto node = focusChain.rbegin(); node != focusChain.rend();
+             ++node) {
+            if ((*node)->virtualSource == nullptr) {
                 continue;
             }
-            ScrollController* scroller = node->virtualSource->scrollController();
+            ScrollController* scroller =
+                (*node)->virtualSource->scrollController();
             if (scroller == nullptr) {
                 continue;
             }

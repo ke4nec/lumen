@@ -626,10 +626,10 @@ damage 经 `sameNode` 的 `clipRounded` 字段感知开关变化。透明呈现�
 | --- | --- | --- |
 | V1 样式基础、V2 状态联动 | 已实施：Theme/token、布局前 resolve、RenderNode 样式、damage 与交互状态联动 | 控件细化和回归见 [S0–S6 实施记录](gui-control-visual-system-impl.md) |
 | V3 完整设计系统 | 已实施：M6 图标/阴影/ThemeScope，M10 状态与 Dialog/Navigator 转场；后续 CPU 软阴影和滚动条交互已接入 | `tests/visual_m6_tests.cpp`、`motion_scroll_tests.cpp`、`visual_regression_tests.cpp` 与各后端测试；预留控件能力仍按各设计文档管理 |
-| V4 三桌面适配 | 部分完成：PlatformThemeAdapter、系统深浅色/强调色、主题设置派生、DPI/窄窗口样本已接入 | SDL 宿主尚未查询系统高对比/减少动画/字体缩放；完整三桌面人工视觉与交互验收待补，不能标成 V4 全部完成 |
+| V4 三桌面适配 | 部分完成：PlatformThemeAdapter、系统深浅色/强调色、系统高对比/减少动画/字体缩放查询、主题设置派生、DPI/窄窗口样本已接入 | 完整三桌面人工视觉与交互验收待补，不能标成 V4 全部完成 |
 
-M11 四套 ThemeDirection 已落地。`AccessibilitySettings` 手动输入可用，不代表系统
-相应设置自动同步；原生屏幕阅读器接入另由 M13 跟踪。当前验证快照统一见
+M11 四套 ThemeDirection 已落地。`AccessibilitySettings` 仍支持应用手动覆盖；SDL
+宿主能力快照会在初始化和系统主题变化时读取对应系统偏好。原生屏幕阅读器接入另由 M13 跟踪。当前验证快照统一见
 [支持矩阵](support-matrix.md)，不把 headless 测试或 CI 成功等同于人工验收。
 
 ### 12.2 V1/V2 历史实施与验收快照

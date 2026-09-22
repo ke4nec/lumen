@@ -805,6 +805,36 @@ TEST_CASE("gallery_horizontal_scrollview_shows_wide_cards_and_owns_x_wheel",
     CHECK(app.scroll().offset() == outer);
 }
 
+TEST_CASE("gallery_horizontal_scrollview_scrolls_with_arrow_keys",
+          "[gallery][scrollbar][horizontal][keyboard]") {
+    GalleryApp app;
+    app.setView({1024, 768});
+    static_cast<void>(app.renderFrame());
+    go(app, "nav-lists");
+    scrollIntoView(app, "gallery-horizontal-scroll");
+
+    const RenderNode* viewport =
+        findNodeByKey(app.root(), "gallery-horizontal-scroll");
+    REQUIRE(viewport != nullptr);
+    app.shell().focus().clearFocus();
+    bool reachedHorizontalViewport = false;
+    for (int i = 0; i < 64; ++i) {
+        app.keyDown(Key::Tab);
+        if (app.shell().focus().focusedKey() == "gallery-horizontal-scroll") {
+            reachedHorizontalViewport = true;
+            break;
+        }
+    }
+    REQUIRE(reachedHorizontalViewport);
+    const float before = app.horizontalScroll().offset();
+
+    app.keyDown(Key::Right);
+    static_cast<void>(app.renderFrame());
+
+    CHECK(app.horizontalScroll().offset() == Catch::Approx(before + 120.0F));
+    CHECK(app.shell().focus().focusedKey() == "gallery-horizontal-scroll");
+}
+
 TEST_CASE("gallery_scrollbar_cancel_does_not_seed_the_next_content_fling", "[gallery][scrollbar][review]") {
     GalleryApp app;
     app.setView({1024, 768});

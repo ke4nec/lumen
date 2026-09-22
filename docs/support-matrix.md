@@ -47,7 +47,7 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 分发、`lumen-text` 编辑模型。counter/settings 示例三平台同源。SDL 宿主在
 初始化和系统主题变化时查询 `PlatformCapabilities.highContrast`、
 `reduceAnimation`、`fontScale`：Linux 使用 portal D-Bus settings，macOS 使用
-AppKit display preferences/系统字体尺寸，Windows 使用 SystemParametersInfo
+AppKit display preferences/preferred body font，Windows 使用 SystemParametersInfo
 与 Accessibility 注册表；查询不可用时保留安全默认值。
 
 ### 验证快照（2026-09-22，源码基线 `41cd603831eaed37558ebb32ceddebc8f93cff4f`）
@@ -117,7 +117,7 @@ Skia/GPU Release 779/779，无跳过；详见
 | 应用壳 | `lumen-app`（`app::AppShell` 帧管线 + `app::runApp` 单/多窗口主循环；M2） | 示例只保留 build/状态/handler；支持 Fake host、外部 renderer 和应用回退钩子；GPU 失效可重建软件窗口 |
 | 剪贴板 | `platform::Clipboard` / `core::ClipboardProvider` | runApp 启动时接入宿主剪贴板（Ctrl+C/V；宿主不可用保持未注入）；`setText` 失败返回 false，编辑状态不丢 |
 | 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥 + AppShell 每帧 identity diff/焦点/action 回执驱动，M5 收口） | Windows UIA、Linux AT-SPI2、macOS NSAccessibility provider 在可选编译开关开启时编入；无桌面服务时能力如实降级，真实屏幕阅读器回环另行验收 |
-| 可访问性设置 | `PlatformCapabilities` 字段与应用 `AccessibilitySettings` | 应用设置可驱动高对比/减少动画/字体缩放；SDL 宿主尚未查询系统对应偏好，能力字段保持 false/false/1.0，不能声明自动跟随系统 |
+| 可访问性设置 | `PlatformCapabilities` 字段与应用 `AccessibilitySettings` | SDL 宿主在初始化和系统主题变化时查询系统高对比/减少动画/字体缩放；应用仍可通过 `AppShell::setAccessibilitySettings` 覆盖。macOS 字体缩放取 AppKit preferred body font，旧系统回退安全默认 |
 
 ## 当前能力与已知限制（映射到自用路线图里程碑）
 

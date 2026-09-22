@@ -39,12 +39,18 @@ systemAccessibilityPreferences() {
         preferences.reduceAnimation =
             workspace.accessibilityDisplayShouldReduceMotion;
 
-        // macOS has no process-wide text-scale preference. The system font
-        // size is the closest stable desktop signal and preserves 1.0 for
-        // the default 13pt system body size.
-        const CGFloat systemSize = [NSFont systemFontSize];
-        const float scale = systemSize > 0.0 ?
-                                static_cast<float>(systemSize / 13.0) :
+        // AppKit has no process-wide accessibility text-scale boolean. The
+        // preferred body font is the documented user-facing text-size source
+        // on supported systems; older systems fall back to the standard font.
+        CGFloat bodySize = [NSFont systemFontSize];
+        if (@available(macOS 10.11, *)) {
+            NSFont* preferredBody =
+                [NSFont preferredFontForTextStyle:NSFontTextStyleBody
+                                           options:@{}];
+            if (preferredBody != nil) bodySize = preferredBody.pointSize;
+        }
+        const float scale = bodySize > 0.0 ?
+                                static_cast<float>(bodySize / 13.0) :
                                 1.0F;
         preferences.fontScale = std::clamp(scale, 0.75F, 2.0F);
         return preferences;
