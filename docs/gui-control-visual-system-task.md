@@ -1,12 +1,12 @@
 # Lumen GUI 控件视觉设计与实施规范
 
-> 状态：已实施（S0–S5 已交付，S6 另记；残留项见 impl 文档）；本文档完成不代表控件改造或视觉验收完成。
+> 状态：原定 S0–S5 已交付，S6 另记；2026-09-22 状态核对见 [`docs/support-matrix.md`](support-matrix.md) 和 `gui-control-visual-system-impl.md` 的后续记录。本文档完成不代表真实桌面人工视觉验收全部完成。
 >
-> 更新日期：2026-09-15。源码核对基线：`d57625c`（`fix(gui): 对齐 Core Dark 界面并修复系统字体渲染`）。后续实现前须复核新增变更。
+> 更新日期：2026-09-22。S0 源码核对基线仍为 `d57625c`（`fix(gui): 对齐 Core Dark 界面并修复系统字体渲染`）；后续实现记录和当前源码以文末实施记录及支持矩阵为准。
 >
-> 适用范围：Lumen C++20 自绘桌面 GUI，Windows / Linux / macOS；覆盖当前 23 种 `WidgetType` 及现有组合能力。
+> 适用范围：Lumen C++20 自绘桌面 GUI，Windows / Linux / macOS；S0 规范覆盖 23 种 `WidgetType`，当前枚举为 27 种（后续增加 List/Tree/TreeList/Splitter），Spin/ToolBar/StatusBar 为组合控制器，不新增枚举值。
 >
-> 本文规定控件应呈现什么效果、由哪层实现以及如何验收。§2 是源码现状；§3–§11 是目标设计；§12–§14 是实施与交付要求。标为“预留”的能力不属于本轮完成条件。
+> 本文规定控件应呈现什么效果、由哪层实现以及如何验收。§2 保留 S0 源码基线快照；§3–§11 是设计契约与当前边界；§12–§14 是阶段实施记录和交付要求。标为“预留”的能力不属于对应阶段完成条件。
 
 ## 1. 目标、依据与边界
 
@@ -29,18 +29,20 @@
 | [Gallery 设计参考](../design/gallery.html) | 四个视觉方向的参考，Core Dark 为默认；HTML 中的微缩预览、浏览器字体和特效不直接充当原生控件规格 |
 | [构建与验证命令](build-commands.md)、[支持矩阵](support-matrix.md) | 验证入口、平台与后端覆盖的事实依据 |
 
-源码决定“现在有什么”，本文决定“本轮要达到什么”。本文新增的颜色、部件 token 与样式字段都是待实现设计，不能当作现有 API 调用。若具体视觉数值与旧设计不同，以本文的目标值为准，并在实现该项时同步相关文档、示例和测试；平台范围与架构边界不由本文扩张。
+源码决定“现在有什么”，本文决定“本轮要达到什么”。本文新增的颜色、部件 token 与样式字段在 S0 时是待实现设计；S1–S5 后续记录已将其中一部分落地，阅读当前状态时以对应实施记录、源码和支持矩阵为准。若具体视觉数值与旧设计不同，以本文的目标值为准，并在实现该项时同步相关文档、示例和测试；平台范围与架构边界不由本文扩张。
 
 ### 1.3 实施边界
 
 - 平台为三桌面，包含桌面触屏、DPI、字体缩放和窄窗口；Android/iOS 暂不实现并冻结，M9 不在范围且不产生任务。
 - 后端为 `CpuRenderer`、可选 Skia 光栅及 Skia Ganesh GPU。不新增 Impeller 或其他渲染后端。
-- 保留 23 种 `WidgetType`、现有 builder、绑定值、事件与焦点契约。已完成的一次视觉 API 迁移不重做；确需公开 API 调整时，先记录影响与迁移方式，再连同调用点和测试一起修改。
-- 不新增 TreeView、DataGrid、Toast、独立 Menu / ContextMenu 或多窗口系统。`ListItem`、Dialog、Scrollbar 是现有节点的组合或部件，不额外计入枚举。
+- S0 以 23 种 `WidgetType`、现有 builder、绑定值、事件与焦点契约为范围。后续按需控件增强已增加 List/Tree/TreeList/Splitter；Spin/ToolBar/StatusBar 仍是组合控制器，不新增枚举值，各自边界见对应设计文档。
+- TreeView、DataGrid、Toast 或多窗口系统不属于本轮 S0–S5 目标；当前集合控件、菜单/ContextMenu、Splitter 和标题栏的后续交付不倒填为本轮范围。
 - 不把原生窗口标题栏替换、玻璃模糊、渐变、弹簧动画列为本轮要求。现有 Gallery 壳层继续保留，页面级布局变化服务于展示和验收控件。
-- 本次文档修订只产出规范；后续收到实现任务后才执行 §12 的代码改造。
+- 本文的 S0–S5 规范与实施记录已经执行；后续实现任务应新增阶段记录并同步当前状态，不应把历史“待实施”表述当作现状。
 
-## 2. 当前源码基线与明确缺口
+## 2. S0 源码基线与明确缺口（2026-09-15）
+
+本节记录 S0 冻结时的 23 类控件基线，保留用于解释 S1–S5 的改造起点。当前 27 类枚举、按需控件增强、水平滚动和 ProgressBar 不确定模式的状态，以实施记录和支持矩阵为准。
 
 ### 2.1 可以直接复用的能力
 
@@ -83,23 +85,25 @@
 | `Row` | 无默认装饰；统一间距，支持同排文本基线和控件对齐 |
 | `Column` | 无默认装饰；统一字段、分组和段落节奏 |
 | `Stack` | 无默认装饰；保证覆盖顺序、命中顺序与实际裁剪相符 |
-| `ScrollView` | 维持垂直滚动，裁剪内容，附属滚动条使用专用 token |
+| `ScrollView` | S0 维持垂直滚动，裁剪内容，附属滚动条使用专用 token；后续已补水平轴、嵌套路由和双向滚动条，Gallery 演示仍待补 |
 | `ListView` | 维持非虚拟纵向列表；行样式由其子节点表达，容器不获得整块选中态 |
 | `VirtualList` | 可见项与缓存区物化；以稳定 key 管理行状态，复用不串焦点/选中/过渡 |
 | `Grid` | 维持固定列/最小列宽布局；由列间距与最小列宽驱动重排，不自动赋予子项选择行为 |
 | `FocusScope` | 无表面与边框；验证焦点边界、恢复和实际控件焦点标识 |
 | `ThemeScope` | 无表面；验证子树主题覆盖、退出恢复、字体度量及浮层主题来源 |
 
-### 2.4 不得误报为已实现的能力
+### 2.4 S0 基线中不得误报为已实现的能力
 
-1. `WidgetState` 目前只有 hovered、pressed、focused、disabled、checked、invalid、selected。`readOnly` 是 TextField 属性；没有统一的 loading、indeterminate、warning、keyboardFocused 状态。
-2. `resolveStyleImpl` 对 Radio、Slider、ProgressBar、Dropdown、Tabs、Tooltip 等目前回落到通用容器解析。存在绘制分支不等于已经覆盖交互状态。
-3. `ProgressBar` 没有不确定进度模式；`Radio` 没有框架级组管理；`DropdownController::Option` 当前只有 value / label，没有禁用项或分组选项。
+以下条目是 S0 复核时的基线，不能直接当作当前结论。当前修正：Radio/Slider/ProgressBar/Dropdown/Tabs 已有专用解析；ProgressBar 已支持确定/不确定模式；Switch knob 位移动画、Tooltip 键盘触发、Dialog 正文滚动和多行标签已在后续记录中补齐；CPU 对 blur>0 已使用软阴影近似，blur=0 才保留防御性扁平路径。
+
+1. S0 基线中的 `WidgetState` 只有 hovered、pressed、focused、disabled、checked、invalid、selected。当前仍没有统一的 loading、warning、keyboardFocused 状态；ProgressBar 的 indeterminate 是独立字段，不冒充通用 WidgetState。
+2. S0 基线中的 `resolveStyleImpl` 对 Radio、Slider、ProgressBar、Dropdown、Tabs、Tooltip 等回落到通用容器解析。当前 Radio、Slider、ProgressBar、Dropdown、Tabs 已有专用解析；存在绘制分支仍不等于已经覆盖所有交互状态。
+3. S0 基线中的 `ProgressBar` 没有不确定进度模式；该模式已在后续实现补齐。`Radio` 仍没有框架级组管理；`DropdownController::Option` 当前只有 value / label，没有禁用项或分组选项。
 4. `FormController` 保存错误字符串，不是 Warning / Success 多级校验模型。辅助说明由应用组合，不能声称新增一个颜色就完成了校验模型扩展。
 5. `withScrollbar` 控制视口的附属滚动条。2026-09-19 已接入 Thumb 悬停、捕获拖动和 rest / hovered / dragged / disabled token（§7.2）；自动隐藏计时仍未实现，不能宣称已有 auto-hide。
 6. 当前焦点环在 painter 中内嵌绘制；不要依据旧头文件中的“外扩”注释直接增加越界绘制。阴影另有绘制范围处理。
 7. 当前 Icon 通道不等于任意前后插槽；ImageId 为 0 不区分加载与失败；`TextStyle.lineHeight` 是倍数，不能把绝对像素行高直接赋给它。
-8. 当前 CPU 阴影为扁平降级，Skia 使用模糊；headless 占位字体输出不能证明真实系统字体、IME 或跨后端视觉一致。
+8. S0 基线中的 CPU 阴影为扁平降级，后续已改为 blur>0 的软阴影近似；headless 占位字体输出不能证明真实系统字体、IME 或跨后端视觉一致。
 
 ## 3. 视觉方向与整体秩序
 
@@ -220,7 +224,7 @@ Icon 采用现有 `IconId / iconPolylines`；16 px 图标的基准描边 1.5 px�
 | level 2 | surfaceElevated / borderDefault | (0, 4) / 12 / 64 | Dropdown / Tooltip |
 | level 3 | surfaceElevated / borderDefault | (0, 8) / 24 / 80 | Dialog |
 
-阴影为黑色，属于待补的分级 token，不能把当前 `elevation` 数字直接假定成上述 blur 算法。CPU 可使用现有扁平近似，保留表面/边框与层级；高对比模式取消装饰阴影。阴影范围必须参与 damage 和裁剪计算。
+阴影为黑色，分级 token 与 damage 口径已落地；CPU 对 blur>0 使用三次可分离 box blur 近似 Skia 的 σ，blur=0 保留防御性扁平路径，高对比模式取消装饰阴影。阴影范围必须参与 damage 和裁剪计算。
 
 ## 5. 交互状态：按视觉通道合成
 
@@ -318,7 +322,7 @@ Checkbox/Radio 的焦点环围绕指示器，可在节点内预留的区域绘�
 
 三者常态轮廓 1 px，高对比 2 px；hover 轮廓取 focusRing，pressed 对当前轨道/指示器表面叠加 pressedOverlay，label 不位移。disabled 保留空心/勾号/圆点/滑块位置，轮廓、标记和文字取 disabledContent，底面取 disabledBackground；不依靠整节点透明度抹掉 checked 状态。
 
-Switch 的颜色过渡按 100 ms，后续滑块位移目标 100 ms EaseOut；位移只改变绘制位置，命中区域固定。若本轮尚未打通部件数值动画，先交付正确即时位置并把位移项记为未完成，不另启控件定时器。
+Switch 的颜色与滑块位移均按 100 ms EaseOut 过渡；位移只改变绘制位置，命中区域固定。`reduceAnimation` 时直达终态，不另启控件定时器。
 
 Radio 沿用布尔绑定与应用互斥。本轮覆盖鼠标/键盘切换和组示例，不改变组内选中值存储。Checkbox 三态不在本轮基线。
 
@@ -359,7 +363,7 @@ Radio 沿用布尔绑定与应用互斥。本轮覆盖鼠标/键盘切换和组�
 
 使用 caption、contentPrimary、surfaceElevated、radius 6、borderDefault 和 level 2，padding 横 8 / 纵 6，最大宽度 280，文本可换行。与锚点间隔 8，窗口边距 8；优先下方，空间不足上翻，再做边界夹取。
 
-hover 延迟 400 ms，出现/消失淡变 120 ms；离开、按下、滚动、窗口失焦或锚点消失时取消待显示任务。Tooltip 不获得焦点、不阻断命中、不承载操作，提示不能成为控件唯一名称。当前键盘焦点触发尚需新增接线时标明，不以 hover 演示替代键盘验证。
+hover 延迟 400 ms，出现/消失淡变 120 ms；离开、按下、滚动、窗口失焦或锚点消失时取消待显示任务。Tooltip 不获得焦点、不阻断命中、不承载操作，提示不能成为控件唯一名称。键盘焦点触发已在后续实现中接入，仍需按支持矩阵区分自动化证据与人工验收。
 
 本轮沿用常驻节点与现有管理入口；需要逃离滚动裁剪的提示放入既有 overlay 机制，不在任意 Stack 上关闭全部裁剪。`reduceAnimation=true` 沿用当前策略：delay 与 fade 都为 0，不残留不可见节点的动画请求。
 
@@ -435,7 +439,7 @@ ThemeScope 内颜色、部件、字体、度量必须来自同一局部 Theme；
 | --- | --- | --- |
 | Hover / Pressed / Checked 颜色 | 100 ms / EaseOut | 表面/轮廓/标记颜色；事件与绑定即时生效 |
 | 键盘焦点出现 | 0 ms | 首帧完整焦点标识，不能等淡入后才可见 |
-| Switch knob 位移 | 100 ms / EaseOut | 仅绘制位置；属于需补齐的部件动画 |
+| Switch knob 位移 | 100 ms / EaseOut | 仅绘制位置；已接入状态过渡与 reduceAnimation 终态 |
 | Tooltip | 延迟 400 ms + fade 120 ms / EaseOut | alpha；与触发延迟分开 |
 | Dropdown 打开/关闭 | 120 ms / EaseOut | 可选 alpha，保持锚点与几何固定 |
 | Dialog 打开/关闭 | 200 ms / EaseOut | barrier 与表面 alpha，共同生命周期 |
@@ -519,7 +523,7 @@ ThemeScope 内颜色、部件、字体、度量必须来自同一局部 Theme；
 | Button loading、前后插槽 | busy 状态/语义、重复激活抑制、内容测量与命中 | 保留部件设计空间，不添加假 loading 参数 |
 | Checkbox indeterminate | 三态值、循环/切换规则、语义与绑定兼容 | 本轮验收二态；未来横线标记不得与勾号混淆 |
 | Form warning / success | 分级校验模型、清理和提交策略 | 当前 errors/invalid 不扩张 |
-| 不确定 ProgressBar | 模式和值域、可暂停调度、减少动画的静态替代 | 本轮确定进度 |
+| 不确定 ProgressBar | 模式和值域、可暂停调度、减少动画的静态替代 | S0 时预留；后续已实现 `indeterminate` 模式与 reduceAnimation 静态显示，详情见 StatusBar/ProgressBar 实施记录 |
 | Scrollbar auto-hide | 显隐计时生命周期 | hover/drag、命中捕获、取消和滚动同步已接入；无溢出隐藏，有溢出常显 |
 | Radio 组、Tabs 方向键、Dropdown 禁用项/分组 | 选择模型、导航与语义协议 | 保留已有应用/controller 所有权 |
 | Image fit、圆角裁剪、加载/失败区分 | 资源状态、采样规则与跨后端裁剪 | 保留默认拉伸和未就绪占位 |
@@ -529,11 +533,11 @@ ThemeScope 内颜色、部件、字体、度量必须来自同一局部 Theme；
 
 ## 12. 分阶段实施与审查顺序
 
-每阶段执行“核对当前代码 → 实现 → review 并修复 → 验证 → 更新记录”后再继续。先复用现有能力，新增抽象须对应本文中的具体缺口。下表当前全部为待实施，不复用 M6/M10/M11 的历史完成标签。
+下表是原定 S0–S5 的实施顺序与出口条件；这些阶段已有完成记录，表中的“交付内容”是阶段范围，不表示当前全部待实施。当前缺口与未验证项以实施记录的“仍存缺口”和支持矩阵为准。后续阶段仍按“核对当前代码 → 实现 → review 并修复 → 验证 → 更新记录”执行。
 
 | 阶段 | 交付内容 | 出口条件 |
 | --- | --- | --- |
-| S0 现状与样本冻结 | 复核 §2，记录源码提交、现有截图、缺口与测试入口；建立可重复样本 | 23 类和辅助能力都有状态/源码对应，不以旧截图代替当前结果 |
+| S0 现状与样本冻结 | 复核 §2，记录源码提交、现有截图、缺口与测试入口；建立可重复样本 | 23 类原始范围和辅助能力都有状态/源码对应；后续 27 类枚举以当前支持矩阵补充 |
 | S1 token 与通用绘制 | §4 调色板/排版/尺寸、透明描边、焦点/圆角/阴影、继承与派生 | 深浅/四方向/高对比对比度测试，透明背景与边框/焦点不实心、不越界 |
 | S2 基础控件 | Text、Icon、Container、Button、TextField、Checkbox、Switch、Radio | 五按钮变体和关键组合状态通过，真实中文排版与编辑无回归 |
 | S3 选择、导航与滚动 | Slider、ProgressBar、Dropdown、Tabs、ScrollView/ListView/VirtualList 及 Scrollbar | 端点、选中/焦点、菜单滚动/边界、稳定 key 与实际事件一致 |
@@ -589,7 +593,7 @@ Gallery headless、真实窗口、Skia 光栅、GPU 验证使用命令表相应�
 
 ### 13.3 人工视觉与交互清单
 
-- [ ] 所有 23 种 WidgetType 都有接入说明；13 种内容/交互控件均有深浅色样本，10 种布局/容器按职责验收。
+- [ ] S0 原始 23 种 WidgetType 都有接入说明；当前新增的 List/Tree/TreeList/Splitter 及组合控制器另按各自设计文档验收。13 种内容/交互控件均有深浅色样本，10 种布局/容器按职责验收。
 - [ ] 五种 Button 变体可分辨；Outline 内部确实透明；focused 与 pressed 可同时辨认。
 - [ ] Checkbox 使用勾号；Radio 未选为空心、已选有内点；Switch 聚焦时不挤压滑块。
 - [ ] TextField 的光标、选区、placeholder、错误说明和中文 IME 在真实字体下对齐；ReadOnly 与 Disabled 可分辨。

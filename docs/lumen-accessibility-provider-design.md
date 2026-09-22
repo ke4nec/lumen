@@ -1,6 +1,6 @@
 # Lumen 原生无障碍 Provider 设计（M13：UIA / AT-SPI / NSAccessibility）
 
-> 文档状态：实施设计（2026-09）
+> 文档状态：实施设计；2026-09-22 状态：P1 Windows UIA 已实施，P2 AT-SPI/P3 NSAccessibility 待做，三平台真实屏幕阅读器人工验收待做。
 > 输入：源码现状盘点（`include/lumen/accessibility/bridge.h`（AccessibilityBridge 契约）、`include/lumen/accessibility/semantics.h`（语义树/role/flags/actions）、`src/app/app_shell.cpp`（pushSemantics/performAccessibilityAction）、`include/lumen/platform/application_host.h`（PlatformCapabilities））、`docs/lumen-self-use-roadmap.md` §4 M13、M5/M10/M11 完成记录、`docs/lumen-collection-controls-design.md` / `docs/lumen-menu-controls-design.md` / `docs/lumen-splitter-design.md`（新控件语义契约）。
 > 定位：把 M5 冻结的语义契约接到三平台原生屏幕阅读器。**零新增 WidgetType、零新增 RenderCommand、零 core 改动**；`LUMEN_ENABLE_ACCESSIBILITY_BRIDGE`（v0.3 阶段 8C 预留开关）默认关闭，未编入时行为与现状完全一致。
 
@@ -8,7 +8,7 @@
 
 ## 1. 背景与问题
 
-M5 已完成语义契约收口（identity diff、invalid/hidden flags、语义 action、Recording bridge 回归证据），但 `createPlatformAccessibilityBridge` 一直返回 nullptr——屏幕阅读器（讲述人/NVDA、Orca、VoiceOver）看不到任何 Lumen 应用内容。此后控件面持续扩大（List/Tree/TreeList、Menu/ContextMenu/MenuBar、Splitter、自定义标题栏），语义 role 已从 8 个增至 17 个，接入成本随语义面积增长——这是 M13 列为增强链收尾项的原因。
+M5 已完成语义契约收口（identity diff、invalid/hidden flags、语义 action、Recording bridge 回归证据）；当时 `createPlatformAccessibilityBridge` 返回 nullptr。M13 P1 已增加可选 Windows UIA provider，P2/P3 仍待实现，且真实屏幕阅读器（讲述人/NVDA、Orca、VoiceOver）人工验收未完成。此后控件面持续扩大（List/Tree/TreeList、Menu/ContextMenu/MenuBar、Splitter、自定义标题栏），当前 `SemanticsRole` 有 23 个枚举值并覆盖原始控件与后续控件；具体映射以源码及本文 §5/§6 为准。
 
 源码核对后的关键事实：
 

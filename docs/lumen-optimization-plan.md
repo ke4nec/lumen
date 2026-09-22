@@ -1,17 +1,19 @@
 # Lumen 既有能力优化计划：CPU 阴影 / 水平滚动轴 / 回退文本连续性
 
-> 文档状态：已完成（P1/P3 已交付，P2 核心已落地、gallery 水平滚动演示区待补）（2026-09）。
+> 文档状态：核心实现已完成；P2 的 Gallery 水平滚动演示区仍待补（2026-09）。
 > 来源：对已收口里程碑「已知限制」的审查（非新里程碑，不占编号；完成记录按仓库惯例写入 `lumen-self-use-roadmap.md` §10）。
-> 范围：三项互相独立、可分别合入的既有能力完善。实施顺序建议 **P1 → P3 → P2**（改动面与风险递增；先落两个收敛快赢，再做跨层大项）。
-> 前置：工作树中未提交的「菜单动效」批次先行落账——P2 与其同触 `src/core/interaction.cpp`，避免混淆归属。
+> 范围：三项互相独立、可分别合入的既有能力完善。历史实施顺序为 **P1 → P3 → P2**。
+> 前置：菜单动效批次已落账；P2 与其曾共同触及 `src/core/interaction.cpp`，当前实现状态以源码、测试和路线图完成记录为准。
+
+本文下方的“现状与证据”“目标”“任务拆分”保留各项实施前的方案快照；当前完成状态以本节总览、路线图完成记录和支持矩阵验证快照为准。
 
 ## 0. 总览
 
 | 编号 | 主题 | 一句话 | 核心证据（符号口径，行号不作为稳定引用） | 改动面 | 预估 |
 | --- | --- | --- | --- | --- | --- |
-| P1 | CPU 阴影模糊 | 便携包默认后端上，elevation 阴影从「50% 透明硬边扁平面」升级为真实软阴影 | `CpuRenderer::drawShadow` 丢弃 blur 参数（`(void)blur`）；damage/命令/token 均已为 blur 就绪 | 单文件渲染器 + 测试/哈希 | ~1 天 |
-| P2 | 水平滚动轴 | 框架目前只有纵向滚动，补齐水平轴（控制器/布局/滚轮/拖动/惯性/滚动条/键盘/语义） | `ScrollController` 全 Y 语义；`layoutScrollView` 内容宽 ≤ 视口；painter 只画纵向 thumb；wheel 路由只消费 deltaY | core/layout/render/interaction/语义/示例 | 3–5 天 |
-| P3 | 回退文本连续性 | GPU 运行时失效回退后，文本从真实字形退化为占位度量、与光标/选区几何漂移 | counter GPU 回退返回空 setup → AppShell 内部 CpuRenderer；`setSystemFonts` 对 `SkiaFontManager` 强转失败 → `drawText` 非 placeholder runs 走逐码点占位旧路径 | 示例回退策略 + 文档（可选框架便利层） | ~0.5–1 天 |
+| P1 | CPU 阴影模糊 | 已完成：CPU `DrawShadow` 对 blur>0 使用三次可分离 box blur；blur=0 保留防御性扁平路径 | `src/render/cpu_renderer.cpp::CpuRenderer::drawShadow`；Skia/GPU 命令契约不变 | 已合入；无阴影路径保持兼容 | 已完成 |
+| P2 | 水平滚动轴 | 核心实现已完成：控制器/布局/滚轮/拖动/惯性/滚动条/键盘/语义均支持水平轴；Gallery 超宽卡片演示区仍待补 | `ScrollAxis`、水平 layout/painter/interaction/语义回归；详见 [`lumen-scroll-design.md`](lumen-scroll-design.md) | Gallery 示例与集成用例待补；自动隐藏/RTL/水平虚拟化不在本项 | 核心已完成 |
+| P3 | 回退文本连续性 | 已完成：Skia 构建的 GPU 探测/初始化失败回退到 CPU，运行时失败优先回退到 Skia 软件光栅以保持文本连续 | `examples/counter/main.cpp` 的 `skiaSoftwareSetup` 与 `renderer_fallback.h`；诊断输出区分 `skia software raster`/`cpu` | 回退链和 counter smoke 已接入；硬件 GPU 仍受 runner 条件约束 | 已完成 |
 
 三项均要求：既有 headless 帧哈希在不涉及新行为的场景保持不变；新行为默认关闭或不改变默认路径；各自独立提交、独立回滚。
 
@@ -19,7 +21,7 @@
 
 ## 1. P1：CPU 阴影模糊
 
-### 1.1 现状与证据
+### 1.1 实施前现状与证据（历史快照）
 
 - `src/render/cpu_renderer.cpp::CpuRenderer::drawShadow` 是唯一的降级消费点：`(void)blur`，画 token 阴影色 alpha×0.5 的偏移矩形。Skia/GPU 路径（`SkiaRenderer::drawShadow`）按 `kNormal_SkBlurStyle`、σ = blur×0.5×deviceScale 做真实模糊。
 - 基础设施全部就绪，本次只需填渲染实现：
@@ -68,7 +70,7 @@ CPU/Skia/GPU 三后端同命令；CPU 软阴影渐变单调、能量近似守恒
 
 ## 2. P2：水平滚动轴
 
-### 2.1 现状与证据
+### 2.1 实施前现状与证据（历史快照）
 
 - `include/lumen/core/scroll.h::ScrollController`：单轴全 Y 语义（`offset_/viewportExtent_/contentExtent_` 各一份；`applyWheel/applyDrag/applyKey/semanticScroll/noteDragSample/stepFling` 全部按纵向解释；fling 物理常量与轴无关，可直接复用）。
 - `src/layout/layout.cpp::layoutScrollView`：内容约束「宽 ≤ 视口 - padding，高不限」——正是这个约束使横向溢出内容无法存在；子 offset 以 `-offset` 应用在 Y。
@@ -118,7 +120,7 @@ TreeList 内容超宽时的水平 clip 平移（无虚拟化，整树平移）�
 
 ## 3. P3：GPU→CPU 回退的文本连续性
 
-### 3.1 现状与证据（根因链）
+### 3.1 实施前现状与证据（历史快照）
 
 1. counter 的 GPU 模式：`rendererFactory` 创建 `SkiaGpuRenderer`，`fontFactory` 提供 `SkiaFontManager`（真实 shaping/度量）。
 2. GPU 运行时失效：`runOptions.onRendererFailure` 销毁 GPU 资源与窗口，重建 softwarePresentation 窗口，返回**有值的空 setup**——语义为「回退到 AppShell 内部 CPU 渲染器」。
@@ -155,6 +157,8 @@ TreeList 内容超宽时的水平 clip 平移（无虚拟化，整树平移）�
 ---
 
 ## 4. 实施顺序、提交切分与回滚
+
+当前收口状态：P1、P3、P2 核心实现均已完成并写入路线图；P2 仅剩 Gallery 超宽卡片演示区及其集成用例。自动隐藏滚动条、RTL、水平虚拟化和双轴联滚不属于本轮出口条件。
 
 - **顺序**：P1（单文件、无公共接口改动、可见收益最大）→ P3（应用装配层小改）→ P2（跨层，含新设计文档）。
 - **提交**（Conventional Commits，各自独立可回滚）：

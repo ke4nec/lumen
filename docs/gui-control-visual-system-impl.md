@@ -2,6 +2,8 @@
 
 > 本文是 [`gui-control-visual-system-task.md`](gui-control-visual-system-task.md) §12 分阶段实施（S0–S5）的记录文件，按 §14 模板逐阶段追加。
 > 每阶段记录当次核对的真实源码状态；不改写历史条目来掩盖状态变化。
+>
+> 当前索引（2026-09-22）：S0–S5 与 S6 记录均为历史快照；Switch knob 位移、Dialog 正文滚动、控件标签多行换行、Tooltip 键盘焦点触发、CPU 软阴影和滚动条悬停/拖动已在后续记录中补齐。当前仍保留的主要边界是 Dropdown 可选淡入、Scrollbar auto-hide，以及真实桌面人工视觉验收和 Linux/macOS 主机证据；平台与后端状态以 [`docs/support-matrix.md`](support-matrix.md) 为准。
 
 ---
 

@@ -1,6 +1,6 @@
 # Lumen 自绘控件视觉系统设计
 
-> 文档状态：设计基线；V1/V2 已实施（见文末实施状态）
+> 文档状态：设计基线；V1–V3 已实施，V4 部分完成（2026-09-22 核对，见 §12）
 >
 > 编写时间：2026-09
 >
@@ -11,10 +11,10 @@
 
 ## 1. 文档目的
 
-Lumen 是 C++20 自绘 GUI 框架。当前控件已经具备基本的布局、交互和绘制能力，
+Lumen 是 C++20 自绘 GUI 框架。设计启动时控件已具备基本布局、交互和绘制能力，
 但 Button、TextField、Checkbox、Switch 和 Dialog 的颜色、尺寸、圆角和状态表现
-仍分散在 painter、布局代码和示例构建器中。新增控件时容易产生新的硬编码，主题切换
-也不能完整覆盖控件外观。
+分散在 painter、布局代码和示例构建器中。本文定义统一视觉契约；这批迁移已实施，
+当前完成情况与剩余平台验收见 §12。
 
 本文定义 Lumen 的视觉系统和迁移方式，目标是让：
 
@@ -28,9 +28,9 @@ Lumen 是 C++20 自绘 GUI 框架。当前控件已经具备基本的布局、�
 
 ### 2.1 已完成能力
 
-按照当前 Git 历史和代码结构，以下能力已经进入项目基线：
+以下为设计启动时的基线盘点；后续控件和视觉能力的当前状态见 §12 与自用路线图：
 
-| 区域 | 当前能力 |
+| 区域 | 设计启动时已有能力 |
 | --- | --- |
 | 核心树 | `Widget`、`Element`、`RenderNode`、稳定 identity、状态绑定和 UI 线程所有权 |
 | 布局 | Box/Flex 子集、Row、Column、Stack、padding、margin、intrinsic、baseline、滚动视口 |
@@ -48,12 +48,12 @@ Lumen 是 C++20 自绘 GUI 框架。当前控件已经具备基本的布局、�
 `MobileHostSeam` 接缝；它不代表原生移动端支持，Android/iOS 原生胶水也不再列为
 当前集成目标。视觉系统的后续设计和验收只面向三桌面。
 
-### 2.2 当前视觉问题
+### 2.2 设计启动时的视觉问题
 
-编写本文时旧 [`Theme`](../include/lumen/widgets/theme.h)（已删除，见 §12
-实施状态）已有页面背景、surface、文本、主色、
-错误色、间距和排版 token，也能派生 light/dark 与部分无障碍设置。但它还不是完整的
-控件主题：
+以下记录设计启动时的缺口。旧 `include/lumen/widgets/theme.h` 已删除，当前入口为
+[`style/theme.h`](../include/lumen/style/theme.h)。旧 Theme 当时已有页面背景、surface、
+文本、主色、错误色、间距和排版 token，也能派生 light/dark 与部分无障碍设置，
+但尚非完整控件主题：
 
 - `painter.cpp` 中仍有按钮、输入框、Checkbox、Switch 的硬编码颜色和几何值。
 - `themedButton()` 和 `themedTextField()` 目前主要设置字体，不能统一控件 chrome。
@@ -620,7 +620,21 @@ damage 经 `sameNode` 的 `clipRounded` 字段感知开关变化。透明呈现�
 
 ## 12. 实施状态（2026-09 追记）
 
-V1（样式基础和当前控件迁移）与 V2（状态、交互和无障碍联动）已实施：
+### 12.1 当前状态（2026-09-22）
+
+| 阶段 | 实现状态 | 验证与剩余边界 |
+| --- | --- | --- |
+| V1 样式基础、V2 状态联动 | 已实施：Theme/token、布局前 resolve、RenderNode 样式、damage 与交互状态联动 | 控件细化和回归见 [S0–S6 实施记录](gui-control-visual-system-impl.md) |
+| V3 完整设计系统 | 已实施：M6 图标/阴影/ThemeScope，M10 状态与 Dialog/Navigator 转场；后续 CPU 软阴影和滚动条交互已接入 | `tests/visual_m6_tests.cpp`、`motion_scroll_tests.cpp`、`visual_regression_tests.cpp` 与各后端测试；预留控件能力仍按各设计文档管理 |
+| V4 三桌面适配 | 部分完成：PlatformThemeAdapter、系统深浅色/强调色、主题设置派生、DPI/窄窗口样本已接入 | SDL 宿主尚未查询系统高对比/减少动画/字体缩放；完整三桌面人工视觉与交互验收待补，不能标成 V4 全部完成 |
+
+M11 四套 ThemeDirection 已落地。`AccessibilitySettings` 手动输入可用，不代表系统
+相应设置自动同步；原生屏幕阅读器接入另由 M13 跟踪。当前验证快照统一见
+[支持矩阵](support-matrix.md)，不把 headless 测试或 CI 成功等同于人工验收。
+
+### 12.2 V1/V2 历史实施与验收快照
+
+以下条目保留当时的实现与测试口径，后续补齐项以 §12.1 为准：
 
 - `lumen-style` 模块（`include/lumen/style/`、`src/style/`）与 `core/style.h`
   的 `ResolvedStyle` 值类型已落地；Theme 为分组 token 结构，primitive →
@@ -632,13 +646,13 @@ V1（样式基础和当前控件迁移）与 V2（状态、交互和无障碍联
   绘制（damage 不变量：控件绘制不越出节点矩形）。
 - `applyTheme()`/themed helper 已删除；counter/settings 使用语义属性 +
   `StyleOverrides`；DSL 支持 `variant/size/enabled/invalid/selected`。
-- §8 的扩展契约以 token 先行冻结：`IconTheme`/`IconId`、`ElevationTokens`、
-  `MotionTokens`（reduceAnimation 归零）已入 Theme；图标/阴影绘制、状态
-  过渡动画、ThemeScope 与 `PlatformThemeAdapter` 留待 V3/V4。
-- 命令序列化升级 v2 以携带完整 TextStyle（resolved 样式带 weight/family）。
+- 当时先冻结 `IconTheme`/`IconId`、`ElevationTokens`、`MotionTokens`；图标/
+  阴影绘制、状态过渡、ThemeScope 与 PlatformThemeAdapter 在后续阶段接入。
+- 当时命令序列化升级 v2 以携带完整 TextStyle；当前写 v7、读 v6/v7，见
+  [预乘 alpha 迁移说明](lumen-alpha-migration.md)。
 - V1/V2 当时的验收记录：Windows CPU Debug 为 303 个用例，SDL-free mobile-core 为
-  291 个用例；counter/settings headless 与窗口 smoke 正常。Skia Release 还需
-  通过 `skia_paints_counter_frame_consistently` 后才能作为完整后端门槛。
+  291 个用例；counter/settings headless 与窗口 smoke 正常。当时 Skia Release
+  尚待 `skia_paints_counter_frame_consistently` 验证；后续后端验证见支持矩阵。
 - 焦点环默认关闭（2026-09-19 追记）：§5/§6.1 改为默认不绘制、显式
   `showFocusRing=true` 才绘制。代码已同步（`widget.h:306` 默认 `false`；
   集合/树生成行继承视口设置；`gallery` 状态矩阵与焦点语义测试显式开启；
@@ -652,7 +666,6 @@ V1（样式基础和当前控件迁移）与 V2（状态、交互和无障碍联
   Tree 箭头同契约随视口传递（chevron 是独立 Tab 停靠点），settings
   示例页 radio/switch/checkbox 显式开启（无其他焦点指示）；正文与
   常规表面保持默认关闭。
-  保持默认关闭。
 
 以上为历史实施记录，后续实现状态以自用路线图为准。mobile-core 数量只说明当时
 通用实验配置的验证情况，不代表 Android/iOS 支持或本次复测结果。

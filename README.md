@@ -26,7 +26,8 @@ v0.2 计划
 阶段 0–6 + v0.2 阶段 7A–7E + v0.3 桌面阶段 8A–8E 的核心契约（跨平台宿主、
 文本/IME/编辑模型、语义树与 Recording 桥、滚动/表单/弹窗/导航组件）。历史
 SDL-free 移动 host 接缝仍保留，但不代表当前支持移动平台。三桌面便携发布已纳入
-M8；AppImage 已随 M12 交付，完整 .app bundle 与 GPU 包变体待补齐；平台原生
+M8；M12 已交付 AppImage、CPU `.app` 骨架、三平台 Skia 包和 Linux GPU 包，
+Windows/macOS GPU 包与 CPack Bundle 仍待补齐；平台原生
 无障碍 M13 进行中（P1 Windows UIA 已实施）。平台能力详见
 [`docs/support-matrix.md`](docs/support-matrix.md)。
 
@@ -160,21 +161,23 @@ TextLayout，光标/选区/宽度不跨后端漂移。
 actions，节点 id 复用 RenderNode 稳定 identity）、identity diff（重建时
 保留辅助技术焦点）、action 分发（activate/setValue/focus/scroll/dismiss
 与键盘路径共用）。`AccessibilityBridge` 契约 + headless Recording 桥；
-平台原生桥（UIA/AT-SPI/NSAccessibility）为可选编译目标。高对比/减少动
-画/字体缩放经只读能力查询进入 `Theme::fromSettings` 与
-`FrameScheduler::setReduceAnimation`。
+Windows UIA provider 已实现，需启用 `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE`；
+Linux AT-SPI 与 macOS NSAccessibility 尚未实现，工厂返回 nullptr 并给出诊断。
+应用提供的高对比/减少动画/字体缩放设置可驱动 `Theme::fromSettings` 与
+`FrameScheduler::setReduceAnimation`；SDL 宿主的系统对应偏好查询尚未接通。
+UIA 客户端端到端冒烟已有覆盖，三平台屏幕阅读器人工验收按 M13 单独记录。
 
 ### 应用组件与 settings 示例（8D）
 
 `ScrollView`/`ListView`（滚动视口：内容主轴不限、clip、`ScrollController`
-统一滚轮/拖动/键盘/语义入口，确定性无惯性）、`Checkbox`/`Switch`（bind
+统一滚轮/拖动/键盘/语义入口，M10 已接入确定性惯性滚动；ScrollView 支持水平轴）、`Checkbox`/`Switch`（bind
 状态自动切换）、`FocusScope`（Tab 域内循环）、`FormController` 校验、
 `NavigatorController`（push/pop/handleBack 统一 Escape/返回/关闭规则）与
 `makeDialog`（modal barrier + FocusScope + 语义 dismiss；视觉来自
 `DialogTokens`）。`examples/settings/` 组合以上全部能力；320px 窄窗口、
 连续 resize、局部重绘与全帧像素一致（测试断言）。
 
-### 视觉系统（V1/V2）
+### 视觉系统（V1–V3 已实施，V4 部分完成）
 
 `lumen-style`：primitive → semantic → component 三层 token、分组
 `Theme`（ColorScheme/Typography/Metrics/Elevation/Motion/Icon 与 Button/
@@ -186,6 +189,10 @@ resolved style（无控件硬编码，CPU/Skia/GPU 命令路径不依赖 Theme�
 `Theme::fromSettings` 派生高对比/字体缩放/减少动画/density；焦点环内嵌
 绘制且不影响布局尺寸；`StyleOverrides` 提供字段级品牌定制（显式黑/透明
 按字面生效）。DSL 支持 `variant/size/enabled/invalid/selected` 声明。
+IconTheme/Elevation/Motion、ThemeScope、PlatformThemeAdapter 和四套
+ThemeDirection 已接入。V4 的系统高对比/减少动画/字体缩放查询，以及完整三桌面
+人工窗口验收仍待补齐；当前自动化证据与平台限制以
+[`docs/support-matrix.md`](docs/support-matrix.md) 为准。
 
 ### macOS 桌面与历史实验接缝（8E）
 

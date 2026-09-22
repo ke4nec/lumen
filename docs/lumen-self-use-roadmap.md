@@ -4,7 +4,7 @@
 > 目标：在现有 Lumen 核心之上，形成一套可供个人工具类应用长期使用的跨平台桌面 GUI。
 > 当前策略（2026-09-14 调整）：只规划 Windows/Linux/macOS 桌面端；Android/iOS 暂不实现并冻结。M9 仅保留历史编号，桌面里程碑完成后不自动进入移动端开发，也不预排移动端版本。
 > 桌面自用版 M0–M8 已全部收口；后续实施 M10–M13 桌面增强链（见 §3/§4），M9 不在实施链中。
-> M12 之后按用户需求穿插交付按需控件增强（集合控件/菜单/分栏/自定义标题栏），不占里程碑编号（见 §10 对应完成记录）。
+> M12 之后按用户需求穿插交付按需控件增强（集合控件/菜单/分栏/自定义标题栏），不占里程碑编号（见 §10 对应完成记录）。当前源码与 CI 证据索引见 [`docs/support-matrix.md`](support-matrix.md) 的 2026-09-22 验证快照。
 
 ## 1. 目标、范围和完成定义
 
@@ -58,11 +58,11 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | v0.3 8A | 已完成平台无关 host 契约 | `ApplicationHost`、`WindowId`、`WindowMetrics`、`HostEvent`、Fake host |
 | v0.3 8B | 已完成编辑模型和基础文本契约 | grapheme、UTF-8、selection/composing、IME 状态机、TextField |
 | v0.3 8C | 已完成语义契约 | `SemanticsTree`、identity diff、Recording bridge、语义 action |
-| v0.3 8D | 已完成应用基础组件 | ScrollView/ListView、Form、Dialog、Navigator、settings 示例 |
+| v0.3 8D | 已完成应用基础组件 | ScrollView/ListView、Form、Dialog、Navigator、settings 示例；当前 `runApp` 仍装配单个 AppShell，宿主多窗口接口保留 |
 | v0.3 8E | macOS 桌面接入；另保留历史 SDL-free 实验接缝 | SDL3 桌面 host；`MobileHostSeam` 只代表已有通用状态机，不代表 Android/iOS 支持 |
 | 视觉 V1/V2 | 已完成主要状态样式迁移 | token、Theme、StyleResolver、ResolvedStyle、状态与 damage 联动 |
 | 自用 M1 | 已完成真实文本与编辑闭环 | SkiaFontManager、shaped TextLayout/RenderCommand、UAX#9 子集、EditingHistory（见 §10 M1 完成记录） |
-| 自用 M2 | 已完成应用框架层与 C++ DSL | `lumen-app`（AppShell/runApp）、counter/settings 迁移、C++ builder 补齐（见 §10 M2 完成记录） |
+| 自用 M2 | 已完成应用框架层与 C++ DSL | `lumen-app`（AppShell/runApp）、counter/settings 迁移、C++ builder 补齐；多窗口路由仍属按需评估（见 §10 M2 完成记录） |
 | 自用 M3 | 已完成布局/Grid/VirtualList/Image | Grid/Image/VirtualList 组件、VirtualListController、virtual-list 基准场景（见 §10 M3 完成记录） |
 | 自用 M4 | 已完成三桌面平台服务与窗口能力 | 文件选择/OpenURL/通知/光标/图标契约与 SDL/Fake 实现、能力统一报告、settings 服务区（见 §10 M4 完成记录） |
 | 自用 M5 | 已完成语义契约与键盘可用性收口 | invalid/hidden flags、语义桥驱动、focusFirstFocusable 焦点恢复、Recording bridge 回归证据（见 §10 M5 完成记录） |
@@ -71,7 +71,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 自用 M8 | 已完成三桌面便携发布 | install/CPack/依赖入包/RPATH/CI package job + 解包冒烟（见 §10 M8 完成记录） |
 | 增强链 M10 | 已完成动效与滚动体验 | 动画帧调度/整节点透明度转场/状态色过渡/惯性滚动（见 §10 M10 完成记录） |
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
-| 增强链 M12 | 已完成平台服务与发布补全 | 系统主题查询/事件、三平台原生通知与强调色、AppImage/.app/包变体（见 §10 M12 完成记录） |
+| 增强链 M12 | 已完成平台服务与发布补全 | 系统主题事件/强调色输入、三平台原生通知、AppImage/.app/包变体（OS 偏好自动查询仍待补，见 §10 M12 完成记录） |
 | 增强链 M13 | 进行中（P1 Windows UIA 已实施） | 契约扩展/runApp 装配/UIA fragment 树与端到端冒烟；AT-SPI 与 NSAccessibility 待做（见 §10 M13 进行中记录） |
 | 按需控件增强 · 集合控件 | 已完成 List/Tree/TreeList 与共享选择模型 | 四选择模式/树扁平化/源视口滚动框架接管（见 §10 集合控件完成记录） |
 | 按需控件增强 · 菜单与分栏 | 已完成 ContextMenu/MenuBar 与 Splitter | Secondary 通道/M11 overlay 菜单面板/分隔条框架接管（见 §10 对应完成记录） |
@@ -79,7 +79,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 
 M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/380、GPU Release 387/387（其中 3 个硬件相关用例按环境跳过），另有历史 mobile-core 356/356。这些数量不是当前提交的复测结果，mobile-core 结果也不代表移动设备验证。Windows/macOS 对应门槛由 CI package/GPU job 负责验证。M7/M8 的跨平台 CI 与便携包 job 已纳入工作流。
 
-关键缺口的源码依据（以文件和符号为准，行号随实现变化不作为稳定引用）：应用主循环和帧管线位于 `examples/counter/counter_app.h::CounterApp::rebuildIfDirty/renderFrame` 与 `examples/settings/settings_app.h::SettingsApp::rebuildIfDirty/renderFrame`；Widget 类型定义位于 `include/lumen/core/widget.h::WidgetType`；C++ DSL builder 位于 `include/lumen/dsl/dsl.h::column/row/container/text/button/text_field`；表单内置校验器位于 `include/lumen/widgets/form.h::FormController::nonEmpty/minLength`；GPU `partialSubmit` 当前在 `src/render/skia_gpu_renderer.cpp::SkiaGpuRenderer::capabilities` 固定为 false；移动接缝实现位于 `src/platform/mobile/mobile_host_seam.cpp::MobileHostSeam`。
+当前盘点的源码入口（行号随实现变化不作为稳定引用）：应用壳位于 `src/app/app_shell.cpp`，`runApp` 装配位于 `src/app/run_app.cpp`；counter/settings 的 build 与业务状态仍在各自示例头文件中；Widget 类型定义位于 `include/lumen/core/widget.h::WidgetType`；C++ DSL builder 位于 `include/lumen/dsl/dsl.h`；表单内置校验器位于 `include/lumen/widgets/form.h::FormController::nonEmpty/minLength`；GPU `partialSubmit` 当前在 `src/render/skia_gpu_renderer.cpp::SkiaGpuRenderer::capabilities` 固定为 false；移动接缝实现位于 `src/platform/mobile/mobile_host_seam.cpp::MobileHostSeam`。
 
 ### 2.2 仍缺少的能力
 
@@ -88,15 +88,15 @@ M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/3
 | 文本 | M1 已完成：`SkiaFontManager`（字体族/weight/回退/度量/shaping，pimpl 无 Skia 类型）+ `TextLayoutResult` shaped run/glyph/cluster/baseline；CPU 占位与 Skia 共享同一契约，缺字体明确诊断 | 复杂脚本合字（HarfBuzz 级）属按需评估池（§4）；默认字体栈和 Gallery 不依赖 M9 | M1 已收口 |
 | 编辑 | M1 已完成：`EditingHistory` undo/redo 栈、事务边界、连续输入合并、Ctrl+Z/Shift+Z/Y、IME 提交单事务、preedit 不进栈 | 富文本编辑不纳入第一版 | M1 已收口 |
 | 方向文本 | M1 已完成：UAX#9 确定性子集（强/弱/中性类 + L2 重排），混合方向命中测试可靠，grapheme 边界为唯一编辑索引 | 显式嵌入控制/镜像括号/数字定形属按需评估池（§4） | M1 已收口 |
-| 应用框架层 | M2 已完成：`lumen-app` 目标（`app::AppShell` + `app::runApp`）统一主循环/事件泵/重建/damage/DPI/IME 同步，支持 Fake host 与外部 renderer 注入；counter/settings 已迁移（示例只保留 build/状态/handler） | — | M2 已收口 |
+| 应用框架层 | M2 已完成：`lumen-app` 目标（`app::AppShell` + `app::runApp`）统一主循环/事件泵/重建/damage/DPI/IME 同步，支持 Fake host 与外部 renderer 注入；counter/settings 已迁移 | 当前 `runApp` 装配一个 AppShell；宿主已有 `WindowId`/事件路由接口，多窗口应用编排仍属按需评估 | M2 已收口 |
 | DSL | M2 已完成：C++ builder 补齐 stack/checkbox/switch_widget/scroll_view/list_view/focus_scope，与 `.lumen` 冻结节点集对齐（golden 对照测试）；Dialog/Navigator 经 `widgets::makeDialog`/`NavigatorController` 提供 | DSL 可编程性/脚本能力不纳入第一版 | M2 已收口 |
 | 控件库 | M6+M11 已完成：Slider/ProgressBar/Radio/Tooltip/Dropdown/Tabs 六控件 + Scrollbar 实绘 + `FormController::compose`；M11 收口 Dropdown 浮动菜单（overlay + 键盘导航）与 Tooltip hover 延迟显隐；集合控件 List/Tree/TreeList 与共享选择模型（2026-09-17）、ContextMenu/MenuBar/Splitter（2026-09-18）随按需控件增强补齐 | — | M6+M11 已收口（控件增强见 §10） |
 | 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 横向网格/跨行列合并留按需评估（§4） | M3 已收口 |
-| 滚动 | M3 已完成：VirtualList（itemCount/itemBuilder/estimatedExtent/stable key/viewport cache；实测 extent 修正与锚点稳定）统一汇入 ScrollController | M10 已收口触摸拖动接线与惯性滚动；水平/嵌套滚动留按需评估 | M3+M10 已收口 |
-| 平台服务 | M4+M12 已完成：文件选择/OpenURL/光标/图标（SDL）+ 通知与强调色（M12 原生 seam：Win32/DBus/AppKit）+ 系统主题查询（SDL_GetSystemTheme）与 SystemThemeChanged 事件 + adaptPlatformTheme 保留派生 | Linux/macOS 原生代码以 CI 首跑为事实来源 | M4+M12 已收口 |
+| 滚动 | M3 已完成 VirtualList，M10 已完成触摸拖动与惯性；ScrollView 已支持水平轴、水平/嵌套滚轮路由和双向滚动条 | VirtualList/Tree 的源控制器仍为纵向；Gallery 超宽卡片演示、自动隐藏、RTL 与水平虚拟化仍待补 | M3+M10 已收口；P2 演示待补 |
+| 平台服务 | M4+M12 已完成：文件选择/OpenURL/光标/图标（SDL）+ 通知与强调色（M12 原生 seam：Win32/DBus/AppKit）+ SDL 系统主题事件与 `adaptPlatformTheme` 派生 | 高对比、减少动画、字体缩放目前支持手动设置；OS 偏好自动查询仍待补，Linux/macOS 原生服务以 CI 证据为准 | M4+M12 已收口；偏好自动查询待补 |
 | 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| M13 P1 Windows UIA provider 已实施（契约扩展 `PlatformAccessibilityHost`/runApp 装配/UIA fragment 树/端到端冒烟）；AT-SPI 与 NSAccessibility 待做（Recording bridge 作跨平台回归证据） | M5 已收口；M13 进行中 |
-| 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur/CPU 扁平面降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | M10 已收口转场动画驱动（整节点透明度/Dialog/Navigator 过渡/状态色过渡 opt-in）；v0.4 视觉方向属 M11 | M6+M10 已收口 |
-| GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道（快照去子化，reconcile O(n·depth)→O(n)） | 三桌面 GPU CI 首跑为事实来源（macOS job 为本变更新增） | M7 已收口 |
+| 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur；CPU 采用明确的扁平降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | M10 已收口转场动画驱动；v0.4 视觉方向属 M11 | M6+M10 已收口 |
+| GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道 | Linux GPU job 要求实际 `skia-gpu`；Windows/macOS job 在无硬件环境可明确跳过，不能视为硬件呈现验收 | M7 已收口；硬件覆盖受 runner 约束 |
 | 发布 | M8+M12 已完成：install/CPack/RPATH/package job + Linux 桌面集成（desktop/icon）与 linuxdeploy AppImage + macOS Lumen.app 骨架 + package-skia（三平台）与 package-skia-gpu（Linux llvmpipe）变体 | Windows/macOS GPU 包与 CPack Bundle 生成器留后续；新形态以 CI 首跑为事实来源 | M8+M12 已收口 |
 
 移动端不列为桌面自用版的能力缺口；已存在的实验接缝和字体代码见 §4 M9 冻结说明。
@@ -287,7 +287,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - 完成 FocusScope 的 Tab/Shift+Tab 顺序、语义焦点、Escape/返回、modal barrier 和焦点恢复。
 - 让 disabled、checked、selected、invalid、focused 同时影响视觉、hit test、键盘和语义。
 - Recording bridge 记录树更新、identity diff、焦点变化和 action 结果。
-- `createPlatformAccessibilityBridge` 继续报告 provider 未纳入；UIA/AT-SPI/NSAccessibility 不阻塞第一版便携发布。
+- 该条是 M5 阶段的历史边界：当时 `createPlatformAccessibilityBridge` 报告 provider 未纳入。当前 M13 P1 已增加可选 Windows UIA provider；AT-SPI/NSAccessibility 仍不阻塞第一版便携发布。
 
 **验证**
 
@@ -421,7 +421,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 **实现**
 
 - 原生通知后端（SDL 3.2.10 无 API 的平台走原生层：Windows Toast/传统通知、Linux DBus org.freedesktop.Notifications、macOS UserNotifications）。
-- `prefersDarkMode`/`accentColor` 系统查询（Win32 注册表/SystemParametersInfo、DBus org.freedesktop.appearance、NSAppearance）接入 `PlatformThemeAdapter`。
+- 目标保留：将 `prefersDarkMode`/`accentColor` 的 Win32/DBus/NSAppearance 系统偏好查询接入 `PlatformThemeAdapter`；当前实现已有 SDL 系统主题事件、强调色适配和手动 `highContrast`/`reduceAnimation`/`fontScale` 设置，自动偏好查询尚未完成。
 - 窗口级光标（Win32 `WM_SETCURSOR` 等，替换进程级 `SDL_SetCursor` 语义）。
 - 发布形态：Linux AppImage（linuxdeploy）、macOS 完整 `.app` bundle（CPack Bundle/Info.plist）、CI package job 增加 Skia/GPU 包变体。
 
@@ -537,6 +537,8 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   真实平台已验证/可发布），禁止把“接口存在”标记为“平台完成”。
 
 ## 10. 里程碑完成记录（M0 冻结模板）
+
+本节是按阶段追加的历史快照，不替代当前状态盘点。后续记录若与当前源码或 CI 不同，必须保留原始日期并在条目中注明“当时”；当前结论以本文件 §2 和 [`docs/support-matrix.md`](support-matrix.md) 的验证快照为准。
 
 每个里程碑的完成记录必须包含：变更、测试、平台、已知限制、回滚点。
 模板：

@@ -1,7 +1,7 @@
 # Lumen 集合控件设计（List / Tree / TreeList）
 
 > 文档状态：已实施契约；List、Tree 视觉与交互补齐于 2026-09-19。
-> 输入：源码现状盘点（`include/lumen/core/widget.h`、`include/lumen/core/virtual_list.h`、`src/layout/layout.cpp`）、`docs/lumen-self-use-roadmap.md` M0–M12 完成记录、`docs/lumen-visual-system-design.md`（token 三层模型/尺度表/状态规则/滚动条契约）、成熟 C++ GUI 框架的列表/树控件契约。
+> 输入：源码现状盘点（`include/lumen/core/widget.h`、`include/lumen/core/virtual_list.h`、`src/layout/layout.cpp`）、`docs/lumen-self-use-roadmap.md` 的 M0–M8、M10–M12 历史完成记录、`docs/lumen-visual-system-design.md`（token 三层模型/尺度表/状态规则/滚动条契约）、成熟 C++ GUI 框架的列表/树控件契约。
 > 配套视觉设计稿：`design/collection-controls.html`。
 > 定位：桌面自用版控件库增强，遵循既有"Widget 不可变声明 + 应用侧控制器 + 布局期物化"架构，不引入新模块。
 
