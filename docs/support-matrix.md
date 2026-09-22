@@ -61,8 +61,10 @@ AppKit display preferences/preferred body font，Windows 使用 SystemParameters
 
 以上结果仅属于该源码提交，不能作为后续提交自动通过的证据。支持矩阵中的能力、
 自动化覆盖和人工验收分别记录：M7 的标准 runner 必须实际提交 GPU 帧，Windows/macOS
-工作流尚未像 Linux 一样强制断言这一点。性能 CI 当前检查 CPU 帧哈希重复性并上传报告，
-尚未自动执行同后端/同场景 p50/p95 退化不超过 10% 的门槛。
+工作流尚未像 Linux 一样强制断言这一点。当前性能 CI 已检查 CPU/Skia/GPU
+五类固定场景的 p50/p95、submit/GPU wait、分配量及命令数，门槛为不超过 10%；
+固定基准提交与候选在同一 runner 交替实测，双方三次取中位数并归档完整元数据。
+旧 `working-tree` 基线仅保留为历史样本，不参与门槛；headless 耗时不包含 present。
 
 ### 预乘 alpha 联调历史记录（2026-09-20）
 

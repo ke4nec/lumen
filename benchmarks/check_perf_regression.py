@@ -11,6 +11,7 @@ import argparse
 import copy
 import json
 import math
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -23,7 +24,11 @@ PHASE_METRICS = (
     "allocs_p50",
     "alloc_bytes_p50",
 )
-IDENTITY_FIELDS = ("backend", "scenario", "viewport")
+IDENTITY_FIELDS = ("backend", "scenario", "viewport", "toolchain", "build_type",
+                   "platform", "warmup_frames", "measured_frames", "alpha_mode",
+                   "clear_alpha", "measurement_scope", "runner", "measurement_session",
+                   "scene_revision", "dependency_revision", "compiler_flags")
+REQUIRED_PHASES = {"frame", "reconcile", "layout", "paint", "submit", "gpu_wait"}
 
 
 def _number(value: Any, name: str, path: Path) -> float:
@@ -42,17 +47,35 @@ def _load(path: Path) -> dict[str, Any]:
         raise ValueError(f"cannot read {path}: {error}") from error
     if not isinstance(data, dict):
         raise ValueError(f"{path}: report must be a JSON object")
-    for field in IDENTITY_FIELDS + ("phases", "commands_per_frame", "nodes"):
+    for field in IDENTITY_FIELDS + ("phases", "commands_per_frame", "nodes", "commit", "binary_sha256", "frame_hash"):
         if field not in data:
             raise ValueError(f"{path}: missing required field {field}")
     if not isinstance(data["phases"], dict):
         raise ValueError(f"{path}: phases must be an object")
+    validate_report(data, path)
     return data
 
 
-def _relative_delta(baseline: float, current: float) -> float:
+def validate_report(data: dict[str, Any], path: Path) -> None:
+    for field in IDENTITY_FIELDS:
+        if field not in data or data[field] is None or data[field] == "":
+            raise ValueError(f"{path}: missing comparison identity {field}")
+    if not re.fullmatch(r"[0-9a-f]{40}", data.get("commit", "")):
+        raise ValueError(f"{path}: commit must be an exact source revision")
+    if not re.fullmatch(r"[0-9a-f]{64}", data.get("binary_sha256", "")):
+        raise ValueError(f"{path}: missing measured binary digest")
+    if not data.get("runner") or not data.get("frame_hash"):
+        raise ValueError(f"{path}: missing runner or frame hash")
+    for phase in REQUIRED_PHASES:
+        if not isinstance(data.get("phases", {}).get(phase), dict):
+            raise ValueError(f"{path}: missing required phase {phase}")
+        for metric in PHASE_METRICS:
+            _number(data["phases"][phase].get(metric), f"{phase}.{metric}", path)
+
+
+def _relative_delta(baseline: float, current: float) -> float | None:
     if baseline == 0:
-        return 0.0 if current == 0 else math.inf
+        return 0.0 if current == 0 else None
     return (current - baseline) / baseline
 
 
@@ -61,8 +84,12 @@ def _aggregate(reports: list[dict[str, Any]]) -> dict[str, Any]:
     if not reports:
         raise ValueError("at least one current report is required")
     first = copy.deepcopy(reports[0])
+    for report in reports:
+        validate_report(report, Path("<repeated-report>"))
     for report in reports[1:]:
-        for field in IDENTITY_FIELDS + ("nodes", "commands_per_frame"):
+        if report["phases"].keys() != first["phases"].keys():
+            raise ValueError("repeated reports disagree on phase set")
+        for field in IDENTITY_FIELDS + ("nodes", "commands_per_frame", "commit", "binary_sha256", "frame_hash"):
             if report[field] != first[field]:
                 raise ValueError(
                     f"current reports disagree on {field}: "
@@ -83,6 +110,10 @@ def compare(baseline: dict[str, Any], current: dict[str, Any], tolerance: float,
             baseline_path: Path, current_path: Path) -> dict[str, Any]:
     failures: list[dict[str, Any]] = []
     checks: list[dict[str, Any]] = []
+    validate_report(baseline, baseline_path)
+    validate_report(current, current_path)
+    if baseline.get("source_dirty") is not False:
+        raise ValueError(f"{baseline_path}: reference must be measured from a clean checkout")
 
     for field in IDENTITY_FIELDS:
         if baseline[field] != current[field]:
@@ -115,7 +146,7 @@ def compare(baseline: dict[str, Any], current: dict[str, Any], tolerance: float,
             "limit": tolerance,
         }
         checks.append(check)
-        if delta > tolerance:
+        if delta is None or delta > tolerance:
             failures.append({"kind": "regression", **check})
 
     baseline_phases = baseline["phases"]
@@ -152,12 +183,14 @@ def compare(baseline: dict[str, Any], current: dict[str, Any], tolerance: float,
                 "limit": tolerance,
             }
             checks.append(check)
-            if delta > tolerance:
+            if delta is None or delta > tolerance:
                 failures.append({"kind": "regression", **check})
 
     return {
         "baseline": str(baseline_path),
         "current": str(current_path),
+        "baseline_commit": baseline["commit"],
+        "current_commit": current["commit"],
         "tolerance": tolerance,
         "passed": not failures,
         "checks": checks,
@@ -186,7 +219,7 @@ def main(argv: list[str]) -> int:
         print(f"perf gate: {error}", file=sys.stderr)
         return 2
 
-    output = json.dumps(result, indent=2, sort_keys=True) + "\n"
+    output = json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n"
     if args.report:
         args.report.write_text(output, encoding="utf-8")
     for failure in result["failures"]:

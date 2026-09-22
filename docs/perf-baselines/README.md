@@ -35,9 +35,10 @@ cmake --build build-bench --config Release
 
 - 性能比较按“同一后端 + 同一场景 + 同一 viewport”进行；构建类型和工具链
   作为报告元数据保留，跨工具链的报告不得覆盖归档基线。
-- 为降低调度噪声，`ci/` 归档基线取三次 canonical 运行各指标最大值，CI
-  当前值取三次运行中位数；这只稳定采样，不改变 10% 回归门槛。
-- CPU、Skia、GPU 各自使用 `ci/` 下的基线；文本密集、Grid、VirtualList、
+- 当前门槛由 `ci/reference.json` 固定基准源码提交，同一 runner 交替测量
+  基准与候选，双方三次取中位数；报告同时校验工具链、采样参数、机器身份、
+  场景/依赖源码哈希和二进制哈希。旧最大值聚合的 `working-tree` 报告仅供历史参考。
+- CPU、Skia、GPU 分别归档本次同机测量的基线；文本密集、Grid、VirtualList、
   语义 diff 等场景均进入固定门槛。
 - `GPU wait` 只在 GPU 基线中比较，不与 CPU 数值互比。
 - 禁止用不同场景（不同 viewport/卡片规模/warmup/测量帧数）或不同后端

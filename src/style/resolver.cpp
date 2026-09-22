@@ -139,7 +139,7 @@ ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme,
                                const WidgetState& state) {
     ResolvedStyle resolved;
     commonStyle(resolved.component) = containerCommon(widget, theme);
-    if (core::isScrollableWidget(widget.type)) {
+    if (widget.showFocusRing && core::isScrollableWidget(widget.type)) {
         auto& common = commonStyle(resolved.component);
         common.focusRing = theme.colors.focusRing;
         common.focusWidth = focusWidthFor(widget, state, theme);

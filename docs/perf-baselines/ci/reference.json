@@ -1,0 +1,8 @@
+{
+  "commit": "f201f74340400aea4644e3e4e475d45c3b2248ce",
+  "sampling": "median of three interleaved baseline and candidate runs",
+  "warmup_frames": 30,
+  "measured_frames": 300,
+  "tolerance": 0.10,
+  "scope": "Linux CPU, Skia raster, Mesa llvmpipe; headless, excludes present"
+}

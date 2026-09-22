@@ -13,6 +13,7 @@ concurrency:
 # Single source of truth for Linux system dependencies (SDL3 window/input,
 # Skia FontConfig, Xvfb smoke); shared by the cpu and skia jobs below.
 env:
+  LUMEN_PERF_BASELINE_COMMIT: f201f74340400aea4644e3e4e475d45c3b2248ce
   LUMEN_LINUX_DEPS: >-
     cmake ninja-build pkg-config ccache
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev
@@ -186,31 +187,27 @@ jobs:
         run: xvfb-run -a timeout 5 ./build/examples/settings/lumen-settings || test $? -eq 124
       # M7 性能门槛：固定场景逐项比较 p50/p95、分配量、命令数和
       # submit/GPU wait；同场景三次运行仍须保持 frame_hash 一致。
-      - name: Benchmark (CPU regression gate)
+      - name: Checkout pinned performance reference
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.LUMEN_PERF_BASELINE_COMMIT }}
+          path: .perf-reference
+      - name: Build reference with the same toolchain
         run: |
-          for scenario in card-grid-6x8-1080p text-heavy grid virtual-list-1000 semantics-diff; do
-            ./build/benchmarks/lumen-scene-bench --backend cpu --scenario "$scenario" \
-              --frames 300 --warmup 30 --json > "bench-cpu-$scenario.json"
-            ./build/benchmarks/lumen-scene-bench --backend cpu --scenario "$scenario" \
-              --frames 300 --warmup 30 --json > "bench-cpu-$scenario-repeat.json"
-            ./build/benchmarks/lumen-scene-bench --backend cpu --scenario "$scenario" \
-              --frames 300 --warmup 30 --json > "bench-cpu-$scenario-repeat2.json"
-            h1=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-cpu-$scenario.json")
-            h2=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-cpu-$scenario-repeat.json")
-            h3=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-cpu-$scenario-repeat2.json")
-            test "$h1" = "$h2" && test "$h1" = "$h3"
-            python3 benchmarks/check_perf_regression.py \
-              --baseline "docs/perf-baselines/ci/cpu-$scenario.json" \
-              --current "bench-cpu-$scenario.json" "bench-cpu-$scenario-repeat.json" "bench-cpu-$scenario-repeat2.json" \
-              --report "bench-cpu-$scenario-gate.json"
-          done
+          cmake -S .perf-reference -B perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON
+          cmake --build perf-reference-build --parallel --target lumen-scene-bench
+      - name: Benchmark (CPU regression gate)
+        run: >-
+          python3 -B benchmarks/run_perf_gate.py --backend cpu
+          --baseline-source .perf-reference --baseline-bin perf-reference-build/benchmarks/lumen-scene-bench
+          --current-bin build/benchmarks/lumen-scene-bench --output bench-results/cpu
       - name: Upload benchmark report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cpu-benchmark-report
-          path: bench-cpu-*.json
-          # 短保留即时释放配额；报告仅供当次比对，归档基线在 docs/ 内。
+          path: bench-results/cpu/
+          # 归档同机实测基线、候选与逐项门槛；固定基准提交见 reference.json。
           retention-days: 3
           compression-level: 9
           overwrite: true
@@ -269,30 +266,26 @@ jobs:
         run: ctest --test-dir build-skia --output-on-failure -C Release
       - name: Windowed Skia smoke (Xvfb)
         run: xvfb-run -a timeout 5 ./build-skia/examples/counter/lumen-counter --renderer skia || test $? -eq 124
-      - name: Benchmark (Skia regression gate)
+      - name: Checkout pinned performance reference
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.LUMEN_PERF_BASELINE_COMMIT }}
+          path: .perf-reference
+      - name: Build reference with the same toolchain
         run: |
-          for scenario in card-grid-6x8-1080p text-heavy grid virtual-list-1000 semantics-diff; do
-            ./build-skia/benchmarks/lumen-scene-bench --backend skia --scenario "$scenario" \
-              --frames 300 --warmup 30 --json > "bench-skia-$scenario.json"
-            ./build-skia/benchmarks/lumen-scene-bench --backend skia --scenario "$scenario" \
-              --frames 300 --warmup 30 --json > "bench-skia-$scenario-repeat.json"
-            ./build-skia/benchmarks/lumen-scene-bench --backend skia --scenario "$scenario" \
-              --frames 300 --warmup 30 --json > "bench-skia-$scenario-repeat2.json"
-            h1=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-skia-$scenario.json")
-            h2=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-skia-$scenario-repeat.json")
-            h3=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-skia-$scenario-repeat2.json")
-            test "$h1" = "$h2" && test "$h1" = "$h3"
-            python3 benchmarks/check_perf_regression.py \
-              --baseline "docs/perf-baselines/ci/skia-$scenario.json" \
-              --current "bench-skia-$scenario.json" "bench-skia-$scenario-repeat.json" "bench-skia-$scenario-repeat2.json" \
-              --report "bench-skia-$scenario-gate.json"
-          done
+          cmake -S .perf-reference -B perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON -DLUMEN_ENABLE_SKIA=ON
+          cmake --build perf-reference-build --parallel --target lumen-scene-bench
+      - name: Benchmark (Skia regression gate)
+        run: >-
+          python3 -B benchmarks/run_perf_gate.py --backend skia
+          --baseline-source .perf-reference --baseline-bin perf-reference-build/benchmarks/lumen-scene-bench
+          --current-bin build-skia/benchmarks/lumen-scene-bench --output bench-results/skia
       - name: Upload Skia benchmark report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: skia-benchmark-report
-          path: bench-skia-*.json
+          path: bench-results/skia/
           retention-days: 3
           compression-level: 9
           overwrite: true
@@ -358,30 +351,26 @@ jobs:
           -DCOUNTER=${{ github.workspace }}/build-gpu/examples/counter/lumen-counter
           -DEXPECTED_BACKEND=skia-gpu
           -P tests/counter_gpu_smoke.cmake
-      - name: Benchmark (GPU regression gate, llvmpipe)
+      - name: Checkout pinned performance reference
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.LUMEN_PERF_BASELINE_COMMIT }}
+          path: .perf-reference
+      - name: Build reference with the same toolchain
         run: |
-          for scenario in card-grid-6x8-1080p text-heavy grid virtual-list-1000 semantics-diff; do
-            xvfb-run -a ./build-gpu/benchmarks/lumen-scene-bench --backend gpu --scenario "$scenario" \
-              --frames 300 --warmup 30 --json > "bench-gpu-$scenario.json"
-            xvfb-run -a ./build-gpu/benchmarks/lumen-scene-bench --backend gpu --scenario "$scenario" \
-              --frames 300 --warmup 30 --json > "bench-gpu-$scenario-repeat.json"
-            xvfb-run -a ./build-gpu/benchmarks/lumen-scene-bench --backend gpu --scenario "$scenario" \
-              --frames 300 --warmup 30 --json > "bench-gpu-$scenario-repeat2.json"
-            h1=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-gpu-$scenario.json")
-            h2=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-gpu-$scenario-repeat.json")
-            h3=$(grep -o '"frame_hash": "[0-9a-f]*"' "bench-gpu-$scenario-repeat2.json")
-            test "$h1" = "$h2" && test "$h1" = "$h3"
-            python3 benchmarks/check_perf_regression.py \
-              --baseline "docs/perf-baselines/ci/gpu-$scenario.json" \
-              --current "bench-gpu-$scenario.json" "bench-gpu-$scenario-repeat.json" "bench-gpu-$scenario-repeat2.json" \
-              --report "bench-gpu-$scenario-gate.json"
-          done
+          cmake -S .perf-reference -B perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON
+          cmake --build perf-reference-build --parallel --target lumen-scene-bench
+      - name: Benchmark (GPU regression gate, llvmpipe)
+        run: >-
+          xvfb-run -a python3 -B benchmarks/run_perf_gate.py --backend gpu
+          --baseline-source .perf-reference --baseline-bin perf-reference-build/benchmarks/lumen-scene-bench
+          --current-bin build-gpu/benchmarks/lumen-scene-bench --output bench-results/gpu
       - name: Upload GPU benchmark report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gpu-benchmark-report
-          path: bench-gpu-*.json
+          path: bench-results/gpu/
           retention-days: 3
           compression-level: 9
           overwrite: true

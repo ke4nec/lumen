@@ -1097,8 +1097,8 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
     }
     // Scroll design §5: paint viewport focus above opaque children and chrome.
     // The inset stroke preserves layout and stays within the damage bounds.
-    if (core::isScrollableWidget(node.type) && common.focusWidth > 0.0F &&
-        common.focusRing.a > 0) {
+    if (common.focusWidth > 0.0F && common.focusRing.a > 0 &&
+        core::isScrollableWidget(node.type)) {
         sink.drawRectStroke(rect, common.focusRing, common.radius,
                             common.focusWidth);
     }
