@@ -14,8 +14,18 @@
 
 namespace lumen::platform::native {
 
+struct SystemAccessibilityPreferences {
+    bool highContrast{false};
+    bool reduceAnimation{false};
+    float fontScale{1.0F};
+};
+
 // 系统强调色；nullopt = 平台无查询能力（调用方保持安全默认）。
 [[nodiscard]] std::optional<core::Color> systemAccentColor();
+
+// 系统可访问性偏好；nullopt = 平台服务不可用（调用方保持安全默认）。
+[[nodiscard]] std::optional<SystemAccessibilityPreferences>
+systemAccessibilityPreferences();
 
 // 平台通知可用性（决定 capabilities_.notifications）。
 [[nodiscard]] bool notificationsAvailable();

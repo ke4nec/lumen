@@ -15,6 +15,8 @@
 #include <dwmapi.h>
 #include <shellapi.h>
 
+#include <algorithm>
+
 namespace lumen::platform::native {
 namespace {
 
@@ -67,6 +69,44 @@ std::optional<core::Color> systemAccentColor() {
         static_cast<std::uint8_t>((colorization >> 8) & 0xFF),
         static_cast<std::uint8_t>(colorization & 0xFF),
         static_cast<std::uint8_t>((colorization >> 24) & 0xFF)};
+}
+
+std::optional<SystemAccessibilityPreferences>
+systemAccessibilityPreferences() {
+    SystemAccessibilityPreferences preferences;
+
+    HIGHCONTRASTW highContrast{};
+    highContrast.cbSize = sizeof(highContrast);
+    if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(highContrast),
+                              &highContrast, 0)) {
+        preferences.highContrast =
+            (highContrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
+    }
+
+    BOOL animationsEnabled = TRUE;
+    if (SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,
+                              sizeof(animationsEnabled), &animationsEnabled,
+                              0)) {
+        preferences.reduceAnimation = animationsEnabled == FALSE;
+    }
+
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,
+                      L"Software\\Microsoft\\Accessibility", 0,
+                      KEY_QUERY_VALUE, &key) == ERROR_SUCCESS) {
+        DWORD value = 100;
+        DWORD valueSize = sizeof(value);
+        DWORD valueType = 0;
+        if (RegQueryValueExW(key, L"TextScaleFactor", nullptr, &valueType,
+                             reinterpret_cast<LPBYTE>(&value), &valueSize) ==
+                ERROR_SUCCESS &&
+            valueType == REG_DWORD) {
+            preferences.fontScale = std::clamp(
+                static_cast<float>(value) / 100.0F, 0.5F, 3.0F);
+        }
+        RegCloseKey(key);
+    }
+    return preferences;
 }
 
 bool notificationsAvailable() { return true; }

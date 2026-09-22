@@ -44,7 +44,11 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 
 三平台共用：`ApplicationHost` 契约、归一化 `HostEvent`（时间戳/修饰键/
 逻辑与物理键/指针设备/pointer id/滚轮/取消/关闭请求）、语义树与 action
-分发、`lumen-text` 编辑模型。counter/settings 示例三平台同源。
+分发、`lumen-text` 编辑模型。counter/settings 示例三平台同源。SDL 宿主在
+初始化和系统主题变化时查询 `PlatformCapabilities.highContrast`、
+`reduceAnimation`、`fontScale`：Linux 使用 portal D-Bus settings，macOS 使用
+AppKit display preferences/系统字体尺寸，Windows 使用 SystemParametersInfo
+与 Accessibility 注册表；查询不可用时保留安全默认值。
 
 ### 验证快照（2026-09-22，源码基线 `41cd603831eaed37558ebb32ceddebc8f93cff4f`）
 

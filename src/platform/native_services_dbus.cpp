@@ -12,7 +12,9 @@
 #include <dbus/dbus.h>
 
 #include <array>
+#include <algorithm>
 #include <cstdlib>
+#include <variant>
 #include <string>
 
 namespace lumen::platform::native {
@@ -83,6 +85,54 @@ std::optional<core::Color> parseHexColor(const std::string& text) {
     return core::Color{channel(3), channel(5), channel(7), channel(1)};
 }
 
+using PortalSetting = std::variant<bool, double>;
+
+std::optional<PortalSetting> readPortalSetting(const char* nameSpace,
+                                               const char* key) {
+    DBusError error;
+    dbus_error_init(&error);
+    DBusMessage* reply = callMethod(
+        "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Settings", "Read", 500,
+        [nameSpace, key](DBusMessageIter& iter) {
+            dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING,
+                                           &nameSpace);
+            dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &key);
+        },
+        &error);
+    if (reply == nullptr) {
+        dbus_error_free(&error);
+        return std::nullopt;
+    }
+
+    std::optional<PortalSetting> result;
+    DBusMessageIter args;
+    DBusMessageIter variant;
+    if (dbus_message_iter_init(reply, &args) &&
+        dbus_message_iter_get_arg_type(&args) == DBUS_TYPE_VARIANT) {
+        dbus_message_iter_recurse(&args, &variant);
+        switch (dbus_message_iter_get_arg_type(&variant)) {
+            case DBUS_TYPE_BOOLEAN: {
+                dbus_bool_t value = FALSE;
+                dbus_message_iter_get_basic(&variant, &value);
+                result = value != FALSE;
+                break;
+            }
+            case DBUS_TYPE_DOUBLE: {
+                double value = 1.0;
+                dbus_message_iter_get_basic(&variant, &value);
+                result = value;
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    dbus_message_unref(reply);
+    dbus_error_free(&error);
+    return result;
+}
+
 }  // namespace
 
 std::optional<core::Color> systemAccentColor() {
@@ -120,6 +170,35 @@ std::optional<core::Color> systemAccentColor() {
     }
     dbus_message_unref(reply);
     return result;
+}
+
+std::optional<SystemAccessibilityPreferences>
+systemAccessibilityPreferences() {
+    SystemAccessibilityPreferences preferences;
+    bool found = false;
+    if (const auto value = readPortalSetting(
+            "org.gnome.desktop.a11y.interface", "high-contrast")) {
+        if (const auto* highContrast = std::get_if<bool>(&*value)) {
+            preferences.highContrast = *highContrast;
+            found = true;
+        }
+    }
+    if (const auto value = readPortalSetting("org.gnome.desktop.interface",
+                                            "enable-animations")) {
+        if (const auto* animations = std::get_if<bool>(&*value)) {
+            preferences.reduceAnimation = !*animations;
+            found = true;
+        }
+    }
+    if (const auto value = readPortalSetting("org.gnome.desktop.interface",
+                                            "text-scaling-factor")) {
+        if (const auto* scale = std::get_if<double>(&*value)) {
+            preferences.fontScale = std::clamp(
+                static_cast<float>(*scale), 0.5F, 3.0F);
+            found = true;
+        }
+    }
+    return found ? std::optional{preferences} : std::nullopt;
 }
 
 bool notificationsAvailable() { return true; }
@@ -175,6 +254,10 @@ ServiceResult showNotification(const NotificationRequest& request) {
 namespace lumen::platform::native {
 
 std::optional<core::Color> systemAccentColor() { return std::nullopt; }
+std::optional<SystemAccessibilityPreferences>
+systemAccessibilityPreferences() {
+    return std::nullopt;
+}
 bool notificationsAvailable() { return false; }
 ServiceResult showNotification(const NotificationRequest&) {
     return ServiceResult::unavailable(

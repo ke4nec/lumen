@@ -1,6 +1,6 @@
 # Lumen 既有能力优化计划：CPU 阴影 / 水平滚动轴 / 回退文本连续性
 
-> 文档状态：核心实现已完成；P2 的 Gallery 水平滚动演示区仍待补（2026-09）。
+> 文档状态：核心实现与 Gallery 水平滚动演示区已完成（2026-09）。
 > 来源：对已收口里程碑「已知限制」的审查（非新里程碑，不占编号；完成记录按仓库惯例写入 `lumen-self-use-roadmap.md` §10）。
 > 范围：三项互相独立、可分别合入的既有能力完善。历史实施顺序为 **P1 → P3 → P2**。
 > 前置：菜单动效批次已落账；P2 与其曾共同触及 `src/core/interaction.cpp`，当前实现状态以源码、测试和路线图完成记录为准。
@@ -12,7 +12,7 @@
 | 编号 | 主题 | 一句话 | 核心证据（符号口径，行号不作为稳定引用） | 改动面 | 预估 |
 | --- | --- | --- | --- | --- | --- |
 | P1 | CPU 阴影模糊 | 已完成：CPU `DrawShadow` 对 blur>0 使用三次可分离 box blur；blur=0 保留防御性扁平路径 | `src/render/cpu_renderer.cpp::CpuRenderer::drawShadow`；Skia/GPU 命令契约不变 | 已合入；无阴影路径保持兼容 | 已完成 |
-| P2 | 水平滚动轴 | 核心实现已完成：控制器/布局/滚轮/拖动/惯性/滚动条/键盘/语义均支持水平轴；Gallery 超宽卡片演示区仍待补 | `ScrollAxis`、水平 layout/painter/interaction/语义回归；详见 [`lumen-scroll-design.md`](lumen-scroll-design.md) | Gallery 示例与集成用例待补；自动隐藏/RTL/水平虚拟化不在本项 | 核心已完成 |
+| P2 | 水平滚动轴 | 已完成：控制器/布局/滚轮/拖动/惯性/滚动条/键盘/语义与 Gallery 超宽卡片演示区均支持水平轴 | `ScrollAxis`、水平 layout/painter/interaction/语义回归与 Gallery 集成用例；详见 [`lumen-scroll-design.md`](lumen-scroll-design.md) | 自动隐藏/RTL/水平虚拟化不在本项 | 已完成 |
 | P3 | 回退文本连续性 | 已完成：Skia 构建的 GPU 探测/初始化失败回退到 CPU，运行时失败优先回退到 Skia 软件光栅以保持文本连续 | `examples/counter/main.cpp` 的 `skiaSoftwareSetup` 与 `renderer_fallback.h`；诊断输出区分 `skia software raster`/`cpu` | 回退链和 counter smoke 已接入；硬件 GPU 仍受 runner 条件约束 | 已完成 |
 
 三项均要求：既有 headless 帧哈希在不涉及新行为的场景保持不变；新行为默认关闭或不改变默认路径；各自独立提交、独立回滚。
@@ -158,7 +158,7 @@ TreeList 内容超宽时的水平 clip 平移（无虚拟化，整树平移）�
 
 ## 4. 实施顺序、提交切分与回滚
 
-当前收口状态：P1、P3、P2 核心实现均已完成并写入路线图；P2 仅剩 Gallery 超宽卡片演示区及其集成用例。自动隐藏滚动条、RTL、水平虚拟化和双轴联滚不属于本轮出口条件。
+当前收口状态：P1、P3、P2（含 Gallery 超宽卡片演示区）均已完成并写入路线图。自动隐藏滚动条、RTL、水平虚拟化和双轴联滚不属于本轮出口条件。
 
 - **顺序**：P1（单文件、无公共接口改动、可见收益最大）→ P3（应用装配层小改）→ P2（跨层，含新设计文档）。
 - **提交**（Conventional Commits，各自独立可回滚）：

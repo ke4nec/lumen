@@ -146,6 +146,9 @@ class GalleryApp {
         return shell_.controller();
     }
     [[nodiscard]] core::ScrollController& scroll() { return scroll_; }
+    [[nodiscard]] core::ScrollController& horizontalScroll() {
+        return horizontalScroll_;
+    }
     [[nodiscard]] widgets::NavigatorController& navigator() {
         return navigator_;
     }
@@ -461,14 +464,14 @@ class GalleryApp {
                                                 delta)) {
                     return true;
                 }
-                return self->scrollWheel(root, hit, delta.y);
+                return self->scrollWheel(root, hit, delta);
             };
         // M10：视口拖动滚动（触摸/指针）与惯性推进（与 settings 同形）。
         config.onScrollDrag =
             [self](const core::RenderNode*, const core::RenderNode* viewport,
                    core::Offset, core::Offset delta,
                    core::ScrollDragPhase phase, std::uint64_t nowMs) {
-                return self->scrollDrag(viewport, delta.y, phase, nowMs);
+                return self->scrollDrag(viewport, delta, phase, nowMs);
             };
         config.onAnimate = [self](app::AppShell& shell,
                                   std::uint64_t nowMs) {
@@ -1091,13 +1094,17 @@ class GalleryApp {
 
     // M10：视口拖动滚动与惯性推进。VirtualList/List/Tree/TreeList（源视
     // 口）由框架直接驱动源控制器并推进惯性；这里只处理应用侧滚动状态。
-    bool scrollDrag(const core::RenderNode* viewport, float deltaY,
+    bool scrollDrag(const core::RenderNode* viewport, core::Offset delta,
                     core::ScrollDragPhase phase, std::uint64_t nowMs) {
         core::ScrollController* scroll = &scroll_;
+        float axisDelta = delta.y;
         if (viewport && viewport->key == std::string(kDialogKey) + "-body-scroll") {
             scroll = &dialogScroll_;
         } else if (viewport && viewport->key == "gallery-scrollview") {
             scroll = &scrollViewScroll_;
+        } else if (viewport && viewport->key == "gallery-horizontal-scroll") {
+            scroll = &horizontalScroll_;
+            axisDelta = delta.x;
         }
         switch (phase) {
             case core::ScrollDragPhase::Begin:
@@ -1105,12 +1112,15 @@ class GalleryApp {
                 return true;
             case core::ScrollDragPhase::Update:
                 if (viewport != nullptr) {
+                    const float viewportExtent =
+                        scroll->axis() == core::ScrollAxis::Horizontal
+                            ? viewport->size.width
+                            : viewport->size.height;
                     scroll->updateExtents(
-                        viewport->size.height,
-                        viewport->size.height + viewport->scrollExtent);
+                        viewportExtent, viewportExtent + viewport->scrollExtent);
                 }
-                scroll->noteDragSample(deltaY, nowMs);
-                if (scroll->applyDrag(deltaY)) {
+                scroll->noteDragSample(axisDelta, nowMs);
+                if (scroll->applyDrag(axisDelta)) {
                     shell_.markDirty();
                     return true;
                 }
@@ -1127,6 +1137,7 @@ class GalleryApp {
                     scroll_.cancelDrag();
                     dialogScroll_.cancelDrag();
                     scrollViewScroll_.cancelDrag();
+                    horizontalScroll_.cancelDrag();
                 }
                 return false;
         }
@@ -1137,7 +1148,8 @@ class GalleryApp {
         // 源视口（library_/collections）的惯性由框架 advanceSourceFling
         // 推进（AppShell::tick 内）；这里只推进应用侧外层滚动。
         bool active = false;
-        for (auto* scroll : {&scroll_, &dialogScroll_, &scrollViewScroll_}) {
+        for (auto* scroll : {&scroll_, &dialogScroll_, &scrollViewScroll_,
+                             &horizontalScroll_}) {
             if (scroll->isFlinging()) {
                 shell.markDirty();
                 active = scroll->stepFling(nowMs) || active;
@@ -1147,11 +1159,22 @@ class GalleryApp {
     }
 
     bool scrollWheel(const core::RenderNode& root, const core::RenderNode* hit,
-                     float deltaY) {
-        if (hit && (hit->key == std::string(kDialogKey) + "-body-scroll" || hit->key == "gallery-scrollview")) {
-            auto& scroll = hit->key == "gallery-scrollview" ? scrollViewScroll_ : dialogScroll_;
-            scroll.updateExtents(hit->size.height, hit->size.height + hit->scrollExtent);
-            const bool changed = scroll.applyWheel(deltaY);
+                     core::Offset delta) {
+        if (hit && (hit->key == std::string(kDialogKey) + "-body-scroll" ||
+                    hit->key == "gallery-scrollview" ||
+                    hit->key == "gallery-horizontal-scroll")) {
+            const bool horizontal = hit->key == "gallery-horizontal-scroll";
+            auto& scroll = horizontal
+                               ? horizontalScroll_
+                               : (hit->key == "gallery-scrollview"
+                                      ? scrollViewScroll_
+                                      : dialogScroll_);
+            const float wheelDelta = horizontal ? delta.x : delta.y;
+            const float viewportExtent = horizontal ? hit->size.width
+                                                    : hit->size.height;
+            scroll.updateExtents(viewportExtent,
+                                 viewportExtent + hit->scrollExtent);
+            const bool changed = scroll.applyWheel(wheelDelta);
             if (changed) shell_.markDirty();
             return changed;
         }
@@ -1172,12 +1195,12 @@ class GalleryApp {
         scroll_.updateExtents(viewport->size.height,
                               viewport->size.height +
                                   viewport->scrollExtent);
-        if (std::abs(deltaY) > 1e8F) {
-            scroll_.scrollTo(deltaY > 0 ? scroll_.maxScrollOffset() : 0.0F);
+        if (std::abs(delta.y) > 1e8F) {
+            scroll_.scrollTo(delta.y > 0 ? scroll_.maxScrollOffset() : 0.0F);
             shell_.markDirty();
             return true;
         }
-        const bool changed = scroll_.applyWheel(deltaY);
+        const bool changed = scroll_.applyWheel(delta.y);
         if (changed) {
             shell_.markDirty();
         }
@@ -2652,6 +2675,51 @@ class GalleryApp {
             {core::withKey(std::move(scrollView), "gallery-scrollview")},
             theme, "lists-scrollview-card"));
 
+        // 横向 ScrollView：用固定宽卡片构成超宽内容，验证单轴横向布局、
+        // 裁剪、滚轮与拖动输入都沿 X 轴工作（lumen-optimization-plan §5.2）。
+        std::vector<core::Widget> wideCards;
+        for (int i = 0; i < 8; ++i) {
+            core::Widget title = core::makeText(
+                "Wide card " + std::to_string(i + 1),
+                theme.typography.body);
+            title.textStyle.maxLines = 1;
+            title.textStyle.overflow = core::TextOverflow::Ellipsis;
+            core::Widget card = core::makeContainer(
+                core::makeColumn(
+                    {std::move(title),
+                     mutedLabel("Fixed width content in a horizontal viewport",
+                                theme)},
+                    core::MainAxisAlignment::Start,
+                    core::CrossAxisAlignment::Stretch, style::spaceToken(2)),
+                220.0F, 104.0F, core::EdgeInsets::all(style::spaceToken(3)),
+                {}, theme.colors.surfaceElevated,
+                core::CornerRadius::all(theme.metrics.cardRadius),
+                "wide-card-" + std::to_string(i));
+            core::StyleOverrides cardStyle;
+            cardStyle.border = theme.colors.borderDefault;
+            cardStyle.borderWidth = 1.0F;
+            wideCards.push_back(core::withKey(
+                core::withStyleOverrides(std::move(card), std::move(cardStyle)),
+                "wide-card-" + std::to_string(i)));
+        }
+        core::Widget wideRow = core::makeRow(
+            std::move(wideCards), core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Start, style::spaceToken(3), {}, {},
+            "gallery-wide-card-row", std::nullopt, 104.0F);
+        core::Widget horizontalScroll = core::withScrollAxis(
+            core::makeScrollView(std::move(wideRow),
+                                 "gallery-horizontal-scroll", std::nullopt,
+                                 128.0F),
+            core::ScrollAxis::Horizontal);
+        horizontalScroll.scrollOffset = horizontalScroll_.offset();
+        horizontalScroll.showScrollbar = true;
+        items.push_back(sectionCard(
+            "Horizontal ScrollView (wide cards)",
+            {core::withKey(std::move(horizontalScroll),
+                           "gallery-horizontal-scroll")},
+            theme, "lists-horizontal-scroll-card",
+            "single-axis horizontal demo"));
+
         // 固定高度：在外层 ListView（主轴无界）内必须给显式高度；
         // 不设 flex——无界容器内 flex 无意义。
         core::Widget listWidget = core::makeVirtualList(
@@ -3949,6 +4017,7 @@ class GalleryApp {
     core::ScrollController scroll_{};
     core::ScrollController dialogScroll_{};
     core::ScrollController scrollViewScroll_{};
+    core::ScrollController horizontalScroll_{core::ScrollAxis::Horizontal};
     widgets::FormController form_{};
     widgets::NavigatorController navigator_{"home"};
     bool darkMode_{true};

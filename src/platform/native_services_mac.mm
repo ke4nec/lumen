@@ -8,6 +8,8 @@
 
 #import <AppKit/AppKit.h>
 
+#include <algorithm>
+
 namespace lumen::platform::native {
 
 std::optional<core::Color> systemAccentColor() {
@@ -23,6 +25,29 @@ std::optional<core::Color> systemAccentColor() {
         return core::Color{channel(srgb.redComponent),
                            channel(srgb.greenComponent),
                            channel(srgb.blueComponent), 255};
+    }
+    return std::nullopt;
+}
+
+std::optional<SystemAccessibilityPreferences>
+systemAccessibilityPreferences() {
+    if (@available(macOS 10.10, *)) {
+        SystemAccessibilityPreferences preferences;
+        NSWorkspace* workspace = [NSWorkspace sharedWorkspace];
+        preferences.highContrast =
+            workspace.accessibilityDisplayShouldIncreaseContrast;
+        preferences.reduceAnimation =
+            workspace.accessibilityDisplayShouldReduceMotion;
+
+        // macOS has no process-wide text-scale preference. The system font
+        // size is the closest stable desktop signal and preserves 1.0 for
+        // the default 13pt system body size.
+        const CGFloat systemSize = [NSFont systemFontSize];
+        const float scale = systemSize > 0.0 ?
+                                static_cast<float>(systemSize / 13.0) :
+                                1.0F;
+        preferences.fontScale = std::clamp(scale, 0.75F, 2.0F);
+        return preferences;
     }
     return std::nullopt;
 }

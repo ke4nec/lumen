@@ -174,6 +174,8 @@ struct PlatformCapabilities {
     // 语义桥接可用（阶段8C）。
     bool accessibility{false};
     // 可访问性设置只读查询（阶段8C：高对比、减少动画、字体缩放）。
+    // SDL 宿主从各桌面原生偏好读取；查询不可用时返回安全默认值，
+    // 应用仍可通过 AppShell::setAccessibilitySettings 覆盖。
     bool highContrast{false};
     bool reduceAnimation{false};
     float fontScale{1.0F};

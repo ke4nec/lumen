@@ -165,7 +165,8 @@ actions，节点 id 复用 RenderNode 稳定 identity）、identity diff（重�
 Windows UIA、Linux AT-SPI2、macOS NSAccessibility provider 均已实现，需启用
 `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE`，并在真实桌面会话完成对应屏幕阅读器回环。
 应用提供的高对比/减少动画/字体缩放设置可驱动 `Theme::fromSettings` 与
-`FrameScheduler::setReduceAnimation`；SDL 宿主的系统对应偏好查询尚未接通。
+`FrameScheduler::setReduceAnimation`；SDL 宿主在 Linux D-Bus、macOS AppKit
+和 Windows Win32 上查询系统对应偏好，不可用时保持安全默认。
 UIA 客户端端到端冒烟已有覆盖，三平台屏幕阅读器人工验收按 M13 单独记录。
 
 ### 应用组件与 settings 示例（8D）
@@ -191,8 +192,7 @@ resolved style（无控件硬编码，CPU/Skia/GPU 命令路径不依赖 Theme�
 绘制且不影响布局尺寸；`StyleOverrides` 提供字段级品牌定制（显式黑/透明
 按字面生效）。DSL 支持 `variant/size/enabled/invalid/selected` 声明。
 IconTheme/Elevation/Motion、ThemeScope、PlatformThemeAdapter 和四套
-ThemeDirection 已接入。V4 的系统高对比/减少动画/字体缩放查询，以及完整三桌面
-人工窗口验收仍待补齐；当前自动化证据与平台限制以
+ThemeDirection 已接入。完整三桌面人工窗口验收仍待补齐；当前自动化证据与平台限制以
 [`docs/support-matrix.md`](docs/support-matrix.md) 为准。
 
 ### macOS 桌面与历史实验接缝（8E）

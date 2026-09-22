@@ -305,8 +305,17 @@ bool Sdl3ApplicationHost::initialize() {
             native::systemAccentColor()) {
         capabilities_.accentColor = *accent;
     }
+    refreshNativeAccessibilityPreferences();
     refreshLifecycle();
     return true;
+}
+
+void Sdl3ApplicationHost::refreshNativeAccessibilityPreferences() {
+    if (const auto preferences = native::systemAccessibilityPreferences()) {
+        capabilities_.highContrast = preferences->highContrast;
+        capabilities_.reduceAnimation = preferences->reduceAnimation;
+        capabilities_.fontScale = preferences->fontScale;
+    }
 }
 
 void Sdl3ApplicationHost::shutdown() {
@@ -610,6 +619,7 @@ std::size_t Sdl3ApplicationHost::translateEvent(
                     native::systemAccentColor()) {
                 capabilities_.accentColor = *accent;
             }
+            refreshNativeAccessibilityPreferences();
             core::HostEvent event;
             event.type = core::HostEventType::SystemThemeChanged;
             push(std::move(event));

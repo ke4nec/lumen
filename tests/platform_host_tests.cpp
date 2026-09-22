@@ -682,6 +682,11 @@ TEST_CASE("sdl3_host_native_services_report_and_notify_structured",
     CHECK(host.capabilities().notifications);
 #endif
     // 强调色查询不崩溃；无能力的平台保持安全默认（任何值合法）。
-    (void)host.capabilities().accentColor;
+    const auto capabilities = host.capabilities();
+    (void)capabilities.accentColor;
+    CHECK(capabilities.fontScale >= 0.5F);
+    CHECK(capabilities.fontScale <= 3.0F);
+    // highContrast/reduceAnimation are host snapshots; their values depend
+    // on the desktop session and are intentionally not hard-coded here.
     // 真发送不进 ctest（见上），仅能力位断言。
 }

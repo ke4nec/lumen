@@ -6,6 +6,10 @@
 namespace lumen::platform::native {
 
 std::optional<core::Color> systemAccentColor() { return std::nullopt; }
+std::optional<SystemAccessibilityPreferences>
+systemAccessibilityPreferences() {
+    return std::nullopt;
+}
 bool notificationsAvailable() { return false; }
 ServiceResult showNotification(const NotificationRequest&) {
     return ServiceResult::unavailable("no native service backend");

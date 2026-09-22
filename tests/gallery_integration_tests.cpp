@@ -778,6 +778,33 @@ TEST_CASE("gallery_inner_scrollview_owns_wheel_and_thumb_without_moving_page", "
     CHECK(app.scroll().offset() == outer);
 }
 
+TEST_CASE("gallery_horizontal_scrollview_shows_wide_cards_and_owns_x_wheel",
+          "[gallery][scrollbar][horizontal]") {
+    GalleryApp app;
+    app.setView({1024, 768});
+    static_cast<void>(app.renderFrame());
+    go(app, "nav-lists");
+    scrollIntoView(app, "gallery-horizontal-scroll");
+
+    const RenderNode* viewport =
+        findNodeByKey(app.root(), "gallery-horizontal-scroll");
+    REQUIRE(viewport != nullptr);
+    CHECK(viewport->scrollExtent > viewport->size.width);
+    CHECK(viewport->scrollOffset == Catch::Approx(0));
+    const float outer = app.scroll().offset();
+    const float before = app.horizontalScroll().offset();
+    const Offset position = absoluteOffset(app.root(),
+                                           "gallery-horizontal-scroll");
+    app.wheel(position + Offset{24.0F, 24.0F}, Offset{30.0F, 0.0F});
+    static_cast<void>(app.renderFrame());
+
+    viewport = findNodeByKey(app.root(), "gallery-horizontal-scroll");
+    REQUIRE(viewport != nullptr);
+    CHECK(viewport->scrollOffset == Catch::Approx(before + 30.0F));
+    CHECK(app.horizontalScroll().offset() == Catch::Approx(before + 30.0F));
+    CHECK(app.scroll().offset() == outer);
+}
+
 TEST_CASE("gallery_scrollbar_cancel_does_not_seed_the_next_content_fling", "[gallery][scrollbar][review]") {
     GalleryApp app;
     app.setView({1024, 768});
@@ -1059,4 +1086,3 @@ TEST_CASE("gallery_inventory_control_tiles_use_compact_tiers",
     REQUIRE(tileStatus != nullptr);
     CHECK(tileStatus->size.height == Catch::Approx(24.0F).margin(0.01F));
 }
-

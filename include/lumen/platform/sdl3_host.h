@@ -90,6 +90,7 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     std::size_t translateEvent(void* sdlEvent,
                                std::vector<core::HostEvent>& out);
     void refreshLifecycle();
+    void refreshNativeAccessibilityPreferences();
 
     bool initialized_{false};
     core::AppLifecycle lifecycle_{core::AppLifecycle::Launching};

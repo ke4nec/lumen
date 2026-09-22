@@ -1,12 +1,12 @@
 # Lumen 滚动系统设计（轴模型 / 输入路由 / 物理与语义契约）
 
-> 文档状态：核心实现已完成（2026-09）；水平轴由 `docs/lumen-optimization-plan.md` P2 引入，本文档为当前行为契约的唯一来源。Gallery 超宽卡片演示、自动隐藏、RTL 与水平虚拟化仍是明确未完成项。
+> 文档状态：核心实现与 Gallery 水平演示已完成（2026-09）；水平轴由 `docs/lumen-optimization-plan.md` P2 引入，本文档为当前行为契约的唯一来源。自动隐藏、RTL 与水平虚拟化仍是明确未完成项。
 > 输入：`include/lumen/core/scroll.h`（ScrollController）、`src/layout/layout.cpp::layoutScrollView`（视口约束与 offset 应用）、`src/render/painter.cpp`（滚动条）、`src/core/interaction.cpp`（滚轮/拖动/键盘路由）、`include/lumen/accessibility/bridge.h`（语义 scroll action）、M3/M10/M12 完成记录。
 > 相关既有文档：`lumen-visual-system-design.md` §滚动条（token/几何）、`lumen-collection-controls-design.md`（VirtualList 纵向虚拟化）。横纵交互稿：[scrollbar-controls.html](../design/scrollbar-controls.html)。
 
 ## 1. 范围与非目标
 
-**范围**：声明为水平轴的 ScrollView 已获得与纵向对等的滚动能力——布局约束镜像、滚轮（含 Shift+纵轮）、指针拖动与惯性、键盘、水平滚动条、语义 scroll action 的 X 分量；对应 core/layout/interaction/render 回归已交付。Gallery 超宽卡片演示仍待补。
+**范围**：声明为水平轴的 ScrollView 已获得与纵向对等的滚动能力——布局约束镜像、滚轮（含 Shift+纵轮）、指针拖动与惯性、键盘、水平滚动条、语义 scroll action 的 X 分量；对应 core/layout/interaction/render 回归与 Gallery 超宽卡片演示已交付。
 
 **非目标**：
 
@@ -68,7 +68,7 @@
 - **滚动条验收**：`scrollbar_tests.cpp` 覆盖六类视口、两轴滑块、命中扩展、悬停/拖动状态、轨道翻页、内容遮挡、失效取消、密度/缩放和宿主手形映射；菜单/下拉与页面集成测试覆盖弹层及外层方向。SDL 输入测试直接注入 NORMAL/FLIPPED 双轴事件；CPU/GPU 像素输出验证实际状态与裁剪。
 - **嵌套回归**：`wheel_routing_tests.cpp` 覆盖六类视口空/少量内容、多层祖先、隐藏滚动条、有溢出内容及端点、内容收缩与模态隔离；异轴输入随水平滚动 P2 集成验收；Gallery 集成覆盖空 List/Tree 上滚轮驱动外层页面。
 - **语义**：Recording 断言横向视口 scroll action 的 scrollDeltaX 回执。
-- **示例**：Gallery 水平滚动演示区（超宽卡片行）集成用例仍待补；现有 core/layout/interaction/render 与嵌套路由测试已覆盖行为契约。
+- **示例**：Gallery 水平滚动演示区（超宽卡片行）与集成用例已交付；现有 core/layout/interaction/render 与嵌套路由测试覆盖行为契约。
 - **视觉基准**：滚动条尺寸和状态按 §5 更新；其余控件的 headless 像素基准保持不变。
 
 ## 8. 兼容与迁移
