@@ -1,6 +1,6 @@
 # Lumen 自定义标题栏设计（无边框窗口 chrome）
 
-> 文档状态：设计稿（2026-09）
+> 文档状态：已实施（高级特性按需评估）（2026-09）
 > 输入：源码现状盘点（`include/lumen/platform/application_host.h`（WindowDesc/服务契约）、`src/platform/sdl3_host.cpp`（窗口创建/事件翻译）、`include/lumen/core/interaction.h` + `src/core/interaction.cpp`（hitTestChain/onClick 链）、`src/app/run_app.cpp`（事件泵/光标同步先例））、`docs/lumen-menu-controls-design.md`（菜单栏为 chrome 一部分的先例）、`docs/lumen-splitter-design.md`（指针形状宿主映射先例）。
 > 配套视觉设计稿：`design/gallery.html`（四变体标题栏）。
 > 定位：桌面自用版窗口 chrome 能力——Gallery 示例以自绘标题栏替代系统标题栏。遵循"公共头无平台类型、平台差异收敛在 host 实现内"的既有架构。

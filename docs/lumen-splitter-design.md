@@ -1,6 +1,6 @@
 # Lumen Splitter 控件设计（Splitter 分栏调节）
 
-> 文档状态：设计稿（2026-09）
+> 文档状态：已实施（高级特性按需评估）（2026-09）
 > 输入：源码现状盘点（`include/lumen/core/widget.h`（WidgetType/mainAxis/virtualSource 先例）、`include/lumen/core/interaction.h`（Slider 拖动锁定/ScrollDragSink/源视口框架滚动）、`src/layout/layout.cpp`（Row/Column/GridLayout））、`docs/lumen-collection-controls-design.md`（RenderNode 源指针 + 框架接管交互的先例）、`docs/lumen-self-use-roadmap.md` M3/M7/M10 完成记录、`docs/lumen-visual-system-design.md`（token 三层模型/尺度表 §3.2/状态规则 §5）。
 > 配套视觉设计稿：`design/splitter.html`。
 > 定位：桌面自用版控件库增强；工具类应用"树|列表|预览"双栏布局的用户可调分栏。遵循既有"Widget 不可变声明 + 应用侧控制器 + 布局期物化"架构。

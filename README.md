@@ -8,25 +8,26 @@ v0.2 计划
 [`docs/lumen-gui-framework-plan-v0.3.md`](docs/lumen-gui-framework-plan-v0.3.md)，
 视觉系统设计
 [`docs/lumen-visual-system-design.md`](docs/lumen-visual-system-design.md)。
-当前只规划 Windows/Linux/macOS，暂不考虑 Android/iOS；M9 已暂缓。
+当前只规划 Windows/Linux/macOS。Android/iOS 暂不实现并冻结，不纳入当前或后续自动任务；M9 仅保留历史编号。只有用户再次明确提出移动端需求后，才另行评估范围与方案。
 桌面自用版 M0–M8 已收口，桌面增强链 M10（动效与滚动）、M11（v0.4 视觉
 方向与控件体验）、M12（平台服务与发布补全）已完成；M13 原生无障碍
-provider 待启动。
+进行中（P1 Windows UIA 已实施，P2 AT-SPI、P3 NSAccessibility 待做）。
 面向自用工具类应用的桌面路线图见
 [`docs/lumen-self-use-roadmap.md`](docs/lumen-self-use-roadmap.md)。
 统一构建/验证命令表见
 [`docs/build-commands.md`](docs/build-commands.md)，性能基线见
 [`docs/perf-baselines/README.md`](docs/perf-baselines/README.md)。
-预乘 alpha 渲染改造的待实施任务与验收标准见
+预乘 alpha 渲染改造 P0–P5 已完成（三平台透明合成真机验证仍待验），
+交付记录见
 [`docs/lumen-premultiplied-alpha-rendering-plan.md`](docs/lumen-premultiplied-alpha-rendering-plan.md)。
 
 当前进度：M0 基线冻结完成（统一命令表、工具链/依赖基线、四态定义、
 `docs/perf-baselines/v0.2-cpu-scene.json` CPU 归档基线）；
-阶段 0–6 + v0.2 阶段 7A–7E + v0.3 阶段 8A–8E 的核心契约（跨平台宿主、
+阶段 0–6 + v0.2 阶段 7A–7E + v0.3 桌面阶段 8A–8E 的核心契约（跨平台宿主、
 文本/IME/编辑模型、语义树与 Recording 桥、滚动/表单/弹窗/导航组件）。历史
 SDL-free 移动 host 接缝仍保留，但不代表当前支持移动平台。三桌面便携发布已纳入
-M8；平台原生无障碍 provider（M13）、AppImage 和完整 .app bundle（M12）按增强链
-后续补齐。平台能力详见
+M8；AppImage 已随 M12 交付，完整 .app bundle 与 GPU 包变体待补齐；平台原生
+无障碍 M13 进行中（P1 Windows UIA 已实施）。平台能力详见
 [`docs/support-matrix.md`](docs/support-matrix.md)。
 
 ## 结构
@@ -75,7 +76,7 @@ ctest --test-dir build-release --output-on-failure -C Release
 | `LUMEN_BUILD_BENCHMARKS` | OFF | `lumen-scene-bench` 固定场景基准 |
 | `LUMEN_ENABLE_SKIA` | OFF | Skia 光栅后端（预编译包自动拉取） |
 | `LUMEN_ENABLE_GPU` | OFF | Skia Ganesh GPU 后端（需 `LUMEN_ENABLE_SKIA`） |
-| `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` | OFF | 预留的平台原生无障碍桥开关；当前 provider 未纳入，语义树与 Recording 桥始终可用 |
+| `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE` | OFF | 平台原生无障碍桥开关；M13 P1 Windows UIA 已编入（WIN32+开关），其他平台工厂返回 nullptr；语义树与 Recording 桥始终可用 |
 | `LUMEN_BUILD_MOBILE_CORE` | OFF | 保留的历史 SDL-free 实验配置（跳过 SDL 与桌面示例）；不属于当前产品范围，不代表 Android/iOS 工程或设备验证 |
 
 Linux（Ubuntu 24.04/26.04）先安装系统依赖（SDL3 窗口/输入、Skia
@@ -194,11 +195,11 @@ macOS 走与 Windows/Linux 相同的 SDL3 桌面契约。CPU、Skia 光栅和 GP
 历史 `MobileHostSeam`（`lumen-mobile-host`，SDL-free）保留 surface 生命周期、
 触摸归一化和返回请求状态机。`LUMEN_BUILD_MOBILE_CORE=ON` 与 Linux/macOS
 `mobile-core` CI job 仍用于通用实验代码的编译和 headless 兼容性检查，
-不证明 Android/iOS 可用。本轮只调整设计范围，不删除这些代码或工作流；
-原生 host、软键盘、移动字体管线、移动示例和设备验收均不列入当前规划。
+不证明 Android/iOS 可用，也不是移动端任务入口。本轮只保留这些历史代码和工作流；
+不得据此新增、补齐或执行原生 host、软键盘、移动字体管线、移动示例和设备验收任务。
 
 桌面触屏、`ControlDensity::Touch`、窄窗口与通用 `safeArea` 指标仍可服务桌面
-布局和输入；默认字体栈与 Gallery 按桌面功能验收，不作为 M9 进度。
+布局和输入；默认字体栈与 Gallery 只按桌面功能验收，不作为 M9 或任何移动端进度。
 
 ### 支持矩阵与故障排查
 

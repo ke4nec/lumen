@@ -22,7 +22,7 @@
 
 本轮不包含：
 
-- 替换 Skia、接入 Impeller/Graphite、新增 Vulkan/Metal/D3D 后端或移动端支持。
+- 替换 Skia、接入 Impeller/Graphite、新增 Vulkan/Metal/D3D 后端或移动端支持（移动端当前冻结）。
 - 改变 Theme、控件几何、字体排版、阴影核、图片采样方式或圆角覆盖率算法。
 - 线性光空间合成、广色域/HDR、RGBA16F、LCD 子像素文字 AA。
 - 新增分组透明度、离屏图层或重新定义重合裁剪边界的面积求交算法。

@@ -1,6 +1,6 @@
 # Lumen 菜单类控件设计（ContextMenu / MenuBar）
 
-> 文档状态：设计稿（2026-09）
+> 文档状态：已实施（高级特性按需评估）（2026-09）
 > 输入：源码现状盘点（`include/lumen/widgets/dropdown.h`、`include/lumen/app/app_shell.h`（M11 overlay 契约）、`include/lumen/core/interaction.h`（sink 家族）、`include/lumen/core/windowing.h`（`PointerButton::Secondary` 已入事件值类型）、`include/lumen/accessibility/semantics.h`）、`docs/lumen-self-use-roadmap.md` M5/M10/M11 完成记录、`docs/lumen-collection-controls-design.md`（行交互与 key 前缀惯例）、`docs/lumen-visual-system-design.md`（token 三层模型/尺度表 §3.2/状态规则 §5/elevation §8）。
 > 配套视觉设计稿：`design/menu-controls.html`。
 > 定位：桌面自用版控件库增强，遵循既有"Widget 不可变声明 + 应用侧控制器 + M11 框架级 overlay"架构；**零新增 WidgetType、零新增 RenderCommand**。

@@ -4,7 +4,7 @@
 > [`lumen-self-use-roadmap.md`](lumen-self-use-roadmap.md)。
 
 > 文档状态：历史阶段设计，2026-09-14 按桌面范围修订；实现状态以自用路线图和支持矩阵为准。
-> 当前范围：Windows/Linux/macOS。Android/iOS 暂不考虑，原 8E 移动目标和 v0.4 移动接入承诺取消；M9 暂缓。
+> 当前范围：Windows/Linux/macOS。Android/iOS 暂不实现并冻结，原 8E 移动目标和 v0.4 移动接入承诺取消；M9 仅保留历史编号，不产生任务。
 > 上一版本：[v0.2 桌面 GPU 与性能工程计划](lumen-gui-framework-plan-v0.2.md)
 > 适用基线：[初始框架计划](lumen-gui-framework-plan.md)
 
@@ -66,7 +66,7 @@ Android/iOS 不在当前目标平台中，不安排原生 host、最小移动页
 ### 2.3 非目标
 
 - 不追求 Flutter 或 CSS API 兼容，不在 v0.3 引入脚本语言、插件市场或跨线程 UI 树。
-- 暂不设计 Android/iOS 平台接入或移动专属能力，也不把它们预排到 v0.4。
+- Android/iOS 平台接入和移动专属能力已冻结，不纳入本版本或 v0.4，也不生成实现、验收或发布任务。
 - 不同时实现 Graphite、Metal、Vulkan 和自定义合成器；macOS GPU 先保持可选，失败
   时走 CPU/Skia 光栅。
 - 不在本版本完成完整富文本编辑器、表格、虚拟化 Sliver 系统、WebAssembly 或 3D。
@@ -176,8 +176,8 @@ Widget 提供语义默认值，应用可以覆盖 label、value、role 和 actio
 箭头导航和 Button/Checkbox 的 Enter/Space 激活与语义 actions 共用 `FocusManager`。
 
 平台桥接按能力拆分：Windows UI Automation、Linux AT-SPI、macOS NSAccessibility；
-桥接失败只关闭对应能力，不影响绘制和输入。本设计只覆盖桌面平台，不冻结移动端
-语义桥接契约，也不安排移动原生 accessibility tree。
+桥接失败只关闭对应能力，不影响绘制和输入。本设计只覆盖桌面平台；移动端语义桥接
+契约和原生 accessibility tree 的设计与实现均暂不开展，不安排相关任务。
 
 ### 3.4 布局、滚动和应用组件
 
@@ -263,7 +263,8 @@ fake host 中能分别处理状态和帧；事件顺序、生命周期和 surfac
 或系统服务失败时有可见诊断和安全回退；支持矩阵、故障排查和版本化 API 文档齐全。
 
 历史 8E 的 `MobileHostSeam`、SDL-free 构建目标和 Linux/macOS `mobile-core` CI
-仍保留，验证通用代码兼容性；本计划不增加 NDK/Xcode 移动工程或模拟器/真机门槛。
+仍可保留作通用代码兼容性检查；它们不构成移动端任务入口。本计划不增加或执行
+NDK/Xcode 移动工程、模拟器/真机门槛或任何 Android/iOS 验收。
 
 ## 5. 测试、基准与验收
 
@@ -349,10 +350,10 @@ v0.3 交付至少包括：
   正确，再将平台桥接作为可选能力和真实 smoke；桥接异常不能阻塞渲染。
 - **桌面窗口恢复**：窗口重建、DPI 变化和 GPU 上下文丢失时，状态树、资源句柄和
   渲染 surface 必须分离，恢复时走统一的 reset/reupload 流程。
-- **范围膨胀**：只接受当前桌面目标组件和平台契约；Android/iOS 暂缓，不因历史
+- **范围膨胀**：只接受当前桌面目标组件和平台契约；Android/iOS 暂不实现并冻结，不因历史
   接缝代码存在而增加移动功能。其他增强以自用路线图的实际状态和用户需求为准。
 
 后续桌面版本以三平台行为和文本/语义契约稳定为入口，按需评估桌面 GPU 后端、
-富文本编辑器、多窗口导航和平台服务。移动端不作为入口条件，也不绑定后续版本；
-只有重新确认需求后才另行设计。任何新增后端仍必须消费现有 `RenderCommandList`，
+富文本编辑器、多窗口导航和平台服务。移动端不作为入口条件，也不进入后续自动版本计划；
+只有用户再次明确提出需求后才另行设计。任何新增后端仍必须消费现有 `RenderCommandList`，
 不能绕过 UI、布局、文本和语义边界。

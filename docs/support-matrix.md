@@ -1,7 +1,7 @@
 # Lumen 平台支持矩阵（v0.3 + M0 基线）
 
 > 状态：随 v0.3 阶段 8A–8E 更新（2026-09），M0 基线冻结补充工具链与四态定义。
-> 当前产品范围（2026-09-14）：Windows/Linux/macOS 桌面；Android/iOS 暂不支持，M9 暂缓。
+> 当前产品范围（2026-09-14）：Windows/Linux/macOS 桌面；Android/iOS 暂不实现并冻结，M9 仅保留历史编号。
 > 构建命令与系统依赖的单一事实来源是
 > [`build-commands.md`](build-commands.md) 与 `.github/workflows/`。
 >
@@ -70,19 +70,19 @@ Gallery 默认导出保持 straight，见 [迁移说明](lumen-alpha-migration.m
 Skia/GPU Release 779/779，无跳过；详见
 [续验记录](perf-baselines/premultiplied-alpha-2026-09-20/follow-up.md)。
 
-## 历史移动实验内容（暂缓，不在当前支持范围）
+## 历史移动实验内容（暂不实现，已冻结）
 
 | 平台 | 当前范围 | 已有代码 | 验证边界 |
 | --- | --- | --- | --- |
-| Android | 暂不支持，未排期 | 保留 `lumen-mobile-host` 通用状态机；JNI/NativeActivity 胶水未纳入 | Linux 的 mobile-core job 只检查 SDL-free 通用代码，不是 NDK 或设备验证 |
-| iOS | 暂不支持，未排期 | 保留同一 `MobileHostSeam` 状态机；Objective-C++ 胶水未纳入 | macOS 的 mobile-core job 只检查 SDL-free 通用代码，不是 iOS 工程或 Simulator 验证 |
+| Android | 暂不实现，已冻结 | 保留 `lumen-mobile-host` 通用状态机；JNI/NativeActivity 胶水不实现 | Linux 的 mobile-core job 只检查 SDL-free 通用代码，不是 NDK 或设备验证，也不是任务入口 |
+| iOS | 暂不实现，已冻结 | 保留同一 `MobileHostSeam` 状态机；Objective-C++ 胶水不实现 | macOS 的 mobile-core job 只检查 SDL-free 通用代码，不是 iOS 工程或 Simulator 验证，也不是任务入口 |
 
 原生接入、软键盘、移动字体/绘制管线、移动页面、GPU、无障碍与发布均不在当前
-设计和验收范围，不预排到 v0.4。已有 `createMobileFontManager`、
+设计和验收范围，不进入当前或后续自动计划。已有 `createMobileFontManager`、
 `FontBackend::Mobile` 和默认字体栈分支也不能作为移动端文本可用的证据。
 
-现有源码、构建开关、测试和 Linux/macOS mobile-core CI job 保留，继续按工作流
-执行兼容性检查；本次文档调整不删除或禁用这些内容。桌面触屏、Touch density、
+现有源码、构建开关、测试和 Linux/macOS mobile-core CI job 可作为历史兼容性检查保留；
+不得由此新增移动实现任务。桌面触屏、Touch density、
 窄窗口和通用安全区指标仍属于桌面可用性设计。
 
 ## 后端与能力
@@ -135,4 +135,4 @@ Skia/GPU Release 779/779，无跳过；详见
   Linux AppImage（linuxdeploy）与 macOS Lumen.app 骨架 + package-skia
   （三平台）/package-skia-gpu（Linux llvmpipe）变体；新形态以 CI 首跑
   为事实来源，Windows/macOS GPU 包与 CPack Bundle 留后续。
-- 移动方向暂缓；M9 只保留状态说明，不作为桌面版本的待完成项。
+- 移动方向暂不实现并冻结；M9 只保留状态说明，不作为桌面版本的待完成项。

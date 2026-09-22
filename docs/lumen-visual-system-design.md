@@ -6,7 +6,7 @@
 >
 > 适用版本：v0.3 后续维护与 v0.4+ 视觉系统演进
 >
-> 当前平台范围（2026-09-14）：Windows/Linux/macOS 桌面；Android/iOS 暂不考虑。
+> 当前平台范围（2026-09-14）：Windows/Linux/macOS 桌面；Android/iOS 暂不实现并冻结。
 > V4 按桌面适配设计，历史移动实验内容不作为当前交付或验收要求。
 
 ## 1. 文档目的
@@ -523,7 +523,7 @@ rest/hovered/dragged/disabled 分别取 borderStrong/contentPrimary/accent/disab
 - 验证桌面窗口 resize、DPI、窄窗口、不同 density 和窗口可用区域下的布局与命中。
 - `lumen-style` 保持不依赖 SDL、Skia 或桌面会话的公共契约，支持确定性 headless 测试。
 - 禁止把平台 `#ifdef` 扩散到 core、layout、style 和 widget painter。
-- Android/iOS 主题映射、移动安全区策略和软键盘布局不在本阶段范围；M9 暂缓。
+- Android/iOS 主题映射、移动安全区策略和软键盘布局不在本阶段范围；M9 已冻结，不产生实现任务。
 
 出口条件：三桌面主题输入与降级行为可验证，布局、视觉、焦点和语义一致；
 不以移动 host 或设备测试作为完成条件。
@@ -575,8 +575,8 @@ ctest --test-dir build --output-on-failure -C Debug
 - counter/settings 的桌面窗口 smoke 和 headless 场景。
 - V4 变更前后检查桌面 CMake 依赖、测试集合和 README/支持矩阵描述没有过期。
 
-现有 `LUMEN_BUILD_MOBILE_CORE=ON` 配置及 CI 仍用于历史 SDL-free 实验代码的
-兼容性检查，不属于 V4 的移动产品验收，也不要求新增模拟器或真机测试。
+现有 `LUMEN_BUILD_MOBILE_CORE=ON` 配置及 CI 仅可用于历史 SDL-free 实验代码的
+兼容性检查，不属于 V4 的移动产品验收，也不要求或触发新增模拟器、真机或移动实现任务。
 
 ## 11. 迁移约束和风险
 
@@ -616,7 +616,7 @@ damage 经 `sameNode` 的 `clipRounded` 字段感知开关变化。透明呈现�
 - 状态视觉变化必须进入 RenderNode diff，否则 Preserve/damage 模式会留下旧像素。
 - 颜色对比度、焦点环和 disabled 状态必须在 high contrast 下仍可区分，不能只依赖颜色。关闭焦点环的表面仍须靠选中底色与形状区分；键盘重度表面应显式开启焦点环。
 - 图标、阴影和动效扩展不得改变现有 `RenderCommandList` 的 CPU/Skia/GPU 回退不变量。
-- Theme 只接收 host 提供的能力和指标，不接触 native handle；不为暂缓的移动平台增加专属契约。
+- Theme 只接收 host 提供的能力和指标，不接触 native handle；不为已冻结的移动平台增加专属契约。
 
 ## 12. 实施状态（2026-09 追记）
 

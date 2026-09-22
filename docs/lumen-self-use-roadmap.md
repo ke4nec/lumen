@@ -2,8 +2,8 @@
 
 > 文档状态：实施路线图（2026-09）
 > 目标：在现有 Lumen 核心之上，形成一套可供个人工具类应用长期使用的跨平台桌面 GUI。
-> 当前策略（2026-09-14 调整）：只规划 Windows/Linux/macOS 桌面端；暂不考虑 Android/iOS。M9 已暂缓，桌面里程碑完成后不自动进入移动端开发，也不预排移动端版本。
-> 桌面自用版 M0–M8 已全部收口；后续实施 M10–M13 桌面增强链（见 §3/§4），M9 编号保留为暂缓历史记录。
+> 当前策略（2026-09-14 调整）：只规划 Windows/Linux/macOS 桌面端；Android/iOS 暂不实现并冻结。M9 仅保留历史编号，桌面里程碑完成后不自动进入移动端开发，也不预排移动端版本。
+> 桌面自用版 M0–M8 已全部收口；后续实施 M10–M13 桌面增强链（见 §3/§4），M9 不在实施链中。
 > M12 之后按用户需求穿插交付按需控件增强（集合控件/菜单/分栏/自定义标题栏），不占里程碑编号（见 §10 对应完成记录）。
 
 ## 1. 目标、范围和完成定义
@@ -99,7 +99,7 @@ M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/3
 | GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道（快照去子化，reconcile O(n·depth)→O(n)） | 三桌面 GPU CI 首跑为事实来源（macOS job 为本变更新增） | M7 已收口 |
 | 发布 | M8+M12 已完成：install/CPack/RPATH/package job + Linux 桌面集成（desktop/icon）与 linuxdeploy AppImage + macOS Lumen.app 骨架 + package-skia（三平台）与 package-skia-gpu（Linux llvmpipe）变体 | Windows/macOS GPU 包与 CPack Bundle 生成器留后续；新形态以 CI 首跑为事实来源 | M8+M12 已收口 |
 
-移动端不列为桌面自用版的能力缺口；已存在的实验接缝和字体代码见 §4 M9 暂缓说明。
+移动端不列为桌面自用版的能力缺口；已存在的实验接缝和字体代码见 §4 M9 冻结说明。
 
 ## 3. 版本和依赖关系
 
@@ -130,7 +130,7 @@ M0 基线冻结
                          M13 原生无障碍 provider
 ```
 
-M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进入 M4；之后按 M4 → M5 → M6 → M7 → M8 合入。M0–M8 构成桌面自用版，已全部收口。增强链从 M10 起编号按序推进：M10 → M11 → M12 → M13；M9 编号保留为暂缓历史记录，不在实施链中，M8 完成不触发 M9。M12 与 M11 之间无强依赖，可按实际需要调换顺序；M13 依赖 M11 的高对比主题输出。
+M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进入 M4；之后按 M4 → M5 → M6 → M7 → M8 合入。M0–M8 构成桌面自用版，已全部收口。增强链从 M10 起编号按序推进：M10 → M11 → M12 → M13；M9 已冻结，不在实施链中，M8 完成不触发 M9。M12 与 M11 之间无强依赖，可按实际需要调换顺序；M13 依赖 M11 的高对比主题输出。
 
 ## 4. 里程碑详细计划
 
@@ -358,9 +358,9 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 
 **出口条件**：三平台包在干净机器或干净容器中可启动；依赖缺失、GPU 不可用和字体缺失时都有清晰提示；发布产物可追溯到 Git commit。
 
-### M9：Android/iOS 原生接入（暂缓，不在当前范围）
+### M9：Android/iOS 原生接入（暂不实现，已冻结）
 
-**状态**：2026-09-14 调整为暂缓。保留编号用于解释历史记录，不安排实现任务、
+**状态**：2026-09-14 起冻结。保留编号仅用于解释历史记录，不安排实现任务、
 出口条件、移动预览版或后续版本接入时间；M8 完成不触发 M9。
 
 **已有内容的定位**：仓库保留 `MobileHostSeam`、`lumen-mobile-host`、
@@ -369,12 +369,13 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 输入、字形绘制、原生 host 或发布链路已经可用。桌面默认字体和 Gallery 工作按
 桌面功能验收，不作为 M9 进度。
 
-**当前约束**：不新增 Android/iOS 工程、软键盘、移动字体管线、移动示例、原生
+**当前约束**：不新增或执行 Android/iOS 工程、软键盘、移动字体管线、移动示例、原生
 无障碍或移动 GPU/发布任务；不要求模拟器或真机验证。已有 Linux/macOS
 `mobile-core` CI job 仍按现有工作流运行，只验证 SDL-free 通用代码的兼容性，
-不作为移动产品验收。本次范围调整不删除代码、构建目标、测试或 CI job。
+不作为移动产品验收。本次范围调整不删除历史代码、构建目标、测试或 CI job，但这些
+遗留项不得派生新的移动实现任务。
 
-只有用户重新提出移动端需求后才重新评估范围和架构；旧方案不作为待执行清单。
+只有用户重新明确提出移动端需求后才重新评估范围和架构；旧方案不作为待执行清单。
 
 ### M10：动效与滚动体验
 
@@ -516,13 +517,13 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 | Skia 构建约束 | Windows 预编译 Skia 使用静态 CRT 且当前只提供 Release 包 | M1/M7 明确 Skia 为桌面可选依赖；CI 固定 Release/MT 配置，CPU-only 仍可独立构建 |
 | 视觉命令扩展 | CPU/Skia/GPU 输出不一致 | 先扩展命令模型和序列化，再接入具体控件 |
 | 平台服务失败 | 文件选择/通知阻塞或丢状态 | 所有服务返回结构化失败，状态更新只能在 UI 线程完成 |
-| 范围膨胀 | 桌面任务被未确认的平台扩展拖慢 | 当前范围为三桌面；M9 暂缓，不因已有移动实验代码而扩展任务 |
+| 范围膨胀 | 桌面任务被未确认的平台扩展拖慢 | 当前范围为三桌面；M9 已冻结，不因已有移动实验代码而扩展任务 |
 
 ## 8. 版本切分和停止条件
 
 - **桌面自用版**：完成 M0–M8（已收口）。M5 的语义契约和 Recording bridge 已完成；原生桌面 accessibility provider 由 M13 追加。
 - **后续桌面增强版**：按 M10–M13 增强链实施——M10 动效与滚动体验、M11 v0.4 视觉方向与控件体验、M12 平台服务与发布补全、M13 原生无障碍 provider；M12 之后、M13 之前穿插交付按需控件增强（不占编号）：集合控件 List/Tree/TreeList、菜单类控件、Splitter 分栏与自定义标题栏（见 §10 对应完成记录）；HarfBuzz 富文本、多窗口、完整 UBA、专用 GPU 后端留在按需评估池（§4）。业务数据与网络仍由应用层负责。
-- **移动端**：暂不规划版本；M9 保留为暂缓记录。
+- **移动端**：暂不实现且不规划版本；M9 仅保留为冻结记录。
 
 任何里程碑若无法满足出口条件，只能修复当前阶段或回退实现，不能通过修改文档把“接口存在”标记为“平台完成”。
 
@@ -1642,6 +1643,52 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
   优化）。
 - 回滚点：`cac1259 fix(icons): Search 几何与描边权重清晰度`（P1 前）。
 
+#### P2 水平滚动轴（2026-09-19）
+
+- 完成日期：2026-09-19（切片一与滚动条交互修复同日合入）
+- 提交号：`d6f76de feat(core): ScrollController 轴化与水平滚动设计契约（P2 切片一）`、`a923d7c fix(scroll): 完善滚动条交互并修复横向滚动与取消行为`
+- 变更：
+  - 新增 `core::ScrollAxis { Vertical, Horizontal }`（`include/lumen/core/scroll.h`），
+    `ScrollController` 构造携带轴、全部方法按活动轴解释输入（fling 物理
+    常量不变）；`Widget.scrollAxis`/`RenderNode.scrollAxis` 默认 Vertical
+    （未声明视口行为与现状逐字节一致，Widget 体积预算测试 +1B 对齐已
+    更新：`tests/collection_tests.cpp`）。
+  - `layoutScrollView` 按轴选择镜像约束（横向：宽不限、高 ≤ 视口 -
+    padding），子 offset 应用到活动轴；纵向默认路径几何零变化。
+  - painter 按节点轴画横向 thumb（底边、track = 视口宽、thumb 宽 =
+    visibleFraction×track、minLength 同 token）；单轴视口只画一条。
+  - `InteractionController` wheel 派发按命中视口轴选分量（纵向吃
+    deltaY、横向吃 deltaX）；Shift+纵轮 → 横向分量的桌面惯例在交互层
+    换算（FLIPPED 符号随 M12 既有换算）；`wheelSink` 签名扩为携带完整
+    `Offset` delta（默认参数兼容）。
+  - `ScrollDragSink` 泛化为活动轴分量；横视口内 Slider 拖动仍设值
+    （垂直版回归的精确镜像）。
+  - 键盘：焦点在横向视口（非 TextField）时 Left/Right 步进、Home/End
+    两端、PageUp/PageDown 横向翻页；TextField 内 Left/Right 仍是 caret
+    移动（既有优先级不变）。
+  - 语义：`AccessibilityBridge`/`AppShell::performAccessibilityAction`/
+    Recording 的 scroll 参数族尾部追加 `scrollDeltaX = 0.0F`（默认参数
+    兼容扩约）；横向视口的语义 value/scroll action 按活动轴报告。
+  - 契约写入 `docs/lumen-scroll-design.md`（轴模型、输入路由、物理、
+    键盘/语义契约——后续滚动行为变更以此为准）；`lumen-visual-system-
+    design.md` 滚动条节补横向几何。
+- 测试：`motion_scroll_tests.cpp` 横向 scrollBy/applyWheel/applyDrag/
+  applyKey/semanticScroll/fling 与纵向同参数同行为 + `layoutScrollView`
+  镜像约束三用例；`scrollbar_tests.cpp` 两轴滑块几何/命中/状态/键盘
+  拒绝异轴箭头；`wheel_routing_tests.cpp` 分量路由 + Shift 投影 +
+  FLIPPED 符号 + 嵌套回归；`gpu_smoke_tests.cpp` 双轴 thumb damage
+  不变量；`semantics_tests.cpp` scrollDeltaX 回执；`collection_tests.cpp`
+  Widget 体积预算。本地 Windows CPU Debug 全量通过；既有 headless 帧
+  哈希在默认纵向场景零变化（硬出口）。
+- 平台：平台无关（布局/交互/渲染层概念）；本地 Windows 全量验证，
+  Linux/macOS 与 Skia/GPU 构建以 CI 为事实来源。
+- 已知限制：gallery 水平滚动演示区（超宽卡片行）未落地（`examples/
+  gallery/gallery_app.h` 无横向视口演示，`lumen-scroll-design.md` §7
+  仍列该项为待办）；无双轴联滚、无水平虚拟化、无 RTL（§1 非目标）；
+  自动隐藏滚动条未实现；Shift+纵轮投影为框架层约定（宿主无原生横轮
+  事件时）。
+- 回滚点：`dd6366b feat(examples): GPU 回退改用 Skia 软件光栅保持文本连续`（P3，P2 前）。
+
 #### P3 GPU 回退文本连续性（2026-09-19）
 
 - 完成日期：2026-09-19
@@ -1817,7 +1864,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 
 ### 范围调整记录（2026-09-14）
 
-- 当前 UI 只面向 Windows/Linux/macOS；M9 暂缓，不列入待实施里程碑。
+- 当前 UI 只面向 Windows/Linux/macOS；M9 已冻结，不列入待实施里程碑。
 - v0.3 8E 和视觉系统 V4 的规划统一为桌面范围，Android/iOS 不再承担版本出口条件。
 - 原有 M0–M8 完成记录中的 mobile-core 数字保留为当时的实验配置验证记录，
   不表示移动平台已完成，也不表示本次复测通过。

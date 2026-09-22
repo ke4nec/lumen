@@ -3,7 +3,7 @@
 > 状态：M0 基线入口（2026-09）；2026-09-14 统一为三桌面范围。本文件是桌面 CPU、Skia、GPU、
 > headless、窗口 smoke 和基准的唯一可追踪验收入口。所有当前里程碑的验证
 > 命令必须引用本表，不得使用开发者本地脚本作为门槛依据。
-> mobile-core 单列为保留的历史实验配置，不代表 Android/iOS 产品验收。
+> mobile-core 仅作为历史 SDL-free 兼容检查参考，不代表 Android/iOS 产品验收，也不构成当前任务。
 >
 > 相关文档：[自用路线图](lumen-self-use-roadmap.md) ·
 > [平台支持矩阵](support-matrix.md) ·
@@ -69,16 +69,17 @@
 - M7 只允许引用 `docs/perf-baselines/v0.2-cpu-scene.json` 和上表 canonical
   命令做 CPU 对比；Skia/GPU 和新增场景以各自首次归档报告为基线。
 
-## 3. 历史 SDL-free 实验配置（保留参考）
+## 3. Gallery 与历史 SDL-free 兼容检查
 
 Gallery 固定样本参数：`--sample-route` 支持 `home/buttons/inputs/layout/lists/feedback/theme`；可选 `--sample-key` 将该 key 滚到主视口顶部。输入类矩阵 key 为 `samples-TextField-card`、`samples-Checkbox-card`、`samples-Switch-card`、`samples-Radio-card`、`samples-Dropdown-card`、`samples-Tabs-card`；Feedback 使用 `samples-Slider-card`、`samples-ProgressBar-card`、`samples-Tooltip-card`；Buttons 使用 `buttons-matrix-card`。`--direction 0..3` 按 Core Dark / Ink Linen / Aurora Signal / Utility Contrast 排列，`--density 0..2` 为 Compact / Comfortable / Touch，另支持 `--light`、`--high-contrast`、`--reduce-animation`。`--width/--height` 是 logical px，`--font-scale` 与 `--dpi` 分开控制且支持 1–2。`--sample-time` 注入毫秒时钟，仅采样当前场景；过渡的事件触发及 t=0/0.5T/T 由测试驱动。
 
 导出为原始 RGBA8，配套 `<输出文件>.txt` 保存实际像素宽高、逻辑视口、字体来源及样本参数。加 `--system-fonts` 使用本机字体，加载失败返回非零状态；省略时使用确定性测试字体。未传 `--sample-route` 的原有 `--headless` 继续执行全路由交互 smoke。原始帧和转换后的 PNG 应保存在忽略的构建目录。
 
-`LUMEN_BUILD_MOBILE_CORE=ON` 仍存在，Linux/macOS 工作流中的 `mobile-core`
-job 也仍会执行。以下命令只验证通用库与 headless 测试，不是 Android NDK/iOS
-工程构建，不代表模拟器、真机、移动文本输入或发布通过。M9 暂缓，不新增移动
-平台验收任务；本次范围调整不修改构建目标或 CI 行为。
+本节前两组 Gallery 命令属于桌面验证。`LUMEN_BUILD_MOBILE_CORE=ON` 仍存在，
+Linux/macOS 工作流中的历史 `mobile-core` job 可能继续执行；以下 mobile-core 命令
+只验证通用库与 headless 测试，不是 Android NDK/iOS 工程构建，不代表模拟器、真机、
+移动文本输入或发布通过。M9 已冻结，mobile-core 不是移动实施清单，也不应作为每个
+桌面任务的附加验收；仅在维护相关兼容配置或用户明确要求时按需运行。
 
 ```sh
 cmake -S . -B build-mobile -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_MOBILE_CORE=ON

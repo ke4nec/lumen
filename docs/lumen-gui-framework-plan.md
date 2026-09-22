@@ -1,7 +1,7 @@
 # Lumen：C++20 自绘 GUI 框架渐进式实现计划
 
-> 本文保留初始阶段设计。当前产品范围为 Windows/Linux/macOS 桌面，暂不考虑
-> Android/iOS；后续实施顺序与 M9 暂缓说明见
+> 本文保留初始阶段设计。当前产品范围为 Windows/Linux/macOS 桌面；
+> Android/iOS 暂不实现并冻结，旧移动计划不作为任务依据。M9 仅作历史编号说明，见
 > [自用桌面路线图](lumen-self-use-roadmap.md)。
 
 ## 1. 项目目标

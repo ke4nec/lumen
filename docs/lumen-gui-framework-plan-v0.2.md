@@ -2,7 +2,7 @@
 
 > 后续面向自用工具类应用的桌面路线图见
 > [`lumen-self-use-roadmap.md`](lumen-self-use-roadmap.md)。
-> 当前平台范围（2026-09-14）：Windows/Linux/macOS；Android/iOS 暂缓，不预排后续版本。
+> 当前平台范围（2026-09-14）：Windows/Linux/macOS；Android/iOS 暂不实现并冻结，不预排当前或后续版本。
 
 ## 1. 版本定位与当前基线
 
@@ -13,7 +13,7 @@ v0.2 建立在 `docs/lumen-gui-framework-plan.md` 的阶段 0–6 之上。阶�
 
 v0.2 的目标是把“能运行的自绘框架”升级为“可测量、可回退、可发布的桌面
 渲染运行时”。v0.2 首期只承诺 Windows 与 Linux 桌面，保持单 UI 线程；macOS
-桌面在 v0.3 扩展。Android/iOS 暂不规划，跨线程 UI 树仍不在当前范围。
+桌面在 v0.3 扩展。Android/iOS 暂不实现，移动端任务、验收条件和移动端发布不进入当前范围；跨线程 UI 树仍不在当前范围。
 
 ## 2. 目标、非目标与不变量
 
