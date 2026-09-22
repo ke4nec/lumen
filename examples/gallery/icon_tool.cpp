@@ -1,7 +1,8 @@
 // Gallery 图标资源导出工具（docs/lumen-gallery-icon-design.md §3）。
 //
 // 构建期运行（examples/gallery/CMakeLists.txt custom command），从
-// gallery_icon.h 母版导出平台资源；产物只进构建/安装树，不提交仓库
+// gallery_icon.h 母版导出平台资源；PNG 由 stb_image_write 编码，产物只进
+// 构建/安装树，不提交仓库
 // （AGENTS：不提交生成二进制）：
 //   lumen-gallery-<size>.png × 8   —— Linux hicolor 按档安装
 //   lumen-gallery.ico（8 尺寸）    —— Windows exe 资源（.rc 引用）

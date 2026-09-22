@@ -1,6 +1,6 @@
 // v0.2 阶段7D tests (plan §5 资源): 并发加载、取消、失败、淘汰、代际
-// 句柄、设备重建重新上传和析构清理。PNG 解码用 stb_image_write 现场生成
-// 输入，原始 .lumenrgba 格式直接手写。
+// 句柄、设备重建重新上传和析构清理。PNG 测试输入由 stb_image_write
+// 现场生成，原始 .lumenrgba 格式直接手写。
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -15,7 +15,6 @@
 #include "lumen/render/render_commands.h"
 #include "lumen/render/resource_manager.h"
 
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
 using lumen::render::CpuRenderer;

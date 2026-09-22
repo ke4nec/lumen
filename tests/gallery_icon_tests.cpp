@@ -1,5 +1,5 @@
 // Gallery 应用图标（Core Dark 方向）测试：几何契约、光栅分层规则、
-// PNG/ICO/ICNS 容器与 runApp 窗口图标装配（docs/lumen-gallery-icon-design.md
+// PNG/ICO/ICNS 资源与 runApp 窗口图标装配（docs/lumen-gallery-icon-design.md
 // §4 验收；母版见 examples/gallery/gallery_icon.h，设计稿
 // design/gallery-icon.html 方向 01）。
 
@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "stb_image.h"
 #include "gallery_icon.h"
 #include "lumen/app/app_shell.h"
 #include "lumen/platform/fake_host.h"
@@ -142,7 +143,7 @@ TEST_CASE("gallery_icon_rejects_non_positive_size", "[gallery-icon]") {
     REQUIRE(empty.rgba.empty());
 }
 
-// --- 容器：PNG/ICO/ICNS 结构（自产自检，消费方为系统壳层） ---
+// --- 资源：PNG 由 stb_image_write 生成，ICO/ICNS 供系统壳层消费 ---
 
 TEST_CASE("gallery_icon_png_stream_is_well_formed", "[gallery-icon]") {
     const GalleryIconBitmap bitmap = lumen::examples::renderGalleryIcon(32);
@@ -163,7 +164,7 @@ TEST_CASE("gallery_icon_png_stream_is_well_formed", "[gallery-icon]") {
     REQUIRE(png[23] == 32);
     REQUIRE(png[24] == 8);
     REQUIRE(png[25] == 6);
-    // zlib 流头（stored deflate 0x78 0x01）与 IEND 收尾。
+    // IDAT 存在且由 stb_image 成功解码；具体压缩级别由第三方库决定。
     std::size_t cursor = 8;
     bool sawIdat = false;
     bool sawIend = false;
@@ -178,8 +179,6 @@ TEST_CASE("gallery_icon_png_stream_is_well_formed", "[gallery-icon]") {
         const char d = static_cast<char>(png[cursor + 7]);
         if (a == 'I' && b == 'D' && c == 'A' && d == 'T') {
             sawIdat = true;
-            REQUIRE(png[cursor + 8] == 0x78);
-            REQUIRE(png[cursor + 9] == 0x01);
         }
         if (a == 'I' && b == 'E' && c == 'N' && d == 'D') {
             sawIend = true;
@@ -189,6 +188,16 @@ TEST_CASE("gallery_icon_png_stream_is_well_formed", "[gallery-icon]") {
     }
     REQUIRE(sawIdat);
     REQUIRE(sawIend);
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    stbi_uc* decoded = stbi_load_from_memory(
+        png.data(), static_cast<int>(png.size()), &width, &height, &channels, 4);
+    REQUIRE(decoded != nullptr);
+    REQUIRE(width == bitmap.size);
+    REQUIRE(height == bitmap.size);
+    stbi_image_free(decoded);
 }
 
 TEST_CASE("gallery_icon_ico_bundles_all_export_sizes", "[gallery-icon]") {

@@ -16,7 +16,7 @@ using Catalog = std::vector<Line>;
 const std::vector<Catalog>& catalog() {
     static const std::vector<Catalog> kCatalog = [] {
         std::vector<Catalog> table(
-            static_cast<std::size_t>(IconId::Grip) + 1);
+            static_cast<std::size_t>(IconId::GalleryLogo) + 1);
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
@@ -180,6 +180,11 @@ const std::vector<Catalog>& catalog() {
             Catalog{Line{{Offset{0.58F, 0.92F}, Offset{0.92F, 0.58F}}},
                     Line{{Offset{0.71F, 0.92F}, Offset{0.92F, 0.71F}}},
                     Line{{Offset{0.45F, 0.92F}, Offset{0.92F, 0.45F}}}};
+        // Gallery 标题栏品牌标记：与应用图标相同的首字母 L 轮廓，
+        // 由 Icon 节点按主题前景色绘制，避免在 UI 中嵌入文字字形。
+        table[static_cast<std::size_t>(IconId::GalleryLogo)] =
+            Catalog{Line{{Offset{0.25F, 0.18F}, Offset{0.25F, 0.78F}}},
+                    Line{{Offset{0.25F, 0.78F}, Offset{0.80F, 0.78F}}}};
         return table;
     }();
     return kCatalog;

@@ -58,7 +58,7 @@ TEST_CASE("icon_catalog_provides_normalized_polylines", "[visual][m6]") {
          {IconId::Check, IconId::Close, IconId::ChevronDown,
           IconId::ChevronRight, IconId::ChevronLeft, IconId::ChevronUp,
           IconId::Alert, IconId::Plus, IconId::Minus, IconId::Search,
-          IconId::Info, IconId::Maximize}) {
+          IconId::Info, IconId::Maximize, IconId::GalleryLogo}) {
         const auto& polylines = iconPolylines(id);
         REQUIRE_FALSE(polylines.empty());
         for (const auto& polyline : polylines) {

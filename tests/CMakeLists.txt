@@ -73,6 +73,12 @@ set(LUMEN_TEST_SOURCES
     mobile_host_tests.cpp
 )
 
+# Gallery asset encoding is a build-time concern, but its output contract is
+# covered by the same headless test binary. The private stb writer target owns
+# the single third-party implementation used by tests and the export tool.
+list(APPEND LUMEN_TEST_SOURCES
+    ${PROJECT_SOURCE_DIR}/examples/gallery/gallery_icon.cpp)
+
 # 移动核心配置（8E）：无 SDL/桌面平台层，跳过桌面平台与 SDL 依赖测试。
 if(LUMEN_BUILD_MOBILE_CORE)
   list(REMOVE_ITEM LUMEN_TEST_SOURCES
@@ -128,6 +134,7 @@ target_link_libraries(lumen-tests PRIVATE
     lumen-platform
     lumen-dsl
     lumen-mobile-host
+    lumen-stb-image-write
     Catch2::Catch2WithMain
 )
 

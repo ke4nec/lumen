@@ -73,6 +73,13 @@ TEST_CASE("titlebar_gallery_structure_marks_only_caption_row",
     REQUIRE(findNodeByKey(app.root(), "gallery-titlebar") != nullptr);
     REQUIRE(findNodeByKey(app.root(), "gallery-titlebar-row") != nullptr);
     REQUIRE(findNodeByKey(app.root(), "gallery-brand") != nullptr);
+    const RenderNode* brandMark =
+        findNodeByKey(app.root(), "gallery-brand-mark");
+    REQUIRE(brandMark != nullptr);
+    REQUIRE(brandMark->children.size() == 1);
+    CHECK(brandMark->children.front().type == WidgetType::Icon);
+    CHECK(brandMark->children.front().icon ==
+          static_cast<std::uint8_t>(IconId::GalleryLogo));
     REQUIRE(findNodeByKey(app.root(), "gallery-menubar") != nullptr);
     REQUIRE(findNodeByKey(app.root(), "gallery-titlebar-drag") != nullptr);
     REQUIRE(findNodeByKey(app.root(), "gallery-window-actions") != nullptr);

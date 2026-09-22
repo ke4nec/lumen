@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | SDL3 | `release-3.2.10` | 桌面窗口/输入（mobile-core 跳过） |
 | Catch2 | `v3.8.1` | 单测 |
-| stb | `2c980bb59875b0d32144a71867fbdebb2f77cd20` | 图片解码 |
+| stb | `2c980bb59875b0d32144a71867fbdebb2f77cd20` | 图片解码与 Gallery 图标 PNG 编码 |
 | Skia 预编译 | `m124-08a5439a6b`（Windows `Skia-Windows-Release-x64.zip` / Linux `Skia-Linux-Release-x64.zip`，aseprite/skia） | 可选光栅/GPU；其他平台需 `-DLUMEN_SKIA_ROOT=<目录>` |
 | zlib | `v1.3.1` | 仅 Windows Skia 构建（补 plain zlib 符号） |
 

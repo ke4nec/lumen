@@ -19,8 +19,10 @@ target_link_libraries(lumen-gallery PRIVATE
 # 构建/安装树（不提交生成二进制）。路径经 cache 变量暴露给根安装规则。
 set(LUMEN_GALLERY_ICON_DIR ${CMAKE_CURRENT_BINARY_DIR}/icons CACHE INTERNAL
     "Generated gallery app icon assets")
-add_executable(lumen-gallery-icons icon_tool.cpp)
+add_executable(lumen-gallery-icons icon_tool.cpp gallery_icon.cpp)
 target_compile_features(lumen-gallery-icons PRIVATE cxx_std_20)
+target_include_directories(lumen-gallery-icons PRIVATE ${stb_SOURCE_DIR})
+target_link_libraries(lumen-gallery-icons PRIVATE lumen-stb-image-write)
 
 set(LUMEN_GALLERY_ICON_OUTPUTS
     ${LUMEN_GALLERY_ICON_DIR}/lumen-gallery-16.png

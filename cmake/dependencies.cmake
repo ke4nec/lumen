@@ -23,8 +23,9 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
   FetchContent_MakeAvailable(sdl3)
 endif()
 
-# stb_image backs ResourceManager decoding (v0.2 阶段7D, plan §3.3). stb has
-# no release tags; pin the master commit instead (see AGENTS.md pinning rule).
+# stb_image/stb_image_write back ResourceManager decoding and Gallery asset
+# encoding (v0.2 阶段7D, plan §3.3). stb has no release tags; pin the master
+# commit instead (see AGENTS.md pinning rule).
 set(LUMEN_STB_GIT_TAG "2c980bb59875b0d32144a71867fbdebb2f77cd20" CACHE STRING
     "Pinned stb commit")
 FetchContent_Declare(

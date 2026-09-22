@@ -1193,9 +1193,13 @@ class GalleryApp {
     // hit-test 原生提供；菜单项/窗口按钮/紧凑导航下拉命中链更深，自然
     // 排除拖拽。≤1024 隐藏状态胶囊；≤720 折叠标题文字（留品牌标）。
     [[nodiscard]] core::Widget buildTitleBar(const style::Theme& theme) const {
-        const float markSize = brandMarkStyle(theme).fontSize * 2.0F;
+        const float markSize = theme.typography.body.fontSize * 2.0F;
+        core::Widget markIcon = core::makeIcon(
+            core::IconId::GalleryLogo, "gallery-brand-icon", markSize * 0.64F,
+            markSize * 0.64F);
+        markIcon.styleOverrides.foreground = theme.colors.onAccent;
         core::Widget mark = core::makeRow(
-            {core::makeText("L", brandMarkStyle(theme))},
+            {std::move(markIcon)},
             core::MainAxisAlignment::Center, core::CrossAxisAlignment::Center,
             0.0F, core::EdgeInsets{}, core::EdgeInsets{},
             "gallery-brand-mark", markSize, markSize);
@@ -3726,12 +3730,6 @@ class GalleryApp {
         style.lineHeight = 18.0F / 12.0F;
         style.color = color;
         return core::makeText(std::move(text), style);
-    }
-    [[nodiscard]] static core::TextStyle brandMarkStyle(
-        const style::Theme& theme) {
-        core::TextStyle style = scaledStyle(14.0F, 800, theme);
-        style.color = theme.colors.onAccent;
-        return style;
     }
     [[nodiscard]] static core::TextStyle headerTitleStyle(
         const style::Theme& theme) {

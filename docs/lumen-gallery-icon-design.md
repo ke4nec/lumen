@@ -4,8 +4,9 @@
 >
 > 设计稿：[`design/gallery-icon.html`](../design/gallery-icon.html)（四方向评审板，方向 01 选定）
 >
-> 适用范围：Gallery 示例（`examples/gallery`）的应用标识。UI 内图标仍走
-> `IconId`/`IconTheme` 契约（visual-system §8），本文件只覆盖应用图标资产。
+> 适用范围：Gallery 示例（`examples/gallery`）的应用标识。标题栏品牌位使用
+> `IconId::GalleryLogo`/`IconTheme` 的 UI 图标契约；窗口、任务栏和安装资源继续使用
+> 本文定义的完整栅格应用图标资产。
 
 ## 1. 概念与母版
 
@@ -14,11 +15,19 @@
 推荐基线：徽章深色双阶渐变 + 白/蓝双色，与默认桌面主题 token 同源。
 
 母版是代码而非图片：`examples/gallery/gallery_icon.h` 以 8×8 超采样 SDF
-光栅化确定性生成直通 RGBA8。同一几何被三处消费——
+光栅化确定性生成直通 RGBA8。文件格式边界位于
+`examples/gallery/gallery_icon.cpp`：PNG 由仓库已固定版本的 `stb_image_write`
+编码，ICO/ICNS 只负责把 PNG 放入平台资源容器，避免在头文件中维护 PNG
+校验和、压缩流或图片格式实现。
+
+应用标识母版被三处消费：
 
 - 运行时窗口图标（按 DPI 现场光栅化，见 §4）；
 - 构建期资源导出（`icon_tool.cpp` → PNG/ICO/ICNS）；
 - 单元测试（`tests/gallery_icon_tests.cpp`）。
+
+标题栏中的 28px 品牌位是独立的 `IconId::GalleryLogo` 矢量节点，复用同一
+首字母 L 语义但不把栅格位图塞入 UI 渲染树。
 
 ## 2. 几何与分层契约
 
@@ -76,8 +85,8 @@ linuxdeploy 组装 AppImage 消费同一 install 布局。
 - 几何契约：手调网格（16/32）与比例档（64）数值断言。
 - 光栅：八档尺寸缓冲、圆角外透明、双色标记采样点、≤32 平面 / ≥48
   渐变 + 内缘亮于内部、16px 像素网格（笔芯列 vs 徽章列）。
-- 容器：PNG 签名/IHDR/zlib 头/IEND，ICO 条目数-偏移-尾对齐，ICNS
-  槽位序列与块长自洽。
+- 资源：PNG 结构和 stb_image 解码、ICO 条目数-偏移-尾对齐、ICNS 槽位
+  序列与块长自洽。
 - runApp 装配：provider 像素逐字节送达宿主、空图标跳过、宿主失败
   安全降级（退出码仍 0）。
 

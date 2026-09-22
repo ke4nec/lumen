@@ -59,6 +59,14 @@ endif()
 
 include(cmake/dependencies.cmake)
 
+# Build the third-party PNG writer once. Gallery asset export and headless
+# tests share this private implementation without depending on each other's
+# source files.
+add_library(lumen-stb-image-write STATIC
+            ${PROJECT_SOURCE_DIR}/src/render/stb_image_write_impl.cpp)
+target_include_directories(lumen-stb-image-write PRIVATE ${stb_SOURCE_DIR})
+target_compile_features(lumen-stb-image-write PRIVATE cxx_std_20)
+
 # M8：便携包运行时路径（须在目标创建前声明——子目录作用域捕获）。
 if(APPLE)
   set(CMAKE_INSTALL_RPATH "@loader_path/../lib")
