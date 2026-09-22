@@ -39,22 +39,29 @@
 
 | 场景 | 命令 |
 | --- | --- |
-| CPU-only 构建+测试（默认门槛） | `cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`<br>`cmake --build build --config Debug`<br>`ctest --test-dir build --output-on-failure -C Debug` |
-| CPU-only + 基准 | `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON -DLUMEN_BUILD_BENCHMARKS=ON`<br>`cmake --build build --config Debug`<br>`ctest --test-dir build --output-on-failure -C Debug` |
+| CPU-only 构建+测试（默认门槛） | `cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`<br>`cmake --build build-debug --config Debug`<br>`ctest --test-dir build-debug --output-on-failure -C Debug` |
+| CPU-only Release | `cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`<br>`cmake --build build-release --config Release`<br>`ctest --test-dir build-release --output-on-failure -C Release` |
+| CPU-only + 基准 | `cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON -DLUMEN_BUILD_BENCHMARKS=ON`<br>`cmake --build build-debug --config Debug`<br>`ctest --test-dir build-debug --output-on-failure -C Debug` |
 | Skia 光栅 | `cmake -S . -B build-skia -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON`<br>`cmake --build build-skia --config Release`（Windows 必须 Release）<br>`ctest --test-dir build-skia -C Release`（含 CPU/Skia 一致性）<br>`./build-skia/examples/counter/lumen-counter --renderer skia` |
 | Skia GPU（Ganesh+GL） | `cmake -S . -B build-gpu -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON`<br>`cmake --build build-gpu --config Release`<br>`./build-gpu/examples/counter/lumen-counter --renderer gpu --diagnostics` |
-| headless smoke | `./build/examples/counter/lumen-counter --headless`<br>`./build/examples/settings/lumen-settings --headless`<br>`./build/examples/gallery/lumen-gallery --headless` |
-| Gallery 固定视觉样本 | `./build/examples/gallery/lumen-gallery --headless --sample-route inputs --sample-key samples-Switch-card --width 600 --height 700 --font-scale 2 --dpi 1.25 --system-fonts --dump-frame build/switch.rgba`（Windows 多配置生成器在可执行文件前增加 `Debug/` 或 `Release/`） |
-| 窗口 smoke（Linux） | `xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build/examples/settings/lumen-settings \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build/examples/gallery/lumen-gallery \|\| test $? -eq 124` |
-| 窗口 smoke（macOS 无窗口服务器） | `SDL_VIDEODRIVER=dummy ./build/examples/counter/lumen-counter & pid=$!; sleep 10; kill -0 "$pid"`（见 `macos.yml`） |
+| headless smoke | `./build-debug/examples/counter/lumen-counter --headless`<br>`./build-debug/examples/settings/lumen-settings --headless`<br>`./build-debug/examples/gallery/lumen-gallery --headless` |
+| Gallery 固定视觉样本 | `./build-debug/examples/gallery/lumen-gallery --headless --sample-route inputs --sample-key samples-Switch-card --width 600 --height 700 --font-scale 2 --dpi 1.25 --system-fonts --dump-frame build-debug/switch.rgba` |
+| 窗口 smoke（Linux） | `xvfb-run -a timeout 5 ./build-debug/examples/counter/lumen-counter \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build-debug/examples/settings/lumen-settings \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build-debug/examples/gallery/lumen-gallery \|\| test $? -eq 124` |
+| 窗口 smoke（macOS 无窗口服务器） | `SDL_VIDEODRIVER=dummy ./build-debug/examples/counter/lumen-counter & pid=$!; sleep 10; kill -0 "$pid"`（见 `macos.yml`） |
 | 诊断 | `./lumen-counter --diagnostics`<br>`./lumen-counter --renderer gpu --diagnostics --frames 1` |
-| 基准（ repeatability 门槛） | `./build/benchmarks/lumen-scene-bench --frames 120 --warmup 10 --json > bench-1.json`<br>`./build/benchmarks/lumen-scene-bench --frames 120 --warmup 10 --json > bench-2.json`（两次 `frame_hash` 必须一致） |
+| 基准（ repeatability 门槛） | `./build-debug/benchmarks/lumen-scene-bench --frames 120 --warmup 10 --json > bench-1.json`<br>`./build-debug/benchmarks/lumen-scene-bench --frames 120 --warmup 10 --json > bench-2.json`（两次 `frame_hash` 必须一致） |
 | 基准（M0 归档基线，唯一 canonical） | `cmake -S . -B build-bench -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_BENCHMARKS=ON`<br>`cmake --build build-bench --config Release`<br>`./build-bench/benchmarks/lumen-scene-bench --frames 300 --warmup 30 --json > docs/perf-baselines/v0.2-cpu-scene.json` |
 
 说明：
 
-- `build/`、`build-skia/`、`build-gpu/`、`build-mobile/`、`build-bench/` 均为
-  out-of-source 构建目录，禁止提交到仓库（见 `.gitignore`）。
+- 每配置使用独立目录：`build-debug/` 只编 Debug、`build-release/` 只编
+  Release；不要在同一构建树并行编两个配置（VS 多配置生成器的 `ZERO_CHECK`
+  共享 `generate.stamp`，并行会竞态并触发 MSB8065）。
+- 上表可执行路径为单配置生成器（Ninja/Make）形式；Windows 多配置生成器
+  在可执行文件前插入配置子目录（如 `examples/counter/Debug/lumen-counter`）。
+- `build-debug/`、`build-release/`、`build-skia/`、`build-gpu/`、
+  `build-mobile/`、`build-bench/` 均为 out-of-source 构建目录，禁止提交到
+  仓库（见 `.gitignore` 的 `build*/`）。
 - 基准 canonical 命令的参数（`--frames 300 --warmup 30`）、viewport
   （1920x1080）、场景（6x8 卡片网格，见 `scenario=card-grid-6x8-1080p`）、
   后端（`cpu`）、构建类型（Release）共同定义 M0 基线；任何一项不同即为
@@ -89,7 +96,7 @@ P3 窗口生命周期回归默认随 CTest 在 dummy 驱动运行；真实桌面
 Windows PowerShell 设置 `$env:LUMEN_ALPHA_REAL_WINDOW='1'` 后执行
 `./build-alpha-after/tests/Release/lumen-tests.exe platform_alpha_resize_restore_and_rejection_recover`，
 随后 `Remove-Item Env:LUMEN_ALPHA_REAL_WINDOW`。Linux/macOS 使用
-`LUMEN_ALPHA_REAL_WINDOW=1 ./build/tests/lumen-tests platform_alpha_resize_restore_and_rejection_recover`。
+`LUMEN_ALPHA_REAL_WINDOW=1 ./build-debug/tests/lumen-tests platform_alpha_resize_restore_and_rejection_recover`。
 不要设置 `SDL_VIDEODRIVER=dummy`；测试拒绝把 dummy 当作真实窗口。该测试验证呈现、
 resize、最小化恢复及模式分派；宿主透明合成仍须按 [P3](perf-baselines/premultiplied-alpha-2026-09-20/P3.md) 的限制单独验收。
 

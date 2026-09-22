@@ -1,5 +1,7 @@
-# --- 构建目录（out-of-source 构建，见 AGENTS.md/ README.md） ---
+# --- 构建目录（out-of-source，每配置独立：build-debug/ build-release/ …） ---
 build*/
+build-debug/
+build-release/
 out/
 
 # --- CMake 生成物（散落在源码树时，如 VS 直接打开文件夹） ---

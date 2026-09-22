@@ -17,15 +17,24 @@ Keep platform code behind interfaces. SDL3 owns windows and input; `CpuRenderer`
 
 ## Build, Test, and Development Commands
 
-After the CMake skeleton is added, use an out-of-source build:
+After the CMake skeleton is added, use an out-of-source build. Prefer one
+configuration per build directory (`build-debug` / `build-release`); avoid
+building Debug and Release in the same tree (parallel multi-config builds can
+race on CMake `ZERO_CHECK` stamps):
 
 ```sh
-cmake -S . -B build -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
-cmake --build build --config Debug
-ctest --test-dir build --output-on-failure -C Debug
+cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
+cmake --build build-debug --config Debug
+ctest --test-dir build-debug --output-on-failure -C Debug
+
+cmake -S . -B build-release -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
+cmake --build build-release --config Release
+ctest --test-dir build-release --output-on-failure -C Release
 ```
 
-Run the counter sample from `build/examples/counter/` (Windows adds the `Debug/` configuration directory). Enable Skia with `-DLUMEN_ENABLE_SKIA=ON` when dependencies are available.
+Run the counter sample from `build-debug/examples/counter/Debug/` (or the
+matching config subdirectory under `build-release`). Enable Skia with
+`-DLUMEN_ENABLE_SKIA=ON` when dependencies are available.
 
 ## Coding Style & Naming Conventions
 

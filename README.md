@@ -53,10 +53,17 @@ M8；平台原生无障碍 provider（M13）、AppImage 和完整 .app bundle（
 
 ## 构建
 
+每配置使用独立构建目录（`build-debug` / `build-release`），避免在同一树内
+并行编 Debug+Release（多配置生成器在 `ZERO_CHECK` stamp 上可能竞态）：
+
 ```sh
-cmake -S . -B build -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
-cmake --build build --config Debug
-ctest --test-dir build --output-on-failure -C Debug
+cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
+cmake --build build-debug --config Debug
+ctest --test-dir build-debug --output-on-failure -C Debug
+
+cmake -S . -B build-release -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
+cmake --build build-release --config Release
+ctest --test-dir build-release --output-on-failure -C Release
 ```
 
 构建开关：
@@ -85,33 +92,34 @@ sudo apt-get install -y cmake ninja-build pkg-config \
   libasound2-dev libpulse-dev libaudio-dev libjack-dev \
   libsndio-dev libsamplerate0-dev liburing-dev \
   wayland-protocols libfontconfig1-dev libfreetype6-dev xvfb
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
-cmake --build build --config Debug
-ctest --test-dir build --output-on-failure -C Debug
+cmake --build build-debug
+ctest --test-dir build-debug --output-on-failure
 ```
 
 Windows 可用 VS 自带的 CMake/Ninja，例如：
 
 ```powershell
-& "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
+& "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON
 ```
 
-示例运行（`build/examples/{counter,settings}/`，Windows 多一层 `Debug/`）：
+示例运行（`build-debug/examples/{counter,settings}/Debug/`，Ninja 单配置则无
+`Debug/` 子目录）：
 
 ```sh
 # 窗口模式：Button 点击计数、TextField 输入、窗口缩放自适应
-./build/examples/counter/lumen-counter
+./build-debug/examples/counter/Debug/lumen-counter
 # 无窗口模式：打印稳定 frame hash（点击/输入/缩放各一帧）
-./build/examples/counter/lumen-counter --headless
+./build-debug/examples/counter/Debug/lumen-counter --headless
 # 文本 DSL（.lumen）加载 UI（与 C++ DSL 构建同一棵树）
-./build/examples/counter/lumen-counter --dsl counter.lumen
+./build-debug/examples/counter/Debug/lumen-counter --dsl counter.lumen
 # v0.3 settings：滚动列表、表单校验、弹窗、导航、主题、无障碍标签
-./build/examples/settings/lumen-settings
-./build/examples/settings/lumen-settings --headless
+./build-debug/examples/settings/Debug/lumen-settings
+./build-debug/examples/settings/Debug/lumen-settings --headless
 # Widget Gallery：控件/布局/颜色方案/主题演示
-./build/examples/gallery/lumen-gallery
-./build/examples/gallery/lumen-gallery --headless
+./build-debug/examples/gallery/Debug/lumen-gallery
+./build-debug/examples/gallery/Debug/lumen-gallery --headless
 ```
 
 macOS 构建与 Linux 相同（SDL3 经 FetchContent 编译，Xcode CLT 的
