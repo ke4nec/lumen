@@ -523,10 +523,23 @@ struct RunOptions {
     bool nativeAccessibility{true};
 };
 
+// 一个宿主窗口与其应用壳的绑定。每个窗口拥有独立的 RunOptions，因而
+// renderer、字体、IME、无障碍桥和帧调度都不会跨窗口共享状态。AppShell
+// 仍由调用方拥有，并且必须在 runApp 返回前保持有效。
+struct AppWindow {
+    AppShell* shell{nullptr};
+    RunOptions options{};
+};
+
+// 多窗口应用入口。事件按 HostEvent.window 路由到对应 AppWindow；Quit
+// 事件结束整个应用，单窗口关闭只停止该窗口的运行时，最后一个窗口
+// 关闭才结束主循环；窗口和宿主生命周期仍由调用方拥有。传入空集合或
+// 包含空 shell 时返回 1。
+int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host);
+
 // 阻塞运行应用直到关闭请求/maxFrames；返回进程退出码。
 // host 生命周期由调用方拥有；Fake host 可用于 headless 冒烟。
-// 当前为单窗口应用壳：事件按到达顺序分发给唯一的 shell，多窗口
-// （窗口隔离分发）留待 M4；调度申请帧时仍携带事件自带 windowId。
+// 兼容的单窗口入口转发到多窗口实现。
 int runApp(AppShell& shell, platform::ApplicationHost& host,
            RunOptions options = {});
 

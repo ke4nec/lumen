@@ -58,11 +58,11 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | v0.3 8A | 已完成平台无关 host 契约 | `ApplicationHost`、`WindowId`、`WindowMetrics`、`HostEvent`、Fake host |
 | v0.3 8B | 已完成编辑模型和基础文本契约 | grapheme、UTF-8、selection/composing、IME 状态机、TextField |
 | v0.3 8C | 已完成语义契约 | `SemanticsTree`、identity diff、Recording bridge、语义 action |
-| v0.3 8D | 已完成应用基础组件 | ScrollView/ListView、Form、Dialog、Navigator、settings 示例；当前 `runApp` 仍装配单个 AppShell，宿主多窗口接口保留 |
+| v0.3 8D | 已完成应用基础组件 | ScrollView/ListView、Form、Dialog、Navigator、settings 示例；`runApp` 支持多个 `AppShell` 按 WindowId 隔离运行 |
 | v0.3 8E | macOS 桌面接入；另保留历史 SDL-free 实验接缝 | SDL3 桌面 host；`MobileHostSeam` 只代表已有通用状态机，不代表 Android/iOS 支持 |
 | 视觉 V1/V2 | 已完成主要状态样式迁移 | token、Theme、StyleResolver、ResolvedStyle、状态与 damage 联动 |
 | 自用 M1 | 已完成真实文本与编辑闭环 | SkiaFontManager、shaped TextLayout/RenderCommand、UAX#9 子集、EditingHistory（见 §10 M1 完成记录） |
-| 自用 M2 | 已完成应用框架层与 C++ DSL | `lumen-app`（AppShell/runApp）、counter/settings 迁移、C++ builder 补齐；多窗口路由仍属按需评估（见 §10 M2 完成记录） |
+| 自用 M2 | 已完成应用框架层与 C++ DSL | `lumen-app`（AppShell/runApp）、counter/settings 迁移、C++ builder 补齐；多窗口路由已接入 `AppWindow` 绑定（见 §10 M2 完成记录） |
 | 自用 M3 | 已完成布局/Grid/VirtualList/Image | Grid/Image/VirtualList 组件、VirtualListController、virtual-list 基准场景（见 §10 M3 完成记录） |
 | 自用 M4 | 已完成三桌面平台服务与窗口能力 | 文件选择/OpenURL/通知/光标/图标契约与 SDL/Fake 实现、能力统一报告、settings 服务区（见 §10 M4 完成记录） |
 | 自用 M5 | 已完成语义契约与键盘可用性收口 | invalid/hidden flags、语义桥驱动、focusFirstFocusable 焦点恢复、Recording bridge 回归证据（见 §10 M5 完成记录） |
@@ -88,7 +88,7 @@ M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/3
 | 文本 | M1 已完成：`SkiaFontManager`（字体族/weight/回退/度量/shaping，pimpl 无 Skia 类型）+ `TextLayoutResult` shaped run/glyph/cluster/baseline；CPU 占位与 Skia 共享同一契约，缺字体明确诊断 | 复杂脚本合字（HarfBuzz 级）属按需评估池（§4）；默认字体栈和 Gallery 不依赖 M9 | M1 已收口 |
 | 编辑 | M1 已完成：`EditingHistory` undo/redo 栈、事务边界、连续输入合并、Ctrl+Z/Shift+Z/Y、IME 提交单事务、preedit 不进栈 | 富文本编辑不纳入第一版 | M1 已收口 |
 | 方向文本 | M1 已完成：UAX#9 确定性子集（强/弱/中性类 + L2 重排），混合方向命中测试可靠，grapheme 边界为唯一编辑索引 | 显式嵌入控制/镜像括号/数字定形属按需评估池（§4） | M1 已收口 |
-| 应用框架层 | M2 已完成：`lumen-app` 目标（`app::AppShell` + `app::runApp`）统一主循环/事件泵/重建/damage/DPI/IME 同步，支持 Fake host 与外部 renderer 注入；counter/settings 已迁移 | 当前 `runApp` 装配一个 AppShell；宿主已有 `WindowId`/事件路由接口，多窗口应用编排仍属按需评估 | M2 已收口 |
+| 应用框架层 | M2 已完成：`lumen-app` 目标（`app::AppShell` + `app::runApp`）统一主循环/事件泵/重建/damage/DPI/IME 同步，支持 Fake host、外部 renderer 注入和多个 `AppWindow` 绑定；counter/settings 已迁移 | 真实三桌面多窗口交互仍需单独窗口 smoke；宿主窗口生命周期由调用方拥有 | M2 已收口 |
 | DSL | M2 已完成：C++ builder 补齐 stack/checkbox/switch_widget/scroll_view/list_view/focus_scope，与 `.lumen` 冻结节点集对齐（golden 对照测试）；Dialog/Navigator 经 `widgets::makeDialog`/`NavigatorController` 提供 | DSL 可编程性/脚本能力不纳入第一版 | M2 已收口 |
 | 控件库 | M6+M11 已完成：Slider/ProgressBar/Radio/Tooltip/Dropdown/Tabs 六控件 + Scrollbar 实绘 + `FormController::compose`；M11 收口 Dropdown 浮动菜单（overlay + 键盘导航）与 Tooltip hover 延迟显隐；集合控件 List/Tree/TreeList 与共享选择模型（2026-09-17）、ContextMenu/MenuBar/Splitter（2026-09-18）随按需控件增强补齐 | — | M6+M11 已收口（控件增强见 §10） |
 | 布局 | M3 已完成：Grid（固定列数/最小列宽自适应/行列间距）与约束传播扩展；Image Widget（占位/位图） | 横向网格/跨行列合并留按需评估（§4） | M3 已收口 |
@@ -446,7 +446,8 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 以下方向在 M13 之后按实际需要评估，不承诺版本：
 
 - HarfBuzz 级合字与富文本：Skia 预编译包已附带 skshaper/harfbuzz/icu 归档，`FontManager::shapeCluster` 接口已预留多 glyph 返回。
-- 多窗口：`runApp` 按 `event.window` 路由多个 AppShell 实例；宿主层多窗口 API 已齐备。
+- 多窗口：`runApp` 已按 `event.window` 路由多个 `AppShell` 实例；宿主层多窗口 API
+  与 `AppWindow` 绑定均已接入，真实三桌面多窗口 smoke 仍按发布验证补做。
 - 完整 UBA：显式嵌入控制、镜像括号、数字定形。
 - 桌面专用 GPU 后端（Graphite/Vulkan/Metal/D3D）。
 - 控件增强后续：集合控件行内编辑/DnD/列宽拖拽、Splitter 窗格塌缩/KeepRatio 与 `.lumen` 节点及基准场景、菜单触摸长按/F10-Alt 单键/mnemonic 下划线、标题栏 macOS 交通灯与 borderless 最大化回退策略（见 §10 各完成记录已知限制）。
@@ -522,7 +523,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 ## 8. 版本切分和停止条件
 
 - **桌面自用版**：完成 M0–M8（已收口）。M5 的语义契约和 Recording bridge 已完成；原生桌面 accessibility provider 由 M13 追加。
-- **后续桌面增强版**：按 M10–M13 增强链实施——M10 动效与滚动体验、M11 v0.4 视觉方向与控件体验、M12 平台服务与发布补全、M13 原生无障碍 provider；M12 之后、M13 之前穿插交付按需控件增强（不占编号）：集合控件 List/Tree/TreeList、菜单类控件、Splitter 分栏与自定义标题栏（见 §10 对应完成记录）；HarfBuzz 富文本、多窗口、完整 UBA、专用 GPU 后端留在按需评估池（§4）。业务数据与网络仍由应用层负责。
+- **后续桌面增强版**：按 M10–M13 增强链实施——M10 动效与滚动体验、M11 v0.4 视觉方向与控件体验、M12 平台服务与发布补全、M13 原生无障碍 provider；M12 之后、M13 之前穿插交付按需控件增强（不占编号）：集合控件 List/Tree/TreeList、菜单类控件、Splitter 分栏与自定义标题栏（见 §10 对应完成记录）；HarfBuzz 富文本、完整 UBA、专用 GPU 后端留在按需评估池（§4）。业务数据与网络仍由应用层负责。
 - **移动端**：暂不实现且不规划版本；M9 仅保留为冻结记录。
 
 任何里程碑若无法满足出口条件，只能修复当前阶段或回退实现，不能通过修改文档把“接口存在”标记为“平台完成”。
@@ -690,6 +691,11 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     剪贴板（Ctrl+C/V 可用，不可用保持未注入）；DSL parity 对照修正
     （Stack 包裹/flex/空文本）与 `stack()` key 参数；Skia 光栅字体管理
     器按 renderer 缓存；dialog 身份常量化；测试死码清理。
+  - 应用层补齐多窗口编排：新增 `AppWindow` 绑定入口，分别装配窗口指标、
+    renderer surface、IME、无障碍桥、光标和 FrameScheduler；事件按
+    `HostEvent.window` 路由，生命周期/主题事件按规则广播，Surface
+    detach/reattach 会暂停并恢复提交。原有单窗口 `runApp` 保持兼容，宿主
+    窗口生命周期仍由调用方拥有。
 - 测试：
   - 新增 `tests/app_shell_tests.cpp`（8 用例）：Fake host 驱动 runApp 的
     事件顺序/状态流转、指针+文本进入焦点字段、关闭请求消费/退出、
@@ -697,6 +703,9 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
     DPI 变化重建、renderer 替换与缓存失效、渲染器失效钩子回退。
   - 新增 DSL 全节点 golden 对照（冻结节点集 + 常用属性逐字段相等）与
     FocusScope/修饰器覆盖用例。
+  - 新增 Fake host 双窗口路由回归：窗口 1 的点击只改变窗口 1 的
+    AppShell，窗口 2 保持独立状态；同时验证 runApp 返回后宿主生命周期
+    仍由调用方管理。
   - 迁移验收：counter/settings 集成测试全部不变通过，headless 帧哈希
     与迁移前一致（counter `1a32cd5be756e9bf`/`df7487f8a9fb0eb8`/
     `55fb5a6e22f5dfaf`/`96166bdba1c35ff5`；settings `528e7440ed00451b`）。
@@ -707,7 +716,8 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 - 平台：本地 Linux 全部验证；Windows/macOS 以 CI 为事实来源（事件泵/
     回退路径的跨平台行为由 ApplicationHost 契约与 Fake host 测试锁定）。
 - 已知限制：
-  - runApp 为单窗口主循环（多窗口属后续里程碑；事件不按 windowId 过滤）。
+  - `runApp` 已按 `HostEvent.window` 路由多个 `AppShell`；空 window 的全局生命周期/主题事件广播到所有活动窗口。
+    三桌面真实多窗口交互仍需单独窗口 smoke，Fake host 已覆盖事件隔离。
   - 诊断输出格式沿用 counter 契约（`backend=/frames=/gpu failed`），
     settings 的 host 能力诊断行被应用壳诊断取代。
   - rendererFactory 内窗口重建失败时 runApp 降级为无呈现循环（软件窗口

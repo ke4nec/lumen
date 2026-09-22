@@ -108,7 +108,8 @@ if(LUMEN_BUILD_PACKAGE)
             RENAME libSDL3.so.0)
   endif()
   install(TARGETS lumen-core lumen-style lumen-layout lumen-text
-          lumen-accessibility lumen-widgets lumen-platform lumen-dsl lumen-app
+          lumen-accessibility lumen-render lumen-widgets lumen-platform
+          lumen-dsl lumen-app
           ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
   install(DIRECTORY include/lumen DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
   install(FILES README.md docs/lumen-gui-framework-plan.md

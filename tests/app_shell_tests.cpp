@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -16,6 +17,7 @@
 #include "lumen/render/renderer.h"
 
 using lumen::app::AppShell;
+using lumen::app::AppWindow;
 using lumen::app::RendererSetup;
 using lumen::app::RunOptions;
 using lumen::app::ShellConfig;
@@ -58,6 +60,106 @@ void wireCounter(AppShell& shell) {
         shell.state().set("counter", "hit");
     };
 }
+
+class VisibilityHost final : public lumen::platform::ApplicationHost {
+  public:
+    bool initialize() override {
+        initialized_ = true;
+        lifecycle_ = lumen::core::AppLifecycle::Active;
+        return true;
+    }
+
+    void shutdown() override { initialized_ = false; }
+
+    [[nodiscard]] lumen::core::AppLifecycle lifecycle() const override {
+        return lifecycle_;
+    }
+
+    bool pollEvent(lumen::core::HostEvent& out) override {
+        if (events_.empty()) {
+            out = {};
+            return false;
+        }
+        out = std::move(events_.front());
+        events_.pop_front();
+        return true;
+    }
+
+    std::optional<lumen::core::WindowId> createWindow(
+        const lumen::platform::WindowDesc& desc) override {
+        if (!initialized_) {
+            return std::nullopt;
+        }
+        metrics_.logicalSize =
+            Size{static_cast<float>(desc.width), static_cast<float>(desc.height)};
+        metrics_.drawableSize = metrics_.logicalSize;
+        metrics_.deviceScale = 1.0F;
+        metrics_.visible = false;
+        metrics_.minimized = true;
+        return window_;
+    }
+
+    void destroyWindow(lumen::core::WindowId id) override {
+        if (id == window_) {
+            initialized_ = false;
+        }
+    }
+
+    [[nodiscard]] std::optional<lumen::core::WindowMetrics> windowMetrics(
+        lumen::core::WindowId id) const override {
+        return id == window_ ? std::optional{metrics_} : std::nullopt;
+    }
+
+    [[nodiscard]] std::vector<lumen::core::WindowId> windowIds()
+        const override {
+        return initialized_ ? std::vector<lumen::core::WindowId>{window_}
+                            : std::vector<lumen::core::WindowId>{};
+    }
+
+    [[nodiscard]] lumen::platform::PlatformWindow* platformWindow(
+        lumen::core::WindowId) const override {
+        return nullptr;
+    }
+
+    [[nodiscard]] lumen::platform::Clipboard* clipboard() override {
+        return nullptr;
+    }
+
+    [[nodiscard]] lumen::platform::TextInputSession* textInputSession(
+        lumen::core::WindowId) override {
+        return nullptr;
+    }
+
+    [[nodiscard]] lumen::platform::PlatformCapabilities capabilities()
+        const override {
+        return {};
+    }
+
+    void setVisible(bool visible) {
+        metrics_.visible = visible;
+        metrics_.minimized = !visible;
+    }
+
+    void pushWindowRestored() {
+        lumen::core::HostEvent event;
+        event.type = lumen::core::HostEventType::WindowRestored;
+        event.window = window_;
+        events_.push_back(std::move(event));
+    }
+
+    void pushQuit() {
+        lumen::core::HostEvent event;
+        event.type = lumen::core::HostEventType::Quit;
+        events_.push_back(std::move(event));
+    }
+
+  private:
+    const lumen::core::WindowId window_{1};
+    lumen::core::WindowMetrics metrics_{};
+    std::deque<lumen::core::HostEvent> events_{};
+    lumen::core::AppLifecycle lifecycle_{lumen::core::AppLifecycle::Launching};
+    bool initialized_{false};
+};
 
 Offset centerOf(const AppShell& shell, const char* key) {
     const RenderNode* node = lumen::core::findNodeByKey(shell.root(), key);
@@ -188,6 +290,81 @@ TEST_CASE("run_app_presents_one_shot_changes_without_active_animation",
     CHECK_FALSE(shell.animationsActive());
 }
 
+TEST_CASE("run_app_routes_events_to_the_matching_window_shell", "[app][multi-window]") {
+    FakeApplicationHost host;
+    AppShell first{counterConfig()};
+    AppShell second{counterConfig()};
+    wireCounter(first);
+    wireCounter(second);
+    first.setView(Size{800.0F, 600.0F});
+    second.setView(Size{800.0F, 600.0F});
+    (void)first.renderFrame();
+    (void)second.renderFrame();
+
+    // FakeApplicationHost allocates ids from 1 in a fresh host. Queueing by id
+    // before runApp exercises the same normalized event path as SDL.
+    const Offset button = centerOf(first, "go-button");
+    host.pushPointerDown(lumen::core::WindowId{1}, button);
+    host.pushPointerUp(lumen::core::WindowId{1}, button);
+
+    RunOptions firstOptions;
+    firstOptions.maxFrames = 1;
+    firstOptions.nativeAccessibility = false;
+    RunOptions secondOptions;
+    secondOptions.maxFrames = 1;
+    secondOptions.nativeAccessibility = false;
+
+    CHECK(lumen::app::runApp(
+              std::vector<AppWindow>{{&first, std::move(firstOptions)},
+                                     {&second, std::move(secondOptions)}},
+              host) == 0);
+    CHECK(first.state().get("counter") == "hit");
+    CHECK(second.state().get("counter") == "0");
+    CHECK(host.lifecycle() == lumen::core::AppLifecycle::Active);
+    CHECK(host.windowIds().size() == 2);
+}
+
+TEST_CASE("run_app_honors_host_visibility_when_restoring", "[app][lifecycle]") {
+    VisibilityHost host;
+    AppShell shell{counterConfig()};
+    int pollCount = 0;
+    int presents = 0;
+    int hiddenPresents = 0;
+
+    RunOptions options;
+    options.idleWaitMs = 0;
+    options.nativeAccessibility = false;
+    options.poll = [&](AppShell&, std::uint64_t) {
+        if (pollCount++ == 0) {
+            host.pushWindowRestored();
+        } else if (pollCount == 2) {
+            host.setVisible(true);
+            host.pushWindowRestored();
+        }
+        return false;
+    };
+    options.rendererFactory = [&](lumen::platform::ApplicationHost&,
+                                  lumen::core::WindowId& id) {
+        RendererSetup setup;
+        setup.present = [&host, id, &presents, &hiddenPresents] {
+            ++presents;
+            const auto metrics = host.windowMetrics(id);
+            if (metrics.has_value() && !metrics->visible) {
+                ++hiddenPresents;
+            }
+            if (presents == 1) {
+                host.pushQuit();
+            }
+            return true;
+        };
+        return setup;
+    };
+
+    CHECK(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(presents == 1);
+    CHECK(hiddenPresents == 0);
+}
+
 TEST_CASE("run_app_presents_followup_dirty_from_on_rebuilt", "[app][scheduler]") {
     FakeApplicationHost host;
     int builds = 0;
@@ -295,6 +472,38 @@ TEST_CASE("run_app_syncs_ime_session_with_edit_state", "[app]") {
     CHECK(session->lastState.caretRect.size.width > 0.0F);
     CHECK(session->lastState.caretRect.origin.x > 0.0F);
     CHECK(session->lastState.caretRect == shell.focusedTextRect());
+}
+
+TEST_CASE("run_app_stops_ime_when_window_focus_is_lost", "[app][ime]") {
+    FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    AppShell shell{counterConfig()};
+    wireCounter(shell);
+    shell.setView(Size{800.0F, 600.0F});
+    (void)shell.renderFrame();
+
+    const Offset field = centerOf(shell, "name-field");
+    host.pushPointerDown({}, field);
+    host.pushPointerUp({}, field);
+
+    RunOptions options;
+    options.nativeAccessibility = false;
+    options.idleWaitMs = 0;
+    options.poll = [&host](AppShell&, std::uint64_t) {
+        lumen::core::HostEvent focusLost;
+        focusLost.type = lumen::core::HostEventType::WindowFocusLost;
+        host.pushRaw(std::move(focusLost));
+        host.pushQuit();
+        return false;
+    };
+    CHECK(lumen::app::runApp(shell, host, options) == 0);
+
+    REQUIRE(host.windowIds().size() == 1);
+    auto* session = host.fakeTextInputSession(host.windowIds().front());
+    REQUIRE(session != nullptr);
+    CHECK(session->startCount == 1);
+    CHECK(session->stopCount == 1);
+    CHECK_FALSE(session->active());
 }
 
 TEST_CASE("run_app_consumed_close_request_repaints_an_idle_shell", "[app]") {
