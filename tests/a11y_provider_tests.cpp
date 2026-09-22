@@ -60,6 +60,12 @@ TEST_CASE("a11y_factory_reports_compiled_provider_honestly", "[a11y]") {
         CHECK_FALSE(diagnostics.empty());
         return;
     }
+    if (name == "nsaccessibility") {
+        // A compiled AppKit provider requires a real NSWindow; no dummy bridge.
+        CHECK(bridge == nullptr);
+        CHECK_FALSE(diagnostics.empty());
+        return;
+    }
     // 编入：headless（无原生窗口）桥可用，名称与编译事实一致。
     REQUIRE(bridge != nullptr);
     CHECK(bridge->bridgeName() == name);

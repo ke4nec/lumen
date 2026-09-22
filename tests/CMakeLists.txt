@@ -97,6 +97,11 @@ if(LUMEN_ENABLE_GPU)
 endif()
 
 add_executable(lumen-tests ${LUMEN_TEST_SOURCES})
+if(APPLE AND LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND NOT LUMEN_BUILD_MOBILE_CORE)
+    target_sources(lumen-tests PRIVATE nsaccessibility_tests.mm)
+    target_compile_definitions(lumen-tests PRIVATE LUMEN_ACCESSIBILITY_PROVIDER_NSACCESSIBILITY=1)
+    target_include_directories(lumen-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/accessibility)
+endif()
 
 if(NOT LUMEN_BUILD_MOBILE_CORE)
     # Real desktop acceptance probe.  It deliberately honors the caller's
@@ -125,6 +130,8 @@ if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND WIN32)
 endif()
 
 if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND UNIX AND NOT APPLE)
+    add_executable(lumen-atspi-live-app atspi_live_app.cpp)
+    target_link_libraries(lumen-atspi-live-app PRIVATE lumen-app lumen-widgets)
     target_compile_definitions(lumen-tests PRIVATE
         LUMEN_ACCESSIBILITY_PROVIDER_ATSPI=1)
     target_include_directories(lumen-tests PRIVATE
@@ -193,6 +200,11 @@ include(Catch)
 # Tests run next to the binary so copied assets (counter.lumen, SDL3.dll)
 # resolve by name.
 catch_discover_tests(lumen-tests WORKING_DIRECTORY $<TARGET_FILE_DIR:lumen-tests>)
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME platform_acceptance_evidence_integrity
+        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/platform_acceptance_tests.py)
+endif()
 
 if(LUMEN_ENABLE_GPU AND LUMEN_BUILD_EXAMPLES AND
    CMAKE_SYSTEM_NAME STREQUAL "Linux")

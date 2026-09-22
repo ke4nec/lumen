@@ -152,6 +152,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Debug
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
       - name: Build (Debug)
         run: cmake --build build --config Debug
       - name: ccache stats

@@ -25,7 +25,7 @@ namespace {
 constexpr char kRootPath[] = "/org/a11y/atspi/accessible/root";
 constexpr char kNullPath[] = "/org/a11y/atspi/null";
 constexpr char kRegistryName[] = "org.a11y.atspi.Registry";
-constexpr char kRegistryPath[] = "/org/a11y/atspi/registry";
+constexpr char kRegistryPath[] = "/org/a11y/atspi/accessible/root";
 constexpr char kRegistryInterface[] = "org.a11y.atspi.Socket";
 
 std::uint64_t identityHash(std::string_view value) {
@@ -202,6 +202,7 @@ DBusConnection* openAccessibilityBus(std::string* diagnostics) {
             dbus_message_unref(reply);
         }
     }
+    if (session != nullptr) dbus_connection_unref(session);
     if (address.empty()) {
         if (diagnostics != nullptr) {
             *diagnostics = "AT-SPI accessibility bus address is unavailable";
@@ -252,7 +253,7 @@ class AtspiAccessibilityBridge::Impl {
 #if defined(LUMEN_HAS_DBUS)
     DBusConnection* connection{nullptr};
     std::string uniqueName;
-    std::uint32_t applicationId{0};
+    std::int32_t applicationId{0};
 #endif
 
     std::string pathFor(const std::string& id) const {
@@ -348,12 +349,21 @@ void appendVariantUint32(DBusMessageIter* parent, std::uint32_t value) {
     dbus_message_iter_close_container(parent, &variant);
 }
 
+void appendVariantInt32(DBusMessageIter* parent, std::int32_t value) {
+    DBusMessageIter variant;
+    dbus_message_iter_open_container(parent, DBUS_TYPE_VARIANT, "i", &variant);
+    dbus_message_iter_append_basic(&variant, DBUS_TYPE_INT32, &value);
+    dbus_message_iter_close_container(parent, &variant);
+}
+
 void appendStateArray(DBusMessageIter* parent, const SemanticsNode& node,
                       const std::string& focused) {
     DBusMessageIter array;
     dbus_message_iter_open_container(parent, DBUS_TYPE_ARRAY, "u", &array);
-    const auto append = [&array](std::uint32_t state) {
-        dbus_message_iter_append_basic(&array, DBUS_TYPE_UINT32, &state);
+    // AT-SPI GetState returns two 32-bit bitsets, not a list of enum values.
+    std::uint32_t bits[2]{};
+    const auto append = [&bits](std::uint32_t state) {
+        bits[state / 32] |= std::uint32_t{1} << (state % 32);
     };
     if ((node.flags & kSemanticsEnabled) != 0) append(8);   // ENABLED
     if ((node.actions & kActionFocus) != 0 &&
@@ -366,6 +376,7 @@ void appendStateArray(DBusMessageIter* parent, const SemanticsNode& node,
         append(25);  // SHOWING
     }
     if ((node.flags & kSemanticsInvalid) != 0) append(36); // INVALID_ENTRY
+    for (auto word : bits) dbus_message_iter_append_basic(&array, DBUS_TYPE_UINT32, &word);
     dbus_message_iter_close_container(parent, &array);
 }
 
@@ -375,6 +386,16 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
     const char* path = dbus_message_get_path(request);
     const char* interface = dbus_message_get_interface(request);
     const char* member = dbus_message_get_member(request);
+    if (interface == nullptr || member == nullptr) return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+    if (std::strcmp(interface, "org.a11y.atspi.Cache") == 0 &&
+        std::strcmp(member, "GetItems") == 0) {
+        // Optional bulk cache: clients query live objects on demand.
+        return replyValue(connection, request, [](DBusMessageIter* out) {
+            DBusMessageIter array;
+            dbus_message_iter_open_container(out, DBUS_TYPE_ARRAY, "((so)(so)(so)iiassusau)", &array);
+            dbus_message_iter_close_container(out, &array);
+        });
+    }
     const SemanticsNode* node = impl->nodeAt(path);
     const bool isRoot = path != nullptr && std::strcmp(path, kRootPath) == 0;
     const bool isIntrospection =
@@ -418,7 +439,7 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
             if (std::strcmp(member, "Get") == 0 && property != nullptr &&
                 std::strcmp(property, "Id") == 0) {
                 return replyValue(connection, request, [impl](DBusMessageIter* out) {
-                    appendVariantUint32(out, impl->applicationId);
+                    appendVariantInt32(out, impl->applicationId);
                 });
             }
             if (std::strcmp(member, "Set") == 0 && property != nullptr &&
@@ -430,11 +451,11 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
                 }
                 DBusMessageIter variant;
                 dbus_message_iter_recurse(&args, &variant);
-                if (dbus_message_iter_get_arg_type(&variant) != DBUS_TYPE_UINT32) {
+                if (dbus_message_iter_get_arg_type(&variant) != DBUS_TYPE_INT32) {
                     return replyError(connection, request, DBUS_ERROR_INVALID_ARGS,
-                                      "Application.Id must contain a uint32");
+                                      "Application.Id must contain an int32");
                 }
-                dbus_uint32_t applicationId = 0;
+                dbus_int32_t applicationId = 0;
                 dbus_message_iter_get_basic(&variant, &applicationId);
                 impl->applicationId = applicationId;
                 return replyEmpty(connection, request);
@@ -459,6 +480,21 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
                     double value = 0.0;
                     try { value = std::stod(current->value); } catch (...) {}
                     appendVariantDouble(out, value);
+                } else if (std::strcmp(property, "MinimumValue") == 0) {
+                    appendVariantDouble(out, 0.0);
+                } else if (std::strcmp(property, "MaximumValue") == 0) {
+                    appendVariantDouble(out, 100.0);
+                } else if (std::strcmp(property, "MinimumIncrement") == 0) {
+                    appendVariantDouble(out, 1.0);
+                } else if (std::strcmp(property, "NActions") == 0) {
+                    appendVariantInt32(out, ((current->actions & kActionActivate) != 0) +
+                                            ((current->actions & kActionFocus) != 0));
+                } else if (std::strcmp(property, "Parent") == 0) {
+                    const std::string parentPath = impl->parentPathFor(id);
+                    DBusMessageIter variant;
+                    dbus_message_iter_open_container(out, DBUS_TYPE_VARIANT, "(so)", &variant);
+                    appendObjectReference(&variant, parentPath == kNullPath ? "" : impl->uniqueName.c_str(), parentPath.c_str());
+                    dbus_message_iter_close_container(out, &variant);
                 } else {
                     appendVariantString(out, "");
                 }
@@ -498,7 +534,7 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
                     DBusMessageIter entry;
                     dbus_message_iter_open_container(&array, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
                     appendString(&entry, "Id");
-                    appendVariantUint32(&entry, impl->applicationId);
+                    appendVariantInt32(&entry, impl->applicationId);
                     dbus_message_iter_close_container(&array, &entry);
                 }
                 if (current != nullptr) {
@@ -597,10 +633,11 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
             });
         }
         if (std::strcmp(member, "GetInterfaces") == 0) {
-            return replyValue(connection, request, [node](DBusMessageIter* out) {
+            return replyValue(connection, request, [node, isRoot](DBusMessageIter* out) {
                 DBusMessageIter array;
                 dbus_message_iter_open_container(out, DBUS_TYPE_ARRAY, "s", &array);
                 appendString(&array, "org.a11y.atspi.Accessible");
+                if (isRoot) appendString(&array, "org.a11y.atspi.Application");
                 if (node->actions != 0) appendString(&array, "org.a11y.atspi.Action");
                 if (node->role == SemanticsRole::Slider || node->role == SemanticsRole::ProgressBar || node->role == SemanticsRole::Splitter) appendString(&array, "org.a11y.atspi.Value");
                 appendString(&array, "org.a11y.atspi.Component");
@@ -612,6 +649,17 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
         std::vector<std::pair<const char*, std::uint32_t>> actions;
         if ((node->actions & kActionActivate) != 0) actions.emplace_back("activate", kActionActivate);
         if ((node->actions & kActionFocus) != 0) actions.emplace_back("focus", kActionFocus);
+        if (std::strcmp(member, "GetName") == 0 || std::strcmp(member, "GetDescription") == 0 ||
+            std::strcmp(member, "GetKeyBinding") == 0) {
+            dbus_int32_t index = -1;
+            if (!dbus_message_get_args(request, nullptr, DBUS_TYPE_INT32, &index, DBUS_TYPE_INVALID) ||
+                index < 0 || static_cast<std::size_t>(index) >= actions.size()) {
+                return replyError(connection, request, DBUS_ERROR_INVALID_ARGS, "invalid action index");
+            }
+            return replyValue(connection, request, [&](DBusMessageIter* out) {
+                appendString(out, std::strcmp(member, "GetKeyBinding") == 0 ? "" : actions[index].first);
+            });
+        }
         if (std::strcmp(member, "GetActions") == 0) {
             return replyValue(connection, request, [actions](DBusMessageIter* out) {
                 DBusMessageIter array;
@@ -635,7 +683,7 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
             dbus_message_iter_get_basic(&args, &index);
             const bool valid = index >= 0 && static_cast<std::size_t>(index) < actions.size();
             SemanticsActionStatus status = SemanticsActionStatus::NotHandled;
-            if (valid && impl->host.dispatch) {
+            if (valid && (node->flags & kSemanticsEnabled) != 0 && impl->host.dispatch) {
                 status = impl->host.dispatch(impl->idAt(path), actions[index].second, {}, 0.0F);
             }
             return replyValue(connection, request, [status](DBusMessageIter* out) {
@@ -694,7 +742,8 @@ const DBusObjectPathVTable kObjectPathVtable = {nullptr, objectPathMessage,
 
 void emitSignal(AtspiAccessibilityBridge::Impl* impl, const char* path,
                 const char* interface, const char* member,
-                const char* signature, const std::string& property) {
+                const char* signature, const std::string& property,
+                const std::string& value = {}, dbus_int32_t detail1 = 0) {
     if (!impl->connected || impl->connection == nullptr) return;
     DBusMessage* signal = dbus_message_new_signal(path, interface, member);
     if (signal == nullptr) return;
@@ -702,21 +751,26 @@ void emitSignal(AtspiAccessibilityBridge::Impl* impl, const char* path,
     dbus_message_iter_init_append(signal, &args);
     if (std::strcmp(signature, "property") == 0) {
         appendString(&args, property);
-        dbus_int32_t detail1 = 0;
         dbus_int32_t detail2 = 0;
         dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &detail1);
         dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &detail2);
-        appendVariantString(&args, "");
+        if (property == "accessible-value") {
+            appendVariantDouble(&args, std::strtod(value.c_str(), nullptr));
+        } else appendVariantString(&args, value);
         DBusMessageIter dict;
         dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
         dbus_message_iter_close_container(&args, &dict);
     } else {
         appendString(&args, property);
-        dbus_int32_t detail1 = 0;
         dbus_int32_t detail2 = 0;
         dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &detail1);
         dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &detail2);
-        appendVariantString(&args, "");
+        if (std::strcmp(signature, "children") == 0) {
+            DBusMessageIter variant;
+            dbus_message_iter_open_container(&args, DBUS_TYPE_VARIANT, "(so)", &variant);
+            appendObjectReference(&variant, impl->uniqueName.c_str(), value.c_str());
+            dbus_message_iter_close_container(&args, &variant);
+        } else appendVariantString(&args, "");
         DBusMessageIter dict;
         dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
         dbus_message_iter_close_container(&args, &dict);
@@ -740,7 +794,7 @@ AtspiAccessibilityBridge::AtspiAccessibilityBridge(
     const char* unique = dbus_bus_get_unique_name(impl_->connection);
     impl_->uniqueName = unique != nullptr ? unique : "";
     if (!dbus_connection_register_fallback(impl_->connection,
-                                           "/org/a11y/atspi/accessible",
+                                           "/org/a11y/atspi",
                                            &kObjectPathVtable, impl_.get())) {
         if (diagnostics != nullptr) *diagnostics = "AT-SPI object registration failed";
         dbus_connection_close(impl_->connection);
@@ -794,8 +848,8 @@ bool AtspiAccessibilityBridge::available() const { return impl_->connected; }
 void AtspiAccessibilityBridge::updateTree(const SemanticsTree& tree,
                                           const SemanticsDiff& diff,
                                           const std::string& focusedId) {
+    const SemanticsTree previous = std::move(impl_->tree);
     impl_->tree = tree;
-    impl_->focusedId = focusedId;
     impl_->pathToId.clear();
     impl_->idToPath.clear();
     for (const auto& [id, node] : tree.nodes) {
@@ -806,32 +860,55 @@ void AtspiAccessibilityBridge::updateTree(const SemanticsTree& tree,
     }
 #if defined(LUMEN_HAS_DBUS)
     if (impl_->connected) {
-        if (!diff.added.empty() || !diff.removed.empty()) {
-            emitSignal(impl_.get(), kRootPath, "org.a11y.atspi.Event.Object",
-                       "ChildrenChanged", "children", "add");
-        }
+        const auto emitEdges = [&](const SemanticsTree& from, const SemanticsTree& to,
+                                   const char* operation) {
+            for (const auto& [id, parent] : to.nodes) {
+                const auto* old = from.find(id);
+                for (std::size_t index = 0; index < parent.children.size(); ++index) {
+                    const auto& child = parent.children[index];
+                    if (old && std::find(old->children.begin(), old->children.end(), child) != old->children.end()) continue;
+                    const auto path = impl_->pathFor(id);
+                    emitSignal(impl_.get(), path.c_str(), "org.a11y.atspi.Event.Object",
+                               "ChildrenChanged", "children", operation,
+                               impl_->pathFor(child), static_cast<dbus_int32_t>(index));
+                }
+            }
+        };
+        emitEdges(tree, previous, "remove");
+        emitEdges(previous, tree, "add");
         for (const auto& id : diff.changed) {
             const auto* node = tree.find(id);
             if (node != nullptr) {
                 const std::string path = impl_->pathFor(id);
                 emitSignal(impl_.get(), path.c_str(),
                            "org.a11y.atspi.Event.Object", "PropertyChange",
-                           "property", "accessible-name");
+                           "property", "accessible-name", node->label);
+                emitSignal(impl_.get(), path.c_str(),
+                           "org.a11y.atspi.Event.Object", "PropertyChange",
+                           "property", "accessible-value", node->value);
             }
         }
     }
 #else
     (void)diff;
 #endif
+    setFocusedNode(focusedId);
 }
 
 void AtspiAccessibilityBridge::setFocusedNode(const std::string& id) {
+    const std::string previous = impl_->focusedId;
+    if (previous == id) return;
     impl_->focusedId = id;
 #if defined(LUMEN_HAS_DBUS)
+    if (impl_->connected && !previous.empty() && previous != id) {
+        const auto path = impl_->pathFor(previous);
+        emitSignal(impl_.get(), path.c_str(), "org.a11y.atspi.Event.Object",
+                   "StateChanged", "state", "focused", {}, 0);
+    }
     if (impl_->connected && !id.empty()) {
         const std::string path = impl_->pathFor(id);
-        emitSignal(impl_.get(), path.c_str(), "org.a11y.atspi.Event.Focus",
-                   "Focus", "focus", "focus");
+        emitSignal(impl_.get(), path.c_str(), "org.a11y.atspi.Event.Object",
+                   "StateChanged", "state", "focused", {}, 1);
     }
 #endif
 }

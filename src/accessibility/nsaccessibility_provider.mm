@@ -11,10 +11,6 @@
 #include <unordered_map>
 #include <vector>
 
-namespace lumen::accessibility::nsaccessibility {
-class LumenAXElement;
-}
-
 @interface LumenAXElement : NSAccessibilityElement {
 @public
     lumen::accessibility::nsaccessibility::NsAccessibilityBridge::Impl* bridge;
@@ -33,8 +29,11 @@ class LumenAXElement;
 using lumen::accessibility::SemanticsRole;
 using lumen::accessibility::kActionActivate;
 using lumen::accessibility::kActionSetValue;
+using lumen::accessibility::kActionFocus;
 using lumen::accessibility::kSemanticsEnabled;
 using lumen::accessibility::kSemanticsFocused;
+using lumen::accessibility::kSemanticsChecked;
+using lumen::accessibility::kSemanticsHidden;
 using lumen::accessibility::nsaccessibility::NsAccessibilityBridge;
 
 namespace {
@@ -42,8 +41,9 @@ namespace {
 NSString* roleFor(SemanticsRole role) {
     switch (role) {
         case SemanticsRole::Button:
-        case SemanticsRole::MenuItem:
             return NSAccessibilityButtonRole;
+        case SemanticsRole::MenuItem:
+            return NSAccessibilityMenuItemRole;
         case SemanticsRole::Checkbox:
         case SemanticsRole::Switch:
             return NSAccessibilityCheckBoxRole;
@@ -125,10 +125,14 @@ void NsAccessibilityBridge::Impl::detach() {
     }
     for (auto& [id, element] : elements) {
         (void)id;
+        element->bridge = nullptr;
+        element->parent = nil;
+        element->children.clear();
         [element release];
     }
     elements.clear();
     root = nullptr;
+    [window release];
     window = nil;
     attached = false;
 }
@@ -139,7 +143,23 @@ NsAccessibilityBridge::Impl::~Impl() { detach(); }
 
 @implementation LumenAXElement
 
+- (BOOL)isAccessibilityElement {
+    return bridge != nullptr && (node.flags & kSemanticsHidden) == 0;
+}
+
+- (BOOL)accessibilityIsIgnored { return ![self isAccessibilityElement]; }
+
+- (NSArray*)accessibilityAttributeNames {
+    return @[NSAccessibilityRoleAttribute, NSAccessibilityRoleDescriptionAttribute,
+             NSAccessibilityTitleAttribute, NSAccessibilityDescriptionAttribute,
+             NSAccessibilityValueAttribute, NSAccessibilityEnabledAttribute,
+             NSAccessibilityFocusedAttribute, NSAccessibilityChildrenAttribute,
+             NSAccessibilityParentAttribute, NSAccessibilityPositionAttribute,
+             NSAccessibilitySizeAttribute, NSAccessibilityWindowAttribute];
+}
+
 - (id)accessibilityAttributeValue:(NSString*)attribute {
+    if (bridge == nullptr) return nil;
     if ([attribute isEqualToString:NSAccessibilityRoleAttribute]) {
         return roleFor(node.role);
     }
@@ -151,6 +171,10 @@ NsAccessibilityBridge::Impl::~Impl() { detach(); }
         return stringFor(node.label);
     }
     if ([attribute isEqualToString:NSAccessibilityValueAttribute]) {
+        if (node.role == SemanticsRole::Checkbox || node.role == SemanticsRole::Switch ||
+            node.role == SemanticsRole::Radio) {
+            return @((node.flags & kSemanticsChecked) != 0);
+        }
         if (node.role == SemanticsRole::Slider ||
             node.role == SemanticsRole::ProgressBar ||
             node.role == SemanticsRole::Splitter) {
@@ -172,12 +196,20 @@ NsAccessibilityBridge::Impl::~Impl() { detach(); }
         return result;
     }
     if ([attribute isEqualToString:NSAccessibilityParentAttribute]) {
-        return parent;
+        return parent != nil ? static_cast<id>(parent) : [bridge->window contentView];
+    }
+    if ([attribute isEqualToString:NSAccessibilityWindowAttribute]) {
+        return bridge->window;
     }
     if ([attribute isEqualToString:NSAccessibilityPositionAttribute]) {
         NSRect rect = NSMakeRect(node.bounds.origin.x, node.bounds.origin.y,
                                  node.bounds.size.width, node.bounds.size.height);
         if (bridge != nullptr && bridge->window != nil) {
+            NSView* view = [bridge->window contentView];
+            if (![view isFlipped]) {
+                rect.origin.y = NSHeight(view.bounds) - NSMaxY(rect);
+            }
+            rect = [view convertRect:rect toView:nil];
             rect = [bridge->window convertRectToScreen:rect];
         }
         return [NSValue valueWithPoint:rect.origin];
@@ -190,11 +222,23 @@ NsAccessibilityBridge::Impl::~Impl() { detach(); }
 }
 
 - (BOOL)accessibilityIsAttributeSettable:(NSString*)attribute {
-    return [attribute isEqualToString:NSAccessibilityValueAttribute] &&
-           (node.actions & kActionSetValue) != 0;
+    if (bridge == nullptr || (node.flags & kSemanticsEnabled) == 0) return NO;
+    return ([attribute isEqualToString:NSAccessibilityValueAttribute] &&
+            (node.actions & kActionSetValue) != 0) ||
+           ([attribute isEqualToString:NSAccessibilityFocusedAttribute] &&
+            (node.actions & kActionFocus) != 0);
 }
 
 - (void)accessibilitySetValue:(id)value forAttribute:(NSString*)attribute {
+    if (![self accessibilityIsAttributeSettable:attribute]) return;
+    // Dispatch may synchronously replace the semantic tree. Copy identity first.
+    const std::string target = identity;
+    if ([attribute isEqualToString:NSAccessibilityFocusedAttribute]) {
+        if ([value boolValue] && bridge->host.dispatch) {
+            (void)bridge->host.dispatch(target, kActionFocus, {}, 0.0F);
+        }
+        return;
+    }
     if (![attribute isEqualToString:NSAccessibilityValueAttribute] ||
         bridge == nullptr || (node.actions & kActionSetValue) == 0) {
         return;
@@ -206,18 +250,20 @@ NsAccessibilityBridge::Impl::~Impl() { detach(); }
         const char* utf8 = [value UTF8String];
         text = utf8 != nullptr ? utf8 : "";
     }
-    bridge->dispatchValue(identity, text);
+    bridge->dispatchValue(target, text);
 }
 
 - (NSArray*)accessibilityActionNames {
-    return (node.actions & kActionActivate) != 0 ? @[NSAccessibilityPressAction] : @[];
+    return bridge != nullptr && (node.flags & kSemanticsEnabled) != 0 &&
+           (node.actions & kActionActivate) != 0 ? @[NSAccessibilityPressAction] : @[];
 }
 
 - (void)accessibilityPerformAction:(NSString*)action {
     if (bridge != nullptr &&
         [action isEqualToString:NSAccessibilityPressAction] &&
-        (node.actions & kActionActivate) != 0) {
-        bridge->activate(identity);
+        (node.actions & kActionActivate) != 0 && (node.flags & kSemanticsEnabled) != 0) {
+        const std::string target = identity;
+        bridge->activate(target);
     }
 }
 
@@ -244,6 +290,7 @@ NsAccessibilityBridge::NsAccessibilityBridge(
         return;
     }
     [content setAccessibilityElement:YES];
+    [impl_->window retain];
     impl_->attached = true;
 }
 
@@ -259,18 +306,26 @@ void NsAccessibilityBridge::updateTree(const SemanticsTree& tree,
     if (!impl_->attached) {
         return;
     }
-    for (auto& [id, element] : impl_->elements) {
-        (void)id;
-        [element release];
+    for (auto it = impl_->elements.begin(); it != impl_->elements.end();) {
+        auto* element = it->second;
+        element->parent = nil;
+        element->children.clear();
+        if (tree.nodes.find(it->first) == tree.nodes.end()) {
+            element->bridge = nullptr;
+            [element release];
+            it = impl_->elements.erase(it);
+        } else {
+            ++it;
+        }
     }
-    impl_->elements.clear();
     impl_->root = nullptr;
     for (const auto& [id, node] : tree.nodes) {
-        auto* element = [[LumenAXElement alloc] init];
+        auto [it, inserted] = impl_->elements.try_emplace(id, nil);
+        if (inserted) it->second = [[LumenAXElement alloc] init];
+        auto* element = it->second;
         element->bridge = impl_.get();
         element->identity = id;
         element->node = node;
-        impl_->elements.emplace(id, element);
     }
     for (const auto& [id, node] : tree.nodes) {
         auto* element = impl_->elements.at(id);
@@ -285,10 +340,10 @@ void NsAccessibilityBridge::updateTree(const SemanticsTree& tree,
     const auto root = impl_->elements.find(tree.rootId);
     if (root != impl_->elements.end()) {
         impl_->root = root->second;
-        [[impl_->window contentView]
-            accessibilitySetOverrideValue:@[impl_->root]
-                             forAttribute:NSAccessibilityChildrenAttribute];
     }
+    [[impl_->window contentView]
+        accessibilitySetOverrideValue:impl_->root != nullptr ? @[impl_->root] : @[]
+                         forAttribute:NSAccessibilityChildrenAttribute];
     if (!diff.added.empty() || !diff.removed.empty()) {
         NSAccessibilityPostNotification(impl_->window,
                                         NSAccessibilityLayoutChangedNotification);

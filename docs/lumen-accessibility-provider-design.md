@@ -51,7 +51,7 @@ M5 已完成语义契约收口（identity diff、invalid/hidden flags、语义 a
 - Text pattern（文本编辑的逐字/选区暴露）——TextField 以 Value pattern 值读写闭环；富文本属按需评估池。
 - Scroll pattern/滚动事件——语义 Scroll action 为增量（deltaY），UIA ScrollAmount 语义不匹配；AT 用焦点导航+页面级阅读替代。
 - Selection pattern（List/Tree 多选语义）——单选激活经 Invoke 闭环；多选暴露留按需。
-- 多窗口（每窗口一个桥；当前单窗口应用壳）。
+- 跨窗口聚合的单一 provider（当前每窗口一个桥，runApp 已支持多窗口）。
 - 表格/图形/自定义 annotation（UIA CustomNavigation 等）。
 
 ## 4. 总体架构
@@ -159,8 +159,17 @@ Linux 侧走 org.a11y.Bus D-Bus 协议（Qt/GTK 同款；仓库已有 libdbus �
 - **事件**：children-changed（结构）、property-change（accessible-name/value/state）、focus（state-changed:focused）经总线信号广播。
 - **线程**：D-Bus 连接在 UI 线程的 `AccessibilityBridge::pump()` 内 `dbus_connection_dispatch`，由 `runApp` 在 SDL 事件轮询前调用，保持“UI 线程拥有”不变量。
 - **能力**：注册握手成功 → `available()` true；Orca 回环属 M13 出口验收。
+- **协议回归**：`dbus-run-session -- python3 -B tests/atspi_live_tests.py <build>/tests/lumen-atspi-live-app`
+  使用系统注册表与 libatspi 客户端验证注册、焦点、按钮、数值回灌。Socket 位于
+  `/org/a11y/atspi/accessible/root`，Application.Id 为 int32，GetState 返回两段
+  uint32 位图；Cache.GetItems 返回空缓存，客户端按需查询对象。此测试不替代 Orca。
 
 ## 7. NSAccessibility provider（已实施，真实 VoiceOver 回环待验）
+
+元素按语义 identity 复用；移除/析构时断开 bridge、parent 和 children，系统
+持有的旧引用安全失效。AXFocused 写入回灌 Focus action；坐标从顶左逻辑坐标
+经 contentView 翻转、window 转换得到屏幕坐标。原生 AppKit 对象回归在 macOS
+桥开启构建执行；空 NSWindow 的工厂返回 nullptr 并提供诊断。
 
 macOS 侧以 AppKit `NSAccessibilityElement` 树挂到 SDL 窗口 contentView：
 

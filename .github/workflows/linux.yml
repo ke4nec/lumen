@@ -23,7 +23,7 @@ env:
     libasound2-dev libpulse-dev libaudio-dev libjack-dev
     libsndio-dev libsamplerate0-dev liburing-dev
     wayland-protocols libfontconfig1-dev libfreetype6-dev
-    xvfb
+    xvfb at-spi2-core gir1.2-atspi-2.0 python3-gi dbus-x11
   # FetchContent（SDL3/Catch2/Skia/zlib）集中到工作区外缓存目录，
   # 跨 job 经 actions/cache 复用，避免每次重新 clone/下载。
   FETCHCONTENT_BASE_DIR: ${{ github.workspace }}/.fetchcontent-cache
@@ -165,8 +165,11 @@ jobs:
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_BUILD_BENCHMARKS=ON
+          -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
       - name: Build
         run: cmake --build build --config Release
+      - name: Native AT-SPI registry and client round-trip
+        run: dbus-run-session -- /usr/bin/python3 -B tests/atspi_live_tests.py build/tests/lumen-atspi-live-app
       - name: ccache stats
         if: always()
         run: ccache --show-stats || true

@@ -7,21 +7,10 @@ on:
         description: "Live window duration per probe"
         required: true
         default: "30"
-      linux_reader_signoff:
-        description: "Orca focus/activate/value loop completed on the Linux host"
-        type: choice
-        options: [pending, confirmed]
-        default: pending
-      macos_reader_signoff:
-        description: "VoiceOver focus/activate/value loop completed on the macOS host"
-        type: choice
-        options: [pending, confirmed]
-        default: pending
-      windows_reader_signoff:
-        description: "Narrator/NVDA focus/activate/value loop completed on the Windows host"
-        type: choice
-        options: [pending, confirmed]
-        default: pending
+
+env:
+  LUMEN_ACCEPTANCE_ROOT: ${{ vars.LUMEN_ACCEPTANCE_ROOT }}
+  LUMEN_LIVE_SECONDS: ${{ inputs.seconds }}
 
 # This workflow intentionally targets machines with a real desktop session.
 # Hosted CI remains responsible for deterministic headless/Xvfb/llvmpipe gates;
@@ -40,11 +29,12 @@ jobs:
           cmake -S . -B build-live -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
-            -DLUMEN_ENABLE_GPU=ON
+            -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON \
+            -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
       - name: Build live probe and GPU fault fixtures
-        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-gpu-present-failure lumen-software-present-failure
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-settings lumen-gallery lumen-tests lumen-gpu-present-failure lumen-software-present-failure
       - name: Window, resize, IME, clipboard and present probe
-        run: ./build-live/tests/lumen-platform-live-smoke --seconds "${{ inputs.seconds }}" --resize-burst | tee linux-x11-live.json
+        run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-x11-live.json
       - name: GPU/present recovery fault injection
         run: |
           gpu_failure=$(find build-live -name 'liblumen-gpu-present-failure.so' -print -quit)
@@ -55,13 +45,18 @@ jobs:
           cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
             -DFAILURE_LIBRARY="$software_failure" \
             -DEXPECT_PRESENT_FAILURE=ON -P tests/counter_gpu_smoke.cmake
-      - name: Manual Orca gate
-        run: test "${{ inputs.linux_reader_signoff }}" = confirmed
+      - name: Native provider regression
+        run: ctest --test-dir build-live --output-on-failure -R a11y --no-tests=error
+      - name: Validate Orca evidence for this commit and session
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-x11/record.json" --commit "$GITHUB_SHA" --platform linux-x11 --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-linux-x11
-          path: linux-x11-live.json
+          path: |
+            linux-x11-live.json
+            acceptance-evidence/
+            build-live/Testing/Temporary/LastTest.log
 
   linux-wayland:
     runs-on: [self-hosted, linux, desktop, wayland]
@@ -76,11 +71,12 @@ jobs:
           cmake -S . -B build-live -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
-            -DLUMEN_ENABLE_GPU=ON
+            -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON \
+            -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
       - name: Build live probe and GPU fault fixtures
-        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-gpu-present-failure lumen-software-present-failure
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-settings lumen-gallery lumen-tests lumen-gpu-present-failure lumen-software-present-failure
       - name: Window, resize, IME, clipboard and present probe
-        run: ./build-live/tests/lumen-platform-live-smoke --seconds "${{ inputs.seconds }}" --resize-burst | tee linux-wayland-live.json
+        run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-wayland-live.json
       - name: GPU/present recovery fault injection
         run: |
           gpu_failure=$(find build-live -name 'liblumen-gpu-present-failure.so' -print -quit)
@@ -91,13 +87,18 @@ jobs:
           cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
             -DFAILURE_LIBRARY="$software_failure" \
             -DEXPECT_PRESENT_FAILURE=ON -P tests/counter_gpu_smoke.cmake
-      - name: Manual Orca gate
-        run: test "${{ inputs.linux_reader_signoff }}" = confirmed
+      - name: Native provider regression
+        run: ctest --test-dir build-live --output-on-failure -R a11y --no-tests=error
+      - name: Validate Orca evidence for this commit and session
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-wayland/record.json" --commit "$GITHUB_SHA" --platform linux-wayland --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-linux-wayland
-          path: linux-wayland-live.json
+          path: |
+            linux-wayland-live.json
+            acceptance-evidence/
+            build-live/Testing/Temporary/LastTest.log
 
   macos:
     runs-on: [self-hosted, macos, desktop]
@@ -113,18 +114,21 @@ jobs:
             -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
             -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
       - name: Build live probe and accessibility provider
-        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-tests
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-tests lumen-settings lumen-gallery
       - name: Window, resize, IME, clipboard and present probe
-        run: ./build-live/tests/lumen-platform-live-smoke --seconds "${{ inputs.seconds }}" --resize-burst | tee macos-live.json
+        run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee macos-live.json
       - name: Headless NSAccessibility regression
         run: ctest --test-dir build-live --output-on-failure -R a11y
-      - name: Manual VoiceOver gate
-        run: test "${{ inputs.macos_reader_signoff }}" = confirmed
+      - name: Validate VoiceOver evidence for this commit
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/macos/record.json" --commit "$GITHUB_SHA" --platform macos --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-macos
-          path: macos-live.json
+          path: |
+            macos-live.json
+            acceptance-evidence/
+            build-live/Testing/Temporary/LastTest.log
 
   windows:
     runs-on: [self-hosted, windows, desktop]
@@ -142,22 +146,26 @@ jobs:
           -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
       - name: Build live probe and accessibility provider
         shell: pwsh
-        run: cmake --build build-live --config Release --parallel --target lumen-platform-live-smoke lumen-tests
+        run: cmake --build build-live --config Release --parallel --target lumen-platform-live-smoke lumen-tests lumen-settings lumen-gallery
       - name: Window, resize, IME, clipboard and present probe
         shell: pwsh
         run: |
           $probe = Get-ChildItem build-live -Recurse -Filter lumen-platform-live-smoke.exe | Select-Object -First 1
           & $probe.FullName --seconds $env:LUMEN_LIVE_SECONDS --resize-burst | Tee-Object windows-live.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         env:
           LUMEN_LIVE_SECONDS: ${{ inputs.seconds }}
       - name: UIA live smoke
         shell: pwsh
         run: ctest --test-dir build-live --output-on-failure -C Release -R a11y
-      - name: Manual Narrator/NVDA gate
+      - name: Validate Narrator and NVDA evidence for this commit
         shell: pwsh
-        run: if ('${{ inputs.windows_reader_signoff }}' -ne 'confirmed') { exit 1 }
+        run: python tests/check_platform_acceptance.py --record "$env:LUMEN_ACCEPTANCE_ROOT/$env:GITHUB_SHA/windows/record.json" --commit "$env:GITHUB_SHA" --platform windows --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-windows
-          path: windows-live.json
+          path: |
+            windows-live.json
+            acceptance-evidence/
+            build-live/Testing/Temporary/LastTest.log
