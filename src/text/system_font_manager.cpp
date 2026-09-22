@@ -543,10 +543,9 @@ class SystemFontManagerImpl final : public SystemFontManager {
         return fallback;
     }
 
-    [[nodiscard]] bool rasterize(const FaceEntry& face,
-                                        const FontQuery& query,
-                                        int codePoint, float pixelHeight,
-                                        GlyphBitmap* out) const {
+    [[nodiscard]] bool rasterize(const FaceEntry& face, const FontQuery&,
+                                 int codePoint, float pixelHeight,
+                                 GlyphBitmap* out) const {
         // 字形光栅一律走 stb（无 hinting 的设计值灰度位图），与
         // glyphMetrics 的设计步进同源；曾优先 GDI 光栅，其 grid-fit 墨宽
         // 与设计步进不一致导致字距失真（CPU 渲染管线，非系统控件路径）。

@@ -51,6 +51,8 @@ endif()
 
 if(MSVC)
   add_compile_options(/utf-8 /W4)
+  # 跨平台源码使用 std::fopen；MSVC 安全 CRT 弃用提示仅噪音。
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()

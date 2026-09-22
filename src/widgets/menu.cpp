@@ -136,8 +136,8 @@ bool ContextMenuController::stepMotion(std::uint64_t nowMs, bool& active) {
             started = true;
             startMs = nowMs;
         }
-        const std::uint64_t elapsed =
-            nowMs >= startMs ? nowMs - startMs : 0;
+        const double elapsed = static_cast<double>(
+            nowMs >= startMs ? nowMs - startMs : 0);
         const core::Tween tween{0.0, 1.0, static_cast<double>(durationMs),
                                 core::Easing::EaseOut};
         const float next = static_cast<float>(tween.sample(elapsed));
@@ -1063,8 +1063,8 @@ bool MenuBarController::stepUnderline(app::AppShell& shell,
         underlineStarted_ = true;
         underlineStartMs_ = nowMs;
     }
-    const std::uint64_t elapsed =
-        nowMs >= underlineStartMs_ ? nowMs - underlineStartMs_ : 0;
+    const double elapsed = static_cast<double>(
+        nowMs >= underlineStartMs_ ? nowMs - underlineStartMs_ : 0);
     const core::Tween tween{0.0, 1.0,
                             static_cast<double>(underlineFadeMs_),
                             core::Easing::EaseOut};
