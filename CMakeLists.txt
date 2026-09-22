@@ -107,30 +107,82 @@ endif()
 # 可安装件：静态库/头（开发复用）、示例可执行（自用工具）、文档。
 if(LUMEN_BUILD_PACKAGE)
   include(GNUInstallDirs)
-  if(NOT WIN32 AND TARGET SDL3::SDL3)
-    # 实体 + soname 别名双实体（ZIP 归档不保留 symlink；跨平台用拷贝）。
+  include(CMakePackageConfigHelpers)
+
+  # Public headers must resolve from an installed SDK rather than the source
+  # checkout when consumers import the exported static targets.
+  set(_lumen_public_targets
+      lumen-core lumen-style lumen-layout lumen-text lumen-accessibility
+      lumen-render lumen-widgets lumen-platform lumen-dsl lumen-app)
+  foreach(_lumen_target IN LISTS _lumen_public_targets)
+    if(TARGET ${_lumen_target})
+      set_property(TARGET ${_lumen_target} PROPERTY INTERFACE_INCLUDE_DIRECTORIES
+                   "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+    endif()
+  endforeach()
+
+  set(LUMEN_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/Lumen")
+  set(_lumen_export_targets ${_lumen_public_targets})
+  if(TARGET SDL3-shared)
+    list(APPEND _lumen_export_targets SDL3-shared)
+  endif()
+  if(TARGET SDL3_Headers)
+    # Keep the build target pointed at FetchContent while making the exported
+    # target resolve headers from the installed SDK.
+    set_property(TARGET SDL3_Headers PROPERTY INTERFACE_INCLUDE_DIRECTORIES
+                 "$<BUILD_INTERFACE:${SDL3_SOURCE_DIR}/include>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+    list(APPEND _lumen_export_targets SDL3_Headers)
+  endif()
+  if(WIN32 AND TARGET zlibstatic)
+    # The Windows Skia archive needs plain zlib symbols in addition to its
+    # bundled zlib.lib. Keep this private archive beside the SDK libraries so
+    # exported static targets remain linkable outside the build tree.
+    install(TARGETS zlibstatic
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  endif()
+  if(UNIX AND NOT APPLE AND TARGET SDL3::SDL3)
+    # Linux 实体 + soname 别名双实体（ZIP 归档不保留 symlink）。
     install(FILES $<TARGET_FILE:SDL3::SDL3>
             DESTINATION ${CMAKE_INSTALL_LIBDIR})
     install(FILES $<TARGET_FILE:SDL3::SDL3>
             DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RENAME libSDL3.so.0)
   endif()
-  install(TARGETS lumen-core lumen-style lumen-layout lumen-text
-          lumen-accessibility lumen-render lumen-widgets lumen-platform
-          lumen-dsl lumen-app
-          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  install(TARGETS ${_lumen_export_targets}
+          EXPORT LumenTargets
+          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(EXPORT LumenTargets
+          FILE LumenTargets.cmake
+          NAMESPACE Lumen::
+          DESTINATION ${LUMEN_CMAKE_INSTALL_DIR})
+  configure_package_config_file(
+          ${CMAKE_CURRENT_LIST_DIR}/cmake/LumenConfig.cmake.in
+          ${CMAKE_CURRENT_BINARY_DIR}/LumenConfig.cmake
+          INSTALL_DESTINATION ${LUMEN_CMAKE_INSTALL_DIR}
+          PATH_VARS CMAKE_INSTALL_INCLUDEDIR CMAKE_INSTALL_LIBDIR)
+  write_basic_package_version_file(
+          ${CMAKE_CURRENT_BINARY_DIR}/LumenConfigVersion.cmake
+          COMPATIBILITY SameMajorVersion)
+  install(FILES
+          ${CMAKE_CURRENT_BINARY_DIR}/LumenConfig.cmake
+          ${CMAKE_CURRENT_BINARY_DIR}/LumenConfigVersion.cmake
+          DESTINATION ${LUMEN_CMAKE_INSTALL_DIR})
   install(DIRECTORY include/lumen DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  if(DEFINED SDL3_SOURCE_DIR AND EXISTS "${SDL3_SOURCE_DIR}/include/SDL3")
+    install(DIRECTORY "${SDL3_SOURCE_DIR}/include/SDL3"
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  endif()
   install(FILES README.md docs/lumen-gui-framework-plan.md
           docs/lumen-self-use-roadmap.md docs/build-commands.md
-          docs/support-matrix.md
+          docs/support-matrix.md docs/lumen-packaging.md
           DESTINATION ${CMAKE_INSTALL_DOCDIR})
   if(LUMEN_BUILD_EXAMPLES AND TARGET lumen-counter)
     install(TARGETS lumen-counter lumen-settings lumen-gallery
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     if(WIN32)
-      # SDL3 DLL 随包（Windows 动态运行时）。
-      install(FILES $<TARGET_FILE:SDL3::SDL3>
-              DESTINATION ${CMAKE_INSTALL_BINDIR})
+      # SDL3 DLL is installed by the SDL3-shared target above.
     endif()
     install(FILES examples/counter/counter.lumen
             DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)
@@ -159,7 +211,7 @@ if(LUMEN_BUILD_PACKAGE)
               DESTINATION share/icons)
     endif()
   endif()
-  # 打包入口：cpack 配置见 cmake/PackageConfig.cmake（平台自适应：
-  # Windows zip / Linux tar.gz / macOS 一级 .app 目录结构 + zip）。
+  # 开发归档入口：CPack 配置见 cmake/PackageConfig.cmake；Linux AppImage
+  # 与 macOS .app 由各平台 workflow 从同一 install tree 组装。
   include(${CMAKE_CURRENT_LIST_DIR}/cmake/PackageConfig.cmake)
 endif()

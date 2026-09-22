@@ -80,6 +80,10 @@ jobs:
             tar xzf ../*.tar.gz 2>/dev/null || unzip -q ../*.zip
           fi
           pkg=$(ls -d lumen-*)
+          test -f "$pkg/lib/liblumen-render.a"
+          test -f "$pkg/lib/cmake/Lumen/LumenConfig.cmake"
+          test -f "$pkg/lib/cmake/Lumen/LumenTargets.cmake"
+          test -f "$pkg/include/lumen/render/renderer.h"
           if [ "${{ runner.os }}" = "Windows" ]; then
             ./$pkg/bin/lumen-counter.exe --headless
             ./$pkg/bin/lumen-settings.exe --headless
@@ -486,6 +490,9 @@ jobs:
           mkdir unpack && cd unpack
           tar xzf ../*.tar.gz 2>/dev/null || unzip -q ../*.zip
           pkg=$(ls -d lumen-*)
+          test -f "$pkg/lib/liblumen-render.a"
+          test -f "$pkg/lib/cmake/Lumen/LumenConfig.cmake"
+          test -f "$pkg/lib/cmake/Lumen/LumenTargets.cmake"
           ./$pkg/bin/lumen-counter --headless
           ./$pkg/bin/lumen-settings --headless
       - name: Upload package artifact
@@ -549,6 +556,9 @@ jobs:
           mkdir unpack && cd unpack
           tar xzf ../*.tar.gz 2>/dev/null || unzip -q ../*.zip
           pkg=$(ls -d lumen-*)
+          test -f "$pkg/lib/liblumen-render.a"
+          test -f "$pkg/lib/cmake/Lumen/LumenConfig.cmake"
+          test -f "$pkg/lib/cmake/Lumen/LumenTargets.cmake"
           ./$pkg/bin/lumen-counter --headless
           ./$pkg/bin/lumen-settings --headless
           LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a \

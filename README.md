@@ -27,7 +27,8 @@ provider 已接入三桌面平台，真实屏幕阅读器回环仍在平台验�
 文本/IME/编辑模型、语义树与 Recording 桥、滚动/表单/弹窗/导航组件）。历史
 SDL-free 移动 host 接缝仍保留，但不代表当前支持移动平台。三桌面便携发布已纳入
 M8；M12 已交付 AppImage、CPU `.app` 骨架、三平台 Skia 包和 Linux GPU 包，
-Windows/macOS GPU 包与 CPack Bundle 仍待补齐；平台原生
+Windows/macOS GPU 包与 CPack Bundle 仍待补齐；开发归档和运行时产物职责见
+[`docs/lumen-packaging.md`](docs/lumen-packaging.md)；平台原生
 无障碍 M13 进行中（三平台原生 provider 已接入，真实屏幕阅读器回环待验）。平台能力详见
 [`docs/support-matrix.md`](docs/support-matrix.md)。
 

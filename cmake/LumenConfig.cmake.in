@@ -1,0 +1,58 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+# Static Skia targets keep their system libraries in the exported link
+# interface. Recreate the imported targets before loading LumenTargets so a
+# consumer can use the SDK without depending on the build tree's CMake state.
+if(@LUMEN_ENABLE_SKIA@)
+  if(WIN32)
+    find_library(LUMEN_ZLIBSTATIC_LIBRARY NAMES zlibstatic
+                 PATHS "@PACKAGE_CMAKE_INSTALL_LIBDIR@" NO_DEFAULT_PATH)
+    if(LUMEN_ZLIBSTATIC_LIBRARY AND NOT TARGET zlibstatic)
+      add_library(zlibstatic UNKNOWN IMPORTED)
+      set_property(TARGET zlibstatic PROPERTY IMPORTED_LOCATION
+                   "${LUMEN_ZLIBSTATIC_LIBRARY}")
+    endif()
+  endif()
+  if(UNIX AND NOT APPLE)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+      pkg_check_modules(FONTCONFIG QUIET IMPORTED_TARGET fontconfig)
+    endif()
+    if(NOT TARGET PkgConfig::FONTCONFIG)
+      find_library(LUMEN_FONTCONFIG_LIBRARY NAMES fontconfig)
+      if(NOT LUMEN_FONTCONFIG_LIBRARY)
+        message(FATAL_ERROR
+                "Lumen's Skia package requires the fontconfig development library")
+      endif()
+      add_library(PkgConfig::FONTCONFIG INTERFACE IMPORTED)
+      set_property(TARGET PkgConfig::FONTCONFIG PROPERTY
+                   INTERFACE_LINK_LIBRARIES "${LUMEN_FONTCONFIG_LIBRARY}")
+    endif()
+  endif()
+  find_dependency(ZLIB)
+endif()
+
+if(@LUMEN_ENABLE_GPU@)
+  find_dependency(OpenGL)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/LumenTargets.cmake")
+
+# The SDK exports the FetchContent-built SDL runtime under Lumen:: so the
+# platform target remains linkable without requiring the build tree's SDL
+# package files.
+if(NOT TARGET SDL3::SDL3 AND TARGET Lumen::SDL3-shared)
+  add_library(SDL3::SDL3 ALIAS Lumen::SDL3-shared)
+endif()
+if(NOT TARGET SDL3::Headers AND TARGET Lumen::Headers)
+  add_library(SDL3::Headers ALIAS Lumen::Headers)
+endif()
+
+set_and_check(LUMEN_INCLUDE_DIR "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+set_and_check(LUMEN_LIBRARY_DIR "@PACKAGE_CMAKE_INSTALL_LIBDIR@")
+set(LUMEN_PACKAGE_VERSION "@PROJECT_VERSION@")
+
+check_required_components(Lumen)

@@ -1,9 +1,9 @@
 # M8（自用路线图）：便携包配置。
 #
-# 三桌面统一 CPack 入口：Windows zip / Linux tar.gz / macOS .app 结构 +
-# zip。包内容 = install 规则产物（静态库 + 头 + 示例 + 文档）；包内自述
-# （启动说明/诊断开关/已知限制）由 CMAKE_INSTALL_DOCDIR 承载。
-# AppImage 属 Linux 增强通道（后续按需追加），不阻塞出口条件。
+# 三桌面统一 CPack 入口：Windows ZIP / Linux TGZ / macOS ZIP。
+# CPack 产物是开发归档，内容来自 install 规则（静态库、头、CMake export、
+# 示例和文档）；Linux AppImage 与 macOS .app 是 workflow 组装的运行时产物，
+# 不改变 CPack 开发归档的职责。
 
 set(CPACK_PACKAGE_NAME "lumen")
 set(CPACK_PACKAGE_VENDOR "lumen self-use tools")
@@ -34,8 +34,6 @@ if(WIN32)
 elseif(APPLE)
   set(CPACK_GENERATOR "ZIP")
   set(CPACK_SYSTEM_NAME "macos-universal")
-  # .app 结构：示例按 macOS 惯例落位（运行由解包方经 bin/ 启动；
-  # 完整 .app bundle 打包属后续增强，zip 内保留 bin 布局即可启动）。
 else()
   set(CPACK_GENERATOR "TGZ")
   set(CPACK_SYSTEM_NAME "linux-x64")

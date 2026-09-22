@@ -56,6 +56,10 @@ jobs:
             tar xzf ../*.tar.gz 2>/dev/null || unzip -q ../*.zip
           fi
           pkg=$(ls -d lumen-*)
+          test -f "$pkg/lib/lumen-render.lib"
+          test -f "$pkg/lib/cmake/Lumen/LumenConfig.cmake"
+          test -f "$pkg/lib/cmake/Lumen/LumenTargets.cmake"
+          test -f "$pkg/include/lumen/render/renderer.h"
           if [ "${{ runner.os }}" = "Windows" ]; then
             ./$pkg/bin/lumen-counter.exe --headless
             ./$pkg/bin/lumen-settings.exe --headless

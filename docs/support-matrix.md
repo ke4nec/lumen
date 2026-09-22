@@ -159,6 +159,7 @@ Skia/GPU Release 779/779，无跳过；详见
   （三平台）/package-skia-gpu（Linux llvmpipe）变体；当前 CI 运行成功，
   Windows/macOS GPU 包与 CPack Bundle 留后续。AppImage 生成和 `.app` 内
   headless 启动不替代干净桌面人工启动验收。当前安装清单已覆盖
-  `lumen-render` 与其余桌面公共静态库，但尚未提供 CMake 导出配置，当前包仍不能
-  视作完整的外部开发 SDK。
+  `lumen-render` 与其余桌面公共静态库，并随开发归档安装
+  `LumenConfig.cmake`/`LumenTargets.cmake`（包含 SDL3 头文件和运行时目标）；
+  因此运行时 AppImage/`.app` 与外部 SDK 的职责保持分离。
 - 移动方向暂不实现并冻结；M9 只保留状态说明，不作为桌面版本的待完成项。
