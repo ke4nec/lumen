@@ -700,6 +700,15 @@ TEST_CASE("run_app_replaces_renderer_via_failure_hook", "[app]") {
     shell.setView(Size{800.0F, 600.0F});
     (void)shell.renderFrame();
 
+    // Release acceptance: document, selection and focus survive window replacement.
+    shell.state().set("counter", "kept");
+    const auto* field = lumen::core::findNodeByKey(shell.root(), "name-field");
+    REQUIRE(field);
+    shell.controller().focusNode(*field);
+    shell.controller().setEditingValue(lumen::text::TextEditingValue("document", {1, 4}));
+    const auto editing = shell.controller().editingValue();
+    const auto focus = shell.focus().focusedIdentity();
+
     auto external = std::make_unique<RecordingRenderer>();
     RecordingRenderer* externalRaw = external.get();
     bool failedOnce = false;
@@ -707,10 +716,14 @@ TEST_CASE("run_app_replaces_renderer_via_failure_hook", "[app]") {
 
     RunOptions options;
     options.onRendererFailure =
-        [&](lumen::platform::ApplicationHost&, lumen::core::WindowId&)
+        [&](lumen::platform::ApplicationHost& input, lumen::core::WindowId& id)
         -> std::optional<RendererSetup> {
         ++replacementCount;
         external.reset();  // 失效后端销毁。
+        input.destroyWindow(id);
+        const auto replacement = input.createWindow({});
+        REQUIRE(replacement);
+        id = *replacement;
         RendererSetup fallback;
         fallback.renderer = nullptr;  // 应用壳内部 CPU。
         return fallback;
@@ -740,6 +753,9 @@ TEST_CASE("run_app_replaces_renderer_via_failure_hook", "[app]") {
     REQUIRE(lumen::app::runApp(shell, host, options) == 0);
     CHECK(failedOnce);
     CHECK(replacementCount == 1);
+    CHECK(shell.state().get("counter") == "kept");
+    CHECK(shell.controller().editingValue() == editing);
+    CHECK(shell.focus().focusedIdentity() == focus);
     // 回退后仍有帧产出（内部 CPU 渲染器接管）。
     CHECK(shell.renderFrame() != 0);
 }

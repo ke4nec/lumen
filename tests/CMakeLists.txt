@@ -108,7 +108,7 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
     # SDL_VIDEODRIVER (X11/Wayland/Cocoa/Win32) and is not a CTest dummy smoke.
     add_executable(lumen-platform-live-smoke platform_live_smoke.cpp)
     target_link_libraries(lumen-platform-live-smoke PRIVATE
-        lumen-platform lumen-render SDL3::SDL3)
+        lumen-app lumen-widgets lumen-platform lumen-render SDL3::SDL3)
     target_compile_features(lumen-platform-live-smoke PRIVATE cxx_std_20)
 endif()
 

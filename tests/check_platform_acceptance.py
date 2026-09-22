@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import shutil
@@ -10,6 +11,27 @@ READERS = {"linux-x11": {"Orca"}, "linux-wayland": {"Orca"},
            "macos": {"VoiceOver"}, "windows": {"Narrator", "NVDA"}}
 READER_CASES = {"read", "focus", "activate", "value", "editing", "dialog",
                 "resize", "close_reopen"}
+PLATFORM_CASES = {"ime_preedit_commit_cancel", "ime_candidate_position", "clipboard_cross_app",
+                  "multiwindow_focus_dpi", "window_lifecycle", "transparent_composition",
+                  "gpu_present_recovery_state", "soak_resources"}
+
+
+def validate_platform(record: dict, soak: dict, platform: str) -> None:
+    required = PLATFORM_CASES | ({"font_cold_start", "touchpad"} if platform == "windows" else set())
+    for case in required:
+        if record.get("platform_checks", {}).get(case) != "pass":
+            raise ValueError(f"platform/{case} not passed")
+    driver = {"linux-x11": "x11", "linux-wayland": "wayland", "macos": "cocoa", "windows": "windows"}[platform]
+    for key in ("seconds", "windows", "frames", "resize_events", "stress_mib", "simulated_recoveries"):
+        value = soak.get(key)
+        if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or value < 0:
+            raise ValueError(f"invalid soak metric: {key}")
+    if soak.get("driver") != driver or soak.get("seconds", 0) < 3600:
+        raise ValueError("soak must run at least one hour in the specified session")
+    if (soak.get("windows") != 2 or soak.get("frames", 0) <= 0 or
+        soak.get("resize_events", 0) <= 0 or soak.get("stress_mib", 0) < 64 or
+        soak.get("simulated_recoveries") != 2 or soak.get("state_preserved") is not True):
+        raise ValueError("soak did not exercise windows, resize, pressure and preserved recovery")
 
 
 def validate(record: dict, commit: str, platform: str, directory: Path) -> None:
@@ -53,10 +75,13 @@ def main() -> None:
     parser.add_argument("--commit", required=True)
     parser.add_argument("--platform", choices=READERS, required=True)
     parser.add_argument("--archive", type=Path)
+    parser.add_argument("--soak-report", type=Path)
     args = parser.parse_args()
     try:
         record = json.loads(args.record.read_text(encoding="utf-8"))
         validate(record, args.commit, args.platform, args.record.parent)
+        if args.soak_report:
+            validate_platform(record, json.loads(args.soak_report.read_text(encoding="utf-8")), args.platform)
         if args.archive:
             args.archive.mkdir(parents=True, exist_ok=True)
             shutil.copy2(args.record, args.archive / "record.json")

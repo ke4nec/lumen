@@ -3,10 +3,20 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
-from check_platform_acceptance import validate, READER_CASES
+from check_platform_acceptance import validate, validate_platform, READER_CASES, PLATFORM_CASES
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_short_smoke_or_missing_recovery_cannot_pass_platform_acceptance(self):
+        record = {"platform_checks": {key: "pass" for key in PLATFORM_CASES}}
+        soak = dict(driver="x11", seconds=3600, windows=2, frames=100,
+                    resize_events=20, stress_mib=64, simulated_recoveries=2, state_preserved=True)
+        validate_platform(record, soak, "linux-x11")
+        for key, value in [("seconds", 30), ("seconds", float("nan")), ("driver", "dummy"), ("simulated_recoveries", 0),
+                           ("state_preserved", False), ("resize_events", 0)]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                validate_platform(record, dict(soak, **{key: value}), "linux-x11")
+
     def test_requires_current_commit_reader_cases_and_real_attachments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

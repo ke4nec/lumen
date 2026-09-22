@@ -3,6 +3,10 @@ name: platform-acceptance
 on:
   workflow_dispatch:
     inputs:
+      soak_seconds:
+        description: "Soak duration (release gate requires at least 3600 seconds)"
+        required: true
+        default: "3600"
       seconds:
         description: "Live window duration per probe"
         required: true
@@ -11,6 +15,7 @@ on:
 env:
   LUMEN_ACCEPTANCE_ROOT: ${{ vars.LUMEN_ACCEPTANCE_ROOT }}
   LUMEN_LIVE_SECONDS: ${{ inputs.seconds }}
+  LUMEN_SOAK_SECONDS: ${{ inputs.soak_seconds }}
 
 # This workflow intentionally targets machines with a real desktop session.
 # Hosted CI remains responsible for deterministic headless/Xvfb/llvmpipe gates;
@@ -18,7 +23,7 @@ env:
 jobs:
   linux-x11:
     runs-on: [self-hosted, linux, desktop, x11]
-    timeout-minutes: 30
+    timeout-minutes: 150
     env:
       SDL_VIDEODRIVER: x11
     steps:
@@ -41,26 +46,29 @@ jobs:
           software_failure=$(find build-live -name 'liblumen-software-present-failure.so' -print -quit)
           test -n "$gpu_failure" -a -n "$software_failure"
           cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
-            -DFAILURE_LIBRARY="$gpu_failure" -P tests/counter_gpu_smoke.cmake
+            -DEXPECTED_BACKEND=skia-raster -DFAILURE_LIBRARY="$gpu_failure" -P tests/counter_gpu_smoke.cmake
           cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
             -DFAILURE_LIBRARY="$software_failure" \
             -DEXPECT_PRESENT_FAILURE=ON -P tests/counter_gpu_smoke.cmake
       - name: Native provider regression
         run: ctest --test-dir build-live --output-on-failure -R a11y --no-tests=error
+      - name: One-hour multi-window resize pressure and recovery soak
+        run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate Orca evidence for this commit and session
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-x11/record.json" --commit "$GITHUB_SHA" --platform linux-x11 --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-x11/record.json" --commit "$GITHUB_SHA" --platform linux-x11 --soak-report soak.json --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-linux-x11
           path: |
             linux-x11-live.json
+            soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log
 
   linux-wayland:
     runs-on: [self-hosted, linux, desktop, wayland]
-    timeout-minutes: 30
+    timeout-minutes: 150
     env:
       SDL_VIDEODRIVER: wayland
     steps:
@@ -83,26 +91,29 @@ jobs:
           software_failure=$(find build-live -name 'liblumen-software-present-failure.so' -print -quit)
           test -n "$gpu_failure" -a -n "$software_failure"
           cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
-            -DFAILURE_LIBRARY="$gpu_failure" -P tests/counter_gpu_smoke.cmake
+            -DEXPECTED_BACKEND=skia-raster -DFAILURE_LIBRARY="$gpu_failure" -P tests/counter_gpu_smoke.cmake
           cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
             -DFAILURE_LIBRARY="$software_failure" \
             -DEXPECT_PRESENT_FAILURE=ON -P tests/counter_gpu_smoke.cmake
       - name: Native provider regression
         run: ctest --test-dir build-live --output-on-failure -R a11y --no-tests=error
+      - name: One-hour multi-window resize pressure and recovery soak
+        run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate Orca evidence for this commit and session
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-wayland/record.json" --commit "$GITHUB_SHA" --platform linux-wayland --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-wayland/record.json" --commit "$GITHUB_SHA" --platform linux-wayland --soak-report soak.json --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-linux-wayland
           path: |
             linux-wayland-live.json
+            soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log
 
   macos:
     runs-on: [self-hosted, macos, desktop]
-    timeout-minutes: 30
+    timeout-minutes: 150
     env:
       SDL_VIDEODRIVER: cocoa
     steps:
@@ -119,20 +130,23 @@ jobs:
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee macos-live.json
       - name: Headless NSAccessibility regression
         run: ctest --test-dir build-live --output-on-failure -R a11y
+      - name: One-hour multi-window resize pressure and recovery soak
+        run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate VoiceOver evidence for this commit
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/macos/record.json" --commit "$GITHUB_SHA" --platform macos --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/macos/record.json" --commit "$GITHUB_SHA" --platform macos --soak-report soak.json --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-macos
           path: |
             macos-live.json
+            soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log
 
   windows:
     runs-on: [self-hosted, windows, desktop]
-    timeout-minutes: 30
+    timeout-minutes: 150
     env:
       SDL_VIDEODRIVER: windows
       LUMEN_UIA_LIVE_SMOKE: "1"
@@ -158,14 +172,21 @@ jobs:
       - name: UIA live smoke
         shell: pwsh
         run: ctest --test-dir build-live --output-on-failure -C Release -R a11y
+      - name: One-hour multi-window resize pressure and recovery soak
+        shell: pwsh
+        run: |
+          $probe = Get-ChildItem build-live -Recurse -Filter lumen-platform-live-smoke.exe | Select-Object -First 1
+          & $probe.FullName --seconds $env:LUMEN_SOAK_SECONDS --resize-burst --stress-mib 64 --inject-recovery | Tee-Object soak.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Validate Narrator and NVDA evidence for this commit
         shell: pwsh
-        run: python tests/check_platform_acceptance.py --record "$env:LUMEN_ACCEPTANCE_ROOT/$env:GITHUB_SHA/windows/record.json" --commit "$env:GITHUB_SHA" --platform windows --archive acceptance-evidence
+        run: python tests/check_platform_acceptance.py --record "$env:LUMEN_ACCEPTANCE_ROOT/$env:GITHUB_SHA/windows/record.json" --commit "$env:GITHUB_SHA" --platform windows --soak-report soak.json --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-windows
           path: |
             windows-live.json
+            soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log

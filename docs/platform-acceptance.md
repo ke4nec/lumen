@@ -15,10 +15,32 @@
 | `windows` | `self-hosted, windows, desktop` | 登录的 Win32 会话，Narrator 或 NVDA 可切换 |
 
 Linux 两个 job 使用当前会话的 SDL video driver，不启动 Xvfb 或 dummy driver。
-`lumen-platform-live-smoke` 会在窗口存活期间反复 present，可选快速 resize，验证
-IME text-input session/caret 区域和剪贴板 round-trip，并输出带 driver、帧数和
-resize 事件的 JSON。Linux job 还加载现有 `LD_PRELOAD` present 故障夹具，确认
+`lumen-platform-live-smoke` 使用两个真实 AppShell/runApp 窗口，包含文本编辑和
+千项 VirtualList；统计真实 IME、resize、滚轮事件及成功 present，按需验证
+跨应用剪贴板和最终文本。未操作 IME 时 `ime_verified=false`，不会冒充已验。
+Linux job 还加载现有 `LD_PRELOAD` present 故障夹具，确认
 GPU swap 失败和软件 present 失败均进入预期诊断路径。
+
+## 探针与长时间运行
+
+```sh
+# 自动压力：两窗口、快速 resize、反复申请/释放 64 MiB、模拟 renderer 失效重建窗口。
+./build-live/tests/lumen-platform-live-smoke --seconds 3600 --resize-burst --stress-mib 64 --inject-recovery
+# 人工输入：先在其他应用复制 clipboard-token，再在 primary 编辑框中全选并用 IME 输入“你好”。
+./build-live/tests/lumen-platform-live-smoke --seconds 90 --expected-text 你好 --clipboard-expect clipboard-token --transparent
+```
+
+自动恢复用例在恢复后的成功帧核对文档、选区、焦点和滚动位置；这是模拟 renderer
+故障，不冒充真实 GPU context loss。Linux 的原生 GPU/present 故障夹具另行执行；
+其余平台及恢复后的视觉状态按人工检查项记录。透明模式只请求透明窗口，最终合成
+效果必须观察桌面背景。`font_available` 记录系统字体初始化结果；冷启动视觉和
+触摸板手感不能由此字段替代。
+
+工作流默认独立运行一小时 soak，必须有两个窗口、有效 present/resize、至少
+64 MiB 压力、两次恢复且状态保持；短 smoke 不满足发布验收。`soak.json` 与
+人工记录分别归档。输入法取消、候选窗位置、多窗口 DPI/焦点隔离、跨应用复制粘贴、
+窗口生命周期、透明合成和硬件 GPU 恢复均需逐项记录步骤和结果；Windows 另加
+系统字体冷启动和触摸板。Xvfb 可用于回归脚本，本身不能作为真实桌面验收。
 
 ## 人工回环
 
@@ -57,6 +79,12 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
   "application": "本次构建的 lumen-settings/lumen-gallery",
   "provider": "atspi",
   "provider_available": false,
+  "platform_checks": {
+    "ime_preedit_commit_cancel": "pending", "ime_candidate_position": "pending",
+    "clipboard_cross_app": "pending", "multiwindow_focus_dpi": "pending",
+    "window_lifecycle": "pending", "transparent_composition": "pending",
+    "gpu_present_recovery_state": "pending", "soak_resources": "pending"
+  },
   "readers": {
     "Orca": {
       "version": "实际版本",
