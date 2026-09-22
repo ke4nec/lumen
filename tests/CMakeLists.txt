@@ -98,6 +98,15 @@ endif()
 
 add_executable(lumen-tests ${LUMEN_TEST_SOURCES})
 
+if(NOT LUMEN_BUILD_MOBILE_CORE)
+    # Real desktop acceptance probe.  It deliberately honors the caller's
+    # SDL_VIDEODRIVER (X11/Wayland/Cocoa/Win32) and is not a CTest dummy smoke.
+    add_executable(lumen-platform-live-smoke platform_live_smoke.cpp)
+    target_link_libraries(lumen-platform-live-smoke PRIVATE
+        lumen-platform lumen-render SDL3::SDL3)
+    target_compile_features(lumen-platform-live-smoke PRIVATE cxx_std_20)
+endif()
+
 if(LUMEN_ENABLE_SKIA)
     # The stage-name test expects the adapter label only when it is real.
     target_compile_definitions(lumen-tests PRIVATE LUMEN_HAS_SKIA_BACKEND=1)

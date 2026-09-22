@@ -1,0 +1,163 @@
+name: platform-acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Live window duration per probe"
+        required: true
+        default: "30"
+      linux_reader_signoff:
+        description: "Orca focus/activate/value loop completed on the Linux host"
+        type: choice
+        options: [pending, confirmed]
+        default: pending
+      macos_reader_signoff:
+        description: "VoiceOver focus/activate/value loop completed on the macOS host"
+        type: choice
+        options: [pending, confirmed]
+        default: pending
+      windows_reader_signoff:
+        description: "Narrator/NVDA focus/activate/value loop completed on the Windows host"
+        type: choice
+        options: [pending, confirmed]
+        default: pending
+
+# This workflow intentionally targets machines with a real desktop session.
+# Hosted CI remains responsible for deterministic headless/Xvfb/llvmpipe gates;
+# these jobs are an explicit, manually triggered release-acceptance record.
+jobs:
+  linux-x11:
+    runs-on: [self-hosted, linux, desktop, x11]
+    timeout-minutes: 30
+    env:
+      SDL_VIDEODRIVER: x11
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure real X11 build
+        run: |
+          test -n "$DISPLAY"
+          cmake -S . -B build-live -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
+            -DLUMEN_ENABLE_GPU=ON
+      - name: Build live probe and GPU fault fixtures
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-gpu-present-failure lumen-software-present-failure
+      - name: Window, resize, IME, clipboard and present probe
+        run: ./build-live/tests/lumen-platform-live-smoke --seconds "${{ inputs.seconds }}" --resize-burst | tee linux-x11-live.json
+      - name: GPU/present recovery fault injection
+        run: |
+          gpu_failure=$(find build-live -name 'liblumen-gpu-present-failure.so' -print -quit)
+          software_failure=$(find build-live -name 'liblumen-software-present-failure.so' -print -quit)
+          test -n "$gpu_failure" -a -n "$software_failure"
+          cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
+            -DFAILURE_LIBRARY="$gpu_failure" -P tests/counter_gpu_smoke.cmake
+          cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
+            -DFAILURE_LIBRARY="$software_failure" \
+            -DEXPECT_PRESENT_FAILURE=ON -P tests/counter_gpu_smoke.cmake
+      - name: Manual Orca gate
+        run: test "${{ inputs.linux_reader_signoff }}" = confirmed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-acceptance-linux-x11
+          path: linux-x11-live.json
+
+  linux-wayland:
+    runs-on: [self-hosted, linux, desktop, wayland]
+    timeout-minutes: 30
+    env:
+      SDL_VIDEODRIVER: wayland
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure real Wayland build
+        run: |
+          test -n "$WAYLAND_DISPLAY"
+          cmake -S . -B build-live -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
+            -DLUMEN_ENABLE_GPU=ON
+      - name: Build live probe and GPU fault fixtures
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-gpu-present-failure lumen-software-present-failure
+      - name: Window, resize, IME, clipboard and present probe
+        run: ./build-live/tests/lumen-platform-live-smoke --seconds "${{ inputs.seconds }}" --resize-burst | tee linux-wayland-live.json
+      - name: GPU/present recovery fault injection
+        run: |
+          gpu_failure=$(find build-live -name 'liblumen-gpu-present-failure.so' -print -quit)
+          software_failure=$(find build-live -name 'liblumen-software-present-failure.so' -print -quit)
+          test -n "$gpu_failure" -a -n "$software_failure"
+          cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
+            -DFAILURE_LIBRARY="$gpu_failure" -P tests/counter_gpu_smoke.cmake
+          cmake -DCOUNTER="$PWD/build-live/examples/counter/lumen-counter" \
+            -DFAILURE_LIBRARY="$software_failure" \
+            -DEXPECT_PRESENT_FAILURE=ON -P tests/counter_gpu_smoke.cmake
+      - name: Manual Orca gate
+        run: test "${{ inputs.linux_reader_signoff }}" = confirmed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-acceptance-linux-wayland
+          path: linux-wayland-live.json
+
+  macos:
+    runs-on: [self-hosted, macos, desktop]
+    timeout-minutes: 30
+    env:
+      SDL_VIDEODRIVER: cocoa
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure real Cocoa build
+        run: |
+          cmake -S . -B build-live -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
+            -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
+      - name: Build live probe and accessibility provider
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-tests
+      - name: Window, resize, IME, clipboard and present probe
+        run: ./build-live/tests/lumen-platform-live-smoke --seconds "${{ inputs.seconds }}" --resize-burst | tee macos-live.json
+      - name: Headless NSAccessibility regression
+        run: ctest --test-dir build-live --output-on-failure -R a11y
+      - name: Manual VoiceOver gate
+        run: test "${{ inputs.macos_reader_signoff }}" = confirmed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-acceptance-macos
+          path: macos-live.json
+
+  windows:
+    runs-on: [self-hosted, windows, desktop]
+    timeout-minutes: 30
+    env:
+      SDL_VIDEODRIVER: windows
+      LUMEN_UIA_LIVE_SMOKE: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure real Win32 build
+        shell: pwsh
+        run: >-
+          cmake -S . -B build-live -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
+      - name: Build live probe and accessibility provider
+        shell: pwsh
+        run: cmake --build build-live --config Release --parallel --target lumen-platform-live-smoke lumen-tests
+      - name: Window, resize, IME, clipboard and present probe
+        shell: pwsh
+        run: |
+          $probe = Get-ChildItem build-live -Recurse -Filter lumen-platform-live-smoke.exe | Select-Object -First 1
+          & $probe.FullName --seconds $env:LUMEN_LIVE_SECONDS --resize-burst | Tee-Object windows-live.json
+        env:
+          LUMEN_LIVE_SECONDS: ${{ inputs.seconds }}
+      - name: UIA live smoke
+        shell: pwsh
+        run: ctest --test-dir build-live --output-on-failure -C Release -R a11y
+      - name: Manual Narrator/NVDA gate
+        shell: pwsh
+        run: if ('${{ inputs.windows_reader_signoff }}' -ne 'confirmed') { exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-acceptance-windows
+          path: windows-live.json

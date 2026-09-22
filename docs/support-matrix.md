@@ -38,9 +38,9 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 
 | 平台 | 窗口/输入 | 剪贴板 | 文本/IME | 无障碍 | 渲染 | CI 验证 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Windows | SDL3（宿主多窗口、resize/DPI、触摸 pointer id；`runApp` 按 `WindowId` 隔离多个 `AppShell`） | SDL3 剪贴板（`platform::Clipboard`） | UTF-8 commit + IME preedit（TSF 经 SDL）；修饰键/逻辑键归一化 | 语义树 + Recording 桥；UIA 已实施，需 `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON`；未编入时能力报告 false | CPU、Skia 光栅、Skia GPU（软件回退见下表） | `windows.yml`：cpu / a11y-bridge / skia-raster / skia-gpu / package / package-skia |
-| Linux | SDL3（X11/Wayland） | 同上 | UTF-8 + IBus/Fcitx preedit（候选词锚点经 `SDL_SetTextInputArea`） | 语义树 + Recording 桥；AT-SPI2 provider 已编入（需桌面总线），Orca 回环待验 | 同上 | `linux.yml`：cpu / skia / skia-gpu / package / package-skia / package-skia-gpu；窗口自动化使用 Xvfb + llvmpipe |
-| macOS | SDL3（菜单关闭经统一关闭规则） | 同上 | UTF-8 + 输入法 preedit（经 SDL） | 语义树 + Recording 桥；NSAccessibility provider 已编入（需 NSWindow），VoiceOver 回环待验 | 同上 | `macos.yml`：cpu / skia-gpu / package / package-skia |
+| Windows | SDL3（宿主多窗口、resize/DPI、触摸 pointer id；`runApp` 按 `WindowId` 隔离多个 `AppShell`） | SDL3 剪贴板（`platform::Clipboard`） | UTF-8 commit + IME preedit（TSF 经 SDL）；修饰键/逻辑键归一化 | 语义树 + Recording 桥；UIA 已实施，需 `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON`；未编入时能力报告 false | CPU、Skia 光栅、Skia GPU（软件回退见下表） | `windows.yml`：cpu / a11y-bridge / skia-raster / skia-gpu / package / package-skia；platform-acceptance 的登录 Win32 runner 负责透明合成、字体冷启动、触摸板和 Narrator/NVDA |
+| Linux | SDL3（X11/Wayland） | 同上 | UTF-8 + IBus/Fcitx preedit（候选词锚点经 `SDL_SetTextInputArea`） | 语义树 + Recording 桥；AT-SPI2 provider 已编入（需桌面总线），Orca 回环待验 | 同上 | `linux.yml`：cpu / skia / skia-gpu / package / package-skia / package-skia-gpu；`.github/workflows/platform-acceptance.yml` 的 self-hosted X11/Wayland job 负责真实窗口、IME、剪贴板、GPU/present 故障注入 |
+| macOS | SDL3（菜单关闭经统一关闭规则） | 同上 | UTF-8 + 输入法 preedit（经 SDL） | 语义树 + Recording 桥；NSAccessibility provider 已编入（需 NSWindow），VoiceOver 回环待验 | 同上 | `macos.yml`：cpu / skia-gpu / package / package-skia；platform-acceptance 的登录 Aqua runner 负责真实 IME、生命周期、透明窗口和 VoiceOver |
 
 三平台共用：`ApplicationHost` 契约、归一化 `HostEvent`（时间戳/修饰键/
 逻辑与物理键/指针设备/pointer id/滚轮/取消/关闭请求）、语义树与 action
