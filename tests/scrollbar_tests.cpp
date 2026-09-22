@@ -407,6 +407,122 @@ TEST_CASE("horizontal_scrollbar_keyboard_rejects_vertical_arrow_keys", "[scrollb
     CHECK(app.scroll.offset() == 120);
 }
 
+// Scroll design §4: a child viewport owns routing even inside a source list.
+TEST_CASE("keyboard_scroll_targets_nearest_viewport_from_child_focus", "[scrollbar][keyboard]") {
+    VirtualListController outer;
+    ScrollController inner(ScrollAxis::Horizontal);
+    outer.setItemCount(20);
+    outer.setEstimatedExtent(160);
+    outer.setItemBuilder([&](std::size_t i) {
+        if (i != 0) return makeContainerLeaf(240, 160);
+        auto button = withKey(makeButton("Child"), "child");
+        button.width = 1000;
+        button.height = 100;
+        auto viewport = makeScrollView(std::move(button), "inner", 240, 160);
+        viewport.scrollAxis = ScrollAxis::Horizontal;
+        viewport.scrollOffset = inner.offset();
+        return viewport;
+    });
+    app::ShellConfig config;
+    config.initialView = {240, 240};
+    config.build = [&] { return makeVirtualList(&outer, "outer", 240, 240); };
+    config.onWheel = [&](const RenderNode&, const RenderNode* node, Offset, Offset delta) {
+        REQUIRE(node);
+        CHECK(node->key == "inner");
+        CHECK(delta.y == 0);
+        inner.updateExtents(node->size.width, node->size.width + node->scrollExtent);
+        return inner.applyWheel(delta.x);
+    };
+    app::AppShell shell(config);
+    static_cast<void>(shell.renderFrame());
+    const auto* child = findNodeByKey(shell.root(), "child");
+    REQUIRE(child);
+    shell.controller().focusNode(*child);
+    for (auto key : {Key::Right, Key::PageDown, Key::End}) {
+        shell.keyDown(key);
+        CHECK(inner.offset() > 0);
+        CHECK(outer.scrollController()->offset() == 0);
+    }
+    CHECK(inner.offset() == inner.maxScrollOffset());
+    shell.keyDown(Key::Home);
+    CHECK(inner.offset() == 0);
+    shell.keyDown(Key::Up);
+    CHECK(outer.scrollController()->offset() == 0);
+}
+
+// Scroll design §4: editable children keep their keyboard actions.
+TEST_CASE("horizontal_viewport_preserves_editor_and_slider_keyboard_priority", "[scrollbar][keyboard]") {
+    for (const auto kind : {WidgetType::TextField, WidgetType::Slider}) {
+        int scrollCalls = 0;
+        app::ShellConfig config;
+        config.initialView = {240, 120};
+        config.build = [&] {
+            auto child = kind == WidgetType::Slider ? makeSlider("value", "child")
+                : withKey(makeTextField("abc"), "child");
+            child.bind = "value";
+            child.width = 600;
+            return withScrollAxis(makeScrollView(std::move(child), "viewport", 240, 120),
+                                  ScrollAxis::Horizontal);
+        };
+        config.onWheel = [&](const RenderNode&, const RenderNode*, Offset, Offset) {
+            ++scrollCalls;
+            return true;
+        };
+        app::AppShell shell(config);
+        shell.state().set("value", kind == WidgetType::Slider ? "50" : "abc");
+        static_cast<void>(shell.renderFrame());
+        const auto* child = findNodeByKey(shell.root(), "child");
+        REQUIRE(child);
+        shell.controller().focusNode(*child);
+        shell.keyDown(Key::Left);
+        CHECK(scrollCalls == 0);
+        if (kind == WidgetType::Slider) CHECK(shell.state().get("value") == "45");
+        else CHECK(shell.state().get("value") == "abc");
+    }
+}
+
+// Scroll design §5: opaque content must not cover the inset viewport ring.
+TEST_CASE("scroll_view_focus_ring_is_visible_above_content_without_layout_change", "[scrollbar][render]") {
+    bool enabled = true;
+    app::ShellConfig config;
+    config.initialView = {200, 120};
+    config.build = [&] {
+        auto content = makeContainerLeaf(600, 120);
+        content.color = Color{20, 30, 40, 255};
+        auto viewport = makeScrollView(std::move(content), "viewport", 200, 120);
+        viewport.scrollAxis = ScrollAxis::Horizontal;
+        viewport.showFocusRing = true;
+        viewport.enabled = enabled;
+        return viewport;
+    };
+    app::AppShell shell(config);
+    static_cast<void>(shell.renderFrame());
+    const auto before = shell.pixels();
+    const auto size = shell.root().size;
+    const auto extent = shell.root().scrollExtent;
+    shell.controller().focusNode(shell.root());
+    shell.markDirty();
+    static_cast<void>(shell.renderFrame());
+    const auto& common = commonStyle(shell.root().style);
+    CHECK(common.focusWidth == shell.theme().metrics.focusRingWidth);
+    const std::size_t pixel = (60 * 200) * 4;
+    CHECK(shell.pixels().rgba[pixel] == shell.theme().colors.focusRing.r);
+    CHECK(shell.pixels().rgba[pixel + 1] == shell.theme().colors.focusRing.g);
+    CHECK(shell.pixels().rgba[pixel + 2] == shell.theme().colors.focusRing.b);
+    CHECK(shell.root().size == size);
+    CHECK(shell.root().scrollExtent == extent);
+    CHECK(shell.renderFrame() == shell.renderFrame(true));
+    shell.focus().clearFocus();
+    shell.markDirty();
+    static_cast<void>(shell.renderFrame());
+    CHECK(shell.pixels().rgba == before.rgba);
+    enabled = false;
+    shell.controller().focusNode(shell.root());
+    shell.markDirty();
+    static_cast<void>(shell.renderFrame());
+    CHECK(commonStyle(shell.root().style).focusWidth == 0);
+}
+
 TEST_CASE("scrollbar_capture_does_not_switch_menu_bar_on_pointer_crossing", "[scrollbar][review]") {
     widgets::MenuBarController bar;
     bar.setMenus({{"file", "File"}, {"view", "View"}});

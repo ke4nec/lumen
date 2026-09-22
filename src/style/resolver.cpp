@@ -1,4 +1,5 @@
 #include "lumen/style/resolver.h"
+#include "lumen/core/scrollbar.h"
 
 #include <algorithm>
 
@@ -138,6 +139,11 @@ ResolvedStyle resolveContainer(const Widget& widget, const Theme& theme,
                                const WidgetState& state) {
     ResolvedStyle resolved;
     commonStyle(resolved.component) = containerCommon(widget, theme);
+    if (core::isScrollableWidget(widget.type)) {
+        auto& common = commonStyle(resolved.component);
+        common.focusRing = theme.colors.focusRing;
+        common.focusWidth = focusWidthFor(widget, state, theme);
+    }
     if (widget.type == WidgetType::List || widget.type == WidgetType::Tree) {
         auto& common = commonStyle(resolved.component);
         const auto& tokens = widget.type == WidgetType::Tree ? theme.tree.row : theme.list;

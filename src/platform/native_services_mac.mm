@@ -43,7 +43,7 @@ systemAccessibilityPreferences() {
         // preferred body font is the documented user-facing text-size source
         // on supported systems; older systems fall back to the standard font.
         CGFloat bodySize = [NSFont systemFontSize];
-        if (@available(macOS 10.11, *)) {
+        if (@available(macOS 11.0, *)) {
             NSFont* preferredBody =
                 [NSFont preferredFontForTextStyle:NSFontTextStyleBody
                                            options:@{}];

@@ -41,8 +41,11 @@
 - **方向归一化**：框架 delta.x>0 向右、delta.y>0 向下（offset 增加，内容坐标分别减去 offset）。SDL NORMAL 的 x>0 是右、y>0 是上，因此只翻转 Y；FLIPPED 先还原两轴再转换。内容拖动方向与 offset 相反，滑块拖动方向与 offset 相同；两条手势路径不得混用。依据 [SDL_MouseWheelEvent](https://wiki.libsdl.org/SDL3/SDL_MouseWheelEvent)。
 - **滑块冲突（M10 垂直回归的镜像，必须防）**：水平视口内起点命中 enabled 且带 bind 的 Slider 时，拖动属于滑块——`setSliderByPosition` 释放设值不得被横向拖动路由劫持。回归用例 `slider_drag_inside_horizontal_scroll_view_still_sets_value` 为出口条件。
 - **键盘**：焦点在水平视口（非 TextField）时 Left/Right = 方向步进、PageUp/PageDown = 横向翻页、Home/End = 两端；纵向方向键不属于本轴（交由其他视口/焦点消费）。TextField 内 Left/Right 仍是 caret 移动（既有优先级不变）。
+- **键盘目标**：聚焦子控件时，最近的滚动祖先同时决定轴与接收方；应用 sink 收到视口节点，不能越过普通 ScrollView 驱动外层虚拟列表。禁用视口不消费，TextField/Slider 的既有按键操作优先。
 
 ## 5. 滚动条（painter）
+
+- 可聚焦视口显式启用 `showFocusRing` 后，使用 Theme 的焦点环颜色和宽度在子内容及滚动条上方绘制内描边；不改变布局或滚动范围，禁用/失焦后清除。Gallery 横向演示启用此提示。
 
 - 水平视口画横向 thumb：贴视口底边、track = 视口宽（减纵向滚动条厚度如两者共存——单轴视口无此情况）、thumb 宽 = `visibleFraction × track`、`minLength` 同 token；与纵向互为镜像。
 - 单轴视口只画一条滚动条；token（thickness/thumbWidth/minLength/颜色）两轴共用，出自 `ScrollbarTokens`。

@@ -1579,7 +1579,7 @@ bool InteractionController::scrollSourceViewport(ScrollController& scroller,
     return false;
 }
 
-// 定位 identity 节点并收集其祖先链（自节点到根；供最近滚动视口解析）。
+// 定位 identity 节点并收集其祖先链（根到节点；供最近滚动视口解析）。
 const RenderNode* findIdentityChain(const RenderNode& node,
                                     const std::string& identity,
                                     std::vector<const RenderNode*>& chain) {
@@ -1699,30 +1699,21 @@ bool InteractionController::scrollKey(const RenderNode& root, Key key) {
         default:
             return false;
     }
-    // 聚焦节点的最近源视口祖先由框架直接滚动（集合控件行聚焦时的
-    // Home/End/PageUp 语义与滚轮一致）。
-    if (focused != nullptr) {
-        for (auto node = focusChain.rbegin(); node != focusChain.rend();
-             ++node) {
-            if ((*node)->virtualSource == nullptr) {
-                continue;
+    // The nearest viewport owns both the axis and the destination. Never
+    // bypass an application-owned child to scroll an outer source viewport.
+    if (targetViewport != nullptr) {
+        if (!targetViewport->enabled) return false;
+        if (targetViewport->virtualSource != nullptr) {
+            if (auto* scroller = targetViewport->virtualSource->scrollController()) {
+                return scrollSourceViewport(*scroller, amount);
             }
-            ScrollController* scroller =
-                (*node)->virtualSource->scrollController();
-            if (scroller == nullptr) {
-                continue;
-            }
-            if (scrollSourceViewport(*scroller, amount)) {
-                return true;
-            }
-            return false;
         }
     }
     if (!wheelSink_) {
         return false;
     }
     // 水平视口的键盘滚动以 X 分量表达（sink 按轴消费）。
-    return wheelSink_(root, focused, Offset{},
+    return wheelSink_(root, targetViewport != nullptr ? targetViewport : focused, Offset{},
                       horizontal ? Offset{amount, 0.0F}
                                  : Offset{0.0F, amount});
 }
