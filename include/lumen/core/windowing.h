@@ -140,6 +140,8 @@ enum class HostEventType : std::uint8_t {
     // M12：系统主题切换（dark/light；SDL_SYSTEM_THEME_CHANGED 翻译，
     // fake host 可注入）。经 RunOptions.onEvent 转发给应用。
     SystemThemeChanged,
+    // 高对比/减少动画/字体缩放变化；宿主先更新 capabilities 再广播。
+    SystemAccessibilityChanged,
 };
 
 struct HostEvent {

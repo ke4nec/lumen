@@ -198,6 +198,15 @@ void FakeApplicationHost::pushCloseRequest(core::WindowId id) {
     queue_.push_back(makeEvent(core::HostEventType::WindowCloseRequested, id));
 }
 
+void FakeApplicationHost::pushSystemAccessibilityChanged(
+    bool highContrast, bool reduceAnimation, float fontScale) {
+    capabilities_.highContrast = highContrast;
+    capabilities_.reduceAnimation = reduceAnimation;
+    capabilities_.fontScale = fontScale;
+    capabilities_.systemAccessibilityPreferences = true;
+    queue_.push_back(makeEvent(core::HostEventType::SystemAccessibilityChanged, {}));
+}
+
 void FakeApplicationHost::pushSystemThemeChanged(bool prefersDarkMode) {
     // 与 SDL host 同语义：能力位刷新 + 事件广播（应用经 onEvent 消费）。
     capabilities_.prefersDarkMode = prefersDarkMode;

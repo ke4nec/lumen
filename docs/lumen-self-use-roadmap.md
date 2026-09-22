@@ -421,7 +421,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 **实现**
 
 - 原生通知后端（SDL 3.2.10 无 API 的平台走原生层：Windows Toast/传统通知、Linux DBus org.freedesktop.Notifications、macOS UserNotifications）。
-- SDL 宿主在初始化与系统主题变化时查询 `highContrast`/`reduceAnimation`/`fontScale`：Linux 读取 portal D-Bus settings，macOS 读取 AppKit display preferences 与 preferred body font，Windows 读取 SystemParametersInfo 与 Accessibility 注册表；查询不可用时保留安全默认。
+- SDL 宿主在初始化与运行期间查询 `highContrast`/`reduceAnimation`/`fontScale`：Linux 异步读取 portal `ReadAll`，macOS 读取 AppKit display preferences 与 preferred body font，Windows 读取 SystemParametersInfo 与 Accessibility 注册表；变化经 `SystemAccessibilityChanged` 广播，`runApp` 在首帧前及运行期间应用到全部跟随窗口。`AccessibilityOverrides` 逐项优先、清空恢复跟随；服务失败保留默认或上次有效快照。平台键缺失与真实设置面板验收边界见支持矩阵。
 - 窗口级光标（Win32 `WM_SETCURSOR` 等，替换进程级 `SDL_SetCursor` 语义）。
 - 发布形态：Linux AppImage（linuxdeploy）、macOS 完整 `.app` bundle（CPack Bundle/Info.plist）、CI package job 增加 Skia/GPU 包变体。
 

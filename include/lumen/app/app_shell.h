@@ -135,10 +135,16 @@ class AppShell {
     // 主题切换：resolved style 变化 → 重建（可选全量重绘）。
     void setTheme(style::Theme theme, bool forceFullRepaint = true);
     // 可访问性设置变化 → 派生 Theme（font scale/high contrast/reduce
-    // animation/density，visual-system §4）。
+    // animation/density，visual-system §4）。显式覆盖全部三项，保持旧 API
+    // 语义；仅覆盖某一项或恢复跟随时使用 setAccessibilityOverrides。
     void setAccessibilitySettings(
         accessibility::AccessibilitySettings settings,
         std::optional<bool> darkMode = std::nullopt);
+    void setAccessibilityOverrides(accessibility::AccessibilityOverrides overrides);
+    [[nodiscard]] const accessibility::AccessibilityOverrides&
+    accessibilityOverrides() const { return accessibilityOverrides_; }
+    // 宿主输入（UI 线程）；只更新未被应用显式覆盖的字段。
+    void setSystemAccessibilitySettings(accessibility::AccessibilitySettings settings);
     [[nodiscard]] const accessibility::AccessibilitySettings&
     accessibilitySettings() const {
         return accessibility_;
@@ -419,6 +425,12 @@ class AppShell {
     core::InteractionController controller_{state_, handlers_, focus_};
     style::Theme theme_{style::Theme::dark()};
     accessibility::AccessibilitySettings accessibility_{};
+    accessibility::AccessibilitySettings systemAccessibility_{};
+    accessibility::AccessibilityOverrides accessibilityOverrides_{};
+    std::optional<core::Color> accessibilityAccent_{};
+    void applyAccessibilitySettings(accessibility::AccessibilitySettings settings,
+                                    std::optional<bool> darkMode, bool preserveAccent);
+    void resolveAccessibilitySettings();
     style::InteractionStateSnapshot interactionSnapshot_{};
     std::map<std::string, style::WidgetState> previewStates_{};
     // 热重载模板覆盖（有值时优先于 config_.build）。
@@ -521,6 +533,9 @@ struct RunOptions {
     // 时生效；未编入平台实现安全降级为 nullptr + 诊断）。语义 action 与
     // 键盘/指针同路径回灌 performAccessibilityAction。
     bool nativeAccessibility{true};
+    // 默认在首帧前与 SystemAccessibilityChanged 时更新系统偏好；应用
+    // 显式覆盖优先。false 仅关闭该窗口的自动跟随，不影响原生语义桥。
+    bool followSystemAccessibility{true};
 };
 
 // 一个宿主窗口与其应用壳的绑定。每个窗口拥有独立的 RunOptions，因而

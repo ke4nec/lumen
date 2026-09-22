@@ -190,6 +190,8 @@ struct PlatformCapabilities {
     bool openUrl{false};
     bool cursorShape{false};
     bool windowIcon{false};
+    // 至少一项 OS 偏好已查询成功；个别未暴露的字段保留安全默认值。
+    bool systemAccessibilityPreferences{false};
 };
 
 class ApplicationHost {

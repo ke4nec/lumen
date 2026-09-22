@@ -29,15 +29,17 @@ std::optional<core::Color> systemAccentColor() {
     return std::nullopt;
 }
 
-std::optional<SystemAccessibilityPreferences>
-systemAccessibilityPreferences() {
+static std::optional<SystemAccessibilityPreferences>
+readSystemAccessibilityPreferences() {
     if (@available(macOS 10.10, *)) {
         SystemAccessibilityPreferences preferences;
         NSWorkspace* workspace = [NSWorkspace sharedWorkspace];
         preferences.highContrast =
             workspace.accessibilityDisplayShouldIncreaseContrast;
-        preferences.reduceAnimation =
-            workspace.accessibilityDisplayShouldReduceMotion;
+        if (@available(macOS 10.12, *)) {
+            preferences.reduceAnimation =
+                workspace.accessibilityDisplayShouldReduceMotion;
+        }
 
         // AppKit has no process-wide accessibility text-scale boolean. The
         // preferred body font is the documented user-facing text-size source
@@ -56,6 +58,13 @@ systemAccessibilityPreferences() {
         return preferences;
     }
     return std::nullopt;
+}
+
+std::optional<SystemAccessibilityPreferences> systemAccessibilityPreferences() {
+    // Periodic sampling happens outside SDL's Cocoa event autorelease pool.
+    @autoreleasepool {
+        return readSystemAccessibilityPreferences();
+    }
 }
 
 bool notificationsAvailable() {

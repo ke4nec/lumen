@@ -136,6 +136,15 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         }
     };
 
+    const auto applyAccessibilityPreferences = [&](WindowRuntime& runtime) {
+        const auto preferences = host.capabilities();
+        if (runtime.app.options.followSystemAccessibility &&
+            preferences.systemAccessibilityPreferences) {
+            runtime.app.shell->setSystemAccessibilitySettings(
+                {preferences.highContrast, preferences.reduceAnimation, preferences.fontScale});
+        }
+    };
+
     const auto cleanup = [&]() {
         // Native accessibility providers may still be referenced by the host
         // window, so tear them down while the host-owned windows still exist.
@@ -168,6 +177,7 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         }
 
         AppShell& shell = *runtime.app.shell;
+        applyAccessibilityPreferences(runtime);
         shell.setRenderer(runtime.setup.renderer);
         if (runtime.app.options.fontFactory) {
             if (auto fonts = runtime.app.options.fontFactory()) {
@@ -357,11 +367,15 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                 break;
             }
             if (event.type == HostEventType::SystemThemeChanged ||
+                event.type == HostEventType::SystemAccessibilityChanged ||
                 (event.type == HostEventType::LifecycleChanged &&
                  !event.window.valid())) {
                 for (auto& runtime : runtimes) {
                     if (!runtime.active) {
                         continue;
+                    }
+                    if (event.type == HostEventType::SystemAccessibilityChanged) {
+                        applyAccessibilityPreferences(runtime);
                     }
                     if (event.type == HostEventType::LifecycleChanged) {
                         if (event.lifecycle == core::AppLifecycle::Active) {

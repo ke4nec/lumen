@@ -112,6 +112,11 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
     target_compile_features(lumen-platform-live-smoke PRIVATE cxx_std_20)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT LUMEN_BUILD_MOBILE_CORE)
+    add_executable(lumen-native-preferences-live-app native_preferences_live_app.cpp)
+    target_link_libraries(lumen-native-preferences-live-app PRIVATE lumen-platform)
+endif()
+
 if(LUMEN_ENABLE_SKIA)
     # The stage-name test expects the adapter label only when it is real.
     target_compile_definitions(lumen-tests PRIVATE LUMEN_HAS_SKIA_BACKEND=1)

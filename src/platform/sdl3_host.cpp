@@ -306,16 +306,28 @@ bool Sdl3ApplicationHost::initialize() {
         capabilities_.accentColor = *accent;
     }
     refreshNativeAccessibilityPreferences();
+    accessibilityPreferences_ = native::createAccessibilityPreferenceMonitor();
     refreshLifecycle();
     return true;
 }
 
 void Sdl3ApplicationHost::refreshNativeAccessibilityPreferences() {
     if (const auto preferences = native::systemAccessibilityPreferences()) {
-        capabilities_.highContrast = preferences->highContrast;
-        capabilities_.reduceAnimation = preferences->reduceAnimation;
-        capabilities_.fontScale = preferences->fontScale;
+        applyNativeAccessibilityPreferences(*preferences);
     }
+}
+
+bool Sdl3ApplicationHost::applyNativeAccessibilityPreferences(
+    const native::SystemAccessibilityPreferences& preferences) {
+    const bool changed = !capabilities_.systemAccessibilityPreferences ||
+        capabilities_.highContrast != preferences.highContrast ||
+        capabilities_.reduceAnimation != preferences.reduceAnimation ||
+        capabilities_.fontScale != preferences.fontScale;
+    capabilities_.systemAccessibilityPreferences = true;
+    capabilities_.highContrast = preferences.highContrast;
+    capabilities_.reduceAnimation = preferences.reduceAnimation;
+    capabilities_.fontScale = preferences.fontScale;
+    return changed;
 }
 
 void Sdl3ApplicationHost::shutdown() {
@@ -323,6 +335,7 @@ void Sdl3ApplicationHost::shutdown() {
         return;
     }
     lifecycle_ = core::AppLifecycle::Terminating;
+    accessibilityPreferences_.reset();
     for (auto& [id, entry] : windows_) {
         if (entry.cursor != nullptr) {
             SDL_DestroyCursor(static_cast<SDL_Cursor*>(entry.cursor));
@@ -619,7 +632,6 @@ std::size_t Sdl3ApplicationHost::translateEvent(
                     native::systemAccentColor()) {
                 capabilities_.accentColor = *accent;
             }
-            refreshNativeAccessibilityPreferences();
             core::HostEvent event;
             event.type = core::HostEventType::SystemThemeChanged;
             push(std::move(event));
@@ -635,6 +647,15 @@ bool Sdl3ApplicationHost::pollEvent(core::HostEvent& out) {
     if (!initialized_) {
         out = core::HostEvent{};
         return false;
+    }
+    if (accessibilityPreferences_) {
+        if (const auto preferences = accessibilityPreferences_->poll();
+            preferences && applyNativeAccessibilityPreferences(*preferences)) {
+            out = {};
+            out.type = core::HostEventType::SystemAccessibilityChanged;
+            out.timestampMs = SDL_GetTicks();
+            return true;
+        }
     }
     if (!pending_.empty()) {
         out = std::move(pending_.front());
@@ -690,7 +711,9 @@ void Sdl3ApplicationHost::waitForEvents(std::uint32_t timeoutMs) {
     // 空闲期间到达的第一条输入会被静默丢弃。先翻译并放回宿主 pending
     // 队列，下一次 pollEvent 再按正常顺序出队（这里不分发事件）。
     SDL_Event event{};
-    if (SDL_WaitEventTimeout(&event, static_cast<std::int32_t>(timeoutMs))) {
+    // Native preference changes need observation even while SDL has no input.
+    if (SDL_WaitEventTimeout(&event, static_cast<std::int32_t>(
+            std::min(timeoutMs, accessibilityPreferences_ ? 100U : timeoutMs)))) {
         std::vector<core::HostEvent> batch;
         translateEvent(&event, batch);
         for (auto& translated : batch) {

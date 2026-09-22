@@ -276,7 +276,12 @@ TEST_CASE("reduce_animation_keeps_completion_callback_after_immediate_paint",
     (void)shell.renderFrame();
     lumen::accessibility::AccessibilitySettings settings;
     settings.reduceAnimation = true;
-    shell.setAccessibilitySettings(settings);
+    SECTION("explicit application setting") {
+        shell.setAccessibilitySettings(settings);
+    }
+    SECTION("live system preference") {
+        shell.setSystemAccessibilitySettings(settings);
+    }
     (void)shell.renderFrame();
     CHECK(overlayAlpha(shell) == 1.0F);
     shell.tick(1);

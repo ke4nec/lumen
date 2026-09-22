@@ -14,6 +14,9 @@
 #include <array>
 #include <algorithm>
 #include <cstdlib>
+#include <chrono>
+#include <cmath>
+#include <map>
 #include <variant>
 #include <string>
 
@@ -26,9 +29,12 @@ struct ConnectionPtr {
         DBusError error;
         dbus_error_init(&error);
         connection = dbus_bus_get(DBUS_BUS_SESSION, &error);
-        // 引用归 bus 所有（dbus_bus_get 返回共享连接，不 unref）。
+        if (connection) dbus_connection_set_exit_on_disconnect(connection, FALSE);
         dbus_error_free(&error);
     }
+    ~ConnectionPtr() { if (connection) dbus_connection_unref(connection); }
+    ConnectionPtr(const ConnectionPtr&) = delete;
+    ConnectionPtr& operator=(const ConnectionPtr&) = delete;
 };
 
 // 会话总线上的同步方法调用（appendArgs 负责参数；timeout 毫秒）。
@@ -37,6 +43,8 @@ DBusMessage* callMethod(const char* destination, const char* path,
                         const char* interface, const char* member,
                         int timeoutMs, AppendArgs&& appendArgs,
                         DBusError* error) {
+    ConnectionPtr bus;
+    if (!bus.connection) return nullptr;
     DBusMessage* message =
         dbus_message_new_method_call(destination, path, interface, member);
     if (message == nullptr) {
@@ -46,7 +54,7 @@ DBusMessage* callMethod(const char* destination, const char* path,
     dbus_message_iter_init_append(message, &iter);
     appendArgs(iter);
     DBusPendingCall* pending = nullptr;
-    if (!dbus_connection_send_with_reply(ConnectionPtr().connection, message,
+    if (!dbus_connection_send_with_reply(bus.connection, message,
                                          &pending, timeoutMs) ||
         pending == nullptr) {
         dbus_message_unref(message);
@@ -85,53 +93,159 @@ std::optional<core::Color> parseHexColor(const std::string& text) {
     return core::Color{channel(3), channel(5), channel(7), channel(1)};
 }
 
-using PortalSetting = std::variant<bool, double>;
+using PortalSetting = std::variant<bool, double, dbus_uint32_t>;
 
-std::optional<PortalSetting> readPortalSetting(const char* nameSpace,
-                                               const char* key) {
-    DBusError error;
-    dbus_error_init(&error);
-    DBusMessage* reply = callMethod(
-        "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
-        "org.freedesktop.portal.Settings", "Read", 500,
-        [nameSpace, key](DBusMessageIter& iter) {
-            dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING,
-                                           &nameSpace);
-            dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &key);
-        },
-        &error);
-    if (reply == nullptr) {
+std::optional<PortalSetting> portalValue(DBusMessageIter value) {
+    // ReadAll/ReadOne use one variant layer; tolerate older nested variants.
+    while (dbus_message_iter_get_arg_type(&value) == DBUS_TYPE_VARIANT) {
+        DBusMessageIter inner;
+        dbus_message_iter_recurse(&value, &inner);
+        value = inner;
+    }
+    switch (dbus_message_iter_get_arg_type(&value)) {
+        case DBUS_TYPE_BOOLEAN: {
+            dbus_bool_t v = FALSE;
+            dbus_message_iter_get_basic(&value, &v);
+            return v != FALSE;
+        }
+        case DBUS_TYPE_DOUBLE: {
+            double v = 1.0;
+            dbus_message_iter_get_basic(&value, &v);
+            return v;
+        }
+        case DBUS_TYPE_UINT32: {
+            dbus_uint32_t v = 0;
+            dbus_message_iter_get_basic(&value, &v);
+            return v;
+        }
+        default: return std::nullopt;
+    }
+}
+
+void appendSettingsNamespaces(DBusMessageIter& iter) {
+    DBusMessageIter names;
+    dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "s", &names);
+    for (const char* name : {"org.freedesktop.appearance", "org.gnome.desktop.*"}) {
+        dbus_message_iter_append_basic(&names, DBUS_TYPE_STRING, &name);
+    }
+    dbus_message_iter_close_container(&iter, &names);
+}
+
+std::optional<SystemAccessibilityPreferences> parseSettings(DBusMessage* reply) {
+    if (!reply || dbus_message_get_type(reply) != DBUS_MESSAGE_TYPE_METHOD_RETURN ||
+        !dbus_message_has_signature(reply, "a{sa{sv}}")) return std::nullopt;
+    std::map<std::pair<std::string, std::string>, PortalSetting> values;
+    DBusMessageIter args, namespaces;
+    dbus_message_iter_init(reply, &args);
+    dbus_message_iter_recurse(&args, &namespaces);
+    while (dbus_message_iter_get_arg_type(&namespaces) == DBUS_TYPE_DICT_ENTRY) {
+        DBusMessageIter entry, settings;
+        dbus_message_iter_recurse(&namespaces, &entry);
+        const char* name = nullptr;
+        dbus_message_iter_get_basic(&entry, &name);
+        dbus_message_iter_next(&entry);
+        dbus_message_iter_recurse(&entry, &settings);
+        while (dbus_message_iter_get_arg_type(&settings) == DBUS_TYPE_DICT_ENTRY) {
+            DBusMessageIter setting;
+            dbus_message_iter_recurse(&settings, &setting);
+            const char* key = nullptr;
+            dbus_message_iter_get_basic(&setting, &key);
+            dbus_message_iter_next(&setting);
+            if (const auto value = portalValue(setting)) values[{name, key}] = *value;
+            dbus_message_iter_next(&settings);
+        }
+        dbus_message_iter_next(&namespaces);
+    }
+    const auto get = [&]<typename T>(const char* ns, const char* key) -> const T* {
+        const auto it = values.find({ns, key});
+        return it == values.end() ? nullptr : std::get_if<T>(&it->second);
+    };
+    SystemAccessibilityPreferences preferences;
+    bool found = false;
+    // Standard portal values take precedence over desktop-specific fallbacks.
+    if (const auto* v = get.operator()<dbus_uint32_t>("org.freedesktop.appearance", "contrast")) {
+        preferences.highContrast = *v == 1;
+        found = true;
+    } else if (const auto* v = get.operator()<bool>("org.gnome.desktop.a11y.interface", "high-contrast")) {
+        preferences.highContrast = *v;
+        found = true;
+    }
+    if (const auto* v = get.operator()<dbus_uint32_t>("org.freedesktop.appearance", "reduced-motion")) {
+        preferences.reduceAnimation = *v == 1;
+        found = true;
+    } else if (const auto* v = get.operator()<bool>("org.gnome.desktop.interface", "enable-animations")) {
+        preferences.reduceAnimation = !*v;
+        found = true;
+    }
+    if (const auto* v = get.operator()<double>("org.gnome.desktop.interface", "text-scaling-factor");
+        v && std::isfinite(*v) && *v > 0.0) {
+        preferences.fontScale = static_cast<float>(std::clamp(*v, 0.5, 3.0));
+        found = true;
+    }
+    return found ? std::optional{preferences} : std::nullopt;
+}
+
+class PortalPreferenceMonitor final : public AccessibilityPreferenceMonitor {
+  public:
+    PortalPreferenceMonitor() {
+        // Connection/authentication belongs to host initialization, never to
+        // the UI event pump. Portal service restarts keep this bus connection.
+        DBusError error;
+        dbus_error_init(&error);
+        connection_ = dbus_bus_get_private(DBUS_BUS_SESSION, &error);
         dbus_error_free(&error);
+        if (connection_) dbus_connection_set_exit_on_disconnect(connection_, FALSE);
+    }
+    ~PortalPreferenceMonitor() override { disconnect(); }
+    std::optional<SystemAccessibilityPreferences> poll() override {
+        const auto now = std::chrono::steady_clock::now();
+        if (!connection_) return std::nullopt;
+        // A private connection avoids consuming another subsystem's messages.
+        // Zero timeout: replies may take seconds, but event pumping never waits.
+        dbus_connection_read_write_dispatch(connection_, 0);
+        if (!dbus_connection_get_is_connected(connection_)) {
+            disconnect();
+            return std::nullopt;
+        }
+        if (pending_ && dbus_pending_call_get_completed(pending_)) {
+            DBusMessage* reply = dbus_pending_call_steal_reply(pending_);
+            dbus_pending_call_unref(pending_);
+            pending_ = nullptr;
+            const auto result = parseSettings(reply);
+            if (reply) dbus_message_unref(reply);
+            return result;
+        }
+        if (!pending_ && now >= next_) {
+            next_ = now + std::chrono::seconds(1);
+            DBusMessage* request = dbus_message_new_method_call(
+                "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.Settings", "ReadAll");
+            if (!request) return std::nullopt;
+            DBusMessageIter iter;
+            dbus_message_iter_init_append(request, &iter);
+            appendSettingsNamespaces(iter);
+            dbus_connection_send_with_reply(connection_, request, &pending_, 1000);
+            dbus_message_unref(request);
+        }
         return std::nullopt;
     }
-
-    std::optional<PortalSetting> result;
-    DBusMessageIter args;
-    DBusMessageIter variant;
-    if (dbus_message_iter_init(reply, &args) &&
-        dbus_message_iter_get_arg_type(&args) == DBUS_TYPE_VARIANT) {
-        dbus_message_iter_recurse(&args, &variant);
-        switch (dbus_message_iter_get_arg_type(&variant)) {
-            case DBUS_TYPE_BOOLEAN: {
-                dbus_bool_t value = FALSE;
-                dbus_message_iter_get_basic(&variant, &value);
-                result = value != FALSE;
-                break;
-            }
-            case DBUS_TYPE_DOUBLE: {
-                double value = 1.0;
-                dbus_message_iter_get_basic(&variant, &value);
-                result = value;
-                break;
-            }
-            default:
-                break;
+  private:
+    void disconnect() {
+        if (pending_) {
+            dbus_pending_call_cancel(pending_);
+            dbus_pending_call_unref(pending_);
+            pending_ = nullptr;
+        }
+        if (connection_) {
+            dbus_connection_close(connection_);
+            dbus_connection_unref(connection_);
+            connection_ = nullptr;
         }
     }
-    dbus_message_unref(reply);
-    dbus_error_free(&error);
-    return result;
-}
+    DBusConnection* connection_{nullptr};
+    DBusPendingCall* pending_{nullptr};
+    std::chrono::steady_clock::time_point next_{};
+};
 
 }  // namespace
 
@@ -174,31 +288,17 @@ std::optional<core::Color> systemAccentColor() {
 
 std::optional<SystemAccessibilityPreferences>
 systemAccessibilityPreferences() {
-    SystemAccessibilityPreferences preferences;
-    bool found = false;
-    if (const auto value = readPortalSetting(
-            "org.gnome.desktop.a11y.interface", "high-contrast")) {
-        if (const auto* highContrast = std::get_if<bool>(&*value)) {
-            preferences.highContrast = *highContrast;
-            found = true;
-        }
-    }
-    if (const auto value = readPortalSetting("org.gnome.desktop.interface",
-                                            "enable-animations")) {
-        if (const auto* animations = std::get_if<bool>(&*value)) {
-            preferences.reduceAnimation = !*animations;
-            found = true;
-        }
-    }
-    if (const auto value = readPortalSetting("org.gnome.desktop.interface",
-                                            "text-scaling-factor")) {
-        if (const auto* scale = std::get_if<double>(&*value)) {
-            preferences.fontScale = std::clamp(
-                static_cast<float>(*scale), 0.5F, 3.0F);
-            found = true;
-        }
-    }
-    return found ? std::optional{preferences} : std::nullopt;
+    DBusMessage* reply = callMethod(
+        "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Settings", "ReadAll", 500,
+        appendSettingsNamespaces, nullptr);
+    const auto result = parseSettings(reply);
+    if (reply) dbus_message_unref(reply);
+    return result;
+}
+
+std::unique_ptr<AccessibilityPreferenceMonitor> createAccessibilityPreferenceMonitor() {
+    return std::make_unique<PortalPreferenceMonitor>();
 }
 
 bool notificationsAvailable() { return true; }
@@ -257,6 +357,9 @@ std::optional<core::Color> systemAccentColor() { return std::nullopt; }
 std::optional<SystemAccessibilityPreferences>
 systemAccessibilityPreferences() {
     return std::nullopt;
+}
+std::unique_ptr<AccessibilityPreferenceMonitor> createAccessibilityPreferenceMonitor() {
+    return nullptr;
 }
 bool notificationsAvailable() { return false; }
 ServiceResult showNotification(const NotificationRequest&) {

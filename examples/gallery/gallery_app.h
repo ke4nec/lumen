@@ -371,7 +371,10 @@ class GalleryApp {
         app::ShellConfig config;
         config.caretBlink = false;
         config.motionTransitions = true;
-        config.build = [self] { return self->buildUi(); };
+        config.build = [self] {
+            self->refreshScopePreview();
+            return self->buildUi();
+        };
         config.onKey = [self](app::AppShell& shell, core::Key key,
                               core::KeyModifiers modifiers, char keyChar) {
             // M11：下拉菜单键盘导航（modal 优先于路由返回规则；未打开
@@ -686,9 +689,10 @@ class GalleryApp {
             shell_.markDirty();
         };
         handlers["toggle-contrast"] = [this] {
-            auto settings = shell_.accessibilitySettings();
-            settings.highContrast = !settings.highContrast;
-            shell_.setAccessibilitySettings(settings, darkMode_);
+            auto overrides = shell_.accessibilityOverrides();
+            overrides.highContrast = !shell_.accessibilitySettings().highContrast;
+            shell_.setAccessibilityOverrides(overrides);
+            refreshScopePreview();
             shell_.markDirty();
         };
         handlers["accent-blue"] = [this] {
@@ -1035,8 +1039,11 @@ class GalleryApp {
 
     // ThemeScope 预览跟随当前方向（浅色变体对比展示）。
     void refreshScopePreview() {
-        themeScopeData_ = style::makeThemeScopeData(style::Theme::fromSettings(
-            shell_.accessibilitySettings(), false, shell_.theme().metrics.density, direction_));
+        auto preview = style::Theme::fromSettings(
+            shell_.accessibilitySettings(), false, shell_.theme().metrics.density, direction_);
+        if (preview != *static_cast<const style::Theme*>(themeScopeData_.get())) {
+            themeScopeData_ = style::makeThemeScopeData(std::move(preview));
+        }
     }
 
     void go(const std::string& route) {

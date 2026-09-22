@@ -30,6 +30,7 @@ struct Options {
     std::string sampleRoute{};
     std::string sampleKey{};
     float width{1024}, height{768}, fontScale{1}, dpi{1};
+    bool fontScaleSpecified{false};
     int direction{0}, density{1};
     bool light{false}, highContrast{false}, reduceAnimation{false}, systemFonts{false};
     std::uint64_t sampleTime{0};
@@ -55,6 +56,7 @@ Options parseOptions(int argc, char** argv) {
             options.height = std::strtof(argv[++i], nullptr);
         } else if (flag == "--font-scale" && i + 1 < argc) {
             options.fontScale = std::strtof(argv[++i], nullptr);
+            options.fontScaleSpecified = true;
         } else if (flag == "--dpi" && i + 1 < argc) {
             options.dpi = std::strtof(argv[++i], nullptr);
         } else if (flag == "--direction" && i + 1 < argc) {
@@ -402,14 +404,11 @@ int runSample(GalleryApp& app, const Options& options) {
 }
 
 int runWindowed(GalleryApp& app, const Options& options) {
-    if (options.reduceAnimation) {
-        // 窗口模式此前解析了该开关但从不消费（仅采样路径用）：经同一
-        // 派生链归零 MotionTokens，路由/状态过渡首拍即终态，便于对比
-        // “慢”是动画还是光栅。不传参时默认行为不变。
-        lumen::accessibility::AccessibilitySettings settings;
-        settings.reduceAnimation = true;
-        app.setAccessibilitySettings(settings);
-    }
+    lumen::accessibility::AccessibilityOverrides overrides;
+    if (options.reduceAnimation) overrides.reduceAnimation = true;
+    if (options.highContrast) overrides.highContrast = true;
+    if (options.fontScaleSpecified) overrides.fontScale = options.fontScale;
+    app.shell().setAccessibilityOverrides(overrides);
     lumen::platform::Sdl3ApplicationHost host;
     lumen::app::RunOptions runOptions;
     runOptions.windowDesc.title = "Lumen Gallery";

@@ -255,6 +255,7 @@ void AppShell::setTheme(style::Theme theme, bool forceFullRepaint) {
     stateBlends_.clear();
     suppressStateBlend_ = true;
     theme_ = std::move(theme);
+    accessibilityAccent_.reset();
     for (auto& transition : transitions_) {
         transition.tween.durationMs = 0;
         transition.sampledAlpha = static_cast<float>(transition.tween.to);
@@ -267,12 +268,53 @@ void AppShell::setTheme(style::Theme theme, bool forceFullRepaint) {
 void AppShell::setAccessibilitySettings(
     accessibility::AccessibilitySettings settings,
     std::optional<bool> darkMode) {
+    if (!std::isfinite(settings.fontScale) || settings.fontScale <= 0.0F) {
+        settings.fontScale = 1.0F;
+    }
+    accessibilityOverrides_ = {settings.highContrast, settings.reduceAnimation,
+                               settings.fontScale};
+    applyAccessibilitySettings(settings, darkMode, false);
+}
+
+void AppShell::setAccessibilityOverrides(accessibility::AccessibilityOverrides overrides) {
+    if (overrides.fontScale &&
+        (!std::isfinite(*overrides.fontScale) || *overrides.fontScale <= 0.0F)) {
+        overrides.fontScale = 1.0F;
+    }
+    accessibilityOverrides_ = std::move(overrides);
+    resolveAccessibilitySettings();
+}
+
+void AppShell::setSystemAccessibilitySettings(accessibility::AccessibilitySettings settings) {
+    settings.fontScale = std::isfinite(settings.fontScale) && settings.fontScale > 0.0F ?
+        std::clamp(settings.fontScale, 0.5F, 3.0F) : 1.0F;
+    systemAccessibility_ = settings;
+    resolveAccessibilitySettings();
+}
+
+void AppShell::resolveAccessibilitySettings() {
+    const accessibility::AccessibilitySettings effective{
+        accessibilityOverrides_.highContrast.value_or(systemAccessibility_.highContrast),
+        accessibilityOverrides_.reduceAnimation.value_or(systemAccessibility_.reduceAnimation),
+        accessibilityOverrides_.fontScale.value_or(systemAccessibility_.fontScale)};
+    if (effective != accessibility_) {
+        applyAccessibilitySettings(effective, std::nullopt, true);
+    }
+}
+
+void AppShell::applyAccessibilitySettings(
+    accessibility::AccessibilitySettings settings,
+    std::optional<bool> darkMode, bool preserveAccent) {
     stateBlends_.clear();
     suppressStateBlend_ = true;
     accessibility_ = settings;
-    theme_ = style::Theme::fromSettings(
-        accessibility_, darkMode.value_or(theme_.darkMode),
-        theme_.metrics.density, theme_.direction);
+    if (preserveAccent && !accessibilityAccent_) accessibilityAccent_ = theme_.colors.accent;
+    theme_ = preserveAccent ?
+        style::adaptPlatformTheme(theme_, accessibility_, darkMode.value_or(theme_.darkMode),
+                                  accessibilityAccent_) :
+        style::Theme::fromSettings(accessibility_, darkMode.value_or(theme_.darkMode),
+                                   theme_.metrics.density, theme_.direction);
+    if (!preserveAccent) accessibilityAccent_.reset();
     if (settings.reduceAnimation) {
         for (auto& transition : transitions_) {
             transition.tween.durationMs = 0;

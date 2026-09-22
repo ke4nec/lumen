@@ -74,11 +74,13 @@ std::optional<core::Color> systemAccentColor() {
 std::optional<SystemAccessibilityPreferences>
 systemAccessibilityPreferences() {
     SystemAccessibilityPreferences preferences;
+    bool found = false;
 
     HIGHCONTRASTW highContrast{};
     highContrast.cbSize = sizeof(highContrast);
     if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(highContrast),
                               &highContrast, 0)) {
+        found = true;
         preferences.highContrast =
             (highContrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
     }
@@ -87,6 +89,7 @@ systemAccessibilityPreferences() {
     if (SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,
                               sizeof(animationsEnabled), &animationsEnabled,
                               0)) {
+        found = true;
         preferences.reduceAnimation = animationsEnabled == FALSE;
     }
 
@@ -100,13 +103,14 @@ systemAccessibilityPreferences() {
         if (RegQueryValueExW(key, L"TextScaleFactor", nullptr, &valueType,
                              reinterpret_cast<LPBYTE>(&value), &valueSize) ==
                 ERROR_SUCCESS &&
-            valueType == REG_DWORD) {
+            valueType == REG_DWORD && valueSize == sizeof(value)) {
+            found = true;
             preferences.fontScale = std::clamp(
                 static_cast<float>(value) / 100.0F, 0.5F, 3.0F);
         }
         RegCloseKey(key);
     }
-    return preferences;
+    return found ? std::optional{preferences} : std::nullopt;
 }
 
 bool notificationsAvailable() { return true; }

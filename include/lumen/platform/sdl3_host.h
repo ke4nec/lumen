@@ -12,6 +12,11 @@
 
 namespace lumen::platform {
 
+namespace native {
+class AccessibilityPreferenceMonitor;
+struct SystemAccessibilityPreferences;
+}
+
 // v0.3 阶段8A: SDL3 桌面 ApplicationHost。Windows/Linux/macOS 共用；
 // SDL 类型全部留在实现内（AGENTS.md）。
 //
@@ -91,6 +96,7 @@ class Sdl3ApplicationHost final : public ApplicationHost {
                                std::vector<core::HostEvent>& out);
     void refreshLifecycle();
     void refreshNativeAccessibilityPreferences();
+    bool applyNativeAccessibilityPreferences(const native::SystemAccessibilityPreferences&);
 
     bool initialized_{false};
     core::AppLifecycle lifecycle_{core::AppLifecycle::Launching};
@@ -99,6 +105,7 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     std::deque<core::HostEvent> pending_{};
     std::unique_ptr<Sdl3Clipboard> clipboard_{};
     PlatformCapabilities capabilities_{};
+    std::unique_ptr<native::AccessibilityPreferenceMonitor> accessibilityPreferences_{};
     // M4：进行中的文件对话框（至多几个；完成后移除）。
     std::vector<std::unique_ptr<PendingDialog>> dialogs_{};
 };

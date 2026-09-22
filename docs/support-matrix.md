@@ -45,10 +45,20 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 三平台共用：`ApplicationHost` 契约、归一化 `HostEvent`（时间戳/修饰键/
 逻辑与物理键/指针设备/pointer id/滚轮/取消/关闭请求）、语义树与 action
 分发、`lumen-text` 编辑模型。counter/settings 示例三平台同源。SDL 宿主在
-初始化和系统主题变化时查询 `PlatformCapabilities.highContrast`、
-`reduceAnimation`、`fontScale`：Linux 使用 portal D-Bus settings，macOS 使用
+初始化及运行期间约每秒查询 `PlatformCapabilities.highContrast`、
+`reduceAnimation`、`fontScale`：Linux 使用异步 portal D-Bus settings，macOS 使用
 AppKit display preferences/preferred body font，Windows 使用 SystemParametersInfo
-与 Accessibility 注册表；查询不可用时保留安全默认值。
+与 Accessibility 注册表；查询不可用时保留默认值或上次有效快照。变化经
+`SystemAccessibilityChanged` 广播，`runApp` 首帧前及事件到达时自动应用到全部
+跟随窗口，应用逐项显式覆盖优先，详见 [视觉系统 §4.2](lumen-visual-system-design.md#42-系统可访问性偏好与应用覆盖)。
+
+Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Settings.html)
+`contrast`/`reduced-motion`，再回退到 GNOME 键；字体缩放使用后端暴露的 GNOME
+`text-scaling-factor`。未暴露该键的桌面保留 `1.0`，不宣称覆盖所有桌面设置。
+使用 `ReadAll` 避免旧 `Read` 的双层 variant 陷阱，解析仍容忍嵌套 variant；
+非法/非有限缩放回退 `1.0`。portal 服务重启可重新采样，会话总线断开后须重新初始化
+宿主。macOS preferred body font 需 11.0，减少动态效果查询需 10.12，低版本
+保留对应默认值；这不是任意应用字体设置的全局缩放接口。
 
 ### 验证快照（2026-09-22，源码基线 `41cd603831eaed37558ebb32ceddebc8f93cff4f`）
 
@@ -119,7 +129,7 @@ Skia/GPU Release 779/779，无跳过；详见
 | 应用壳 | `lumen-app`（`app::AppShell` 帧管线 + `app::runApp` 单/多窗口主循环；M2） | 示例只保留 build/状态/handler；支持 Fake host、外部 renderer 和应用回退钩子；GPU 失效可重建软件窗口 |
 | 剪贴板 | `platform::Clipboard` / `core::ClipboardProvider` | runApp 启动时接入宿主剪贴板（Ctrl+C/V；宿主不可用保持未注入）；`setText` 失败返回 false，编辑状态不丢 |
 | 语义桥接 | `AccessibilityBridge`（接口 + Recording 桥 + AppShell 每帧 identity diff/焦点/action 回执驱动，M5 收口） | Windows UIA、Linux AT-SPI2、macOS NSAccessibility provider 在可选编译开关开启时编入；无桌面服务时能力如实降级，真实屏幕阅读器回环另行验收 |
-| 可访问性设置 | `PlatformCapabilities` 字段与应用 `AccessibilitySettings` | SDL 宿主在初始化和系统主题变化时查询系统高对比/减少动画/字体缩放；应用仍可通过 `AppShell::setAccessibilitySettings` 覆盖。macOS 字体缩放取 AppKit preferred body font，旧系统回退安全默认 |
+| 可访问性设置 | `PlatformCapabilities`、`AccessibilitySettings` 与逐项 `AccessibilityOverrides` | SDL 宿主初始化和运行期间查询；`runApp` 自动跟随所有未覆盖字段，重复快照不重绘；关闭跟随、服务缺失和平台键缺失均有明确降级 |
 
 ## 当前能力与已知限制（映射到自用路线图里程碑）
 
@@ -131,7 +141,7 @@ Skia/GPU Release 779/779，无跳过；详见
 - VirtualList 已落地（M3：可见区物化/实测 extent 修正/锚点稳定），虚拟化仍为
   纵向；M10 已接入触摸/指针拖动与确定性惯性滚动。ScrollView 水平轴、
   横纵滚动条拖动与嵌套滚轮路由已实施；同一视口双轴联滚、水平虚拟化、
-  RTL 镜像和 auto-hide 未实现。Gallery 水平滚动演示区仍待补，详见
+  RTL 镜像和 auto-hide 未实现。Gallery 已有超宽卡片水平滚动演示区，详见
   [滚动设计](lumen-scroll-design.md)。
 - Grid 为纵向网格（无横向滚动/跨行列合并）；Image 需应用侧资源管理器
   驱动加载（框架不管理异步资源生命周期）。
@@ -146,8 +156,8 @@ Skia/GPU Release 779/779，无跳过；详见
   告）；M12 已收口原生后端——通知与强调色走 native seam（Win32/
   DBus/AppKit），SDL 系统主题输入经 `SDL_GetSystemTheme` +
   `SystemThemeChanged` 事件接入；当前三平台 CI 证据见上方验证快照。高对比/
-  减少动画/字体缩放支持应用手动设置，OS 对应偏好自动查询尚未接通，不能
-  宣称主题能力已自动跟随系统。
+  减少动画/字体缩放已接入独立采样与变化广播，应用逐项覆盖优先；实际 OS
+  设置面板的人工切换验收仍需真实桌面，隔离 portal/假宿主测试不代替它。
 - M6 视觉系统 V3 已收口（图标/阴影/滚动条 token 路径、六控件、
   ThemeScope、组合校验器）；M10 已收口转场动画驱动（transitionAlpha
   整节点透明度、Dialog/Navigator 淡入淡出、状态色过渡 opt-in）；

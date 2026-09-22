@@ -8,6 +8,7 @@
 #pragma once
 
 #include <optional>
+#include <memory>
 
 #include "lumen/core/geometry.h"
 #include "lumen/platform/application_host.h"
@@ -26,6 +27,16 @@ struct SystemAccessibilityPreferences {
 // 系统可访问性偏好；nullopt = 平台服务不可用（调用方保持安全默认）。
 [[nodiscard]] std::optional<SystemAccessibilityPreferences>
 systemAccessibilityPreferences();
+
+// UI-thread-owned, rate-limited observation. Linux polls asynchronously so a
+// slow/missing portal never blocks the frame loop; nullopt means no new sample.
+class AccessibilityPreferenceMonitor {
+  public:
+    virtual ~AccessibilityPreferenceMonitor() = default;
+    virtual std::optional<SystemAccessibilityPreferences> poll() = 0;
+};
+[[nodiscard]] std::unique_ptr<AccessibilityPreferenceMonitor>
+createAccessibilityPreferenceMonitor();
 
 // 平台通知可用性（决定 capabilities_.notifications）。
 [[nodiscard]] bool notificationsAvailable();

@@ -6,6 +6,7 @@
 
 #include <deque>
 #include <memory>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -641,6 +642,103 @@ TEST_CASE("app_shell_accessibility_settings_preserve_theme_direction", "[app]") 
               lumen::style::ControlDensity::Comfortable,
               lumen::style::ThemeDirection::InkLinen)
               .typography.body.fontSize);
+}
+
+TEST_CASE("app_shell_system_preferences_merge_overrides_and_preserve_editing", "[app][a11y]") {
+    AppShell shell{counterConfig()};
+    wireCounter(shell);
+    auto base = lumen::style::Theme::light(lumen::style::ControlDensity::Compact,
+                                          lumen::style::ThemeDirection::InkLinen);
+    base = lumen::style::adaptPlatformTheme(base, {}, false,
+                                            lumen::core::Color::fromRGBA(34, 110, 60));
+    shell.setTheme(base);
+    (void)shell.renderFrame();
+    const auto* field = lumen::core::findNodeByKey(shell.root(), "name-field");
+    REQUIRE(field);
+    shell.controller().focusNode(*field);
+    shell.controller().setEditingValue(lumen::text::TextEditingValue("retained", {1, 4}));
+    const auto editing = shell.controller().editingValue();
+    const auto focus = shell.focus().focusedIdentity();
+
+    shell.setAccessibilityOverrides({.highContrast = false});
+    shell.setSystemAccessibilitySettings({true, true, 1.5F});
+    CHECK(shell.accessibilitySettings() == lumen::accessibility::AccessibilitySettings{false, true, 1.5F});
+    CHECK(shell.theme() == lumen::style::adaptPlatformTheme(base, {false, true, 1.5F}, false, base.colors.accent));
+    CHECK(shell.hasPendingFrame());
+    (void)shell.renderFrame();
+    CHECK(shell.controller().editingValue() == editing);
+    CHECK(shell.focus().focusedIdentity() == focus);
+    shell.setSystemAccessibilitySettings({true, true, 1.5F});
+    CHECK_FALSE(shell.hasPendingFrame()); // identical sampling never repaints
+
+    shell.setAccessibilityOverrides({}); // restore the latest OS value immediately
+    CHECK(shell.accessibilitySettings().highContrast);
+    shell.setSystemAccessibilitySettings({false, false, 1.0F});
+    CHECK(shell.theme() == base); // OS toggles must not accumulate scaling/tone changes
+    shell.setAccessibilitySettings({false, false, 1.0F}); // legacy setter fixes all fields
+    shell.setSystemAccessibilitySettings({true, true, 2.0F});
+    CHECK(shell.accessibilitySettings() == lumen::accessibility::AccessibilitySettings{});
+    shell.setAccessibilityOverrides({.fontScale = 1.25F});
+    CHECK(shell.accessibilitySettings() == lumen::accessibility::AccessibilitySettings{true, true, 1.25F});
+    shell.setSystemAccessibilitySettings({true, true, std::numeric_limits<float>::quiet_NaN()});
+    shell.setAccessibilityOverrides({});
+    CHECK(shell.accessibilitySettings().fontScale == 1.0F);
+}
+
+TEST_CASE("run_app_follows_preferences_before_first_frame_and_broadcasts_updates", "[app][a11y][multi-window]") {
+    FakeApplicationHost host;
+    auto caps = host.capabilities();
+    caps.systemAccessibilityPreferences = true;
+    caps.highContrast = true;
+    caps.fontScale = 1.25F;
+    host.setCapabilities(caps);
+    AppShell first{counterConfig()}, second{counterConfig()}, optedOut{counterConfig()};
+    wireCounter(first);
+    wireCounter(second);
+    wireCounter(optedOut);
+    second.setAccessibilityOverrides({.fontScale = 1.0F});
+    std::vector<int> received(3, 0);
+    bool initialChecked = false;
+    bool updatedChecked = false;
+    RunOptions one, two, three;
+    int polls = 0;
+    one.idleWaitMs = 1;
+    one.poll = [&](AppShell&, std::uint64_t) {
+        if (++polls > 200) host.pushQuit(); // bound failures without hanging CTest
+        return false;
+    };
+    one.nativeAccessibility = two.nativeAccessibility = three.nativeAccessibility = false;
+    three.followSystemAccessibility = false;
+    one.rendererFactory = [&](auto&, auto&) {
+        RendererSetup setup;
+        setup.present = [&] {
+            if (!initialChecked) {
+                CHECK(first.accessibilitySettings() == lumen::accessibility::AccessibilitySettings{true, false, 1.25F});
+                CHECK(second.accessibilitySettings() == lumen::accessibility::AccessibilitySettings{true, false, 1.0F});
+                CHECK(optedOut.accessibilitySettings() == lumen::accessibility::AccessibilitySettings{});
+                initialChecked = true;
+                host.pushSystemAccessibilityChanged(false, true, 1.5F);
+            } else {
+                CHECK(first.accessibilitySettings() == lumen::accessibility::AccessibilitySettings{false, true, 1.5F});
+                CHECK(second.accessibilitySettings() == lumen::accessibility::AccessibilitySettings{false, true, 1.0F});
+                CHECK(optedOut.accessibilitySettings() == lumen::accessibility::AccessibilitySettings{});
+                updatedChecked = true;
+                host.pushQuit();
+            }
+            return true;
+        };
+        return setup;
+    };
+    int index = 0;
+    for (auto* options : {&one, &two, &three}) {
+        options->onEvent = [&, i = index++](AppShell&, const auto& event) {
+            if (event.type == lumen::core::HostEventType::SystemAccessibilityChanged) ++received[i];
+        };
+    }
+    CHECK(lumen::app::runApp({{&first, one}, {&second, two}, {&optedOut, three}}, host) == 0);
+    CHECK(initialChecked);
+    CHECK(updatedChecked);
+    CHECK(received == std::vector<int>{1, 1, 1});
 }
 
 // --- renderer 替换（外部测试 renderer 注入 + 回退 CPU） ---

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,15 @@ struct AccessibilitySettings {
     bool highContrast{false};
     bool reduceAnimation{false};
     float fontScale{1.0F};
+    bool operator==(const AccessibilitySettings&) const = default;
+};
+
+// Unset fields follow the latest system preference; false/1.0 are explicit
+// overrides too. Clearing a field resumes following without restarting.
+struct AccessibilityOverrides {
+    std::optional<bool> highContrast{};
+    std::optional<bool> reduceAnimation{};
+    std::optional<float> fontScale{};
 };
 
 class AccessibilityBridge {

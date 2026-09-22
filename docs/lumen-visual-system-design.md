@@ -241,6 +241,29 @@ Theme 必须支持：
 
 公共头文件继续禁止引入 SDL、Skia、Objective-C、Java/JNI 或其他平台 SDK 类型。
 
+### 4.2 系统可访问性偏好与应用覆盖
+
+`runApp` 默认在首帧前及 `SystemAccessibilityChanged` 广播时，把宿主查询的
+高对比、减少动画、字体缩放注入每个运行中的 `AppShell`。未查询成功不覆盖
+应用现状；重复快照不触发重绘。系统字体缩放是逻辑排版输入，与窗口 DPI 独立。
+
+`setAccessibilitySettings` 仍表示显式设置全部三项。新接口
+`setAccessibilityOverrides` 接受三个 optional 字段：未设置的字段跟随系统，
+显式 `false`/`1.0` 同样优先于系统；清空覆盖立即采用最近的系统快照。
+`RunOptions.followSystemAccessibility=false` 可关闭单个窗口的自动跟随。
+这些设置与 `nativeAccessibility` 语义桥开关独立。
+
+偏好变化经已有 Theme 派生链重建排版/控件 token，保留方向、密度、深浅模式与
+强调色输入，按对比度规则调整强调色；往返切换不累积缩放或颜色调整。
+减少动画立即结束壳层活动转场；编辑文档、选区、焦点与业务状态保持。
+Gallery 的高对比开关只覆盖高对比，命令行只覆盖显式给出的字段，局部主题预览
+按当前有效偏好派生。现有颜色与控件几何规格不变，无新增控件外观。
+
+宿主约每秒采样；Linux 使用异步 portal `ReadAll`，UI 事件泵不等候回复，
+慢回复、错误和缺失服务保留上次有效快照。Windows/macOS 使用原生本地查询。
+原生协议和可用性边界见 [支持矩阵](support-matrix.md)。回归覆盖
+`app_shell_tests.cpp` 与隔离会话总线的 `native_preferences_live_tests.py`。
+
 ## 5. 样式状态和解析流程
 
 交互层提供稳定 identity 对应的状态快照：

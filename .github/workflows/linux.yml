@@ -176,6 +176,8 @@ jobs:
         run: cmake --build build --config Release
       - name: Native AT-SPI registry and client round-trip
         run: dbus-run-session -- /usr/bin/python3 -B tests/atspi_live_tests.py build/tests/lumen-atspi-live-app
+      - name: Native accessibility preference changes
+        run: dbus-run-session -- /usr/bin/python3 -B tests/native_preferences_live_tests.py build/tests/lumen-native-preferences-live-app
       - name: ccache stats
         if: always()
         run: ccache --show-stats || true
