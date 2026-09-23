@@ -201,7 +201,7 @@ jobs:
           path: .perf-reference
       - name: Build reference with the same toolchain
         run: |
-          cmake -S .perf-reference -B perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON
+          cmake -S .perf-reference -B perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
           cmake --build perf-reference-build --parallel --target lumen-scene-bench
       - name: Benchmark (CPU regression gate)
         run: >-
