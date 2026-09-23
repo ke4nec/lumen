@@ -116,6 +116,18 @@ def main():
         failed = failed or not verdict["passed"]
         estimators = "+".join(name for name, res in verdict["aggregations"].items() if res["passed"]) or "none"
         print(f"{args.backend}/{scenario}: {'PASS' if verdict['passed'] else 'FAIL'} (limit held under: {estimators})", flush=True)
+        if not verdict["passed"]:
+            # Inline the worst offenders so a failure is diagnosable from the
+            # step log alone; the full comparison stays in gate-<scenario>.json.
+            shown = 0
+            for agg_name in ("minimum", "median"):
+                for failure in verdict["aggregations"][agg_name]["failures"]:
+                    if shown >= 10 or failure.get("kind") != "regression":
+                        continue
+                    print(f"  FAIL detail [{agg_name}]: {json.dumps(failure, sort_keys=True)}", flush=True)
+                    shown += 1
+                if shown >= 10:
+                    break
     return 1 if failed else 0
 
 

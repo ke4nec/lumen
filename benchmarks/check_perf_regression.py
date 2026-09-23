@@ -24,6 +24,15 @@ PHASE_METRICS = (
     "allocs_p50",
     "alloc_bytes_p50",
 )
+# Timing significance floor (microseconds). A relative regression over the
+# limit only fails when the absolute shift also exceeds this floor: on shared
+# runners a ~10us scheduling jitter routinely exceeds 10% of a ~100us phase
+# (e.g. grid/submit p50 107us -> 119us with bit-identical binaries), which is
+# neither user-visible (sub-0.5% of a 12ms frame) nor attributable to the
+# candidate. Allocation counts and commands_per_frame stay exact: they are
+# deterministic for a given binary, so any excess is a real change. The 10%
+# limit itself is unchanged.
+MIN_TIMING_DELTA_US = 50.0
 IDENTITY_FIELDS = ("backend", "scenario", "viewport", "toolchain", "build_type",
                    "platform", "warmup_frames", "measured_frames", "alpha_mode",
                    "clear_alpha", "measurement_scope", "runner", "measurement_session",
@@ -205,16 +214,23 @@ def compare(baseline: dict[str, Any], current: dict[str, Any], tolerance: float,
                 current_phase[metric], f"phases.{phase_name}.{metric}", current_path
             )
             delta = _relative_delta(baseline_value, current_value)
+            absolute_delta = current_value - baseline_value
             check = {
                 "phase": phase_name,
                 "metric": metric,
                 "baseline": baseline_value,
                 "current": current_value,
                 "relative_delta": delta,
+                "absolute_delta": absolute_delta,
                 "limit": tolerance,
             }
+            if metric.endswith("_us"):
+                check["floor_us"] = MIN_TIMING_DELTA_US
             checks.append(check)
-            if delta is None or delta > tolerance:
+            over_limit = delta is None or delta > tolerance
+            significant = (not metric.endswith("_us") or
+                           absolute_delta > MIN_TIMING_DELTA_US)
+            if over_limit and significant:
                 failures.append({"kind": "regression", **check})
 
     return {

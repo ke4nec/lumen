@@ -17,9 +17,12 @@ SPEC.loader.exec_module(GATE)
 
 
 def report():
+    # Timing values sit well above MIN_TIMING_DELTA_US so the 10% limit (not
+    # the significance floor) decides these fixtures; floor behavior itself is
+    # covered by dedicated tests below.
     phase = {
-        "p50_us": 100.0,
-        "p95_us": 120.0,
+        "p50_us": 1000.0,
+        "p95_us": 1200.0,
         "allocs_p50": 10,
         "alloc_bytes_p50": 1000,
     }
@@ -78,7 +81,7 @@ class PerfGateTests(unittest.TestCase):
                         self.assertEqual(GATE.main(["--baseline", str(baseline_path), "--current", str(current_path),
                                                     "--report", str(output)]), expected)
             current = report()
-            current["phases"]["gpu_wait"]["p95_us"] = 1
+            current["phases"]["gpu_wait"]["p95_us"] = 100
             result = GATE.compare(report(), current, .1, baseline_path, current_path)
             self.assertFalse(result["passed"])
             json.dumps(result, allow_nan=False)
@@ -94,9 +97,9 @@ class PerfGateTests(unittest.TestCase):
         baseline = report()
         first = report()
         second = report()
-        second["phases"]["paint"]["p50_us"] = 105.0
+        second["phases"]["paint"]["p50_us"] = 1050.0
         third = report()
-        third["phases"]["paint"]["p50_us"] = 95.0
+        third["phases"]["paint"]["p50_us"] = 950.0
         result = GATE.compare(
             baseline,
             GATE._aggregate([first, second, third]),
@@ -138,10 +141,10 @@ class PerfGateTests(unittest.TestCase):
             return GATE.compare(report(), current, 0.10,
                                 Path("baseline"), Path("current"))
 
-        tripped_once = GATE.combine_verdicts(compared(1.05), compared(1.15))
+        tripped_once = GATE.combine_verdicts(compared(1.06), compared(1.16))
         self.assertTrue(tripped_once["passed"])
         self.assertFalse(tripped_once["aggregations"]["median"]["passed"])
-        tripped_twice = GATE.combine_verdicts(compared(1.15), compared(1.15))
+        tripped_twice = GATE.combine_verdicts(compared(1.16), compared(1.16))
         self.assertFalse(tripped_twice["passed"])
         json.dumps(tripped_once, allow_nan=False)
 
@@ -159,11 +162,49 @@ class PerfGateTests(unittest.TestCase):
             [with_allocs(2098), with_allocs(1555), with_allocs(2102)], min)
         self.assertEqual(aggregated["phases"]["paint"]["allocs_p50"], 2098)
 
+    def test_timing_floor_ignores_sub_noise_absolute_shifts(self):
+        # Shared-runner scheduling jitter (~10us) routinely exceeds 10% of a
+        # ~100us phase with bit-identical binaries; such shifts must pass
+        # while the 10% limit keeps binding for significant ones.
+        small = report()
+        for phase in small["phases"].values():
+            phase["p50_us"] = 110.0
+            phase["p95_us"] = 130.0
+        current = copy.deepcopy(small)
+        current["phases"]["submit"]["p50_us"] = 122.0  # +10.9% but +12us
+        result = GATE.compare(small, current, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertTrue(result["passed"], result["failures"])
+        current = copy.deepcopy(small)
+        current["phases"]["submit"]["p50_us"] = 175.0  # +59% and +65us
+        result = GATE.compare(small, current, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertFalse(result["passed"])
+        # Allocations stay exact: no floor applies to counts.
+        current = copy.deepcopy(small)
+        current["phases"]["submit"]["allocs_p50"] = 12  # +20%, +2
+        result = GATE.compare(small, current, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertFalse(result["passed"])
+
+    def test_zero_baseline_timing_uses_floor(self):
+        baseline = report()
+        current = report()
+        current["phases"]["gpu_wait"]["p95_us"] = 10  # +10us over zero
+        result = GATE.compare(baseline, current, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertTrue(result["passed"], result["failures"])
+        current = report()
+        current["phases"]["gpu_wait"]["p95_us"] = 100  # +100us over zero
+        result = GATE.compare(baseline, current, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertFalse(result["passed"])
+
     def test_identity_and_ten_percent_regression_fail(self):
         baseline = report()
         current = report()
         current["scenario"] = "other-1080p"
-        current["phases"]["layout"]["p50_us"] = 111.0
+        current["phases"]["layout"]["p50_us"] = 1110.0
         result = GATE.compare(
             baseline, current, 0.10, Path("baseline"), Path("current")
         )
