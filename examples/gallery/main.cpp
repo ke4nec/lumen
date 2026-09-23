@@ -490,8 +490,12 @@ int main(int argc, char** argv) {
     GalleryApp app;
     try {
         if (!options.sampleRoute.empty()) {
-            const int result = runSample(app, options);
-            if (result != 0 || options.headless) return result;
+            // 采样导出是一次性动作（docs/build-commands.md 的用法均配
+            // --headless）：无论成败都直接退出。旧逻辑在非 headless 时
+            // 继续落进 runWindowed——它并不消费 sample 参数，却把已 tick
+            // 的采样状态二次初始化成交互窗口，脚本调用侧表现为“渲染完成
+            // 后进程永不退出”。
+            return runSample(app, options);
         }
         if (options.headless) {
             return runHeadless(app, options.dumpFrame);

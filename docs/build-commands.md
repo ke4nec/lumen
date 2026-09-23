@@ -73,7 +73,7 @@
 
 Gallery 固定样本参数：`--sample-route` 支持 `home/buttons/inputs/layout/lists/feedback/theme`；可选 `--sample-key` 将该 key 滚到主视口顶部。输入类矩阵 key 为 `samples-TextField-card`、`samples-Checkbox-card`、`samples-Switch-card`、`samples-Radio-card`、`samples-Dropdown-card`、`samples-Tabs-card`；Feedback 使用 `samples-Slider-card`、`samples-ProgressBar-card`、`samples-Tooltip-card`；Buttons 使用 `buttons-matrix-card`。`--direction 0..3` 按 Core Dark / Ink Linen / Aurora Signal / Utility Contrast 排列，`--density 0..2` 为 Compact / Comfortable / Touch，另支持 `--light`、`--high-contrast`、`--reduce-animation`。`--width/--height` 是 logical px，`--font-scale` 与 `--dpi` 分开控制且支持 1–2。`--sample-time` 注入毫秒时钟，仅采样当前场景；过渡的事件触发及 t=0/0.5T/T 由测试驱动。
 
-导出为原始 RGBA8，配套 `<输出文件>.txt` 保存实际像素宽高、逻辑视口、字体来源及样本参数。加 `--system-fonts` 使用本机字体，加载失败返回非零状态；省略时使用确定性测试字体。未传 `--sample-route` 的原有 `--headless` 继续执行全路由交互 smoke。原始帧和转换后的 PNG 应保存在忽略的构建目录。
+导出为原始 RGBA8，配套 `<输出文件>.txt` 保存实际像素宽高、逻辑视口、字体来源及样本参数。加 `--system-fonts` 使用本机字体，加载失败返回非零状态；省略时使用确定性测试字体。`--sample-route` 是一次性导出动作：渲染/写盘完成后进程即退出（`--headless` 可省），不再落入交互窗口模式。未传 `--sample-route` 的原有 `--headless` 继续执行全路由交互 smoke。原始帧和转换后的 PNG 应保存在忽略的构建目录。
 
 本节前两组 Gallery 命令属于桌面验证。`LUMEN_BUILD_MOBILE_CORE=ON` 仍存在，
 Linux/macOS 工作流中的历史 `mobile-core` job 可能继续执行；以下 mobile-core 命令
