@@ -38,8 +38,14 @@ endif()
 if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND APPLE)
   target_compile_definitions(lumen-accessibility PRIVATE
       LUMEN_ACCESSIBILITY_PROVIDER_NSACCESSIBILITY=1)
-  target_link_libraries(lumen-accessibility PRIVATE
+  # Static archive does not link; frameworks must propagate to executables
+  # (tests/examples) via PUBLIC, otherwise arm64 links miss NS* symbols.
+  target_link_libraries(lumen-accessibility PUBLIC
       ${LUMEN_ACCESSIBILITY_PRIVATE_LIBS})
+  # Manual retain/release in the provider requires non-ARC; pin it per-file
+  # so a future global -fobjc-arc never breaks the build.
+  set_source_files_properties(nsaccessibility_provider.mm PROPERTIES
+      COMPILE_OPTIONS "-fno-objc-arc")
 endif()
 
 if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND UNIX AND NOT APPLE)

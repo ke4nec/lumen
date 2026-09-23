@@ -101,6 +101,9 @@ if(APPLE AND LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND NOT LUMEN_BUILD_MOBILE_CORE)
     target_sources(lumen-tests PRIVATE nsaccessibility_tests.mm)
     target_compile_definitions(lumen-tests PRIVATE LUMEN_ACCESSIBILITY_PROVIDER_NSACCESSIBILITY=1)
     target_include_directories(lumen-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/accessibility)
+    # Manual retain/release in the AppKit test; pin non-ARC explicitly.
+    set_source_files_properties(nsaccessibility_tests.mm PROPERTIES
+        COMPILE_OPTIONS "-fno-objc-arc")
 endif()
 
 if(NOT LUMEN_BUILD_MOBILE_CORE)

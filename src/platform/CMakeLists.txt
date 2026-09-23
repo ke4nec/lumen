@@ -45,6 +45,10 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
     # 测试链接报 NSColor/NSString 未定义，arm64 全桌面 job 失败）。
     target_link_libraries(lumen-platform PUBLIC
         "-framework AppKit" "-framework Foundation")
+    # Manual retain/release free (uses @autoreleasepool only); pin non-ARC
+    # so the file never depends on a global ARC default.
+    set_source_files_properties(native_services_mac.mm PROPERTIES
+        COMPILE_OPTIONS "-fno-objc-arc")
   endif()
   # M12：Linux libdbus（缺失时 dbus seam 编译为空实现）。
   if(UNIX AND NOT APPLE)

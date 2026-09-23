@@ -29,7 +29,11 @@ endif()
 # SDL 桌面依赖与示例，构建 core/layout/render(CPU)/text/accessibility/
 # widgets + mobile-host（SDL-free 接缝）静态库；不依赖桌面会话。
 option(LUMEN_BUILD_MOBILE_CORE "Configure the SDL-free mobile core" OFF)
-if(APPLE AND NOT LUMEN_BUILD_MOBILE_CORE)
+# ObjC++ is required for any Apple build that may compile .mm sources
+# (platform native seam, NSAccessibility provider, AppKit tests). Enable it
+# for all Apple configurations so mobile-core never sees a .mm without a
+# compiler (BRIDGE off today still leaves the language ready).
+if(APPLE)
   enable_language(OBJCXX)
   set(CMAKE_OBJCXX_STANDARD 20)
   set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
