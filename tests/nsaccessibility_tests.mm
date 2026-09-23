@@ -40,7 +40,10 @@ TEST_CASE("a11y_appkit_preserves_identity_and_detaches_retained_elements", "[a11
             button.bounds = lumen::core::Rect::fromXYWH(10, 20, 80, 30);
             tree.nodes.emplace(button.id, button);
             bridge.updateTree(tree, {}, {});
-            NSArray* roots = [[window contentView] accessibilityAttributeValue:NSAccessibilityChildrenAttribute];
+            // The bridge attaches via the modern accessibilityChildren
+            // property; the legacy NSAccessibilityChildrenAttribute readback
+            // on NSView is no longer honored on current macOS.
+            NSArray* roots = [[window contentView] accessibilityChildren];
             REQUIRE(roots.count == 1);
             id rootElement = roots[0];
             retained = [[[rootElement accessibilityAttributeValue:NSAccessibilityChildrenAttribute] objectAtIndex:0] retain];

@@ -132,9 +132,12 @@ class NsAccessibilityBridge::Impl {
 };
 
 void NsAccessibilityBridge::Impl::detach() {
-    if (window != nil && root != nullptr) {
-        [[window contentView] accessibilitySetOverrideValue:nil
-                                               forAttribute:NSAccessibilityChildrenAttribute];
+    if (window != nil) {
+        // Modern NSAccessibility protocol path (macOS 10.10+): the legacy
+        // accessibilitySetOverrideValue:forAttribute: children override is no
+        // longer honored for NSView containers on current macOS (readback
+        // yields no children), so restore the default via the property.
+        [[window contentView] setAccessibilityChildren:nil];
     }
     for (auto& [id, element] : elements) {
         (void)id;
@@ -358,9 +361,11 @@ void NsAccessibilityBridge::updateTree(const SemanticsTree& tree,
     if (root != impl_->elements.end()) {
         impl_->root = root->second;
     }
+    // Attach the semantic root through the modern accessibilityChildren
+    // property (see detach()): the legacy children override is ignored by
+    // NSView on current macOS.
     [[impl_->window contentView]
-        accessibilitySetOverrideValue:impl_->root != nullptr ? @[impl_->root] : @[]
-                         forAttribute:NSAccessibilityChildrenAttribute];
+        setAccessibilityChildren:impl_->root != nullptr ? @[impl_->root] : @[]];
     if (!diff.added.empty() || !diff.removed.empty()) {
         NSAccessibilityPostNotification(impl_->window,
                                         NSAccessibilityLayoutChangedNotification);
