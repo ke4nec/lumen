@@ -13,7 +13,7 @@ concurrency:
 # Single source of truth for Linux system dependencies (SDL3 window/input,
 # Skia FontConfig, Xvfb smoke); shared by the cpu and skia jobs below.
 env:
-  LUMEN_PERF_BASELINE_COMMIT: f201f74340400aea4644e3e4e475d45c3b2248ce
+  LUMEN_PERF_BASELINE_COMMIT: 445bae5dd4893e7020054ed3c7b98dfdf8d77191
   LUMEN_LINUX_DEPS: >-
     cmake ninja-build pkg-config ccache
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev

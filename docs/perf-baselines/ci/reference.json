@@ -1,8 +1,9 @@
 {
-  "commit": "f201f74340400aea4644e3e4e475d45c3b2248ce",
-  "sampling": "median of three interleaved baseline and candidate runs",
+  "commit": "445bae5dd4893e7020054ed3c7b98dfdf8d77191",
+  "sampling": "five interleaved runs per side; timing judged under minimum and median aggregation, allocations under the median (regression requires both timing aggregations)",
+  "repeats": 5,
   "warmup_frames": 30,
   "measured_frames": 300,
-  "tolerance": 0.10,
+  "tolerance": 0.1,
   "scope": "Linux CPU, Skia raster, Mesa llvmpipe; headless, excludes present"
 }
