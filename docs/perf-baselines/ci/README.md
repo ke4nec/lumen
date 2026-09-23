@@ -41,8 +41,15 @@ The five required workloads are archived for each backend:
 - `semantics-diff-1080p`
 
 `check_perf_regression.py` compares phase p50/p95, p50 allocation count and
-bytes, and `commands_per_frame`. `submit` and `gpu_wait` are present in every
-report; CPU and Skia raster intentionally record zero GPU wait. A report is
+bytes, and `commands_per_frame`, except that the `gpu` backend skips `p95_us`:
+on Mesa llvmpipe the driver-wait tail measures host scheduling, not the
+candidate (bit-identical binaries differed 4.5x on `gpu_wait` p95 between
+attempts minutes apart, tripping `frame`/`submit`/`gpu_wait` p95 at
++11%/+29%/+46% on rotating scenarios), so a tail-only shift there is
+unattributable by construction; `gpu` still gates every phase p50 plus
+allocations and commands, and CPU/Skia keep full p50+p95 coverage.
+`submit` and `gpu_wait` are present in every report; CPU and Skia raster
+intentionally record zero GPU wait. A report is
 only comparable with matching backend, scene source hash, dependency revision,
 viewport, compiler flags, compiler version, Release configuration, platform,
 runner hardware, sampling, alpha mode and measurement scope. The wrapper records

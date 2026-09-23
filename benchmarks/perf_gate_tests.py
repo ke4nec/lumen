@@ -200,6 +200,37 @@ class PerfGateTests(unittest.TestCase):
                               Path("baseline"), Path("current"))
         self.assertFalse(result["passed"])
 
+    def test_gpu_backend_skips_p95_but_gates_p50(self):
+        # llvmpipe tail percentiles are host scheduling noise (identical
+        # binaries: gpu_wait p95 4.5x apart between attempts), so p95 never
+        # fails the gpu backend while p50/allocs/commands still gate.
+        def gpu_report():
+            rep = report()
+            rep["backend"] = "gpu"
+            return rep
+
+        baseline = gpu_report()
+        current = gpu_report()
+        current["phases"]["submit"]["p95_us"] *= 2.0
+        current["phases"]["frame"]["p95_us"] *= 4.5
+        current["phases"]["gpu_wait"]["p95_us"] *= 4.5
+        result = GATE.compare(baseline, current, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertTrue(result["passed"], result["failures"])
+        self.assertTrue(all(c.get("skipped") for c in result["checks"]
+                            if c.get("metric") == "p95_us"))
+        current = gpu_report()
+        current["phases"]["submit"]["p50_us"] *= 1.2
+        result = GATE.compare(baseline, current, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertFalse(result["passed"])
+        # CPU keeps full p95 coverage.
+        cpu_current = report()
+        cpu_current["phases"]["submit"]["p95_us"] *= 1.2
+        result = GATE.compare(report(), cpu_current, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertFalse(result["passed"])
+
     def test_identity_and_ten_percent_regression_fail(self):
         baseline = report()
         current = report()
