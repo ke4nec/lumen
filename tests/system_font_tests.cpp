@@ -5,8 +5,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
+#include <vector>
 
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/text/system_font_manager.h"
@@ -36,6 +41,70 @@ TEST_CASE("system_fonts_fail_cleanly_for_missing_directories",
         &diagnostic, {"C:/definitely-not-a-font-dir-xyz"});
     CHECK(fonts == nullptr);
     CHECK_FALSE(diagnostic.empty());
+}
+
+TEST_CASE("system_fonts_discover_fonts_in_nested_subdirectories",
+          "[text][system-fonts]") {
+    // Debian/Ubuntu 布局 /usr/share/fonts/<format>/<foundry>/*.ttf 有两层
+    // 子目录；旧扫描只进一层,Linux 上一个字体都找不到、窗口全量退回
+    // 5x7 占位点阵字（与 Windows 真实字形的观感差距主因）。夹具按两层
+    // 布局放置种子字体,钉住递归发现。
+    std::filesystem::path seed;
+    std::uintmax_t seedSize = 0;
+    for (const auto* root : {"/usr/share/fonts", "/usr/local/share/fonts",
+                             "/System/Library/Fonts", "/Library/Fonts"}) {
+        std::error_code ec;
+        for (const auto& entry :
+             std::filesystem::recursive_directory_iterator(root, ec)) {
+            std::error_code statEc;
+            if (!entry.is_regular_file(statEc) || statEc) {
+                continue;
+            }
+            const std::string name =
+                entry.path().filename().string();
+            const bool isFont = name.size() > 4 &&
+                                (name.find(".ttf") != std::string::npos ||
+                                 name.find(".ttc") != std::string::npos ||
+                                 name.find(".otf") != std::string::npos);
+            if (!isFont) {
+                continue;
+            }
+            // 优先挑小文件,复制快（CJK 集合可达数十 MB）。
+            const auto size = std::filesystem::file_size(entry.path(), statEc);
+            if (statEc || size == 0 || size > 4U * 1024U * 1024U) {
+                continue;
+            }
+            seed = entry.path();
+            seedSize = size;
+            break;
+        }
+        if (!seed.empty()) {
+            break;
+        }
+    }
+    if (seed.empty() || seedSize == 0) {
+        SUCCEED("environment has no small system font to copy; nothing to "
+                "discover");
+        return;
+    }
+    const auto stamp = std::chrono::steady_clock::now()
+                           .time_since_epoch()
+                           .count();
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() /
+        ("lumen-nested-fonts-" + std::to_string(stamp));
+    const std::filesystem::path nested = root / "truetype" / "foundry";
+    REQUIRE(std::filesystem::create_directories(nested));
+    std::error_code copyEc;
+    REQUIRE(std::filesystem::copy_file(
+        seed, nested / seed.filename(), std::filesystem::copy_options::none,
+        copyEc));
+    // 根目录下两层嵌套,递归扫描必须发现。
+    auto fonts =
+        text::createSystemFontManager(nullptr, {root.string()});
+    CHECK(fonts != nullptr);
+    CHECK(fonts->familyCount() > 0);
+    std::filesystem::remove_all(root, copyEc);
 }
 
 TEST_CASE("system_fonts_cover_latin_and_cjk", "[text][system-fonts]") {
@@ -227,4 +296,42 @@ TEST_CASE("system_font_advance_is_not_pixel_quantized",
         }
     }
     CHECK(sawFractional);
+}
+
+TEST_CASE("system_font_bitmap_subpixel_shift_resamples_coverage",
+          "[text][system-fonts]") {
+    // 横向子像素位移把小数 pen 偏移并入光栅（1/4px 量化）：位移前后
+    // 位图必须非空、覆盖率重采样有差异,且总墨量近似守恒（面积不变,
+    // 只是相位移动）。曾经把码点错传进 shift 参数——位图全空,本测试
+    // 钉住该回归。
+    const auto fonts = loadSystemFonts();
+    if (fonts == nullptr) {
+        SUCCEED("environment has no system fonts; nothing to rasterize");
+        return;
+    }
+    text::FontQuery query;
+    query.sizePx = 14.0F;
+    text::GlyphBitmap atZero;
+    text::GlyphBitmap atHalf;
+    REQUIRE(fonts->bitmapFor(U'N', query, 1.0F, &atZero, 0.0F));
+    REQUIRE(fonts->bitmapFor(U'N', query, 1.0F, &atHalf, 0.5F));
+    CHECK_FALSE(atZero.empty());
+    CHECK_FALSE(atHalf.empty());
+    CHECK(atZero.coverage != atHalf.coverage);
+    const auto inkOf = [](const text::GlyphBitmap& bitmap) {
+        long sum = 0;
+        for (const std::uint8_t value : bitmap.coverage) {
+            sum += value;
+        }
+        return sum;
+    };
+    const long inkZero = inkOf(atZero);
+    const long inkHalf = inkOf(atHalf);
+    CHECK(inkZero > 0);
+    // 墨量守恒允许重采样与量化的少量损耗（< 25%）。
+    CHECK(std::abs(inkZero - inkHalf) < inkZero / 4);
+    // 重复同桶请求命中缓存,返回相同位图。
+    text::GlyphBitmap again;
+    REQUIRE(fonts->bitmapFor(U'N', query, 1.0F, &again, 0.5F));
+    CHECK(again.coverage == atHalf.coverage);
 }

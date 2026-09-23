@@ -6,7 +6,8 @@
 // 因）。Windows 优先经 GDI 的灰度字形 API 光栅化（与桌面控件相同的系
 // 统字形路径），并保留 stb_truetype 文件光栅化作为可移植回退：
 //   - Windows: %WINDIR%/Fonts（Microsoft YaHei / Segoe UI / SimSun…）
-//   - Linux:   /usr/share/fonts（Noto / DejaVu…）
+//   - Linux:   /usr/share/fonts 递归子目录（Noto / DejaVu…；Debian 的
+//              <format>/<foundry>/ 两层布局同样覆盖）
 //   - macOS:   /System/Library/Fonts（PingFang / Helvetica…）
 // 度量与回退语义和 Mobile 后端一致（同一 defaultFontStackFor 顺序），
 // 另向 CpuRenderer 提供字形覆盖位图（灰度 coverage）。
@@ -51,10 +52,14 @@ class SystemFontManager : public FontManager {
 
     // 字形覆盖位图（pixelHeight = sizePx * deviceScale，>0）。family 为
     // 空按默认栈解析；找不到覆盖字形返回 false（调用方画占位盒）。
+    // subPixelShift 为 pen 在设备像素网格内的小数偏移（[0,1)，按 1/4 px
+    // 量化入缓存键）：光栅时平移轮廓，保留布局的亚像素 advance 累积，
+    // 避免逐字形取整造成的小字号字距抖动。
     [[nodiscard]] virtual bool bitmapFor(char32_t codePoint,
                                          const FontQuery& query,
                                          float deviceScale,
-                                         GlyphBitmap* out) const = 0;
+                                         GlyphBitmap* out,
+                                         float subPixelShift = 0.0F) const = 0;
 };
 
 // 创建系统字体管理器。directories 为空时用平台默认目录（见上；首个

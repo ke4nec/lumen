@@ -600,13 +600,18 @@ bool CpuRenderer::drawSystemGlyph(std::uint32_t codePoint,
         style.bold ? std::max(style.weight, 700) : style.weight);
     query.italic = style.italic;
     query.sizePx = fontSize > 0.0F ? fontSize : 14.0F;
+    // 横向子像素定位：pen 落到设备像素 floor，小数部分经位图光栅平移
+    // 轮廓（1/4 px 量化）。旧实现逐字形 lround 取整，advance 的亚像素
+    // 累积被逐字重置，小字号无 hinting 时字距肉眼可见地忽宽忽窄。
+    const float deviceX = penX * deviceScale_;
+    const int penDeviceX = static_cast<int>(std::floor(deviceX));
+    const float subPixelShift = deviceX - static_cast<float>(penDeviceX);
     text::GlyphBitmap bitmap;
     if (!systemFonts_->bitmapFor(static_cast<char32_t>(codePoint), query,
-                                 deviceScale_, &bitmap)) {
+                                 deviceScale_, &bitmap, subPixelShift)) {
         // 空白字形（空格）或缺字：不绘制（调用方已按 advance 留白）。
         return false;
     }
-    const int penDeviceX = toPixel(penX);
     const int baselineDeviceY = toPixel(baselineY);
     for (int row = 0; row < bitmap.height; ++row) {
         for (int col = 0; col < bitmap.width; ++col) {

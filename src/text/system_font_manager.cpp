@@ -47,7 +47,12 @@ namespace {
 constexpr std::size_t kMaxFiles = 256;
 // 文件数和加载后的 face 数共用此上限，三个缓存都为 face 保留 8 位。
 static_assert(kMaxFiles <= (1U << 8));
+// 递归收集阶段的上限（排序/截断前），防病态目录树拖慢启动。
+constexpr std::size_t kMaxCollectFiles = 2048;
 constexpr std::size_t kMaxFileBytes = 64U * 1024U * 1024U;
+// 全部字体文件字节预算：Noto 全家桶机器上 /usr/share/fonts 可达数百
+// MB，无界加载会把窗口进程撑爆；首选排序保证预算截断时 UI 字体已在。
+constexpr std::size_t kMaxTotalFileBytes = 256U * 1024U * 1024U;
 constexpr std::size_t kMaxBitmapCache = 4096;
 
 std::string lowerAscii(std::string value) {
@@ -396,8 +401,8 @@ class SystemFontManagerImpl final : public SystemFontManager {
     }
 
     [[nodiscard]] bool bitmapFor(char32_t codePoint, const FontQuery& query,
-                                 float deviceScale,
-                                 GlyphBitmap* out) const override {
+                                 float deviceScale, GlyphBitmap* out,
+                                 float subPixelShift) const override {
         if (out == nullptr || deviceScale <= 0.0F) {
             return false;
         }
@@ -410,10 +415,18 @@ class SystemFontManagerImpl final : public SystemFontManager {
         if (pixelHeight <= 0.0F || pixelHeight > 256.0F) {
             return false;
         }
+        // 横向子像素偏移按 1/4 px 量化（4 桶），量化值入缓存与光栅，
+        // 同桶请求稳定命中。
+        const float shift =
+            std::clamp(subPixelShift, 0.0F, 0.999999F);
+        const std::uint32_t shiftBucket =
+            static_cast<std::uint32_t>(std::lround(shift * 4.0F)) & 0x3U;
+        const float quantizedShift =
+            static_cast<float>(shiftBucket) * 0.25F;
         const std::size_t faceIndex =
             static_cast<std::size_t>(face - faces_.data());
-        // 缓存键：face + 码点 + 像素高度 + weight/italic（字号按 1/16
-        // 取整，同一字号稳定命中）。
+        // 缓存键：face + 码点 + 像素高度 + weight/italic + 子像素桶
+        //（字号按 1/16 取整，同一字号稳定命中）。
         const auto quantized =
             static_cast<std::uint32_t>(std::lround(pixelHeight * 16.0F));
         const std::uint64_t key =
@@ -423,10 +436,11 @@ class SystemFontManagerImpl final : public SystemFontManager {
              << 32) |
             ((static_cast<std::uint64_t>(quantized) & 0xFFFFFFULL) << 8) |
             ((static_cast<std::uint64_t>(
-                 std::clamp(static_cast<int>(query.weight), 100, 900) / 100)
+                  std::clamp(static_cast<int>(query.weight), 100, 900) / 100)
              & 0x0FULL)
              << 1) |
-            (query.italic ? 1ULL : 0ULL);
+            (query.italic ? 1ULL : 0ULL) |
+            ((static_cast<std::uint64_t>(shiftBucket) & 0x3ULL) << 5);
         {
             std::lock_guard<std::mutex> lock(cacheMutex_);
             if (const auto it = bitmapCache_.find(key);
@@ -437,7 +451,7 @@ class SystemFontManagerImpl final : public SystemFontManager {
         }
         GlyphBitmap bitmap;
         const bool ok = rasterize(*face, query, static_cast<int>(codePoint),
-                                  pixelHeight, &bitmap);
+                                  pixelHeight, quantizedShift, &bitmap);
         std::lock_guard<std::mutex> lock(cacheMutex_);
         if (bitmapCache_.size() >= kMaxBitmapCache) {
             bitmapCache_.clear();
@@ -545,18 +559,22 @@ class SystemFontManagerImpl final : public SystemFontManager {
 
     [[nodiscard]] bool rasterize(const FaceEntry& face, const FontQuery&,
                                  int codePoint, float pixelHeight,
+                                 float subPixelShift,
                                  GlyphBitmap* out) const {
         // 字形光栅一律走 stb（无 hinting 的设计值灰度位图），与
         // glyphMetrics 的设计步进同源；曾优先 GDI 光栅，其 grid-fit 墨宽
         // 与设计步进不一致导致字距失真（CPU 渲染管线，非系统控件路径）。
+        // 横向子像素偏移经 Subpixel 变体并入轮廓光栅，bearing 与位图
+        // 同一坐标系（box 已含 shift）。
         const float scale =
             stbtt_ScaleForMappingEmToPixels(&face.info, pixelHeight);
         int x0 = 0;
         int y0 = 0;
         int x1 = 0;
         int y1 = 0;
-        stbtt_GetCodepointBitmapBox(&face.info, codePoint, scale, scale, &x0,
-                                    &y0, &x1, &y1);
+        stbtt_GetCodepointBitmapBoxSubpixel(&face.info, codePoint, scale,
+                                            scale, subPixelShift, 0.0F, &x0,
+                                            &y0, &x1, &y1);
         const int width = x1 - x0;
         const int height = y1 - y0;
         if (width <= 0 || height <= 0 || width > 512 || height > 512) {
@@ -570,8 +588,9 @@ class SystemFontManagerImpl final : public SystemFontManager {
         bitmap.coverage.assign(static_cast<std::size_t>(width) *
                                    static_cast<std::size_t>(height),
                                0);
-        stbtt_MakeCodepointBitmap(&face.info, bitmap.coverage.data(), width,
-                                  height, width, scale, scale, codePoint);
+        stbtt_MakeCodepointBitmapSubpixel(
+            &face.info, bitmap.coverage.data(), width, height, width, scale,
+            scale, subPixelShift, 0.0F, codePoint);
         *out = std::move(bitmap);
         return true;
     }
@@ -730,57 +749,96 @@ std::vector<unsigned char> readFile(const std::filesystem::path& path) {
     return bytes;
 }
 
-// 扫描单个目录（非递归 + 一层子目录，覆盖 /usr/share/fonts 布局；
-// Windows Fonts 为扁平目录，一次遍历即全）。
-std::vector<std::filesystem::path> listFontFiles(const std::string& dir) {
-    std::vector<std::filesystem::path> files;
+// 首选基名表：排序加权用，保证默认栈族（Windows 雅黑/Segoe、Linux
+// Noto/DejaVu、macOS PingFang/Helvetica）在文件数/字节预算截断前加载。
+// 目录遍历顺序不确定，不能依赖它决定默认字体的兜底顺序。
+std::vector<std::string> preferredFontBasenames() {
+#if defined(_WIN32)
+    return {"msyh.ttc",  "msyhbd.ttc", "msyhl.ttc",  "simsun.ttc",
+            "simhei.ttf", "segoeui.ttf", "segoeuib.ttf", "seguisb.ttf",
+            "seguisym.ttf", "seguiemj.ttf", "arial.ttf", "arialbd.ttf"};
+#elif defined(__APPLE__)
+    return {"PingFang.ttc", "HelveticaNeue.ttc", "Helvetica.ttc",
+            "SFNS.ttf", "AppleColorEmoji.ttc", "Arial.ttf"};
+#elif defined(__linux__)
+    return {"notosanscjk-regular.ttc", "notosanscjk-bold.ttc",
+            "notosans-regular.ttf", "notosans-bold.ttf",
+            "notosans-italic.ttf", "notosans-bolditalic.ttf",
+            "dejavusans.ttf", "dejavusans-bold.ttf",
+            "ubuntusans[wdth,wght].ttf", "ubuntu-r.ttf",
+            "wenquanyimicrohei.ttc"};
+#else
+    return {};
+#endif
+}
+
+// 递归收集字体文件（限深 3 层目录）：Windows Fonts 为扁平布局，Linux
+// 常见两种——Arch 风格 /usr/share/fonts/<foundry>/ 与 Debian/Ubuntu 的
+// /usr/share/fonts/<format>/<foundry>/，后者旧的单层扫描一个文件都找
+// 不到，Linux 窗口全量退回占位点阵字（默认栈族全部失配）。收集时先按
+// 路径排序，跨机器遍历顺序确定。
+void collectFontFiles(const std::filesystem::path& dir, int depth,
+                      std::vector<std::filesystem::path>& out) {
+    if (depth <= 0 || out.size() >= kMaxCollectFiles) {
+        return;
+    }
     std::error_code ec;
-    std::filesystem::directory_iterator it(dir, ec);
+    std::vector<std::filesystem::path> entries;
+    for (const auto& entry :
+         std::filesystem::directory_iterator(dir, ec)) {
+        entries.push_back(entry.path());
+    }
     if (ec) {
-        return files;
+        return;
     }
-    // Windows 优先：雅黑/宋体/黑体/Segoe 先行，保证默认栈首选有面可用
-    //（目录遍历顺序不确定，不能依赖它）。
-    const std::vector<std::string> kPreferred = {
-        "msyh.ttc",  "msyhbd.ttc", "msyhl.ttc", "simsun.ttc",
-        "simhei.ttf", "segoeui.ttf", "segoeuib.ttf", "seguisb.ttf",
-        "seguisym.ttf", "seguiemj.ttf", "arial.ttf", "arialbd.ttf",
-    };
-    auto take = [&](const std::filesystem::path& path) {
-        if (files.size() >= kMaxFiles || !isFontFile(path)) {
-            return;
-        }
-        if (std::find(files.begin(), files.end(), path) == files.end()) {
-            files.push_back(path);
-        }
-    };
-    for (const std::string& name : kPreferred) {
-        std::error_code probeEc;
-        std::filesystem::path candidate =
-            std::filesystem::path(dir) / name;
-        if (std::filesystem::is_regular_file(candidate, probeEc)) {
-            take(candidate);
-        }
-    }
-    for (const auto& entry : it) {
-        if (files.size() >= kMaxFiles) {
+    std::sort(entries.begin(), entries.end(),
+              [](const std::filesystem::path& a,
+                 const std::filesystem::path& b) {
+                  return lowerAscii(a.string()) < lowerAscii(b.string());
+              });
+    for (const std::filesystem::path& path : entries) {
+        if (out.size() >= kMaxCollectFiles) {
             break;
         }
-        std::error_code entryEc;
-        if (entry.is_directory(entryEc) && !entryEc) {
-            std::filesystem::directory_iterator sub(entry.path(), entryEc);
-            if (entryEc) {
-                continue;
+        std::error_code statEc;
+        if (std::filesystem::is_regular_file(path, statEc)) {
+            if (isFontFile(path)) {
+                out.push_back(path);
             }
-            for (const auto& subEntry : sub) {
-                if (files.size() >= kMaxFiles) {
-                    break;
-                }
-                take(subEntry.path());
-            }
-            continue;
+        } else if (std::filesystem::is_directory(path, statEc)) {
+            collectFontFiles(path, depth - 1, out);
         }
-        take(entry.path());
+    }
+}
+
+// 扫描单个目录：递归收集 → 首选基名加权排序 → 截断到 kMaxFiles。
+// 排序保证截断结果确定，且默认栈 UI 字体（含粗体伴生面）总在前面。
+std::vector<std::filesystem::path> listFontFiles(const std::string& dir) {
+    std::vector<std::filesystem::path> files;
+    collectFontFiles(dir, 3, files);
+    const std::vector<std::string> preferred = preferredFontBasenames();
+    auto rankOf = [&preferred](const std::filesystem::path& path) {
+        const std::string base = lowerAscii(path.filename().string());
+        for (std::size_t i = 0; i < preferred.size(); ++i) {
+            if (base == preferred[i]) {
+                return i;
+            }
+        }
+        return preferred.size();
+    };
+    std::sort(files.begin(), files.end(),
+              [&](const std::filesystem::path& a,
+                  const std::filesystem::path& b) {
+                  const std::size_t rankA = rankOf(a);
+                  const std::size_t rankB = rankOf(b);
+                  if (rankA != rankB) {
+                      return rankA < rankB;
+                  }
+                  return lowerAscii(a.string()) < lowerAscii(b.string());
+              });
+    files.erase(std::unique(files.begin(), files.end()), files.end());
+    if (files.size() > kMaxFiles) {
+        files.resize(kMaxFiles);
     }
     return files;
 }
@@ -802,11 +860,20 @@ std::unique_ptr<SystemFontManager> createSystemFontManager(
         }
         std::vector<std::vector<unsigned char>> blobs;
         std::vector<FaceEntry> faces;
+        std::size_t totalBytes = 0;
         for (const auto& path : files) {
+            std::error_code sizeEc;
+            const auto fileSize =
+                std::filesystem::file_size(path, sizeEc);
+            if (!sizeEc && fileSize > 0 &&
+                totalBytes + fileSize > kMaxTotalFileBytes) {
+                continue;  // 字节预算已尽：跳过大文件，小文件仍可入。
+            }
             std::vector<unsigned char> bytes = readFile(path);
             if (bytes.empty()) {
                 continue;
             }
+            totalBytes += bytes.size();
             int count = stbtt_GetNumberOfFonts(bytes.data());
             if (count <= 0) {
                 count = 1;  // 单 face 文件返回 0（stb 契约）。
