@@ -257,14 +257,23 @@ PhaseStats summarize(const std::vector<PhaseSample>& samples) {
     stats.p50Us = percentile(times, 0.50);
     stats.p95Us = percentile(times, 0.95);
     stats.meanUs = total / static_cast<double>(samples.size());
-    // Allocation medians: sort samples by time and take the mid sample's counts.
-    std::vector<PhaseSample> sorted = samples;
-    std::sort(sorted.begin(), sorted.end(),
-              [](const PhaseSample& a, const PhaseSample& b) {
-                  return a.microseconds < b.microseconds;
-              });
-    stats.allocsP50 = sorted[sorted.size() / 2].allocations;
-    stats.allocBytesP50 = sorted[sorted.size() / 2].allocBytes;
+    // Allocation medians are order statistics over the allocation values
+    // themselves. Sorting by time instead would couple them to scheduler
+    // noise: which frame lands on the time-median index is a coin flip
+    // between steady-state and content-refresh frame populations, so the
+    // reported count flipped between modes run to run.
+    std::vector<std::size_t> allocations;
+    std::vector<std::size_t> allocBytes;
+    allocations.reserve(samples.size());
+    allocBytes.reserve(samples.size());
+    for (const auto& sample : samples) {
+        allocations.push_back(sample.allocations);
+        allocBytes.push_back(sample.allocBytes);
+    }
+    std::sort(allocations.begin(), allocations.end());
+    std::sort(allocBytes.begin(), allocBytes.end());
+    stats.allocsP50 = allocations[allocations.size() / 2];
+    stats.allocBytesP50 = allocBytes[allocBytes.size() / 2];
     return stats;
 }
 
