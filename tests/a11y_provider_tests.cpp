@@ -16,6 +16,7 @@
 
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
+#include "lumen/app/app_shell.h"
 #include "lumen/platform/fake_host.h"
 
 #if defined(__linux__) && defined(LUMEN_ACCESSIBILITY_PROVIDER_ATSPI)
@@ -86,6 +87,56 @@ TEST_CASE("fake_host_reports_accessibility_capability_on_note", "[a11y]") {
     CHECK(host.capabilities().accessibility);
     host.noteAccessibilityBridgeActive(false);
     CHECK_FALSE(host.capabilities().accessibility);
+}
+
+TEST_CASE("recording_bridge_records_window_activation", "[a11y]") {
+    // M13：窗口激活事件链的桥契约（provider 按 window:activate 语义消
+    // 费；runApp 由宿主 WindowFocusGained/Lost 驱动）。
+    accessibility::RecordingAccessibilityBridge bridge;
+    bridge.noteWindowActive(true);
+    bridge.noteWindowActive(false);
+    CHECK(bridge.windowActiveEvents == std::vector<bool>{true, false});
+}
+
+TEST_CASE("app_shell_forwards_window_active_and_marks_dirty_on_at_actions",
+          "[a11y]") {
+    // AT 派发（焦点等）没有宿主输入事件伴随：Handled 后必须显式标脏，
+    // runApp 的 a11y pump 才能请求帧并随帧末推送语义（FOCUSED 状态/
+    // diff），否则空闲应用的 AT 驱动状态变化永不上报。
+    app::AppShell* shell = nullptr;
+    app::ShellConfig config;
+    config.initialView = {200, 100};
+    config.build = [&] {
+        auto button = core::makeButton("Apply");
+        button.key = "apply";
+        return button;
+    };
+    app::AppShell appShell(config);
+    shell = &appShell;
+    accessibility::RecordingAccessibilityBridge bridge;
+    appShell.setAccessibilityBridge(&bridge);
+    (void)appShell.renderFrame();
+
+    appShell.noteWindowActive(true);
+    CHECK(bridge.windowActiveEvents == std::vector<bool>{true});
+
+    // 树中任一可聚焦节点的 focus action 必须 Handled 并标脏（Recording
+    // 桥不暴露角色，按语义树新增 id 逐一尝试）。
+    REQUIRE_FALSE(bridge.updates.empty());
+    bool sawHandled = false;
+    for (const std::string& id : bridge.updates.front().diff.added) {
+        if (appShell.performAccessibilityAction(
+                id, accessibility::kActionFocus) ==
+            accessibility::SemanticsActionStatus::Handled) {
+            sawHandled = true;
+            break;
+        }
+    }
+    CHECK(sawHandled);
+    CHECK(appShell.hasPendingFrame());
+    appShell.noteWindowActive(false);
+    CHECK(bridge.windowActiveEvents ==
+          std::vector<bool>{true, false});
 }
 
 #if defined(__linux__) && defined(LUMEN_ACCESSIBILITY_PROVIDER_ATSPI)

@@ -191,6 +191,10 @@ class AppShell {
     // 注册后在下一次绘制末尾构建语义树并推送 identity diff + 焦点变化
     //（RecordingAccessibilityBridge 可作跨平台回归断言）；nullptr 注销。
     void setAccessibilityBridge(accessibility::AccessibilityBridge* bridge);
+    // M13：窗口激活状态转发（宿主 WindowFocusGained/Lost → provider
+    // window:activate/deactivate；屏幕阅读器以窗口激活切换应用上下文，
+    // 只发 focused 不会开始播报）。桥未注入时 no-op。
+    void noteWindowActive(bool active);
     // 语义 action 分发（与键盘同路径）+ 结果回执到桥。
     [[nodiscard]] accessibility::SemanticsActionStatus
     performAccessibilityAction(const std::string& nodeId,

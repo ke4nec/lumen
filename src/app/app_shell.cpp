@@ -158,6 +158,12 @@ void AppShell::setAccessibilityBridge(
     // 延迟到下一次绘制后推送，确保首帧语义树已经完成布局。
 }
 
+void AppShell::noteWindowActive(bool active) {
+    if (accessibilityBridge_ != nullptr) {
+        accessibilityBridge_->noteWindowActive(active);
+    }
+}
+
 accessibility::SemanticsActionStatus AppShell::performAccessibilityAction(
     const std::string& nodeId, std::uint32_t action, const std::string& value,
     float scrollDeltaY) {
@@ -199,6 +205,12 @@ accessibility::SemanticsActionStatus AppShell::performAccessibilityAction(
         *lastSemantics_, context, nodeId, action, value, scrollDeltaY);
     if (accessibilityBridge_ != nullptr) {
         accessibilityBridge_->noteActionPerformed(nodeId, action, status);
+    }
+    if (status == accessibility::SemanticsActionStatus::Handled) {
+        // AT 派发（焦点/激活/值）没有宿主输入事件伴随——键盘/指针路径
+        // 由事件帧请求兜底,这里显式标脏,runApp 的 a11y pump 据此请求
+        // 一帧,语义推送（focusedId/diff）随帧末上报。
+        dirty_ = true;
     }
     return status;
 }

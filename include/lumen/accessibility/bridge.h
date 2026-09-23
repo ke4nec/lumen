@@ -52,6 +52,14 @@ class AccessibilityBridge {
     // 辅助技术焦点跟踪。
     virtual void setFocusedNode(const std::string& id) = 0;
 
+    // M13：窗口激活状态（宿主 WindowFocusGained/Lost 驱动）。屏幕阅读器
+    // （Orca/Narrator/VoiceOver）以窗口激活切换“当前应用”上下文——只发
+    // state-changed:focused 不够，AT 侧不会开始播报。默认 no-op（既有
+    // provider 未受益于窗口事件时行为不变）。
+    virtual void noteWindowActive(bool active) {
+        (void)active;
+    }
+
     // Pump platform messages owned by the UI thread.  Providers that use an
     // external event source (AT-SPI on Linux) override this; synchronous
     // providers keep the default no-op implementation.
@@ -95,6 +103,11 @@ class RecordingAccessibilityBridge final : public AccessibilityBridge {
 
     std::vector<UpdateRecord> updates{};
     std::vector<std::string> focusedNodes{};
+    std::vector<bool> windowActiveEvents{};
+
+    void noteWindowActive(bool active) override {
+        windowActiveEvents.push_back(active);
+    }
 
     struct ActionRecord {
         std::string nodeId{};
@@ -119,11 +132,16 @@ using SemanticsActionDispatch = std::function<SemanticsActionStatus(
     const std::string& value, float scrollDeltaY)>;
 
 // provider 装配输入：全部为平台无关值。nativeWindow 为原生窗口句柄
-//（Windows = HWND、macOS = NSWindow*，由宿主层填入；AT-SPI 走会话
-// 总线无窗口句柄需求；headless 测试为 nullptr）。SDK 类型不进公共头。
+//（Windows = HWND、macOS = NSWindow*，由宿主层填入；AT-SPI 走会话总
+// 线无窗口句柄需求；headless 测试为 nullptr）。SDK 类型不进公共头。
 struct PlatformAccessibilityHost {
     // 语义 action 回灌目标（runApp 接 shell.performAccessibilityAction）。
     SemanticsActionDispatch dispatch{};
+    // M13：AT 请求激活/抬升所属窗口（AT-SPI Component.GrabFocus 的平台
+    // 惯例——atk_component_grab_focus 会置前所属 toplevel；屏幕阅读器
+    // 以窗口激活切换“当前应用”）。缺省空 = 未接线（GrabFocus 仍走语义
+    // focus action）。
+    std::function<bool()> activateWindow{};
     void* nativeWindow{nullptr};
     // 逻辑坐标 → 物理像素倍率快照（语义 bounds 为窗口逻辑坐标）；
     // 有原生窗口时 provider 以活度量（窗口 DPI）优先。

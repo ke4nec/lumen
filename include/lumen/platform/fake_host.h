@@ -119,6 +119,8 @@ class FakeApplicationHost final : public ApplicationHost {
     void minimizeWindow(core::WindowId id) override;
     void toggleMaximizeWindow(core::WindowId id) override;
     void requestWindowClose(core::WindowId id) override;
+    // M13：记录型 raise（AT 抓焦点链路断言）。
+    void raiseWindow(core::WindowId id) override;
     void setWindowDragRegion(
         core::WindowId id,
         std::function<bool(core::Offset)> predicate) override;

@@ -259,6 +259,10 @@ class ApplicationHost {
     // 请求关闭：与系统 X 同路径——宿主合成 WindowCloseRequested 事件经
     // pollEvent 交付（runApp → shell.requestClose，应用可消费）。
     virtual void requestWindowClose(core::WindowId id);
+    // M13：抬升/激活窗口（AT-SPI Component.GrabFocus 的平台惯例——AT
+    // 抓焦点同时把所属窗口带到前台；Wayland 经 xdg-activation 由合成器
+    // 决定是否授予焦点）。默认 no-op。
+    virtual void raiseWindow(core::WindowId id);
     // 窗口拖拽区谓词（窗口逻辑坐标；true = 该点可拖动移窗）。宿主
     // hit-test 先判 resize 边、再咨询谓词；空谓词/未注册 = 无拖拽区。
     virtual void setWindowDragRegion(

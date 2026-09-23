@@ -23,6 +23,7 @@ class AtspiAccessibilityBridge final : public AccessibilityBridge {
     void updateTree(const SemanticsTree& tree, const SemanticsDiff& diff,
                     const std::string& focusedId) override;
     void setFocusedNode(const std::string& id) override;
+    void noteWindowActive(bool active) override;
     void pump() override;
 
     // Deterministic headless probes used by the provider tests.

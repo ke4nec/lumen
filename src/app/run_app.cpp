@@ -226,6 +226,12 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                 return shell.performAccessibilityAction(nodeId, action, value,
                                                         scrollDeltaY);
             };
+            // M13：AT 抓焦点 → 抬升窗口（GrabFocus 平台惯例；窗口焦点
+            // 到达后经 WindowFocusGained 发真值 window:activate）。
+            a11yHost.activateWindow = [&host, id = runtime.id] {
+                host.raiseWindow(id);
+                return true;
+            };
             std::string diagnostics;
             runtime.nativeA11y = accessibility::createPlatformAccessibilityBridge(
                 a11yHost, &diagnostics);
@@ -357,6 +363,13 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         for (auto& runtime : runtimes) {
             if (runtime.active && runtime.nativeA11y != nullptr) {
                 runtime.nativeA11y->pump();
+                // AT 派发（焦点/值/激活）在 UI 线程同步改变应用状态并标
+                // 脏，但不产生宿主事件——这里合并请求一帧，语义推送随帧
+                // 末完成（否则空闲应用永不上报 AT 驱动的状态变化）。
+                if (runtime.app.shell->hasPendingFrame()) {
+                    runtime.scheduler->requestFrame(
+                        render::FrameReason::Input, runtime.id);
+                }
             }
         }
         HostEvent event;
@@ -436,10 +449,14 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                     break;
                 case HostEventType::WindowFocusGained:
                     runtime->focused = true;
+                    // M13：窗口激活转发（provider 发 window:activate；
+                    // 屏幕阅读器以窗口激活切换“当前应用”）。
+                    shell.noteWindowActive(true);
                     notify(*runtime, event, render::FrameReason::Input);
                     break;
                 case HostEventType::WindowFocusLost:
                     runtime->focused = false;
+                    shell.noteWindowActive(false);
                     stopTextInput(*runtime);
                     notify(*runtime, event, render::FrameReason::Input);
                     break;

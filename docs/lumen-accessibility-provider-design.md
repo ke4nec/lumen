@@ -139,7 +139,7 @@ SDL3 只有消息泵钩子（`SDL_SetWindowsMessageHook`，Peek 循环内），�
 
 语义 bounds 为窗口逻辑坐标；`get_BoundingRectangle`/`ElementProviderFromPoint` 用 `ClientToScreen` + `GetDpiForWindow`（动态解析，Win10 1607 前回退 96）实时换算；headless（无 HWND）用 `PlatformAccessibilityHost.deviceScale` 快照。
 
-## 6. AT-SPI2 provider（已实施，真实 Orca 回环待验）
+## 6. AT-SPI2 provider（已实施；Orca 回环 2026-09-23 在 GNOME Wayland+XWayland 桌面完成，Windows 讲述人/NVDA 与 macOS VoiceOver 人工回环仍待对应平台验收）
 
 Linux 侧走 org.a11y.Bus D-Bus 协议（Qt/GTK 同款；仓库已有 libdbus 会话总线先例——M12 native_services）。
 
@@ -157,12 +157,23 @@ Linux 侧走 org.a11y.Bus D-Bus 协议（Qt/GTK 同款；仓库已有 libdbus �
 | org.a11y.atspi.Socket/Embed | 桌面嵌入路径（AT 侧主动 Embed，应用侧只需响应） |
 
 - **事件**：children-changed（结构）、property-change（accessible-name/value/state）、focus（state-changed:focused）经总线信号广播。
+- **窗口激活（M13 2026-09-23 补齐）**：屏幕阅读器以 window:activate 切换“当前应用”上下文，只发 state-changed:focused 不会开始播报。`noteWindowActive`（宿主 WindowFocusGained/Lost → runApp → AppShell 转发）发 `org.a11y.atspi.Event.Window` 的 `Activate`/`Deactivate` 信号 + 根节点 `state-changed:active`（线格式按 libatspi 客户端注册 "window:activate" 生成的 match 规则实测比对）。`Component.GrabFocus` 按平台惯例（atk_component_grab_focus）同时经 `PlatformAccessibilityHost.activateWindow`（runApp 接宿主 `raiseWindow`）抬升所属窗口；窗口根路径只做激活（语义根无 focus action，向根派发会搅乱后续控件焦点）。Wayland 焦点授予由合成器策略决定（xdg-activation），X11/XWayland 可直接置前。
+- **角色/名称映射修正（2026-09-23）**：AtspiRole 数值以 libatspi `Atspi.Role` 实测枚举为准（旧表多处错位：Button=41 实为 POPUP_MENU、List=35 实为 MENU_ITEM、ProgressBar=38 实为 PAGE_TAB_LIST 等，屏幕阅读器按错角色播报）；Switch 用原生 SWITCH(130)。根节点名三通道（GetName 成员/`Properties.Get("Name")`——libatspi get_name() 实际走这条/GetAll）统一返回应用名（宿主窗口标题）；语义根 label 通常为空。`AppShell::performAccessibilityAction` 对 Handled 的 AT 派发显式标脏（AT 路径无宿主事件伴随帧请求，否则 FOCUSED 状态永不上报），runApp 的 a11y pump 按 `hasPendingFrame` 合并请求一帧。
 - **线程**：D-Bus 连接在 UI 线程的 `AccessibilityBridge::pump()` 内 `dbus_connection_dispatch`，由 `runApp` 在 SDL 事件轮询前调用，保持“UI 线程拥有”不变量。
 - **能力**：注册握手成功 → `available()` true；Orca 回环属 M13 出口验收。
 - **协议回归**：`dbus-run-session -- python3 -B tests/atspi_live_tests.py <build>/tests/lumen-atspi-live-app`
-  使用系统注册表与 libatspi 客户端验证注册、焦点、按钮、数值回灌。Socket 位于
+  使用系统注册表与 libatspi 客户端验证注册、窗口激活（GrabFocus → activateWindow → window:activate）、焦点、按钮、数值回灌。Socket 位于
   `/org/a11y/atspi/accessible/root`，Application.Id 为 int32，GetState 返回两段
   uint32 位图；Cache.GetItems 返回空缓存，客户端按需查询对象。此测试不替代 Orca。
+- **Orca 回环（M13 Linux 验收工具，2026-09-23）**：`tests/atspi_orca_loop.py`
+  （隔离 dbus 会话 + 真 Orca `--replace --debug` + `SDL_VIDEODRIVER=x11`，调用
+  方式见文件头）。在 GNOME Wayland + XWayland 桌面实测通过：根对象以应用名
+  注册、window:activate 被 Orca 以 priority 2 消费并为本应用创建专属 script、
+  焦点导航/激活/值设置回环全通（libatspi 客户端 + Orca debug 日志双证据）。
+  已知限制：语音播报要求 Orca 队列在应用存活期间排空且焦点事件源未过期——
+  共享会话的事件风暴（如 Chromium 类应用）下队列积压可达分钟级，事件被处理
+  时源已 DEAD；树重建期焦点信号源过期竞态与 Orca 短时重复事件去重也会吞掉
+  单次播报。回环功能判定不依赖语音（见 §6 验收口径）。
 
 ## 7. NSAccessibility provider（已实施，真实 VoiceOver 回环待验）
 

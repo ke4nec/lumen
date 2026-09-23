@@ -280,6 +280,11 @@ void FakeApplicationHost::minimizeWindow(core::WindowId id) {
     queue_.push_back(makeEvent(core::HostEventType::WindowMinimized, target));
 }
 
+void FakeApplicationHost::raiseWindow(core::WindowId id) {
+    windowCommandCalls.push_back("raise");
+    (void)id;
+}
+
 void FakeApplicationHost::toggleMaximizeWindow(core::WindowId id) {
     WindowEntry* entry = find(id);
     core::WindowId target = id;

@@ -39,6 +39,8 @@ void ApplicationHost::toggleMaximizeWindow(core::WindowId) {}
 
 void ApplicationHost::requestWindowClose(core::WindowId) {}
 
+void ApplicationHost::raiseWindow(core::WindowId) {}
+
 void ApplicationHost::setWindowDragRegion(core::WindowId,
                                           std::function<bool(core::Offset)>) {}
 

@@ -30,8 +30,19 @@ int main() {
                         const std::string& value, float delta) {
         return shell.performAccessibilityAction(id, action, value, delta);
     };
+    // 无宿主窗口的离屏夹具：GrabFocus 的窗口激活钩子以窗口激活事件
+    // 模拟真实宿主（runApp 路径经 SDL 抬升 + WindowFocusGained 到达
+    // 同一入口）。钩子在创建前接线——host 按值入 provider。
+    std::unique_ptr<accessibility::AccessibilityBridge> bridge;
+    host.activateWindow = [&bridge] {
+        if (bridge != nullptr) {
+            bridge->noteWindowActive(true);
+            return true;
+        }
+        return false;
+    };
     std::string diagnostics;
-    auto bridge = accessibility::createPlatformAccessibilityBridge(host, &diagnostics);
+    bridge = accessibility::createPlatformAccessibilityBridge(host, &diagnostics);
     if (!bridge || !bridge->available()) {
         std::fprintf(stderr, "AT-SPI unavailable: %s\n", diagnostics.c_str());
         return 1;

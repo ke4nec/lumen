@@ -44,53 +44,71 @@ std::string hexHash(std::uint64_t value) {
 }
 
 [[maybe_unused]] int roleValue(SemanticsRole role) {
-    // Values are AtspiRole constants.  Keep this table local to the provider;
-    // the public semantics contract deliberately has no AT-SPI dependency.
+    // Values are AtspiRole constants（以本机 libatspi/Atspi.Role 枚举实测
+    // 为准——2026-09-23 用 pyatspi 逐值核对；旧表多处错位，如 Button=41
+    // 实为 POPUP_MENU、List=35 实为 MENU_ITEM，屏幕阅读器按错角色播报）。
+    // Keep this table local to the provider; the public semantics contract
+    // deliberately has no AT-SPI dependency.
     switch (role) {
         case SemanticsRole::Button:
-            return 41;  // ATSPI_ROLE_PUSH_BUTTON
+            return 43;   // ATSPI_ROLE_BUTTON
         case SemanticsRole::Checkbox:
+            return 7;    // ATSPI_ROLE_CHECK_BOX
         case SemanticsRole::Switch:
-            return 7;   // ATSPI_ROLE_CHECK_BOX
+            return 130;  // ATSPI_ROLE_SWITCH
         case SemanticsRole::Radio:
-            return 42;  // ATSPI_ROLE_RADIO_BUTTON
+            return 44;   // ATSPI_ROLE_RADIO_BUTTON
         case SemanticsRole::TextField:
-            return 79;  // ATSPI_ROLE_ENTRY
+            return 79;   // ATSPI_ROLE_ENTRY
         case SemanticsRole::Text:
-            return 61;  // ATSPI_ROLE_TEXT
+            return 61;   // ATSPI_ROLE_TEXT
         case SemanticsRole::Image:
-            return 27;  // ATSPI_ROLE_IMAGE
+            return 27;   // ATSPI_ROLE_IMAGE
         case SemanticsRole::Slider:
+            return 51;   // ATSPI_ROLE_SLIDER
         case SemanticsRole::Splitter:
-            return 51;  // ATSPI_ROLE_SLIDER
+            return 53;   // ATSPI_ROLE_SPLIT_PANE
         case SemanticsRole::ProgressBar:
-            return 38;  // ATSPI_ROLE_PROGRESS_BAR
+            return 42;   // ATSPI_ROLE_PROGRESS_BAR
         case SemanticsRole::List:
-            return 35;  // ATSPI_ROLE_LIST
+            return 31;   // ATSPI_ROLE_LIST
         case SemanticsRole::ListItem:
-            return 36;  // ATSPI_ROLE_LIST_ITEM
+            return 32;   // ATSPI_ROLE_LIST_ITEM
         case SemanticsRole::Tree:
-            return 65;  // ATSPI_ROLE_TREE
+            return 65;   // ATSPI_ROLE_TREE
         case SemanticsRole::TreeItem:
-            return 66;  // ATSPI_ROLE_TREE_ITEM
+            return 91;   // ATSPI_ROLE_TREE_ITEM
         case SemanticsRole::Menu:
-            return 32;  // ATSPI_ROLE_MENU
+            return 33;   // ATSPI_ROLE_MENU
         case SemanticsRole::MenuItem:
-            return 34;  // ATSPI_ROLE_MENU_ITEM
+            return 35;   // ATSPI_ROLE_MENU_ITEM
         case SemanticsRole::Dialog:
-            return 16;  // ATSPI_ROLE_DIALOG
+            return 16;   // ATSPI_ROLE_DIALOG
         case SemanticsRole::Window:
-            return 69;  // ATSPI_ROLE_WINDOW
+            return 69;   // ATSPI_ROLE_WINDOW
         case SemanticsRole::Toolbar:
-            return 63;  // ATSPI_ROLE_TOOL_BAR
+            return 63;   // ATSPI_ROLE_TOOL_BAR
         case SemanticsRole::StatusBar:
-            return 54;  // ATSPI_ROLE_STATUS_BAR
+            return 54;   // ATSPI_ROLE_STATUS_BAR
         case SemanticsRole::SpinButton:
-            return 52;  // ATSPI_ROLE_SPIN_BUTTON
+            return 52;   // ATSPI_ROLE_SPIN_BUTTON
         case SemanticsRole::Group:
-            return 42 + 1;  // ATSPI_ROLE_PANEL (43)
+            return 39;   // ATSPI_ROLE_PANEL
     }
     return 0;
+}
+
+// 节点显示名：根节点用应用名（宿主窗口标题）——AT-SPI 应用在注册表/
+// 屏幕阅读器侧以根对象名称显示（Orca “in (app)”）；其余节点用语义
+// label。libatspi 的 get_name() 走 Properties.Get("Name")，GetName
+// 成员与 GetAll 通道必须同值。
+[[maybe_unused]] std::string displayNameFor(
+    const SemanticsNode& node, const std::string& rootId,
+    const std::string& applicationName) {
+    if (node.id == rootId && !applicationName.empty()) {
+        return applicationName;
+    }
+    return node.label;
 }
 
 #if defined(LUMEN_HAS_DBUS)
@@ -247,6 +265,9 @@ class AtspiAccessibilityBridge::Impl {
     PlatformAccessibilityHost host;
     SemanticsTree tree;
     std::string focusedId;
+    // 宿主窗口激活状态（noteWindowActive 驱动）：根节点 ACTIVE 状态位
+    // 与 window:activate/deactivate 信号的同一事实来源。
+    bool windowActive{false};
     std::unordered_map<std::string, std::string> pathToId;
     std::unordered_map<std::string, std::string> idToPath;
     bool connected{false};
@@ -357,7 +378,7 @@ void appendVariantInt32(DBusMessageIter* parent, std::int32_t value) {
 }
 
 void appendStateArray(DBusMessageIter* parent, const SemanticsNode& node,
-                      const std::string& focused) {
+                      const std::string& focused, bool activeRoot) {
     DBusMessageIter array;
     dbus_message_iter_open_container(parent, DBUS_TYPE_ARRAY, "u", &array);
     // AT-SPI GetState returns two 32-bit bitsets, not a list of enum values.
@@ -365,6 +386,7 @@ void appendStateArray(DBusMessageIter* parent, const SemanticsNode& node,
     const auto append = [&bits](std::uint32_t state) {
         bits[state / 32] |= std::uint32_t{1} << (state % 32);
     };
+    if (activeRoot) append(1);  // ACTIVE（窗口激活；仅根/窗口节点传入）
     if ((node.flags & kSemanticsEnabled) != 0) append(8);   // ENABLED
     if ((node.actions & kActionFocus) != 0 &&
         (node.flags & kSemanticsEnabled) != 0) append(11);  // FOCUSABLE
@@ -465,7 +487,9 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
             property != nullptr) {
             return replyValue(connection, request, [&, current](DBusMessageIter* out) {
                 if (std::strcmp(property, "Name") == 0) {
-                    appendVariantString(out, current->label);
+                    appendVariantString(out, displayNameFor(
+                        *current, impl->tree.rootId,
+                        impl->host.applicationName));
                 } else if (std::strcmp(property, "Description") == 0) {
                     appendVariantString(out, "");
                 } else if (std::strcmp(property, "Role") == 0) {
@@ -541,7 +565,9 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
                     DBusMessageIter entry;
                     dbus_message_iter_open_container(&array, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
                     appendString(&entry, "Name");
-                    appendVariantString(&entry, current->label);
+                    appendVariantString(&entry, displayNameFor(
+                        *current, impl->tree.rootId,
+                        impl->host.applicationName));
                     dbus_message_iter_close_container(&array, &entry);
                 }
                 dbus_message_iter_close_container(out, &array);
@@ -553,8 +579,9 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
 
     if (std::strcmp(interface, "org.a11y.atspi.Accessible") == 0) {
         if (std::strcmp(member, "GetName") == 0) {
-            return replyValue(connection, request, [node](DBusMessageIter* out) {
-                appendString(out, node->label);
+            return replyValue(connection, request, [node, impl](DBusMessageIter* out) {
+                appendString(out, displayNameFor(*node, impl->tree.rootId,
+                                                  impl->host.applicationName));
             });
         }
         if (std::strcmp(member, "GetDescription") == 0) {
@@ -624,7 +651,8 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
         }
         if (std::strcmp(member, "GetState") == 0) {
             return replyValue(connection, request, [&, node](DBusMessageIter* out) {
-                appendStateArray(out, *node, impl->focusedId);
+                appendStateArray(out, *node, impl->focusedId,
+                                 impl->windowActive && node->id == impl->tree.rootId);
             });
         }
         if (std::strcmp(member, "GetApplication") == 0) {
@@ -710,11 +738,26 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
             });
         }
         if (std::strcmp(member, "GrabFocus") == 0) {
-            const auto status = impl->host.dispatch
-                                    ? impl->host.dispatch(impl->idAt(path), kActionFocus, {}, 0.0F)
-                                    : SemanticsActionStatus::NotHandled;
-            return replyValue(connection, request, [status](DBusMessageIter* out) {
-                dbus_bool_t value = status == SemanticsActionStatus::Handled ? TRUE : FALSE;
+            // 平台惯例（atk_component_grab_focus）：AT 抓焦点同时把所属
+            // 顶层窗口带到前台——屏幕阅读器由此把交互带到未激活应用；
+            // 窗口获得键盘焦点后经宿主 WindowFocusGained → noteWindowActive
+            // 发出真值 window:activate（本路径不伪造事件）。
+            const bool activated = impl->host.activateWindow &&
+                                   impl->host.activateWindow();
+            // 窗口根只做激活（语义根无 focus action——向根派发 focus 会
+            // 把应用壳焦点状态搅乱，后续控件焦点不再生效）；控件节点
+            // 额外走语义 focus action。
+            const bool isRootPath = std::strcmp(path, kRootPath) == 0;
+            const auto status = isRootPath || !impl->host.dispatch
+                                    ? SemanticsActionStatus::NotHandled
+                                    : impl->host.dispatch(impl->idAt(path),
+                                                          kActionFocus, {},
+                                                          0.0F);
+            return replyValue(connection, request, [activated, status](DBusMessageIter* out) {
+                dbus_bool_t value =
+                    (activated || status == SemanticsActionStatus::Handled)
+                        ? TRUE
+                        : FALSE;
                 dbus_message_iter_append_basic(out, DBUS_TYPE_BOOLEAN, &value);
             });
         }
@@ -910,6 +953,24 @@ void AtspiAccessibilityBridge::setFocusedNode(const std::string& id) {
         emitSignal(impl_.get(), path.c_str(), "org.a11y.atspi.Event.Object",
                    "StateChanged", "state", "focused", {}, 1);
     }
+#endif
+}
+
+void AtspiAccessibilityBridge::noteWindowActive(bool active) {
+    if (impl_->windowActive == active) return;
+    impl_->windowActive = active;
+#if defined(LUMEN_HAS_DBUS)
+    if (!impl_->connected) return;
+    // 屏幕阅读器按窗口激活切换“当前应用”：Orca/NVDA 不消费孤立的
+    // state-changed:focused，window:activate 之后才开始播报本应用。
+    // 线格式按 libatspi 客户端注册 "window:activate" 生成的 match 规则
+    //（interface=org.a11y.atspi.Event.Window + member=Activate/Deactivate，
+    // 经 dbus-monitor 实测比对）；active 状态位同步给按状态查询的 AT。
+    emitSignal(impl_.get(), kRootPath, "org.a11y.atspi.Event.Window",
+               active ? "Activate" : "Deactivate", "window",
+               "", {}, 0);
+    emitSignal(impl_.get(), kRootPath, "org.a11y.atspi.Event.Object",
+               "StateChanged", "state", "active", {}, active ? 1 : 0);
 #endif
 }
 

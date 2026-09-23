@@ -72,7 +72,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 增强链 M10 | 已完成动效与滚动体验 | 动画帧调度/整节点透明度转场/状态色过渡/惯性滚动（见 §10 M10 完成记录） |
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
 | 增强链 M12 | 已完成平台服务与发布补全 | 系统主题事件/强调色输入、三平台原生通知、三平台 OS 可访问性偏好查询、AppImage/.app/包变体（见 §10 M12 完成记录） |
-| 增强链 M13 | 进行中（原生 provider 已接入三平台） | 契约扩展/runApp 装配/UIA fragment 树、Linux AT-SPI2、macOS NSAccessibility；真实屏幕阅读器回环待平台验收（见 §10 M13 进行中记录） |
+| 增强链 M13 | 进行中（Linux Orca 回环已完成） | 契约扩展/runApp 装配/UIA fragment 树、Linux AT-SPI2（含窗口激活链路与 Orca 回环，2026-09-23）、macOS NSAccessibility；Windows 讲述人/NVDA 与 macOS VoiceOver 人工回环待平台验收（见 §10 M13 记录与追记） |
 | M14 实战可用收敛 | 规划中（M13 provider 验收后的发布硬化阶段） | 真实桌面验收、稳定性能门槛、生产生命周期与诊断、数据密集型控件；按阶段出口推进 |
 | 按需控件增强 · 集合控件 | 已完成 List/Tree/TreeList 与共享选择模型 | 四选择模式/树扁平化/源视口滚动框架接管（见 §10 集合控件完成记录） |
 | 按需控件增强 · 菜单与分栏 | 已完成 ContextMenu/MenuBar 与 Splitter | Secondary 通道/M11 overlay 菜单面板/分隔条框架接管（见 §10 对应完成记录） |
@@ -432,7 +432,7 @@ M1–M3 可以并行准备，但必须全部达到各自出口条件后才能进
 
 ### M13：原生无障碍 provider
 
-**状态**：进行中——Windows UIA、Linux AT-SPI2、macOS NSAccessibility provider 已实施（编译/headless 回归）；讲述人/NVDA、Orca、VoiceOver 真实回环仍待对应桌面平台验收。出口条件以三平台全部收口为准。
+**状态**：进行中——Windows UIA、Linux AT-SPI2、macOS NSAccessibility provider 已实施（编译/headless 回归）；2026-09-23 Linux Orca 真实回环在本机 GNOME Wayland+XWayland 桌面完成（焦点导航/激活/值设置 + Orca 消费证据，见 §10 追记）；讲述人/NVDA、VoiceOver 真实回环仍待对应桌面平台验收。出口条件以三平台全部收口为准。
 
 **目标**：把语义契约接到三平台原生屏幕阅读器（UIA/AT-SPI/NSAccessibility）。
 
@@ -1875,7 +1875,7 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
 
 ### M13 进行中记录（原生 provider，2026-09-22）
 
-- 完成日期：2026-09-22（provider 实施；三平台真实屏幕阅读器回环仍待平台验收）
+- 完成日期：2026-09-22（provider 实施）；2026-09-23 追记：Linux Orca 真实回环完成（见下方追记）。三平台真实屏幕阅读器回环中 Windows 讲述人/NVDA、macOS VoiceOver 仍待对应桌面平台人工验收。
 - 提交号：（本变更提交，见 Git 历史 `feat(a11y)`）
 - 变更：
   - 公共契约（`include/lumen/accessibility/bridge.h`）：`PlatformAccessibilityHost`
@@ -1919,15 +1919,64 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   `582/582`（未启用行为与现状一致——出口条件之一）。
 - 平台：本地 Windows 全部真验（headless + 真实窗口端到端）；windows.yml
   新增 `a11y-bridge` job（选项 ON + live smoke，CI 首跑为事实来源）。
-- 已知限制（与出口条件的差异）：
-  - AT-SPI/NSAccessibility 在无桌面服务或无原生窗口时能力如实降级；真实
-    Orca/VoiceOver 回环和 Windows 讲述人/NVDA 人工验收尚未声称完成。
-  - 讲述人/NVDA 人工回环待办（端到端冒烟已覆盖 UIA core 链路，但非真实
-    AT 验收）。
+- 已知限制（与出口条件的差异；2026-09-23 追记后）：
+  - AT-SPI/NSAccessibility 在无桌面服务或无原生窗口时能力如实降级；
+    Linux Orca 回环已于 2026-09-23 完成（见下方追记），Windows 讲述人/
+    NVDA 与 macOS VoiceOver 人工验收尚未声称完成。
   - Text/Scroll/Selection pattern 不做（设计文档 §3 非目标）；结构事件为
     整体失效（细粒度留优化）。
 - 回滚点：`286746d fix(platform): SDL 滚轮方向换算对齐平台原生手感`
   （P1 前）。
+
+### M13 追记：Linux Orca 真实回环（2026-09-23）
+
+- 提交号：（本变更提交，见 Git 历史 `feat(a11y)`）
+- 变更（review 发现并修复的四个真实缺陷 + 窗口激活链路补齐）：
+  - **AtspiRole 映射整体错位**：旧表按记忆值硬编码（Button=41 实为
+    POPUP_MENU、List=35 实为 MENU_ITEM、ProgressBar=38 实为
+    PAGE_TAB_LIST、Menu=32 实为 LIST_ITEM 等），屏幕阅读器按错误角色
+    播报。以本机 libatspi `Atspi.Role` 枚举逐值核对重写；Switch 用原生
+    SWITCH(130)。
+  - **根节点名为空**：libatspi `get_name()` 走 `Properties.Get("Name")`
+    （非 GetName 成员），旧实现只改了成员通道。三通道（GetName/
+    Properties.Get/GetAll）统一经 `displayNameFor` 返回应用名（宿主
+    窗口标题）；Orca 应用归属 "in Lumen Gallery" 随之正确。
+  - **缺窗口激活协议**：Orca 以 window:activate 切换“当前应用”，只发
+    state-changed:focused 不会播报。新增 `AccessibilityBridge::
+    noteWindowActive`（宿主 WindowFocusGained/Lost → runApp → AppShell
+    转发 → `Event.Window` Activate/Deactivate + 根 state-changed:active；
+    线格式经 dbus-monitor 捕获 libatspi 客户端注册 "window:activate" 的
+    match 规则实测比对）；`Component.GrabFocus` 按平台惯例（atk 同款）
+    经新增 `PlatformAccessibilityHost.activateWindow` → 宿主
+    `raiseWindow`（SDL_RaiseWindow；X11/XWayland 可置前，Wayland 由
+    合成器策略决定）抬升窗口，窗口根路径只做激活。
+  - **AT 派发不上报状态**：AT 焦点/激活/值派发无宿主事件伴随帧请求，
+    空闲应用 FOCUSED 状态永不上报。`performAccessibilityAction` 对
+    Handled 显式标脏，runApp a11y pump 按 `hasPendingFrame` 合并请求
+    一帧（语义推送随帧末）。
+- 验收证据（本机 GNOME Wayland + XWayland 真桌面，Orca 45.x +
+  speech-dispatcher）：
+  - 协议回归：`dbus-run-session -- python3 tests/atspi_live_tests.py`
+    扩展后全通（注册/窗口激活/焦点/激活/值回灌）。
+  - 真实注册表回环：libatspi 客户端驱动 gallery（X11 窗口）焦点导航
+    （Overview/Buttons FOCUSED）、激活（路由切换）、值设置（Slider 80
+    回读一致）。
+  - 真 Orca 消费：window:activate 以 priority 2 入队并被处理、为
+    "Lumen Gallery" 创建专属 script、state-changed:focused/active 与
+    property-change 事件全部到达（debug 日志留档）。
+  - 已知限制（如实记录）：语音播报要求 Orca 队列在应用存活期间排空且
+    焦点事件源未过期——共享会话事件风暴（Chromium 类应用）下积压可达
+    分钟级，处理时源已 DEAD；树重建期焦点信号源竞态与 Orca 短时去重
+    也会吞单次播报。回环功能判定不依赖语音。隔离会话偶发的 pyatspi
+    同步枚举阻塞属环境问题（验收工具 `tests/atspi_orca_loop.py` 文件
+    头记录调用方式与前置）。
+- 测试：新增 `recording_bridge_records_window_activation`、
+  `app_shell_forwards_window_active_and_marks_dirty_on_at_actions`；
+  `tests/atspi_orca_loop.py`（手工验收工具，模式同 UIA live smoke）。
+  本地 Linux：a11y 桥 ON Debug 791/791、默认 OFF Release 790/790。
+- 平台：Linux（Wayland+XWayland 桌面）完成 Orca 回环；Windows 讲述人/
+  NVDA、macOS VoiceOver 人工回环待办（UIA live smoke 已覆盖 UIA core
+  链路；NSAccessibility headless 树投影已有）。
 
 ### 既有能力优化：预乘 alpha 完成记录（2026-09-20）
 

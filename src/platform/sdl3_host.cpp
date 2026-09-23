@@ -1057,6 +1057,20 @@ void Sdl3ApplicationHost::requestWindowClose(core::WindowId id) {
     pending_.push_back(std::move(event));
 }
 
+void Sdl3ApplicationHost::raiseWindow(core::WindowId id) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr && !windows_.empty()) {
+        entry = &windows_.begin()->second;
+    }
+    if (entry == nullptr) {
+        return;
+    }
+    // M13：AT 抓焦点 → 抬升窗口（Wayland 经 xdg-activation 由合成器
+    // 决定是否授予键盘焦点；X11/Windows 直接置前）。
+    SDL_RaiseWindow(static_cast<SDL_Window*>(
+        entry->window->nativeSurface().nativeWindow));
+}
+
 void Sdl3ApplicationHost::setWindowDragRegion(
     core::WindowId id, std::function<bool(core::Offset)> predicate) {
     if (WindowEntry* entry = find(id)) {

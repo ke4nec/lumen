@@ -33,13 +33,18 @@ events = []
 listener = Atspi.EventListener.new(lambda event: events.append(event.type))
 listener.register("object:property-change")
 listener.register("object:state-changed")
+listener.register("window:activate")
 with subprocess.Popen([sys.argv[1]]) as app:
     try:
         desktop = Atspi.get_desktop(0)
         def find(name):
             return next((node for node in descendants(desktop) if node.get_name() == name), None)
         button = eventually(lambda: find("Apply"))
+        # GrabFocus → activateWindow 钩子 → window:activate（真实窗口路径
+        # 经 SDL 抬升 + WindowFocusGained 到达同一入口）；屏幕阅读器以
+        # window:activate 切换“当前应用”。libatspi 客户端按事件类型到达。
         assert button.get_component_iface().grab_focus()
+        eventually(lambda: "window:activate" in events)
         eventually(lambda: button.get_state_set().contains(Atspi.StateType.FOCUSED))
         assert button.get_action_iface().do_action(0)
         eventually(lambda: find("Applied"))
@@ -49,7 +54,7 @@ with subprocess.Popen([sys.argv[1]]) as app:
         assert slider.get_value_iface().set_current_value(75)
         eventually(lambda: slider.get_value_iface().get_current_value() == 75)
         assert app.poll() is None
-        print("AT-SPI native registry / focus / activate / value round-trip passed")
+        print("AT-SPI native registry / window activation / focus / activate / value round-trip passed")
     finally:
         app.terminate()
         app.wait(timeout=5)

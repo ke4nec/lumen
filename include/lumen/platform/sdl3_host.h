@@ -63,6 +63,8 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     void minimizeWindow(core::WindowId id) override;
     void toggleMaximizeWindow(core::WindowId id) override;
     void requestWindowClose(core::WindowId id) override;
+    // M13：AT 抓焦点 → 抬升窗口（GrabFocus 平台惯例）。
+    void raiseWindow(core::WindowId id) override;
     void setWindowDragRegion(
         core::WindowId id,
         std::function<bool(core::Offset)> predicate) override;
