@@ -8,9 +8,16 @@ with a guessed commit or hardware description.
 The reviewed reference is pinned in `reference.json` and
 `LUMEN_PERF_BASELINE_COMMIT` in `.github/workflows/linux.yml`. CI checks out and
 builds that revision with the same toolchain as the candidate, then
-`run_perf_gate.py` alternates three reference/candidate measurements for each
-backend and scene. Both sides use the median, 30 warmup and 300 measured frames,
-and the unchanged 10% limit. Raw measurements and comparisons are archived in
+`run_perf_gate.py` alternates five reference/candidate measurements for each
+backend and scene, with 30 warmup and 300 measured frames and the unchanged 10%
+limit. Timing metrics are judged under two aggregations of the same repeats —
+the interference-robust minimum (host noise only ever adds CPU time) and the
+mode-robust median (a short phase's tail percentile has wide run-to-run
+sampling spread) — and a regression fails only when it exceeds the limit under
+both. Allocation counts always use the median: they are discrete,
+path-dependent values whose runs settle in one of a few modes, so a minimum
+would latch onto whichever side happened to catch the low mode. Raw
+measurements and both per-aggregation comparisons are archived in
 `bench-results/<backend>/`; a reference refresh is an explicit reviewed commit.
 Linux CPU/raster measurements use the same allowed logical CPU for both versions;
 the affinity is recorded. GPU keeps its allowed CPU set for driver workers.

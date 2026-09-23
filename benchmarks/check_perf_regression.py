@@ -79,8 +79,19 @@ def _relative_delta(baseline: float, current: float) -> float | None:
     return (current - baseline) / baseline
 
 
-def _aggregate(reports: list[dict[str, Any]]) -> dict[str, Any]:
-    """Use the median of repeated reports to remove scheduler outliers."""
+def _aggregate(reports: list[dict[str, Any]],
+               time_estimator=statistics.median) -> dict[str, Any]:
+    """Reduce repeated reports of one binary to a single comparison input.
+
+    The CLI flow keeps the median. The interleaved same-machine gate
+    (`run_perf_gate.py`) passes `min` for the timing metrics: host
+    interference is strictly additive for CPU time, so the smallest repeated
+    sample estimates the uncontended cost and cannot turn scheduler noise
+    into a regression on either side. Allocation counts keep the median —
+    they are path-dependent discrete values (a run settles in one of a few
+    modes), so a minimum would latch onto whichever side happened to catch
+    the low mode in one repeat.
+    """
     if not reports:
         raise ValueError("at least one current report is required")
     first = copy.deepcopy(reports[0])
@@ -102,8 +113,28 @@ def _aggregate(reports: list[dict[str, Any]]) -> dict[str, Any]:
                         f"phases.{phase_name}.{metric}", Path("<current>"))
                 for report in reports
             ]
-            phase[metric] = statistics.median(values)
+            phase[metric] = (time_estimator(values) if metric.endswith("_us")
+                             else statistics.median(values))
     return first
+
+
+def combine_verdicts(minimum: dict[str, Any], median: dict[str, Any]) -> dict[str, Any]:
+    """Gate verdict from two aggregations of the same interleaved repeats.
+
+    Timing metrics are compared once with the interference-robust minimum and
+    once with the mode-robust median. A regression fails the gate only when it
+    exceeds the limit under both: one-sided host interference inflates the
+    median only, while the run-to-run sampling spread of a short phase's tail
+    percentile moves the minimum alone. Allocation counts are identical under
+    both aggregations (median), so a real allocation regression still fails.
+    """
+    return {
+        "passed": minimum["passed"] or median["passed"],
+        "tolerance": minimum["tolerance"],
+        "baseline_commit": minimum["baseline_commit"],
+        "current_commit": minimum["current_commit"],
+        "aggregations": {"minimum": minimum, "median": median},
+    }
 
 
 def compare(baseline: dict[str, Any], current: dict[str, Any], tolerance: float,

@@ -106,6 +106,59 @@ class PerfGateTests(unittest.TestCase):
         )
         self.assertTrue(result["passed"], result["failures"])
 
+    def test_min_estimator_discards_interference_but_catches_regression(self):
+        # One repeat inflated by scheduler interference must not fail the
+        # interleaved gate; the minimum estimates the uncontended cost.
+        clean = report()
+        noisy = report()
+        for phase in noisy["phases"].values():
+            phase["p50_us"] *= 1.6
+            phase["p95_us"] *= 1.6
+        aggregated = GATE._aggregate([clean, noisy, clean], min)
+        result = GATE.compare(report(), aggregated, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertTrue(result["passed"], result["failures"])
+        # A uniform slowdown across every repeat is a real regression.
+        slow = [report(), report(), report()]
+        for repeated in slow:
+            for phase in repeated["phases"].values():
+                phase["p50_us"] *= 1.15
+        aggregated = GATE._aggregate(slow, min)
+        result = GATE.compare(report(), aggregated, 0.10,
+                              Path("baseline"), Path("current"))
+        self.assertFalse(result["passed"])
+
+    def test_combine_verdicts_requires_both_aggregations_to_fail(self):
+        # One-sided interference or a tail-sampling lottery trips at most one
+        # aggregation; only a regression over the limit under both fails.
+        def compared(p50_factor):
+            current = report()
+            for phase in current["phases"].values():
+                phase["p50_us"] *= p50_factor
+            return GATE.compare(report(), current, 0.10,
+                                Path("baseline"), Path("current"))
+
+        tripped_once = GATE.combine_verdicts(compared(1.05), compared(1.15))
+        self.assertTrue(tripped_once["passed"])
+        self.assertFalse(tripped_once["aggregations"]["median"]["passed"])
+        tripped_twice = GATE.combine_verdicts(compared(1.15), compared(1.15))
+        self.assertFalse(tripped_twice["passed"])
+        json.dumps(tripped_once, allow_nan=False)
+
+    def test_min_time_estimator_keeps_median_allocations(self):
+        # Allocation counts are discrete and settle in one of a few modes per
+        # run; a single low-mode repeat must not leak into the aggregate as a
+        # fake improvement/regression on the other side.
+        def with_allocs(value):
+            rep = report()
+            for phase in rep["phases"].values():
+                phase["allocs_p50"] = value
+            return rep
+
+        aggregated = GATE._aggregate(
+            [with_allocs(2098), with_allocs(1555), with_allocs(2102)], min)
+        self.assertEqual(aggregated["phases"]["paint"]["allocs_p50"], 2098)
+
     def test_identity_and_ten_percent_regression_fail(self):
         baseline = report()
         current = report()
