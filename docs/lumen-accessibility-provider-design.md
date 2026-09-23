@@ -174,7 +174,7 @@ Linux 侧走 org.a11y.Bus D-Bus 协议（Qt/GTK 同款；仓库已有 libdbus �
 macOS 侧以 AppKit `NSAccessibilityElement` 树挂到 SDL 窗口 contentView：
 
 - **接入**：`nativeWindowHandle` 返回 NSWindow*（SDL 属性）；provider 侧 ObjC++ 取 `contentView`，向 contentView 附加自定义 `NSAccessibilityElement` 根并覆盖 `NSAccessibilityChildrenAttribute`。
-- **映射**：role→AXRole（AXButton/AXCheckBox/AXSlider/AXList/AXOutline（Tree）/AXMenuItem/AXTextField/AXStaticText/AXImage/AXGroup/AXSplitGroup…）；label→AXDescription/AXTitle；value→AXValue（数值控件 NSNumber 0..100）；checked→AXValue @1/@0；focused→AXFocused 子树元素；bounds→AXPosition/AXSize（AppKit 点坐标=逻辑像素，天然一致）。
+- **映射**：role→AXRole（AXButton/AXCheckBox/AXSlider/AXList/AXOutline（Tree）/AXMenuItem/AXTextField/AXStaticText/AXImage/AXGroup/AXSplitGroup…；AppKit 无 AXDialog role，Dialog/Window 统一映射 AXWindow 并以 AXSubrole 区分（Dialog→`NSAccessibilityDialogSubrole`、Window→`NSAccessibilityStandardWindowSubrole`，其余为 nil））；label→AXDescription/AXTitle；value→AXValue（数值控件 NSNumber 0..100）；checked→AXValue @1/@0；focused→AXFocused 子树元素；bounds→AXPosition/AXSize（AppKit 点坐标=逻辑像素，天然一致）。
 - **action**：`accessibilityPerformPress` → dispatch(Activate)；`accessibilitySetAccessibilityValue` → dispatch(SetValue)；Slider 键盘调节同路径。
 - **事件**：`NSAccessibilityPostNotification`（FocusedUIElementChanged/LayoutChanged/ValueChanged）。
 - **验收**：VoiceOver 回环（M13 出口；当前提交提供编译目标和 headless 树投影，尚未声称真实桌面验收完成）。

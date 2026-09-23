@@ -70,7 +70,9 @@ NSString* roleFor(SemanticsRole role) {
         case SemanticsRole::Menu:
             return NSAccessibilityMenuRole;
         case SemanticsRole::Dialog:
-            return NSAccessibilityDialogRole;
+            // AppKit has no NSAccessibilityDialogRole; dialogs are windows
+            // with the dialog subrole (see subroleFor below).
+            return NSAccessibilityWindowRole;
         case SemanticsRole::Window:
             return NSAccessibilityWindowRole;
         case SemanticsRole::Toolbar:
@@ -82,6 +84,17 @@ NSString* roleFor(SemanticsRole role) {
             return NSAccessibilityIncrementorRole;
     }
     return NSAccessibilityGroupRole;
+}
+
+NSString* subroleFor(SemanticsRole role) {
+    switch (role) {
+        case SemanticsRole::Dialog:
+            return NSAccessibilityDialogSubrole;
+        case SemanticsRole::Window:
+            return NSAccessibilityStandardWindowSubrole;
+        default:
+            return nil;
+    }
 }
 
 NSString* stringFor(const std::string& value) {
@@ -150,7 +163,8 @@ NsAccessibilityBridge::Impl::~Impl() { detach(); }
 - (BOOL)accessibilityIsIgnored { return ![self isAccessibilityElement]; }
 
 - (NSArray*)accessibilityAttributeNames {
-    return @[NSAccessibilityRoleAttribute, NSAccessibilityRoleDescriptionAttribute,
+    return @[NSAccessibilityRoleAttribute, NSAccessibilitySubroleAttribute,
+             NSAccessibilityRoleDescriptionAttribute,
              NSAccessibilityTitleAttribute, NSAccessibilityDescriptionAttribute,
              NSAccessibilityValueAttribute, NSAccessibilityEnabledAttribute,
              NSAccessibilityFocusedAttribute, NSAccessibilityChildrenAttribute,
@@ -163,8 +177,11 @@ NsAccessibilityBridge::Impl::~Impl() { detach(); }
     if ([attribute isEqualToString:NSAccessibilityRoleAttribute]) {
         return roleFor(node.role);
     }
+    if ([attribute isEqualToString:NSAccessibilitySubroleAttribute]) {
+        return subroleFor(node.role);
+    }
     if ([attribute isEqualToString:NSAccessibilityRoleDescriptionAttribute]) {
-        return NSAccessibilityRoleDescription(roleFor(node.role), nil);
+        return NSAccessibilityRoleDescription(roleFor(node.role), subroleFor(node.role));
     }
     if ([attribute isEqualToString:NSAccessibilityTitleAttribute] ||
         [attribute isEqualToString:NSAccessibilityDescriptionAttribute]) {
