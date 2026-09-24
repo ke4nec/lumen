@@ -38,6 +38,7 @@ set(LUMEN_TEST_SOURCES
     # Spin 控件：值模型/提交/自动重复/键盘/滚轮/禁用/Chrome 三态
     #（docs/lumen-spin-design.md，2026-09）。
     spin_tests.cpp
+    datagrid_tests.cpp
     # ToolBar 控件：命令激活/键盘漫游/溢出折叠/面板/tooltip/语义
     #（docs/lumen-toolbar-design.md，2026-09）。
     toolbar_tests.cpp

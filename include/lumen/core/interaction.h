@@ -196,6 +196,10 @@ class InteractionController {
 
     // --- 剪贴板（可选注入；宿主 Clipboard 适配 core::ClipboardProvider） ---
     void setClipboard(ClipboardProvider* clipboard);
+    // M14-D：注入剪贴板读取（DataGrid 等组合控件消费；未注入 = nullptr）。
+    [[nodiscard]] ClipboardProvider* clipboard() const {
+        return clipboard_;
+    }
 
     // --- M1 字体事实（可选注入） ---
     // 命中测试/光标定位与布局共享同一份 FontManager（Skia 后端时传入

@@ -2006,6 +2006,30 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   （仅 renderer 替换路径，M7 验证的设备重建语义）；干净容器级包验证
   仍以 CI runner 为准。
 
+### M14-D 阶段记录：DataGrid 首版契约（2026-09-24）
+
+- 提交号：（本变更提交，见 Git 历史 `feat(widgets)`）
+- 变更：`widgets::DataGridController`（`include/lumen/widgets/datagrid.h` +
+  `src/widgets/datagrid.cpp`，设计 `docs/lumen-datagrid-design.md` + 视觉稿
+  `design/datagrid.html`）。组合件实现：Column[表头行, List(行虚拟化)]，
+  零新增 WidgetType、零布局引擎改动；行 = 集合行（选中/焦点环/语义与
+  List 一致）。
+- 首版契约覆盖：多列（固定像素宽 ≥40）；运行时 `resizeColumn` +
+  `columnWidths()` 持久化；排序回调（`requestSort` 状态机 + 表头
+  ▲/▼ 指示 + `onSortRequest`，数据重排在应用侧）；筛选回调契约
+  （`onFilterRequest`）；行选择（共享 SelectionModel 四模式）；键盘导航
+  （Up/Down/Home/End/PageUp/PageDown/Ctrl+A 与 List 同源 + Left/Right
+  列焦点 + Enter 编辑/激活 + Escape 取消）；TSV 复制/粘贴
+  （Ctrl+C/Ctrl+V 经宿主剪贴板；`InteractionController::clipboard()`
+  读取口新增）；单元格编辑与校验（beginEdit/commitEdit/cancelEdit +
+  `setCellValidator` 错误文案 + `onCellEdited`）。
+- 测试：`tests/datagrid_tests.cpp` 6 用例（列模型/钳制/锁定列、100 行
+  虚拟化物化、选择+键盘+列焦点、排序状态机与回调、TSV 复制粘贴双向、
+  编辑校验失败/通过/取消/Enter 入口）。全量 801/801、a11y 桥 ON
+  802/802。
+- 已知限制（§9，后续增量不破坏契约）：水平虚拟化/双轴滚动协调、RTL
+  镜像、列重排、拖放、编辑器失焦自动提交、Grid/Table 专属语义 role。
+
 ### 既有能力优化：预乘 alpha 完成记录（2026-09-20）
 
 - 范围：[预乘 alpha 计划](lumen-premultiplied-alpha-rendering-plan.md) P0–P5，按阶段

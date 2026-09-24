@@ -12,6 +12,9 @@ add_library(lumen-widgets STATIC
     splitter.cpp
     # Spin（spin-design）：数值步进组合件（零新增 WidgetType）。
     spin.cpp
+    # DataGrid（datagrid-design，M14-D）：多列数据网格组合件（零新增
+    # WidgetType；行虚拟化复用 VirtualList）。
+    datagrid.cpp
     # ToolBar（toolbar-design）：工具栏组合件（零新增 WidgetType）。
     toolbar.cpp
     # StatusBar（statusbar-design）：状态栏组合件（零新增 WidgetType）。

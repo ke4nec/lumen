@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen DataGrid 设计稿 · M14-D</title>
+<meta name="description" content="Lumen DataGrid（多列数据网格）首版契约视觉稿，配套 docs/lumen-datagrid-design.md，视觉规格对齐 docs/lumen-visual-system-design.md。">
+<style>
+  :root {
+    color-scheme: light;
+    --board-bg: #e9edf3;
+    --card-bg: #ffffff;
+    --ink: #18181b;
+    --muted: #6b7280;
+    --line: #e4e4e7;
+    --accent: #2563eb;
+    --accent-soft: #dbeafe;
+    --danger: #dc2626;
+    --danger-soft: #fee2e2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px; background: var(--board-bg);
+    font: 14px/1.5 system-ui, "Segoe UI", "Noto Sans SC", sans-serif;
+    color: var(--ink);
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 13px; }
+  .board { max-width: 860px; margin: 0 auto; }
+  .card {
+    background: var(--card-bg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 20px; margin-bottom: 20px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  /* 网格本体：表头 36 高 + 40 行高，4px grid */
+  table.grid { border-collapse: collapse; width: 100%; }
+  table.grid th, table.grid td {
+    height: 40px; padding: 0 12px; text-align: left;
+    border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  table.grid th {
+    height: 36px; font-weight: 600; background: #fafafa;
+    border-bottom: 1px solid #d4d4d8; cursor: pointer; user-select: none;
+  }
+  table.grid th .sort { color: var(--accent); margin-left: 4px; }
+  col.c-name { width: 160px; } col.c-qty { width: 96px; } col.c-note { width: 240px; }
+  /* 选中行（Extended 随动 = selection.background 承载；无焦点环双指示） */
+  tr.selected td { background: var(--accent-soft); }
+  /* current 行（焦点行：底色块满足可见性） */
+  tr.current td { outline: 2px solid var(--accent); outline-offset: -2px; }
+  /* 禁用行 */
+  tr.disabled td { color: #a1a1aa; }
+  /* 编辑态单元格：树内 text_field，宽与列对齐 */
+  td.editing { padding: 4px 8px; }
+  td.editing input {
+    width: 100%; height: 30px; border: 1px solid var(--accent);
+    border-radius: 4px; padding: 0 8px; font: inherit; outline: none;
+  }
+  td.editing .error { color: var(--danger); font-size: 12px; display: block; }
+  .legend { font-size: 12px; color: var(--muted); margin-top: 12px; }
+  .kbd {
+    display: inline-block; padding: 1px 6px; border: 1px solid var(--line);
+    border-bottom-width: 2px; border-radius: 4px; background: #fafafa;
+    font: 12px ui-monospace, monospace; margin: 0 1px;
+  }
+</style>
+</head>
+<body>
+<div class="board">
+  <h1>Lumen DataGrid · M14-D 首版契约</h1>
+  <p class="sub">组合件：Column[表头行, List(行虚拟化)]；零新增 WidgetType。规格见 docs/lumen-datagrid-design.md。</p>
+
+  <div class="card">
+    <h2>默认（Name 可排序 · Qty/Note 可编辑 · r3 选中 + current · r5 编辑中）</h2>
+    <table class="grid">
+      <colgroup><col class="c-name"><col class="c-qty"><col class="c-note"></colgroup>
+      <tr><th>Name<span class="sort">▲</span></th><th>Qty</th><th>Note（锁定宽）</th></tr>
+      <tr><td>item-0</td><td>3</td><td>note 0</td></tr>
+      <tr class="disabled"><td>item-1</td><td>6</td><td>禁用行（不参与选择/编辑）</td></tr>
+      <tr class="selected current"><td>item-2</td><td>9</td><td>选中 + current（焦点可见性由选中底色满足）</td></tr>
+      <tr><td>item-3</td><td>12</td><td>note 3</td></tr>
+      <tr>
+        <td>item-4</td>
+        <td class="editing"><input value="abc"><span class="error">digits only</span></td>
+        <td>校验失败保留编辑态</td>
+      </tr>
+      <tr><td>item-5</td><td>18</td><td>note 5</td></tr>
+    </table>
+    <p class="legend">
+      键盘：<span class="kbd">↑</span><span class="kbd">↓</span> 移动 current（Extended 随动=替换）·
+      <span class="kbd">Shift</span>+<span class="kbd">↓</span> 区间 · <span class="kbd">←</span><span class="kbd">→</span> 列焦点 ·
+      <span class="kbd">Enter</span> 编辑/激活 · <span class="kbd">Esc</span> 取消 ·
+      <span class="kbd">Ctrl</span>+<span class="kbd">A</span> 全选 ·
+      <span class="kbd">Ctrl</span>+<span class="kbd">C/V</span> TSV 复制/粘贴
+    </p>
+  </div>
+</div>
+</body>
+</html>
