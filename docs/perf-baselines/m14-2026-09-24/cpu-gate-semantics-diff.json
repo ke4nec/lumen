@@ -1,0 +1,534 @@
+{
+  "passed": true,
+  "tolerance": 0.1,
+  "baseline_commit": "445bae5dd4893e7020054ed3c7b98dfdf8d77191",
+  "current_commit": "f3d41179773c02468f45238da88a9b236b9dcca6",
+  "aggregations": {
+    "minimum": {
+      "baseline": ".perf-reference/build/benchmarks/lumen-scene-bench",
+      "current": "build-bench/benchmarks/lumen-scene-bench",
+      "baseline_commit": "445bae5dd4893e7020054ed3c7b98dfdf8d77191",
+      "current_commit": "f3d41179773c02468f45238da88a9b236b9dcca6",
+      "tolerance": 0.1,
+      "passed": false,
+      "checks": [
+        {
+          "field": "commands_per_frame",
+          "baseline": 480.0,
+          "current": 480.0,
+          "relative_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "frame",
+          "metric": "p50_us",
+          "baseline": 13197.9,
+          "current": 13564.5,
+          "relative_delta": 0.027777146364194333,
+          "absolute_delta": 366.60000000000036,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "frame",
+          "metric": "p95_us",
+          "baseline": 14480.8,
+          "current": 16071.3,
+          "relative_delta": 0.1098350919838683,
+          "absolute_delta": 1590.5,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "frame",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "frame",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "p50_us",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "p95_us",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "layout",
+          "metric": "p50_us",
+          "baseline": 389.5,
+          "current": 398.2,
+          "relative_delta": 0.02233632862644413,
+          "absolute_delta": 8.699999999999989,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "layout",
+          "metric": "p95_us",
+          "baseline": 632.6,
+          "current": 604.1,
+          "relative_delta": -0.045052165665507425,
+          "absolute_delta": -28.5,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "layout",
+          "metric": "allocs_p50",
+          "baseline": 1172.0,
+          "current": 1172.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "layout",
+          "metric": "alloc_bytes_p50",
+          "baseline": 100071.0,
+          "current": 100071.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "paint",
+          "metric": "p50_us",
+          "baseline": 1688.1,
+          "current": 1808.0,
+          "relative_delta": 0.07102659795035846,
+          "absolute_delta": 119.90000000000009,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "paint",
+          "metric": "p95_us",
+          "baseline": 2251.6,
+          "current": 2676.8,
+          "relative_delta": 0.18884348907443607,
+          "absolute_delta": 425.2000000000003,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "paint",
+          "metric": "allocs_p50",
+          "baseline": 1091.0,
+          "current": 1091.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "paint",
+          "metric": "alloc_bytes_p50",
+          "baseline": 187312.0,
+          "current": 187312.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "reconcile",
+          "metric": "p50_us",
+          "baseline": 128.8,
+          "current": 145.1,
+          "relative_delta": 0.12655279503105576,
+          "absolute_delta": 16.299999999999983,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "reconcile",
+          "metric": "p95_us",
+          "baseline": 303.6,
+          "current": 317.8,
+          "relative_delta": 0.0467720685111989,
+          "absolute_delta": 14.199999999999989,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "reconcile",
+          "metric": "allocs_p50",
+          "baseline": 10.0,
+          "current": 10.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "reconcile",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "submit",
+          "metric": "p50_us",
+          "baseline": 1490.7,
+          "current": 1607.4,
+          "relative_delta": 0.07828536928959552,
+          "absolute_delta": 116.70000000000005,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "submit",
+          "metric": "p95_us",
+          "baseline": 1984.3,
+          "current": 2312.3,
+          "relative_delta": 0.16529758605049652,
+          "absolute_delta": 328.0000000000002,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "submit",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "submit",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        }
+      ],
+      "failures": [
+        {
+          "kind": "regression",
+          "phase": "frame",
+          "metric": "p95_us",
+          "baseline": 14480.8,
+          "current": 16071.3,
+          "relative_delta": 0.1098350919838683,
+          "absolute_delta": 1590.5,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "kind": "regression",
+          "phase": "paint",
+          "metric": "p95_us",
+          "baseline": 2251.6,
+          "current": 2676.8,
+          "relative_delta": 0.18884348907443607,
+          "absolute_delta": 425.2000000000003,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "kind": "regression",
+          "phase": "submit",
+          "metric": "p95_us",
+          "baseline": 1984.3,
+          "current": 2312.3,
+          "relative_delta": 0.16529758605049652,
+          "absolute_delta": 328.0000000000002,
+          "limit": 0.1,
+          "floor_us": 50.0
+        }
+      ]
+    },
+    "median": {
+      "baseline": ".perf-reference/build/benchmarks/lumen-scene-bench",
+      "current": "build-bench/benchmarks/lumen-scene-bench",
+      "baseline_commit": "445bae5dd4893e7020054ed3c7b98dfdf8d77191",
+      "current_commit": "f3d41179773c02468f45238da88a9b236b9dcca6",
+      "tolerance": 0.1,
+      "passed": true,
+      "checks": [
+        {
+          "field": "commands_per_frame",
+          "baseline": 480.0,
+          "current": 480.0,
+          "relative_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "frame",
+          "metric": "p50_us",
+          "baseline": 13864.9,
+          "current": 13770.1,
+          "relative_delta": -0.006837409573815842,
+          "absolute_delta": -94.79999999999927,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "frame",
+          "metric": "p95_us",
+          "baseline": 16485.2,
+          "current": 16415.3,
+          "relative_delta": -0.004240166937616859,
+          "absolute_delta": -69.90000000000146,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "frame",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "frame",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "p50_us",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "p95_us",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "layout",
+          "metric": "p50_us",
+          "baseline": 435.9,
+          "current": 414.0,
+          "relative_delta": -0.05024088093599444,
+          "absolute_delta": -21.899999999999977,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "layout",
+          "metric": "p95_us",
+          "baseline": 703.9,
+          "current": 695.4,
+          "relative_delta": -0.012075578917459867,
+          "absolute_delta": -8.5,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "layout",
+          "metric": "allocs_p50",
+          "baseline": 1172.0,
+          "current": 1172.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "layout",
+          "metric": "alloc_bytes_p50",
+          "baseline": 100071.0,
+          "current": 100071.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "paint",
+          "metric": "p50_us",
+          "baseline": 1879.8,
+          "current": 1856.0,
+          "relative_delta": -0.012660921374614297,
+          "absolute_delta": -23.799999999999955,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "paint",
+          "metric": "p95_us",
+          "baseline": 2843.6,
+          "current": 2906.6,
+          "relative_delta": 0.022155014770009848,
+          "absolute_delta": 63.0,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "paint",
+          "metric": "allocs_p50",
+          "baseline": 1091.0,
+          "current": 1091.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "paint",
+          "metric": "alloc_bytes_p50",
+          "baseline": 187312.0,
+          "current": 187312.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "reconcile",
+          "metric": "p50_us",
+          "baseline": 152.8,
+          "current": 148.9,
+          "relative_delta": -0.025523560209424118,
+          "absolute_delta": -3.9000000000000057,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "reconcile",
+          "metric": "p95_us",
+          "baseline": 319.1,
+          "current": 356.7,
+          "relative_delta": 0.11783140081479149,
+          "absolute_delta": 37.599999999999966,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "reconcile",
+          "metric": "allocs_p50",
+          "baseline": 10.0,
+          "current": 10.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "reconcile",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "submit",
+          "metric": "p50_us",
+          "baseline": 1650.8,
+          "current": 1634.3,
+          "relative_delta": -0.009995153864792827,
+          "absolute_delta": -16.5,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "submit",
+          "metric": "p95_us",
+          "baseline": 2503.0,
+          "current": 2586.4,
+          "relative_delta": 0.03332001598082305,
+          "absolute_delta": 83.40000000000009,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "submit",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "submit",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        }
+      ],
+      "failures": []
+    }
+  }
+}

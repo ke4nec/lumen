@@ -73,7 +73,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
 | 增强链 M12 | 已完成平台服务与发布补全 | 系统主题事件/强调色输入、三平台原生通知、三平台 OS 可访问性偏好查询、AppImage/.app/包变体（见 §10 M12 完成记录） |
 | 增强链 M13 | 进行中（Linux Orca 回环已完成） | 契约扩展/runApp 装配/UIA fragment 树、Linux AT-SPI2（含窗口激活链路与 Orca 回环，2026-09-23）、macOS NSAccessibility；Windows 讲述人/NVDA 与 macOS VoiceOver 人工回环待平台验收（见 §10 M13 记录与追记） |
-| M14 实战可用收敛 | 规划中（M13 provider 验收后的发布硬化阶段） | 真实桌面验收、稳定性能门槛、生产生命周期与诊断、数据密集型控件；按阶段出口推进 |
+| M14 实战可用收敛 | 进行中（B/D 阶段证据落地；A 为 Linux 部分，C 首版） | M14-B 三后端门禁+A/A 全过（2026-09-24 归档）；M14-C 资源接线/结构化诊断首版；M14-D DataGrid 首版契约；M14-A Linux 1h 浸泡+窗口冒烟（跨平台人工清单未做，见 §10 各阶段记录） |
 | 按需控件增强 · 集合控件 | 已完成 List/Tree/TreeList 与共享选择模型 | 四选择模式/树扁平化/源视口滚动框架接管（见 §10 集合控件完成记录） |
 | 按需控件增强 · 菜单与分栏 | 已完成 ContextMenu/MenuBar 与 Splitter | Secondary 通道/M11 overlay 菜单面板/分隔条框架接管（见 §10 对应完成记录） |
 | 按需控件增强 · 自定义标题栏 | 已完成无边框窗口 chrome | customTitleBar/拖拽区谓词/窗口操作宿主服务（见 §10 标题栏完成记录） |
@@ -2029,6 +2029,38 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   802/802。
 - 已知限制（§9，后续增量不破坏契约）：水平虚拟化/双轴滚动协调、RTL
   镜像、列重排、拖放、编辑器失焦自动提交、Grid/Table 专属语义 role。
+
+### M14-B 阶段记录：性能门槛收口（2026-09-24）
+
+- 提交号：（本变更提交，见 Git 历史 `docs(perf)`）
+- 证据归档：`docs/perf-baselines/m14-2026-09-24/`（15 份判定 JSON +
+  README：命令/环境/复现）。
+- 结果：CPU 5/5、Skia 光栅 5/5、Skia GPU（llvmpipe）5/5 全过（pinned
+  基线 `445bae5` vs 当前树，交错 ×5、min+median 双聚合、10% 门槛）；
+  同二进制 A/A 自对照 5/5。
+- 环境噪声记录：首次 A/A 在 1 小时浸泡 + 并行构建争抢下出现 submit
+  p95 +54% 自回归——按规则标记环境不稳定并在静默环境复跑通过；未改
+  阈值/基线。
+- 本机 GPU 门禁补充：Wayland 会话下 SDL 默认 wayland 驱动的 EGL 不可
+  用，需 `SDL_VIDEODRIVER=x11`（XWayland GLX + llvmpipe）；CI 的
+  xvfb 路径不受影响（README 记录）。
+- 覆盖差异（如实）：Windows/macOS runner 的对应门禁以 CI job 为准
+  （本次为本地 Linux 证据）；VirtualList 场景已入 CI 五场景清单
+  （`run_perf_gate.py::SCENARIOS`）。
+
+### M14-A 阶段记录：Linux 真实会话验收（部分，2026-09-24）
+
+- 证据（本机 GNOME Wayland 真实登录会话）：
+  - **1 小时双窗口浸泡**：gallery + settings（系统字体）连续运行
+    3600s，120 轮采样 ×2 窗口；**0 次死亡/重启**；RSS 全程
+    417112–419156 KB（±2MB 抖动，无泄漏趋势）。
+  - **窗口冒烟**：gallery 窗口模式 120 帧干净退出（Wayland 原生、
+    系统字体、M13 a11y 桥构建）；X11/XWayland 路径经 Orca 回环验证
+    （M13 追记）双路径覆盖。
+- 未覆盖（如实记录，出口差距）：真实 IME preedit/commit、跨应用剪贴
+  板、透明合成、GPU/present 故障恢复的**人工清单**在真实会话未执行
+  （自动注入路径由 counter_gpu_smoke/M7 测试覆盖）；X11 独立会话/
+  macOS/Windows runner 的一小时浸泡与人工清单未做。
 
 ### 既有能力优化：预乘 alpha 完成记录（2026-09-20）
 

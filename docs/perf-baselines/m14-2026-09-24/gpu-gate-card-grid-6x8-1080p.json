@@ -1,0 +1,488 @@
+{
+  "passed": true,
+  "tolerance": 0.1,
+  "baseline_commit": "445bae5dd4893e7020054ed3c7b98dfdf8d77191",
+  "current_commit": "f3d41179773c02468f45238da88a9b236b9dcca6",
+  "aggregations": {
+    "minimum": {
+      "baseline": ".perf-reference/build-gpu/benchmarks/lumen-scene-bench",
+      "current": "build-gpu/benchmarks/lumen-scene-bench",
+      "baseline_commit": "445bae5dd4893e7020054ed3c7b98dfdf8d77191",
+      "current_commit": "f3d41179773c02468f45238da88a9b236b9dcca6",
+      "tolerance": 0.1,
+      "passed": true,
+      "checks": [
+        {
+          "field": "commands_per_frame",
+          "baseline": 769.0,
+          "current": 769.0,
+          "relative_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "frame",
+          "metric": "p50_us",
+          "baseline": 8950.2,
+          "current": 9041.5,
+          "relative_delta": 0.010200889365600686,
+          "absolute_delta": 91.29999999999927,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "frame",
+          "metric": "p95_us",
+          "baseline": 12634.3,
+          "current": 11460.9,
+          "relative_delta": -0.09287416002469466,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "frame",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "frame",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "p50_us",
+          "baseline": 3680.9,
+          "current": 3644.2,
+          "relative_delta": -0.009970387676926913,
+          "absolute_delta": -36.70000000000027,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "p95_us",
+          "baseline": 5312.4,
+          "current": 4774.5,
+          "relative_delta": -0.10125367065732996,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "layout",
+          "metric": "p50_us",
+          "baseline": 800.3,
+          "current": 789.7,
+          "relative_delta": -0.013245033112582669,
+          "absolute_delta": -10.599999999999909,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "layout",
+          "metric": "p95_us",
+          "baseline": 1220.9,
+          "current": 1151.0,
+          "relative_delta": -0.0572528462609551,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "layout",
+          "metric": "allocs_p50",
+          "baseline": 2997.0,
+          "current": 2997.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "layout",
+          "metric": "alloc_bytes_p50",
+          "baseline": 248756.0,
+          "current": 248756.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "paint",
+          "metric": "p50_us",
+          "baseline": 7213.5,
+          "current": 7340.1,
+          "relative_delta": 0.017550426284050787,
+          "absolute_delta": 126.60000000000036,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "paint",
+          "metric": "p95_us",
+          "baseline": 10182.5,
+          "current": 9255.3,
+          "relative_delta": -0.09105818806776339,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "paint",
+          "metric": "allocs_p50",
+          "baseline": 4253.0,
+          "current": 4253.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "paint",
+          "metric": "alloc_bytes_p50",
+          "baseline": 824018.0,
+          "current": 824018.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "reconcile",
+          "metric": "p50_us",
+          "baseline": 548.1,
+          "current": 535.1,
+          "relative_delta": -0.023718299580368547,
+          "absolute_delta": -13.0,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "reconcile",
+          "metric": "p95_us",
+          "baseline": 851.4,
+          "current": 810.3,
+          "relative_delta": -0.04827343199436226,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "reconcile",
+          "metric": "allocs_p50",
+          "baseline": 624.0,
+          "current": 624.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "reconcile",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "submit",
+          "metric": "p50_us",
+          "baseline": 6790.4,
+          "current": 6912.2,
+          "relative_delta": 0.017937087653157425,
+          "absolute_delta": 121.80000000000018,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "submit",
+          "metric": "p95_us",
+          "baseline": 9660.6,
+          "current": 8863.6,
+          "relative_delta": -0.08250005175661967,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "submit",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "submit",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        }
+      ],
+      "failures": []
+    },
+    "median": {
+      "baseline": ".perf-reference/build-gpu/benchmarks/lumen-scene-bench",
+      "current": "build-gpu/benchmarks/lumen-scene-bench",
+      "baseline_commit": "445bae5dd4893e7020054ed3c7b98dfdf8d77191",
+      "current_commit": "f3d41179773c02468f45238da88a9b236b9dcca6",
+      "tolerance": 0.1,
+      "passed": true,
+      "checks": [
+        {
+          "field": "commands_per_frame",
+          "baseline": 769.0,
+          "current": 769.0,
+          "relative_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "frame",
+          "metric": "p50_us",
+          "baseline": 9154.0,
+          "current": 9374.0,
+          "relative_delta": 0.02403320952589032,
+          "absolute_delta": 220.0,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "frame",
+          "metric": "p95_us",
+          "baseline": 13954.4,
+          "current": 14020.0,
+          "relative_delta": 0.004701026199621651,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "frame",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "frame",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "p50_us",
+          "baseline": 3687.4,
+          "current": 3807.8,
+          "relative_delta": 0.03265173292835062,
+          "absolute_delta": 120.40000000000009,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "p95_us",
+          "baseline": 5837.5,
+          "current": 6111.7,
+          "relative_delta": 0.046972162740899326,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "gpu_wait",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "layout",
+          "metric": "p50_us",
+          "baseline": 849.0,
+          "current": 856.6,
+          "relative_delta": 0.008951707891637246,
+          "absolute_delta": 7.600000000000023,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "layout",
+          "metric": "p95_us",
+          "baseline": 1345.0,
+          "current": 1400.6,
+          "relative_delta": 0.04133828996282521,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "layout",
+          "metric": "allocs_p50",
+          "baseline": 2997.0,
+          "current": 2997.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "layout",
+          "metric": "alloc_bytes_p50",
+          "baseline": 248756.0,
+          "current": 248756.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "paint",
+          "metric": "p50_us",
+          "baseline": 7358.4,
+          "current": 7528.5,
+          "relative_delta": 0.023116438356164434,
+          "absolute_delta": 170.10000000000036,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "paint",
+          "metric": "p95_us",
+          "baseline": 11131.2,
+          "current": 11269.7,
+          "relative_delta": 0.012442503952853241,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "paint",
+          "metric": "allocs_p50",
+          "baseline": 4253.0,
+          "current": 4253.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "paint",
+          "metric": "alloc_bytes_p50",
+          "baseline": 824018.0,
+          "current": 824018.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "reconcile",
+          "metric": "p50_us",
+          "baseline": 579.9,
+          "current": 573.9,
+          "relative_delta": -0.010346611484738748,
+          "absolute_delta": -6.0,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "reconcile",
+          "metric": "p95_us",
+          "baseline": 866.7,
+          "current": 910.8,
+          "relative_delta": 0.050882658359293766,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "reconcile",
+          "metric": "allocs_p50",
+          "baseline": 624.0,
+          "current": 624.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "reconcile",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "submit",
+          "metric": "p50_us",
+          "baseline": 6928.7,
+          "current": 7035.1,
+          "relative_delta": 0.015356416066506062,
+          "absolute_delta": 106.40000000000055,
+          "limit": 0.1,
+          "floor_us": 50.0
+        },
+        {
+          "phase": "submit",
+          "metric": "p95_us",
+          "baseline": 10158.8,
+          "current": 10596.5,
+          "relative_delta": 0.04308579753514202,
+          "limit": 0.1,
+          "skipped": "p95 not gated on llvmpipe (host-scheduling tail)"
+        },
+        {
+          "phase": "submit",
+          "metric": "allocs_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        },
+        {
+          "phase": "submit",
+          "metric": "alloc_bytes_p50",
+          "baseline": 0.0,
+          "current": 0.0,
+          "relative_delta": 0.0,
+          "absolute_delta": 0.0,
+          "limit": 0.1
+        }
+      ],
+      "failures": []
+    }
+  }
+}
