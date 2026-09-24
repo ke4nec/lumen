@@ -5,6 +5,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <deque>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <limits>
 #include <optional>
@@ -892,3 +894,187 @@ TEST_CASE("run_app_forwards_file_dialog_events_to_on_event", "[app][m4]") {
     REQUIRE(received.filePaths.size() == 1);
     CHECK(received.filePaths[0] == "/tmp/report.txt");
 }
+
+// --- M14-C：生产生命周期（资源层接线与状态保持契约） ---
+
+namespace {
+
+// .lumenrgba 原始格式（ASCII 头 + straight RGBA），测试无需图像编码器。
+std::string writeRawRgba(const char* name, int width, int height,
+                         std::uint8_t value) {
+    const auto path = std::filesystem::temp_directory_path() / name;
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << "LUMENRGBA\n" << width << " " << height << "\n";
+    for (int i = 0; i < width * height; ++i) {
+        out.put(value).put(value).put(value).put(255);
+    }
+    return path.string();
+}
+
+}  // namespace
+
+TEST_CASE("run_app_resource_completions_drive_frames", "[app]") {
+    // M14-C：资源完成由 runApp 主循环 pump——完成即标脏并请求资源帧，
+    // 占位→就绪的翻页自动发生；应用 build 只读 manager 状态，不拼接
+    // 不可观测的轮询。上传命令经应用壳前置进命令表。
+    FakeApplicationHost host;
+    auto manager = std::make_shared<lumen::render::ResourceManager>();
+    const std::string image =
+        writeRawRgba("lumen-m14c-completion.lumenrgba", 4, 4, 200);
+    const auto handle = manager->requestImage(image, lumen::core::WindowId{1});
+    REQUIRE(handle.valid());
+
+    ShellConfig config;
+    config.initialView = Size{200, 100};
+    config.build = [&] {
+        return lumen::core::withKey(
+            lumen::core::makeImage(manager->ready(handle)
+                                       ? manager->imageId(handle)
+                                       : 0,
+                                   image),
+            "m14c-image");
+    };
+    AppShell shell{config};
+    RunOptions options;
+    options.resourceManager = manager;
+    options.maxFrames = 2;
+    options.idleWaitMs = 50;
+    REQUIRE(host.initialize());
+    host.createWindow({});
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(manager->state(handle) ==
+          lumen::render::ResourceState::Ready);
+    // 第二帧即资源帧：上传命令已被消费（内部 CPU renderer 统计）。
+    CHECK(shell.stats().uploads >= 1);
+}
+
+TEST_CASE("run_app_requeues_resources_after_renderer_replacement", "[app]") {
+    // M14-C：renderer/GPU 设备重建（onRendererFailure 回退路径）后，全部
+    // Ready 资源重排队上传（ImageId 不变），异步资源不因后端降级丢失。
+    FakeApplicationHost host;
+    auto manager = std::make_shared<lumen::render::ResourceManager>();
+    lumen::render::PixelBuffer pixels;
+    pixels.width = 2;
+    pixels.height = 2;
+    pixels.rgba.assign(16, 120);
+    pixels.rgba[3] = pixels.rgba[7] = pixels.rgba[11] = pixels.rgba[15] = 255;
+    const auto handle = manager->registerImage(std::move(pixels));
+    REQUIRE(handle.valid());
+
+    ShellConfig config;
+    config.initialView = Size{200, 100};
+    config.build = [] {
+        return lumen::core::withKey(lumen::core::makeText("stable"), "text");
+    };
+    AppShell shell{config};
+
+    auto external = std::make_unique<RecordingRenderer>();
+    bool failedOnce = false;
+    RunOptions options;
+    options.resourceManager = manager;
+    options.maxFrames = 2;
+    options.idleWaitMs = 20;
+    // 第一帧后注入一次失效；替换后不再失败。
+    options.rendererFactory =
+        [&](lumen::platform::ApplicationHost&, lumen::core::WindowId&)
+        -> RendererSetup {
+        RendererSetup setup;
+        setup.renderer = external.get();
+        setup.failed = [&failedOnce]() {
+            const bool fail = !failedOnce;
+            failedOnce = true;
+            return fail;
+        };
+        return setup;
+    };
+    options.onRendererFailure =
+        [&](lumen::platform::ApplicationHost& input,
+            lumen::core::WindowId& id)
+        -> std::optional<RendererSetup> {
+        input.destroyWindow(id);
+        const auto replacement = input.createWindow({});
+        REQUIRE(replacement);
+        id = *replacement;
+        RendererSetup fallback;
+        fallback.renderer = nullptr;  // 应用壳内部 CPU。
+        return fallback;
+    };
+    REQUIRE(host.initialize());
+    host.createWindow({});
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(failedOnce);
+    CHECK(manager->state(handle) == lumen::render::ResourceState::Ready);
+    CHECK(manager->diagnostics().reuploads == 1);
+}
+
+TEST_CASE("run_app_preserves_scroll_and_focus_across_minimize_restore",
+          "[app]") {
+    // M14-C：最小化（停帧）/恢复（重建帧）期间状态保持契约——滚动偏移
+    // 由应用侧 ScrollController 持有、焦点由 FocusManager 持有，恢复后
+    // 的重建帧必须原样带出（onWheel/withScrollOffset 为 settings 同款
+    // 应用接线）。
+    using namespace lumen::dsl;
+    FakeApplicationHost host;
+    lumen::core::ScrollController scroll;
+    ShellConfig config;
+    config.initialView = Size{300, 200};
+    config.build = [&] {
+        std::vector<lumen::core::Widget> rows;
+        rows.push_back(lumen::core::withKey(
+            text_field(bind("m14c-doc")), "m14c-field"));
+        for (int i = 0; i < 40; ++i) {
+            rows.push_back(lumen::core::withKey(
+                text("row " + std::to_string(i)), "row-" + std::to_string(i)));
+        }
+        auto view = lumen::core::makeScrollView(column(rows), "m14c-scroll",
+                                                280.0F, 160.0F);
+        return lumen::core::withScrollOffset(std::move(view), scroll.offset());
+    };
+    config.onWheel =
+        [&](const lumen::core::RenderNode& root,
+            const lumen::core::RenderNode* hit, lumen::core::Offset position,
+            lumen::core::Offset delta) {
+            (void)hit;
+            (void)position;
+            const auto* viewport =
+                lumen::core::findNodeByKey(root, "m14c-scroll");
+            if (viewport == nullptr) {
+                return false;
+            }
+            scroll.updateExtents(viewport->size.height,
+                                 viewport->size.height +
+                                     viewport->scrollExtent);
+            return scroll.applyWheel(delta.y);
+        };
+    AppShell shell{config};
+    (void)shell.renderFrame();  // 首帧布局,取按钮中心。
+
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow({});
+    REQUIRE(id.has_value());
+    // 点击聚焦 → 滚动 → 最小化（停帧）→ 恢复（重建帧）→ 退出。
+    const auto* fieldNode =
+        lumen::core::findNodeByKey(shell.root(), "m14c-field");
+    REQUIRE(fieldNode != nullptr);
+    const auto fieldCenter =
+        lumen::core::absoluteOffset(shell.root(), "m14c-field") +
+        lumen::core::Offset{fieldNode->size.width * 0.5F,
+                            fieldNode->size.height * 0.5F};
+    host.pushPointerDown(*id, fieldCenter);
+    host.pushPointerUp(*id, fieldCenter);
+    host.pushTextInput(*id, "document");
+    host.pushWheel(*id, lumen::core::Offset{140.0F, 80.0F},
+                   lumen::core::Offset{0.0F, 600.0F});
+    host.minimizeWindow(*id);
+    host.restoreWindow(*id);
+    host.pushQuit();
+
+    RunOptions options;
+    options.idleWaitMs = 10;
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(scroll.offset() > 0.0F);
+    CHECK_FALSE(shell.focus().focusedIdentity().empty());
+    CHECK(shell.controller().editingValue().text() == "document");
+}
+
+

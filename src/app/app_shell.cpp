@@ -263,6 +263,14 @@ void AppShell::setFontManager(std::shared_ptr<const text::FontManager> fonts) {
     fullRepaintPending_ = true;
 }
 
+void AppShell::setResourceManager(
+    std::shared_ptr<render::ResourceManager> resources) {
+    resourceManager_ = std::move(resources);
+    // 新管理器可能有 pending 上传；下一帧全量重绘把命令带出去。
+    dirty_ = true;
+    fullRepaintPending_ = true;
+}
+
 void AppShell::setTheme(style::Theme theme, bool forceFullRepaint) {
     stateBlends_.clear();
     suppressStateBlend_ = true;
@@ -675,9 +683,14 @@ void AppShell::paintFrame(bool forceFullRepaint) {
                          treeDamageValid_ && bounds.has_value();
     // v0.2 命令路径（阶段7B）：CPU/Skia 光栅/Skia GPU 消费同一份录制
     // 命令；局部重绘经 damage+preserve 提交，全帧不带 damage。
+    // M14-C：资源 upload/unload 命令前置（绘制命令按序消费，先上传后
+    // 引用；manager 的 appendUploads 只出增量，空闲帧零命令）。
     const auto buildStart = std::chrono::steady_clock::now();
-    render::RenderCommandList commands =
-        render::recordScene(root_, options, textFontSource());
+    render::RenderCommandList commands;
+    if (resourceManager_ != nullptr) {
+        resourceManager_->appendUploads(commands);
+    }
+    commands.extend(render::recordScene(root_, options, textFontSource()));
     if (overlayRoot_.has_value()) {
         // M11：overlay 命令后置叠加（绘制序 = 遮挡序）。
         commands.extend(render::recordScene(*overlayRoot_, options,

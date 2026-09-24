@@ -24,7 +24,16 @@ using core::WindowMetrics;
 void printStartupDiagnostics(const render::RendererCapabilities& caps,
                             const WindowMetrics& metrics) {
     std::printf(
-        "[diag] backend=%s gpu=%s partial=%s dpi=%.2f pixels=%.0fx%.0f\n",
+        "[diag] os=%s backend=%s gpu=%s partial=%s dpi=%.2f pixels=%.0fx%.0f\n",
+#if defined(_WIN32)
+        "windows",
+#elif defined(__APPLE__)
+        "macos",
+#elif defined(__linux__)
+        "linux",
+#else
+        "other",
+#endif
         caps.backendName, caps.gpu ? "yes" : "no",
         caps.partialSubmit ? "yes" : "no", metrics.deviceScale,
         metrics.drawableSize.width, metrics.drawableSize.height);
@@ -32,17 +41,30 @@ void printStartupDiagnostics(const render::RendererCapabilities& caps,
 
 void printFrameDiagnostics(std::uint64_t frames, std::uint32_t partial,
                            const render::RenderStats& stats,
-                           std::uint64_t skippedIdleTurns) {
+                           std::uint64_t skippedIdleTurns,
+                           core::WindowId window,
+                           const render::ResourceManager::Diagnostics* resources) {
+    // M14-C：诊断行必须可定位窗口与资源层（失败/缓存对齐“结构化、
+    // 可诊断”出口；无资源层时省略该维度）。
+    std::string resourceText;
+    if (resources != nullptr) {
+        resourceText = " requests=" +
+                       std::to_string(resources->requested) +
+                       " failures=" + std::to_string(resources->failures) +
+                       " cancels=" + std::to_string(resources->cancels) +
+                       " reuploads=" + std::to_string(resources->reuploads);
+    }
     std::printf(
-        "[diag] frames=%llu partial=%u idleTurns=%llu cmds=%llu "
+        "[diag] window=%u frames=%llu partial=%u idleTurns=%llu cmds=%llu "
         "culled=%llu submitMs=%.2f gpuWaitMs=%.2f buildMs=%.2f "
-        "uploads=%llu%s%s\n",
-        static_cast<unsigned long long>(frames), partial,
+        "uploads=%llu%s%s%s\n",
+        window.value, static_cast<unsigned long long>(frames), partial,
         static_cast<unsigned long long>(skippedIdleTurns),
         static_cast<unsigned long long>(stats.commandCount),
         static_cast<unsigned long long>(stats.culledCommands), stats.submitMs,
         stats.gpuWaitMs, stats.cpuBuildMs,
         static_cast<unsigned long long>(stats.uploads),
+        resourceText.c_str(),
         stats.fullFrameFallback ? " fallback=yes" : "",
         stats.fallbackReason.empty()
             ? ""
@@ -183,6 +205,10 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
             if (auto fonts = runtime.app.options.fontFactory()) {
                 shell.setFontManager(std::move(fonts));
             }
+        }
+        // M14-C：资源层注入（upload 命令前置；完成 pump 在主循环）。
+        if (runtime.app.options.resourceManager) {
+            shell.setResourceManager(runtime.app.options.resourceManager);
         }
         if (auto* clipboard = host.clipboard()) {
             shell.controller().setClipboard(clipboard);
@@ -371,6 +397,34 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                         render::FrameReason::Input, runtime.id);
                 }
             }
+        }
+        // M14-C：资源完成 pump（每管理器一次；多窗口共享管理器时按完成
+        // 事件携带的 window 路由）。完成 → 标脏 + 请求资源帧：应用 build
+        // 从 manager 取 imageId/占位，占位→就绪的翻页由此自动发生，应
+        // 用层无需拼接不可观测的轮询状态。
+        for (auto& runtime : runtimes) {
+            if (!runtime.active || !runtime.app.options.resourceManager) {
+                continue;
+            }
+            const auto completions =
+                runtime.app.options.resourceManager->pumpCompletions();
+            for (const auto& completion : completions) {
+                WindowRuntime* target = &runtime;
+                if (completion.window.valid()) {
+                    const auto match = std::find_if(
+                        runtimes.begin(), runtimes.end(),
+                        [&completion](const WindowRuntime& item) {
+                            return item.active && item.id == completion.window;
+                        });
+                    if (match != runtimes.end()) {
+                        target = &*match;
+                    }
+                }
+                target->app.shell->markDirty();
+                target->scheduler->requestFrame(render::FrameReason::Resource,
+                                                target->id);
+            }
+            break;  // pump 消费的是管理器全局队列，一次即可。
         }
         HostEvent event;
         while (host.pollEvent(event)) {
@@ -607,6 +661,11 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                 runtime.presentWindow = host.platformWindow(runtime.id);
                 shell.cancelComposition();
                 shell.setRenderer(runtime.setup.renderer);
+                // M14-C：renderer/GPU 设备重建后重排队全部 Ready 资源
+                //（ImageId 不变；上传命令随下一帧前置输出）。
+                if (options.resourceManager) {
+                    options.resourceManager->handleDeviceRebuilt();
+                }
                 applyMetrics(runtime);
                 const auto metrics = host.windowMetrics(runtime.id);
                 scheduler.setWindowVisible(
@@ -652,9 +711,13 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
             if (options.diagnostics &&
                 nowMs - runtime.lastDiagPrintMs >= 2000) {
                 runtime.lastDiagPrintMs = nowMs;
+                const auto* resources =
+                    runtime.app.options.resourceManager
+                        ? &runtime.app.options.resourceManager->diagnostics()
+                        : nullptr;
                 printFrameDiagnostics(scheduler.submittedFrames(),
                                       shell.partialRepaintCount(), shell.stats(),
-                                      runtime.idleTurns);
+                                      runtime.idleTurns, runtime.id, resources);
             }
         }
 
@@ -680,9 +743,14 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
 
     for (const auto& runtime : runtimes) {
         if (runtime.app.options.diagnostics) {
+            const auto* resources =
+                runtime.app.options.resourceManager
+                    ? &runtime.app.options.resourceManager->diagnostics()
+                    : nullptr;
             printFrameDiagnostics(runtime.scheduler->submittedFrames(),
                                   runtime.app.shell->partialRepaintCount(),
-                                  runtime.app.shell->stats(), runtime.idleTurns);
+                                  runtime.app.shell->stats(), runtime.idleTurns,
+                                  runtime.id, resources);
         }
     }
     cleanup();

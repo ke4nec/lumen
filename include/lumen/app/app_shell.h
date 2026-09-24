@@ -42,6 +42,7 @@
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
 #include "lumen/render/renderer.h"
+#include "lumen/render/resource_manager.h"
 #include "lumen/style/state.h"
 #include "lumen/style/theme.h"
 #include "lumen/text/font_manager.h"
@@ -186,6 +187,10 @@ class AppShell {
     void setRenderer(render::Renderer* renderer);
     // M1：正式字体事实注入（布局/绘制/命中测试/IME 查询共享）。
     void setFontManager(std::shared_ptr<const text::FontManager> fonts);
+    // M14-C：资源管理器注入（upload/unload 命令前置进每帧命令表；
+    // 完成 pump 与资源帧请求由 runApp 驱动）。nullptr = 无资源层。
+    void setResourceManager(
+        std::shared_ptr<render::ResourceManager> resources);
 
     // --- M5：语义桥（可观测回归证据） ---
     // 注册后在下一次绘制末尾构建语义树并推送 identity diff + 焦点变化
@@ -426,6 +431,8 @@ class AppShell {
     // M1：正式字体事实（声明在 controller_ 之前，析构原序保证原始指针
     // 不悬空）。
     std::shared_ptr<const text::FontManager> textFonts_{};
+    // M14-C：可选资源层（upload 命令前置；pump 由 runApp 驱动）。
+    std::shared_ptr<render::ResourceManager> resourceManager_{};
     core::InteractionController controller_{state_, handlers_, focus_};
     style::Theme theme_{style::Theme::dark()};
     accessibility::AccessibilitySettings accessibility_{};
@@ -540,6 +547,11 @@ struct RunOptions {
     // 默认在首帧前与 SystemAccessibilityChanged 时更新系统偏好；应用
     // 显式覆盖优先。false 仅关闭该窗口的自动跟随，不影响原生语义桥。
     bool followSystemAccessibility{true};
+    // M14-C：可选资源管理器（图片异步加载/缓存/取消/失败状态）。
+    // 注入后 runApp 驱动完成 pump（完成→标脏+请求资源帧）、renderer
+    // 替换与 surface 重建时重排队上传；帧内 upload/unload 命令由应用
+    // 壳统一前置进命令表。空 = 无资源层（现状行为，零开销）。
+    std::shared_ptr<render::ResourceManager> resourceManager{};
 };
 
 // 一个宿主窗口与其应用壳的绑定。每个窗口拥有独立的 RunOptions，因而

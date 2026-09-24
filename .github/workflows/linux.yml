@@ -86,12 +86,16 @@ jobs:
           test -f "$pkg/lib/cmake/Lumen/LumenTargets.cmake"
           test -f "$pkg/include/lumen/render/renderer.h"
           if [ "${{ runner.os }}" = "Windows" ]; then
-            ./$pkg/bin/lumen-counter.exe --headless
+            ./$pkg/bin/lumen-counter.exe --headless --diagnostics | tee /tmp/pkg-diag.txt
             ./$pkg/bin/lumen-settings.exe --headless
           else
-            ./$pkg/bin/lumen-counter --headless
+            ./$pkg/bin/lumen-counter --headless --diagnostics | tee /tmp/pkg-diag.txt
             ./$pkg/bin/lumen-settings --headless
           fi
+          # M14-C：包内二进制的结构化诊断可定位平台/后端——冒烟必须消费
+          # 诊断输出，而不是只看退出码（缺失能力报告的最低验证）。
+          grep -q "\[diag\] os=" /tmp/pkg-diag.txt
+          grep -q "backend=" /tmp/pkg-diag.txt
       - name: Relocated SDK consumer
         run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
       - name: Build AppImage (linuxdeploy)

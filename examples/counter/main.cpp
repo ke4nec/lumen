@@ -103,8 +103,25 @@ Widget loadRoot(const Options& options) {
     return parsed.root;
 }
 
-int runHeadless(CounterApp& app) {
+int runHeadless(CounterApp& app, bool diagnostics) {
     app.setView(lumen::core::Size{800.0F, 600.0F});
+    if (diagnostics) {
+        // M14-C：headless 冒烟同样产出结构化诊断（包验证消费该输出，
+        // 而非只看退出码）。与 runApp 启动行同口径。
+        std::printf(
+            "[diag] os=%s backend=%s gpu=no partial=no dpi=1.00 "
+            "pixels=800x600\n",
+#if defined(_WIN32)
+            "windows",
+#elif defined(__APPLE__)
+            "macos",
+#elif defined(__linux__)
+            "linux",
+#else
+            "other",
+#endif
+            app.capabilities().backendName);
+    }
     std::printf("frame0 %016llx\n",
                 static_cast<unsigned long long>(app.renderFrame()));
 
@@ -463,7 +480,7 @@ int main(int argc, char** argv) {
     Widget root = loadRoot(options);
     CounterApp app(std::move(root));
     if (options.headless) {
-        return runHeadless(app);
+        return runHeadless(app, options.diagnostics);
     }
     return runWindowed(app, options);
 }

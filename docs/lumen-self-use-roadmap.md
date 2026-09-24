@@ -1978,6 +1978,34 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   NVDA、macOS VoiceOver 人工回环待办（UIA live smoke 已覆盖 UIA core
   链路；NSAccessibility headless 树投影已有）。
 
+### M14-C 阶段记录：生产生命周期与诊断（2026-09-24）
+
+- 提交号：（本变更提交，见 Git 历史 `feat(app)`）
+- 变更：
+  - **资源层生产接线**：`RunOptions.resourceManager`（可选注入）→
+    `AppShell::setResourceManager`——帧内 upload/unload 命令统一前置进
+    命令表（先上传后引用，空闲帧零命令）；runApp 主循环 pump 资源完成
+    （完成 → 标脏 + `FrameReason::Resource` 帧请求，按完成事件的
+    window 路由），占位→就绪翻页自动发生，应用层不再拼接不可观测的
+    轮询状态；renderer/GPU 设备重建（onRendererFailure 回退路径）调用
+    `handleDeviceRebuilt` 重排队全部 Ready 资源（ImageId 不变）。
+  - **结构化诊断扩展**：启动行增加 `os=`（平台维度）；周期帧诊断增加
+    `window=`（多窗口可定位）与资源维度（`requests/failures/cancels/
+    reuploads`，无资源层省略）。counter `--headless --diagnostics` 补
+    启动诊断行（与 runApp 同口径），无 --diagnostics 时输出不变。
+  - **包冒烟消费诊断**：linux package job 解包冒烟以 `--diagnostics`
+    运行 counter 并断言 `[diag] os=`/`backend=` 输出（不只看退出码）。
+- 测试（新增 3 用例，全量 795/795、a11y 桥 ON 793/793）：
+  `run_app_resource_completions_drive_frames`（完成→资源帧→上传命令
+  消费）、`run_app_requeues_resources_after_renderer_replacement`
+  （设备重建重排队）、`run_app_preserves_scroll_and_focus_across_
+  minimize_restore`（最小化停帧/恢复重建帧期间滚动偏移 + 焦点 + 编辑
+  值保持，settings 同款 onWheel/withScrollOffset 应用接线）。
+- 已知限制：字体仍为同步工厂（失败诊断字符串，无异步生命周期——按
+  M14-C 范围记为后续增量）；surface 重建（reattach）不触发资源重排队
+  （仅 renderer 替换路径，M7 验证的设备重建语义）；干净容器级包验证
+  仍以 CI runner 为准。
+
 ### 既有能力优化：预乘 alpha 完成记录（2026-09-20）
 
 - 范围：[预乘 alpha 计划](lumen-premultiplied-alpha-rendering-plan.md) P0–P5，按阶段
