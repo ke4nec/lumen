@@ -901,20 +901,32 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             const float contentTop =
                 origin.y + (node.size.height - lineHeight) * 0.5F;
             const ScopedClip<Sink> clip{sink, rect};
+            // 图标位前导（design/gallery.html "+" 前缀/sidebar-nav 图标）：
+            // 内容组起点处先图标后文字；尾随（默认）维持既有排布——
+            // 居中组 = 文字在前图标收尾，startAligned = 文字贴左、图标
+            // 贴右（Dropdown chevron / 集合行箭头列）。
+            const float groupX = startAligned
+                                     ? common.padding.left
+                                     : (node.size.width - totalWidth) * 0.5F;
+            const float textX =
+                node.iconLeading ? groupX + iconExtent : groupX;
+            const float iconX =
+                node.iconLeading
+                    ? groupX
+                    : (startAligned
+                           ? node.size.width - common.padding.right - iconSize
+                           : groupX + textWidth +
+                                 (node.text.empty() ? 0.0F : iconGap));
             if (!node.text.empty()) {
                 paintLines(sink, textLayout, common.text,
-                           Offset{origin.x + (startAligned ? common.padding.left :
-                                              (node.size.width - totalWidth) * 0.5F),
+                           Offset{origin.x + textX,
                                   contentTop});
             }
             if (hasIcon) {
                 const auto& polylines = core::iconPolylines(buttonIcon);
                 sink.drawIcon(
                     polylines,
-                    Rect{Offset{origin.x +
-                                    (startAligned ? node.size.width - common.padding.right - iconSize :
-                                     (node.size.width - totalWidth) * 0.5F + textWidth +
-                                         (node.text.empty() ? 0.0F : iconGap)),
+                    Rect{Offset{origin.x + iconX,
                                 origin.y +
                                     (node.size.height - iconSize) * 0.5F},
                          Size{iconSize, iconSize}},

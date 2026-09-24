@@ -443,6 +443,9 @@ hovered、pressed、focused、disabled 状态，文本颜色、背景、边框�
 
 Button 的文本始终使用 `Typography.label` 或控件指定的文本 override。Button 的命中
 区域至少覆盖 resolved 控件尺寸，视觉内容居中，不能使用 painter 私有的固定 padding。
+图标位（`Widget.icon` + `iconLeading`）支持前导/尾随两种声明：默认尾随（Dropdown
+chevron、集合行箭头列），前导用于设计稿的 "+" 主操作前缀与 sidebar-nav 菜单图标
+（`design/gallery.html`）；两侧的测量宽度同式，仅排布不同。
 
 ### 7.2 TextField
 

@@ -47,9 +47,9 @@ struct ButtonResolvedStyle {
     bool alignContentStart{false};
     bool reserveIconSpace{false};
     CommonResolvedStyle common{};
-    // 尾随图标部件（§6.1）：尺寸取 metrics.inlineIconSize 档位、间距取
-    // 档位 gap、线宽按 16px→1.5 基准比例缩放（§4.5）。IconId::None 时
-    // 不参与测量与绘制。
+    // 图标部件（§6.1；前导/尾随由 Widget.iconLeading 声明，默认尾随）：
+    // 尺寸取 metrics.inlineIconSize 档位、间距取档位 gap、线宽按
+    // 16px→1.5 基准比例缩放（§4.5）。IconId::None 时不参与测量与绘制。
     float iconSize{16.0F};
     float iconGap{8.0F};
     float iconStroke{1.5F};

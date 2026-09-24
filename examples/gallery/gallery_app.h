@@ -1355,24 +1355,32 @@ class GalleryApp {
 
     // 侧栏：分区标签 + 路由导航（当前项 Tonal 强调）+ 分隔线 + Live state
     // 注记（设计稿虚线边框以实线近似）。背景即页面底色。宽 200px，
-    // ≤1024 收窄 168px（设计稿容器断点）。
+    // ≤1024 收窄 168px（设计稿容器断点）。导航项带 18px 前导线性图标
+    //（design/gallery.html sidebar-nav：icon 槽 + 8px 间距、文字左对齐）。
     [[nodiscard]] core::Widget buildNav(const style::Theme& theme) const {
-        const std::pair<const char*, const char*> sections[] = {
-            {"Overview", "home"}, {"Buttons", "buttons"},
-            {"Inputs", "inputs"},   {"Layout", "layout"},
-            {"Lists", "lists"},     {"Collections", "collections"},
-            {"Menus", "menus"},     {"Controls", "controls"},
-            {"Feedback", "feedback"},
-            {"Theme", "theme"},
+        const std::tuple<const char*, const char*, core::IconId> sections[] = {
+            {"Overview", "home", core::IconId::NavHome},
+            {"Buttons", "buttons", core::IconId::NavButtons},
+            {"Inputs", "inputs", core::IconId::NavInputs},
+            {"Layout", "layout", core::IconId::NavLayout},
+            {"Lists", "lists", core::IconId::NavLists},
+            {"Collections", "collections", core::IconId::NavCollections},
+            {"Menus", "menus", core::IconId::NavMenus},
+            {"Controls", "controls", core::IconId::NavControls},
+            {"Feedback", "feedback", core::IconId::NavFeedback},
+            {"Theme", "theme", core::IconId::NavTheme},
         };
         std::vector<core::Widget> navItems;
-        for (const auto& [label, route] : sections) {
+        for (const auto& [label, route, icon] : sections) {
             const bool active = navigator_.current() == route;
             core::Widget button = buttonWidget(
                 label, std::string("goto-") + route,
                 std::string("nav-") + route,
                 active ? core::ButtonVariant::Tonal
                        : core::ButtonVariant::Ghost);
+            button = core::withLeadingIcon(std::move(button), icon);
+            button.alignContentStart = true;
+            button.styleOverrides.iconSize = 18.0F;
             if (active) {
                 button = core::withSelected(std::move(button), true);
             }
@@ -1508,17 +1516,18 @@ class GalleryApp {
     // --- 各分区内容 ---
 
     // Overview 首屏（design v1 Core Dark）：kicker/hero/主操作 + 指标卡三联
-    // + 双栏面板（Control inventory / DSL 快照 | Resolved tokens / Theme
-    // controls）。全部为真控件：点击与 StateStore 联动。主内容 <720 上下
-    // 堆叠、<480 指标单列（设计稿 content 容器断点）。
+    // + 双栏面板（Control inventory / Controls live samples / DSL 快照 |
+    // Resolved tokens / Theme controls）。全部为真控件：点击与 StateStore
+    // 联动。主内容 <720 上下堆叠、<480 指标单列（设计稿 content 容器断点）。
     [[nodiscard]] std::vector<core::Widget> buildHomeItems(
         const style::Theme& theme) {
         std::vector<core::Widget> items;
         const bool stackColumns = contentColumnWidth() < 720.0F;
         const bool narrowMetrics = contentColumnWidth() < 480.0F;
 
-        // 内容头：kicker + hero + 副文案 | 主操作（+ Show dialog）。
-        core::Widget primary = core::withIcon(
+        // 内容头：kicker + hero + 副文案 | 主操作（+ 前缀前导图标，
+        // design/gallery.html primary-action::before）。
+        core::Widget primary = core::withLeadingIcon(
             buttonWidget("Show dialog", "show-dialog", "show-dialog-button",
                          core::ButtonVariant::Filled),
             core::IconId::Plus);
@@ -1579,18 +1588,21 @@ class GalleryApp {
                                 style::spaceToken(3));
         items.push_back(core::withKey(std::move(metricGrid), "metric-grid"));
 
-        // 双栏：左 = 控件清单 + DSL 快照；右 = 语义 token + 主题控制。
-        // 间距 16、比例 1.4 : 1（设计稿 content-grid）；窄内容上下堆叠。
+        // 双栏：左 = 控件清单 + Controls 实时样本 + DSL 快照；右 = 语义
+        // token + 主题控制。间距 16、比例 1.4 : 1（设计稿 content-grid）；
+        // 窄内容上下堆叠。
         core::Widget contentGrid;
         if (stackColumns) {
             contentGrid = core::makeColumn(
-                {inventoryPanel(theme), codePanel(theme), tokensPanel(theme),
+                {inventoryPanel(theme), controlsSamplePanel(theme),
+                 codePanel(theme), tokensPanel(theme),
                  themeControlsPanel(theme)},
                 core::MainAxisAlignment::Start,
                 core::CrossAxisAlignment::Stretch, style::spaceToken(4));
         } else {
             core::Widget left = core::makeColumn(
-                {inventoryPanel(theme), codePanel(theme)},
+                {inventoryPanel(theme), controlsSamplePanel(theme),
+                 codePanel(theme)},
                 core::MainAxisAlignment::Start,
                 core::CrossAxisAlignment::Stretch, style::spaceToken(4));
             left.flex = 1.4F;
@@ -1607,6 +1619,95 @@ class GalleryApp {
         items.push_back(
             core::withKey(std::move(contentGrid), "home-content-grid"));
         return items;
+    }
+
+    // Controls — live samples（design/gallery.html Controls 分区实时样本）：
+    // home 左列在 Control inventory 与 DSL 快照之间的实时样本面板，块间
+    // 1px 分隔线（.ctl-block + .ctl-block）。样本与 Controls 路由同源
+    //（Spin/ToolBar/StatusBar 控制器状态共享，任一处交互两处一致）。
+    [[nodiscard]] core::Widget controlsSamplePanel(const style::Theme& theme) {
+        const auto blockTitle = [&theme](const char* text) {
+            return core::makeText(text, scaledStyle(12.0F, 650, theme));
+        };
+        const auto divider = [&theme]() {
+            return core::makeContainerLeaf(
+                std::nullopt, 1.0F, core::EdgeInsets{},
+                core::EdgeInsets::symmetric(0.0F, 16.0F),
+                theme.colors.borderDefault, "");
+        };
+
+        std::vector<core::Widget> body;
+        body.push_back(
+            panelHead("Controls — live samples", "Spin · ToolBar · StatusBar",
+                      theme));
+
+        std::vector<core::Widget> spinBlock;
+        spinBlock.push_back(blockTitle("Spin — bounded numeric stepping"));
+        spinBlock.push_back(core::makeRow(
+            {core::makeText("Opacity", theme.typography.label),
+             controlsOpacity_.build(theme)},
+            core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Center, 16.0F));
+        spinBlock.push_back(core::makeRow(
+            {core::makeText("Font size", theme.typography.label),
+             controlsFontSize_.build(theme)},
+            core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Center, 16.0F));
+        spinBlock.push_back(core::withKey(
+            mutedLabel("Hold ▲/▼ for auto-repeat (500 ms delay, 60 ms "
+                       "step) · type + Enter commits · Esc reverts · "
+                       "Up/Down/PgUp/PgDn/Home/End · wheel.",
+                       theme),
+            "home-controls-spin-hint"));
+        body.push_back(core::makeColumn(
+            std::move(spinBlock), core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Stretch, 8.0F));
+        body.push_back(divider());
+
+        std::vector<core::Widget> toolBarBlock;
+        toolBarBlock.push_back(
+            blockTitle("ToolBar — commands, toggles, overflow"));
+        toolBarBlock.push_back(controlsToolBar_.build(shell_, theme));
+        toolBarBlock.push_back(core::withKey(
+            mutedLabel("Last command: " + lastControlsCommand_, theme),
+            "home-controls-command-label"));
+        toolBarBlock.push_back(core::withKey(
+            mutedLabel("Tab enters the bar, Left/Right roam, Enter "
+                       "activates; toggles hold a persistent surface; "
+                       "narrowing the window folds the tail into the "
+                       "chevron panel.",
+                       theme),
+            "home-controls-tb-hint"));
+        body.push_back(core::makeColumn(
+            std::move(toolBarBlock), core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Stretch, 8.0F));
+        body.push_back(divider());
+
+        controlsStatusBar_.setItems({
+            {"busy", widgets::StatusItemKind::Busy, core::IconId::None, "",
+             true, 0.0F},
+            {"progress", widgets::StatusItemKind::Progress,
+             core::IconId::None, "", true, 0.0F},
+            {"sep", widgets::StatusItemKind::Separator, core::IconId::None,
+             "", true, 0.0F},
+            {"cursor", widgets::StatusItemKind::Text, core::IconId::None,
+             "Ln 1, Col 1", true, 0.0F},
+        });
+        std::vector<core::Widget> statusBlock;
+        statusBlock.push_back(
+            blockTitle("StatusBar — messages, progress, busy"));
+        statusBlock.push_back(controlsStatusBar_.build(theme));
+        statusBlock.push_back(core::withKey(
+            mutedLabel("The \"Grid\" toggle above drives the status bar "
+                       "busy arc and message; the progress item carries a "
+                       "determinate 68% sample.",
+                       theme),
+            "home-controls-sb-hint"));
+        body.push_back(core::makeColumn(
+            std::move(statusBlock), core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Stretch, 8.0F));
+
+        return panelCard(std::move(body), theme, "home-controls-panel");
     }
 
     // Control inventory：分区瓷砖（预览即真控件，点击整格跳转分区）。
@@ -1642,35 +1743,76 @@ class GalleryApp {
         return panelCard(std::move(body), theme, "inventory-panel");
     }
 
-    // C++ DSL 快照（设计稿只读代码面板；行号 + 代码为静态展示，与
-    // design/gallery.html code-panel 12 行快照一致）。
+    // C++ DSL 快照（设计稿只读代码面板；行号 + 12 行静态快照与
+    // design/gallery.html code-panel 一致，含语法令牌着色：关键字 =
+    // accentContent、调用名 = statusSuccess、字面量 = contentSecondary，
+    // 其余基底 contentPrimary）。
     [[nodiscard]] core::Widget codePanel(const style::Theme& theme) const {
-        static const char* kLines[] = {
-            "auto gallery = makeColumn({",
-            "  titleBar({menus({file, view, help}), minMaxClose}),",
-            "  splitter(sidebar, mainPane),",
-            "  toolBar({new, open, undo, grid}),",
-            "  button(\"Filled\", variant::filled),",
-            "  textField(\"username\"),",
-            "  spin(\"opacity\", 0, 100),",
-            "  statusBar({progress, cursor}),",
-            "  virtualList(1000),",
-            "  tree(fileTree, Single),",
-            "  treeList(deps, columns),",
-            "});",
+        enum class Seg : std::uint8_t { Plain, Key, Call, Literal };
+        struct TokenLine {
+            std::vector<std::pair<Seg, const char*>> segments;
+        };
+        static const TokenLine kLines[] = {
+            {{{Seg::Key, "auto"}, {Seg::Plain, " gallery = "},
+              {Seg::Call, "makeColumn"}, {Seg::Plain, "({"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "titleBar"},
+              {Seg::Plain, "({menus({file, view, help}), minMaxClose}),"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "splitter"},
+              {Seg::Plain, "(sidebar, mainPane),"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "toolBar"},
+              {Seg::Plain, "({new, open, undo, grid}),"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "button"},
+              {Seg::Plain, "("}, {Seg::Literal, "\"Filled\""},
+              {Seg::Plain, ", variant::filled),"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "textField"},
+              {Seg::Plain, "("}, {Seg::Literal, "\"username\""},
+              {Seg::Plain, "),"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "spin"},
+              {Seg::Plain, "("}, {Seg::Literal, "\"opacity\""},
+              {Seg::Plain, ", 0, 100),"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "statusBar"},
+              {Seg::Plain, "({progress, cursor}),"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "virtualList"},
+              {Seg::Plain, "("}, {Seg::Literal, "1000"},
+              {Seg::Plain, "),"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "tree"},
+              {Seg::Plain, "(fileTree, "}, {Seg::Literal, "Single"},
+              {Seg::Plain, "),"}}},
+            {{{Seg::Plain, "  "}, {Seg::Call, "treeList"},
+              {Seg::Plain, "(deps, columns),"}}},
+            {{{Seg::Plain, "});"}}},
+        };
+        const auto segmentColor = [theme](Seg seg) {
+            switch (seg) {
+                case Seg::Key:
+                    return theme.colors.accentContent;
+                case Seg::Call:
+                    return theme.colors.statusSuccess;
+                case Seg::Literal:
+                    return theme.colors.contentSecondary;
+                case Seg::Plain:
+                    break;
+            }
+            return theme.colors.contentPrimary;
         };
         std::vector<core::Widget> rows;
-        for (std::size_t i = 0;
-             i < sizeof(kLines) / sizeof(kLines[0]); ++i) {
+        for (std::size_t i = 0; i < sizeof(kLines) / sizeof(kLines[0]); ++i) {
             core::Widget number = codeText(std::to_string(i + 1), theme,
                                             theme.colors.contentSecondary);
             number.width = 20.0F;
+            std::vector<core::Widget> segments;
+            for (const auto& [seg, text] : kLines[i].segments) {
+                segments.push_back(codeText(text, theme, segmentColor(seg)));
+            }
             rows.push_back(core::withKey(
-                core::makeRow({std::move(number),
-                               codeText(kLines[i], theme,
-                                        theme.colors.contentPrimary)},
-                              core::MainAxisAlignment::Start,
-                              core::CrossAxisAlignment::Center, 12.0F),
+                core::makeRow(
+                    {std::move(number),
+                     core::makeRow(std::move(segments),
+                                   core::MainAxisAlignment::Start,
+                                   core::CrossAxisAlignment::Center,
+                                   0.0F)},
+                    core::MainAxisAlignment::Start,
+                    core::CrossAxisAlignment::Center, 12.0F),
                 "code-line-" + std::to_string(i + 1)));
         }
         std::vector<core::Widget> body;
@@ -1690,7 +1832,8 @@ class GalleryApp {
             {theme.colors.accent, "accent", hexColor(theme.colors.accent)},
             {theme.colors.statusSuccess, "status.success",
              hexColor(theme.colors.statusSuccess)},
-            {theme.colors.borderStrong, "border.strong", "1 px"},
+            {theme.colors.borderStrong, "border.strong",
+             hexColor(theme.colors.borderStrong)},
         };
         std::vector<core::Widget> rows;
         for (const auto& [color, name, value] : tokens) {
@@ -1743,6 +1886,9 @@ class GalleryApp {
                                           !darkMode_
                                               ? core::ButtonVariant::Filled
                                               : core::ButtonVariant::Outline);
+        // 同瓦片迷你按钮：描边样本取 accent 边（design/gallery.html
+        // .mini-button.outline）。
+        light.styleOverrides.border = theme.colors.accent;
         core::Widget contrast =
             buttonWidget("High contrast", "toggle-contrast",
                          "home-toggle-contrast",
@@ -1784,6 +1930,9 @@ class GalleryApp {
 
     [[nodiscard]] core::Widget buttonsTile(const style::Theme& theme) const {
         // Filled = 分区入口（语义 Button）；Outline = 计数器直连。
+        // 瓦片迷你按钮的描边取 accent（design/gallery.html
+        // .mini-button.outline：border 1px accent；框架 Outline token 的
+        // borderStrong 是通用按钮契约，此处按稿局部覆写）。
         core::Widget filled = core::withControlSize(
             buttonWidget("Filled", "goto-buttons", "goto-buttons-button",
                          core::ButtonVariant::Filled),
@@ -1792,6 +1941,7 @@ class GalleryApp {
             buttonWidget("Outline", "bump-clicks", "btn-tile-outline",
                          core::ButtonVariant::Outline),
             core::ControlSize::Small);
+        outline.styleOverrides.border = theme.colors.accent;
         return tileShell(core::makeRow({core::withKey(std::move(filled),
                                                       "goto-buttons-button"),
                                         core::withKey(std::move(outline),

@@ -94,6 +94,8 @@ struct RenderNode {
     bool progressIndeterminate{false};
     // 图标旋转（弧度，绕节点中心；Widget.iconRotation 布局期复制）。
     float iconRotation{0.0F};
+    // Button 图标位前导（Widget.iconLeading 布局期复制；默认尾随）。
+    bool iconLeading{false};
     // 圆角裁剪声明（Widget.clipRounded 布局期复制；painter 消费）。
     bool clipRounded{false};
 

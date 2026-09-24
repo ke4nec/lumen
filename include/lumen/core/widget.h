@@ -353,6 +353,10 @@ struct Widget {
     // 图标旋转（弧度；绕节点中心，painter 归一化坐标折线旋转后绘制——
     // 命令层零改动，busy 弧等持钟动画用）。默认 0。
     float iconRotation{0.0F};
+    // Button 图标位在前还是在后：设计稿的主操作 "+" 前缀、sidebar-nav
+    // 与菜单图标均为前导（design/gallery.html）；默认尾随保持既有
+    // Dropdown chevron / 集合行箭头行为不变。
+    bool iconLeading{false};
     // 圆角裁剪声明（2026-09，titlebar-design §5"角部例外"框架化）：
     // true 时子树绘制（含自身表面）按节点 rect + radius 圆角门控
     //（CSS overflow:hidden 语义；painter ScopedRoundedClip →
@@ -701,6 +705,13 @@ inline Widget makeIcon(IconId icon, std::string key = {},
 
 inline Widget withIcon(Widget child, IconId icon) {
     child.icon = icon;
+    return child;
+}
+
+// 前导图标（design/gallery.html：主操作 "+" 前缀、sidebar-nav 图标）。
+inline Widget withLeadingIcon(Widget child, IconId icon) {
+    child.icon = icon;
+    child.iconLeading = true;
     return child;
 }
 

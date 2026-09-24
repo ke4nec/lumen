@@ -125,6 +125,7 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.showScrollbar = widget.showScrollbar;
     node.progressIndeterminate = widget.progressIndeterminate;
     node.iconRotation = widget.iconRotation;
+    node.iconLeading = widget.iconLeading;
     node.clipRounded = widget.clipRounded;
     node.elevation = widget.elevation > 0.0F ? widget.elevation : core::commonStyle(node.style).elevation;
     if (node.elevation > 0.0F) {
@@ -206,7 +207,8 @@ Size measureLeafIntrinsic(const Widget& widget, const ResolvedStyle& resolved,
         case WidgetType::Button: {
             // chrome（padding/最小尺寸）来自 resolved style——布局与
             // painter 同源（visual-system §7.1）。图标计入内容组宽度
-            //（§6.1：文本+尾随图标作为居中内容组）。
+            //（§6.1：文本+图标作为居中内容组；前导/尾随只影响 painter
+            // 排布，宽度同式）。
             const EdgeInsets& chrome = core::commonStyle(resolved).padding;
             const Size textSize = measureTextContent(content, textStyle, 0.0F,
                                                      false);

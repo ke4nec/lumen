@@ -16,7 +16,7 @@ using Catalog = std::vector<Line>;
 const std::vector<Catalog>& catalog() {
     static const std::vector<Catalog> kCatalog = [] {
         std::vector<Catalog> table(
-            static_cast<std::size_t>(IconId::GalleryLogo) + 1);
+            static_cast<std::size_t>(IconId::NavTheme) + 1);
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
@@ -185,6 +185,115 @@ const std::vector<Catalog>& catalog() {
         table[static_cast<std::size_t>(IconId::GalleryLogo)] =
             Catalog{Line{{Offset{0.25F, 0.18F}, Offset{0.25F, 0.78F}}},
                     Line{{Offset{0.25F, 0.78F}, Offset{0.80F, 0.78F}}}};
+        // Gallery 侧栏导航（design/gallery.html sidebar-nav 的 24 栅格
+        // SVG 逐坐标归一；18px 盒 + ~1.7 描边渲染，圆角矩形按目录惯例
+        // 取直角折线）。NavCollections/NavControls 的小圆节点以 8 段
+        // 八边形逼近；NavTheme 的右半填充以三条竖弦近似（目录只描边）。
+        table[static_cast<std::size_t>(IconId::NavHome)] =
+            Catalog{Line{{Offset{0.125F, 0.4167F}, Offset{0.5F, 0.125F},
+                          Offset{0.875F, 0.4167F}}},
+                    Line{{Offset{0.2083F, 0.375F}, Offset{0.2083F, 0.8333F},
+                          Offset{0.7917F, 0.8333F}, Offset{0.7917F, 0.375F}}},
+                    Line{{Offset{0.375F, 0.8333F}, Offset{0.375F, 0.5417F},
+                          Offset{0.625F, 0.5417F}, Offset{0.625F, 0.8333F}}}};
+        table[static_cast<std::size_t>(IconId::NavButtons)] =
+            Catalog{Line{{Offset{0.125F, 0.25F}, Offset{0.875F, 0.25F},
+                          Offset{0.875F, 0.75F}, Offset{0.125F, 0.75F},
+                          Offset{0.125F, 0.25F}}},
+                    Line{{Offset{0.3333F, 0.5F}, Offset{0.6667F, 0.5F}}}};
+        table[static_cast<std::size_t>(IconId::NavInputs)] =
+            Catalog{Line{{Offset{0.125F, 0.2083F}, Offset{0.875F, 0.2083F},
+                          Offset{0.875F, 0.7917F}, Offset{0.125F, 0.7917F},
+                          Offset{0.125F, 0.2083F}}},
+                    Line{{Offset{0.3333F, 0.3333F}, Offset{0.3333F, 0.6667F}}},
+                    Line{{Offset{0.25F, 0.3333F}, Offset{0.4167F, 0.3333F}}},
+                    Line{{Offset{0.25F, 0.6667F}, Offset{0.4167F, 0.6667F}}},
+                    Line{{Offset{0.5417F, 0.5F}, Offset{0.7083F, 0.5F}}}};
+        table[static_cast<std::size_t>(IconId::NavLayout)] =
+            Catalog{Line{{Offset{0.125F, 0.125F}, Offset{0.875F, 0.125F},
+                          Offset{0.875F, 0.875F}, Offset{0.125F, 0.875F},
+                          Offset{0.125F, 0.125F}}},
+                    Line{{Offset{0.125F, 0.375F}, Offset{0.875F, 0.375F}}},
+                    Line{{Offset{0.4167F, 0.375F}, Offset{0.4167F, 0.875F}}}};
+        // NavLists：三条行线 + 左侧圆点（0.04 宽短横线在 18px 盒中仅
+        // ~0.75px 不可见——按目录惯例以 8 段八边形逼近 1px 半径实点）。
+        table[static_cast<std::size_t>(IconId::NavLists)] =
+            Catalog{Line{{Offset{0.375F, 0.25F}, Offset{0.875F, 0.25F}}},
+                    Line{{Offset{0.375F, 0.5F}, Offset{0.875F, 0.5F}}},
+                    Line{{Offset{0.375F, 0.75F}, Offset{0.875F, 0.75F}}},
+                    Line{{Offset{0.1458F, 0.2083F}, Offset{0.1843F, 0.2115F}, Offset{0.1875F, 0.2500F}, Offset{0.1843F, 0.2885F}, Offset{0.1458F, 0.2917F}, Offset{0.1073F, 0.2885F}, Offset{0.1042F, 0.2500F}, Offset{0.1073F, 0.2115F}, Offset{0.1458F, 0.2083F}}},
+                    Line{{Offset{0.1458F, 0.4583F}, Offset{0.1843F, 0.4615F}, Offset{0.1875F, 0.5000F}, Offset{0.1843F, 0.5385F}, Offset{0.1458F, 0.5417F}, Offset{0.1073F, 0.5385F}, Offset{0.1042F, 0.5000F}, Offset{0.1073F, 0.4615F}, Offset{0.1458F, 0.4583F}}},
+                    Line{{Offset{0.1458F, 0.7083F}, Offset{0.1843F, 0.7115F}, Offset{0.1875F, 0.7500F}, Offset{0.1843F, 0.7885F}, Offset{0.1458F, 0.7917F}, Offset{0.1073F, 0.7885F}, Offset{0.1042F, 0.7500F}, Offset{0.1073F, 0.7115F}, Offset{0.1458F, 0.7083F}}}};
+        table[static_cast<std::size_t>(IconId::NavCollections)] =
+            Catalog{Line{{Offset{0.5F, 0.125F}, Offset{0.5F, 0.2917F}}},
+                    Line{{Offset{0.25F, 0.875F}, Offset{0.25F, 0.7917F},
+                          Offset{0.3333F, 0.7083F}, Offset{0.6667F, 0.7083F},
+                          Offset{0.75F, 0.625F}, Offset{0.75F, 0.5417F}}},
+                    Line{{Offset{0.25F, 0.375F}, Offset{0.3088F, 0.3996F},
+                          Offset{0.3333F, 0.4583F}, Offset{0.3088F, 0.5171F},
+                          Offset{0.25F, 0.5417F}, Offset{0.1913F, 0.5171F},
+                          Offset{0.1667F, 0.4583F}, Offset{0.1913F, 0.3996F},
+                          Offset{0.25F, 0.375F}}},
+                    Line{{Offset{0.75F, 0.375F}, Offset{0.8088F, 0.3996F},
+                          Offset{0.8333F, 0.4583F}, Offset{0.8088F, 0.5171F},
+                          Offset{0.75F, 0.5417F}, Offset{0.6913F, 0.5171F},
+                          Offset{0.6667F, 0.4583F}, Offset{0.6913F, 0.3996F},
+                          Offset{0.75F, 0.375F}}},
+                    Line{{Offset{0.25F, 0.5417F}, Offset{0.25F, 0.7917F}}},
+                    Line{{Offset{0.75F, 0.5417F}, Offset{0.75F, 0.4583F}}}};
+        table[static_cast<std::size_t>(IconId::NavMenus)] =
+            Catalog{Line{{Offset{0.1667F, 0.2917F}, Offset{0.8333F, 0.2917F}}},
+                    Line{{Offset{0.1667F, 0.5F}, Offset{0.8333F, 0.5F}}},
+                    Line{{Offset{0.1667F, 0.7083F}, Offset{0.5833F, 0.7083F}}}};
+        table[static_cast<std::size_t>(IconId::NavControls)] =
+            Catalog{Line{{Offset{0.1667F, 0.3333F}, Offset{0.4167F, 0.3333F}}},
+                    Line{{Offset{0.6667F, 0.3333F}, Offset{0.8333F, 0.3333F}}},
+                    Line{{Offset{0.1667F, 0.6667F}, Offset{0.25F, 0.6667F}}},
+                    Line{{Offset{0.5F, 0.6667F}, Offset{0.8333F, 0.6667F}}},
+                    Line{{Offset{0.5417F, 0.2333F}, Offset{0.6125F, 0.2625F},
+                          Offset{0.6417F, 0.3333F}, Offset{0.6125F, 0.4042F},
+                          Offset{0.5417F, 0.4333F}, Offset{0.4708F, 0.4042F},
+                          Offset{0.4417F, 0.3333F}, Offset{0.4708F, 0.2625F},
+                          Offset{0.5417F, 0.2333F}}},
+                    Line{{Offset{0.375F, 0.5667F}, Offset{0.4458F, 0.5958F},
+                          Offset{0.475F, 0.6667F}, Offset{0.4458F, 0.7375F},
+                          Offset{0.375F, 0.7667F}, Offset{0.3042F, 0.7375F},
+                          Offset{0.275F, 0.6667F}, Offset{0.3042F, 0.5958F},
+                          Offset{0.375F, 0.5667F}}}};
+        table[static_cast<std::size_t>(IconId::NavFeedback)] =
+            Catalog{Line{{Offset{0.875F, 0.4583F}, Offset{0.7775F, 0.6942F},
+                          Offset{0.5417F, 0.7917F}, Offset{0.2917F, 0.7917F},
+                          Offset{0.125F, 0.9167F}, Offset{0.125F, 0.2083F},
+                          Offset{0.1496F, 0.1496F}, Offset{0.2083F, 0.125F},
+                          Offset{0.5417F, 0.125F}, Offset{0.7775F, 0.2225F},
+                          Offset{0.875F, 0.4583F}}},
+                    Line{{Offset{0.3333F, 0.375F}, Offset{0.6667F, 0.375F}}},
+                    Line{{Offset{0.3333F, 0.5417F}, Offset{0.5417F, 0.5417F}}}};
+        {
+            // NavTheme：整圆（24 段折线逼近）+ 右半填充的三条竖弦
+            // 近似（稿为 currentColor 实心半圆，目录只支持描边）。
+            Catalog theme;
+            Line circle;
+            constexpr float kCx = 12.0F;
+            constexpr float kCy = 12.0F;
+            constexpr float kRadius = 9.0F;
+            constexpr int kSegments = 24;
+            for (int i = 0; i <= kSegments; ++i) {
+                const float angle =
+                    2.0F * 3.1415927F * static_cast<float>(i) / kSegments;
+                circle.push_back(
+                    Offset{(kCx + kRadius * std::cos(angle)) / 24.0F,
+                           (kCy + kRadius * std::sin(angle)) / 24.0F});
+            }
+            theme.push_back(std::move(circle));
+            theme.push_back(Line{{Offset{0.625F, 0.1463F},
+                                  Offset{0.625F, 0.8538F}}});
+            theme.push_back(Line{{Offset{0.7292F, 0.2033F},
+                                  Offset{0.7292F, 0.7967F}}});
+            theme.push_back(Line{{Offset{0.8333F, 0.3283F},
+                                  Offset{0.8333F, 0.6717F}}});
+            table[static_cast<std::size_t>(IconId::NavTheme)] = std::move(theme);
+        }
         return table;
     }();
     return kCatalog;

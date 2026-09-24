@@ -39,6 +39,7 @@ bool sameNodeFields(const RenderNode& a, const RenderNode& b) {
            a.scrollbarThickness == b.scrollbarThickness &&
            a.progressIndeterminate == b.progressIndeterminate &&
            a.iconRotation == b.iconRotation &&
+           a.iconLeading == b.iconLeading &&
            a.clipRounded == b.clipRounded;
 }
 

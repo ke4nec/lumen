@@ -58,7 +58,13 @@ TEST_CASE("icon_catalog_provides_normalized_polylines", "[visual][m6]") {
          {IconId::Check, IconId::Close, IconId::ChevronDown,
           IconId::ChevronRight, IconId::ChevronLeft, IconId::ChevronUp,
           IconId::Alert, IconId::Plus, IconId::Minus, IconId::Search,
-          IconId::Info, IconId::Maximize, IconId::GalleryLogo}) {
+          IconId::Info, IconId::Maximize, IconId::GalleryLogo,
+          // Gallery 侧栏导航（gallery 视觉增强，2026-09-24）：全枚举
+          // 覆盖 + 归一化契约同锁。
+          IconId::NavHome, IconId::NavButtons, IconId::NavInputs,
+          IconId::NavLayout, IconId::NavLists, IconId::NavCollections,
+          IconId::NavMenus, IconId::NavControls, IconId::NavFeedback,
+          IconId::NavTheme}) {
         const auto& polylines = iconPolylines(id);
         REQUIRE_FALSE(polylines.empty());
         for (const auto& polyline : polylines) {
@@ -1087,4 +1093,52 @@ TEST_CASE("dropdown_overlay_inherits_anchor_scope_theme", "[visual][s4]") {
     REQUIRE(menu != nullptr);
     CHECK(menu->commonStyle().background == lightScope.colors.surfaceElevated);
     controller.close(shell);
+}
+
+
+// --- gallery 视觉增强（2026-09-24）：前导图标位 ---
+
+TEST_CASE("button_leading_icon_reorders_ink_and_keeps_measure", "[visual]") {
+    // 前导/尾随是同一内容组的两种排布：intrinsic 尺寸同式（测量契约）；
+    // 命令层图标 X 前移、文字 X 后移（painter 消费 iconLeading）；字段
+    // 翻转进入 damage 判定（core::sameNode）——否则切换位向不重绘。
+    auto build = [](bool leading) {
+        Widget button =
+            leading ? withLeadingIcon(makeButton("Add item"), IconId::Plus)
+                    : withIcon(makeButton("Add item"), IconId::Plus);
+        button.key = "btn";
+        return button;
+    };
+    const RenderNode leadingRoot = layoutOf(build(true));
+    const RenderNode trailingRoot = layoutOf(build(false));
+    CHECK(leadingRoot.size == trailingRoot.size);
+
+    const auto locate = [](const RenderNode& root, float& iconX,
+                           float& textX) {
+        iconX = textX = -1.0F;
+        for (const auto& command : render::recordScene(root).commands()) {
+            if (command.type == render::CommandType::DrawIcon) {
+                iconX = command.rect.origin.x;
+            }
+            if (command.type == render::CommandType::DrawText) {
+                textX = command.textRun.origin.x;
+            }
+        }
+    };
+    float leadingIconX = 0.0F, leadingTextX = 0.0F;
+    float trailingIconX = 0.0F, trailingTextX = 0.0F;
+    locate(leadingRoot, leadingIconX, leadingTextX);
+    locate(trailingRoot, trailingIconX, trailingTextX);
+    REQUIRE(leadingIconX >= 0.0F);
+    REQUIRE(leadingTextX >= 0.0F);
+    // 前导：图标在文字左侧；尾随：文字在图标左侧。
+    CHECK(leadingIconX < leadingTextX);
+    CHECK(trailingTextX < trailingIconX);
+    // 前导图标即内容组起点（= 尾随文字的起点）。
+    CHECK(leadingIconX == Catch::Approx(trailingTextX).margin(0.5F));
+
+    // damage：同尺寸节点仅 iconLeading 不同不得被判为相同。
+    RenderNode mutated = trailingRoot;
+    mutated.iconLeading = true;
+    CHECK_FALSE(core::sameNode(trailingRoot, mutated));
 }

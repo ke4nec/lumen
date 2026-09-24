@@ -50,6 +50,18 @@ enum class IconId : std::uint8_t {
     Grip,
     // Gallery 标题栏品牌标记（追加在尾部，保持既有 ID 值不变）。
     GalleryLogo,
+    // Gallery 侧栏导航（design/gallery.html sidebar-nav 18px 线性图标；
+    // 追加在尾部，保持既有 ID 值不变）。
+    NavHome,
+    NavButtons,
+    NavInputs,
+    NavLayout,
+    NavLists,
+    NavCollections,
+    NavMenus,
+    NavControls,
+    NavFeedback,
+    NavTheme,
 };
 
 // 图标的归一化折线组（0..1 坐标；stroke 绘制，无填充）。
