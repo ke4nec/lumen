@@ -134,10 +134,12 @@ TEST_CASE("system_fonts_cover_latin_and_cjk", "[text][system-fonts]") {
     // CJK/emoji 覆盖按环境字体集而定（最小容器只有 DejaVu 等拉丁
     // 字体）：无覆盖时跳过脚本断言——目录扫描修复后管理器在拉丁
     // only 环境也会创建成功，这里不能再依赖"创建失败=全跳过"。
-    if (!fonts->resolveWithStatus(query, U'\u4E2D').missing) {
+    // cjk 声明在守卫外：下方 _WIN32 段锚定雅黑时复用（Windows 环境
+    // 恒有 CJK 覆盖，missing 恒 false）。
+    const auto cjk = fonts->resolveWithStatus(query, U'\u4E2D');
+    if (!cjk.missing) {
         REQUIRE(fonts->glyphMetrics(query, U'\u4E2D', &metrics));
         CHECK(metrics.advanceEm > 0.0F);
-        const auto cjk = fonts->resolveWithStatus(query, U'\u4E2D');
         CHECK_FALSE(cjk.missing);
     }
 #ifdef _WIN32

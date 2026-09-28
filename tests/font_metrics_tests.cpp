@@ -56,9 +56,10 @@ TEST_CASE("system_font_text_clip_preserves_cjk_and_mixed_ink",
     for (const float size : {10.0F, 14.0F, 36.0F}) {
         for (const std::string value : {"曩中，", "Ag曩中，", "😀"}) {
             CAPTURE(size, value);
+            // 缺覆盖值跳过（SKIP 会中止整个用例，剩余值/尺寸将不再
+            // 验证——用 continue 逐值降级）。
             if (!valueCovered(value)) {
-                SKIP("no rasterizable coverage for this script on this "
-                     "environment");
+                continue;
             }
             core::TextStyle style;
             style.fontSize = size;
