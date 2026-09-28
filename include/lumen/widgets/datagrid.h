@@ -15,7 +15,16 @@
 // 复制粘贴（TSV；Ctrl+C/Ctrl+V 经宿主剪贴板）、单元格编辑与校验
 // （beginEdit/commitEdit/cancelEdit + setCellValidator；Enter 开始、
 // Escape 取消、点击其他单元格提交）。
-// 水平虚拟化/双轴滚动协调/RTL 镜像/拖放为后续增量（不破坏本契约）。
+//
+// 2026-09-28 对齐增强稿第二批（设计文档 §16）：真实指针修饰键路径
+// （Ctrl/Shift 透传）、单元格点击身份（定位列焦点）、提交失败拦截
+// （切格/切行/排序/复选框/列显隐与重排失败中止）、编辑器程序化焦点与
+// 编辑态 Enter 提交（IME composing 除外）、Tab 提交并移动编辑格（跨行、
+// 跳禁用行）、编辑器内点击/双击不打断草稿、排序升→降→清除循环、
+// 列 minWidth/显隐/顺序、选择复选框列（表头全选/清空）、数值列右对齐
+// + 单行省略、自定义空态。
+// 水平虚拟化/双轴滚动协调/RTL 镜像/拖放/列宽拖动手柄/冻结列为后续
+// 增量（不破坏本契约）。
 //
 // UI 线程独占；控制器生命周期必须覆盖 shell（sink 注册于 attach）。
 
@@ -35,7 +44,10 @@
 
 namespace lumen::widgets {
 
-// 列定义（应用装配；width 为固定像素宽，>= kMinColumnWidth）。
+// 单元格水平对齐（设计文档 §12：数值/日期列 End = 右对齐）。
+enum class DataColumnAlign : std::uint8_t { Start, End };
+
+// 列定义（应用装配；width 为固定像素宽，>= minWidth 且 >= 40）。
 struct DataColumn {
     std::string key{};
     std::string header{};
@@ -46,6 +58,12 @@ struct DataColumn {
     bool sortable{false};
     // commitEdit 是否允许写入该列（只读列）。
     bool editable{false};
+    // 列宽下限（业务列可大于全局 40 下限；resizeColumn 钳制到该值）。
+    float minWidth{40.0F};
+    // 数值/日期列 End = 单元格文本右对齐（§12）。
+    DataColumnAlign align{DataColumnAlign::Start};
+    // false 时构建跳过该列（列管理；设计文档 §11.1 列布局状态）。
+    bool visible{true};
 };
 
 class DataGridController final : public core::VirtualListSource {
@@ -58,10 +76,16 @@ class DataGridController final : public core::VirtualListSource {
         return columns_;
     }
     // 运行时列宽（应用持久化回填用）；不可调整列拒绝并返回 false。
+    // 钳制到 [column.minWidth, ∞)（minWidth 自身下限 40）。
     bool resizeColumn(const std::string& columnKey, float width);
-    // 当前列宽快照（key → width）。
+    // 当前列宽快照（key → width；含不可见列，供布局持久化）。
     [[nodiscard]] std::vector<std::pair<std::string, float>>
     columnWidths() const;
+    // 列显隐（构建跳过不可见列；未知列拒绝）。
+    bool setColumnVisible(const std::string& columnKey, bool visible);
+    // 列显示顺序（把 columnKey 移到全列向量的 toIndex；钳制到范围内，
+    // 未知列拒绝）。列向量的顺序即表头/单元格/TSV 列序。
+    bool moveColumn(const std::string& columnKey, std::size_t toIndex);
 
     // --- 数据装配 ---
     void setRowCount(std::size_t count);
@@ -72,12 +96,16 @@ class DataGridController final : public core::VirtualListSource {
     // 行 → stable key（默认 "r<row>"；选择集/焦点/语义身份）。
     void setKeyOf(std::function<std::string(std::size_t)> keyOf);
     // 行禁用查询（不物化屏外行即可回答；禁用行不参与选择/编辑）。
+    // 注意：可用行集合有缓存（表头全选态/全选动作用）——enabledness
+    // 变化须经本入口或 setRowCount 通知，否则表头勾选显示滞后
+    //（全选/行选择/编辑等动作路径始终实时查询）。
     void setRowEnabledOf(std::function<bool(std::size_t)> enabledOf);
     void setEstimatedExtent(float extent);
 
     // --- 排序/筛选（回调契约；数据重排由应用执行） ---
-    // 排序状态由网格维护（表头指示器同源）；requestSort 切换方向并触发
-    // 回调。应用重排数据后调用 setRowCount/refresh 重建。
+    // 排序状态由网格维护（表头指示器同源）。点击循环为升序 → 降序 →
+    // 清除（§11.2）；清除时回调以空列 key 触发，应用恢复源顺序后重建。
+    // 编辑中的草稿先提交，校验失败中止本次排序（§13.1）。
     std::function<void(const std::string& columnKey, bool ascending)>
         onSortRequest{};
     [[nodiscard]] const std::string& sortColumn() const {
@@ -114,11 +142,16 @@ class DataGridController final : public core::VirtualListSource {
         const std::string& columnKey,
         std::function<std::string(const std::string&)> validator);
     // 进入编辑：current 列必须在 editable 列内；编辑器初值 = 当前单元格
-    // 文本（state key = owner + ":edit"）。编辑器是树内 text_field，焦点
-    // 在字段内——Enter/点击其他单元格提交（见 commitEdit）。
+    // 文本（state key = owner + ":edit"）。编辑器是树内 text_field；进入
+    // 即请求编辑焦点（requestFieldFocus，重建后 focusedBind 生效——文本
+    // 输入/IME 直接路由到编辑器，无需先点击）。已有编辑先提交：提交失败
+    // 返回 false 并保留旧编辑与草稿（§13.1 失败拦截）；同一格重复进入为
+    // no-op 返回 true。
     bool beginEdit(std::size_t row, const std::string& columnKey);
     // 提交：读 state 校验 → 通过则 onCellEdited(row, col, text) 并退出
-    // 编辑；失败保留编辑态（editError() 非空）。
+    // 编辑（焦点回到行节点）；失败保留编辑态（editError() 非空，编辑器
+    // 焦点不动）。编辑中 Enter 经 handleKey 走此处（IME composing 期间
+    // Enter 留给输入法不触发提交）。
     bool commitEdit();
     void cancelEdit();
     [[nodiscard]] bool editing() const { return editing_.has_value(); }
@@ -129,17 +162,25 @@ class DataGridController final : public core::VirtualListSource {
 
     // --- 组合出口 ---
     // 整网格 Widget：Column[表头行（排序点击/列宽契约见设计文档 §4）,
-    // makeList(this)]。纵向虚拟化复用 List 布局路径；水平方向由应用按
-    // 需包横向 ScrollView（首版契约）。
+    // makeList(this)]。表头与每行首列为选择复选框列（宽 44，仅
+    // SelectionMode != None；§12 选择辅助列），表头复选框全选/清空当前
+    // 可用行。纵向虚拟化复用 List 布局路径；水平方向由应用按需包横向
+    // ScrollView（首版契约）。单元格文本单行省略；align=End 的列右对齐。
     [[nodiscard]] core::Widget build() const;
+
+    // 空态内容（数据状态壳由应用组合，§14）：默认 "No rows"；应用可
+    // 提供加载骨架/错误重试/无结果等任意子树（listPart 语义由网格补写）。
+    void setEmptyBuilder(std::function<core::Widget()> builder);
 
     // --- shell 接线（构建前一次；ownerKey = build() 根 key） ---
     void attach(app::AppShell& shell, std::string ownerKey);
 
     // --- 键盘（应用 ShellConfig.onKey 转发；返回 true = 已消费） ---
     // Up/Down/Home/End/PageUp/PageDown/Ctrl+A 与 List 同源；Left/Right
-    // 移动列焦点；Enter 进入编辑（或激活；Key 枚举无 F 键，编辑入口契
-    // 约 = Enter + beginEdit API）；Escape 取消编辑；Ctrl+C/Ctrl+V 剪贴板。
+    // 移动列焦点；Enter 进入编辑（或激活；只读列回退 onRowActivated）；
+    // Escape 取消编辑；Ctrl+C/Ctrl+V 剪贴板（编辑态不拦截——编辑器自身
+    // 消费剪贴板/方向键/文本键；Enter 提交，IME composing 期间除外）。
+    // Key 枚举无 F 键，编辑入口契约 = Enter + beginEdit API。
     bool handleKey(core::Key key, core::KeyModifiers modifiers,
                    char keyChar = 0);
 
@@ -183,8 +224,38 @@ class DataGridController final : public core::VirtualListSource {
                                        const std::string& columnKey) const;
     [[nodiscard]] bool rowEnabled(std::size_t index) const;
     [[nodiscard]] bool columnExists(const std::string& columnKey) const;
+    [[nodiscard]] bool columnVisible(const std::string& columnKey) const;
     [[nodiscard]] std::string firstEditableColumn() const;
-    void rowClicked(const std::string& key, bool ctrl, bool shift);
+    [[nodiscard]] std::string firstVisibleColumn() const;
+    [[nodiscard]] std::size_t firstVisibleIndex() const;
+    [[nodiscard]] std::size_t lastVisibleIndex() const;
+    // 视图变化守卫（§13.1）：无编辑或提交成功 = true；失败保留编辑态。
+    [[nodiscard]] bool commitPendingEdit();
+    // 行/格点击（ctrl/shift 来自指针修饰键；columnKey 定位列焦点）。
+    void rowClicked(const std::string& key, bool ctrl, bool shift,
+                    const std::string& columnKey = {});
+    // 双击/Enter 激活：可编辑列进入编辑，否则回退 onRowActivated。
+    // 返回 true = 进入编辑、已中止（提交失败）或触发激活。
+    [[nodiscard]] bool activateRow(
+        const std::string& rowKey,
+        const std::optional<std::string>& columnKey);
+    // 编辑态 Tab/Shift+Tab：提交后移动到下一/上一可编辑格（§13.1；跨
+    // 行、跳过禁用行、滚动对齐；边界提交后停在当前格）。
+    void moveEditor(const std::string& fromRow, const std::string& fromColumn,
+                    int direction);
+    // 复选框路径：独立切换行选择（不改 current）/ 全选-清空当前可用行。
+    void toggleRowSelection(const std::string& key);
+    void toggleSelectAll();
+    // 当前可用行 key（缓存；数据装配变化时失效，摊销表头全选态的 O(n)）。
+    [[nodiscard]] const std::vector<std::string>& selectableKeys() const;
+    // "cell:<rowKey>:<colKey>" 引用解析（colKey 末段匹配列集合，行/列
+    // key 允许含 ':'）。
+    [[nodiscard]] bool parseCellRef(const std::string& ref,
+                                    std::string& rowKey,
+                                    std::string& columnKey) const;
+    // 表头/行首的选择复选框格（44px 整格命中；Checkbox 无 bind，状态由
+    // 选择集重建）。
+    [[nodiscard]] core::Widget buildHeaderCheckCell() const;
     void requestRebuild();
 
     core::VirtualListController base_{};
@@ -193,6 +264,7 @@ class DataGridController final : public core::VirtualListSource {
     std::function<std::string(std::size_t, const std::string&)> cellText_{};
     std::function<std::string(std::size_t)> keyOf_{};
     std::function<bool(std::size_t)> enabledOf_{};
+    std::function<core::Widget()> emptyBuilder_{};
     std::unordered_map<std::string, std::function<std::string(
                                         const std::string&)>>
         validators_{};
@@ -202,6 +274,10 @@ class DataGridController final : public core::VirtualListSource {
     std::string sortColumn_{};
     bool sortAscending_{true};
     std::string currentColumn_{};
+    // 可用行 key 缓存（表头全选态/全选切换；setRowCount/setKeyOf/
+    // setRowEnabledOf 失效）。
+    mutable std::vector<std::string> selectableKeysCache_{};
+    mutable bool selectableKeysDirty_{true};
     app::AppShell* shell_{nullptr};
     std::string owner_{"grid"};
 };

@@ -1,4 +1,13 @@
 // M14-D：DataGridController 实现（契约见 docs/lumen-datagrid-design.md）。
+//
+// 2026-09-28 第二批（设计文档 §16）：指针修饰键经 pointerModifiers 透传
+// （dispatchRowClick 同源）；单元格携带点击身份（定位列焦点 + 行选择，
+// colKey 末段解析——行/列 key 允许含 ':'）；提交失败拦截（切格/切行/
+// 排序/复选框/激活先提交，失败中止且不覆盖草稿）；编辑器程序化焦点
+// （requestFieldFocus，重建后 focusedBind 生效）+ 编辑态 Enter 提交
+// （IME composing 除外）+ 提交/取消后焦点回行；排序升 → 降 → 清除循环；
+// 列 minWidth/显隐/顺序；选择复选框列（表头全选/清空当前可用行，
+// selectableKeys 缓存摊销 O(n)）；数值列右对齐 + 单行省略；自定义空态。
 
 #include "lumen/widgets/datagrid.h"
 
@@ -11,6 +20,12 @@ namespace lumen::widgets {
 namespace {
 constexpr float kMinColumnWidth = 40.0F;
 constexpr float kHeaderExtent = 36.0F;
+// 视觉系统 §3.3（Medium 档）：选择辅助列宽；格水平内边距取
+// metrics.controlPaddingX 同值（collection_common kRowPaddingX = 12）。
+constexpr float kSelectionColumnWidth = 44.0F;
+constexpr float kCellPaddingX = detail::kRowPaddingX;
+// 表头非排序列的辅助文字色（TreeList 表头同口径）。
+constexpr core::Color kHeaderSecondary{140, 140, 152, 255};
 
 std::string escapeTsvCell(const std::string& text) {
     std::string out;
@@ -24,6 +39,17 @@ std::string escapeTsvCell(const std::string& text) {
     }
     return out;
 }
+
+// 单行省略的单元格文本样式（§12：长内容单行省略）。
+core::TextStyle cellTextStyle(core::Color color = {}) {
+    core::TextStyle style;
+    style.maxLines = 1;
+    style.overflow = core::TextOverflow::Ellipsis;
+    if (color.a != 0) {
+        style.color = color;
+    }
+    return style;
+}
 }  // namespace
 
 // --- 列模型 ---
@@ -31,11 +57,12 @@ std::string escapeTsvCell(const std::string& text) {
 void DataGridController::setColumns(std::vector<DataColumn> columns) {
     columns_ = std::move(columns);
     for (auto& column : columns_) {
-        column.width = std::max(column.width, kMinColumnWidth);
+        // 全局下限 40；业务列 minWidth 只能更高（§11.1）。
+        column.minWidth = std::max(column.minWidth, kMinColumnWidth);
+        column.width = std::max(column.width, column.minWidth);
     }
-    if (!columnExists(currentColumn_)) {
-        currentColumn_ = columns_.empty() ? std::string{}
-                                          : columns_.front().key;
+    if (!columnVisible(currentColumn_)) {
+        currentColumn_ = firstVisibleColumn();
     }
     if (!sortColumn_.empty() && !columnExists(sortColumn_)) {
         sortColumn_.clear();
@@ -52,7 +79,8 @@ bool DataGridController::resizeColumn(const std::string& columnKey,
         if (!column.resizable) {
             return false;
         }
-        column.width = std::max(width, kMinColumnWidth);
+        // 钳制到列 minWidth（自身 >= 40）。
+        column.width = std::max(width, column.minWidth);
         requestRebuild();
         return true;
     }
@@ -69,10 +97,65 @@ DataGridController::columnWidths() const {
     return out;
 }
 
+bool DataGridController::setColumnVisible(const std::string& columnKey,
+                                          bool visible) {
+    for (auto& column : columns_) {
+        if (column.key != columnKey) {
+            continue;
+        }
+        if (column.visible == visible) {
+            return true;
+        }
+        // 视图变化先提交（§13.1 切列先提交；失败中止显隐变更）。
+        if (!commitPendingEdit()) {
+            return false;
+        }
+        column.visible = visible;
+        if (!visible && currentColumn_ == columnKey) {
+            // 当前列被隐藏：列焦点回退首个可见列。
+            currentColumn_ = firstVisibleColumn();
+        }
+        requestRebuild();
+        return true;
+    }
+    return false;
+}
+
+bool DataGridController::moveColumn(const std::string& columnKey,
+                                    std::size_t toIndex) {
+    std::size_t from = 0;
+    bool found = false;
+    for (std::size_t i = 0; i < columns_.size(); ++i) {
+        if (columns_[i].key == columnKey) {
+            from = i;
+            found = true;
+            break;
+        }
+    }
+    if (!found || columns_.empty()) {
+        return false;
+    }
+    toIndex = std::min(toIndex, columns_.size() - 1);
+    if (from == toIndex) {
+        return true;
+    }
+    // 视图变化先提交（§13.1 切列先提交；失败中止重排）。
+    if (!commitPendingEdit()) {
+        return false;
+    }
+    DataColumn moved = columns_[from];
+    columns_.erase(columns_.begin() + static_cast<std::ptrdiff_t>(from));
+    columns_.insert(columns_.begin() + static_cast<std::ptrdiff_t>(toIndex),
+                    std::move(moved));
+    requestRebuild();
+    return true;
+}
+
 // --- 数据装配 ---
 
 void DataGridController::setRowCount(std::size_t count) {
     base_.setItemCount(count);
+    selectableKeysDirty_ = true;
     requestRebuild();
 }
 
@@ -85,12 +168,14 @@ void DataGridController::setCellText(
 void DataGridController::setKeyOf(
     std::function<std::string(std::size_t)> keyOf) {
     keyOf_ = std::move(keyOf);
+    selectableKeysDirty_ = true;
     requestRebuild();
 }
 
 void DataGridController::setRowEnabledOf(
     std::function<bool(std::size_t)> enabledOf) {
     enabledOf_ = std::move(enabledOf);
+    selectableKeysDirty_ = true;
     requestRebuild();
 }
 
@@ -109,8 +194,18 @@ void DataGridController::requestSort(const std::string& columnKey) {
             return;
         }
     }
+    // 视图变化先提交编辑（§13.1）；校验失败中止本次排序。
+    if (!commitPendingEdit()) {
+        return;
+    }
+    // 单列循环：升序 → 降序 → 清除（§11.2）；清除以空列 key 回调。
     if (sortColumn_ == columnKey) {
-        sortAscending_ = !sortAscending_;
+        if (sortAscending_) {
+            sortAscending_ = false;
+        } else {
+            sortColumn_.clear();
+            sortAscending_ = true;
+        }
     } else {
         sortColumn_ = columnKey;
         sortAscending_ = true;
@@ -138,7 +233,8 @@ std::size_t DataGridController::copySelection() {
     if (selected.empty()) {
         return 0;
     }
-    // 按行序输出（选择集无序；与表头列序一致）。
+    // 按行序输出（选择集无序；与表头列序一致——含不可见列，首版语义
+    // 保留；仅可见列的范围变体是显式新 API，§11.3）。
     std::vector<std::size_t> rows;
     for (std::size_t i = 0; i < base_.itemCount(); ++i) {
         if (selection_.isSelected(keyOf(i))) {
@@ -162,6 +258,9 @@ std::size_t DataGridController::copySelection() {
 bool DataGridController::pasteRows() {
     if (shell_ == nullptr || shell_->controller().clipboard() == nullptr ||
         onRowsPasted == nullptr) {
+        return false;
+    }
+    if (!commitPendingEdit()) {
         return false;
     }
     auto* clipboard = shell_->controller().clipboard();
@@ -209,18 +308,35 @@ bool DataGridController::beginEdit(std::size_t row,
         !rowEnabled(row) || !columnExists(columnKey)) {
         return false;
     }
-    for (const auto& column : columns_) {
-        if (column.key == columnKey && !column.editable) {
+    const DataColumn* column = nullptr;
+    for (const auto& candidate : columns_) {
+        if (candidate.key == columnKey) {
+            column = &candidate;
+            break;
+        }
+    }
+    // 只读列与不可见列（无格可编辑）都拒绝。
+    if (column == nullptr || !column->editable || !column->visible) {
+        return false;
+    }
+    const std::string rowKey = keyOf(row);
+    if (editing_) {
+        // 同一格重复进入 = no-op；不同格先提交，失败保留旧编辑与草稿
+        //（§13.1 失败拦截：不得覆盖无效输入）。
+        if (editing_->first == rowKey && editing_->second == columnKey) {
+            return true;
+        }
+        if (!commitEdit()) {
             return false;
         }
     }
-    // 已有编辑先提交（点击其他单元格提交语义）。
-    if (editing_) {
-        (void)commitEdit();
-    }
-    editing_ = std::make_pair(keyOf(row), columnKey);
+    editing_ = std::make_pair(rowKey, columnKey);
     editError_.clear();
     shell_->state().set(owner_ + ":edit", cellText(row, columnKey));
+    // 焦点意图（环）+ 程序化编辑焦点（重建后 focusedBind 建立——文本
+    // 输入/IME 直接路由到编辑器，无需先点击）。
+    shell_->focus().setFocus(owner_ + ":editor");
+    shell_->controller().requestFieldFocus(owner_ + ":edit");
     requestRebuild();
     return true;
 }
@@ -239,16 +355,25 @@ bool DataGridController::commitEdit() {
     if (const auto it = validators_.find(columnKey); it != validators_.end()) {
         const std::string error = it->second(text);
         if (!error.empty()) {
+            // 失败保留编辑态与草稿；编辑器保持编辑焦点（指针路径的
+            // pointerDown 已清焦——重新请求；错误浮层为后续增量，当前
+            // placeholder 同源显示 editError）。
             editError_ = error;
+            shell_->focus().setFocus(owner_ + ":editor");
+            shell_->controller().requestFieldFocus(owner_ + ":edit");
             requestRebuild();
             return false;
         }
     }
     editError_.clear();
     editing_.reset();
+    // 提交后释放编辑焦点（focusedBind 不再指向已卸载的编辑器），
+    // 焦点回行节点。
+    shell_->controller().releaseFieldFocus();
     if (onCellEdited) {
         onCellEdited(row, columnKey, text);
     }
+    shell_->focus().setFocus(owner_ + ":item:" + rowKey);
     requestRebuild();
     return true;
 }
@@ -257,33 +382,56 @@ void DataGridController::cancelEdit() {
     if (!editing_) {
         return;
     }
+    const std::string rowKey = editing_->first;
     editing_.reset();
     editError_.clear();
+    if (shell_ != nullptr) {
+        shell_->controller().releaseFieldFocus();
+        shell_->focus().setFocus(owner_ + ":item:" + rowKey);
+    }
     requestRebuild();
 }
 
 // --- 组合出口 ---
 
+void DataGridController::setEmptyBuilder(
+    std::function<core::Widget()> builder) {
+    emptyBuilder_ = std::move(builder);
+    requestRebuild();
+}
+
 core::Widget DataGridController::build() const {
+    const bool checkboxes = selection_.mode() != SelectionMode::None;
     std::vector<core::Widget> headerCells;
-    headerCells.reserve(columns_.size());
+    headerCells.reserve(columns_.size() + 1);
+    if (checkboxes) {
+        headerCells.push_back(buildHeaderCheckCell());
+    }
     for (const auto& column : columns_) {
-        // 表头 = 按钮化文本（排序点击走行点击 sink 的 grid 前缀；不可排
-        // 序列退化为静态文本）。排序指示器与排序状态同源。
-        std::string label = column.header;
-        if (column.sortable && column.key == sortColumn_) {
-            label += sortAscending_ ? " ▲" : " ▼";
+        if (!column.visible) {
+            continue;
         }
-        auto cell = core::makeText(label);
-        cell.listPart = core::ListPart::Row;  // 表头行样式口径
-        cell.width = column.width;
+        // 表头（TreeList 同口径）：可排序列 = Ghost 按钮（hover chrome +
+        // 排序指示图标）；其余 = 辅助色静态文本。数值列内容右对齐待
+        // Button 内容对齐扩展（设计文档 §16 已知限制）。
+        core::Widget cell;
+        const bool sorted = column.key == sortColumn_;
         if (column.sortable) {
-            // onClick 身份经 dispatchRowClick 前缀解析（修饰键忽略）。
+            cell = core::makeButton(column.header);
+            cell.buttonVariant = core::ButtonVariant::Ghost;
             cell.onClick = "grid:" + owner_ + ":sort:" + column.key;
-            cell.semanticsRole = "button";
-            cell.semanticsActions = accessibility::kActionFocus |
-                                    accessibility::kActionActivate;
+            cell.key = owner_ + ":head:" + column.key;
+            cell.alignContentStart = true;
+            if (sorted) {
+                cell.icon = sortAscending_ ? core::IconId::ChevronUp
+                                           : core::IconId::ChevronDown;
+            }
+        } else {
+            cell = core::makeText(column.header, cellTextStyle(kHeaderSecondary));
+            cell.listPart = core::ListPart::Row;  // 表头行样式口径
         }
+        cell.width = column.width;
+        cell.height = kHeaderExtent;
         headerCells.push_back(std::move(cell));
     }
     auto header = core::makeRow(std::move(headerCells));
@@ -314,19 +462,48 @@ void DataGridController::attach(app::AppShell& shell, std::string ownerKey) {
     selection_.onCurrentChanged = [this](const std::string&) {
         requestRebuild();
     };
-    // 行点击（含表头排序点击——同一 sink，不同前缀）。
+    // 点击身份统一解析：grid:<owner>:{row|cell|check|checkall|sort}:…
+    //（表头排序与行/格/复选框同一 sink；修饰键经 pointerModifiers 读取
+    // ——与 List 的 dispatchRowClick 同源，P0 真实指针路径）。
     shell.controller().addRowClickSink([this](const std::string& onClick) {
-        const std::string rowPrefix = "grid:" + owner_ + ":row:";
-        if (onClick.rfind(rowPrefix, 0) == 0) {
-            const std::string key = onClick.substr(rowPrefix.size());
+        const std::string prefix = "grid:" + owner_ + ":";
+        if (onClick.rfind(prefix, 0) != 0) {
+            return false;
+        }
+        const std::string rest = onClick.substr(prefix.size());
+        const auto modifiers = shell_ != nullptr
+                                   ? shell_->controller().pointerModifiers()
+                                   : core::kModifierNone;
+        const bool ctrl = (modifiers & core::kModifierCtrl) != 0;
+        const bool shift = (modifiers & core::kModifierShift) != 0;
+        if (const std::string rowPrefix = "row:"; rest.rfind(rowPrefix, 0) == 0) {
+            const std::string key = rest.substr(rowPrefix.size());
             if (!key.empty()) {
-                rowClicked(key, false, false);
+                rowClicked(key, ctrl, shift);
                 return true;
             }
-        }
-        const std::string sortPrefix = "grid:" + owner_ + ":sort:";
-        if (onClick.rfind(sortPrefix, 0) == 0) {
-            const std::string columnKey = onClick.substr(sortPrefix.size());
+        } else if (const std::string cellPrefix = "cell:";
+                   rest.rfind(cellPrefix, 0) == 0) {
+            std::string rowKey;
+            std::string columnKey;
+            if (parseCellRef(rest.substr(cellPrefix.size()), rowKey,
+                             columnKey)) {
+                rowClicked(rowKey, ctrl, shift, columnKey);
+                return true;
+            }
+        } else if (const std::string checkPrefix = "check:";
+                   rest.rfind(checkPrefix, 0) == 0) {
+            const std::string key = rest.substr(checkPrefix.size());
+            if (!key.empty()) {
+                toggleRowSelection(key);
+                return true;
+            }
+        } else if (rest == "checkall") {
+            toggleSelectAll();
+            return true;
+        } else if (const std::string sortPrefix = "sort:";
+                   rest.rfind(sortPrefix, 0) == 0) {
+            const std::string columnKey = rest.substr(sortPrefix.size());
             if (!columnKey.empty()) {
                 requestSort(columnKey);
                 return true;
@@ -334,15 +511,28 @@ void DataGridController::attach(app::AppShell& shell, std::string ownerKey) {
         }
         return false;
     });
-    shell.controller().addRowActivateSink(detail::makeRowActivateSink(
-        owner_, [this](const std::string& key) {
-            if (onRowActivated) {
-                std::size_t index = 0;
-                if (indexOfKey(key, index) && rowEnabled(index)) {
-                    onRowActivated(key);
+    // 激活（双击/Enter/语义）：行 key 或格 key（格命中直接定位编辑列）。
+    shell.controller().addRowActivateSink(
+        [this](const std::string& nodeKey, const std::string&, bool) {
+            const std::string itemPrefix = owner_ + ":item:";
+            const std::string cellPrefix = owner_ + ":cell:";
+            if (nodeKey.rfind(itemPrefix, 0) == 0) {
+                const std::string key = nodeKey.substr(itemPrefix.size());
+                if (!key.empty()) {
+                    (void)activateRow(key, std::nullopt);
+                    return true;
+                }
+            } else if (nodeKey.rfind(cellPrefix, 0) == 0) {
+                std::string rowKey;
+                std::string columnKey;
+                if (parseCellRef(nodeKey.substr(cellPrefix.size()), rowKey,
+                                 columnKey)) {
+                    (void)activateRow(rowKey, columnKey);
+                    return true;
                 }
             }
-        }));
+            return false;
+        });
     shell.controller().addRowFocusSink([this](const std::string& rowKey) {
         const std::string prefix = owner_ + ":item:";
         if (!rowKey.starts_with(prefix)) return false;
@@ -363,6 +553,36 @@ bool DataGridController::handleKey(core::Key key, core::KeyModifiers modifiers,
         const auto* view = core::findNodeByKey(shell_->root(), owner_);
         if (view != nullptr && !view->enabled) return false;
     }
+    // 编辑态：编辑器持有焦点（beginEdit 程序化建立或点击建立）——
+    // Escape 取消；Enter 提交（IME composing 期间留给输入法，§13.1）；
+    // Tab 提交并移动到下一/上一可编辑格（跨行、跳过禁用行；提交失败
+    // 中止移动）；其余键（文本/方向键/剪贴板）由编辑器消费，不抢。
+    if (editing_) {
+        if (key == core::Key::Escape) {
+            cancelEdit();
+            return true;
+        }
+        if (key == core::Key::Enter &&
+            (shell_ == nullptr ||
+             !shell_->controller().composingActive())) {
+            // 成败都消费：失败保留编辑 + editError（错误浮层为后续增量）。
+            (void)commitEdit();
+            return true;
+        }
+        if (key == core::Key::Tab) {
+            // §13.1：Tab/Shift+Tab 先提交，再移动编辑格；提交失败中止。
+            // 先拷贝位置：commitEdit 成功会重置编辑态。
+            const std::string fromRow = editing_->first;
+            const std::string fromColumn = editing_->second;
+            if (!commitEdit()) {
+                return true;
+            }
+            moveEditor(fromRow, fromColumn,
+                       (modifiers & core::kModifierShift) != 0 ? -1 : 1);
+            return true;
+        }
+        return false;
+    }
     const bool ctrl = (modifiers & core::kModifierCtrl) != 0;
     // 剪贴板。
     if (ctrl && (keyChar == 'c' || keyChar == 'C')) {
@@ -371,52 +591,45 @@ bool DataGridController::handleKey(core::Key key, core::KeyModifiers modifiers,
     if (ctrl && (keyChar == 'v' || keyChar == 'V')) {
         return pasteRows();
     }
-    // 编辑态：Escape 取消；导航键不抢（编辑器持有焦点，应用按需转发）。
-    if (editing_) {
-        if (key == core::Key::Escape) {
-            cancelEdit();
-            return true;
-        }
-        return false;
-    }
     // 编辑入口/激活（Key 枚举无 F 键——编辑入口契约仅 Enter，见设计
     // 文档 §6；应用可经 beginEdit API 直接进入）。
     if (key == core::Key::Enter) {
-        if (!selection_.currentKey().empty()) {
-            std::size_t row = 0;
-            if (indexOfKey(selection_.currentKey(), row) && rowEnabled(row)) {
-                const std::string column =
-                    columnExists(currentColumn_) ? currentColumn_
-                                                 : firstEditableColumn();
-                if (beginEdit(row, column)) {
-                    return true;
-                }
-                if (onRowActivated) {
-                    onRowActivated(selection_.currentKey());
-                    return true;
-                }
-            }
+        if (selection_.currentKey().empty()) {
+            return false;
         }
-        return false;
+        return activateRow(selection_.currentKey(), std::nullopt);
     }
-    // 列焦点（编辑目标列）。
+    // 列焦点（编辑目标列；只走可见列）。
     if (key == core::Key::Left || key == core::Key::Right) {
         if (columns_.empty()) return false;
-        std::size_t at = 0;
+        std::ptrdiff_t at = -1;
         for (std::size_t i = 0; i < columns_.size(); ++i) {
             if (columns_[i].key == currentColumn_) {
-                at = i;
+                at = static_cast<std::ptrdiff_t>(i);
                 break;
             }
         }
-        if (key == core::Key::Left && at > 0) {
-            --at;
-        } else if (key == core::Key::Right && at + 1 < columns_.size()) {
-            ++at;
+        const std::ptrdiff_t direction =
+            key == core::Key::Left ? -1 : 1;
+        std::ptrdiff_t next = -1;
+        if (at < 0) {
+            // 无当前列（未设置/被隐藏）：按方向进入首/末可见列。
+            next = direction > 0
+                       ? static_cast<std::ptrdiff_t>(firstVisibleIndex())
+                       : static_cast<std::ptrdiff_t>(lastVisibleIndex());
         } else {
+            next = at + direction;
+            while (next >= 0 &&
+                   next < static_cast<std::ptrdiff_t>(columns_.size()) &&
+                   !columns_[next].visible) {
+                next += direction;
+            }
+        }
+        if (next < 0 || next >= static_cast<std::ptrdiff_t>(columns_.size()) ||
+            next == at) {
             return false;
         }
-        currentColumn_ = columns_[at].key;
+        currentColumn_ = columns_[next].key;
         requestRebuild();
         return true;
     }
@@ -450,7 +663,8 @@ void DataGridController::setCurrentKey(const std::string& key, bool extend) {
 }
 
 void DataGridController::setCurrentColumn(const std::string& columnKey) {
-    if (!columnExists(columnKey)) return;
+    // 只接受可见列（隐藏列没有可定位的格）。
+    if (!columnVisible(columnKey)) return;
     currentColumn_ = columnKey;
     requestRebuild();
 }
@@ -499,12 +713,17 @@ bool DataGridController::indexOfKey(const std::string& key,
 }
 
 core::Widget DataGridController::buildEmpty() const {
-    std::vector<core::Widget> children;
-    auto text = core::makeText("No rows");
-    text.listPart = core::ListPart::EmptyText;
-    children.push_back(std::move(text));
-    auto empty = core::makeColumn(std::move(children),
-        core::MainAxisAlignment::Center, core::CrossAxisAlignment::Center);
+    core::Widget empty;
+    if (emptyBuilder_) {
+        // 数据状态壳由应用组合（§14：加载骨架/错误重试/无结果等）；
+        // 空/EmptyText 语义与节点身份由网格补写。
+        empty = emptyBuilder_();
+    } else {
+        auto text = core::makeText("No rows");
+        text.listPart = core::ListPart::EmptyText;
+        empty = core::makeColumn({std::move(text)},
+            core::MainAxisAlignment::Center, core::CrossAxisAlignment::Center);
+    }
     empty.listPart = core::ListPart::Empty;
     empty.key = owner_ + ":empty";
     return empty;
@@ -544,20 +763,67 @@ bool DataGridController::columnExists(const std::string& columnKey) const {
                        });
 }
 
+bool DataGridController::columnVisible(const std::string& columnKey) const {
+    return std::any_of(columns_.begin(), columns_.end(),
+                       [&](const DataColumn& column) {
+                           return column.key == columnKey && column.visible;
+                       });
+}
+
 std::string DataGridController::firstEditableColumn() const {
     for (const auto& column : columns_) {
-        if (column.editable) return column.key;
+        if (column.editable && column.visible) return column.key;
     }
     return {};
 }
 
+std::string DataGridController::firstVisibleColumn() const {
+    const std::size_t at = firstVisibleIndex();
+    return at < columns_.size() ? columns_[at].key : std::string{};
+}
+
+std::size_t DataGridController::firstVisibleIndex() const {
+    for (std::size_t i = 0; i < columns_.size(); ++i) {
+        if (columns_[i].visible) return i;
+    }
+    return columns_.size();
+}
+
+std::size_t DataGridController::lastVisibleIndex() const {
+    for (std::size_t i = columns_.size(); i > 0; --i) {
+        if (columns_[i - 1].visible) return i - 1;
+    }
+    return columns_.size();
+}
+
+bool DataGridController::commitPendingEdit() {
+    if (!editing_) {
+        return true;
+    }
+    return commitEdit();
+}
+
 void DataGridController::rowClicked(const std::string& key, bool ctrl,
-                                    bool shift) {
+                                    bool shift,
+                                    const std::string& columnKey) {
     std::size_t index = 0;
     if (!indexOfKey(key, index) || !rowEnabled(index)) return;
-    // 编辑态点击其他行 = 提交（设计文档 §6）。
-    if (editing_ && editing_->first != key) {
-        (void)commitEdit();
+    // 按压落在编辑字段内（光标定位/文本选择，冒泡到行 onClick）：
+    // 不打断草稿、不改选择——编辑器内的文本操作由编辑器消费（§13.1）。
+    if (editing_ && shell_ != nullptr &&
+        shell_->controller().focusedBind() == owner_ + ":edit") {
+        return;
+    }
+    // 编辑态点击其他位置 = 先提交（设计文档 §13.1：点击其他格先提交）；
+    // 失败中止——不改选择、不动焦点，草稿保留在错误格。
+    if (editing_) {
+        const bool sameCell = editing_->first == key &&
+                              !columnKey.empty() &&
+                              editing_->second == columnKey;
+        if (!sameCell && !commitEdit()) return;
+    }
+    if (!columnKey.empty() && columnVisible(columnKey)) {
+        currentColumn_ = columnKey;
     }
     selection_.click(key, ctrl, shift);
     if (shell_ != nullptr) {
@@ -566,10 +832,182 @@ void DataGridController::rowClicked(const std::string& key, bool ctrl,
     requestRebuild();
 }
 
+bool DataGridController::activateRow(
+    const std::string& rowKey, const std::optional<std::string>& columnKey) {
+    std::size_t row = 0;
+    if (!indexOfKey(rowKey, row) || !rowEnabled(row)) {
+        return false;
+    }
+    // 编辑中同行/同格的重复激活（编辑器内双击/语义 Activate 冒泡到行）：
+    // 不打断草稿（§13.1；HTML 同位——编辑中的格不响应激活）。
+    if (editing_ && editing_->first == rowKey &&
+        (!columnKey || *columnKey == editing_->second)) {
+        return true;
+    }
+    // 激活前先提交；失败中止（§13.1）。
+    if (!commitPendingEdit()) {
+        return true;
+    }
+    std::string column = columnKey.value_or(std::string{});
+    if (!columnVisible(column)) {
+        column = columnVisible(currentColumn_) ? currentColumn_
+                                               : firstEditableColumn();
+    }
+    if (beginEdit(row, column)) {
+        return true;
+    }
+    // beginEdit 失败但编辑仍在 = 前一格提交失败已中止；否则为只读列，
+    // 回退行激活（§6）。
+    if (editing_) {
+        return true;
+    }
+    if (onRowActivated) {
+        onRowActivated(rowKey);
+        return true;
+    }
+    return false;
+}
+
+void DataGridController::moveEditor(const std::string& fromRow,
+                                    const std::string& fromColumn,
+                                    int direction) {
+    // 可编辑格序列 = 可见可编辑列（列序）× 可用行（行序），行主序扁平
+    // 推进；禁用行跳过；到边界提交后停在当前格（焦点已由 commitEdit
+    // 回到行节点，§13.1）。
+    std::vector<std::string> editColumns;
+    for (const auto& column : columns_) {
+        if (column.editable && column.visible) {
+            editColumns.push_back(column.key);
+        }
+    }
+    if (editColumns.empty()) {
+        return;
+    }
+    std::size_t fromRowIndex = 0;
+    if (!indexOfKey(fromRow, fromRowIndex)) {
+        return;
+    }
+    std::size_t columnAt = 0;
+    for (std::size_t i = 0; i < editColumns.size(); ++i) {
+        if (editColumns[i] == fromColumn) {
+            columnAt = i;
+            break;
+        }
+    }
+    const std::size_t columnCount = editColumns.size();
+    const std::ptrdiff_t total = static_cast<std::ptrdiff_t>(
+        base_.itemCount() * columnCount);
+    std::ptrdiff_t flat = static_cast<std::ptrdiff_t>(
+        fromRowIndex * columnCount + columnAt);
+    for (flat += direction; flat >= 0 && flat < total; flat += direction) {
+        const std::size_t row = static_cast<std::size_t>(flat) / columnCount;
+        if (!rowEnabled(row)) {
+            continue;
+        }
+        // 先滚动对齐再进入编辑：行在视口外时编辑器必须被物化，
+        // requestFieldFocus 才能在重建后落地。
+        scrollToKey(keyOf(row), ScrollAlignment::Visible);
+        (void)beginEdit(row, editColumns[static_cast<std::size_t>(flat) %
+                                          columnCount]);
+        return;
+    }
+}
+
+void DataGridController::toggleRowSelection(const std::string& key) {
+    std::size_t index = 0;
+    if (!indexOfKey(key, index) || !rowEnabled(index)) return;
+    if (!commitPendingEdit()) return;
+    // 复选框独立切换选择，不改 current/焦点（§11.3）。
+    selection_.toggle(key);
+    requestRebuild();
+}
+
+void DataGridController::toggleSelectAll() {
+    if (!commitPendingEdit()) return;
+    // 动作按实时可用行计算（表头勾选态显示走缓存；enabledness 变化须
+    // 经 setRowEnabledOf/setRowCount 通知，见头文件契约）。
+    selectableKeysCache_.clear();
+    selectableKeysDirty_ = true;
+    const auto& keys = selectableKeys();
+    bool all = !keys.empty();
+    for (const auto& key : keys) {
+        if (!selection_.isSelected(key)) {
+            all = false;
+            break;
+        }
+    }
+    // 表头复选框：全选当前可用行 / 清空（三态视觉为后续增量）。
+    if (all) {
+        selection_.clear();
+    } else {
+        selection_.setSelected(keys);
+    }
+    requestRebuild();
+}
+
+const std::vector<std::string>& DataGridController::selectableKeys() const {
+    if (selectableKeysDirty_) {
+        std::vector<std::string> keys;
+        keys.reserve(base_.itemCount());
+        for (std::size_t i = 0; i < base_.itemCount(); ++i) {
+            if (rowEnabled(i)) keys.push_back(keyOf(i));
+        }
+        selectableKeysCache_ = std::move(keys);
+        selectableKeysDirty_ = false;
+    }
+    return selectableKeysCache_;
+}
+
+bool DataGridController::parseCellRef(const std::string& ref,
+                                      std::string& rowKey,
+                                      std::string& columnKey) const {
+    // ref = "<rowKey>:<colKey>"：列 key 末段匹配（行/列 key 都允许含
+    // ':'；从最右冒号回扫，首个命中列集合的后缀即列 key）。
+    std::size_t at = ref.rfind(':');
+    while (at != std::string::npos) {
+        const std::string candidate = ref.substr(at + 1);
+        if (columnExists(candidate)) {
+            const std::string row = ref.substr(0, at);
+            if (!row.empty()) {
+                rowKey = row;
+                columnKey = candidate;
+                return true;
+            }
+            return false;
+        }
+        if (at == 0) break;
+        at = ref.rfind(':', at - 1);
+    }
+    return false;
+}
+
 void DataGridController::requestRebuild() {
     if (shell_ != nullptr) {
         shell_->markDirty();
     }
+}
+
+core::Widget DataGridController::buildHeaderCheckCell() const {
+    const auto& keys = selectableKeys();
+    bool all = !keys.empty();
+    for (const auto& key : keys) {
+        if (!selection_.isSelected(key)) {
+            all = false;
+            break;
+        }
+    }
+    auto checkbox = core::makeCheckbox("", "", owner_ + ":header-check", all);
+    checkbox.semanticsLabel = "全选当前结果中的可用行";
+    checkbox.enabled = !keys.empty();
+    // 整格命中都走全选（44px 命中区域，§12）；Checkbox 仅作视觉/语义
+    // 声明（bind 为空——框架 toggle 不接管，状态由选择集重建）。
+    auto cell = core::makeRow({std::move(checkbox)},
+                              core::MainAxisAlignment::Center,
+                              core::CrossAxisAlignment::Center);
+    cell.width = kSelectionColumnWidth;
+    cell.onClick = "grid:" + owner_ + ":checkall";
+    cell.key = owner_ + ":header-check-cell";
+    return cell;
 }
 
 core::Widget DataGridController::buildItem(std::size_t index) const {
@@ -584,8 +1022,27 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
                                             : core::ListPart::Row;
     row.enabled = rowEnabled(index);
     std::vector<core::Widget> cells;
-    cells.reserve(columns_.size());
+    cells.reserve(columns_.size() + 1);
+    if (selection_.mode() != SelectionMode::None) {
+        // 行复选框列：格级命中切换该行（不改 current），整格 44px 命中。
+        auto checkbox =
+            core::makeCheckbox("", "", owner_ + ":check:" + key,
+                               selection_.isSelected(key));
+        checkbox.semanticsLabel = "选择 " + key;
+        auto cell = core::makeRow({std::move(checkbox)},
+                                  core::MainAxisAlignment::Center,
+                                  core::CrossAxisAlignment::Center);
+        cell.width = kSelectionColumnWidth;
+        cell.onClick = "grid:" + owner_ + ":check:" + key;
+        cell.key = owner_ + ":check-cell:" + key;
+        cells.push_back(std::move(cell));
+    }
     for (const auto& column : columns_) {
+        if (!column.visible) {
+            continue;
+        }
+        const std::string cellId =
+            owner_ + ":cell:" + key + ":" + column.key;
         if (editing_ && editing_->first == key &&
             editing_->second == column.key) {
             // 编辑器：绑定 state（commitEdit 读取）；宽度与列对齐。
@@ -595,11 +1052,31 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
             editor.width = column.width;
             editor.flex = 0.0F;
             editor.key = owner_ + ":editor";
+            editor.invalid = !editError_.empty();
             cells.push_back(std::move(editor));
             continue;
         }
-        auto cell = core::makeText(cellText(index, column.key));
+        // 单元格：固定列宽 + 水平内边距（§12）+ 单行省略 + 点击身份
+        //（定位列焦点；onClick 与节点 key 同串，激活路径按 key 解析）。
+        auto cell = core::makeText(cellText(index, column.key),
+                                   cellTextStyle());
+        cell.onClick = "grid:" + owner_ + ":cell:" + key + ":" + column.key;
+        cell.key = cellId;
+        if (column.align == DataColumnAlign::End) {
+            // 数值/日期右对齐：内容盒内右置（Text 无段内对齐，经 Row
+            // 主轴对齐实现；文本仍按剩余宽省略）。
+            cell.width = std::max(0.0F, column.width - 2.0F * kCellPaddingX);
+            auto box = core::makeRow(
+                {std::move(cell)}, core::MainAxisAlignment::End,
+                core::CrossAxisAlignment::Center);
+            box.width = column.width;
+            box.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
+            box.key = cellId + ":box";
+            cells.push_back(std::move(box));
+            continue;
+        }
         cell.width = column.width;
+        cell.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
         cells.push_back(std::move(cell));
     }
     auto content = core::makeRow(std::move(cells));
