@@ -189,18 +189,24 @@ jobs:
         shell: bash
         run: |
           set +e
-          ctest --test-dir build --output-on-failure -C Release 2>&1 | tee /tmp/ctest.log
+          ctest --test-dir build --output-on-failure -C Release 2>&1 | tee ctest-diag.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             python3 - <<'PY'
           import re
-          log = open('/tmp/ctest.log', errors='replace').read()
+          log = open('ctest-diag.log', errors='replace').read()
           hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
+          sm = re.search(r'^\d+%.*$', log, re.M)
+          if sm:
+              print(f"::error::summary: {sm.group(0).strip()}")
           if hit:
               for line in hit.group(1).splitlines():
                   m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
                   if m:
                       print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
+          for ln in tail:
+              print(f"::error::tail: {ln[:200]}")
           for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
               cond = ' '.join(m.group(1).split())
               exp = ' '.join(m.group(2).split())[:220]
@@ -307,18 +313,24 @@ jobs:
         shell: bash
         run: |
           set +e
-          ctest --test-dir build-skia --output-on-failure -C Release 2>&1 | tee /tmp/ctest.log
+          ctest --test-dir build-skia --output-on-failure -C Release 2>&1 | tee ctest-diag.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             python3 - <<'PY'
           import re
-          log = open('/tmp/ctest.log', errors='replace').read()
+          log = open('ctest-diag.log', errors='replace').read()
           hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
+          sm = re.search(r'^\d+%.*$', log, re.M)
+          if sm:
+              print(f"::error::summary: {sm.group(0).strip()}")
           if hit:
               for line in hit.group(1).splitlines():
                   m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
                   if m:
                       print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
+          for ln in tail:
+              print(f"::error::tail: {ln[:200]}")
           for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
               cond = ' '.join(m.group(1).split())
               exp = ' '.join(m.group(2).split())[:220]
@@ -415,18 +427,24 @@ jobs:
         shell: bash
         run: |
           set +e
-          ctest --test-dir build-gpu --output-on-failure -C Release --timeout 120 2>&1 | tee /tmp/ctest.log
+          ctest --test-dir build-gpu --output-on-failure -C Release --timeout 120 2>&1 | tee ctest-diag.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             python3 - <<'PY'
           import re
-          log = open('/tmp/ctest.log', errors='replace').read()
+          log = open('ctest-diag.log', errors='replace').read()
           hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
+          sm = re.search(r'^\d+%.*$', log, re.M)
+          if sm:
+              print(f"::error::summary: {sm.group(0).strip()}")
           if hit:
               for line in hit.group(1).splitlines():
                   m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
                   if m:
                       print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
+          for ln in tail:
+              print(f"::error::tail: {ln[:200]}")
           for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
               cond = ' '.join(m.group(1).split())
               exp = ' '.join(m.group(2).split())[:220]
@@ -521,18 +539,24 @@ jobs:
         shell: bash
         run: |
           set +e
-          ctest --test-dir build-mobile --output-on-failure -C Debug 2>&1 | tee /tmp/ctest.log
+          ctest --test-dir build-mobile --output-on-failure -C Debug 2>&1 | tee ctest-diag.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             python3 - <<'PY'
           import re
-          log = open('/tmp/ctest.log', errors='replace').read()
+          log = open('ctest-diag.log', errors='replace').read()
           hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
+          sm = re.search(r'^\d+%.*$', log, re.M)
+          if sm:
+              print(f"::error::summary: {sm.group(0).strip()}")
           if hit:
               for line in hit.group(1).splitlines():
                   m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
                   if m:
                       print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
+          for ln in tail:
+              print(f"::error::tail: {ln[:200]}")
           for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
               cond = ' '.join(m.group(1).split())
               exp = ' '.join(m.group(2).split())[:220]
