@@ -1,4 +1,4 @@
-// M14-D：DataGrid 契约测试（docs/lumen-datagrid-design.md §8/§16）。
+// M14-D：DataGrid 契约测试（docs/lumen-datagrid-design.md §8/§16/§17）。
 //
 // 覆盖首版契约切片：列模型与列宽调整、行虚拟化物化、选择（共享
 // SelectionModel）、键盘导航与列焦点、排序回调与状态、TSV 复制粘贴、
@@ -6,8 +6,12 @@
 // 单元格点击定位列、提交失败拦截（切格/切行/排序）、编辑器程序化焦点
 // 与编辑态 Enter 提交（IME composing 除外）、排序升→降→清除循环、列
 // 显隐/顺序/minWidth、复选框选择列、双击进入编辑。
+// 2026-09-28 第三批：双轴几何（横向视口 + 表头/数据同源平移 + 滚轮
+// 分量路由）、内容窄于视口的铺满收敛、列宽手柄（拖动/钳制/双击复位/
+// 键盘步进/Tab 停靠）、调宽先提交编辑。
 // 水平虚拟化/RTL/拖放为后续增量（不在本文件断言）。
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <functional>
@@ -623,4 +627,184 @@ TEST_CASE("REGRESSION_column_ops_commit_edit_and_abort_on_failure", "[widgets][d
     // 移动列（无编辑态时直接生效）。
     CHECK(fx.grid.moveColumn("note", 0));
     CHECK(fx.grid.columns().front().key == "note");
+}
+
+// --- 2026-09-28 第三批（设计文档 §17：双轴几何 + 列宽手柄） ---
+
+namespace {
+// 手柄中心（树随列宽变化重排，每次交互前重取）。
+core::Offset handleCenter(const app::AppShell& shell, const char* key) {
+    const core::RenderNode* node = core::findNodeByKey(shell.root(), key);
+    REQUIRE(node != nullptr);
+    return core::absoluteOffset(shell.root(), key) +
+           core::Offset{node->size.width * 0.5F,
+                        node->size.height * 0.5F};
+}
+}  // namespace
+
+TEST_CASE("datagrid_horizontal_viewport_scrolls_header_and_rows_together",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    // 加宽到超视口：44 + 300 + 80 + 140 = 564 > 400。
+    CHECK(fx.grid.resizeColumn("name", 300.0F));
+    fx.render();
+    fx.render();  // 视口宽跟踪收敛
+    const auto* view = core::findNodeByKey(fx.shell.root(), "grid");
+    REQUIRE(view != nullptr);
+    CHECK(view->scrollAxis == core::ScrollAxis::Horizontal);
+    CHECK(view->scrollExtent == Catch::Approx(164.0F));
+
+    // 横向滚轮（数据区，纯 x 分量）：框架经源接缝直驱 hScroll_，表头与
+    // 数据行同源平移（共享横向 offset）。
+    const core::Offset headerBefore =
+        core::absoluteOffset(fx.shell.root(), "grid:header");
+    const core::Offset cellBefore =
+        core::absoluteOffset(fx.shell.root(), "grid:cell:r0:name");
+    CHECK(fx.shell.wheel(core::Offset{200.0F, 150.0F},
+                         core::Offset{60.0F, 0.0F}));
+    fx.render();
+    CHECK(fx.grid.hScroll().offset() == Catch::Approx(60.0F));
+    const core::Offset headerAfter =
+        core::absoluteOffset(fx.shell.root(), "grid:header");
+    const core::Offset cellAfter =
+        core::absoluteOffset(fx.shell.root(), "grid:cell:r0:name");
+    CHECK(headerAfter.x == Catch::Approx(headerBefore.x - 60.0F));
+    CHECK(cellAfter.x == Catch::Approx(cellBefore.x - 60.0F));
+
+    // 纵向滚轮仍归数据列表（双轴互不抢占）；Shift+纵轮在表头区（命中
+    // 链上无纵向视口）投影到横向视口（lumen-scroll-design §4）。
+    const float vBefore = fx.grid.scroll().offset();
+    CHECK(fx.shell.wheel(core::Offset{200.0F, 150.0F},
+                         core::Offset{0.0F, 60.0F}));
+    fx.render();
+    CHECK(fx.grid.scroll().offset() > vBefore);
+    CHECK(fx.grid.hScroll().offset() == Catch::Approx(60.0F));
+    CHECK(fx.shell.wheel(core::Offset{200.0F, 18.0F},
+                         core::Offset{0.0F, 40.0F}, core::kModifierShift));
+    fx.render();
+    CHECK(fx.grid.hScroll().offset() == Catch::Approx(100.0F));
+}
+
+TEST_CASE("datagrid_rows_fill_viewport_when_content_narrower",
+          "[widgets][datagrid]") {
+    GridFixture fx;  // 内容 44+100+80+140 = 364 < 视口 400
+    fx.render();
+    fx.render();     // 视口宽跟踪收敛（铺满不出现尾部空隙）
+    const auto* row = core::findNodeByKey(fx.shell.root(), "grid:item:r0");
+    REQUIRE(row != nullptr);
+    // 行宽 = List 宽 − 容器水平内边距 2（集合行既有口径）。
+    CHECK(row->size.width == Catch::Approx(398.0F));
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid")->scrollExtent ==
+          Catch::Approx(0.0F));
+
+    // 加宽超视口后：行宽 = 内容宽（564 − 内边距 2），出现横向滚动范围。
+    CHECK(fx.grid.resizeColumn("name", 300.0F));
+    fx.render();
+    const auto* wide = core::findNodeByKey(fx.shell.root(), "grid:item:r0");
+    REQUIRE(wide != nullptr);
+    CHECK(wide->size.width == Catch::Approx(562.0F));
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid")->scrollExtent ==
+          Catch::Approx(164.0F));
+
+    // 密度切换：Theme.dataGrid 驱动表头高（Compact 32，视口宽跟踪重算）。
+    fx.shell.setTheme(style::Theme::dark(style::ControlDensity::Compact));
+    fx.render();
+    const auto* header = core::findNodeByKey(fx.shell.root(), "grid:header");
+    REQUIRE(header != nullptr);
+    CHECK(header->size.height == Catch::Approx(32.0F));
+}
+
+TEST_CASE("datagrid_column_resize_handle_drag_clamps_and_resets",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.render();
+    fx.render();
+    const auto* handle = core::findNodeByKey(fx.shell.root(), "grid:hnd:name");
+    REQUIRE(handle != nullptr);
+    REQUIRE(handle->splitterSource != nullptr);  // splitter 通道接线
+    // 手柄带宽 = resizeHitWidth（Comfortable 10），列宽预算内。
+    CHECK(handle->size.width == Catch::Approx(10.0F));
+
+    // 拖动 +80：name 100 → 180（绝对边界语义，跟手）。
+    core::Offset at = handleCenter(fx.shell, "grid:hnd:name");
+    fx.shell.pointerDown(at);
+    fx.shell.pointerMove(core::Offset{at.x + 80.0F, at.y});
+    CHECK(fx.grid.columns()[0].width == Catch::Approx(180.0F));
+    fx.shell.pointerUp(core::Offset{at.x + 80.0F, at.y});
+    fx.render();
+
+    // 拖过头：顶住 minWidth（默认 40）。
+    fx.shell.tick(1000);  // 避开双击窗口
+    at = handleCenter(fx.shell, "grid:hnd:name");
+    fx.shell.pointerDown(at);
+    fx.shell.pointerMove(core::Offset{at.x - 1000.0F, at.y});
+    CHECK(fx.grid.columns()[0].width == Catch::Approx(40.0F));
+    fx.shell.pointerUp(core::Offset{at.x - 1000.0F, at.y});
+    fx.render();
+
+    // 双击手柄复位：回 setColumns 初始宽 100（splitter reset 通道）。
+    // tick 为绝对时间戳：第二击须在首击之后且间隔 ≤ 双击窗口 400ms。
+    fx.shell.tick(1000);
+    fx.click("grid:hnd:name");
+    fx.shell.tick(1300);
+    fx.click("grid:hnd:name");
+    CHECK(fx.grid.columns()[0].width == Catch::Approx(100.0F));
+}
+
+TEST_CASE("datagrid_resize_handle_keyboard_steps_and_tab_stop",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.render();
+    fx.render();
+    // Tab 序（键盘可达性）：横向视口根 → 表头排序钮 → 首个手柄。
+    fx.shell.keyDown(core::Key::Tab);
+    fx.shell.keyDown(core::Key::Tab);
+    fx.shell.keyDown(core::Key::Tab);
+    CHECK(fx.shell.focus().focusedKey() == "grid:hnd:name");
+    // 方向键步进 = 手柄带宽（Comfortable 10px）。
+    fx.shell.keyDown(core::Key::Right);
+    CHECK(fx.grid.columns()[0].width == Catch::Approx(110.0F));
+    fx.shell.keyDown(core::Key::Left);
+    CHECK(fx.grid.columns()[0].width == Catch::Approx(100.0F));
+    // Home 收缩到 minWidth；End 无上界语义（列宽无 max），不动作。
+    fx.shell.keyDown(core::Key::Home);
+    CHECK(fx.grid.columns()[0].width == Catch::Approx(40.0F));
+    fx.shell.keyDown(core::Key::End);
+    CHECK(fx.grid.columns()[0].width == Catch::Approx(40.0F));
+}
+
+TEST_CASE("datagrid_resize_commits_edit_and_blocks_on_failure",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.render();
+    fx.grid.setCellValidator("qty", [](const std::string& text) {
+        return text.find_first_not_of("0123456789") == std::string::npos
+                   ? ""
+                   : "digits only";
+    });
+    REQUIRE(fx.grid.beginEdit(0, "qty"));
+    fx.render();
+    fx.shell.state().set("grid:edit", "abc");
+
+    // 手柄拖动先提交（§13.1 视图变化先提交）：失败中止——列宽不动、
+    // 编辑保留、草稿不丢。
+    const core::Offset at = handleCenter(fx.shell, "grid:hnd:qty");
+    fx.shell.pointerDown(at);
+    fx.shell.pointerMove(core::Offset{at.x - 50.0F, at.y});
+    CHECK(fx.grid.columns()[1].width == Catch::Approx(80.0F));
+    CHECK(fx.grid.editing());
+    CHECK(fx.shell.state().get("grid:edit") == "abc");
+    fx.shell.pointerUp(core::Offset{at.x - 50.0F, at.y});
+
+    // 修正草稿后再拖：提交生效 + 列宽变化。
+    fx.shell.tick(1000);
+    fx.shell.state().set("grid:edit", "42");
+    const core::Offset again = handleCenter(fx.shell, "grid:hnd:qty");
+    fx.shell.pointerDown(again);
+    fx.shell.pointerMove(core::Offset{again.x + 50.0F, again.y});
+    CHECK(fx.grid.columns()[1].width == Catch::Approx(130.0F));
+    CHECK_FALSE(fx.grid.editing());
+    fx.shell.pointerUp(core::Offset{again.x + 50.0F, again.y});
+    REQUIRE(fx.edited.size() == 1);
+    CHECK(fx.edited.front() == "0:qty:42");
 }

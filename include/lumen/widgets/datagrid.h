@@ -23,19 +23,28 @@
 // 跳禁用行）、编辑器内点击/双击不打断草稿、排序升→降→清除循环、
 // 列 minWidth/显隐/顺序、选择复选框列（表头全选/清空）、数值列右对齐
 // + 单行省略、自定义空态。
-// 水平虚拟化/双轴滚动协调/RTL 镜像/拖放/列宽拖动手柄/冻结列为后续
-// 增量（不破坏本契约）。
+//
+// 2026-09-28 第三批（设计文档 §17）：双轴几何（表头与数据区共享横向
+// offset——根 ScrollView 横轴 + 源视口接缝，滚轮/拖动/惯性/语义滚动由
+// 框架直驱，应用零接线）+ 表头列宽拖动手柄（复用 splitter 交互通道：
+// 拖动跟手、双击复位、键盘 Left/Right 步进、ResizeEW 悬停光标）+
+// Theme.dataGrid token 组（headerExtent/selectionColumnWidth/
+// resizeHitWidth 三档密度 + fontScale 派生，Comfortable 档与第二批
+// 常量等值）。水平虚拟化/冻结列/RTL 镜像/拖放仍为后续增量。
 //
 // UI 线程独占；控制器生命周期必须覆盖 shell（sink 注册于 attach）。
 
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "lumen/app/app_shell.h"
+#include "lumen/core/scroll.h"
+#include "lumen/core/splitter.h"
 #include "lumen/core/virtual_list.h"
 #include "lumen/core/widget.h"
 #include "lumen/core/windowing.h"
@@ -192,6 +201,12 @@ class DataGridController final : public core::VirtualListSource {
         return currentColumn_;
     }
     void setCurrentColumn(const std::string& columnKey);
+    // 横向滚动控制器（双轴几何，§17：表头与数据区共享；滚轮/拖动/惯性
+    // 由框架经源视口接缝直驱，应用无需接线；此处仅供程序化定位）。
+    [[nodiscard]] core::ScrollController& hScroll() { return hScroll_; }
+    [[nodiscard]] const core::ScrollController& hScroll() const {
+        return hScroll_;
+    }
 
     // --- VirtualListSource（几何委托 base_） ---
     [[nodiscard]] std::size_t itemCount() const override;
@@ -219,6 +234,65 @@ class DataGridController final : public core::VirtualListSource {
     [[nodiscard]] std::string tabStopKey() const override;
 
   private:
+    // 横向视口的源接缝（§17 双轴几何）：ScrollView 布局/交互对该源只
+    // 消费 scrollController() 与 updateViewport()（几何由 ScrollView
+    // 自测内容尺寸；item 系列不在该路径被调用，退化实现安全）。
+    // updateViewport 喂 hScroll_ 的视口/内容宽并跟踪视口宽度（内容窄于
+    // 视口时行背景铺满视口的收敛重建，VirtualList extent 修正同模式）。
+    class HorizontalViewportSource final : public core::VirtualListSource {
+      public:
+        explicit HorizontalViewportSource(DataGridController& owner)
+            : owner_(owner) {}
+
+        [[nodiscard]] std::size_t itemCount() const override { return 0; }
+        [[nodiscard]] float estimatedExtent() const override { return 0.0F; }
+        [[nodiscard]] float extentOf(std::size_t) const override {
+            return 0.0F;
+        }
+        [[nodiscard]] float scrollOffset() const override;
+        [[nodiscard]] float totalExtent() const override;
+        [[nodiscard]] float offsetOfIndex(std::size_t) const override {
+            return 0.0F;
+        }
+        [[nodiscard]] std::pair<std::size_t, std::size_t> visibleRange(
+            float, float) const override {
+            return {0, 0};
+        }
+        [[nodiscard]] core::Widget buildItem(std::size_t) const override;
+        void noteExtent(std::size_t, float) const override {}
+        void updateViewport(float viewportExtent,
+                            float contentPadding) const override;
+        [[nodiscard]] core::ScrollController* scrollController()
+            const override;
+
+      private:
+        DataGridController& owner_;
+    };
+
+    // 列宽手柄源（复用 core::SplitterSource 交互通道，§17）：offset =
+    // 该列右缘边界的绝对内容坐标（选择列 + 前序可见列宽 + 本列宽）；
+    // dragTo/stepBy 经 resizeColumn 落地（内部钳 minWidth），reset 双击
+    // 复位到 setColumns 时的初始宽。生命周期：按列 key 建档、地址稳定
+    //（RenderNode/交互层按指针持有；列集刷新复用同键源）。
+    class ColumnResizeSource final : public core::SplitterSource {
+      public:
+        DataGridController* owner{};
+        std::string columnKey{};
+        float initialWidth{120.0F};
+
+        [[nodiscard]] float offsetPx() const override;
+        [[nodiscard]] float minLeading() const override;
+        [[nodiscard]] float minTrailing() const override { return 0.0F; }
+        [[nodiscard]] float initialOffset() const override;
+        [[nodiscard]] bool seeded() const override { return true; }
+        [[nodiscard]] float extentPx() const override;
+        void noteLayout(float, float) const override {}
+        void dragTo(float offsetPx) const override;
+        void stepBy(float deltaPx) const override;
+        void stepToEdge(bool maxEdge) const override;
+        void reset() const override;
+    };
+
     [[nodiscard]] std::string keyOf(std::size_t index) const;
     [[nodiscard]] std::string cellText(std::size_t row,
                                        const std::string& columnKey) const;
@@ -253,12 +327,39 @@ class DataGridController final : public core::VirtualListSource {
     [[nodiscard]] bool parseCellRef(const std::string& ref,
                                     std::string& rowKey,
                                     std::string& columnKey) const;
-    // 表头/行首的选择复选框格（44px 整格命中；Checkbox 无 bind，状态由
+    // 表头/行首的选择复选框格（整格命中；Checkbox 无 bind，状态由
     // 选择集重建）。
     [[nodiscard]] core::Widget buildHeaderCheckCell() const;
+    // 表头列宽手柄（可调整列右缘；splitter 交互通道，§17）。
+    [[nodiscard]] core::Widget buildResizeHandle(
+        const DataColumn& column) const;
+    // 主题几何（Theme.dataGrid；无 shell 时退回 Comfortable 默认）。
+    [[nodiscard]] float headerExtentPx() const;
+    [[nodiscard]] float selectionColumnWidthPx() const;
+    [[nodiscard]] float resizeHitWidthPx() const;
+    // 内容总宽 = 选择列 + Σ可见列宽；行/表头/List 同源（对齐不变式）。
+    // 内容窄于视口时取视口宽（行背景铺满视口；视口宽经源接缝跟踪）。
+    [[nodiscard]] float gridWidth() const;
+    // 列右缘边界与前列累计（内容坐标；手柄源换算用）。
+    [[nodiscard]] float columnPrefixWidth(const std::string& columnKey) const;
+    [[nodiscard]] const DataColumn* findColumn(
+        const std::string& columnKey) const;
+    // setColumns 同步手柄源（按列 key 建档；既有键复用——地址稳定，
+    // 交互层按指针持有，异步 setColumns 不得使拖动中的源失效。移除列
+    // 的源保留不销毁：小对象、永不复用，换取零悬垂窗口）。
+    void syncColumnSources();
+    [[nodiscard]] const ColumnResizeSource* resizeSourceFor(
+        const std::string& columnKey) const;
     void requestRebuild();
 
     core::VirtualListController base_{};
+    // 横向滚动（表头与数据区共享，§17；经根 ScrollView 的源接缝由框架
+    // 直驱滚轮/拖动/惯性）。
+    core::ScrollController hScroll_{core::ScrollAxis::Horizontal};
+    HorizontalViewportSource hSource_{*this};
+    // 手柄源按列 key 建档（map 节点地址稳定；键删除不回收，见
+    // syncColumnSources 契约）。
+    std::map<std::string, ColumnResizeSource> columnSources_{};
     SelectionModel selection_{};
     std::vector<DataColumn> columns_{};
     std::function<std::string(std::size_t, const std::string&)> cellText_{};
@@ -278,6 +379,8 @@ class DataGridController final : public core::VirtualListSource {
     // setRowEnabledOf 失效）。
     mutable std::vector<std::string> selectableKeysCache_{};
     mutable bool selectableKeysDirty_{true};
+    // 横向视口宽跟踪（源接缝回填；内容窄于视口时行铺满视口的收敛依据）。
+    mutable float hViewportWidth_{0.0F};
     app::AppShell* shell_{nullptr};
     std::string owner_{"grid"};
 };

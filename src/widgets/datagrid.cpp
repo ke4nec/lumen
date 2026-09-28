@@ -8,21 +8,28 @@
 // （IME composing 除外）+ 提交/取消后焦点回行；排序升 → 降 → 清除循环；
 // 列 minWidth/显隐/顺序；选择复选框列（表头全选/清空当前可用行，
 // selectableKeys 缓存摊销 O(n)）；数值列右对齐 + 单行省略；自定义空态。
+//
+// 2026-09-28 第三批（设计文档 §17）：双轴几何——根 ScrollView 横轴 +
+// HorizontalViewportSource 源接缝（布局喂 hScroll_ 视口/内容宽；滚轮/
+// 拖动/惯性/滚动条由交互层直驱，应用零接线），表头与数据区共享横向
+// offset；表头列宽拖动手柄复用 splitter 交互通道（ColumnResizeSource：
+// 拖动跟手/双击复位/键盘步进/ResizeEW 光标）；几何取 Theme.dataGrid
+// token（Comfortable 档与第二批常量等值）。
 
 #include "lumen/widgets/datagrid.h"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
+#include "lumen/accessibility/semantics.h"
 #include "collection_common.h"
 
 namespace lumen::widgets {
 namespace {
 constexpr float kMinColumnWidth = 40.0F;
-constexpr float kHeaderExtent = 36.0F;
-// 视觉系统 §3.3（Medium 档）：选择辅助列宽；格水平内边距取
-// metrics.controlPaddingX 同值（collection_common kRowPaddingX = 12）。
-constexpr float kSelectionColumnWidth = 44.0F;
+// 视觉系统 §3.3（Medium 档）：格水平内边距取 metrics.controlPaddingX
+// 同值（collection_common kRowPaddingX = 12）。
 constexpr float kCellPaddingX = detail::kRowPaddingX;
 // 表头非排序列的辅助文字色（TreeList 表头同口径）。
 constexpr core::Color kHeaderSecondary{140, 140, 152, 255};
@@ -61,6 +68,7 @@ void DataGridController::setColumns(std::vector<DataColumn> columns) {
         column.minWidth = std::max(column.minWidth, kMinColumnWidth);
         column.width = std::max(column.width, column.minWidth);
     }
+    syncColumnSources();
     if (!columnVisible(currentColumn_)) {
         currentColumn_ = firstVisibleColumn();
     }
@@ -77,6 +85,11 @@ bool DataGridController::resizeColumn(const std::string& columnKey,
             continue;
         }
         if (!column.resizable) {
+            return false;
+        }
+        // 视图变化先提交（§13.1 切列先提交；手柄拖动逐拍调用，无编辑时
+        // 幂等直达）。校验失败中止——列宽不动，草稿留在错误格。
+        if (!commitPendingEdit()) {
             return false;
         }
         // 钳制到列 minWidth（自身 >= 40）。
@@ -402,6 +415,8 @@ void DataGridController::setEmptyBuilder(
 
 core::Widget DataGridController::build() const {
     const bool checkboxes = selection_.mode() != SelectionMode::None;
+    const float headerExtent = headerExtentPx();
+    const float handleWidth = resizeHitWidthPx();
     std::vector<core::Widget> headerCells;
     headerCells.reserve(columns_.size() + 1);
     if (checkboxes) {
@@ -412,8 +427,11 @@ core::Widget DataGridController::build() const {
             continue;
         }
         // 表头（TreeList 同口径）：可排序列 = Ghost 按钮（hover chrome +
-        // 排序指示图标）；其余 = 辅助色静态文本。数值列内容右对齐待
+        // 排序指示图标）；其余 = 辅助色静态文本。可调整列右缘带列宽手柄
+        //（§17，splitter 通道）；手柄带宽计入列宽预算（内容 = 列宽 −
+        // 手柄带宽，与数据格列边界对齐保持不变式）。数值列内容右对齐待
         // Button 内容对齐扩展（设计文档 §16 已知限制）。
+        const bool hasHandle = column.resizable;
         core::Widget cell;
         const bool sorted = column.key == sortColumn_;
         if (column.sortable) {
@@ -430,20 +448,41 @@ core::Widget DataGridController::build() const {
             cell = core::makeText(column.header, cellTextStyle(kHeaderSecondary));
             cell.listPart = core::ListPart::Row;  // 表头行样式口径
         }
-        cell.width = column.width;
-        cell.height = kHeaderExtent;
-        headerCells.push_back(std::move(cell));
+        cell.width = hasHandle ? column.width - handleWidth : column.width;
+        cell.height = headerExtent;
+        if (!hasHandle) {
+            headerCells.push_back(std::move(cell));
+            continue;
+        }
+        auto box = core::makeRow(
+            {std::move(cell), buildResizeHandle(column)});
+        box.width = column.width;
+        box.key = owner_ + ":headbox:" + column.key;
+        headerCells.push_back(std::move(box));
     }
     auto header = core::makeRow(std::move(headerCells));
     header.key = owner_ + ":header";
-    header.height = kHeaderExtent;
+    header.height = headerExtent;
+    header.width = gridWidth();
     header.crossAxis = core::CrossAxisAlignment::Center;
 
     auto list = core::makeList(this, owner_);
+    // 显式宽（横向视口主轴无界）：行被 tight 到内容宽；内容窄于视口时
+    // 铺满视口（行背景完整，视口宽经源接缝跟踪收敛）。
+    list.width = gridWidth();
     list.flex = 1.0F;
-    auto grid = core::makeColumn({std::move(header), std::move(list)});
-    grid.key = owner_;
-    return grid;
+    auto body = core::makeColumn({std::move(header), std::move(list)});
+    body.key = owner_ + ":body";
+    body.width = gridWidth();
+
+    // 根横向视口（§17 双轴几何）：表头与数据区共享横向 offset；源接缝
+    // （hSource_）让交互层直驱 hScroll_（滚轮/拖动/惯性/滚动条/语义），
+    // 应用零接线。scrollOffset 每次重建写回（布局期钳制到 scrollExtent）。
+    auto view = core::makeScrollView(std::move(body), owner_);
+    view.scrollAxis = core::ScrollAxis::Horizontal;
+    view.virtualSource = &hSource_;
+    view.scrollOffset = hScroll_.offset();
+    return view;
 }
 
 // --- shell 接线 ---
@@ -999,12 +1038,12 @@ core::Widget DataGridController::buildHeaderCheckCell() const {
     auto checkbox = core::makeCheckbox("", "", owner_ + ":header-check", all);
     checkbox.semanticsLabel = "全选当前结果中的可用行";
     checkbox.enabled = !keys.empty();
-    // 整格命中都走全选（44px 命中区域，§12）；Checkbox 仅作视觉/语义
-    // 声明（bind 为空——框架 toggle 不接管，状态由选择集重建）。
+    // 整格命中都走全选（token 宽整格命中区域，§12）；Checkbox 仅作视觉/
+    // 语义声明（bind 为空——框架 toggle 不接管，状态由选择集重建）。
     auto cell = core::makeRow({std::move(checkbox)},
                               core::MainAxisAlignment::Center,
                               core::CrossAxisAlignment::Center);
-    cell.width = kSelectionColumnWidth;
+    cell.width = selectionColumnWidthPx();
     cell.onClick = "grid:" + owner_ + ":checkall";
     cell.key = owner_ + ":header-check-cell";
     return cell;
@@ -1024,7 +1063,7 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
     std::vector<core::Widget> cells;
     cells.reserve(columns_.size() + 1);
     if (selection_.mode() != SelectionMode::None) {
-        // 行复选框列：格级命中切换该行（不改 current），整格 44px 命中。
+        // 行复选框列：格级命中切换该行（不改 current），整格 token 宽命中。
         auto checkbox =
             core::makeCheckbox("", "", owner_ + ":check:" + key,
                                selection_.isSelected(key));
@@ -1032,7 +1071,7 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
         auto cell = core::makeRow({std::move(checkbox)},
                                   core::MainAxisAlignment::Center,
                                   core::CrossAxisAlignment::Center);
-        cell.width = kSelectionColumnWidth;
+        cell.width = selectionColumnWidthPx();
         cell.onClick = "grid:" + owner_ + ":check:" + key;
         cell.key = owner_ + ":check-cell:" + key;
         cells.push_back(std::move(cell));
@@ -1090,6 +1129,196 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
     }
     row.children.push_back(std::move(content));
     return row;
+}
+
+// --- 第三批（§17）：横向视口源接缝 / 列宽手柄源 / 几何辅助 ---
+
+float DataGridController::headerExtentPx() const {
+    return shell_ != nullptr ? shell_->theme().dataGrid.headerExtent
+                             : style::DataGridTokens{}.headerExtent;
+}
+
+float DataGridController::selectionColumnWidthPx() const {
+    return shell_ != nullptr
+               ? shell_->theme().dataGrid.selectionColumnWidth
+               : style::DataGridTokens{}.selectionColumnWidth;
+}
+
+float DataGridController::resizeHitWidthPx() const {
+    return shell_ != nullptr ? shell_->theme().dataGrid.resizeHitWidth
+                             : style::DataGridTokens{}.resizeHitWidth;
+}
+
+float DataGridController::gridWidth() const {
+    float width = selection_.mode() != SelectionMode::None
+                      ? selectionColumnWidthPx()
+                      : 0.0F;
+    for (const auto& column : columns_) {
+        if (column.visible) {
+            width += column.width;
+        }
+    }
+    // 内容窄于视口时铺满视口（行背景/表头完整；视口宽由源接缝跟踪，
+    // 两帧收敛——VirtualList extent 修正同模式）。scrollExtent 两种取法
+    // 等价：max(content, viewport) − viewport = max(0, content − viewport)。
+    return std::max(width, hViewportWidth_);
+}
+
+float DataGridController::columnPrefixWidth(
+    const std::string& columnKey) const {
+    // 真实内容坐标（不含视口铺满补白）：选择列 + 目标列之前的可见列宽。
+    float width = selection_.mode() != SelectionMode::None
+                      ? selectionColumnWidthPx()
+                      : 0.0F;
+    for (const auto& column : columns_) {
+        if (column.key == columnKey) {
+            break;
+        }
+        if (column.visible) {
+            width += column.width;
+        }
+    }
+    return width;
+}
+
+const DataColumn* DataGridController::findColumn(
+    const std::string& columnKey) const {
+    for (const auto& column : columns_) {
+        if (column.key == columnKey) {
+            return &column;
+        }
+    }
+    return nullptr;
+}
+
+void DataGridController::syncColumnSources() {
+    // 按列 key 建档（键已存在则保留：地址稳定，拖动中的源不因
+    // setColumns 失效）；initialWidth 只在首次建档时捕获（reset 目标）。
+    for (const auto& column : columns_) {
+        auto [it, inserted] =
+            columnSources_.try_emplace(column.key, ColumnResizeSource{});
+        it->second.owner = this;
+        it->second.columnKey = column.key;
+        if (inserted) {
+            it->second.initialWidth = column.width;
+        }
+    }
+    // 移除列的源条目保留（小对象；永不复用键名换取零悬垂窗口）。
+}
+
+const DataGridController::ColumnResizeSource*
+DataGridController::resizeSourceFor(const std::string& columnKey) const {
+    const auto it = columnSources_.find(columnKey);
+    return it != columnSources_.end() ? &it->second : nullptr;
+}
+
+core::Widget DataGridController::buildResizeHandle(
+    const DataColumn& column) const {
+    // 手柄 = splitter 通道节点（painter 按 splitterSource 特判画居中轨道
+    // 线：rest 1px border、hover/press/focus 3px accent；窄而高 → 拖动
+    // 自动判为横向）。onClick 不注册 handler：单击 no-op——非空是 hover
+    // 承载与双击复位检测的前提（splitter 分隔条同口径）。
+    core::Widget handle;
+    handle.type = core::WidgetType::Button;
+    handle.buttonVariant = core::ButtonVariant::Ghost;
+    handle.key = owner_ + ":hnd:" + column.key;
+    handle.onClick = "grid:" + owner_ + ":hnd:" + column.key;
+    handle.width = resizeHitWidthPx();
+    handle.height = headerExtentPx();
+    handle.collectionRow = true;  // Tab 可聚焦（键盘步进通道）
+    handle.showFocusRing = true;  // 3px accent 线由 focusWidth>0 驱动
+    handle.semanticsRole = "splitter";
+    handle.semanticsLabel = "调整 " + column.header + " 列宽";
+    handle.semanticsValue =
+        std::to_string(static_cast<int>(std::lround(column.width)));
+    // SetValue（splitter 的百分比语义）对列宽无意义，不暴露；键盘调宽走
+    // Left/Right（交互层 splitterSource 步进路径）。
+    handle.semanticsActions = accessibility::kActionFocus;
+    handle.splitterSource = resizeSourceFor(column.key);
+    return handle;
+}
+
+float DataGridController::HorizontalViewportSource::scrollOffset() const {
+    return owner_.hScroll_.offset();
+}
+
+float DataGridController::HorizontalViewportSource::totalExtent() const {
+    return owner_.gridWidth();
+}
+
+core::Widget DataGridController::HorizontalViewportSource::buildItem(
+    std::size_t) const {
+    // ScrollView 路径不物化 item（几何自测）；退化实现仅为满足接口。
+    return {};
+}
+
+void DataGridController::HorizontalViewportSource::updateViewport(
+    float viewportExtent, float /*contentPadding*/) const {
+    owner_.hScroll_.updateExtents(viewportExtent, owner_.gridWidth());
+    // 视口宽跟踪：变化时请求一次重建（内容窄于视口的铺满 / 收窄），
+    // 下一帧几何收敛。布局期 markDirty 会被 rebuildIfDirty 末尾清脏吞
+    // 掉，走 requestRebuildAfterLayout 挂起通道（VirtualList 同帧重算
+    // 不适用：宽度在 build 期决策，不在布局期）。
+    if (std::abs(viewportExtent - owner_.hViewportWidth_) > 0.5F) {
+        owner_.hViewportWidth_ = viewportExtent;
+        if (owner_.shell_ != nullptr) {
+            owner_.shell_->requestRebuildAfterLayout();
+        }
+    }
+}
+
+core::ScrollController*
+DataGridController::HorizontalViewportSource::scrollController() const {
+    return &owner_.hScroll_;
+}
+
+float DataGridController::ColumnResizeSource::offsetPx() const {
+    const DataColumn* column = owner->findColumn(columnKey);
+    return column != nullptr
+               ? owner->columnPrefixWidth(columnKey) + column->width
+               : 0.0F;
+}
+
+float DataGridController::ColumnResizeSource::minLeading() const {
+    const DataColumn* column = owner->findColumn(columnKey);
+    return column != nullptr
+               ? owner->columnPrefixWidth(columnKey) + column->minWidth
+               : 0.0F;
+}
+
+float DataGridController::ColumnResizeSource::initialOffset() const {
+    return owner->columnPrefixWidth(columnKey) + initialWidth;
+}
+
+float DataGridController::ColumnResizeSource::extentPx() const {
+    return owner->gridWidth();
+}
+
+void DataGridController::ColumnResizeSource::dragTo(float offsetPx) const {
+    // 绝对边界位置 → 本列宽（resizeColumn 内部钳 minWidth）。
+    (void)owner->resizeColumn(columnKey,
+                              offsetPx - owner->columnPrefixWidth(columnKey));
+}
+
+void DataGridController::ColumnResizeSource::stepBy(float deltaPx) const {
+    const DataColumn* column = owner->findColumn(columnKey);
+    if (column != nullptr) {
+        (void)owner->resizeColumn(columnKey, column->width + deltaPx);
+    }
+}
+
+void DataGridController::ColumnResizeSource::stepToEdge(bool maxEdge) const {
+    // Home = 收缩到 minWidth；End 无上界语义（列宽无 max），不动作。
+    if (!maxEdge) {
+        const DataColumn* column = owner->findColumn(columnKey);
+        if (column != nullptr) {
+            (void)owner->resizeColumn(columnKey, column->minWidth);
+        }
+    }
+}
+
+void DataGridController::ColumnResizeSource::reset() const {
+    (void)owner->resizeColumn(columnKey, initialWidth);
 }
 
 }  // namespace lumen::widgets
