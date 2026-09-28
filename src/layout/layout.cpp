@@ -166,6 +166,11 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.collectionRow = widget.collectionRow;
     node.windowDrag = widget.windowDrag;
     node.virtualSource = widget.virtualSource;
+    // 拖拽源通用拷贝（DataGrid 列宽手柄复用 splitter 交互通道，
+    // lumen-datagrid-design §16）：makeSplitter 的容器节点由
+    // layoutSplitter 显式清零（拖拽锁定只允许命中分隔条/手柄本体，
+    // 不得波及窗格内容）。
+    node.splitterSource = widget.splitterSource;
     return node;
 }
 
@@ -1034,6 +1039,17 @@ RenderNode layoutScrollView(const Widget& widget,
         std::max(0.0F, contentMain - (horizontal ? viewportWidth : viewportHeight));
     const float offset = std::clamp(widget.scrollOffset, 0.0F, scrollExtent);
 
+    // 源视口接管（RenderNode.virtualSource 口径，DataGrid 双轴横向视口
+    // 首用，lumen-datagrid-design §16）：滚动状态由源控制器拥有的
+    // ScrollView，布局期喂入视口主轴尺寸——镜像 layoutVirtualList 的
+    // updateViewport 契约；此后滚轮/拖动/滚动条/语义滚动由交互层直驱
+    // scrollController()，无需应用按视口接线。
+    if (widget.virtualSource != nullptr) {
+        widget.virtualSource->updateViewport(
+            horizontal ? viewportWidth : viewportHeight,
+            horizontal ? padding.horizontal() : padding.vertical());
+    }
+
     if (horizontal) {
         childNode.offset = Offset{
             padding.left + child.margin.left - offset,
@@ -1446,6 +1462,10 @@ RenderNode layoutSplitter(const Widget& widget, const Constraints& constraints,
             : outer.maxHeight;
     RenderNode node = makeNode(widget, Offset{0.0F, 0.0F},
                                Size{width, height}, styleContext, identity);
+    // 容器不承载拖拽（makeNode 通用拷贝带来的 widget.splitterSource）：
+    // 锁定只允许分隔条节点（下方 1527 行物化时设置），窗格内的按压
+    // 不得命中容器开启分栏拖拽。
+    node.splitterSource = nullptr;
 
     const SplitterSource* source = widget.splitterSource;
     if (widget.children.size() < 2 || source == nullptr) {

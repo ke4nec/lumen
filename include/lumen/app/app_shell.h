@@ -152,6 +152,11 @@ class AppShell {
     }
     // 显式请求重建（应用侧业务状态不在 StateStore 时）。
     void markDirty() { dirty_ = true; }
+    // 布局期请求重建（源视口接缝——DataGrid 横向视口宽度跟踪首用，
+    // lumen-datagrid-design §17）：rebuildIfDirty 末尾的 dirty_=false 会
+    // 吞掉布局期间的 markDirty，本标志在收尾时回置 dirty，下一帧收敛
+    //（一次性：再次布局不再置位即停）。
+    void requestRebuildAfterLayout() { layoutRebuildPending_ = true; }
     // 待提交的内容变化独立于 animationsActive：一次性回调可以标脏后
     // 直接静止；提前 rebuild 也不代表新树已经绘制。由 runApp 合并请求。
     [[nodiscard]] bool hasPendingFrame() const {
@@ -468,6 +473,8 @@ class AppShell {
     bool rebuiltThisFrame_{false};
     bool framePainted_{false};
     bool fullRepaintPending_{false};
+    // 布局期重建请求（requestRebuildAfterLayout；rebuildIfDirty 收尾消费）。
+    bool layoutRebuildPending_{false};
     // 交互快照（hover/press/focus）驱动重建。
     style::InteractionStateSnapshot lastInteraction_{};
     std::string lastFocusedIdentity_{};

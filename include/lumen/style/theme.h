@@ -375,6 +375,20 @@ struct ScrollbarTokens {
     bool operator==(const ScrollbarTokens&) const = default;
 };
 
+// DataGrid 几何 token（lumen-datagrid-design §12 / 视觉系统 §3.3）：
+// 密度三档由 dataGridTokensFrom 烘焙；颜色沿用集合行/列表 token（表头
+// surfaceSunken、分隔线 borderDefault），本组只承载网格几何。
+struct DataGridTokens {
+    // 表头行高（§12：Compact 32 / Comfortable 36 / Touch 44）。
+    float headerExtent{36.0F};
+    // 选择辅助列宽（选择列整格命中；44 / 44 / 52）。
+    float selectionColumnWidth{44.0F};
+    // 列宽拖动手柄命中带宽（键盘步进同值；8 / 10 / 16）。
+    float resizeHitWidth{10.0F};
+
+    bool operator==(const DataGridTokens&) const = default;
+};
+
 // 主题值对象（§4 建议结构的实现）。light/dark/high contrast/font
 // scale/density/reduced motion 都由 fromSettings 与工厂派生。
 struct Theme {
@@ -397,6 +411,7 @@ struct Theme {
     ScrollbarTokens scrollbar{};
     ListTokens list{};
     TreeTokens tree{};
+    DataGridTokens dataGrid{};
     // M11：派生元数据（值语义，参与 ==）。应用直接读取，替代按色值
     // 反推（gallery/settings 旧的 pageBackground 比较启发式）。
     ThemeDirection direction{ThemeDirection::CoreDark};
@@ -449,6 +464,8 @@ struct Theme {
 [[nodiscard]] DialogTokens dialogTokensFrom(const ColorScheme& colors,
                                             const Metrics& metrics);
 [[nodiscard]] ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors,
+    ControlDensity density = ControlDensity::Comfortable);
+[[nodiscard]] DataGridTokens dataGridTokensFrom(
     ControlDensity density = ControlDensity::Comfortable);
 
 // density → 基准档索引（0/1/2）。

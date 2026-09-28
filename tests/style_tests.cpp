@@ -1222,3 +1222,31 @@ TEST_CASE("system_accent_preserves_contrast_in_all_interaction_surfaces", "[styl
         }
     }
 }
+
+// DataGrid 几何 token（lumen-datagrid-design §12 / 视觉系统 §3.3）：密度
+// 三档派生 + fontScale 缩放 + 高对比重建保持几何；Comfortable 档与第二批
+// 控制器常量等值（36/44/10）。
+TEST_CASE("style_datagrid_tokens_derive_by_density_and_scale", "[style]") {
+    using lumen::style::ControlDensity;
+    using lumen::style::dataGridTokensFrom;
+    CHECK(dataGridTokensFrom(ControlDensity::Compact).headerExtent == 32.0F);
+    CHECK(dataGridTokensFrom(ControlDensity::Comfortable).headerExtent == 36.0F);
+    CHECK(dataGridTokensFrom(ControlDensity::Touch).headerExtent == 44.0F);
+    CHECK(dataGridTokensFrom(ControlDensity::Compact).selectionColumnWidth == 44.0F);
+    CHECK(dataGridTokensFrom(ControlDensity::Touch).selectionColumnWidth == 52.0F);
+    CHECK(dataGridTokensFrom(ControlDensity::Compact).resizeHitWidth == 8.0F);
+    CHECK(dataGridTokensFrom(ControlDensity::Comfortable).resizeHitWidth == 10.0F);
+    CHECK(dataGridTokensFrom(ControlDensity::Touch).resizeHitWidth == 16.0F);
+    // Theme 聚合接线：密度派生、fontScale 逐字段缩放、高对比重建保持。
+    CHECK(Theme::dark(ControlDensity::Touch).dataGrid.headerExtent == 44.0F);
+    AccessibilitySettings scaled;
+    scaled.fontScale = 2.0F;
+    CHECK(Theme::fromSettings(scaled).dataGrid.headerExtent ==
+          Approx(72.0F).margin(1e-4F));
+    CHECK(Theme::fromSettings(scaled).dataGrid.resizeHitWidth ==
+          Approx(20.0F).margin(1e-4F));
+    AccessibilitySettings hc;
+    hc.highContrast = true;
+    CHECK(Theme::fromSettings(hc).dataGrid.headerExtent == 36.0F);
+    CHECK(Theme::fromSettings(hc).dataGrid.selectionColumnWidth == 44.0F);
+}

@@ -591,6 +591,12 @@ void AppShell::rebuildIfDirty() {
     }
     rebuiltThisFrame_ = true;
     dirty_ = false;
+    // 布局期重建请求回置（源视口接缝；见 app_shell.h 契约注释）——下一
+    // 帧 build 使用布局期回填的视口宽度收敛，再次布局不再置位即停。
+    if (layoutRebuildPending_) {
+        layoutRebuildPending_ = false;
+        dirty_ = true;
+    }
     // 应用侧重建后钩子（modal 焦点规则：弹窗打开时把焦点移入 dialog
     // 的 FocusScope，Tab/Enter 在域内处理，plan §3.4 焦点恢复）。
     if (config_.onRebuilt) {

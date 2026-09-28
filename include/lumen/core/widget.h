@@ -306,6 +306,9 @@ struct Widget {
     // virtualSource 指针（源为 widgets 层控制器，实现 VirtualListSource）。
     // collectionSelectionMode 为声明值（0=None/1=Single/2=Multiple/
     // 3=Extended；真实选择状态在控制器，Widget 只承载语义声明）。
+    // ScrollView 也可携带（DataGrid 双轴横向视口首用，
+    // lumen-datagrid-design §16）：滚动状态由源控制器拥有，布局期经
+    // updateViewport 喂入视口尺寸，输入由交互层直驱 scrollController()。
     std::uint8_t collectionSelectionMode{0};
     // Visual only: keep focus/navigation/semantics when the ring is hidden.
     // Default off (visual-system §5/§6.1); opt in with withFocusRing(..., true).
