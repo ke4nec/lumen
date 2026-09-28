@@ -73,7 +73,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
 | 增强链 M12 | 已完成平台服务与发布补全 | 系统主题事件/强调色输入、三平台原生通知、三平台 OS 可访问性偏好查询、AppImage/.app/包变体（见 §10 M12 完成记录） |
 | 增强链 M13 | 进行中（Linux Orca 回环已完成） | 契约扩展/runApp 装配/UIA fragment 树、Linux AT-SPI2（含窗口激活链路与 Orca 回环，2026-09-23）、macOS NSAccessibility；Windows 讲述人/NVDA 与 macOS VoiceOver 人工回环待平台验收（见 §10 M13 记录与追记） |
-| M14 实战可用收敛 | 进行中（B/D 阶段证据落地；A 为 Linux 部分，C 首版） | M14-B 三后端门禁+A/A 全过（2026-09-24 归档）；M14-C 资源接线/结构化诊断首版；M14-D DataGrid 首版契约；M14-A Linux 1h 浸泡+窗口冒烟（跨平台人工清单未做，见 §10 各阶段记录） |
+| M14 实战可用收敛 | 进行中（B/D 阶段证据落地；A 为 Linux 部分，C 首版） | M14-B 三后端门禁+A/A 全过（2026-09-24 归档）；M14-C 资源接线/结构化诊断首版；M14-D DataGrid 首版契约 + 第二批 P0 可靠性/列模型切片（2026-09-28，设计 §16）；M14-A Linux 1h 浸泡+窗口冒烟（跨平台人工清单未做，见 §10 各阶段记录） |
 | 按需控件增强 · 集合控件 | 已完成 List/Tree/TreeList 与共享选择模型 | 四选择模式/树扁平化/源视口滚动框架接管（见 §10 集合控件完成记录） |
 | 按需控件增强 · 菜单与分栏 | 已完成 ContextMenu/MenuBar 与 Splitter | Secondary 通道/M11 overlay 菜单面板/分隔条框架接管（见 §10 对应完成记录） |
 | 按需控件增强 · 自定义标题栏 | 已完成无边框窗口 chrome | customTitleBar/拖拽区谓词/窗口操作宿主服务（见 §10 标题栏完成记录） |
@@ -2029,6 +2029,34 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   802/802。
 - 已知限制（§9，后续增量不破坏契约）：水平虚拟化/双轴滚动协调、RTL
   镜像、列重排、拖放、编辑器失焦自动提交、Grid/Table 专属语义 role。
+
+### M14-D 阶段记录：DataGrid 第二批——对齐增强稿 P0+列模型（2026-09-28）
+
+- 提交号：（本变更提交，见 Git 历史 `feat(widgets)`）
+- 依据：`docs/lumen-datagrid-design.md` §10–16 能力审计与增强提案、
+  `design/datagrid.html` 交互评审稿、视觉系统 §3.3。按 §15 建议顺序落地
+  P0 可靠性全部四项 + P1 列布局/选择辅助列切片（§16 实现记录）。
+- 控制器（`widgets::DataGridController`）：真实指针 Ctrl/Shift 修饰键
+  透传（sink 统一解析 row/cell/check/checkall/sort 前缀）；单元格点击
+  身份定位列焦点（colKey 末段解析，行/列 key 允许含 `:`）；提交失败
+  拦截（切格/切行/排序/复选框/激活/粘贴先提交，失败中止不覆盖草稿）；
+  排序升→降→清除三态循环（清除回调空列 key）；列模型扩展
+  minWidth/align/visible + `setColumnVisible`/`moveColumn`（列序即
+  表头/单元格/TSV 列序，copySelection 保留全列首版语义）；选择复选框
+  列（44px 整格命中，表头全选/清空当前可用行，selectableKeys 缓存）；
+  数值列右对齐 + 单行省略 + 格内边距 12；`setEmptyBuilder` 空态组合口。
+- 框架接缝（core 最小增量）：`InteractionController::requestFieldFocus/
+  applyPendingFieldFocus/releaseFieldFocus` 程序化编辑焦点（AppShell
+  重建后落地 focusedBind——编辑器无需点击即收文本输入/IME）；编辑态
+  Enter 提交（composing 期间不消费）、Tab 提交并移动编辑格。
+- 测试：`tests/datagrid_tests.cpp` 扩至 16 用例（新增：真实指针修饰键
+  路径、提交失败拦截、编辑器焦点+Enter 提交+IME、复选框列、列显隐/
+  顺序/minWidth、双击编辑+Enter 激活回退、右对齐+自定义空态）。实现
+  review 复测发现并修复三处问题（编辑器内点击/双击误提交草稿、编辑态
+  Tab 不提交、列显隐/重排不先提交），各配回归用例。全量 812/812 通过
+  （Debug + Release）。
+- 已知限制（§16.4）：列宽拖动手柄、冻结列/双轴、当前格焦点环、错误
+  浮层、表头三态复选框视觉、多列排序、Grid 专属语义仍为后续增量。
 
 ### M14-B 阶段记录：性能门槛收口（2026-09-24）
 
