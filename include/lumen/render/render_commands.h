@@ -187,6 +187,10 @@ class RenderCommandList {
         command.image = id;
     }
 
+    // 返回内部 vector 的引用：不得在 range-for 的 range 表达式中直接
+    // 链式迭代按值返回的 RenderCommandList（如 recordScene(root)
+    // .commands()）——临时对象先于循环析构，引用悬垂是 UB，MSVC/
+    // AppleClang 下表现为读到空命令流。先落具名局部再迭代。
     [[nodiscard]] const std::vector<RenderCommand>& commands() const {
         return commands_;
     }

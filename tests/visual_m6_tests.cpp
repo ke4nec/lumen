@@ -1116,43 +1116,27 @@ TEST_CASE("button_leading_icon_reorders_ink_and_keeps_measure", "[visual]") {
     const auto locate = [](const RenderNode& root, float& iconX,
                            float& textX) {
         iconX = textX = -1.0F;
-        std::size_t iconCommands = 0;
-        std::size_t textCommands = 0;
+        // recordScene 按值返回，commands() 返回其内部成员的引用：在
+        // range-for 的 range 表达式里直接链式迭代是悬垂 UB（C++20 的
+        // 生命周期延长不穿透函数返回的引用；MSVC/AppleClang 栈槽复用
+        // 后恰好读到空命令流——2026-09-28 Windows/macOS CI 9 连败的
+        // 根因）。必须先落具名局部再迭代。
         const auto commands = render::recordScene(root).commands();
-        std::string kinds;
         for (const auto& command : commands) {
-            kinds += std::to_string(static_cast<int>(command.type));
-            kinds += ',';
             if (command.type == render::CommandType::DrawIcon) {
-                ++iconCommands;
                 iconX = command.rect.origin.x;
             }
             if (command.type == render::CommandType::DrawText) {
-                ++textCommands;
                 textX = command.textRun.origin.x;
             }
         }
-        // 平台诊断（CI 注解通道消费）：节点字段 + 命令类型序列。
-        // printf 经 ctest --output-on-failure 进入日志。
-        std::printf(
-            "LEADING-DIAG type=%d icon=%d textLen=%zu alpha=%.4f "
-            "size=%.4fx%.4f cmds=%zu/%zu total=%zu "
-            "kinds=%.*s iconX=%.4f textX=%.4f\n",
-            static_cast<int>(root.type), static_cast<int>(root.icon),
-            root.text.size(), root.transitionAlpha, root.size.width,
-            root.size.height, iconCommands, textCommands, commands.size(),
-            static_cast<int>(std::min<std::size_t>(kinds.size(), 40)),
-            kinds.c_str(), iconX, textX);
     };
     float leadingIconX = 0.0F, leadingTextX = 0.0F;
     float trailingIconX = 0.0F, trailingTextX = 0.0F;
     locate(leadingRoot, leadingIconX, leadingTextX);
     locate(trailingRoot, trailingIconX, trailingTextX);
-    CAPTURE(leadingRoot.size.width, leadingRoot.size.height,
-            leadingIconX, leadingTextX, trailingIconX, trailingTextX);
-    // CHECK（非 REQUIRE）：两侧数据都要进日志/注解，便于平台对比。
-    CHECK(leadingIconX >= 0.0F);
-    CHECK(leadingTextX >= 0.0F);
+    REQUIRE(leadingIconX >= 0.0F);
+    REQUIRE(leadingTextX >= 0.0F);
     // 前导：图标在文字左侧；尾随：文字在图标左侧。
     CHECK(leadingIconX < leadingTextX);
     CHECK(trailingTextX < trailingIconX);

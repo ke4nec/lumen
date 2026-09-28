@@ -192,7 +192,6 @@ jobs:
           tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
           for ln in tail:
               print(f"::error::tail: {ln[:200]}")
-          for m in re.finditer(r'LEADING-DIAG [^\n]*', log):
               print(f"::error::DIAG: {m.group(0)[:190]}")
           for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
               cond = ' '.join(m.group(1).split())
@@ -291,7 +290,6 @@ jobs:
           tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
           for ln in tail:
               print(f"::error::tail: {ln[:200]}")
-          for m in re.finditer(r'LEADING-DIAG [^\n]*', log):
               print(f"::error::DIAG: {m.group(0)[:190]}")
           for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
               cond = ' '.join(m.group(1).split())
@@ -372,7 +370,6 @@ jobs:
           tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
           for ln in tail:
               print(f"::error::tail: {ln[:200]}")
-          for m in re.finditer(r'LEADING-DIAG [^\n]*', log):
               print(f"::error::DIAG: {m.group(0)[:190]}")
           for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
               cond = ' '.join(m.group(1).split())
