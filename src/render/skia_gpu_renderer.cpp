@@ -274,6 +274,27 @@ class SkiaGpuRenderer final : public Renderer {
             blitImage(immediateCanvas(), id, destination);
         }
     }
+    // GPU 平价（parity §3.3）：即时路径三覆写。生产路径全部经 submit()
+    // 命令回放（ClipRounded 已原生），但基类默认适配器会把命令转发到
+    // 即时路径——覆写缺失时图标/阴影退化为 no-op、圆角裁剪退化为矩形。
+    void clipRounded(core::Rect rect, core::CornerRadius radius) override {
+        if (immediateCanvas() != nullptr) {
+            applyRoundedClip(immediateCanvas(), rect, radius);
+        }
+    }
+    void drawIcon(std::vector<std::vector<core::Offset>> polylines,
+                  core::Rect box, core::Color color,
+                  float strokeWidth) override {
+        if (immediateCanvas() != nullptr) {
+            paintIcon(immediateCanvas(), polylines, box, color, strokeWidth);
+        }
+    }
+    void drawShadow(core::Rect elevatedBox, core::Color color,
+                    core::Offset offset, float blur) override {
+        if (immediateCanvas() != nullptr) {
+            paintShadow(immediateCanvas(), elevatedBox, color, offset, blur);
+        }
+    }
     void endFrame() override {
         if (!alive_ || surface_ == nullptr) {
             return;
@@ -374,6 +395,23 @@ class SkiaGpuRenderer final : public Renderer {
                                 rect.size.height * deviceScale_);
     }
 
+    // Skia 圆角序（顺时针自左上）：TL, TR, BR, BL。回放与即时路径共用
+    //（GPU 平价 §3.3——消除两份圆角序拷贝）。
+    void applyRoundedClip(SkCanvas* canvas, const core::Rect& rect,
+                          const core::CornerRadius& radius) {
+        const float s = deviceScale_;
+        SkRect skRect = scaled(rect);
+        const SkVector radii[4] = {
+            {radius.topLeft * s, radius.topLeft * s},
+            {radius.topRight * s, radius.topRight * s},
+            {radius.bottomRight * s, radius.bottomRight * s},
+            {radius.bottomLeft * s, radius.bottomLeft * s},
+        };
+        SkRRect rrect;
+        rrect.setRectRadii(skRect, radii);
+        canvas->clipRRect(rrect, SkClipOp::kIntersect, true);
+    }
+
     void replayCommand(SkCanvas* canvas, const RenderCommand& command) {
         switch (command.type) {
             case CommandType::Save:
@@ -386,30 +424,25 @@ class SkiaGpuRenderer final : public Renderer {
                 canvas->clipRect(scaled(command.rect), SkClipOp::kIntersect,
                                  false);
                 break;
-            case CommandType::ClipRounded: {
-                // Skia 圆角序（顺时针自左上）：TL, TR, BR, BL。
-                const float s = deviceScale_;
-                SkRect skRect = scaled(command.rect);
-                const SkVector radii[4] = {
-                    {command.radius.topLeft * s, command.radius.topLeft * s},
-                    {command.radius.topRight * s,
-                     command.radius.topRight * s},
-                    {command.radius.bottomRight * s,
-                     command.radius.bottomRight * s},
-                    {command.radius.bottomLeft * s,
-                     command.radius.bottomLeft * s},
-                };
-                SkRRect rrect;
-                rrect.setRectRadii(skRect, radii);
-                canvas->clipRRect(rrect, SkClipOp::kIntersect, true);
+            case CommandType::ClipRounded:
+                applyRoundedClip(canvas, command.rect, command.radius);
                 break;
-            }
             case CommandType::DrawRect:
                 paintRect(canvas, command.rect, command.color, command.radius);
                 break;
             case CommandType::DrawRectStroke:
                 paintRectStroke(canvas, command.rect, command.color,
                                 command.radius, command.strokeWidth);
+                break;
+            case CommandType::DrawIcon:
+                paintIcon(canvas, command.polylines, command.rect,
+                          command.color, command.strokeWidth);
+                break;
+            case CommandType::DrawShadow:
+                paintShadow(canvas, command.rect, command.color,
+                            core::Offset{command.transform.tx,
+                                         command.transform.ty},
+                            command.strokeWidth);
                 break;
             case CommandType::DrawText:
                 paintText(canvas, command.textRun, command.textStyle);
@@ -494,6 +527,74 @@ class SkiaGpuRenderer final : public Renderer {
         SkRRect rounded;
         rounded.setRectRadii(skRect, radii);
         canvas->drawRRect(rounded, paint);
+    }
+
+    // GPU 平价（lumen-skia-gpu-parity-plan §3.1）：矢量图标命令回放。
+    // 原点设备对齐（lround）与 CpuRenderer/SkiaRenderer::drawIcon 同式
+    // ——逻辑居中的半像素原点不对齐则描边虚散；圆帽/圆连接与 CPU 的
+    // 距离场端点圆帽一致。归一化折线 × 盒尺寸 → 设备像素。
+    void paintIcon(SkCanvas* canvas,
+                   const std::vector<std::vector<core::Offset>>& polylines,
+                   core::Rect box, core::Color color, float strokeWidth) {
+        if (color.a == 0 || polylines.empty() || box.size.width <= 0.0F ||
+            box.size.height <= 0.0F) {
+            return;
+        }
+        const float scale = deviceScale_;
+        box.origin.x = static_cast<float>(
+            std::lround(box.origin.x * scale) / scale);
+        box.origin.y = static_cast<float>(
+            std::lround(box.origin.y * scale) / scale);
+        SkPath path;
+        for (const auto& polyline : polylines) {
+            if (polyline.empty()) {
+                continue;
+            }
+            path.moveTo(
+                (box.origin.x + polyline.front().x * box.size.width) * scale,
+                (box.origin.y + polyline.front().y * box.size.height) *
+                    scale);
+            for (std::size_t i = 1; i < polyline.size(); ++i) {
+                path.lineTo(
+                    (box.origin.x + polyline[i].x * box.size.width) * scale,
+                    (box.origin.y + polyline[i].y * box.size.height) * scale);
+            }
+        }
+        SkPaint paint;
+        paint.setStyle(SkPaint::kStroke_Style);
+        paint.setAntiAlias(true);
+        paint.setColor(toSkColor(color));
+        paint.setStrokeWidth(strokeWidth * scale);
+        paint.setStrokeCap(SkPaint::kRound_Cap);
+        paint.setStrokeJoin(SkPaint::kRound_Join);
+        canvas->drawPath(path, paint);
+    }
+
+    // GPU 平价（parity §3.2）：层级阴影命令回放。偏移/模糊无专用字段，
+    // 编码于 transform.tx/ty 与 strokeWidth（与 CPU 回放逐字一致——
+    // 不要把 transform 当几何变换消费）；σ = blur*0.5*scale 与 CPU
+    // 三-pass box blur 同口径逼近同一高斯。blur≤0 跟随 Skia 光栅
+    //（无滤镜矩形；决策点 D1，三端统一记为后续小项）。
+    void paintShadow(SkCanvas* canvas, const core::Rect& elevatedBox,
+                     core::Color color, core::Offset offset, float blur) {
+        if (color.a == 0 || elevatedBox.size.width <= 0.0F ||
+            elevatedBox.size.height <= 0.0F) {
+            return;
+        }
+        const float scale = deviceScale_;
+        const SkRect rect = SkRect::MakeXYWH(
+            (elevatedBox.origin.x + offset.x) * scale,
+            (elevatedBox.origin.y + offset.y) * scale,
+            elevatedBox.size.width * scale, elevatedBox.size.height * scale);
+        SkPaint paint;
+        paint.setStyle(SkPaint::kFill_Style);
+        paint.setAntiAlias(true);
+        paint.setColor(toSkColor(color));
+        if (blur > 0.0F) {
+            paint.setMaskFilter(SkMaskFilter::MakeBlur(
+                kNormal_SkBlurStyle, blur * 0.5F * scale));
+        }
+        canvas->drawRect(rect, paint);
     }
 
     void paintText(SkCanvas* canvas, const TextRun& run,

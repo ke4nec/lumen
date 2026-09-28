@@ -5,15 +5,22 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_message.hpp>
 
+#include <algorithm>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <string>
+#include <vector>
+
+#include <cmath>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
 
+#include "lumen/core/icon_id.h"
 #include "lumen/core/widget.h"
 #include "lumen/core/scrollbar.h"
+#include "lumen/dsl/dsl.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/painter.h"
 #include "lumen/render/renderer.h"
@@ -53,6 +60,68 @@ struct VideoSession {
 };
 
 using TestWindow = std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)>;
+
+// GPU 平价（lumen-skia-gpu-parity-plan §5）共用的读回与采样助手：
+// y 翻转与既有用例同式（采样行取 h-1-y）；锚点像素取 lround 设备坐标。
+std::vector<unsigned char> readBackFramebuffer(int width, int height) {
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * height * 4);
+    glReadBuffer(GL_BACK);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    REQUIRE(glGetError() == GL_NO_ERROR);
+    return pixels;
+}
+
+lumen::core::Color samplePixel(const std::vector<unsigned char>& pixels,
+                               int width, int height, float x, float y,
+                               float scale) {
+    const auto at = ((height - 1 - static_cast<int>(std::lround(y * scale))) *
+                         width +
+                     static_cast<int>(std::lround(x * scale))) * 4;
+    return lumen::core::Color{pixels[at], pixels[at + 1], pixels[at + 2],
+                              pixels[at + 3]};
+}
+
+bool nearColor(const lumen::core::Color& actual,
+               const lumen::core::Color& expected, int tolerance) {
+    return std::abs(static_cast<int>(actual.r) - static_cast<int>(expected.r)) <= tolerance &&
+           std::abs(static_cast<int>(actual.g) - static_cast<int>(expected.g)) <= tolerance &&
+           std::abs(static_cast<int>(actual.b) - static_cast<int>(expected.b)) <= tolerance;
+}
+
+// 通道最大差：混合色断言用（与两个端点的距离都不小于阈值）。
+int colorDistance(const lumen::core::Color& a, const lumen::core::Color& b) {
+    return std::max({std::abs(static_cast<int>(a.r) - static_cast<int>(b.r)),
+                     std::abs(static_cast<int>(a.g) - static_cast<int>(b.g)),
+                     std::abs(static_cast<int>(a.b) - static_cast<int>(b.b))});
+}
+
+// 线身命中：锚点 3×3 设备像素邻域内至少一点等于期望色。段中点/弧顶点
+// 与像素网格的相位差会把单点采样落到 AA 边缘（1.5px 线宽的实心核约
+// ±0.25px），邻域取命中对相位鲁棒、对"命令被丢弃"仍然敏感（邻域内
+// 全部为背景）。px/py 为 GL 设备坐标（原点左下），读回行取 h-1-y。
+bool strokeHits(const std::vector<unsigned char>& pixels, int width,
+                int height, float x, float y, float scale,
+                const lumen::core::Color& expected) {
+    const int px = static_cast<int>(std::lround(x * scale));
+    const int py = static_cast<int>(std::lround(y * scale));
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            const int sx = px + dx;
+            const int sy = py + dy;
+            if (sx < 0 || sx >= width || sy < 0 || sy >= height) {
+                continue;
+            }
+            const auto at =
+                (static_cast<std::size_t>(height - 1 - sy) * width + sx) * 4;
+            if (nearColor(lumen::core::Color{pixels[at], pixels[at + 1],
+                                             pixels[at + 2], pixels[at + 3]},
+                          expected, 2)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 }  // namespace
 
@@ -486,6 +555,244 @@ TEST_CASE("gpu_list_readback_preserves_selection_focus_and_scrolled_border", "[g
             if (scroll == 0.0F) CHECK(sample(80, 1) == theme.colors.focusRing);
         }
     }
+}
+
+// GPU 平价 §5.1（lumen-skia-gpu-parity-plan）：DrawIcon 回放锚点断言。
+// 段中点/弧顶点线身命中（3×3 设备像素邻域，见 strokeHits）；空隙与
+// 盒外 = 背景；Busy 3/4 弧是 cap/join 与曲线覆盖的敏感探针；末段直调
+// 即时路径 drawIcon 覆写（§3.3）。此前 GPU 回放静默丢弃 DrawIcon——
+// 本用例即防回归锚。
+TEST_CASE("gpu_icon_readback_paints_stroke_and_keeps_gaps", "[gpu][visual]") {
+    using namespace lumen;
+    using namespace lumen::core;
+    std::string diagnostics;
+    if (!render::probeSkiaGpuAvailable(&diagnostics)) SKIP("GPU unavailable: " << diagnostics);
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow("lumen-icon-test", 64, 96,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN), SDL_DestroyWindow);
+    REQUIRE(window);
+    render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    desc.widthPixels = 64;
+    desc.heightPixels = 96;
+    desc.allowSwap = false;
+    auto renderer = render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer);
+    const Color background{24, 24, 27, 255};
+    const Color foreground{240, 240, 240, 255};
+    const Rect checkBox{Offset{8.0F, 6.0F}, Size{16.0F, 16.0F}};
+    const Rect busyBox{Offset{8.0F, 26.0F}, Size{16.0F, 16.0F}};
+    const auto& checkLine = iconPolylines(IconId::Check).front();
+    const auto& busyArc = iconPolylines(IconId::Busy).front();
+    const auto anchorOn = [](const Offset& point, const Rect& box) {
+        return Offset{box.origin.x + point.x * box.size.width,
+                      box.origin.y + point.y * box.size.height};
+    };
+    for (const float scale : {1.0F, 2.0F}) {
+        CAPTURE(scale);
+        FrameInfo info;
+        info.viewport = {64.0F / scale, 96.0F / scale};
+        info.deviceScale = scale;
+        render::RenderCommandList commands;
+        commands.drawRect(Rect::fromXYWH(0, 0, 64, 96), background);
+        commands.drawIcon(iconPolylines(IconId::Check), checkBox, foreground,
+                          1.5F);
+        commands.drawIcon(iconPolylines(IconId::Busy), busyBox, foreground,
+                          1.5F);
+        renderer->submit(commands, info);
+        REQUIRE(render::skiaGpuRendererAlive(*renderer));
+        const auto pixels = readBackFramebuffer(64, 96);
+        const auto sample = [&](const Offset& point) {
+            return samplePixel(pixels, 64, 96, point.x, point.y, scale);
+        };
+        // Check：每段折线段中点线身命中（锚点取自目录数据本身；相位
+        // 鲁棒见 strokeHits）。
+        for (std::size_t i = 0; i + 1 < checkLine.size(); ++i) {
+            const Offset mid{(checkLine[i].x + checkLine[i + 1].x) * 0.5F,
+                             (checkLine[i].y + checkLine[i + 1].y) * 0.5F};
+            const auto anchor = anchorOn(mid, checkBox);
+            CAPTURE(i, anchor.x, anchor.y);
+            CHECK(strokeHits(pixels, 64, 96, anchor.x, anchor.y, scale,
+                             foreground));
+        }
+        // Busy：弧顶点 i=4/12/20 恰在路径上（起点 135° 顺时针 270°，
+        // 24 段——分别落在 180°/270°/0°）。
+        for (const std::size_t i : {std::size_t{4}, std::size_t{12},
+                                    std::size_t{20}}) {
+            REQUIRE(i < busyArc.size());
+            const auto anchor = anchorOn(busyArc[i], busyBox);
+            CAPTURE(i, anchor.x, anchor.y);
+            CHECK(strokeHits(pixels, 64, 96, anchor.x, anchor.y, scale,
+                             foreground));
+        }
+        // 空隙与盒外：Check 盒内上缘、Busy 圆心、Check 盒外右侧 = 背景。
+        CHECK(nearColor(sample(Offset{16.0F, 8.0F}), background, 2));
+        CHECK(nearColor(sample(Offset{16.0F, 34.0F}), background, 2));
+        CHECK(nearColor(sample(Offset{28.0F, 8.0F}), background, 2));
+        // 即时路径覆写（§3.3）：经命令回放清屏后直接调用覆写入口，
+        // 必须同样着墨（基类默认实现为 no-op——缺覆写时此处读回背景）。
+        render::RenderCommandList backgroundOnly;
+        backgroundOnly.drawRect(Rect::fromXYWH(0, 0, 64, 96), background);
+        renderer->submit(backgroundOnly, info);
+        renderer->drawIcon(iconPolylines(IconId::Check), checkBox, foreground,
+                           1.5F);
+        renderer->endFrame();
+        REQUIRE(render::skiaGpuRendererAlive(*renderer));
+        const auto immediate = readBackFramebuffer(64, 96);
+        const Offset firstMid{(checkLine[0].x + checkLine[1].x) * 0.5F,
+                              (checkLine[0].y + checkLine[1].y) * 0.5F};
+        const auto anchor = anchorOn(firstMid, checkBox);
+        CHECK(strokeHits(immediate, 64, 96, anchor.x, anchor.y, scale,
+                         foreground));
+        CHECK(nearColor(
+            samplePixel(immediate, 64, 96, 16.0F, 8.0F, scale), background, 2));
+    }
+}
+
+// GPU 平价 §5.2：DrawShadow 回放断言。偏移/模糊经 transform.tx/ty 与
+// strokeWidth 编码（与 CPU 回放逐字一致）；σ = blur*0.5*scale。断言：
+// 表面未被阴影污染、偏移外缘呈两色混合、3σ 之外回落纯背景、blur=0
+// 为无滤镜偏移矩形（决策点 D1：跟随 Skia 光栅）。
+TEST_CASE("gpu_shadow_readback_blur_offset_and_falloff", "[gpu][visual]") {
+    using namespace lumen;
+    using namespace lumen::core;
+    std::string diagnostics;
+    if (!render::probeSkiaGpuAvailable(&diagnostics)) SKIP("GPU unavailable: " << diagnostics);
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow("lumen-shadow-test", 160, 160,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN), SDL_DestroyWindow);
+    REQUIRE(window);
+    render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    desc.widthPixels = 160;
+    desc.heightPixels = 160;
+    desc.allowSwap = false;
+    auto renderer = render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer);
+    const Color background{24, 24, 27, 255};
+    const Color surface{130, 140, 255, 255};
+    const Color shadow{255, 90, 90, 255};
+    // 几何按 scale=2 的半幅视口（80×80 逻辑）内布置。
+    const Rect box{Offset{16.0F, 12.0F}, Size{48.0F, 20.0F}};
+    const Offset offset{5.0F, 7.0F};
+    const float blur = 8.0F;
+    const Rect blurZeroBox{Offset{16.0F, 58.0F}, Size{48.0F, 14.0F}};
+    for (const float scale : {1.0F, 2.0F}) {
+        CAPTURE(scale);
+        FrameInfo info;
+        info.viewport = {160.0F / scale, 160.0F / scale};
+        info.deviceScale = scale;
+        render::RenderCommandList commands;
+        commands.drawRect(Rect::fromXYWH(0, 0, 160, 160), background);
+        // painter 真实次序（paintNode）：阴影先画、表面覆盖。
+        commands.drawShadow(box, shadow, offset, blur);
+        commands.drawRect(box, surface);
+        commands.drawShadow(blurZeroBox, shadow, offset, 0.0F);
+        renderer->submit(commands, info);
+        REQUIRE(render::skiaGpuRendererAlive(*renderer));
+        const auto pixels = readBackFramebuffer(160, 160);
+        const auto sample = [&](float x, float y) {
+            return samplePixel(pixels, 160, 160, x, y, scale);
+        };
+        // 表面中心 = 表面色（阴影不污染前景）。
+        CHECK(sample(40.0F, 22.0F) == surface);
+        // 偏移矩形底边（12+20+7=39）+3px：σ=4 的高斯核内 → 两色混合，
+        // 与两个端点的通道最大差都不小于 16（不依赖精确混合比）。
+        const Color mixed = sample(40.0F, 42.0F);
+        CHECK(colorDistance(mixed, background) >= 16);
+        CHECK(colorDistance(mixed, shadow) >= 16);
+        // 3σ 之外（≈ 盒边 + 2*blur = 55）：高斯尾清零，回落纯背景。
+        CHECK(nearColor(sample(40.0F, 55.0F), background, 4));
+        // blur=0（D1）：无滤镜、全 alpha 的偏移矩形 {21,65,48,14}——
+        // 内部精确等值；原盒左侧未被阴影覆盖处为纯背景。
+        CHECK(sample(45.0F, 72.0F) == shadow);
+        CHECK(sample(18.0F, 72.0F) == background);
+    }
+}
+
+// GPU 平价 §5.3：painter → 命令 → GPU 回放全链路。此前按钮前导图标与
+// elevation 阴影在 GPU 回放被静默丢弃——本用例从录制命令反解锚点
+//（几何/颜色取自命令本身），断言像素真实着墨：painter 漏发命令时
+// REQUIRE 先失败，回放丢弃时像素断言失败——两层缺口都无法静默。
+TEST_CASE("gpu_painter_scene_paints_leading_icon_and_elevation_shadow", "[gpu][visual]") {
+    using namespace lumen;
+    using namespace lumen::core;
+    std::string diagnostics;
+    if (!render::probeSkiaGpuAvailable(&diagnostics)) SKIP("GPU unavailable: " << diagnostics);
+    REQUIRE(SDL_Init(SDL_INIT_VIDEO));
+    VideoSession video;
+    TestWindow window(SDL_CreateWindow("lumen-painter-parity-test", 128, 96,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN), SDL_DestroyWindow);
+    REQUIRE(window);
+    render::SkiaGpuRendererDesc desc;
+    desc.sdlWindow = window.get();
+    desc.widthPixels = 128;
+    desc.heightPixels = 96;
+    desc.allowSwap = false;
+    auto renderer = render::createSkiaGpuRenderer(desc, &diagnostics);
+    REQUIRE(renderer);
+    const auto theme = style::Theme::light();
+    accessibility::AccessibilitySettings settings;
+    style::InteractionStateSnapshot interaction;
+    style::StyleContext context{theme, interaction, settings, 1.0F};
+    Widget button = withLeadingIcon(makeButton("Add item"), IconId::Plus);
+    button.key = "btn";
+    Widget card = makeContainerLeaf(80.0F, 20.0F);
+    card.key = "card";
+    card.elevation = 2.0F;  // ElevationTokens L2：(0,4)/12/64。
+    Widget page;
+    page.type = WidgetType::Column;
+    page.color = Color::fromRGBA(250, 250, 250);
+    page.children = {button, card};
+    const auto tree =
+        LayoutEngine::layout(page, Constraints::tight(Size{128.0F, 96.0F}), context);
+    const auto commands = recordScene(tree);
+    // 注意：commands() 返回引用——range-for 里链式迭代 recordScene(...)
+    // 的返回值是悬垂 UB（见 visual_m6 前导图标用例注），先落具名局部。
+    const auto all = commands.commands();
+    const render::RenderCommand* icon = nullptr;
+    const render::RenderCommand* shadow = nullptr;
+    for (const auto& command : all) {
+        if (command.type == render::CommandType::DrawIcon && icon == nullptr) {
+            icon = &command;
+        }
+        if (command.type == render::CommandType::DrawShadow && shadow == nullptr) {
+            shadow = &command;
+        }
+    }
+    REQUIRE(icon != nullptr);
+    REQUIRE(shadow != nullptr);
+    FrameInfo info;
+    info.viewport = Size{128.0F, 96.0F};
+    renderer->submit(commands, info);
+    REQUIRE(render::skiaGpuRendererAlive(*renderer));
+    const auto pixels = readBackFramebuffer(128, 96);
+    // 图标线身锚点：首段中点命中，期望色取自命令本身。
+    const auto& line = icon->polylines.front();
+    const float iconX = icon->rect.origin.x +
+                        (line[0].x + line[1].x) * 0.5F * icon->rect.size.width;
+    const float iconY = icon->rect.origin.y +
+                        (line[0].y + line[1].y) * 0.5F * icon->rect.size.height;
+    CAPTURE(iconX, iconY);
+    CHECK(strokeHits(pixels, 128, 96, iconX, iconY, 1.0F, icon->color));
+    // 阴影强带：L2 offset=(0,4)——表面底边与偏移阴影底边之间的 4px 条带
+    // 在阴影矩形内部（阶跃边缘高斯响应 0.5·erfc(d/(σ√2))，内部 ≈0.63），
+    // 黑色阴影 alpha 64 在浅背景上至少压暗 20/通道；3σ 之外回落纯背景。
+    //（阈值按响应模型标定：带中点预期压暗约 40。）
+    const float bandX = shadow->rect.origin.x + shadow->rect.size.width * 0.5F;
+    const float bandY = shadow->rect.origin.y + shadow->rect.size.height +
+                        shadow->transform.ty * 0.5F;
+    const float farY = shadow->rect.origin.y + shadow->rect.size.height +
+                       shadow->transform.ty + shadow->strokeWidth * 2.0F;
+    CAPTURE(bandX, bandY, farY);
+    const Color band = samplePixel(pixels, 128, 96, bandX, bandY, 1.0F);
+    CHECK(250 - static_cast<int>(band.r) >= 20);
+    CHECK(250 - static_cast<int>(band.g) >= 20);
+    CHECK(250 - static_cast<int>(band.b) >= 20);
+    const Color beyond = samplePixel(pixels, 128, 96, bandX, farY, 1.0F);
+    CHECK(nearColor(beyond, Color::fromRGBA(250, 250, 250), 6));
 }
 
 // Collection design §7/§10: indented content keeps a full-width selected

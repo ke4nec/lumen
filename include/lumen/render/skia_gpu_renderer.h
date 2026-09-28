@@ -11,8 +11,11 @@ namespace lumen::render {
 // v0.2 阶段7C (plan §3.1/7C): Skia Ganesh GPU 首期后端。
 //
 // 通过 SDL3 在应用窗口上创建 GL 上下文，命令经 Renderer::submit 回放到
-// FBO 0 包装出的 SkSurface；endFrame flush 后交换。纹理、裁剪、透明度、
-// 文字与 surface resize 全部支持；Graphite 留待后续版本。
+// FBO 0 包装出的 SkSurface；endFrame flush 后交换。纹理、裁剪（含圆角）、
+// 矢量图标（DrawIcon）、层级阴影（DrawShadow）、透明度、文字与 surface
+// resize 全部支持——2026-09-28 命令平价补齐图标/阴影回放与即时路径覆写
+//（此前两命令被静默丢弃，见 docs/lumen-skia-gpu-parity-plan.md）；
+// Graphite 留待后续版本。
 //
 // 创建/设备初始化失败、上下文丢失时工厂返回 nullptr 或 skiaGpuRendererAlive() 变为
 // false，应用保持状态切回 CPU 后端（UI 树与状态不丢失，plan §2.1）。
