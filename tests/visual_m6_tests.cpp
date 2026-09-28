@@ -1116,14 +1116,26 @@ TEST_CASE("button_leading_icon_reorders_ink_and_keeps_measure", "[visual]") {
     const auto locate = [](const RenderNode& root, float& iconX,
                            float& textX) {
         iconX = textX = -1.0F;
+        std::size_t iconCommands = 0;
+        std::size_t textCommands = 0;
         for (const auto& command : render::recordScene(root).commands()) {
             if (command.type == render::CommandType::DrawIcon) {
+                ++iconCommands;
                 iconX = command.rect.origin.x;
             }
             if (command.type == render::CommandType::DrawText) {
+                ++textCommands;
                 textX = command.textRun.origin.x;
             }
         }
+        // 平台诊断（CI 注解通道消费）：命令计数与坐标。printf 经
+        // ctest --output-on-failure 进入日志。
+        std::printf(
+            "LEADING-DIAG type=%d icon=%d size=%.4fx%.4f cmds=%zu/%zu "
+            "iconX=%.4f textX=%.4f\n",
+            static_cast<int>(root.type), static_cast<int>(root.icon),
+            root.size.width, root.size.height, iconCommands, textCommands,
+            iconX, textX);
     };
     float leadingIconX = 0.0F, leadingTextX = 0.0F;
     float trailingIconX = 0.0F, trailingTextX = 0.0F;
@@ -1131,8 +1143,9 @@ TEST_CASE("button_leading_icon_reorders_ink_and_keeps_measure", "[visual]") {
     locate(trailingRoot, trailingIconX, trailingTextX);
     CAPTURE(leadingRoot.size.width, leadingRoot.size.height,
             leadingIconX, leadingTextX, trailingIconX, trailingTextX);
-    REQUIRE(leadingIconX >= 0.0F);
-    REQUIRE(leadingTextX >= 0.0F);
+    // CHECK（非 REQUIRE）：两侧数据都要进日志/注解，便于平台对比。
+    CHECK(leadingIconX >= 0.0F);
+    CHECK(leadingTextX >= 0.0F);
     // 前导：图标在文字左侧；尾随：文字在图标左侧。
     CHECK(leadingIconX < leadingTextX);
     CHECK(trailingTextX < trailingIconX);
