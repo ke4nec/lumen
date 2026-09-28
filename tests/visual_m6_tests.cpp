@@ -1129,6 +1129,8 @@ TEST_CASE("button_leading_icon_reorders_ink_and_keeps_measure", "[visual]") {
     float trailingIconX = 0.0F, trailingTextX = 0.0F;
     locate(leadingRoot, leadingIconX, leadingTextX);
     locate(trailingRoot, trailingIconX, trailingTextX);
+    CAPTURE(leadingRoot.size.width, leadingRoot.size.height,
+            leadingIconX, leadingTextX, trailingIconX, trailingTextX);
     REQUIRE(leadingIconX >= 0.0F);
     REQUIRE(leadingTextX >= 0.0F);
     // 前导：图标在文字左侧；尾随：文字在图标左侧。

@@ -186,6 +186,10 @@ jobs:
                   m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
                   if m:
                       print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
+              cond = ' '.join(m.group(1).split())
+              exp = ' '.join(m.group(2).split())[:220]
+              print(f"::error::expansion: {cond} => {exp}")
           PY
           fi
           exit "$status"
@@ -273,6 +277,10 @@ jobs:
                   m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
                   if m:
                       print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
+              cond = ' '.join(m.group(1).split())
+              exp = ' '.join(m.group(2).split())[:220]
+              print(f"::error::expansion: {cond} => {exp}")
           PY
           fi
           exit "$status"
@@ -342,6 +350,10 @@ jobs:
                   m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
                   if m:
                       print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
+              cond = ' '.join(m.group(1).split())
+              exp = ' '.join(m.group(2).split())[:220]
+              print(f"::error::expansion: {cond} => {exp}")
           PY
           fi
           exit "$status"
