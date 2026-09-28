@@ -95,13 +95,17 @@ int colorDistance(const lumen::core::Color& a, const lumen::core::Color& b) {
                      std::abs(static_cast<int>(a.b) - static_cast<int>(b.b))});
 }
 
-// 线身命中：锚点 3×3 设备像素邻域内至少一点等于期望色。段中点/弧顶点
-// 与像素网格的相位差会把单点采样落到 AA 边缘（1.5px 线宽的实心核约
-// ±0.25px），邻域取命中对相位鲁棒、对"命令被丢弃"仍然敏感（邻域内
-// 全部为背景）。px/py 为 GL 设备坐标（原点左下），读回行取 h-1-y。
+// 线身命中：锚点 3×3 设备像素邻域内至少一点"更接近墨色而非背景"。
+// 段中点/弧顶点与像素网格的相位差会把单点采样落到 AA 边缘（1.5px
+// 线宽的实心核约 ±0.25px），且各 GL 光栅化器的 AA 分布不同——
+// llvmpipe 中心像素常为全覆盖，Apple 软件 GL 可能把覆盖摊到多像素而
+// 无一全饱和（2026-09-28 macOS CI 实测）。以与两端点的相对距离做
+// 存在性判定：不锁覆盖率，但命令被丢弃（全背景）时必然失败。
+// px/py 为 GL 设备坐标（原点左下），读回行取 h-1-y。
 bool strokeHits(const std::vector<unsigned char>& pixels, int width,
                 int height, float x, float y, float scale,
-                const lumen::core::Color& expected) {
+                const lumen::core::Color& ink,
+                const lumen::core::Color& background) {
     const int px = static_cast<int>(std::lround(x * scale));
     const int py = static_cast<int>(std::lround(y * scale));
     for (int dy = -1; dy <= 1; ++dy) {
@@ -113,9 +117,9 @@ bool strokeHits(const std::vector<unsigned char>& pixels, int width,
             }
             const auto at =
                 (static_cast<std::size_t>(height - 1 - sy) * width + sx) * 4;
-            if (nearColor(lumen::core::Color{pixels[at], pixels[at + 1],
-                                             pixels[at + 2], pixels[at + 3]},
-                          expected, 2)) {
+            const lumen::core::Color pixel{pixels[at], pixels[at + 1],
+                                           pixels[at + 2], pixels[at + 3]};
+            if (colorDistance(pixel, ink) < colorDistance(pixel, background)) {
                 return true;
             }
         }
@@ -614,7 +618,7 @@ TEST_CASE("gpu_icon_readback_paints_stroke_and_keeps_gaps", "[gpu][visual]") {
             const auto anchor = anchorOn(mid, checkBox);
             CAPTURE(i, anchor.x, anchor.y);
             CHECK(strokeHits(pixels, 64, 96, anchor.x, anchor.y, scale,
-                             foreground));
+                             foreground, background));
         }
         // Busy：弧顶点 i=4/12/20 恰在路径上（起点 135° 顺时针 270°，
         // 24 段——分别落在 180°/270°/0°）。
@@ -624,7 +628,7 @@ TEST_CASE("gpu_icon_readback_paints_stroke_and_keeps_gaps", "[gpu][visual]") {
             const auto anchor = anchorOn(busyArc[i], busyBox);
             CAPTURE(i, anchor.x, anchor.y);
             CHECK(strokeHits(pixels, 64, 96, anchor.x, anchor.y, scale,
-                             foreground));
+                             foreground, background));
         }
         // 空隙与盒外：Check 盒内上缘、Busy 圆心、Check 盒外右侧 = 背景。
         CHECK(nearColor(sample(Offset{16.0F, 8.0F}), background, 2));
@@ -644,7 +648,7 @@ TEST_CASE("gpu_icon_readback_paints_stroke_and_keeps_gaps", "[gpu][visual]") {
                               (checkLine[0].y + checkLine[1].y) * 0.5F};
         const auto anchor = anchorOn(firstMid, checkBox);
         CHECK(strokeHits(immediate, 64, 96, anchor.x, anchor.y, scale,
-                         foreground));
+                         foreground, background));
         CHECK(nearColor(
             samplePixel(immediate, 64, 96, 16.0F, 8.0F, scale), background, 2));
     }
@@ -776,7 +780,8 @@ TEST_CASE("gpu_painter_scene_paints_leading_icon_and_elevation_shadow", "[gpu][v
     const float iconY = icon->rect.origin.y +
                         (line[0].y + line[1].y) * 0.5F * icon->rect.size.height;
     CAPTURE(iconX, iconY);
-    CHECK(strokeHits(pixels, 128, 96, iconX, iconY, 1.0F, icon->color));
+    CHECK(strokeHits(pixels, 128, 96, iconX, iconY, 1.0F, icon->color,
+                     Color::fromRGBA(250, 250, 250)));
     // 阴影强带：L2 offset=(0,4)——表面底边与偏移阴影底边之间的 4px 条带
     // 在阴影矩形内部（阶跃边缘高斯响应 0.5·erfc(d/(σ√2))，内部 ≈0.63），
     // 黑色阴影 alpha 64 在浅背景上至少压暗 20/通道；3σ 之外回落纯背景。
@@ -787,10 +792,19 @@ TEST_CASE("gpu_painter_scene_paints_leading_icon_and_elevation_shadow", "[gpu][v
     const float farY = shadow->rect.origin.y + shadow->rect.size.height +
                        shadow->transform.ty + shadow->strokeWidth * 2.0F;
     CAPTURE(bandX, bandY, farY);
-    const Color band = samplePixel(pixels, 128, 96, bandX, bandY, 1.0F);
-    CHECK(250 - static_cast<int>(band.r) >= 20);
-    CHECK(250 - static_cast<int>(band.g) >= 20);
-    CHECK(250 - static_cast<int>(band.b) >= 20);
+    // 强带 ±1px 三点取最大：条带宽 4px，±1 仍在带内；模糊实现的响应
+    // 峰值位置可能差一像素（Apple 软件 GL vs llvmpipe）。
+    bool banded = false;
+    for (const float dy : {-1.0F, 0.0F, 1.0F}) {
+        const Color c = samplePixel(pixels, 128, 96, bandX, bandY + dy, 1.0F);
+        if (250 - static_cast<int>(c.r) >= 20 &&
+            250 - static_cast<int>(c.g) >= 20 &&
+            250 - static_cast<int>(c.b) >= 20) {
+            banded = true;
+            break;
+        }
+    }
+    CHECK(banded);
     const Color beyond = samplePixel(pixels, 128, 96, bandX, farY, 1.0F);
     CHECK(nearColor(beyond, Color::fromRGBA(250, 250, 250), 6));
 }
