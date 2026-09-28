@@ -38,9 +38,28 @@ TEST_CASE("system_font_text_clip_preserves_cjk_and_mixed_ink",
         SKIP("No system fonts available");
     }
     const std::shared_ptr<text::SystemFontManager> fonts(std::move(loaded));
+    // 脚本覆盖按环境字体集而定（最小容器只有拉丁字体；CBDT-only 彩色
+    // emoji 字体经 stb 无可光栅轮廓）：整值逐码点探测，缺覆盖的值跳过
+    // ——目录扫描修复后管理器在更贫瘠的环境也会创建成功，断言不能假设
+    // CJK/emoji 必然可用。
+    const auto valueCovered = [&fonts](const std::string& value) {
+        text::FontQuery query;
+        query.sizePx = 14.0F;
+        for (const auto& cp : text::decodeUtf8(value)) {
+            text::GlyphBitmap bitmap;
+            if (!fonts->bitmapFor(cp.codePoint, query, 1, &bitmap)) {
+                return false;
+            }
+        }
+        return true;
+    };
     for (const float size : {10.0F, 14.0F, 36.0F}) {
         for (const std::string value : {"曩中，", "Ag曩中，", "😀"}) {
             CAPTURE(size, value);
+            if (!valueCovered(value)) {
+                SKIP("no rasterizable coverage for this script on this "
+                     "environment");
+            }
             core::TextStyle style;
             style.fontSize = size;
             style.lineHeight = 1.03F;
