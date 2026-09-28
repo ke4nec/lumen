@@ -1118,7 +1118,11 @@ TEST_CASE("button_leading_icon_reorders_ink_and_keeps_measure", "[visual]") {
         iconX = textX = -1.0F;
         std::size_t iconCommands = 0;
         std::size_t textCommands = 0;
-        for (const auto& command : render::recordScene(root).commands()) {
+        const auto commands = render::recordScene(root).commands();
+        std::string kinds;
+        for (const auto& command : commands) {
+            kinds += std::to_string(static_cast<int>(command.type));
+            kinds += ',';
             if (command.type == render::CommandType::DrawIcon) {
                 ++iconCommands;
                 iconX = command.rect.origin.x;
@@ -1128,14 +1132,17 @@ TEST_CASE("button_leading_icon_reorders_ink_and_keeps_measure", "[visual]") {
                 textX = command.textRun.origin.x;
             }
         }
-        // 平台诊断（CI 注解通道消费）：命令计数与坐标。printf 经
-        // ctest --output-on-failure 进入日志。
+        // 平台诊断（CI 注解通道消费）：节点字段 + 命令类型序列。
+        // printf 经 ctest --output-on-failure 进入日志。
         std::printf(
-            "LEADING-DIAG type=%d icon=%d size=%.4fx%.4f cmds=%zu/%zu "
-            "iconX=%.4f textX=%.4f\n",
+            "LEADING-DIAG type=%d icon=%d textLen=%zu alpha=%.4f "
+            "size=%.4fx%.4f cmds=%zu/%zu total=%zu "
+            "kinds=%.*s iconX=%.4f textX=%.4f\n",
             static_cast<int>(root.type), static_cast<int>(root.icon),
-            root.size.width, root.size.height, iconCommands, textCommands,
-            iconX, textX);
+            root.text.size(), root.transitionAlpha, root.size.width,
+            root.size.height, iconCommands, textCommands, commands.size(),
+            static_cast<int>(std::min<std::size_t>(kinds.size(), 40)),
+            kinds.c_str(), iconX, textX);
     };
     float leadingIconX = 0.0F, leadingTextX = 0.0F;
     float trailingIconX = 0.0F, trailingTextX = 0.0F;
