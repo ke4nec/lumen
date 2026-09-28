@@ -97,7 +97,7 @@ M7/M8 当时记录的验证基线：Linux CPU Debug 374/374、Skia Release 380/3
 | 平台服务 | M4+M12 已完成：文件选择/OpenURL/光标/图标（SDL）+ 通知与强调色（M12 原生 seam：Win32/DBus/AppKit）+ SDL 系统主题事件与 `adaptPlatformTheme` 派生 + 高对比/减少动画/字体缩放查询 | 平台服务不可用时保持安全默认；Linux/macOS 原生服务以 CI 证据为准 | M4+M12 已收口 |
 | 无障碍 | M5 已完成：语义契约收口（invalid/hidden flags、Image 可访问名、滚动视口隐藏传播）+ AppShell 语义桥驱动（每帧 identity diff/焦点/action 回执）+ FocusScope/焦点恢复（Tab 域内、Escape/返回、modal 关闭后恢复）| M13 已接入 Windows UIA、Linux AT-SPI2、macOS NSAccessibility（Recording bridge + provider headless 回归）；三平台真实屏幕阅读器回环待验 | M5 已收口；M13 进行中 |
 | 视觉 V3 | M6 已完成：IconId/IconTheme 目录化、ElevationTokens→DrawShadow（Skia blur；CPU 采用明确的扁平降级）、ThemeScope 布局期子树覆盖、PlatformThemeAdapter、transitionAlpha 通道 | M10 已收口转场动画驱动；v0.4 视觉方向属 M11 | M6+M10 已收口 |
-| GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道 | Linux GPU job 要求实际 `skia-gpu`；Windows/macOS job 在无硬件环境可明确跳过，不能视为硬件呈现验收 | M7 已收口；硬件覆盖受 runner 约束 |
+| GPU | M7 已完成：macOS GPU 纳入 CI、新基准场景归档、partialSubmit 实测评估（1.16× 维持全帧提交）、文本/布局性能修复 + Element move 管道；2026-09-28 命令平价补齐 `DrawIcon`/`DrawShadow` 回放与即时路径覆写（此前静默丢弃，见 §10 平价记录与 [计划](lumen-skia-gpu-parity-plan.md)） | Linux GPU job 要求实际 `skia-gpu`；Windows/macOS job 在无硬件环境可明确跳过，不能视为硬件呈现验收 | M7 已收口；命令平价 2026-09-28 收口；硬件覆盖受 runner 约束 |
 | 发布 | M8+M12 已完成：install/CPack/RPATH/package job + Linux 桌面集成（desktop/icon）与 linuxdeploy AppImage + macOS Lumen.app 骨架 + package-skia（三平台）与 package-skia-gpu（Linux llvmpipe）变体 | Windows/macOS GPU 包与 CPack Bundle 生成器留后续；新形态以 CI 首跑为事实来源 | M8+M12 已收口 |
 
 移动端不列为桌面自用版的能力缺口；已存在的实验接缝和字体代码见 §4 M9 冻结说明。
@@ -2087,6 +2087,43 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   固定 SDL 在 Wayland/macOS 缺少严格 native software framebuffer，既有回退限制保留。
   这些不改变三平台发布状态或移动端暂缓范围。
 - 回滚基点：`e06f3d9`；按计划 §10 逆序回滚阶段，模式生产/消费和 v7 兼容边界须保持一致。
+
+### 既有能力优化：Skia GPU 命令平价完成记录（2026-09-28）
+
+- 完成日期：2026-09-28
+- 提交号：（本变更提交，见 Git 历史 `fix(render)`）
+- 范围：[GPU 平价计划](lumen-skia-gpu-parity-plan.md) 必做项 G1–G3 全部
+  交付；partialSubmit 维持 false（M7 实测决策，范围外）。
+- 变更：`SkiaGpuRenderer`（`src/render/skia_gpu_renderer.cpp`）命令回放
+  补齐 `DrawIcon`/`DrawShadow`——此前两 case 缺失被静默丢弃，GPU 画面
+  缺全部矢量图标（chevron/勾选/标题栏按钮/Spin busy/工具栏/侧栏导航）
+  与全部层级阴影；即时路径补 `drawIcon`/`drawShadow`/`clipRounded`
+  三覆写（基类默认为 no-op/矩形退化，默认适配器转发的组合会触发）；
+  `applyRoundedClip` 私有函数消除回放/即时两份圆角序拷贝。不变量逐字
+  移植：图标原点 `lround` 设备对齐（三端 crisp 同式）；阴影 offset/blur
+  经 `transform.tx/ty`+`strokeWidth` 解码（与 CPU 回放一致）；σ =
+  blur×0.5×scale。决策点按计划执行：D1 blur≤0 跟随 Skia 光栅（无滤镜
+  矩形；三端统一留后续小项）；D2 图像采样维持 GPU kLinear（1:1 绘制
+  三端逐字节一致，缩放口径以 1:1 为准，已记入视觉系统 §8）。
+- 测试：`tests/gpu_smoke_tests.cpp` 新增 3 用例（缺口此前未被察觉正因
+  gpu_smoke 无图标/阴影用例）：命令级图标锚点（Check 段中点 + Busy 弧
+  顶点 + 空隙/盒外背景 + 即时路径覆写直调；线身断言用 3×3 设备像素
+  邻域命中——1.5px 线宽实心核约 ±0.25px，单点采样对像素相位敏感）、
+  命令级阴影（表面覆盖/偏移外缘两色混合/3σ 外回落/blur=0 无滤镜矩形；
+  混合阈值按阶跃边缘高斯响应 0.5·erfc(d/(σ√2)) 标定）、painter 级
+  全链路（前导图标按钮 + elevation L2 阴影，锚点从录制命令反解——
+  painter 漏发命令时 REQUIRE 先失败，回放丢弃时像素断言失败）。
+- 验证：本地 Linux GPU 树（Skia+Ganesh、XWayland GLX，Release）全量
+  ctest 830/830（含 `gpu_` 冒烟 15/15 与新 3 例）；CPU Debug 全量
+  802/802（平价前基线，本变更不触 CPU 路径）。Windows/macOS 的
+  skia-gpu CI job 首跑为事实来源；GL 不可用环境新用例按既有 probe
+  契约自动 SKIP，不影响 CPU-only 树。GPU 基准耗时上浮为预期修正
+  （丢弃→真实绘制），如触门槛按 perf gate 流程刷新 `.perf-reference`
+  并注明原因。
+- 已知限制：blur=0 三端语义差异记为后续小项（不本次改 CPU 牵动基线）；
+  即时路径 `clipRounded` 覆写无专属像素用例（生产路径全经命令回放，
+  覆写属防御性补齐）。
+- 回滚点：`eef4839`（平价实施前）。
 
 ### 范围调整记录（2026-09-14）
 

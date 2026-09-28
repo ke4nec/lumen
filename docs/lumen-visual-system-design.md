@@ -188,6 +188,50 @@ Tree 的 `indentStep=20`、`chevronHitExtent=24`、`chevronIconSize=16` 来自
 使用 Medium density，桌面触屏或需要更大操作区域时可选择 Large/Touch。应用明确选择 density，
 不能依赖窗口平台类型隐式改变颜色或组件语义。
 
+### 3.3 DataGrid 增强视觉映射（2026-09-28 提案）
+
+配套 [DataGrid 增强设计 §10–15](lumen-datagrid-design.md#10-2026-09-28-能力审计与增强提案)
+与 [HTML 交互稿](../design/datagrid.html)。以下是待实现的组件映射，**当前 Theme
+尚无 `dataGrid` token 组**；不表示 C++ 首版已支持这些部件。
+
+| 部件 | 现有语义 / 组件 token 来源 |
+| --- | --- |
+| 数据区 / 表头 / 浮层 | colors.surface / surfaceSunken / surfaceElevated |
+| 行 hover / pressed / selected | list.hovered / list.pressed / list.selected；分别派生自 surfaceSunken、surface/accent 0.32 混合、不透明 accentContainer |
+| 正文 / 辅助文字 / 禁用 | colors.contentPrimary / contentSecondary / disabledContent |
+| 行分隔 / 冻结边界 | colors.borderDefault / borderStrong，默认 1 logical px；高对比跟随 Theme |
+| 选中标记 | list.selectionMarker / markerWidth / markerInset（3px / 4px） |
+| 当前单元格 | colors.focusRing + metrics.focusRingWidth，显式开启 showFocusRing；内嵌绘制且与行选择独立 |
+| 编辑错误 | textField invalid border（colors.statusError）+ colors.errorContent 错误文字；不挤高固定行 |
+| 业务状态 | colors.statusSuccess / statusWarning / errorContent，始终配文字或图形 |
+| 排版 | typography.body 14、typography.caption 12；金额/日期使用等宽数字并右对齐 |
+| 行高 / 格内边距 / 圆角 | metrics.minHeight、controlPaddingX、controlRadius；外壳 metrics.cardRadius=8 |
+
+拟新增的几何 token 均置于未来 `Theme.dataGrid`，在实现时与 layout/hit-test/paint
+使用同一份 resolved 值，不将 HTML 像素常量复制进 painter：
+
+| 提案 token | Compact | Comfortable | Touch |
+| --- | ---: | ---: | ---: |
+| headerExtent | 32 | 36 | 44 |
+| selectionColumnWidth | 44 | 44 | 52 |
+| resizeHitWidth | 8 | 10 | 16 |
+
+表头标准档保留首版 36；行高继续使用 32/40/48。列宽是应用列配置，不属于固定
+Theme 度量；下限仍允许 40，应用可提高各列 minWidth。图标引用现有 IconTheme，
+表头、复选框命中区域和分隔线命中区域随 density/fontScale 同步派生。
+
+原型 CSS 变量直接对应 CoreDark 方向主题工厂的深浅语义值。例如深色
+surface `#27272e`、selected `#2e3c60`、focusRing `#96b9fa`；浅色 surface
+`#ffffff`、selected `#e0eaff`、focusRing `#234a91`。不新增业务专用调色板。
+高对比预览仅为状态示意，生产实现走 Theme::fromSettings，不能复制为另一套
+独立派生算法。fontScale 统一放大一次，DPI 仅用于逻辑坐标到物理像素映射；
+减少动画关闭过渡，不改变加载/错误状态语义。
+
+默认仅绘制横向分隔线，无斑马纹。选中行保留左侧 3px 标记；单元格导航时只在
+current cell 内绘制焦点环，不在全行每个格同时绘制。冻结区域使用不透明状态背景，
+并通过 borderStrong 区分边界，不能依靠阴影作为唯一提示。错误浮层由覆盖层负责
+视口边界避让，不应被滚动容器裁掉。新增控件实现与验收以 DataGrid §12–15 为准。
+
 ## 4. Theme 模型
 
 Theme 是可复制、不可变使用的值对象，由应用或窗口根节点拥有，不使用全局可变单例。
@@ -497,12 +541,21 @@ rest/hovered/dragged/disabled 分别取 borderStrong/contentPrimary/accent/disab
   （`drawIcon` 内 `lround`，与字形 `toPixel` 同口径；CPU/Skia 双后端同式，
   尺寸不变）——逻辑居中常给出半像素原点（如 Spin 奇数高半格的 chevron），
   不取整则描边虚散、上下不对称（2026-09 Spin 像素复现，回归见 spin_tests
-  `spin_stepper_chevrons_align_to_device_pixels`）。
+  `spin_stepper_chevrons_align_to_device_pixels`）。GPU 回放自 2026-09-28
+  起消费同一命令与同一 `lround` 口径（此前静默丢弃，补齐记录见
+  `docs/lumen-skia-gpu-parity-plan.md`）。
 - `ElevationTokens`：保存层级、阴影颜色、偏移和模糊半径。三后端共用同一
   `DrawShadow` 命令：Skia/GPU 按 `kNormal_SkBlurStyle`（σ = blur×0.5×scale）
   模糊；CPU 以 3-pass 可分离 box blur 近似同一 σ（blur=0 时退偏移扁平面），
-  damage 口径按 `blur×2+1` 外扩覆盖模糊尾。Renderer 完全不支持阴影的平台，
+  damage 口径按 `blur×2+1` 外扩覆盖模糊尾。GPU 回放自 2026-09-28 起真实
+  模糊（此前静默丢弃）；blur=0 语义为已知三端差异——CPU 退扁平面
+  （alpha×0.5），Skia 光栅/GPU 画无滤镜满 alpha 偏移矩形（GPU 跟随光栅，
+  决策点 D1；三端统一留后续小项）。Renderer 完全不支持阴影的平台，
   组件可退回边框/表面层级表达，不得在控件中散落阴影常量。
+- 图像采样：CPU 与 Skia 光栅用 nearest（互相对齐），GPU 用 linear（缩放
+  质量优先，2026-09-28 决策点 D2）；1:1 绘制三端逐字节相同，缩放绘制的
+  一致性口径以 1:1 采样为准——"命令平价"指能力与语义覆盖，不要求缩放
+  字节级相等（与 `skia_smoke_tests` 的 glyph 口径同哲学）。
 - `MotionTokens`：保存状态过渡、Dialog、Navigator 的时长和曲线。`reduceAnimation`
   将所有时长解析为零，并继续使用现有 FrameScheduler 的可访问性规则。
 - 响应式布局：Theme 提供 density 和组件尺度，窗口宽度断点由 layout/style context
