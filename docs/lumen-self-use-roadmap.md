@@ -73,7 +73,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
 | 增强链 M12 | 已完成平台服务与发布补全 | 系统主题事件/强调色输入、三平台原生通知、三平台 OS 可访问性偏好查询、AppImage/.app/包变体（见 §10 M12 完成记录） |
 | 增强链 M13 | 进行中（Linux Orca 回环已完成） | 契约扩展/runApp 装配/UIA fragment 树、Linux AT-SPI2（含窗口激活链路与 Orca 回环，2026-09-23）、macOS NSAccessibility；Windows 讲述人/NVDA 与 macOS VoiceOver 人工回环待平台验收（见 §10 M13 记录与追记） |
-| M14 实战可用收敛 | 进行中（B/D 阶段证据落地；A 为 Linux 部分，C 首版） | M14-B 三后端门禁+A/A 全过（2026-09-24 归档）；M14-C 资源接线/结构化诊断首版；M14-D DataGrid 首版契约 + 第二批 P0 可靠性/列模型切片（2026-09-28，设计 §16）；M14-A Linux 1h 浸泡+窗口冒烟（跨平台人工清单未做，见 §10 各阶段记录） |
+| M14 实战可用收敛 | 进行中（B/D 阶段证据落地；A 为 Linux 部分，C 首版） | M14-B 三后端门禁+A/A 全过（2026-09-24 归档）；M14-C 资源接线/结构化诊断首版；M14-D DataGrid 首版契约 + 第二批 P0 可靠性/列模型 + 第三批双轴几何/列宽拖宽/token 组（2026-09-28，设计 §16–17）；M14-A Linux 1h 浸泡+窗口冒烟（跨平台人工清单未做，见 §10 各阶段记录） |
 | 按需控件增强 · 集合控件 | 已完成 List/Tree/TreeList 与共享选择模型 | 四选择模式/树扁平化/源视口滚动框架接管（见 §10 集合控件完成记录） |
 | 按需控件增强 · 菜单与分栏 | 已完成 ContextMenu/MenuBar 与 Splitter | Secondary 通道/M11 overlay 菜单面板/分隔条框架接管（见 §10 对应完成记录） |
 | 按需控件增强 · 自定义标题栏 | 已完成无边框窗口 chrome | customTitleBar/拖拽区谓词/窗口操作宿主服务（见 §10 标题栏完成记录） |
@@ -2057,6 +2057,29 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   （Debug + Release）。
 - 已知限制（§16.4）：列宽拖动手柄、冻结列/双轴、当前格焦点环、错误
   浮层、表头三态复选框视觉、多列排序、Grid 专属语义仍为后续增量。
+
+### M14-D 阶段记录：DataGrid 第三批——双轴几何与列宽拖宽（2026-09-28）
+
+- 提交号：（本变更提交，见 Git 历史 `feat(widgets)`）
+- 依据：`docs/lumen-datagrid-design.md` §17（视觉系统 §3.3 token 组）。
+- `Theme.dataGrid` token 组：`DataGridTokens`（headerExtent/
+  selectionColumnWidth/resizeHitWidth 三档密度 + fontScale 派生；
+  Comfortable 档与旧常量等值，像素零变化）。
+- 双轴几何：build() 根 = 横轴 ScrollView（表头与数据区共享横向
+  offset；内容窄于视口铺满）；ScrollView 源视口接缝（layout 布局期喂
+  updateViewport；滚轮/拖动/惯性/滚动条/语义滚动由框架直驱 hScroll，
+  应用零接线）；视口宽两帧收敛（requestRebuildAfterLayout 挂起通道）。
+- 列宽拖宽：表头右缘手柄复用 splitter 交互通道（拖动跟手钳 minWidth、
+  双击复位初始宽、Left/Right 步进 resizeHitWidth、Home 收缩、ResizeEW
+  光标、Tab 可聚焦、role=splitter）；手柄带宽计入列宽预算保持列边界
+  对齐；resizeColumn 增提交守卫（拖动逐拍幂等）。
+- 框架接缝：`layoutScrollView` 源视口 + `makeNode` 通用拷贝
+  splitterSource（layoutSplitter 容器清零）；`AppShell::
+  requestRebuildAfterLayout`。
+- 测试：datagrid 新增 5 用例 + token 派生 1 用例（19/19）；修复双击
+  用例时间戳回退（tick 为绝对时间）。全量 818/818（Debug）。
+- 已知限制（§17.5）：水平虚拟化、冻结列、RTL、拖放、单元格级焦点环
+  与 Grid 专属语义仍为后续增量。
 
 ### M14-B 阶段记录：性能门槛收口（2026-09-24）
 

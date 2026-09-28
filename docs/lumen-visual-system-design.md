@@ -219,7 +219,11 @@ token 化（含密度派生）在后续切片统一收口。以下映射其余�
 | selectionColumnWidth | 44 | 44 | 52 |
 | resizeHitWidth | 8 | 10 | 16 |
 
-表头标准档保留首版 36；行高继续使用 32/40/48。列宽是应用列配置，不属于固定
+**2026-09-28 已落地**（DataGrid 设计 §17.1）：`Theme.dataGrid`
+（`DataGridTokens` + `dataGridTokensFrom(density)` 三档烘焙，fontScale 经
+`scaleComponentSizes` 派生；Comfortable 档与旧控制器常量等值，像素零
+变化）。表头标准档保留首版 36；行高继续使用 32/40/48（随集合行 chrome
+实测，token 化随行间距语义一并评估）。列宽是应用列配置，不属于固定
 Theme 度量；下限仍允许 40，应用可提高各列 minWidth。图标引用现有 IconTheme，
 表头、复选框命中区域和分隔线命中区域随 density/fontScale 同步派生。
 

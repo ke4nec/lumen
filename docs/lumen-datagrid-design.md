@@ -1,9 +1,11 @@
 # Lumen DataGrid 设计（首版契约与桌面增强提案）
 
 > 状态：首版实现（2026-09-24，M14-D 契约切片）+ 2026-09-28 第二批
-> 增强（P0 可靠性 + P1 列模型切片，见 §16）。实现
+> 增强（P0 可靠性 + P1 列模型切片，§16）与第三批（双轴几何 + 列宽拖宽
+> + Theme.dataGrid token 组，§17）。实现
 > `include/lumen/widgets/datagrid.h` + `src/widgets/datagrid.cpp`；测试
-> `tests/datagrid_tests.cpp`（16 用例）。§10–15 为增强提案与能力审计；
+> `tests/datagrid_tests.cpp`（18 用例）+ token 派生用例。§10–15 为增强
+> 提案与能力审计；
 > [`design/datagrid.html`](../design/datagrid.html) 为增强目标交互稿，
 > P0/列管理/复选框列等已按 §16 落地，其余仍为目标态。
 > 输入：M14-D 路线图条目、`docs/lumen-collection-controls-design.md`（共享
@@ -387,13 +389,78 @@ review 以真实指针路径复测发现并修复三处问题（各配回归用�
 
 ### 16.4 已知限制（§9 增补，不破坏契约）
 
-- 列宽拖动手柄/键盘调宽、冻结列与双轴滚动协调、水平虚拟化：仍为后续
-  增量（`resizeColumn` API 不变）。
+- ~~列宽拖动手柄/键盘调宽、双轴滚动协调~~：已由第三批落地（§17）；
+  冻结列与水平虚拟化仍为后续增量（`resizeColumn` API 不变）。
 - 当前格无可见焦点环（焦点在行节点；单元格级焦点与 Grid 专属语义随
   §13.2 provider 评估）。
 - 编辑错误仍以编辑器 placeholder + `invalid` 边框呈现（错误浮层需 overlay
   边界避让，后续增量）。
 - 表头复选框无 indeterminate 三态视觉；数值列表头不右对齐。
 - 行高随内容实测（集合行 chrome + 内容高）；HTML 的 32/40/48 是目标
-  token 化规格，`Theme.dataGrid` token 组（§视觉系统 3.3）尚未引入，
-  当前用 Medium 档控制器常量（44/12），与 List/TreeList 现行口径一致。
+  token 化规格（表头高/选择列宽/手柄带宽已于 §17 token 化，行高待列
+  间距语义一并评估）。
+
+## 17. 2026-09-28 第三批实现记录（双轴几何 + 列宽拖宽 + token 组）
+
+P1 切片续：HTML 增强稿的「列拖宽/键盘调宽」「共享横向视口」与视觉
+系统 §3.3 的 `Theme.dataGrid` token 组落地。C++ 变更：`style::DataGridTokens`
+（theme.h/cpp）、三处框架接缝（layout/app）与 `DataGridController` 本体。
+
+### 17.1 Theme.dataGrid token 组
+
+`DataGridTokens{headerExtent, selectionColumnWidth, resizeHitWidth}`，
+`dataGridTokensFrom(density)` 烘焙三档（32/36/44、44/44/52、8/10/16），
+`scaleComponentSizes` 参与 fontScale 派生；高对比方向工厂同样接线。
+**Comfortable 档与第二批控制器常量等值——既有像素输出零变化**。颜色
+继续沿用 list/集合行 token（表头 surfaceSunken、分隔线 borderDefault），
+本组只承载网格几何。控制器经 `shell_->theme()` 读取（无 shell 时退回
+默认档）。
+
+### 17.2 双轴几何（共享横向视口）
+
+- `build()` 根 = 横轴 `ScrollView`（key = owner）：`Column[表头, List]`
+  整体为内容，表头与数据区**天然共享横向 offset**（同一下滚动域）；
+  表头/列表/行全部取 `gridWidth()` 显式宽（= 选择列 + Σ可见列宽；
+  内容窄于视口时铺满视口，行背景完整）。
+- **源视口接缝**：ScrollView 携带 `virtualSource = HorizontalViewportSource`
+  （新框架能力：`layoutScrollView` 布局期对源视口调 `updateViewport`
+  喂视口主轴尺寸——镜像 `layoutVirtualList` 契约）。此后滚轮/拖动/
+  惯性/滚动条/语义滚动由交互层直驱 `hScroll()`，**应用零接线**；
+  `hScroll_` 仅供程序化定位。
+- 双轴互不抢占：纵向滚轮归数据列表，横向归根视口；Shift+纵轮在表头区
+  （命中链无纵向视口）按既有契约投影到横向视口（scroll-design §4）。
+- 视口宽跟踪：`updateViewport` 记录视口宽并经 `requestRebuildAfterLayout`
+  请求一次性收敛重建（布局期 markDirty 会被 `rebuildIfDirty` 收尾清脏
+  吞掉；两帧收敛，VirtualList extent 修正同模式）。
+
+### 17.3 列宽拖动手柄（splitter 通道复用）
+
+- 可调整（`resizable`）列的表头右缘物化手柄（`grid:hnd:<col>`，
+  Ghost Button + `splitterSource`）：**拖动跟手**（绝对边界位置 →
+  `resizeColumn`，内部钳 minWidth）、**双击复位**（回 `setColumns` 初始
+  宽）、**键盘 Left/Right 步进**（步长 = resizeHitWidth；Home 收缩到
+  minWidth，End 无上界不动作）、ResizeEW 悬停光标；Tab 可聚焦
+  （collectionRow），语义 role=splitter + 当前宽 value。
+- 手柄带宽计入列宽预算（表头单元 = 列宽 − 手柄带宽），与数据格列边界
+  对齐的不变式保持。
+- 拖动/步进先提交编辑（§13.1）：`resizeColumn` 增加提交守卫，校验失败
+  列宽不动、草稿留在错误格；手柄逐拍调用在无编辑时幂等直达。
+
+### 17.4 框架接缝（core，最小增量）
+
+- `layoutScrollView` 支持源视口（`virtualSource` 的 `updateViewport`
+  喂视口；`makeNode` 通用拷贝 `splitterSource`——`layoutSplitter` 容器
+  节点显式清零，拖拽锁定只允许命中分隔条/手柄本体）。
+- `AppShell::requestRebuildAfterLayout`：布局期重建请求挂起通道
+  （`rebuildIfDirty` 收尾回置 dirty，下一帧收敛；一次性）。
+
+### 17.5 测试与已知限制
+
+新增 5 个网格用例（横向视口表头/行同源平移 + 双轴互不抢占 + Shift
+投影、窄内容铺满 + 密度切换表头高、拖动钳制 + 双击复位、键盘步进 +
+Tab 序、拖宽提交守卫）与 1 个 token 派生用例；修复一处双击用例的
+时间戳回退（tick 为绝对时间）。datagrid 相关 19/19、全量 818/818
+（Debug）。
+
+剩余增量：水平虚拟化（列虚拟化）、冻结列（需冻结区与滚动区共享几何
+的显式模型）、RTL 镜像、拖放、单元格级焦点环与 Grid 专属语义。
