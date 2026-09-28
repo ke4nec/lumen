@@ -107,7 +107,8 @@ TEST_CASE("system_fonts_discover_fonts_in_nested_subdirectories",
     std::filesystem::remove_all(root, copyEc);
 }
 
-TEST_CASE("system_fonts_cover_latin_and_cjk", "[text][system-fonts]") {
+TEST_CASE("system_fonts_cover_latin_and_cjk",
+          "[text][system-fonts][system-fonts-slow]") {
     const auto fonts = loadSystemFonts();
     if (fonts == nullptr) {
         SUCCEED("environment has no system fonts; nothing to rasterize");
@@ -193,7 +194,7 @@ TEST_CASE("system_fonts_cover_latin_and_cjk", "[text][system-fonts]") {
 }
 
 TEST_CASE("cpu_renderer_system_fonts_draw_real_glyphs",
-          "[render][system-fonts]") {
+          "[render][system-fonts][system-fonts-slow]") {
     const auto fonts = loadSystemFonts();
     if (fonts == nullptr) {
         SUCCEED("environment has no system fonts; nothing to rasterize");

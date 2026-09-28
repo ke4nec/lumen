@@ -208,7 +208,16 @@ list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 # Tests run next to the binary so copied assets (counter.lumen, SDL3.dll)
 # resolve by name.
-catch_discover_tests(lumen-tests WORKING_DIRECTORY $<TARGET_FILE_DIR:lumen-tests>)
+# 系统字体重负载用例（system-fonts-slow：全系统字体扫描/拷贝/光栅化）
+# 在 CI runner 争用时曾超全局 --timeout 300（2026-09-28 Windows skia-gpu
+# 门禁）；单独注册为 600s。per-test TIMEOUT 属性优先于 ctest --timeout。
+catch_discover_tests(lumen-tests
+    TEST_SPEC "~[system-fonts-slow]"
+    WORKING_DIRECTORY $<TARGET_FILE_DIR:lumen-tests>)
+catch_discover_tests(lumen-tests
+    TEST_SPEC "[system-fonts-slow]"
+    PROPERTIES TIMEOUT 600
+    WORKING_DIRECTORY $<TARGET_FILE_DIR:lumen-tests>)
 find_package(Python3 QUIET COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME platform_acceptance_evidence_integrity
