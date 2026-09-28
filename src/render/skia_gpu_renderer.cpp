@@ -32,7 +32,6 @@
 #include "include/core/SkImage.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkPaint.h"
-#include "include/core/SkPath.h"
 #include "include/core/SkBlurTypes.h"
 #include "include/core/SkMaskFilter.h"
 #include "include/core/SkPixmap.h"
@@ -530,9 +529,13 @@ class SkiaGpuRenderer final : public Renderer {
     }
 
     // GPU 平价（lumen-skia-gpu-parity-plan §3.1）：矢量图标命令回放。
+    // 实现为逐段"胶囊"（沿段的填充圆角矩形，半径 = 半线宽，天然圆帽；
+    // 相邻段共享端点的圆帽重叠即圆角连接）——不用 SkPath 描边：Apple
+    // 软件 GL 上 Ganesh 对凹折线路径的描边静默为空（2026-09-28 CI 实测
+    // 墨量为 0，而填充/圆角矩形/模糊均正常），llvmpipe 无法在本地暴露。
     // 原点设备对齐（lround）与 CpuRenderer/SkiaRenderer::drawIcon 同式
-    // ——逻辑居中的半像素原点不对齐则描边虚散；圆帽/圆连接与 CPU 的
-    // 距离场端点圆帽一致。归一化折线 × 盒尺寸 → 设备像素。
+    // ——逻辑居中的半像素原点不对齐则描边虚散；归一化折线 × 盒尺寸
+    // → 设备像素。
     void paintIcon(SkCanvas* canvas,
                    const std::vector<std::vector<core::Offset>>& polylines,
                    core::Rect box, core::Color color, float strokeWidth) {
@@ -545,29 +548,43 @@ class SkiaGpuRenderer final : public Renderer {
             std::lround(box.origin.x * scale) / scale);
         box.origin.y = static_cast<float>(
             std::lround(box.origin.y * scale) / scale);
-        SkPath path;
+        const float half = strokeWidth * scale * 0.5F;
+        if (half <= 0.0F) {
+            return;
+        }
+        SkPaint ink;
+        ink.setStyle(SkPaint::kFill_Style);
+        ink.setAntiAlias(true);
+        ink.setColor(toSkColor(color));
         for (const auto& polyline : polylines) {
-            if (polyline.empty()) {
-                continue;
-            }
-            path.moveTo(
-                (box.origin.x + polyline.front().x * box.size.width) * scale,
-                (box.origin.y + polyline.front().y * box.size.height) *
-                    scale);
-            for (std::size_t i = 1; i < polyline.size(); ++i) {
-                path.lineTo(
-                    (box.origin.x + polyline[i].x * box.size.width) * scale,
-                    (box.origin.y + polyline[i].y * box.size.height) * scale);
+            for (std::size_t i = 0; i + 1 < polyline.size(); ++i) {
+                const float x0 =
+                    (box.origin.x + polyline[i].x * box.size.width) * scale;
+                const float y0 =
+                    (box.origin.y + polyline[i].y * box.size.height) * scale;
+                const float x1 = (box.origin.x + polyline[i + 1].x *
+                                                 box.size.width) * scale;
+                const float y1 = (box.origin.y + polyline[i + 1].y *
+                                                 box.size.height) * scale;
+                const float dx = x1 - x0;
+                const float dy = y1 - y0;
+                const float length = std::sqrt(dx * dx + dy * dy);
+                if (length <= 0.0F) {
+                    continue;
+                }
+                canvas->save();
+                canvas->translate((x0 + x1) * 0.5F, (y0 + y1) * 0.5F);
+                canvas->rotate(
+                    std::atan2(dy, dx) * 180.0F / 3.14159265F);
+                const SkRect segment =
+                    SkRect::MakeLTRB(-length * 0.5F, -half,
+                                     length * 0.5F, half);
+                SkRRect capsule;
+                capsule.setRectXY(segment, half, half);
+                canvas->drawRRect(capsule, ink);
+                canvas->restore();
             }
         }
-        SkPaint paint;
-        paint.setStyle(SkPaint::kStroke_Style);
-        paint.setAntiAlias(true);
-        paint.setColor(toSkColor(color));
-        paint.setStrokeWidth(strokeWidth * scale);
-        paint.setStrokeCap(SkPaint::kRound_Cap);
-        paint.setStrokeJoin(SkPaint::kRound_Join);
-        canvas->drawPath(path, paint);
     }
 
     // GPU 平价（parity §3.2）：层级阴影命令回放。偏移/模糊无专用字段，

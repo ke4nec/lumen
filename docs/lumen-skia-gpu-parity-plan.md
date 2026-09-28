@@ -85,6 +85,15 @@ cpu_renderer.cpp 快照 :1154-1166)。这注释描述的缺陷正是 GPU 后端�
 **实现**:在 `SkiaGpuRenderer` 增加私有 `paintIcon(...)`,几何逐行取自
 `SkiaRenderer::drawIcon`(skia_renderer.cpp 快照 :474-510),关键不变量:
 
+> **2026-09-28 实施追记**:本节下方的 SkPath 描边方案在本机 llvmpipe
+> 通过,但在 macOS CI 的 Apple 软件 GL 上对凹折线路径**静默为空**
+> (三轮 CI 实测锚点墨量为 0;同平台填充矩形、圆角矩形描边、blur 阴影
+> 均正常渲染)。落地实现改为**逐段胶囊**:每段折线画为沿段的填充圆角
+> 矩形(半径 = 半线宽,天然圆帽;相邻段共享端点的圆帽重叠即圆角连接),
+> 只用 `save/translate/rotate/drawRRect` 填充——Apple GL 上已验证的
+> 原语集。下方不变量 1/2/4(原点对齐、坐标映射、防御 guard)逐字保留,
+> 不变量 3 的圆帽/圆连接语义由胶囊几何等价实现。
+
 1. **原点设备对齐**:`box.origin.x = lround(box.origin.x * scale) / scale`
    (y 同式)。这是与 `CpuRenderer::drawIcon`(cpu_renderer.cpp 快照
    :764-772)共同约定的一致性口径——逻辑居中产生的半像素原点(如
