@@ -222,6 +222,16 @@ class InteractionController {
     // 语义/键盘焦点请求（plan §3.3 与语义 actions 共用路径）：字段建立
     // 编辑焦点（光标置末尾），其他节点只设置 FocusManager 焦点。
     void focusNode(const RenderNode& node);
+    // M14-D：程序化字段焦点请求（DataGrid beginEdit 等无指针路径）。
+    // 记录 bind key；AppShell 在下一次重建布局后经 applyPendingFieldFocus
+    // 在新树上落地（等价点击字段：focusedBind 建立 + 光标置末尾）。
+    // 一次性：落地或下一轮重建未命中即清除（编辑可能已被取消）。
+    void requestFieldFocus(const std::string& bindKey);
+    // 落地待处理字段焦点（AppShell::rebuildIfDirty 在 root_ 更新后调用）。
+    void applyPendingFieldFocus(const RenderNode& root);
+    // 释放编辑焦点状态（组合控件提交/取消编辑后调用：focusedBind/composition
+    // /选区清空，FocusManager 焦点由调用方另行安置；等价点击非字段处）。
+    void releaseFieldFocus();
     // Collection semantics Activate shares the double-click/Enter callback.
     bool activateCollectionRow(const RenderNode& node);
     // Semantic activation shares dynamic click sinks with pointer/keyboard.
@@ -387,6 +397,9 @@ class InteractionController {
     std::string focusedBind_{};
     bool focusedReadOnly_{false};
     bool focusedMultiline_{false};
+    // M14-D：待落地的程序化字段焦点（requestFieldFocus 登记；重建后
+    // applyPendingFieldFocus 消费）。
+    std::string pendingFieldBind_{};
     // grapheme 选区与 composing 状态（相对焦点字段文本）。
     text::TextSelection selection_{};
     bool composingActive_{false};

@@ -1813,4 +1813,42 @@ void InteractionController::focusNode(const RenderNode& node) {
     }
 }
 
+void InteractionController::requestFieldFocus(const std::string& bindKey) {
+    pendingFieldBind_ = bindKey;
+}
+
+void InteractionController::applyPendingFieldFocus(const RenderNode& root) {
+    if (pendingFieldBind_.empty()) {
+        return;
+    }
+    const std::string bind = std::exchange(pendingFieldBind_, {});
+    // 首个命中 bind 的可用字段即目标（组合控件每 bind 唯一字段）。
+    const RenderNode* found = nullptr;
+    std::function<void(const RenderNode&)> find = [&](const RenderNode& node) {
+        if (found != nullptr) {
+            return;
+        }
+        if (node.type == WidgetType::TextField && node.bind == bind &&
+            node.enabled) {
+            found = &node;
+            return;
+        }
+        for (const auto& child : node.children) {
+            find(child);
+        }
+    };
+    find(root);
+    if (found != nullptr) {
+        focusNode(*found);
+    }
+}
+
+void InteractionController::releaseFieldFocus() {
+    focusedBind_.clear();
+    composition_.clear();
+    composingActive_ = false;
+    composing_ = {};
+    selection_ = {};
+}
+
 }  // namespace lumen::core

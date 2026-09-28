@@ -553,6 +553,9 @@ void AppShell::rebuildIfDirty() {
     retargetStateBlends(fresh);
     root_ = std::move(fresh);
     hasRoot_ = true;
+    // M14-D：程序化字段焦点落地（DataGrid beginEdit 等：新树已布局，
+    // 等价点击字段的 focusedBind/光标路径）。
+    controller_.applyPendingFieldFocus(root_);
     rebuildTooltipTemplates();
     // M11：overlay 与主树同拍重建（独立布局/独立 identity 命名空间；
     // 打开期间 overlay 子树 diff 汇入 damage，打开首帧走全量）。
