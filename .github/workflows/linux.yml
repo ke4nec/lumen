@@ -186,7 +186,17 @@ jobs:
         if: always()
         run: ccache --show-stats || true
       - name: Test
-        run: ctest --test-dir build --output-on-failure -C Release
+        shell: bash
+        run: |
+          ctest --test-dir build --output-on-failure -C Release 2>&1 | tee /tmp/ctest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
+              while read -r num dash name rest; do
+                echo "::error title=ctest $name::$rest"
+              done
+          fi
+          exit "$status"
       - name: Headless counter smoke
         run: ./build/examples/counter/lumen-counter --headless
       # v0.3 阶段8D：settings 示例（滚动/表单/弹窗/导航）headless 冒烟。
@@ -283,7 +293,17 @@ jobs:
         if: always()
         run: ccache --show-stats || true
       - name: Test (incl. CPU/Skia consistency)
-        run: ctest --test-dir build-skia --output-on-failure -C Release
+        shell: bash
+        run: |
+          ctest --test-dir build-skia --output-on-failure -C Release 2>&1 | tee /tmp/ctest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
+              while read -r num dash name rest; do
+                echo "::error title=ctest $name::$rest"
+              done
+          fi
+          exit "$status"
       - name: Windowed Skia smoke (Xvfb)
         run: xvfb-run -a timeout 5 ./build-skia/examples/counter/lumen-counter --renderer skia || test $? -eq 124
       - name: Checkout pinned performance reference
@@ -370,7 +390,17 @@ jobs:
         if: always()
         run: ccache --show-stats || true
       - name: Test (GPU submit + fallback on software GL)
-        run: xvfb-run -a ctest --test-dir build-gpu --output-on-failure -C Release --timeout 120
+        shell: bash
+        run: |
+          ctest --test-dir build-gpu --output-on-failure -C Release --timeout 120 2>&1 | tee /tmp/ctest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
+              while read -r num dash name rest; do
+                echo "::error title=ctest $name::$rest"
+              done
+          fi
+          exit "$status"
       - name: Windowed GPU smoke (Xvfb + llvmpipe)
         run: >
           xvfb-run -a cmake
@@ -455,7 +485,17 @@ jobs:
         if: always()
         run: ccache --show-stats || true
       - name: Test (headless, no desktop session)
-        run: ctest --test-dir build-mobile --output-on-failure -C Debug
+        shell: bash
+        run: |
+          ctest --test-dir build-mobile --output-on-failure -C Debug 2>&1 | tee /tmp/ctest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
+              while read -r num dash name rest; do
+                echo "::error title=ctest $name::$rest"
+              done
+          fi
+          exit "$status"
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

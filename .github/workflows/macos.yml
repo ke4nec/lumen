@@ -171,7 +171,17 @@ jobs:
         if: always()
         run: ccache --show-stats || true
       - name: Test (Debug)
-        run: ctest --test-dir build --output-on-failure -C Debug --timeout 120
+        shell: bash
+        run: |
+          ctest --test-dir build --output-on-failure -C Debug --timeout 120 2>&1 | tee /tmp/ctest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
+              while read -r num dash name rest; do
+                echo "::error title=ctest $name::$rest"
+              done
+          fi
+          exit "$status"
       - name: Headless counter smoke
         run: ./build/examples/counter/lumen-counter --headless
       # v0.3 阶段8D/8E：settings 示例与无桌面会话冒烟（dummy 驱动）。
@@ -241,7 +251,17 @@ jobs:
         if: always()
         run: ccache --show-stats || true
       - name: Test (GPU submit + CPU fallback)
-        run: ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180
+        shell: bash
+        run: |
+          ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180 2>&1 | tee /tmp/ctest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
+              while read -r num dash name rest; do
+                echo "::error title=ctest $name::$rest"
+              done
+          fi
+          exit "$status"
       - name: GPU smoke (software GL)
         run: >
           ./build-gpu/examples/counter/lumen-counter
@@ -293,7 +313,17 @@ jobs:
         if: always()
         run: ccache --show-stats || true
       - name: Test (headless)
-        run: ctest --test-dir build-mobile --output-on-failure -C Debug --timeout 120
+        shell: bash
+        run: |
+          ctest --test-dir build-mobile --output-on-failure -C Debug --timeout 120 2>&1 | tee /tmp/ctest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
+              while read -r num dash name rest; do
+                echo "::error title=ctest $name::$rest"
+              done
+          fi
+          exit "$status"
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
