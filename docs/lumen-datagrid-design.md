@@ -4,7 +4,8 @@
 > 增强（P0 可靠性 + P1 列模型切片，§16）与第三批（双轴几何 + 列宽拖宽
 > + Theme.dataGrid token 组，§17）。实现
 > `include/lumen/widgets/datagrid.h` + `src/widgets/datagrid.cpp`；测试
-> `tests/datagrid_tests.cpp`（18 用例）+ token 派生用例。§10–15 为增强
+> `tests/datagrid_tests.cpp`（21 用例：18 datagrid_* + 3 回归）+ token
+> 派生用例。§10–15 为增强
 > 提案与能力审计；
 > [`design/datagrid.html`](../design/datagrid.html) 为增强目标交互稿，
 > P0/列管理/复选框列等已按 §16 落地，其余仍为目标态。
@@ -459,8 +460,11 @@ P1 切片续：HTML 增强稿的「列拖宽/键盘调宽」「共享横向视�
 新增 5 个网格用例（横向视口表头/行同源平移 + 双轴互不抢占 + Shift
 投影、窄内容铺满 + 密度切换表头高、拖动钳制 + 双击复位、键盘步进 +
 Tab 序、拖宽提交守卫）与 1 个 token 派生用例；修复一处双击用例的
-时间戳回退（tick 为绝对时间）。datagrid 相关 19/19、全量 818/818
-（Debug）。
+时间戳回退（tick 为绝对时间）。`tests/datagrid_tests.cpp` 扩至 21 用例；
+`ctest -R datagrid` 19/19（含 token 派生用例）、全量 818/818
+（Debug + Release）。基准 card-grid 帧哈希与本批前工作树一致
+（`42fe122e01f706f6`，两跑确定性复现；接缝对无 splitterSource/
+virtualSource 的既有场景为 no-op）。
 
 剩余增量：水平虚拟化（列虚拟化）、冻结列（需冻结区与滚动区共享几何
 的显式模型）、RTL 镜像、拖放、单元格级焦点环与 Grid 专属语义。
