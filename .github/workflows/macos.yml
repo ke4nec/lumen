@@ -173,6 +173,7 @@ jobs:
       - name: Test (Debug)
         shell: bash
         run: |
+          set +e
           ctest --test-dir build --output-on-failure -C Debug --timeout 120 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -253,6 +254,7 @@ jobs:
       - name: Test (GPU submit + CPU fallback)
         shell: bash
         run: |
+          set +e
           ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -315,6 +317,7 @@ jobs:
       - name: Test (headless)
         shell: bash
         run: |
+          set +e
           ctest --test-dir build-mobile --output-on-failure -C Debug --timeout 120 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then

@@ -110,6 +110,7 @@ jobs:
         # 首个光栅用例 I/O 可达百秒量级；300s 上限防抖，挂起仍会失败。
         shell: bash
         run: |
+          set +e
           ctest --test-dir build --output-on-failure -C Debug --timeout 300 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -163,6 +164,7 @@ jobs:
         # 同 cpu 任务：系统字体冷扫描防抖，见上。
         shell: bash
         run: |
+          set +e
           ctest --test-dir build-a11y --output-on-failure -C Debug --timeout 300 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -211,6 +213,7 @@ jobs:
         # 同 cpu 任务：系统字体冷扫描防抖，见上。
         shell: bash
         run: |
+          set +e
           ctest --test-dir build-skia --output-on-failure -C Release --timeout 300 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -258,6 +261,7 @@ jobs:
         # 同 cpu 任务：系统字体冷扫描防抖，见上。
         shell: bash
         run: |
+          set +e
           ctest --test-dir build-gpu --output-on-failure -C Release --timeout 300 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then

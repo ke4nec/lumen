@@ -188,6 +188,7 @@ jobs:
       - name: Test
         shell: bash
         run: |
+          set +e
           ctest --test-dir build --output-on-failure -C Release 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -295,6 +296,7 @@ jobs:
       - name: Test (incl. CPU/Skia consistency)
         shell: bash
         run: |
+          set +e
           ctest --test-dir build-skia --output-on-failure -C Release 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -392,6 +394,7 @@ jobs:
       - name: Test (GPU submit + fallback on software GL)
         shell: bash
         run: |
+          set +e
           ctest --test-dir build-gpu --output-on-failure -C Release --timeout 120 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -487,6 +490,7 @@ jobs:
       - name: Test (headless, no desktop session)
         shell: bash
         run: |
+          set +e
           ctest --test-dir build-mobile --output-on-failure -C Debug 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
