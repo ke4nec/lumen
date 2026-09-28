@@ -177,10 +177,16 @@ jobs:
           ctest --test-dir build --output-on-failure -C Debug --timeout 120 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
-              while read -r num dash name rest; do
-                echo "::error title=ctest $name::$rest"
-              done
+            python3 - <<'PY'
+          import re
+          log = open('/tmp/ctest.log', errors='replace').read()
+          hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
+          if hit:
+              for line in hit.group(1).splitlines():
+                  m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
+                  if m:
+                      print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          PY
           fi
           exit "$status"
       - name: Headless counter smoke
@@ -258,10 +264,16 @@ jobs:
           ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
-              while read -r num dash name rest; do
-                echo "::error title=ctest $name::$rest"
-              done
+            python3 - <<'PY'
+          import re
+          log = open('/tmp/ctest.log', errors='replace').read()
+          hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
+          if hit:
+              for line in hit.group(1).splitlines():
+                  m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
+                  if m:
+                      print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          PY
           fi
           exit "$status"
       - name: GPU smoke (software GL)
@@ -321,10 +333,16 @@ jobs:
           ctest --test-dir build-mobile --output-on-failure -C Debug --timeout 120 2>&1 | tee /tmp/ctest.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            awk '/The following tests FAILED/{flag=1;next} flag && /^[ \t]*[0-9]+ - /{print} flag && /^$/{flag=0}' /tmp/ctest.log |
-              while read -r num dash name rest; do
-                echo "::error title=ctest $name::$rest"
-              done
+            python3 - <<'PY'
+          import re
+          log = open('/tmp/ctest.log', errors='replace').read()
+          hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
+          if hit:
+              for line in hit.group(1).splitlines():
+                  m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
+                  if m:
+                      print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          PY
           fi
           exit "$status"
       - name: Upload test logs on failure
