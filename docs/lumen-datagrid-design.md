@@ -1,10 +1,11 @@
 # Lumen DataGrid 设计（首版契约与桌面增强提案）
 
 > 状态：首版实现（2026-09-24，M14-D 契约切片）+ 2026-09-28 第二批
-> 增强（P0 可靠性 + P1 列模型切片，§16）与第三批（双轴几何 + 列宽拖宽
-> + Theme.dataGrid token 组，§17）。实现
+> 增强（P0 可靠性 + P1 列模型切片，§16）、第三批（双轴几何 + 列宽拖宽
+> + Theme.dataGrid token 组，§17）与第四批（多列排序 + 当前格焦点环 +
+> 表头复选框三态，§18）。实现
 > `include/lumen/widgets/datagrid.h` + `src/widgets/datagrid.cpp`；测试
-> `tests/datagrid_tests.cpp`（21 用例：18 datagrid_* + 3 回归）+ token
+> `tests/datagrid_tests.cpp`（24 用例：21 datagrid_* + 3 回归）+ token
 > 派生用例。§10–15 为增强
 > 提案与能力审计；
 > [`design/datagrid.html`](../design/datagrid.html) 为增强目标交互稿，
@@ -392,11 +393,12 @@ review 以真实指针路径复测发现并修复三处问题（各配回归用�
 
 - ~~列宽拖动手柄/键盘调宽、双轴滚动协调~~：已由第三批落地（§17）；
   冻结列与水平虚拟化仍为后续增量（`resizeColumn` API 不变）。
-- 当前格无可见焦点环（焦点在行节点；单元格级焦点与 Grid 专属语义随
-  §13.2 provider 评估）。
+- ~~当前格无可见焦点环~~：已由第四批落地（§18.2 统一格式盒内嵌环）；
+  Grid 专属语义随 §13.2 provider 评估。
 - 编辑错误仍以编辑器 placeholder + `invalid` 边框呈现（错误浮层需 overlay
   边界避让，后续增量）。
-- 表头复选框无 indeterminate 三态视觉；数值列表头不右对齐。
+- ~~表头复选框无 indeterminate 三态视觉~~：已落地（§18.3，框架
+  `Widget.indeterminate`）；数值列表头不右对齐。
 - 行高随内容实测（集合行 chrome + 内容高）；HTML 的 32/40/48 是目标
   token 化规格（表头高/选择列宽/手柄带宽已于 §17 token 化，行高待列
   间距语义一并评估）。
@@ -467,4 +469,59 @@ Tab 序、拖宽提交守卫）与 1 个 token 派生用例；修复一处双击
 virtualSource 的既有场景为 no-op）。
 
 剩余增量：水平虚拟化（列虚拟化）、冻结列（需冻结区与滚动区共享几何
-的显式模型）、RTL 镜像、拖放、单元格级焦点环与 Grid 专属语义。
+的显式模型）、RTL 镜像、拖放、Grid 专属语义。
+
+## 18. 2026-09-28 第四批实现记录（多列排序 + 当前格焦点环 + 表头三态）
+
+P1 切片续（控制器层 + 一处框架控件扩展）。C++ 变更集中在
+`DataGridController` 与 Checkbox 三态链（Widget/resolver/painter/语义）。
+
+### 18.1 多列排序（§11.2）
+
+- 状态模型：`std::vector<SortKey>`（向量序 = 优先级，front 为主排序），
+  替代单列 sortColumn_/sortAscending_；`sortKeys()` 读取，
+  `sortColumn()`/`sortAscending()` 保持为单列兼容视图（front 或空）。
+- `requestSort(columnKey, extend = false)`：普通点击 = 单列循环
+  升序 → 降序 → 清除（该列已是唯一排序列时延续循环，否则收敛为单列
+  升序——多列在位时"普通点击替换排序列表"）；extend（Shift）= 追加/
+  更新该列为最低优先级，升序 → 降序 → 移除（移除后序号自然连续）。
+  指针路径按修饰键透传 extend。既有单列测试逐位兼容。
+- 回调：`onSortRequest`（主排序键，既有接线不变）+ 新
+  `onSortRequestMulti`（完整多列状态）；相等值保持源顺序由应用执行
+  （稳定排序）。`setColumns` 移除失效排序键。
+- 已知限制：多列优先级数字标记（"1/2"角标）待 Button 内容通道扩展，
+  表头指示暂只有方向 chevron。
+
+### 18.2 当前格焦点环（§12）
+
+- 单元格统一格式盒：全部数据格包 `Container`（key `<cellId>:box`），
+  Start 列盒内是省略文本、End 列盒内是主轴 End 的 Row。当前格
+  （current 行 × current 列）的盒边框承载 `colors.focusRing` +
+  `metrics.focusRingWidth`（内嵌环，画在格边界内不占布局空间；格内
+  边距 12 > 环宽）。编辑中的格不显示环（编辑器自身表达焦点）。
+- **格式盒无条件存在**（环样式按当前格开关）：环的出现不得改变格的
+  结构 identity——否则双击检测/damage 按身份配对失效（实现 review
+  实测发现：按状态插拔包装容器后第二次点击 identity 变化、双击进
+  编辑失败，回归用例锁定）。
+- 代价：每物化格 +1 Container 节点（当前格判断 O(1)；无基准场景
+  回归）。
+
+### 18.3 表头复选框三态（§11.3 / §16.4 收口）
+
+- 框架 Checkbox 扩展（声明式，无 bind 通道）：`Widget.indeterminate`
+  → RenderNode → resolver（`CheckboxResolvedStyle.indeterminate`，
+  checked 优先）→ painter（accent 填充 + 居中横线替代勾号，线厚 =
+  指示器 12% 向上取 1px）→ 语义（value="mixed"，不带 checked flag）。
+- `buildHeaderCheckCell`：全部选中 = 勾选；部分选中 = indeterminate；
+  无可用行 = 未勾选 + 禁用（既有）。
+
+### 18.4 测试与已知限制
+
+新增 3 用例（多列追加/循环/移除/普通点击收敛/指针 Shift 透传/列集
+收缩清键、当前格环跟随与 identity 稳定回归、表头三态 + 语义
+value="mixed"/"true"）；`datagrid_virtualizes_rows...` 与
+`datagrid_numeric_column...` 的格结构断言更新为统一格式盒。datagrid
+22/22、全量 821/821（Debug；Release 823/823 含 2 项基准完整性用例）。
+
+剩余增量：水平虚拟化、冻结列、RTL 镜像、拖放、Grid 专属语义
+（§13.2 provider）、多列优先级角标。

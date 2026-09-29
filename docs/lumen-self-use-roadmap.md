@@ -73,7 +73,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
 | 增强链 M12 | 已完成平台服务与发布补全 | 系统主题事件/强调色输入、三平台原生通知、三平台 OS 可访问性偏好查询、AppImage/.app/包变体（见 §10 M12 完成记录） |
 | 增强链 M13 | 进行中（Linux Orca 回环已完成） | 契约扩展/runApp 装配/UIA fragment 树、Linux AT-SPI2（含窗口激活链路与 Orca 回环，2026-09-23）、macOS NSAccessibility；Windows 讲述人/NVDA 与 macOS VoiceOver 人工回环待平台验收（见 §10 M13 记录与追记） |
-| M14 实战可用收敛 | 进行中（B/D 阶段证据落地；A 为 Linux 部分，C 首版） | M14-B 三后端门禁+A/A 全过（2026-09-24 归档）；M14-C 资源接线/结构化诊断首版；M14-D DataGrid 首版契约 + 第二批 P0 可靠性/列模型 + 第三批双轴几何/列宽拖宽/token 组（2026-09-28，设计 §16–17）；M14-A Linux 1h 浸泡+窗口冒烟（跨平台人工清单未做，见 §10 各阶段记录） |
+| M14 实战可用收敛 | 进行中（B/D 阶段证据落地；A 为 Linux 部分，C 首版） | M14-B 三后端门禁+A/A 全过（2026-09-24 归档）；M14-C 资源接线/结构化诊断首版；M14-D DataGrid 首版契约 + 第二批 P0 可靠性/列模型 + 第三批双轴几何/列宽拖宽/token 组 + 第四批多列排序/当前格环/表头三态（2026-09-28，设计 §16–18）；M14-A Linux 1h 浸泡+窗口冒烟（跨平台人工清单未做，见 §10 各阶段记录） |
 | 按需控件增强 · 集合控件 | 已完成 List/Tree/TreeList 与共享选择模型 | 四选择模式/树扁平化/源视口滚动框架接管（见 §10 集合控件完成记录） |
 | 按需控件增强 · 菜单与分栏 | 已完成 ContextMenu/MenuBar 与 Splitter | Secondary 通道/M11 overlay 菜单面板/分隔条框架接管（见 §10 对应完成记录） |
 | 按需控件增强 · 自定义标题栏 | 已完成无边框窗口 chrome | customTitleBar/拖拽区谓词/窗口操作宿主服务（见 §10 标题栏完成记录） |
@@ -2080,6 +2080,28 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   用例时间戳回退（tick 为绝对时间）。全量 818/818（Debug）。
 - 已知限制（§17.5）：水平虚拟化、冻结列、RTL、拖放、单元格级焦点环
   与 Grid 专属语义仍为后续增量。
+
+### M14-D 阶段记录：DataGrid 第四批——多列排序/当前格环/表头三态（2026-09-28）
+
+- 提交号：（本变更提交，见 Git 历史 `feat(widgets)`）
+- 依据：`docs/lumen-datagrid-design.md` §18（§11.2/§11.3/§12 落地）。
+- 多列排序：`sortKeys_` 向量状态机（普通点击单列循环 / Shift 追加为
+  最低优先级，升→降→移除、序号连续；多列在位时普通点击收敛单列）；
+  `requestSort(key, extend)` 修饰键透传；`onSortRequest` 单列兼容 +
+  `onSortRequestMulti` 完整状态；setColumns 清失效键。
+- 当前格焦点环：数据格统一格式盒（Container `<cellId>:box`），当前格
+  （current 行 × 列）盒边框承载 focusRing token（§12 内嵌环）；**盒
+  无条件存在**——按状态插拔容器会改变格 identity 致双击配对失效
+  （review 实测发现并以回归用例锁定）。
+- 表头复选框三态：框架 Checkbox `Widget.indeterminate`（声明式）→
+  resolver/painter（accent 填充 + 横线）/语义 value="mixed"；表头
+  全选 = 勾选、部分 = 三态、无可用行 = 未勾选禁用。
+- 测试：datagrid 新增 3 用例（多列状态机 + 指针 Shift 透传、当前格环
+  跟随 + identity 回归、三态 + 语义 value），2 处格结构断言更新为统一
+  格式盒；datagrid 22/22、全量 821/821（Debug）/823/823（Release，含
+  2 项基准完整性用例）。
+- 已知限制（§18.4）：多列优先级角标待 Button 内容通道；水平虚拟化/
+  冻结列/RTL/拖放/Grid 专属语义仍为后续增量。
 
 ### M14-B 阶段记录：性能门槛收口（2026-09-24）
 

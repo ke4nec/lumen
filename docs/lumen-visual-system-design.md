@@ -188,14 +188,15 @@ Tree 的 `indentStep=20`、`chevronHitExtent=24`、`chevronIconSize=16` 来自
 使用 Medium density，桌面触屏或需要更大操作区域时可选择 Large/Touch。应用明确选择 density，
 不能依赖窗口平台类型隐式改变颜色或组件语义。
 
-### 3.3 DataGrid 增强视觉映射（2026-09-28 提案；P0/列模型切片已落地）
+### 3.3 DataGrid 增强视觉映射（2026-09-28 提案；P0/列模型/双轴列宽/多列排序切片已落地）
 
-配套 [DataGrid 增强设计 §10–16](lumen-datagrid-design.md#10-2026-09-28-能力审计与增强提案)
+配套 [DataGrid 增强设计 §10–18](lumen-datagrid-design.md#10-2026-09-28-能力审计与增强提案)
 与 [HTML 交互稿](../design/datagrid.html)。2026-09-28 第二批实现已落地：
 单元格水平内边距（12 = controlPaddingX Medium）、单行省略、数值列右对齐、
-Ghost 按钮表头与选择复选框列（宽 44 常量）。**Theme 仍无 `dataGrid`
-token 组**——控制器当前用 Medium 档常量与 List/TreeList 现行口径一致，
-token 化（含密度派生）在后续切片统一收口。以下映射其余部分为目标态。
+Ghost 按钮表头与选择复选框列（宽 44 常量）。第三批落地 `Theme.dataGrid`
+token 组（headerExtent/selectionColumnWidth/resizeHitWidth 三档 + 双轴横向
+视口 + 列宽手柄）；第四批落地多列排序状态机、当前格内嵌焦点环与表头复选框
+三态。以下映射其余部分为目标态。
 
 | 部件 | 现有语义 / 组件 token 来源 |
 | --- | --- |
@@ -204,7 +205,7 @@ token 化（含密度派生）在后续切片统一收口。以下映射其余�
 | 正文 / 辅助文字 / 禁用 | colors.contentPrimary / contentSecondary / disabledContent |
 | 行分隔 / 冻结边界 | colors.borderDefault / borderStrong，默认 1 logical px；高对比跟随 Theme |
 | 选中标记 | list.selectionMarker / markerWidth / markerInset（3px / 4px） |
-| 当前单元格 | colors.focusRing + metrics.focusRingWidth，显式开启 showFocusRing；内嵌绘制且与行选择独立（**目标态**——当前焦点在行节点） |
+| 当前单元格 | colors.focusRing + metrics.focusRingWidth 内嵌环（**已落地 §18**：current 行 × current 列的格式盒边框承载，与行选择独立；格式盒无条件存在保持格 identity 稳定） |
 | 编辑错误 | textField invalid border（colors.statusError）+ colors.errorContent 错误文字；不挤高固定行（**invalid 边框已落地**；错误浮层为目标态） |
 | 业务状态 | colors.statusSuccess / statusWarning / errorContent，始终配文字或图形 |
 | 排版 | typography.body 14、typography.caption 12；金额/日期使用等宽数字并右对齐（**右对齐已落地**；等宽数字 font feature 为目标态） |
@@ -238,6 +239,12 @@ surface `#27272e`、selected `#2e3c60`、focusRing `#96b9fa`；浅色 surface
 current cell 内绘制焦点环，不在全行每个格同时绘制。冻结区域使用不透明状态背景，
 并通过 borderStrong 区分边界，不能依靠阴影作为唯一提示。错误浮层由覆盖层负责
 视口边界避让，不应被滚动容器裁掉。新增控件实现与验收以 DataGrid §12–15 为准。
+
+**Checkbox 三态（2026-09-28 落地，DataGrid §18 表头全选首用）**：
+`Widget.indeterminate`（声明式，无 bind 通道——集合选择的"部分选中"由控制器
+按选择集重建）→ accent 填充 + 居中横线替代勾号（markInset 同勾号内缩，
+线厚 = 指示器 12% 向上取 1px）；checked 优先（两者同真按全选呈现）。语义
+value="mixed"、不带 checked flag。禁用态沿用 disabledBackground 降级。
 
 ## 4. Theme 模型
 
