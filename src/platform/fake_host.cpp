@@ -339,6 +339,57 @@ ServiceResult FakeApplicationHost::setWindowModal(core::WindowId id,
     return result;
 }
 
+// --- M16：托盘与全局快捷键 ---
+
+ServiceResult FakeApplicationHost::setTray(core::WindowId ownerWindow,
+                                           const TraySetup& tray) {
+    ServiceResult result =
+        trayFailure_.has_value() ? *trayFailure_ : ServiceResult::success();
+    trayCalls.push_back(TrayCall{ownerWindow, tray, result});
+    return result;
+}
+
+void FakeApplicationHost::removeTray() { ++removeTrayCalls; }
+
+ServiceResult FakeApplicationHost::registerGlobalHotkey(
+    core::WindowId ownerWindow, const GlobalHotkeySpec& spec) {
+    ServiceResult result =
+        hotkeyFailure_.has_value() ? *hotkeyFailure_
+                                   : ServiceResult::success();
+    hotkeyCalls.push_back(HotkeyCall{ownerWindow, spec, result});
+    return result;
+}
+
+ServiceResult FakeApplicationHost::unregisterGlobalHotkey(
+    const std::string&) {
+    ++hotkeyUnregisterCalls;
+    return ServiceResult::success();
+}
+
+void FakeApplicationHost::pushTrayActivated(core::WindowId owner,
+                                            std::string command) {
+    core::HostEvent event =
+        makeEvent(core::HostEventType::TrayActivated, owner);
+    event.text = std::move(command);
+    queue_.push_back(std::move(event));
+}
+
+void FakeApplicationHost::pushGlobalHotkey(core::WindowId owner,
+                                           std::string id) {
+    core::HostEvent event =
+        makeEvent(core::HostEventType::GlobalHotkey, owner);
+    event.text = std::move(id);
+    queue_.push_back(std::move(event));
+}
+
+void FakeApplicationHost::setTrayFailure(ServiceResult failure) {
+    trayFailure_ = std::move(failure);
+}
+
+void FakeApplicationHost::setHotkeyFailure(ServiceResult failure) {
+    hotkeyFailure_ = std::move(failure);
+}
+
 void FakeApplicationHost::requestWindowClose(core::WindowId id) {    windowCommandCalls.push_back("close");
     // 与 SDL host 同语义：合成 WindowCloseRequested 事件（应用侧
     // requestClose 统一拦截规则）；无效 id 挂靠首个窗口。

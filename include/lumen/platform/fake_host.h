@@ -127,6 +127,15 @@ class FakeApplicationHost final : public ApplicationHost {
     void setAlwaysOnTop(core::WindowId id, bool onTop) override;
     [[nodiscard]] ServiceResult setWindowModal(core::WindowId id,
                                                core::WindowId parent) override;
+    // --- M16：托盘与全局快捷键（记录 + 失败注入 + 事件注入） ---
+    [[nodiscard]] ServiceResult setTray(core::WindowId ownerWindow,
+                                        const TraySetup& tray) override;
+    void removeTray() override;
+    [[nodiscard]] ServiceResult registerGlobalHotkey(
+        core::WindowId ownerWindow,
+        const GlobalHotkeySpec& spec) override;
+    [[nodiscard]] ServiceResult unregisterGlobalHotkey(
+        const std::string& id) override;
     // M13：记录型 raise（AT 抓焦点链路断言）。
     void raiseWindow(core::WindowId id) override;
     void setWindowDragRegion(
@@ -162,6 +171,10 @@ class FakeApplicationHost final : public ApplicationHost {
     void pushSystemThemeChanged(bool prefersDarkMode);
     void pushSystemAccessibilityChanged(bool highContrast, bool reduceAnimation,
                                         float fontScale);
+    // M16：托盘/全局快捷键事件注入（TrayActivated.text = 菜单项
+    // command、GlobalHotkey.text = 快捷键 id）。
+    void pushTrayActivated(core::WindowId owner, std::string command);
+    void pushGlobalHotkey(core::WindowId owner, std::string id);
     // M15：OS 拖入会话事件注入（DragEnter/Move/Leave 只带位置；Drop 携带
     // 文本或文件负载——与宿主翻译后的归一化字段一致）。
     void pushDragEnter(core::WindowId id, core::Offset position);
@@ -205,6 +218,9 @@ class FakeApplicationHost final : public ApplicationHost {
     void setIconFailure(ServiceResult failure);
     // M15：注入拖出失败；空 = 成功。
     void setDragStartFailure(ServiceResult failure);
+    // M16：注入托盘/快捷键失败；空 = 成功。
+    void setTrayFailure(ServiceResult failure);
+    void setHotkeyFailure(ServiceResult failure);
 
     // 记录（断言用）。
     struct OpenUrlCall {
@@ -253,6 +269,23 @@ class FakeApplicationHost final : public ApplicationHost {
         bool operator==(const ModalCall&) const = default;
     };
     std::vector<ModalCall> modalCalls{};
+    // M16：托盘/快捷键记录。
+    struct TrayCall {
+        core::WindowId window{};
+        TraySetup setup{};
+        ServiceResult result{};
+        bool operator==(const TrayCall&) const = default;
+    };
+    std::vector<TrayCall> trayCalls{};
+    int removeTrayCalls{0};
+    struct HotkeyCall {
+        core::WindowId window{};
+        GlobalHotkeySpec spec{};
+        ServiceResult result{};
+        bool operator==(const HotkeyCall&) const = default;
+    };
+    std::vector<HotkeyCall> hotkeyCalls{};
+    int hotkeyUnregisterCalls{0};
 
   private:
     struct WindowEntry {
@@ -283,6 +316,8 @@ class FakeApplicationHost final : public ApplicationHost {
     std::optional<ServiceResult> notificationFailure_{};
     std::optional<ServiceResult> iconFailure_{};
     std::optional<ServiceResult> dragStartFailure_{};
+    std::optional<ServiceResult> trayFailure_{};
+    std::optional<ServiceResult> hotkeyFailure_{};
 };
 
 }  // namespace lumen::platform

@@ -4,6 +4,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -66,6 +67,15 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     void setAlwaysOnTop(core::WindowId id, bool onTop) override;
     [[nodiscard]] ServiceResult setWindowModal(core::WindowId id,
                                                core::WindowId parent) override;
+    // --- M16：系统托盘（SDL_tray）与全局快捷键（契约降级） ---
+    [[nodiscard]] ServiceResult setTray(core::WindowId ownerWindow,
+                                        const TraySetup& tray) override;
+    void removeTray() override;
+    [[nodiscard]] ServiceResult registerGlobalHotkey(
+        core::WindowId ownerWindow,
+        const GlobalHotkeySpec& spec) override;
+    [[nodiscard]] ServiceResult unregisterGlobalHotkey(
+        const std::string& id) override;
 
     // --- 自定义标题栏（lumen-titlebar-design §4.3） ---
     void minimizeWindow(core::WindowId id) override;
@@ -80,6 +90,10 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     // --- M13：原生无障碍桥装配 ---
     [[nodiscard]] void* nativeWindowHandle(core::WindowId id) const override;
     void noteAccessibilityBridgeActive(bool active) override;
+
+    // 托盘回调入队（.cpp 内 SDL 签名回调经此转交；无 SDL 类型）。
+    void noteTrayActivation(core::WindowId window,
+                            const std::string& command);
 
   private:
     class Sdl3Clipboard;
@@ -107,6 +121,16 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     static void dialogCallback(void* userdata, const char* const* filelist,
                                int filter);
 
+    // M16：托盘。SDL_tray 回调可能非 UI 线程并发——经互斥队列暂存，
+    // pollEvent 转 TrayActivated（PendingDialog 同模式）。tray_ 为
+    // SDL_Tray* 不透明指针（SDL 类型不出公共头）；回调实现（SDL 类型
+    // 签名）留在 .cpp 内部。
+    struct PendingTrayActivation {
+        core::WindowId window{};
+        std::string command{};
+    };
+    void destroyTray();
+
     [[nodiscard]] WindowEntry* find(core::WindowId id);
     // 把单个 SDL 事件翻译为 0..n 条归一化事件；返回入队条数。
     std::size_t translateEvent(void* sdlEvent,
@@ -125,6 +149,10 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     std::unique_ptr<native::AccessibilityPreferenceMonitor> accessibilityPreferences_{};
     // M4：进行中的文件对话框（至多几个；完成后移除）。
     std::vector<std::unique_ptr<PendingDialog>> dialogs_{};
+    // M16：系统托盘（SDL_Tray* 不透明；空 = 未安装）与激活暂存。
+    void* tray_{nullptr};
+    std::mutex trayMutex_{};
+    std::deque<PendingTrayActivation> trayPending_{};
 };
 
 }  // namespace lumen::platform

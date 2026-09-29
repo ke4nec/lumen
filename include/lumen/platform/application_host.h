@@ -207,8 +207,39 @@ struct PlatformCapabilities {
     bool windowFullscreen{false};
     bool windowAlwaysOnTop{false};
     bool windowModal{false};
+    // M16：系统托盘（SDL_tray，三桌面）。globalHotkeys = 系统级快捷键
+    // 注册（当前固定无平台后端——契约/结构化降级就绪，Win32/X11/macOS
+    // seam 为后续增量；窗口内命令分发属命令注册表，不在此位）。
+    bool systemTray{false};
+    bool globalHotkeys{false};
     // 至少一项 OS 偏好已查询成功；个别未暴露的字段保留安全默认值。
     bool systemAccessibilityPreferences{false};
+};
+
+// --- M16：系统托盘与全局快捷键（SDL_tray 跨平台；激活经 TrayActivated/
+// GlobalHotkey 事件回灌） ---
+
+struct TrayMenuItem {
+    std::string label{};
+    // 激活回灌 TrayActivated.text；空 = 不回灌（纯展示项）。
+    std::string command{};
+    // SDL 3.2.10 无 separator 条目——以禁用 "-" 近似（视觉分隔）。
+    bool separator{false};
+};
+
+struct TraySetup {
+    // straight RGBA8；空 = 平台默认图标。
+    WindowIcon icon{};
+    std::string tooltip{};
+    std::vector<TrayMenuItem> menu{};
+};
+
+struct GlobalHotkeySpec {
+    // 回灌标识（GlobalHotkey.text）。
+    std::string id{};
+    // core::KeyModifierBits 组合 + 归一化逻辑键。
+    std::uint32_t modifiers{0};
+    core::Key key{core::Key::None};
 };
 
 class ApplicationHost {
@@ -283,6 +314,22 @@ class ApplicationHost {
     // 结构化 Failed；成功返回 success。
     [[nodiscard]] virtual ServiceResult setWindowModal(
         core::WindowId id, core::WindowId parent);
+
+    // --- M16：系统托盘（SDL_tray 跨平台；激活经 TrayActivated 回灌） ---
+    // 安装/整体替换托盘（TraySetup 类型在命名空间作用域，M4 服务同口径）。
+    // 默认 Unavailable（契约 host 安全降级）。
+    [[nodiscard]] virtual ServiceResult setTray(core::WindowId ownerWindow,
+                                                const TraySetup& tray);
+    // 撤除托盘（未安装时安全 no-op）。
+    virtual void removeTray();
+
+    // --- M16：系统级全局快捷键（窗口外生效；GlobalHotkeySpec 见命名空间
+    // 作用域）。默认 Unavailable——当前无平台后端（SDL 3.2.10 无 API；
+    // Win32/X11/macOS seam 后续增量）。 ---
+    [[nodiscard]] virtual ServiceResult registerGlobalHotkey(
+        core::WindowId ownerWindow, const GlobalHotkeySpec& spec);
+    [[nodiscard]] virtual ServiceResult unregisterGlobalHotkey(
+        const std::string& id);
 
     // --- 自定义标题栏（lumen-titlebar-design §4.3）：窗口操作与拖拽区 ---
     // 默认实现安全 no-op（契约 host/未支持平台结构化降级）；无效窗口 id

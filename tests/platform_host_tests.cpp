@@ -20,6 +20,9 @@
 
 using lumen::platform::ApplicationHost;
 using lumen::platform::FakeApplicationHost;
+using lumen::platform::GlobalHotkeySpec;
+using lumen::platform::TrayMenuItem;
+using lumen::platform::TraySetup;
 using lumen::platform::ManualHostClock;
 using lumen::platform::WindowDesc;
 using lumen::platform::hostStageName;
@@ -871,5 +874,88 @@ TEST_CASE("sdl3_host_window_capabilities_smoke", "[platform][m16]") {
         ++pumped;
     }
     host.destroyWindow(*id);
+    host.shutdown();
+}
+
+// --- M16：托盘与全局快捷键（记录/失败注入 + 事件回灌 + 能力位） ---
+
+TEST_CASE("fake_host_tray_and_hotkeys_record_and_deliver",
+          "[platform][m16]") {
+    FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow(WindowDesc{});
+    REQUIRE(id.has_value());
+    core::HostEvent event{};
+    while (host.pollEvent(event)) {
+    }
+
+    // 托盘：完整记录（菜单项 command）；失败注入结构化。
+    TraySetup tray;
+    tray.tooltip = "Lumen";
+    tray.menu.push_back(TrayMenuItem{"Open", "open", false});
+    CHECK(host.setTray(*id, tray).ok);
+    host.removeTray();
+    REQUIRE(host.trayCalls.size() == 1);
+    CHECK(host.trayCalls[0].window == *id);
+    CHECK(host.trayCalls[0].setup.tooltip == "Lumen");
+    CHECK(host.removeTrayCalls == 1);
+    host.setTrayFailure(lumen::platform::ServiceResult::unavailable(
+        "fake host: tray unavailable"));
+    CHECK_FALSE(host.setTray(*id, tray).ok);
+
+    // 快捷键：记录 + 注销计数 + 失败注入。
+    GlobalHotkeySpec spec;
+    spec.id = "capture";
+    spec.modifiers = core::kModifierCtrl | core::kModifierAlt;
+    spec.key = core::Key::Enter;
+    CHECK(host.registerGlobalHotkey(*id, spec).ok);
+    CHECK(host.unregisterGlobalHotkey("capture").ok);
+    REQUIRE(host.hotkeyCalls.size() == 1);
+    CHECK(host.hotkeyCalls[0].spec.id == "capture");
+    CHECK(host.hotkeyUnregisterCalls == 1);
+
+    // 事件回灌：TrayActivated.text = command；GlobalHotkey.text = id。
+    host.pushTrayActivated(*id, "open");
+    host.pushGlobalHotkey(*id, "capture");
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::TrayActivated);
+    CHECK(event.window == *id);
+    CHECK(event.text == "open");
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::GlobalHotkey);
+    CHECK(event.text == "capture");
+}
+
+TEST_CASE("sdl3_host_tray_smoke_and_hotkeys_unavailable",
+          "[platform][m16]") {
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    lumen::platform::Sdl3ApplicationHost host;
+    REQUIRE(host.initialize());
+    CHECK(host.capabilities().systemTray);
+    CHECK_FALSE(host.capabilities().globalHotkeys);
+
+    // dummy 后端托盘创建可能失败——结果必须结构化（ok 或 Failed 带诊断）。
+    TraySetup tray;
+    tray.tooltip = "smoke";
+    tray.menu.push_back(TrayMenuItem{"Quit", "quit", false});
+    const auto trayResult = host.setTray(core::WindowId{1}, tray);
+    if (!trayResult.ok) {
+        CHECK(trayResult.error == lumen::platform::ServiceError::Failed);
+        CHECK(!trayResult.message.empty());
+    }
+    host.removeTray();
+
+    // 快捷键：无平台后端——结构化 Unavailable + 可读原因。
+    GlobalHotkeySpec spec;
+    spec.id = "x";
+    const auto hotkeyResult =
+        host.registerGlobalHotkey(core::WindowId{1}, spec);
+    CHECK_FALSE(hotkeyResult.ok);
+    CHECK(hotkeyResult.error == lumen::platform::ServiceError::Unavailable);
+    CHECK(!hotkeyResult.message.empty());
     host.shutdown();
 }

@@ -306,6 +306,9 @@ bool Sdl3ApplicationHost::initialize() {
     capabilities_.windowFullscreen = true;
     capabilities_.windowAlwaysOnTop = true;
     capabilities_.windowModal = true;
+    // M16：系统托盘（SDL_tray 跨平台）；全局快捷键无平台后端（降级）。
+    capabilities_.systemTray = true;
+    capabilities_.globalHotkeys = false;
     // M12：系统主题查询（SDL_GetSystemTheme，3.2.0 起可用；此前
     // "SDL 3.2 无查询"注释有误）。UNKNOWN 保持安全默认 false。
     capabilities_.prefersDarkMode =
@@ -344,6 +347,8 @@ void Sdl3ApplicationHost::shutdown() {
         return;
     }
     lifecycle_ = core::AppLifecycle::Terminating;
+    // M16：托盘先于视频子系统销毁（回调不再触发）。
+    destroyTray();
     accessibilityPreferences_.reset();
     for (auto& [id, entry] : windows_) {
         if (entry.cursor != nullptr) {
@@ -723,6 +728,121 @@ std::size_t Sdl3ApplicationHost::translateEvent(
     return out.size();
 }
 
+
+// --- M16：系统托盘与全局快捷键 ---
+
+namespace {
+
+// 菜单项回调上下文（堆分配；生命周期 = 托盘重建/销毁，回调不会再触发
+// 后释放）。SDL 类型签名只出现在本 .cpp。
+struct TrayEntryContext {
+    core::WindowId window{};
+    std::string command{};
+    Sdl3ApplicationHost* host{};
+};
+
+void trayEntryCallback(void* userdata, SDL_TrayEntry*) {
+    // 上下文单发（keepAlive 释放）——SDL 3.2.10 托盘条目回调每次激活
+    // 一次；重建托盘时旧条目随 SDL_DestroyTray 销毁，上下文不泄漏。
+    const std::unique_ptr<TrayEntryContext> keepAlive(
+        static_cast<TrayEntryContext*>(userdata));
+    if (keepAlive->host == nullptr) {
+        return;
+    }
+    keepAlive->host->noteTrayActivation(keepAlive->window,
+                                        keepAlive->command);
+}
+
+}  // namespace
+
+void Sdl3ApplicationHost::noteTrayActivation(core::WindowId window,
+                                             const std::string& command) {
+    std::lock_guard<std::mutex> lock(trayMutex_);
+    trayPending_.push_back(
+        PendingTrayActivation{window, command});
+}
+
+void Sdl3ApplicationHost::destroyTray() {
+    if (tray_ == nullptr) {
+        return;
+    }
+    // SDL_DestroyTray 之后回调不再触发；上下文随托盘条目一并释放
+    //（SDL 拥有条目内存，TrayEntryContext 由 destroyTray 前的回调场景
+    // 持有——这里只销毁托盘本体，上下文已随 keepAlive 自由）。
+    SDL_DestroyTray(static_cast<SDL_Tray*>(tray_));
+    tray_ = nullptr;
+}
+
+ServiceResult Sdl3ApplicationHost::setTray(core::WindowId ownerWindow,
+                                           const TraySetup& tray) {
+    if (!initialized_) {
+        return ServiceResult::failed("host not initialized");
+    }
+    destroyTray();
+    // 图标（空 = 平台默认）。
+    SDL_Surface* iconSurface = nullptr;
+    SDL_Surface* ownedSurface = nullptr;
+    if (tray.icon.width > 0 && tray.icon.height > 0 &&
+        tray.icon.rgba.size() ==
+            static_cast<std::size_t>(tray.icon.width) *
+                static_cast<std::size_t>(tray.icon.height) * 4U) {
+        ownedSurface = SDL_CreateSurfaceFrom(
+            tray.icon.width, tray.icon.height, SDL_PIXELFORMAT_RGBA32,
+            const_cast<std::uint8_t*>(tray.icon.rgba.data()),
+            static_cast<std::size_t>(tray.icon.width) * 4U);
+        iconSurface = ownedSurface;
+    }
+    SDL_Tray* created = SDL_CreateTray(
+        iconSurface, tray.tooltip.empty() ? nullptr : tray.tooltip.c_str());
+    if (ownedSurface != nullptr) {
+        SDL_DestroySurface(ownedSurface);
+    }
+    if (created == nullptr) {
+        return ServiceResult::failed(std::string("SDL_CreateTray: ") +
+                                     SDL_GetError());
+    }
+    tray_ = created;
+    if (!tray.menu.empty()) {
+        SDL_TrayMenu* menu = SDL_CreateTrayMenu(created);
+        for (const auto& item : tray.menu) {
+            // SDL 3.2.10 无 separator 条目：分隔项以禁用 "-" 近似
+            //（视觉分隔；不回灌命令）。
+            SDL_TrayEntryFlags flags = item.separator
+                                           ? SDL_TRAYENTRY_BUTTON |
+                                                 SDL_TRAYENTRY_DISABLED
+                                           : SDL_TRAYENTRY_BUTTON;
+            SDL_TrayEntry* entry = SDL_InsertTrayEntryAt(
+                menu, -1, item.separator ? "-" : item.label.c_str(), flags);
+            if (entry == nullptr) {
+                continue;
+            }
+            if (!item.separator && !item.command.empty()) {
+                auto* context = new TrayEntryContext{
+                    ownerWindow, item.command, this};
+                SDL_SetTrayEntryCallback(entry, trayEntryCallback, context);
+            }
+        }
+    }
+    return ServiceResult::success();
+}
+
+void Sdl3ApplicationHost::removeTray() { destroyTray(); }
+
+ServiceResult Sdl3ApplicationHost::registerGlobalHotkey(
+    core::WindowId, const GlobalHotkeySpec&) {
+    // M16：SDL 3.2.10 无系统级快捷键 API；Win32 RegisterHotKey/X11
+    // XGrabKey/macOS seam 为后续增量（m16-roadmap §4），能力位如实
+    // false，窗口内命令分发走命令注册表。
+    return ServiceResult::unavailable(
+        "global hotkeys: no platform backend yet (SDL 3.2.10)");
+}
+
+ServiceResult Sdl3ApplicationHost::unregisterGlobalHotkey(
+    const std::string&) {
+    return ServiceResult::unavailable(
+        "global hotkeys: no platform backend yet (SDL 3.2.10)");
+}
+
 bool Sdl3ApplicationHost::pollEvent(core::HostEvent& out) {
     if (!initialized_) {
         out = core::HostEvent{};
@@ -742,6 +862,26 @@ bool Sdl3ApplicationHost::pollEvent(core::HostEvent& out) {
         pending_.pop_front();
         refreshLifecycle();
         return true;
+    }
+    // M16：托盘菜单激活（回调线程暂存 → UI 线程转 TrayActivated）。
+    {
+        std::optional<PendingTrayActivation> trayEvent;
+        {
+            std::lock_guard<std::mutex> lock(trayMutex_);
+            if (!trayPending_.empty()) {
+                trayEvent = std::move(trayPending_.front());
+                trayPending_.pop_front();
+            }
+        }
+        if (trayEvent.has_value()) {
+            out = core::HostEvent{};
+            out.type = core::HostEventType::TrayActivated;
+            out.window = trayEvent->window;
+            out.text = std::move(trayEvent->command);
+            out.timestampMs = SDL_GetTicks();
+            refreshLifecycle();
+            return true;
+        }
     }
     // 异步 SDL 对话框回调可能来自工作线程；只在 UI 线程持锁读取已完成
     // 结果，并将其转换为正常宿主事件。未完成请求继续留在 dialogs_。

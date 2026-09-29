@@ -51,6 +51,27 @@ ServiceResult ApplicationHost::setWindowModal(core::WindowId,
         "window modality not supported by this host");
 }
 
+// --- M16：系统托盘与全局快捷键（默认结构化降级） ---
+
+ServiceResult ApplicationHost::setTray(core::WindowId,
+                                       const TraySetup&) {
+    return ServiceResult::unavailable(
+        "system tray not supported by this host");
+}
+
+void ApplicationHost::removeTray() {}
+
+ServiceResult ApplicationHost::registerGlobalHotkey(
+    core::WindowId, const GlobalHotkeySpec&) {
+    return ServiceResult::unavailable(
+        "global hotkeys not supported by this host");
+}
+
+ServiceResult ApplicationHost::unregisterGlobalHotkey(const std::string&) {
+    return ServiceResult::unavailable(
+        "global hotkeys not supported by this host");
+}
+
 // --- 自定义标题栏（lumen-titlebar-design §4.3）：默认安全 no-op ---
 
 void ApplicationHost::minimizeWindow(core::WindowId) {}

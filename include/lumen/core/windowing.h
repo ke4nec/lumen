@@ -158,6 +158,12 @@ enum class HostEventType : std::uint8_t {
     DragMove,
     DragDrop,
     DragLeave,
+    // M16：托盘菜单项激活（text = 菜单项 command，空 = 托盘裸点击；
+    // window = setTray 登记的归属窗口）。
+    TrayActivated,
+    // M16：系统级全局快捷键触发（text = 快捷键 id；window = 注册时归属
+    // 窗口）。窗口内命令分发不经此事件（属命令注册表）。
+    GlobalHotkey,
 };
 
 struct HostEvent {
