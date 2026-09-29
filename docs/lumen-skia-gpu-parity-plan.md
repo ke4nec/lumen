@@ -93,6 +93,22 @@ cpu_renderer.cpp 快照 :1154-1166)。这注释描述的缺陷正是 GPU 后端�
 > 只用 `save/translate/rotate/drawRRect` 填充——Apple GL 上已验证的
 > 原语集。下方不变量 1/2/4(原点对齐、坐标映射、防御 guard)逐字保留,
 > 不变量 3 的圆帽/圆连接语义由胶囊几何等价实现。
+>
+> **2026-09-29 review 追记**:首版胶囊有两处缺陷并已修复。(1) 几何:
+> 胶囊 rect 取 `[-L/2, L/2]` 而 SkRRect 完全含于 rect——圆帽被吃进
+> 段内而非伸出端点半线宽,等价于对两端各内缩 half 的子线段描边;折线
+> 顶点外缘覆盖仅 `2h·sin(φ/2)`(24 段圆弧 @2× 约 20% 半宽,弧线呈
+> 串珠状),段长 < 2h 时 setRectXY 还会均匀缩放 radii 使短段塌成透镜。
+> 修正为 `[-L/2-h, L/2+h]`(宽 L+2h ≥ 2h 恒不触发缩放)。(2) 合成:
+> 逐段独立 drawRRect 在交叠区双重合成(半透明墨色下折点比线身深——
+> CPU 是 max-coverage 单次混合);修正为整图标全部胶囊轮廓(同向,
+> addRRect 默认 kCW)并入同一条 SkPath、一次 drawPath,nonzero 绕数
+> 下重叠区取并集覆盖,单次混合同 CPU 口径——Apple GL 失败的是描边,
+> 填充路径已验证可用。同批对齐 CPU 的潜伏分歧:线宽下限
+> `max(0.5F, w·scale·0.5F)`(strokeWidth=0 时 GPU 不再静默为空)、
+> 零长段画半径 half 圆点。注:既有冒烟锚点为"与背景差 >20"的存在性
+> 判定,首版缺陷恰好落其盲区(90° 折角不受影响、弧线中心线墨量仍在)——
+> 建议后续补 CPU/GPU 全帧墨量分布对比锚。
 
 1. **原点设备对齐**:`box.origin.x = lround(box.origin.x * scale) / scale`
    (y 同式)。这是与 `CpuRenderer::drawIcon`(cpu_renderer.cpp 快照

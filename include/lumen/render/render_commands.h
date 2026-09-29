@@ -71,8 +71,9 @@ struct RenderCommand {
     core::Rect bounds{};
     bool hasBounds{false};
     // M6：DrawIcon —— 归一化折线组（0..1 盒内坐标）+ 线宽；颜色复用
-    // color，盒子复用 rect。DrawShadow —— 偏移/模糊半径复用 rect.origin
-    //（offset）/ rect.size.width（blur）；颜色复用 color。
+    // color，盒子复用 rect。DrawShadow —— 偏移编码于 transform.tx/ty、
+    // 模糊半径复用 strokeWidth（与 drawShadow builder/CPU/GPU 回放同
+    // 口径；不要把 transform 当几何变换消费）；颜色复用 color。
     std::vector<std::vector<core::Offset>> polylines{};
     float strokeWidth{1.5F};
 

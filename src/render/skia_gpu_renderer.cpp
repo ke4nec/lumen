@@ -529,13 +529,16 @@ class SkiaGpuRenderer final : public Renderer {
     }
 
     // GPU 平价（lumen-skia-gpu-parity-plan §3.1）：矢量图标命令回放。
-    // 实现为逐段"胶囊"（沿段的填充圆角矩形，半径 = 半线宽，天然圆帽；
-    // 相邻段共享端点的圆帽重叠即圆角连接）——不用 SkPath 描边：Apple
-    // 软件 GL 上 Ganesh 对凹折线路径的描边静默为空（2026-09-28 CI 实测
-    // 墨量为 0，而填充/圆角矩形/模糊均正常），llvmpipe 无法在本地暴露。
-    // 原点设备对齐（lround）与 CpuRenderer/SkiaRenderer::drawIcon 同式
-    // ——逻辑居中的半像素原点不对齐则描边虚散；归一化折线 × 盒尺寸
-    // → 设备像素。
+    // 实现为填充胶囊并集（圆角矩形沿段外伸半线宽，半径 = 半线宽——
+    // 圆帽落在真实端点上，相邻段端点帽盘重叠即圆角连接）——不用
+    // SkPath 描边：Apple 软件 GL 上 Ganesh 对凹折线路径的描边静默为空
+    //（2026-09-28 CI 实测墨量为 0，而填充/圆角矩形/模糊均正常），
+    // llvmpipe 无法在本地暴露。全部胶囊轮廓（同向）并入同一条
+    // SkPath、整图标一次 drawPath：nonzero 绕数下重叠区取并集覆盖，
+    // 半透明墨色（转场 transitionAlpha）折点不双重合成——与 CPU 的
+    // max-coverage 单次混合同口径（此前逐段 drawRRect 各自合成，交叠
+    // 处 alpha 叠加加深）。原点设备对齐（lround）与 CpuRenderer/
+    // SkiaRenderer::drawIcon 同式；线宽下限与零长段圆点同 CPU 口径。
     void paintIcon(SkCanvas* canvas,
                    const std::vector<std::vector<core::Offset>>& polylines,
                    core::Rect box, core::Color color, float strokeWidth) {
@@ -548,14 +551,15 @@ class SkiaGpuRenderer final : public Renderer {
             std::lround(box.origin.x * scale) / scale);
         box.origin.y = static_cast<float>(
             std::lround(box.origin.y * scale) / scale);
-        const float half = strokeWidth * scale * 0.5F;
-        if (half <= 0.0F) {
-            return;
-        }
+        // 线宽以设备像素计，至少覆盖 1px（cpu_renderer::drawIcon 同式；
+        // strokeWidth=0 时 CPU 画 1px 线，GPU 不得静默为空）。
+        const float half = std::max(0.5F, strokeWidth * scale * 0.5F);
         SkPaint ink;
         ink.setStyle(SkPaint::kFill_Style);
         ink.setAntiAlias(true);
         ink.setColor(toSkColor(color));
+        SkPath unioned;
+        SkPath capsule;
         for (const auto& polyline : polylines) {
             for (std::size_t i = 0; i + 1 < polyline.size(); ++i) {
                 const float x0 =
@@ -570,20 +574,32 @@ class SkiaGpuRenderer final : public Renderer {
                 const float dy = y1 - y0;
                 const float length = std::sqrt(dx * dx + dy * dy);
                 if (length <= 0.0F) {
+                    // 零长段：CPU 距离场在 t=0 处画半径 half 的圆点。
+                    unioned.addCircle(x0, y0, half);
                     continue;
                 }
-                canvas->save();
-                canvas->translate((x0 + x1) * 0.5F, (y0 + y1) * 0.5F);
-                canvas->rotate(
+                SkMatrix matrix = SkMatrix::MakeTrans((x0 + x1) * 0.5F,
+                                                      (y0 + y1) * 0.5F);
+                SkMatrix rotation;
+                rotation.setRotate(
                     std::atan2(dy, dx) * 180.0F / 3.14159265F);
+                matrix.postConcat(rotation);
+                // 胶囊按半线宽外伸：SkRRect 完全含于 rect，不外伸则圆帽
+                // 被吃进段内（顶点只剩相切，弧线呈串珠状；短段还会触发
+                // radii 均匀缩放塌陷）；L+2h ≥ 2h 恒不触发缩放。
+                capsule.reset();
                 const SkRect segment =
-                    SkRect::MakeLTRB(-length * 0.5F, -half,
-                                     length * 0.5F, half);
-                SkRRect capsule;
-                capsule.setRectXY(segment, half, half);
-                canvas->drawRRect(capsule, ink);
-                canvas->restore();
+                    SkRect::MakeLTRB(-length * 0.5F - half, -half,
+                                     length * 0.5F + half, half);
+                SkRRect rounded;
+                rounded.setRectXY(segment, half, half);
+                capsule.addRRect(rounded);
+                unioned.addPath(capsule, matrix,
+                                SkPath::AddPathMode::kAppend_AddPathMode);
             }
+        }
+        if (!unioned.isEmpty()) {
+            canvas->drawPath(unioned, ink);
         }
     }
 
