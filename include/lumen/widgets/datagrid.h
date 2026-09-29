@@ -360,6 +360,10 @@ class DataGridController final : public core::VirtualListSource {
         void stepBy(float deltaPx) const override;
         void stepToEdge(bool maxEdge) const override;
         void reset() const override;
+        // 轨道线覆写（§12/设计稿 resizer）：静止透明（默认不加竖线）、
+        // 激活 2px（splitter 分隔条默认 1/3px 不适用于网格手柄）。
+        [[nodiscard]] float restTrackWidth() const override { return 0.0F; }
+        [[nodiscard]] float activeTrackWidth() const override { return 2.0F; }
     };
 
     [[nodiscard]] std::string keyOf(std::size_t index) const;
@@ -431,6 +435,8 @@ class DataGridController final : public core::VirtualListSource {
     [[nodiscard]] float headerExtentPx() const;
     [[nodiscard]] float selectionColumnWidthPx() const;
     [[nodiscard]] float resizeHitWidthPx() const;
+    // 格内水平内边距（§12：metrics.controlPaddingX 密度档 8/12/16）。
+    [[nodiscard]] float cellPaddingXPx() const;
     // 内容总宽 = 选择列 + Σ可见列宽；行/表头/List 同源（对齐不变式）。
     // 内容窄于视口时取视口宽（行背景铺满视口；视口宽经源接缝跟踪）。
     [[nodiscard]] float gridWidth() const;

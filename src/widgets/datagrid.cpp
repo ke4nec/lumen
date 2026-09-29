@@ -28,11 +28,6 @@
 namespace lumen::widgets {
 namespace {
 constexpr float kMinColumnWidth = 40.0F;
-// 视觉系统 §3.3（Medium 档）：格水平内边距取 metrics.controlPaddingX
-// 同值（collection_common kRowPaddingX = 12）。
-constexpr float kCellPaddingX = detail::kRowPaddingX;
-// 表头非排序列的辅助文字色（TreeList 表头同口径）。
-constexpr core::Color kHeaderSecondary{140, 140, 152, 255};
 
 std::string escapeTsvCell(const std::string& text) {
     std::string out;
@@ -47,14 +42,22 @@ std::string escapeTsvCell(const std::string& text) {
     return out;
 }
 
-// 单行省略的单元格文本样式（§12：长内容单行省略）。
-core::TextStyle cellTextStyle(core::Color color = {}) {
+// 单行省略的单元格文本样式（§12：长内容单行省略）。颜色不设——数据格
+// 文字继承集合行前景 token（materializeVirtualRows 的行前景继承）。
+core::TextStyle cellTextStyle() {
     core::TextStyle style;
     style.maxLines = 1;
     style.overflow = core::TextOverflow::Ellipsis;
-    if (color.a != 0) {
-        style.color = color;
-    }
+    return style;
+}
+
+// 表头文字样式（§12/设计稿 th）：caption 档 + contentSecondary——静态
+// 列头与可排序列头同色（token 派生，随主题/高对比），单行省略。
+core::TextStyle headerTextStyle(const style::Theme& theme) {
+    core::TextStyle style = theme.typography.caption;
+    style.color = theme.colors.contentSecondary;
+    style.maxLines = 1;
+    style.overflow = core::TextOverflow::Ellipsis;
     return style;
 }
 }  // namespace
@@ -486,7 +489,9 @@ void DataGridController::setEmptyBuilder(
 
 core::Widget DataGridController::buildRegionHeader(bool frozen) const {
     const float headerExtent = headerExtentPx();
-    const float handleWidth = resizeHitWidthPx();
+    const style::Theme& theme =
+        shell_ != nullptr ? shell_->theme() : style::Theme::dark();
+    const core::TextStyle headerText = headerTextStyle(theme);
     std::vector<core::Widget> headerCells;
     if (frozen && selection_.mode() != SelectionMode::None) {
         headerCells.push_back(buildHeaderCheckCell());
@@ -504,17 +509,19 @@ core::Widget DataGridController::buildRegionHeader(bool frozen) const {
             continue;
         }
         if (!frozen) {
-            // 窗口外的滚动区列跳过（物化窗口，§19 T6.2）。
-            if (scrollAt < windowFirst || scrollAt >= windowEnd) {
-                ++scrollAt;
+            // 窗口序号 = 滚动区列序，物化与否都推进——非可调整列不推进
+            // 会让后续列的窗口判定错位（review 复测发现）。
+            const std::size_t at = scrollAt++;
+            if (at < windowFirst || at >= windowEnd) {
                 continue;
             }
         }
-        // 表头（TreeList 同口径）：可排序列 = Ghost 按钮（hover chrome +
-        // 排序指示图标）；其余 = 辅助色静态文本。可调整列右缘带列宽手柄
-        //（§17，splitter 通道）；手柄带宽计入列宽预算（内容 = 列宽 −
-        // 手柄带宽，与数据格列边界对齐保持不变式）。数值列内容右对齐待
-        // Button 内容对齐扩展（设计文档 §16 已知限制）。
+        // 表头（§12/设计稿 th）：文字统一 caption 档 + contentSecondary
+        //（静态列头与可排序列头同色；可排序列 = Ghost 按钮，默认
+        // accentContent 前景留给排序指示图标——文字经 styleOverrides.text
+        // 覆写）。可调整列右缘叠放列宽手柄（§17 splitter 通道）：Stack
+        // TopRight 叠放，文字用满列宽——手柄带宽不再从文字预算扣走
+        //（设计稿 resizer 骑缝叠放口径）。
         const bool hasHandle = column.resizable;
         core::Widget cell;
         const auto sortAt = std::find_if(
@@ -527,6 +534,7 @@ core::Widget DataGridController::buildRegionHeader(bool frozen) const {
             cell.onClick = "grid:" + owner_ + ":sort:" + column.key;
             cell.key = owner_ + ":head:" + column.key;
             cell.alignContentStart = true;
+            cell.styleOverrides.text = headerText;
             if (sorted) {
                 // 多列优先级数字标记待 Button 内容通道扩展（§18 已知
                 // 限制）；方向 chevron 与单列同形。
@@ -534,29 +542,36 @@ core::Widget DataGridController::buildRegionHeader(bool frozen) const {
                                               : core::IconId::ChevronDown;
             }
         } else {
-            cell = core::makeText(column.header, cellTextStyle(kHeaderSecondary));
-            cell.listPart = core::ListPart::Row;  // 表头行样式口径
+            cell = core::makeText(column.header, headerText);
+            cell.key = owner_ + ":head:" + column.key;
+            // 静态列头自带格内边距（Button 按钮 token padding 对齐；
+            // Text 无 chrome，需显式补——表头文字与数据格文字同缘）。
+            cell.padding =
+                core::EdgeInsets::symmetric(cellPaddingXPx(), 0.0F);
         }
-        cell.width = hasHandle ? column.width - handleWidth : column.width;
+        cell.width = column.width;
         cell.height = headerExtent;
         if (!hasHandle) {
             headerCells.push_back(std::move(cell));
             continue;
         }
-        auto box = core::makeRow(
-            {std::move(cell), buildResizeHandle(column)});
+        auto box = core::makeStack(
+            {std::move(cell), buildResizeHandle(column)},
+            core::StackAlignment::TopRight);
         box.width = column.width;
+        box.height = headerExtent;
         box.key = owner_ + ":headbox:" + column.key;
         headerCells.push_back(std::move(box));
-        if (!frozen) {
-            ++scrollAt;
-        }
     }
     auto header = core::makeRow(std::move(headerCells));
     header.key = frozen ? owner_ + ":frozen-header" : owner_ + ":header";
     header.height = headerExtent;
     header.width = frozen ? frozenContentWidth() : scrollRegionWidth();
     header.crossAxis = core::CrossAxisAlignment::Center;
+    // 表头表面（§12/§3.3）：surfaceSunken 填充经 styleOverrides 注入
+    //（painter 普通容器分支按 resolved 背景绘制）；1px 下边框由 build()
+    // 在表头下缘补 borderDefault 分隔线叶（设计稿 th border-bottom）。
+    header.styleOverrides.background = theme.colors.surfaceSunken;
     if (!frozen) {
         const auto& prefix = scrollPrefix();
         if (windowFirst < scrollColumnOrder_.size() && windowEnd > windowFirst) {
@@ -570,17 +585,28 @@ core::Widget DataGridController::buildRegionHeader(bool frozen) const {
 core::Widget DataGridController::build() const {
     const float headerExtent = headerExtentPx();
     const bool hasFrozen = frozenContentWidth() > 0.0F;
+    const style::Theme& theme =
+        shell_ != nullptr ? shell_->theme() : style::Theme::dark();
 
     // 滚动区（§17 双轴 + §19 第五批区域拆分）：表头与数据区共享横向
-    // offset；源接缝（hSource_）让交互层直驱 hScroll_（滚轮/拖动/惯性/
-    // 滚动条/语义），应用零接线。scrollOffset 每次重建写回。
+    // offset；源接缝（hSource_）让交互层直驱 hScroll_（滚轮/拖动/惯性
+    // /滚动条），应用零接线。scrollOffset 每次重建写回。
     auto scrollHeader = buildRegionHeader(false);
     auto list = core::makeList(this, owner_);
     // 显式宽（横向视口主轴无界）：行被 tight 到滚动区行宽；内容窄于
     // 视口时铺满视口（行背景完整，视口宽经源接缝跟踪收敛）。
     list.width = scrollRegionWidth();
     list.flex = 1.0F;
-    auto body = core::makeColumn({std::move(scrollHeader), std::move(list)});
+    // List 视口的分隔线内缩（resolveStyle List 分支 widget.padding +
+    // separatorWidth）清零：行壳与表头同缘（表头/数据列边界对齐前提），
+    // 行分隔线全宽（设计稿 th/td border-bottom 全宽口径）。
+    list.styleOverrides.padding = core::EdgeInsets{};
+    // 表头下缘 1px 分隔线（§12：分隔线 borderDefault；设计稿 th 下边框）。
+    auto scrollHeaderLine = core::makeContainerLeaf(
+        scrollRegionWidth(), std::optional<float>(1.0F), {}, {},
+        theme.colors.borderDefault, owner_ + ":header-line");
+    auto body = core::makeColumn(
+        {std::move(scrollHeader), std::move(scrollHeaderLine), std::move(list)});
     body.key = owner_ + ":body";
     body.width = scrollRegionWidth();
     auto view = core::makeScrollView(std::move(body), owner_ + ":scroll");
@@ -612,17 +638,22 @@ core::Widget DataGridController::build() const {
                        owner_ + ":frozen");
     frozenList.width = frozenContentWidth();
     frozenList.flex = 1.0F;
-    auto frozenBody =
-        core::makeColumn({std::move(frozenHeader), std::move(frozenList)});
+    // 行壳与滚动区/表头同缘（分隔线内缩清零，同上）。
+    frozenList.styleOverrides.padding = core::EdgeInsets{};
+    auto frozenHeaderLine = core::makeContainerLeaf(
+        frozenContentWidth(), std::optional<float>(1.0F), {}, {},
+        theme.colors.borderDefault, owner_ + ":frozen-header-line");
+    auto frozenBody = core::makeColumn(
+        {std::move(frozenHeader), std::move(frozenHeaderLine),
+         std::move(frozenList)});
     frozenBody.key = owner_ + ":frozen-body";
     frozenBody.width = frozenContentWidth();
 
-    const style::Theme& theme =
-        shell_ != nullptr ? shell_->theme() : style::Theme::dark();
-    // 分界线高度 = 表头 + 内容高兜底（tight 交叉宿主中被 Stretch 拉满）。
+    // 分界线高度 = 表头块（表头高 + 1px 下边框）+ 内容高兜底（tight
+    // 交叉宿主中被 Stretch 拉满）。
     auto freezeLine = core::makeContainerLeaf(
-        1.0F, std::optional<float>(headerExtent + totalExtent()), {}, {},
-        theme.colors.borderStrong, owner_ + ":freeze-line");
+        1.0F, std::optional<float>(headerExtent + 1.0F + totalExtent()), {},
+        {}, theme.colors.borderStrong, owner_ + ":freeze-line");
 
     auto root = core::makeRow(
         {std::move(frozenBody), std::move(freezeLine), std::move(view)});
@@ -823,7 +854,8 @@ bool DataGridController::handleKey(core::Key key, core::KeyModifiers modifiers,
     return detail::handleCollectionKeys(
         shell_, owner_, selection_, *this,
         [this](std::size_t i) { return keyOf(i); }, key, modifiers, keyChar,
-        [this](std::size_t i) { return rowEnabled(i); });
+        [this](std::size_t i) { return rowEnabled(i); },
+        /*ctrlMovesCurrentOnly=*/true);
 }
 
 // --- 滚动定位 / current ---
@@ -1215,6 +1247,7 @@ core::Widget DataGridController::buildHeaderCheckCell() const {
                               core::MainAxisAlignment::Center,
                               core::CrossAxisAlignment::Center);
     cell.width = selectionColumnWidthPx();
+    cell.height = headerExtentPx();  // 整 token 宽 × 表头高命中（§12）
     cell.onClick = "grid:" + owner_ + ":checkall";
     cell.key = owner_ + ":header-check-cell";
     return cell;
@@ -1230,6 +1263,7 @@ core::Widget DataGridController::buildRowCheckCell(
                               core::MainAxisAlignment::Center,
                               core::CrossAxisAlignment::Center);
     cell.width = selectionColumnWidthPx();
+    cell.height = rowExtentPx();  // 命中区域至少行高（§12 选择辅助列）
     cell.onClick = "grid:" + owner_ + ":check:" + key;
     cell.key = owner_ + ":check-cell:" + key;
     return cell;
@@ -1251,31 +1285,31 @@ core::Widget DataGridController::buildCell(std::size_t index,
         editor.invalid = !editError_.empty();
         return editor;
     }
-    // 单元格：固定列宽 + 水平内边距（§12）+ 单行省略 + 点击身份
-    //（定位列焦点；onClick 与节点 key 同串，激活路径按 key 解析）。
-    // 统一格式盒（Container，key cellId:box）：当前格（current 行 ×
-    // current 列）的内嵌焦点环经盒边框承载 focusRing token（§12）。
-    // 盒无条件存在——环的出现不得改变格的结构 identity（双击检测/
-    // damage 按身份配对）；编辑中的格由编辑器自身表达焦点，盒仍保留。
+    // 单元格：固定列宽 + 水平内边距（§12：metrics.controlPaddingX 密度
+    // 档）+ 单行省略 + 点击身份（定位列焦点；onClick 与节点 key 同串，
+    // 激活路径按 key 解析）。
+    // 统一格式盒（Row，key cellId:box）：盒即内容行——显式定高 = 行高、
+    // crossAxis Center（文本垂直居中）、主轴 Start/End 承载列对齐
+    //（Text 无段内对齐）。当前格（current 行 × current 列）的内嵌焦点
+    // 环经盒边框承载 focusRing token（§12/设计稿 td:focus：环铺满整格；
+    // Row 走 painter 普通容器 paintSurface 路径，边框绘制与 Container
+    // 同源）。盒无条件存在——环的出现不得改变格的结构 identity（双击
+    // 检测/damage 按身份配对）；编辑中的格由编辑器自身表达焦点，盒仍
+    // 保留。
     auto cell = core::makeText(cellText(index, column.key), cellTextStyle());
     cell.onClick = "grid:" + owner_ + ":cell:" + key + ":" + column.key;
     cell.key = cellId;
-    if (column.align == DataColumnAlign::End) {
-        // 数值/日期右对齐：内容盒内右置（Text 无段内对齐，经 Row
-        // 主轴对齐实现；文本仍按剩余宽省略）。
-        cell.width = std::max(0.0F, column.width - 2.0F * kCellPaddingX);
-        auto inner = core::makeRow({std::move(cell)},
-                                   core::MainAxisAlignment::End,
-                                   core::CrossAxisAlignment::Center);
-        inner.width = column.width;
-        inner.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
-        inner.key = cellId + ":align";
-        cell = std::move(inner);
-    } else {
-        cell.width = column.width;
-        cell.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
-    }
-    auto box = core::makeContainer(std::move(cell), column.width);
+    const float paddingX = cellPaddingXPx();
+    cell.width = std::max(0.0F, column.width - 2.0F * paddingX);
+    auto box = core::makeRow(
+        {std::move(cell)},
+        column.align == DataColumnAlign::End
+            ? core::MainAxisAlignment::End
+            : core::MainAxisAlignment::Start,
+        core::CrossAxisAlignment::Center);
+    box.width = column.width;
+    box.height = rowExtentPx();
+    box.padding = core::EdgeInsets::symmetric(paddingX, 0.0F);
     box.key = cellId + ":box";
     if (column.key == currentColumn_ && key == selection_.currentKey() &&
         !(editing_ && editing_->first == key &&
@@ -1306,18 +1340,23 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
         row, owner_, key, selection_.isSelected(key),
         "grid:" + owner_ + ":row:" + key, core::CrossAxisAlignment::Center,
         "listItem");
-    row.padding = {};
+    // 集合行 token 内边距清零（resolveListPart 会对 listPart=Row 覆写
+    // common.padding 为 controlPaddingX/Y；styleOverrides 是唯一有效覆写
+    // 通道——直接赋 row.padding 会被 resolver 覆盖，旧写法是死代码）。
+    // 网格格内边距由单元格自带（§12 密度档），行壳零内边距——表头/
+    // 数据列边界对齐的前提；分隔线/选中面仍按行盒全宽绘制。
+    row.styleOverrides.padding = core::EdgeInsets{};
     row.listPart = index + 1 == itemCount() ? core::ListPart::LastRow
                                             : core::ListPart::Row;
     row.enabled = rowEnabled(index);
     // 固定行高（§19 P0.1）：行壳显式定高（Theme.dataGrid.rowExtent）；
-    // 单行省略格内容高度均匀，实测回填已忽略。
+    // 格式盒同高（格内容不再影响行高，实测回填已忽略）。
     row.height = rowExtentPx();
+    // 选择复选框列常驻冻结区（§20.2/T5.1）——滚动区行不再重复物化
+    //（第五批回归：双份复选框格且滚动区数据列起点右移选择列宽，
+    // 表头/数据列错位）。
     std::vector<core::Widget> cells;
-    cells.reserve(columns_.size() + 1);
-    if (selection_.mode() != SelectionMode::None) {
-        cells.push_back(buildRowCheckCell(key));
-    }
+    cells.reserve(columns_.size());
     // 滚动区行窗口物化（§19 T6.2）：只构建可见列窗口，padding.left =
     // 窗口首列前缀偏移（格 x 坐标稳定；窗口外命中落到行壳 = 行级点击，
     // 已知取舍）。
@@ -1329,6 +1368,9 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
     }
     auto content = core::makeRow(std::move(cells));
     content.flex = 1.0F;
+    // 内容行垂直居中：格式盒显式定高填满行，其余自然高子项（编辑器）
+    // 居中——文本不贴行顶（review 第 4 条）。
+    content.crossAxis = core::CrossAxisAlignment::Center;
     if (windowFirst < scrollColumnOrder_.size() && windowEnd > windowFirst) {
         content.padding =
             core::EdgeInsets{prefix[windowFirst], 0.0F, 0.0F, 0.0F};
@@ -1353,7 +1395,8 @@ core::Widget DataGridController::buildFrozenItem(std::size_t index) const {
     row.selected = selection_.isSelected(key);
     row.onClick = "grid:" + owner_ + ":row:" + key;
     row.crossAxis = core::CrossAxisAlignment::Center;
-    row.padding = {};
+    // 行壳零内边距（与滚动区行/表头同缘，见 buildItem）。
+    row.styleOverrides.padding = core::EdgeInsets{};
     row.listPart = index + 1 == itemCount() ? core::ListPart::LastRow
                                             : core::ListPart::Row;
     row.enabled = rowEnabled(index);
@@ -1373,6 +1416,7 @@ core::Widget DataGridController::buildFrozenItem(std::size_t index) const {
     }
     auto content = core::makeRow(std::move(cells));
     content.flex = 1.0F;
+    content.crossAxis = core::CrossAxisAlignment::Center;
     if (!row.enabled) {
         disableSubtree(content);
     }
@@ -1401,6 +1445,16 @@ float DataGridController::selectionColumnWidthPx() const {
 float DataGridController::resizeHitWidthPx() const {
     return shell_ != nullptr ? shell_->theme().dataGrid.resizeHitWidth
                              : style::DataGridTokens{}.resizeHitWidth;
+}
+
+float DataGridController::cellPaddingXPx() const {
+    // §12：格内边距 = metrics.controlPaddingX 密度档（8/12/16，
+    // fontScale 派生同步）；无 shell 时退回 Medium 档 12。
+    if (shell_ != nullptr) {
+        const auto& metrics = shell_->theme().metrics;
+        return metrics.controlPaddingX[metrics.baseIndex];
+    }
+    return style::Theme::dark().metrics.controlPaddingX[1];
 }
 
 float DataGridController::frozenContentWidth() const {
@@ -1538,9 +1592,10 @@ DataGridController::resizeSourceFor(const std::string& columnKey) const {
 core::Widget DataGridController::buildResizeHandle(
     const DataColumn& column) const {
     // 手柄 = splitter 通道节点（painter 按 splitterSource 特判画居中轨道
-    // 线：rest 1px border、hover/press/focus 3px accent；窄而高 → 拖动
-    // 自动判为横向）。onClick 不注册 handler：单击 no-op——非空是 hover
-    // 承载与双击复位检测的前提（splitter 分隔条同口径）。
+    // 线：线宽经源覆写——静止 0 不画（§12 默认不加竖线/设计稿 resizer
+    // 静止透明）、激活 2px accent；窄而高 → 拖动自动判为横向）。onClick
+    // 不注册 handler：单击 no-op——非空是 hover 承载与双击复位检测的
+    // 前提（splitter 分隔条同口径）。
     core::Widget handle;
     handle.type = core::WidgetType::Button;
     handle.buttonVariant = core::ButtonVariant::Ghost;
@@ -1549,7 +1604,7 @@ core::Widget DataGridController::buildResizeHandle(
     handle.width = resizeHitWidthPx();
     handle.height = headerExtentPx();
     handle.collectionRow = true;  // Tab 可聚焦（键盘步进通道）
-    handle.showFocusRing = true;  // 3px accent 线由 focusWidth>0 驱动
+    handle.showFocusRing = true;  // accent 线由 focusWidth>0 驱动
     handle.semanticsRole = "splitter";
     handle.semanticsLabel = "调整 " + column.header + " 列宽";
     handle.semanticsValue =

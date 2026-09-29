@@ -827,14 +827,21 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
         }
         case WidgetType::Button: {
             // Splitter 分隔条（splitter-design §7.4/§9.2）：Button 只承载
-            // 命中/焦点/按压语义，绘制为居中轨道线——rest 1px border 色；
-            // hover/press/focus（resolved style 已折算出容器色/焦点环）
-            // 3px focusRing 色（形状差异保证高对比可辨，§11 约束）。
+            // 命中/焦点/按压语义，绘制为居中轨道线——线宽经
+            // SplitterSource 轨道虚拟取（默认 rest 1px border 色；hover/
+            // press/focus 即 resolved style 折算出容器色/焦点环时为
+            // active 线宽 × focusRing 色；形状差异保证高对比可辨）。
             if (node.splitterSource != nullptr) {
                 const bool active = common.background.a > 0 ||
                                     common.focusWidth > 0.0F;
-                const float line = active ? core::kSplitterActiveLineWidth
-                                          : core::kSplitterRestLineWidth;
+                const float line = active
+                                       ? node.splitterSource->activeTrackWidth()
+                                       : node.splitterSource->restTrackWidth();
+                if (line <= 0.0F) {
+                    // 静止透明轨道（DataGrid 列宽手柄：默认不加竖线，
+                    // datagrid 设计 §12）。
+                    break;
+                }
                 const Color color = active ? common.focusRing
                                            : common.border;
                 const bool horizontalSplit =

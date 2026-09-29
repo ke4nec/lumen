@@ -59,6 +59,16 @@ class SplitterSource {
     virtual void stepToEdge(bool maxEdge) const = 0;
     // 双击复位（回 initialOffset/setResetOffset 目标）。
     virtual void reset() const = 0;
+    // 轨道线几何（splitter-design §7.4）：静止/激活线宽，painter 按此
+    // 绘制（<= 0 不画）。默认全局常量；宿主可覆写——DataGrid 列宽手柄
+    // 静止透明 + 激活 2px（datagrid 设计 §12：默认不加竖线；设计稿
+    // resizer 静止透明、hover 2px accent）。
+    [[nodiscard]] virtual float restTrackWidth() const {
+        return kSplitterRestLineWidth;
+    }
+    [[nodiscard]] virtual float activeTrackWidth() const {
+        return kSplitterActiveLineWidth;
+    }
 };
 
 }  // namespace lumen::core

@@ -164,7 +164,8 @@ inline bool handleCollectionKeys(app::AppShell* shell,
                                  const core::VirtualListSource& source,
                                  const KeyAt& keyAt, core::Key key,
                                  core::KeyModifiers modifiers, char keyChar,
-                                 const std::function<bool(std::size_t)>& enabled = {}) {
+                                 const std::function<bool(std::size_t)>& enabled = {},
+                                 bool ctrlMovesCurrentOnly = false) {
     const std::size_t count = source.itemCount();
     if (count == 0) {
         return false;
@@ -210,7 +211,15 @@ inline bool handleCollectionKeys(app::AppShell* shell,
         }
         // 按值拷贝 key：选择回调可能失效行缓存，引用会随 clear 悬垂。
         const std::string nextKey = keyAt(target);
-        selection.moveTo(nextKey, shift);
+        // ctrlMovesCurrentOnly（datagrid §11.3，List/Tree 契约外）：Ctrl/
+        // Command + 导航仅移动 current，不改选择集。共享层默认关闭——
+        // collection-design §6.3 的 Ctrl+Home/End 同 Home/End 语义保持。
+        if (ctrlMovesCurrentOnly &&
+            (modifiers & (core::kModifierCtrl | core::kModifierGui)) != 0) {
+            selection.setCurrent(nextKey);
+        } else {
+            selection.moveTo(nextKey, shift);
+        }
         if (shell != nullptr) {
             shell->focus().setFocus(owner + ":item:" + nextKey);
         }

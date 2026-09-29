@@ -15,6 +15,10 @@
 // 2026-09-29 第五/六批（设计文档 §19/§20）：冻结列（pinned 模型/区域
 // 拆分/共享纵向几何/语义排除/分界线/跨区编辑键盘）、水平虚拟化（列
 // 窗口物化/窗口无关复制编辑/datagrid-wide 基准预算断言）。
+// 2026-09-29 视觉/交互 review 收口（设计文档 §21）：Ctrl+导航仅移动
+// current、带选择列的固定行高回归、表头表面/配色/字号 token 化、当
+// 前格环铺满整格、表头/数据列对齐（滚动区去重复选择列 + 行壳零内
+// 边距）、格内边距密度档、手柄 Stack 叠放不占文字预算。
 // RTL/拖放为后续增量（不在本文件断言）。
 
 #include <catch2/catch_approx.hpp>
@@ -163,26 +167,28 @@ TEST_CASE("datagrid_virtualizes_rows_and_builds_cells", "[widgets][datagrid]") {
     // 每物化行 3 个单元格文本；表头 = 2 个静态文本 + 1 个可排序 Ghost
     // 按钮（name）+ 表头复选框格（Extended 默认模式）。
     CHECK(texts >= rows * 3 + 2);
-    // 复选框格双区出现（§19 T5.2/T5.3：选择列常驻冻结区——滚动区行 +
-    // 冻结区行各一份；无 pinned 列时冻结行只有复选框格）。
-    CHECK(checkboxes == rows * 2);
+    // 复选框格只在冻结区（§20.2 选择列常驻冻结区——滚动区行不重复
+    // 物化；双份为第五批回归，本批修复）。
+    CHECK(checkboxes == rows);
     // 表头存在。
     const auto* header = core::findNodeByKey(fx.shell.root(), "grid:header");
     REQUIRE(header != nullptr);
-    // 单元格契约（§12/§16/§18）：统一格式盒（Container）内嵌内容——
-    // 固定列宽 + 水平内边距 12 + 单行省略；当前格环经盒边框承载。
+    // 单元格契约（§12/§16/§18/§21）：统一格式盒（Row，key 后缀 :box）
+    // 即内容行——固定列宽 + 格内边距（密度档，Comfortable 12）+ 盒定高
+    // = 行高（当前格环铺满整格、文本垂直居中）；当前格环经盒边框承载。
     const core::Widget row0 = fx.grid.buildItem(0);
     REQUIRE(row0.children.size() == 1);
     const core::Widget& content = row0.children.front();
-    // [复选框格, name, qty, note]。
-    REQUIRE(content.children.size() == 4);
-    CHECK(content.children.front().width.value_or(0.0F) == 44.0F);
-    const core::Widget& nameCell = content.children[1];
-    REQUIRE(nameCell.type == core::WidgetType::Container);
+    // [name, qty, note]。
+    REQUIRE(content.children.size() == 3);
+    const core::Widget& nameCell = content.children.front();
+    REQUIRE(nameCell.type == core::WidgetType::Row);
     CHECK(nameCell.width.value_or(0.0F) == 100.0F);
+    CHECK(nameCell.height.value_or(0.0F) == 40.0F);
+    CHECK(nameCell.padding.left == 12.0F);
+    CHECK(nameCell.crossAxis == core::CrossAxisAlignment::Center);
     REQUIRE(nameCell.children.size() == 1);
     const core::Widget& nameText = nameCell.children.front();
-    CHECK(nameText.padding.left == 12.0F);
     CHECK(nameText.textStyle.overflow == core::TextOverflow::Ellipsis);
     CHECK(nameText.textStyle.maxLines == 1);
     CHECK(nameText.onClick == "grid:grid:cell:r0:name");
@@ -453,7 +459,8 @@ TEST_CASE("datagrid_column_visibility_order_and_min_width", "[widgets][datagrid]
     CHECK(fx.grid.setColumnVisible("note", false));
     const core::Widget row0 = fx.grid.buildItem(0);
     REQUIRE(row0.children.size() == 1);
-    CHECK(row0.children.front().children.size() == 3);  // 复选框 + name + qty
+    // name + qty（选择复选框列常驻冻结区——滚动区行不重复物化）。
+    CHECK(row0.children.front().children.size() == 2);
     // 隐藏当前列：列焦点回退首个可见列。
     CHECK(fx.grid.setColumnVisible("name", false));
     CHECK(fx.grid.currentColumn() == "qty");
@@ -519,15 +526,15 @@ TEST_CASE("datagrid_numeric_column_aligns_end_and_custom_empty_state", "[widgets
     fx.render();  // 列窗口收敛（buildItem 窗口物化，§19 T6.2）
     const core::Widget row0 = fx.grid.buildItem(0);
     const core::Widget& content = row0.children.front();
-    REQUIRE(content.children.size() == 4);
-    // §18 统一格式盒：全部列为 Container（key 后缀 :box）；End 列盒内
-    // 是主轴 End 的 Row（内嵌省略文本），Start 列盒内是裸文本。
-    CHECK(content.children[1].type == core::WidgetType::Container);
-    CHECK(content.children[2].type == core::WidgetType::Container);
-    const core::Widget& qtyAlign = content.children[2].children.front();
-    CHECK(qtyAlign.type == core::WidgetType::Row);
-    CHECK(qtyAlign.mainAxis == core::MainAxisAlignment::End);
-    CHECK(qtyAlign.children.front().textStyle.overflow ==
+    REQUIRE(content.children.size() == 3);
+    // §18/§21 统一格式盒：全部列为 Row（key 后缀 :box）——主轴承载
+    // Start/End 对齐、crossAxis Center 垂直居中、盒定高 = 行高。
+    CHECK(content.children[0].type == core::WidgetType::Row);
+    CHECK(content.children[1].type == core::WidgetType::Row);
+    const core::Widget& qtyBox = content.children[1];
+    CHECK(qtyBox.mainAxis == core::MainAxisAlignment::End);
+    CHECK(qtyBox.crossAxis == core::CrossAxisAlignment::Center);
+    CHECK(qtyBox.children.front().textStyle.overflow ==
           core::TextOverflow::Ellipsis);
 
     // 自定义空态（数据状态壳由应用组合，§14）。
@@ -716,8 +723,9 @@ TEST_CASE("datagrid_rows_fill_viewport_when_content_narrower",
     fx.render();     // 视口宽跟踪收敛（铺满不出现尾部空隙）
     const auto* row = core::findNodeByKey(fx.shell.root(), "grid:item:r0");
     REQUIRE(row != nullptr);
-    // 行宽 = List 宽 − 容器水平内边距 2（集合行既有口径）。
-    CHECK(row->size.width == Catch::Approx(353.0F));
+    // 行宽 = 滚动区宽全宽（List 分隔线内缩已清零：行壳与表头同缘，
+    // 表头/数据列边界对齐前提）。
+    CHECK(row->size.width == Catch::Approx(355.0F));
     CHECK(core::findNodeByKey(fx.shell.root(), "grid:scroll")->scrollExtent ==
           Catch::Approx(0.0F));
 
@@ -726,7 +734,7 @@ TEST_CASE("datagrid_rows_fill_viewport_when_content_narrower",
     fx.render();
     const auto* wide = core::findNodeByKey(fx.shell.root(), "grid:item:r0");
     REQUIRE(wide != nullptr);
-    CHECK(wide->size.width == Catch::Approx(518.0F));
+    CHECK(wide->size.width == Catch::Approx(520.0F));
     CHECK(core::findNodeByKey(fx.shell.root(), "grid:scroll")->scrollExtent ==
           Catch::Approx(165.0F));
 
@@ -1399,4 +1407,181 @@ TEST_CASE("REGRESSION_frozen_region_pointer_paths_and_divider_pixel",
     // 分界线左侧（冻结区）与右侧（滚动区）非分界色。
     CHECK(pixelAt(buffer, static_cast<int>(lineOrigin.x) - 2,
                   static_cast<int>(lineOrigin.y + 100.0F)) != strong);
+}
+
+// --- 2026-09-29 视觉/交互 review 收口回归（设计文档 §21） ---
+
+TEST_CASE("REGRESSION_ctrl_navigation_moves_current_only", "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.grid.setSelectionMode(widgets::SelectionMode::Extended);
+    fx.render();
+    // 建立已知选择集：r0 current（随动选中）→ Shift+Down 扩展到 r1。
+    fx.grid.setCurrentKey("r0", false);
+    CHECK(fx.grid.handleKey(core::Key::Down, core::kModifierShift));
+    CHECK(fx.grid.selection().currentKey() == "r1");
+    CHECK(fx.grid.selection().isSelected("r0"));
+    CHECK(fx.grid.selection().isSelected("r1"));
+    // Ctrl+Down（§11.3）：仅移动 current，选择集原样。
+    CHECK(fx.grid.handleKey(core::Key::Down, core::kModifierCtrl));
+    CHECK(fx.grid.selection().currentKey() == "r2");
+    CHECK(fx.grid.selection().isSelected("r0"));
+    CHECK(fx.grid.selection().isSelected("r1"));
+    CHECK_FALSE(fx.grid.selection().isSelected("r2"));
+    // Ctrl+End 同理到末行，选择集不变。
+    CHECK(fx.grid.handleKey(core::Key::End, core::kModifierCtrl));
+    CHECK(fx.grid.selection().currentKey() == "r9");
+    CHECK(fx.grid.selection().isSelected("r0"));
+    // 无修饰的普通 Up 仍是"移动 + 随动替换"（§5 既有契约）。
+    CHECK(fx.grid.handleKey(core::Key::Up, core::kModifierNone));
+    CHECK(fx.grid.selection().currentKey() == "r8");
+    CHECK_FALSE(fx.grid.selection().isSelected("r0"));
+    CHECK(fx.grid.selection().isSelected("r8"));
+}
+
+TEST_CASE("REGRESSION_row_extent_fixed_with_selection_column",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    // 选择列在位（冻结区复选框格 + 每行复选框）：物化行高严格等于
+    // rowExtent token（review 第 2 条：格内容不得顶高行——固定行高是
+    // 双区几何对齐的前提，§19 P0.1）。
+    fx.grid.setSelectionMode(widgets::SelectionMode::Multiple);
+    fx.render();
+    fx.render();
+    const float rowExtent = fx.shell.theme().dataGrid.rowExtent;
+    CHECK(fx.grid.extentOf(0) == Catch::Approx(rowExtent));
+    const auto* r0 = core::findNodeByKey(fx.shell.root(), "grid:item:r0");
+    const auto* r1 = core::findNodeByKey(fx.shell.root(), "grid:item:r1");
+    const auto* f0 = core::findNodeByKey(fx.shell.root(), "grid:frow:r0");
+    REQUIRE(r0 != nullptr);
+    REQUIRE(r1 != nullptr);
+    REQUIRE(f0 != nullptr);
+    CHECK(r0->size.height == Catch::Approx(rowExtent));
+    CHECK(f0->size.height == Catch::Approx(rowExtent));
+    const float y0 = core::absoluteOffset(fx.shell.root(), "grid:item:r0").y;
+    const float y1 = core::absoluteOffset(fx.shell.root(), "grid:item:r1").y;
+    CHECK(y1 - y0 == Catch::Approx(rowExtent));  // 槽位 = 行高，无重叠
+}
+
+TEST_CASE("REGRESSION_header_and_data_columns_align", "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.render();
+    fx.render();
+    // 滚动区：表头列与数据格同 x（行壳集合行内边距与 List 分隔线内缩
+    // 清零后；第五批回归曾让数据列右移 57px——滚动区重复选择列 + 行壳
+    // 12px token 内边距）。
+    CHECK(core::absoluteOffset(fx.shell.root(), "grid:cell:r0:name:box").x ==
+          Catch::Approx(
+              core::absoluteOffset(fx.shell.root(), "grid:head:name").x));
+    CHECK(core::absoluteOffset(fx.shell.root(), "grid:cell:r0:qty:box").x ==
+          Catch::Approx(
+              core::absoluteOffset(fx.shell.root(), "grid:head:qty").x));
+    // 冻结区：表头复选框格与行复选框格同 x、整 token 宽（不再被行壳
+    // 内边距挤压）。
+    CHECK(core::absoluteOffset(fx.shell.root(), "grid:check-cell:r0").x ==
+          Catch::Approx(
+              core::absoluteOffset(fx.shell.root(),
+                                   "grid:header-check-cell").x));
+    const auto* checkCell =
+        core::findNodeByKey(fx.shell.root(), "grid:check-cell:r0");
+    REQUIRE(checkCell != nullptr);
+    CHECK(checkCell->size.width == Catch::Approx(
+        fx.shell.theme().dataGrid.selectionColumnWidth));
+}
+
+TEST_CASE("REGRESSION_header_surface_and_text_tokens", "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.render();
+    fx.render();  // 列窗口两帧收敛（§19 T6.2；note 列首帧在窗口外）
+    // §12/§3.3：表头 = surfaceSunken 填充。
+    const auto* header = core::findNodeByKey(fx.shell.root(), "grid:header");
+    REQUIRE(header != nullptr);
+    CHECK(header->commonStyle().background ==
+          fx.shell.theme().colors.surfaceSunken);
+    // th 1px 下边框（borderDefault 分隔线叶）。
+    const auto* line = core::findNodeByKey(fx.shell.root(), "grid:header-line");
+    REQUIRE(line != nullptr);
+    CHECK(line->size.height == Catch::Approx(1.0F));
+    CHECK(line->commonStyle().background ==
+          fx.shell.theme().colors.borderDefault);
+    CHECK(core::absoluteOffset(fx.shell.root(), "grid:header-line").y ==
+          Catch::Approx(
+              core::absoluteOffset(fx.shell.root(), "grid:header").y +
+              header->size.height));
+    // 静态列头（note 不可排序）：caption 档 + contentSecondary（§12 表头
+    // 辅助文字；不再硬编码色）。
+    const auto* note = core::findNodeByKey(fx.shell.root(), "grid:head:note");
+    REQUIRE(note != nullptr);
+    CHECK(note->commonStyle().text.color ==
+          fx.shell.theme().colors.contentSecondary);
+    CHECK(note->commonStyle().text.fontSize ==
+          fx.shell.theme().typography.caption.fontSize);
+    // 可排序列头（name = Ghost 按钮）：文字同 caption/contentSecondary
+    //（与静态列头一致），accentContent 前景留给排序指示图标。
+    const auto* name = core::findNodeByKey(fx.shell.root(), "grid:head:name");
+    REQUIRE(name != nullptr);
+    CHECK(name->commonStyle().text.color ==
+          fx.shell.theme().colors.contentSecondary);
+    CHECK(name->commonStyle().foreground ==
+          fx.shell.theme().colors.accentContent);
+    // 手柄 Stack 叠放：表头文字用满列宽（不再扣手柄带宽，§21/设计稿
+    // resizer 骑缝口径）。
+    const auto* headbox =
+        core::findNodeByKey(fx.shell.root(), "grid:headbox:name");
+    REQUIRE(headbox != nullptr);
+    CHECK(headbox->type == core::WidgetType::Stack);
+    REQUIRE(headbox->children.size() == 2);
+    CHECK(headbox->children.front().size.width == Catch::Approx(100.0F));
+
+    // 像素级（CPU framebuffer）：表头表面真实绘制为 surfaceSunken；手柄
+    // 静止轨道透明（§12 默认不加竖线——静止位与表头面同色，无线条）。
+    const auto& buffer = fx.shell.pixels();
+    const core::Offset headerOrigin =
+        core::absoluteOffset(fx.shell.root(), "grid:header");
+    const core::Color sunken = fx.shell.theme().colors.surfaceSunken;
+    CHECK(pixelAt(buffer, static_cast<int>(headerOrigin.x + 6.0F),
+                  static_cast<int>(headerOrigin.y + 8.0F)) == sunken);
+    const core::Offset boxOrigin =
+        core::absoluteOffset(fx.shell.root(), "grid:headbox:name");
+    CHECK(pixelAt(buffer,
+                  static_cast<int>(boxOrigin.x + headbox->size.width -
+                                   fx.shell.theme().dataGrid.resizeHitWidth *
+                                       0.5F),
+                  static_cast<int>(headerOrigin.y +
+                                   header->size.height * 0.5F)) == sunken);
+}
+
+TEST_CASE("REGRESSION_current_cell_ring_fills_row", "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.render();
+    fx.grid.setCurrentKey("r1", false);
+    fx.grid.setCurrentColumn("qty");
+    fx.render();
+    // §12/设计稿 td:focus：当前格内嵌环铺满整格——格式盒定高 = 行高且
+    // 与行同缘（review 第 4 条：环盒曾只有文本行高 16.8 且贴行顶）。
+    const auto* box =
+        core::findNodeByKey(fx.shell.root(), "grid:cell:r1:qty:box");
+    const auto* row = core::findNodeByKey(fx.shell.root(), "grid:item:r1");
+    REQUIRE(box != nullptr);
+    REQUIRE(row != nullptr);
+    CHECK(box->size.height == Catch::Approx(row->size.height));
+    CHECK(core::absoluteOffset(fx.shell.root(), "grid:cell:r1:qty:box").y ==
+          Catch::Approx(
+              core::absoluteOffset(fx.shell.root(), "grid:item:r1").y));
+}
+
+TEST_CASE("datagrid_cell_padding_follows_density", "[widgets][datagrid]") {
+    GridFixture fx;
+    // §12：格内边距 = controlPaddingX 密度档（8/12/16）——格式盒（Row）
+    // 自带 padding。
+    const auto cellPad = [](const core::Widget& row) {
+        REQUIRE(row.children.size() == 1);
+        const core::Widget& content = row.children.front();
+        REQUIRE(!content.children.empty());
+        return content.children.front().padding.left;
+    };
+    CHECK(cellPad(fx.grid.buildItem(0)) == Catch::Approx(12.0F));
+    fx.shell.setTheme(style::Theme::dark(style::ControlDensity::Compact));
+    CHECK(cellPad(fx.grid.buildItem(0)) == Catch::Approx(8.0F));
+    fx.shell.setTheme(style::Theme::dark(style::ControlDensity::Touch));
+    CHECK(cellPad(fx.grid.buildItem(0)) == Catch::Approx(16.0F));
 }

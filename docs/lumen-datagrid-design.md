@@ -4,9 +4,9 @@
 > 增强（P0 可靠性 + P1 列模型切片，§16）、第三批（双轴几何 + 列宽拖宽
 > + Theme.dataGrid token 组，§17）、第四批（多列排序 + 当前格焦点环 +
 > 表头复选框三态，§18）与第五/六批（冻结列 + 水平虚拟化，§19/§20，
-> 2026-09-29）。实现
+> 2026-09-29）、视觉/交互 review 收口（§21，2026-09-29）。实现
 > `include/lumen/widgets/datagrid.h` + `src/widgets/datagrid.cpp`；测试
-> `tests/datagrid_tests.cpp`（29 用例：26 datagrid_* + 3 回归）+ token
+> `tests/datagrid_tests.cpp`（38 用例：29 datagrid_* + 9 回归）+ token
 > 派生用例。§10–15 为增强
 > 提案与能力审计；
 > [`design/datagrid.html`](../design/datagrid.html) 为增强目标交互稿，
@@ -239,24 +239,32 @@ commitEdit 验证校验。不得据测试名称推断指针路径、输入焦点
 | --- | --- | --- |
 | 数据行 | metrics.minHeight | 32 / 40 / 48 |
 | 表头 | 拟新增 dataGrid.headerExtent | 32 / 36 / 44；标准档保留首版 36 |
-| 格内边距 | metrics.controlPaddingX | 8 / 12 / 16 |
+| 格内边距 | metrics.controlPaddingX | 8 / 12 / 16（§21 起按密度档取值） |
 | 编辑器圆角 | metrics.controlRadius | 4 / 6 / 8 |
-| 容器圆角 | metrics.cardRadius | 8 |
+| 容器圆角 | metrics.cardRadius | 8（应用壳引用：网格自身不画背景/边框/圆角，见下） |
 | 选择辅助列 | 拟新增 dataGrid.selectionColumnWidth | 44 / 44 / 52；命中区域至少行高 |
-| 列宽手柄 | 拟新增 dataGrid.resizeHitWidth | 8 / 10 / 16；可键盘操作 |
-| 正文 / 辅助字 | typography.body / typography.caption | 14 / 12，跟随 fontScale |
+| 列宽手柄 | 拟新增 dataGrid.resizeHitWidth | 8 / 10 / 16；可键盘操作；静止轨道透明、激活 2px accent（§21） |
+| 正文 / 辅助字 | typography.body / typography.caption | 14 / 12，跟随 fontScale；表头文字统一 caption + contentSecondary（§21） |
 | 选中标记 | list.markerWidth / markerInset | 3 / 4 |
 | 焦点环 | metrics.focusRingWidth + colors.focusRing | 2；高对比按 Theme 派生 |
 | 冻结分界 | colors.borderStrong | 1px 实线，不依赖阴影 |
 
 - 背景 surface；表头/hover 为 surfaceSunken；pressed 为 surface/accent 0.32
-  混合；selected 为不透明 accentContainer；分隔线 borderDefault。
-- 正文 contentPrimary，辅助文字 contentSecondary；状态使用 statusSuccess /
+  混合；selected 为不透明 accentContainer；分隔线 borderDefault。表头
+  下缘 1px borderDefault 分隔线（设计稿 th border-bottom）；网格自身
+  不画容器外壳——背景/1px 边框/cardRadius 圆角由应用按 §11 推荐结构
+  组合（工作台卡片壳），网格视口只保证 surface 行面与分隔线。
+- 正文 contentPrimary，辅助文字 contentSecondary（表头文字同源，§21）；
+  状态使用 statusSuccess /
   statusWarning / errorContent，并配状态文字、图形，不能单靠颜色。
-- 默认横向分隔线，不加斑马纹或竖线；密集数值场景允许可选竖线。金额和日期
+  可排序列头指示图标为 accentContent（Ghost 前景），与表头文字分色。
+- 默认横向分隔线，不加斑马纹或竖线；密集数值场景允许可选竖线。列宽
+  手柄静止透明（不加竖线的默认推论），hover/focus/拖动 2px accent。
+  金额和日期
   右对齐、数字等宽，金额不在每格重复币种，列头声明单位。
 - selected 与 current 独立。进入单元格导航时只绘制当前格内嵌环，显式
-  showFocusRing=true；不在一行所有格同时绘制焦点框。
+  showFocusRing=true；不在一行所有格同时绘制焦点框。当前格环铺满
+  整格（盒定高 = 行高，§21/设计稿 td:focus）。
 - invalid 控制编辑器边框、错误文字和语义；错误浮层需边界避让，不参与固定行高
   布局、不挤动相邻行。框架实现需使用覆盖层，不能被 ScrollView 裁掉。
 - 字体缩放对字、行高、padding 和图标派生一次；DPI 不改变逻辑尺寸。
@@ -374,11 +382,14 @@ review 以真实指针路径复测发现并修复三处问题（各配回归用�
   （selectableKeys 缓存摊销 O(n)，数据装配变化时失效）。**三态
   indeterminate 视觉未实现**（Widget.checked 为布尔），部分选中显示为未
   勾选。
-- **格呈现**（§12）：单元格固定列宽 + 水平内边距 12（controlPaddingX
-  Medium 同值）+ 单行省略（maxLines=1 + Ellipsis）；`align=End` 的数值/
+- **格呈现**（§12；密度档与表头配色已由 §21 调整）：单元格固定列宽 +
+  水平内边距 ~~12（controlPaddingX Medium 同值）~~（§21：controlPaddingX
+  密度档 8/12/16）+ 单行省略（maxLines=1 + Ellipsis）；`align=End` 的数值/
   日期列经 Row 主轴 End 右对齐（Text 无段内对齐）。表头可排序列 =
-  Ghost 按钮 + ChevronUp/Down 指示（TreeList 同口径）；**数值列表头仍左
-  对齐**（Button 内容对齐待框架扩展）。禁用行整行禁用（含复选框）。
+  Ghost 按钮 + ChevronUp/Down 指示（~~TreeList 同口径~~ §21：文字统一
+  caption + contentSecondary，accentContent 前景留给指示图标）；**数值列
+  表头仍左对齐**（Button 内容对齐待框架扩展）。禁用行整行禁用（含
+  复选框）。
 - **自定义空态**：`setEmptyBuilder`（§14 状态壳由应用组合——加载骨架/
   错误重试/无结果）；默认 "No rows" 不变。
 
@@ -445,8 +456,10 @@ P1 切片续：HTML 增强稿的「列拖宽/键盘调宽」「共享横向视�
   宽）、**键盘 Left/Right 步进**（步长 = resizeHitWidth；Home 收缩到
   minWidth，End 无上界不动作）、ResizeEW 悬停光标；Tab 可聚焦
   （collectionRow），语义 role=splitter + 当前宽 value。
-- 手柄带宽计入列宽预算（表头单元 = 列宽 − 手柄带宽），与数据格列边界
-  对齐的不变式保持。
+- 手柄带宽~~计入列宽预算（表头单元 = 列宽 − 手柄带宽），与数据格列边界
+  对齐的不变式保持~~（§21：改为 Stack TopRight 叠放——表头文字用满
+  列宽，手柄命中带叠于右缘，设计稿 resizer 骑缝口径；静止轨道透明、
+  激活 2px accent）。
 - 拖动/步进先提交编辑（§13.1）：`resizeColumn` 增加提交守卫，校验失败
   列宽不动、草稿留在错误格；手柄逐拍调用在无编辑时幂等直达。
 
@@ -703,3 +716,55 @@ review 复测发现横向滚动缺可视滚动条且拇指无法拖动（scrollb
 paths_and_divider_pixel`：冻结区行真实指针纵向 pan、横向滚动条拇指
 拖动（绝对定位语义）与分界线 CPU 像素断言。a11y 桥 ON 构建相关
 66 项通过。
+
+## 21. 2026-09-29 视觉/交互 review 收口（表头表面/列对齐/Ctrl 导航）
+
+复测结论先行：review 第 2 条（带选择列行高 40/52/64、`extentOf(0)=52`）
+在当日 HEAD **不可复现**——headless 探针（链接 build 产物独立程序）三档
+密度实测：带选择列行高 == rowExtent（32/40/48）、相邻槽位无重叠、
+`extentOf` 恒等于 token、选择列 Checkbox 节点 28px（控件 minHeight 未
+顶高行）、编辑态行高同样稳定。该现象只在第五批 P0.1 之前的架构
+（extentOf 走实测缓存回填）下可能出现，疑似对旧构建的测量。本批仍按
+其指出的结构性风险补回归锁定（见 21.3）。
+
+### 21.1 修复清单（review 编号对应）
+
+| # | 问题 | 修复 |
+| --- | --- | --- |
+| 1/5 | 表头无表面/无下边框（`listPart=Row` 加在 Text 上是死样式——painter 表面分支只认容器类型 + collectionRow）；硬编码 `kHeaderSecondary{140,140,152}`、body 14、可排序列头 Ghost 前景 accentContent 与静态列头不同色（违反 token 规则） | 表头 Row 经 `styleOverrides.background = surfaceSunken`（painter 普通容器分支 paintSurface）；表头下缘 1px borderDefault 分隔线叶（冻结/滚动双区）；表头文字统一 caption + contentSecondary：静态列头 `textStyle`、可排序 Ghost 经 `styleOverrides.text` 覆写（accentContent 前景留给排序指示图标，设计稿 th 口径）；静态列头补 key 与格内边距 |
+| 2 | 行高回归 | 不改行为（见复测结论），新增 REGRESSION 锁定：行高 == rowExtent、槽位无重叠、`extentOf` == token |
+| 3 | 格内边距恒 12（kCellPaddingX 常量） | `cellPaddingXPx()` = `metrics.controlPaddingX[baseIndex]`（8/12/16，fontScale 同步派生） |
+| 4 | 当前格环盒仅 16.8px（文本行高）且贴内容区顶（内容 Row 默认 crossAxis Start） | 格式盒由 Container 改为 Row（paintSurface 同路径，环边框绘制不变）：盒即内容行——显式定高 = rowExtent、与行同缘、crossAxis Center（文本垂直居中）、主轴 Start/End 承载列对齐（Start/End 列统一结构，`:align` 层删除——每格仍 2 节点，datagrid-wide 基线 +3.2% 门槛内） |
+| 6 | 手柄静止 1px 竖线（违反"默认不加竖线"）、激活 3px（设计稿 2px）、手柄带宽从表头文字预算扣走 | 框架接缝：`SplitterSource::restTrackWidth()/activeTrackWidth()` 虚拟（默认 1/3px，splitter 分隔条不变），painter 按源取值且 ≤0 不画；`ColumnResizeSource` 覆写 0/2；表头手柄 `Stack TopRight` 叠放（文字满列宽，命中带叠于右缘） |
+| 7 | Ctrl+Down/Home/End 仍替换选择集 | 框架接缝：`handleCollectionKeys` 增 `ctrlMovesCurrentOnly` 参数（默认 false——collection-design §6.3 的 Ctrl+Home/End 同 Home/End 语义对 List/Tree 保持）；DataGrid 传 true，Ctrl/⌘（kModifierCtrl \| kModifierGui）+ 导航走 `setCurrent` 仅移动 current（§11.3） |
+| 8 | 网格外壳（1px 边框 + cardRadius 圆角 + surface 视口底色） | 口径裁决（不改代码）：网格自身不画外壳，背景/边框/圆角由应用按 §11 推荐结构组合；§12 表格行已注记 |
+
+### 21.2 复测新发现（第五批回归，一并修复）
+
+- **滚动区行重复物化选择列**：`buildItem` 无条件追加复选框格（表头仅
+  冻结区有）→ 每行双份复选框（两区 key 还相同）+ 滚动区数据列起点右移
+  57px（44 选择列 + 12 行壳 token 内边距 + 1px List 分隔线内缩），表头/
+  数据列错位。修复：滚动区行不再加选择列（§20.2 常驻冻结区）；行壳
+  `styleOverrides.padding` 清零（旧 `row.padding = {}` 是死代码——
+  `resolveListPart` 对 listPart=Row 覆写 `common.padding` 为
+  controlPaddingX/Y，`styleOverrides` 是唯一有效覆写通道）；两个 List
+  的分隔线内缩（resolveStyle List 分支 widget.padding + separatorWidth）
+  同步清零——行壳/表头同缘、行分隔线全宽（设计稿 th/td border-bottom
+  口径）。既有断言"复选框格双区出现"按 §20.2 契约修正为单区。
+- **表头窗口序号错位**：`buildRegionHeader` 对非可调整列不推进
+  scrollAt，其后的列窗口判定用到陈旧序号（极端场景丢列/错列）。修复：
+  序号在列循环顶部统一推进。
+
+### 21.3 测试与验证
+
+新增 6 用例：`REGRESSION_ctrl_navigation_moves_current_only`、
+`REGRESSION_row_extent_fixed_with_selection_column`、
+`REGRESSION_header_and_data_columns_align`、
+`REGRESSION_header_surface_and_text_tokens`（含 CPU 像素断言：sunken
+填充 + 手柄静止位与表头面同色无线）、`REGRESSION_current_cell_ring_
+fills_row`、`datagrid_cell_padding_follows_density`；3 处既有断言更新
+（复选框单区、格结构统一内容行、行宽 355/520——List 内缩清零后行宽 =
+滚动区全宽）。datagrid 38/38、全量 835/835（Debug）/837/837（Release）。
+
+已知限制：表头 hover 文字变 contentPrimary（设计稿 th hover）待 Button
+前景状态通道；多列优先级角标仍待内容通道扩展（§18 已知限制不变）。
