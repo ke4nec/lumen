@@ -44,6 +44,15 @@ GPU swap 失败和软件 present 失败均进入预期诊断路径。
 
 ## 人工回环
 
+三平台协议回环脚本（焦点导航/激活/值设置，与 `LUMEN_UIA_LIVE_SMOKE` /
+AT-SPI live 冒烟互补，面向读屏器在场驱动；调用方式与前置见各文件头）：
+
+| 平台 | 脚本 | 读屏器证据 |
+| --- | --- | --- |
+| Linux（X11） | `tests/atspi_orca_loop.py` | Orca debug 日志（专属 script + 事件消费 + SPEECH OUTPUT） |
+| Windows | `tests/uia_reader_loop.py` | NVDA controller client 探活 + 摘要播报；讲述人进程探活；语音人工记录 |
+| macOS | `tests/voiceover_loop.py` | VoiceOver 进程探活；语音人工记录 |
+
 工作流不再接受 `confirmed` 自报。配置仓库变量 `LUMEN_ACCEPTANCE_ROOT` 为
 runner 本地证据目录，按 `<root>/<40 位提交>/<platform>/record.json` 存放记录，
 platform 为 `linux-x11`、`linux-wayland`、`macos` 或 `windows`。
