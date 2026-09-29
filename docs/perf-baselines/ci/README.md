@@ -1,5 +1,20 @@
 # CI performance baselines
 
+## Re-anchoring (maintenance rule)
+
+The identity guard compares `benchmarks/scene_bench.cpp` and
+`cmake/dependencies.cmake` between the pinned reference and the candidate.
+**Any commit that changes either file must re-anchor in the same change**:
+update `LUMEN_PERF_BASELINE_COMMIT` in `.github/workflows/linux.yml` and
+`commit` in `reference.json` together, otherwise every subsequent Linux gate
+fails on `identity: scene_revision` regardless of timing (this is what happened
+between 2026-09-24 and 2026-09-29: commit `9563017` added the `datagrid-wide`
+scene to `scene_bench.cpp` while the pin stayed at `445bae5`; all three backend
+gates then failed on identity for every push, with all timing deltas measured
+within the limit). Re-anchoring to a reviewed commit whose timing is verified
+within the limit is the sanctioned refresh path; refreshing to suppress genuine
+timing regressions is not.
+
 The checked-in timing JSON files are **historical samples with incomplete
 provenance** (`commit: working-tree` and no machine identity). They are retained
 for inspection and are no longer accepted by the CI gate. Do not relabel them
