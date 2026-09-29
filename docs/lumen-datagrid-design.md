@@ -523,5 +523,92 @@ value="mixed"/"true"）；`datagrid_virtualizes_rows...` 与
 `datagrid_numeric_column...` 的格结构断言更新为统一格式盒。datagrid
 22/22、全量 821/821（Debug；Release 823/823 含 2 项基准完整性用例）。
 
-剩余增量：水平虚拟化、冻结列、RTL 镜像、拖放、Grid 专属语义
-（§13.2 provider）、多列优先级角标。
+剩余增量：水平虚拟化、冻结列（任务分解见 §19）、RTL 镜像、拖放、
+Grid 专属语义（§13.2 provider）、多列优先级角标。
+
+## 19. 冻结列与水平虚拟化实施提案（任务分解，2026-09-29）
+
+本节是 §17.5/§18.4 两个剩余几何增量的实施细化，供批次排期与验收；
+概念契约沿用 §11.1（列布局状态含 pinned）、§12（冻结分界）、§14
+（P2 规模预算）。实施顺序：**共享前置件 → 冻结列（第五批，P1）→
+水平虚拟化（第六批，P2）**——冻结先定型区域结构，虚拟化窗口逻辑
+只需作用域滚动区；反之先虚拟化后拆区需要迁移窗口逻辑，返工更大。
+冻结列的 HTML 原型（"冻结订单编号"）即此能力的目标交互。
+
+### 19.1 共享前置件（P0，两批通用）
+
+| # | 任务 | 改动点 | 验收 |
+| --- | --- | --- | --- |
+| P0.1 | 行高 token 化 + 固定行高 | `Theme.dataGrid.rowExtent`（§12：32/40/48 三档 + fontScale 派生；Comfortable=40 与现行 `kDefaultRowExtent`/实测行高等值——像素零变化）；`DataGridController` 行壳显式定高（`row.height = rowExtentPx()`），`noteExtent` 不再转发 base_（固定高度下 extentOf 全部返回估算值，materialize 循环天然稳定） | 既有 24 用例零变化；密度/字体缩放下行高断言；行高不再随内容实测（单行省略格内容高度本就均匀，行为风险低） |
+| P0.2 | `ensureColumnVisible(columnKey)` | hScroll 目标 offset 钳制使列（含边距）进入滚动视口；接线 `setCurrentColumn`/`beginEdit`/`moveEditor`（编辑目标列滚入视口——第三批已知"编辑器横向可见性不保证"随之收口） | 窗口外列进入编辑时 hScroll 调整、编辑器可见 |
+| P0.3 | 前缀换算区域感知 | `columnPrefixWidth`/`ColumnResizeSource` 的 offset 基准参数化（冻结区内前缀 / 冻结宽 + 滚动区内前缀）——两批拆区后手柄语义不变 | 手柄拖宽跨区域等价（绝对边界语义保持） |
+
+### 19.2 第五批：冻结列（P1）
+
+**结构模型**（§11"冻结区与滚动区必须共享行高、纵向 offset 和行身
+份；不能互不协调的嵌套 ScrollView"的落地）：
+
+```text
+root Row (key = owner_)
+├─ 左区 Column (宽 = 冻结宽 + 分隔线 1px)
+│  ├─ 冻结表头 Row（选择复选框列 + pinned 列；高 headerExtent）
+│  └─ 冻结 List（FrozenRegionSource；宽 = 冻结宽）
+└─ 右区 ScrollView（横向，key = owner_:scroll；现有 hSource_ 源接缝/
+   滚轮/拖动/惯性/滚动条链路整体保留）
+   └─ Column
+      ├─ 滚动表头 Row（非 pinned 可见列；高 headerExtent）
+      └─ 滚动 List（现有行构建；宽 = 滚动内容宽，铺满逻辑 per-region）
+```
+
+共享几何靠三件事：两表头同高（同一 token）、两 List 共享**同一个**
+纵向 ScrollController（经源适配器返回 `base_.scrollController()`）与
+同一可见区推导（P0.1 固定行高下两区 extentOf 完全一致，noteExtent
+no-op，无实测分叉）；横向 offset 只属于右区（单 ScrollView，表头与
+数据同域）。
+
+| # | 任务 | 说明 | 验收 |
+| --- | --- | --- | --- |
+| T5.1 | 列模型 pinned | `DataColumn.pinned` + `setColumnPinned(key, bool)`（置顶移到冻结组尾/取消移到滚动组首；列向量维持 pinned 前缀不变式）；`moveColumn` 改为组内移动（跨界经 pin/unpin 显式表达）；选择复选框列常驻冻结区首列；pin/unpin 先提交编辑（§13.1） | pin 序不变式、跨界拒绝、提交失败中止、columnWidths()+pin 持久化往返 |
+| T5.2 | build() 区域拆分 | 如上结构；根键 owner_ 保持（handleKey enabled 检查不变）；`gridWidth` 拆 region 宽（滚动区行铺满 = max(滚动内容宽, 滚动视口宽)，hViewportWidth_ 跟踪对象改为滚动视口）；冻结宽 ≥ 滚动视口宽的退化：允许、横向滚动禁用（scrollExtent=0） | 两区行 y 同位对齐；冻结区不随横向滚动平移；退化场景不崩、可纵向滚 |
+| T5.3 | FrozenRegionSource | `VirtualListSource` 适配器：itemCount/extent/visibleRange/scrollOffset/updateViewport/scrollController 全部委托网格（共享纵向）；`buildItem` 只构建冻结格（行壳同源、key 前缀 `owner_:frow_<rowKey>` 避开与滚动区行 identity 冲突）；`tabStopKey` 返回空（Tab 唯一入口仍在滚动区行） | 双区行 identity/键互不冲突；Tab 序不变；双 List 共控制器下 updateViewport 幂等（等值双调用） |
+| T5.4 | 行壳状态跨区一致 | 选择/pressed/current 标记经同一选择集重建 ✓（既有机制）；hover 跨区同步：`addPointerMoveSink` 记录 hover 行 key，两区行壳按状态显式上色（若成本失控，首版接受"hover 仅命中区高亮"并记入已知限制） | 点击/键盘选择后两区选中态同步；hover 策略有对应断言或限制记录 |
+| T5.5 | 语义去重 | 冻结区行不重复进语义树：候选 a) 框架声明式语义排除（Widget 小增量，通用）；b) 冻结行壳不带 listItem role 且格语义折算 hidden。实现时定夺并与 §13.2 Grid 语义（行列计数/columnheader 关联）边界写清 | RecordingBridge 断言：每数据行恰一个 listItem 语义节点 |
+| T5.6 | 冻结分界线 | 1px `borderStrong` 垂直分隔（左区尾 Container，全高；§12 不依赖阴影） | 命令/像素断言 + 高对比可辨 |
+| T5.7 | 编辑/键盘/手柄跨区 | currentColumn 跨区（列焦点环随区显示）；beginEdit/moveEditor 走 ensureColumnVisible（P0.2）；冻结区最右列手柄 = 冻结宽调节（P0.3 基准） | 跨区双击/Tab 移动编辑格/手柄拖宽方向语义 |
+| T5.8 | 测试 | 新增用例集：几何对齐/共享纵滚/横滚隔离/pin 序与提交守卫/跨区编辑键盘手柄/分隔线/密度与 fontScale/序列化往返/退化/identity 与双击回归 | 全量绿（Debug+Release）；帧哈希对照（无 pinned 列时结构等价旧版——像素零变化的硬出口） |
+| T5.9 | 文档 | §20 实现记录、视觉系统 §3.3、HTML 矩阵"冻结列已落地"、路线图 M14-D 记录 | 同一变更内同步 |
+
+### 19.3 第六批：水平虚拟化（P2）
+
+**列窗口模型**：滚动区物化列区间 `[first, last)` = 与
+`[hScroll.offset − cache, offset + 滚动视口宽 + cache]` 相交的列
+（前缀和缓存上二分；cache 暂定 120px，覆盖窗口缘手柄）。行内容
+Row `padding.left = 窗口首列前缀偏移`、宽 = 滚动区宽——格 x 坐标
+稳定不变式保持（未物化区域命中落到行壳 = 行级点击，无列焦点定位，
+可接受并记录）；表头同窗口物化。冻结区不窗口化（pinned 列量级小）。
+
+| # | 任务 | 说明 | 验收 |
+| --- | --- | --- | --- |
+| T6.1 | 窗口状态与缓存 | 前缀和缓存（setColumns/resize/move/pin 失效重算 O(n)）；`visibleColumnRange()` 只读口；hScroll/视口宽（复用 hViewportWidth_）驱动 | 滚动推进时窗口滑动、缓存边界列保留 |
+| T6.2 | 窗口物化 | 滚动区 buildItem/表头只构建窗口列 + 偏移 padding；`copySelection`/`pasteRows`/排序状态/列宽 API 继续作用于全列集（窗口只是物化） | 100 列场景物化节点数 = O(行 × 可见列) 断言（确定性 headless）；复制内容与窗口无关 |
+| T6.3 | 可见性接线 | ensureColumnVisible（P0.2）在编辑/列焦点路径生效 | 窗口外列进入编辑滚入视口 |
+| T6.4 | 语义口径 | 物化切片进语义树与纵向虚拟化同口径（视口外 hidden/不在树）；逻辑行列计数、列头关联归 §13.2 Grid 语义增量 | RecordingBridge 抽查 |
+| T6.5 | 基准与门槛 | bench 场景 `datagrid-wide`（100 列 × 1000 行起步）：物化节点/命令数断言 + 帧时按 perf 流程首跑归档（同后端同场景；10% 门槛规则沿用） | 节点数断言 + 基线 JSON 归档 |
+| T6.6 | 测试 | 窗口推进/缓存边界、拖宽时前缀稳定、跨窗口点击-编辑-复制、快速 resize、rapid 横向滚动 fling、identity/双击回归 | 全量绿 |
+| T6.7 | 文档 | 实现记录（§21 或并入 §20）、视觉系统、HTML 矩阵、路线图 | 同步 |
+
+### 19.4 风险与既定取舍
+
+| 风险 | 处理 |
+| --- | --- |
+| 固定行高改变既有行为 | 单行省略格内容高度本就均匀；Comfortable 40 与现行实测等值（像素零变化硬出口）；多行换行内容是既有非目标 |
+| 双 List 共享一纵向控制器 | 几何全等值 → updateViewport 幂等；fling/拖动注册按指针单发；T5.3/T5.8 专测 |
+| hover 跨区不同步 | 首选指针 sink 显式上色；失控则接受并记录（选中/current 已天然同步） |
+| 语义重复 | T5.5 二选一机制，量级都是小增量 |
+| 冻结宽 ≥ 滚动视口退化 | 允许 + 横向滚动禁用；应用侧约束列宽和 |
+| 窗口缘交互（手柄/命中） | cache 边距覆盖 + 回归用例 |
+| RTL | 继续非目标（§1）；两批不得引入方向耦合假设（区域拆分按"前缀列"表述，不硬编码左右） |
+
+**规模边界**：水平虚拟化目标是百列量级（§14 P2）；万列场景的前缀和/
+序列化成本另评。十万行/百列的性能结论必须来自实测设备与归档基准，
+不得以 HTML 原型或小样本外推。
