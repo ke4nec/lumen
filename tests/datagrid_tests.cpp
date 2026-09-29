@@ -1162,6 +1162,41 @@ TEST_CASE("datagrid_frozen_region_excludes_semantics_and_clicks_sync",
     CHECK(fx.edited.front() == "1:qty:69");
 }
 
+TEST_CASE("REGRESSION_frozen_rows_carry_hover_without_tab_stop",
+          "[widgets][datagrid]") {
+    // §20.4 已知限制收口：冻结区行与滚动区行同为 collectionRow——hover
+    // 高亮在冻结区呈现（resolveListPart 既有 hovered 分支）；同时
+    // excludeFromSemantics 副本不成为 Tab 停靠点（焦点唯一入口仍在
+    // 滚动区行）。
+    GridFixture fx;
+    CHECK(fx.grid.setColumnPinned("name", true));
+    fx.render();
+
+    const auto hoverCenter = [&](const char* key) {
+        const core::RenderNode* node =
+            core::findNodeByKey(fx.shell.root(), key);
+        REQUIRE(node != nullptr);
+        return core::absoluteOffset(fx.shell.root(), key) +
+               core::Offset{node->size.width * 0.5F,
+                            node->size.height * 0.5F};
+    };
+    // 悬停冻结区行：hover 落在 frow 副本（此前谓词缺失，恒为空）。
+    fx.shell.pointerMove(hoverCenter("grid:frow:r2"));
+    CHECK(fx.shell.controller().hoveredKey() == "grid:frow:r2");
+    // 移入滚动区行：hover 切换到主视图行。
+    fx.shell.pointerMove(hoverCenter("grid:item:r5"));
+    CHECK(fx.shell.controller().hoveredKey() == "grid:item:r5");
+
+    // Tab 遍历不进入冻结副本：连续 Tab/Shift+Tab 的焦点键永不含 frow。
+    for (int i = 0; i < 8; ++i) {
+        fx.shell.keyDown(core::Key::Tab,
+                         i < 4 ? core::kModifierNone
+                               : core::kModifierShift);
+        const auto& focused = fx.shell.focus().focusedKey();
+        CHECK(focused.find(":frow:") == std::string::npos);
+    }
+}
+
 TEST_CASE("datagrid_frozen_degrades_without_pinned_columns",
           "[widgets][datagrid]") {
     GridFixture fx;

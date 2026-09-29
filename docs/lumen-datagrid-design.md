@@ -700,13 +700,21 @@ Row `padding.left = 窗口首列前缀偏移`、宽 = 滚动区宽——格 x �
 视口键、窗口收敛帧）。datagrid 29/29、全量 828/828（Debug）/830/830
 （Release）；card-grid 基准哈希不变（接缝对既有场景 no-op）。
 
-已知限制：冻结行 hover 高亮仅在滚动区（不置 collectionRow 的既有
-谓词；选中/current 已同步）；首帧列窗口仅 cache 边距内列、两帧收敛
+已知限制：首帧列窗口仅 cache 边距内列、两帧收敛
 （hViewportWidth_ 跟踪同铺满口径；offset 触及 maxOffset 钳制时表头/
 行窗口可能单帧不一致后收敛）；横向 offset 触底时 Shift+纵轮投影/
-边界链式沿用 scroll-design 既有契约；冻结区在 loose 交叉宿主中分界
-线退化为内容高（Stretch 判定依赖 tight 交叉）。RTL 镜像/拖放/Grid
-专属语义仍为后续增量。
+边界链式沿用 scroll-design 既有契约。RTL 镜像/拖放/Grid 专属语义仍
+为后续增量。
+
+（2026-09-29 追记：两条已知限制收口。其一，冻结行 hover——冻结区行
+改与滚动区行同置 `collectionRow`（hover/pressed 追踪与分隔线绘制对齐，
+样式经 resolveListPart 既有 hovered/pressed 分支），`excludeFromSemantics`
+兼任"非焦点公民"标记：交互层 List Tab 收集跳过被排除的行副本，焦点
+唯一入口保持在滚动区行（`interaction.cpp` collect 谓词）。回归用例
+`REGRESSION_frozen_rows_carry_hover_without_tab_stop`。其二，loose 交叉
+宿主分界线——review 修复后的兜底高度（表头块 + 1px + totalExtent）在
+固定行高（P0.1）下与真实内容高严格相等，loose 退化值即正确值，不再
+视为缺陷。）
 
 **review 修复（同日追记）**：根横向视口补 `showScrollbar = true`——
 review 复测发现横向滚动缺可视滚动条且拇指无法拖动（scrollbarThickness

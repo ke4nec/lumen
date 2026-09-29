@@ -1265,7 +1265,12 @@ bool InteractionController::traverseFocus(const RenderNode& root,
                 const std::string preferred = node.virtualSource->tabStopKey();
                 const RenderNode* candidate = nullptr;
                 for (const auto& row : node.children) {
-                    if (!row.collectionRow || !row.enabled || row.onClick.empty()) continue;
+                    // excludeFromSemantics 行是同一逻辑行的视觉副本
+                    //（DataGrid 冻结区）：焦点唯一入口在主视图行。
+                    if (!row.collectionRow || row.excludeFromSemantics ||
+                        !row.enabled || row.onClick.empty()) {
+                        continue;
+                    }
                     const bool focused = row.identity == focus_.focusedIdentity() ||
                                          row.key == focus_.focusedKey();
                     const bool visible = row.offset.y < node.size.height - node.padding.bottom &&

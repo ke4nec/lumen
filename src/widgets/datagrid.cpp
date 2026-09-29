@@ -1385,13 +1385,15 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
 core::Widget DataGridController::buildFrozenItem(std::size_t index) const {
     // 冻结区行（§19 T5.3/T5.5）：与滚动区行是同一逻辑行的两个视图——
     // 选择/禁用/行点击语义同串；key 前缀 frow: 避开滚动区 identity；
-    // excludeFromSemantics 防语义重复（滚动区行承载）；不置
-    // collectionRow（不进 Tab/焦点遍历——唯一入口在滚动区行；hover 高亮
-    // 随 collectionRow 谓词缺失仅在滚动区呈现，已知限制）。
+    // excludeFromSemantics 防语义重复（滚动区行承载），同时是交互层
+    // 的"非焦点公民"标记（Tab 收集跳过——唯一入口在滚动区行）。
+    // collectionRow 与滚动区行一致置位：hover/pressed 状态与分隔线
+    // 绘制对齐（§20.4 已知限制收口——此前冻结行无 hover 高亮）。
     const std::string key = keyOf(index);
     core::Widget row;
     row.type = core::WidgetType::Row;
     row.key = owner_ + ":frow:" + key;
+    row.collectionRow = true;
     row.selected = selection_.isSelected(key);
     row.onClick = "grid:" + owner_ + ":row:" + key;
     row.crossAxis = core::CrossAxisAlignment::Center;
