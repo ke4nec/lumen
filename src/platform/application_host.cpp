@@ -31,6 +31,14 @@ ServiceResult ApplicationHost::setWindowIcon(core::WindowId,
         "window icon not supported by this host");
 }
 
+// --- M15：拖放 ---
+
+ServiceResult ApplicationHost::startDrag(core::WindowId,
+                                         const DragOutPayload&) {
+    return ServiceResult::unavailable(
+        "drag start not supported by this host");
+}
+
 // --- 自定义标题栏（lumen-titlebar-design §4.3）：默认安全 no-op ---
 
 void ApplicationHost::minimizeWindow(core::WindowId) {}

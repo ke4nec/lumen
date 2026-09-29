@@ -690,3 +690,112 @@ TEST_CASE("sdl3_host_native_services_report_and_notify_structured",
     // on the desktop session and are intentionally not hard-coded here.
     // 真发送不进 ctest（见上），仅能力位断言。
 }
+
+// --- M15：拖放平台契约（OS 拖入事件归一化 + 拖出结构化降级） ---
+
+TEST_CASE("fake_host_drag_drop_events_normalize_payload_and_window",
+          "[platform][m15]") {
+    FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow(WindowDesc{});
+    REQUIRE(id.has_value());
+
+    // 排空 initialize/createWindow 的初始事件（生命周期/焦点），只留
+    // 拖放注入序列。
+    core::HostEvent event{};
+    while (host.pollEvent(event)) {
+    }
+
+    // 事件序列：Enter → Move → Drop(text) / Drop(files) → Leave；字段与
+    // 宿主翻译后的归一化约定一致（position 逻辑坐标、text/filePaths 负载）。
+    host.pushDragEnter(*id, core::Offset{10.0F, 12.0F});
+    host.pushDragMove(*id, core::Offset{40.0F, 44.0F});
+    host.pushDragDropText(*id, core::Offset{48.0F, 50.0F}, "dropped text");
+    host.pushDragDropFiles(*id, core::Offset{60.0F, 70.0F},
+                           {"/tmp/a.txt", "/tmp/b.txt"});
+    host.pushDragLeave(*id, core::Offset{80.0F, 90.0F});
+
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::DragEnter);
+    CHECK(event.window == *id);
+    CHECK(event.position.x == 10.0F);
+    CHECK(event.position.y == 12.0F);
+
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::DragMove);
+    CHECK(event.position.x == 40.0F);
+
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::DragDrop);
+    CHECK(event.text == "dropped text");
+    CHECK(event.filePaths.empty());
+    CHECK(event.position.x == 48.0F);
+
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::DragDrop);
+    CHECK(event.text.empty());
+    REQUIRE(event.filePaths.size() == 2);
+    CHECK(event.filePaths[0] == "/tmp/a.txt");
+    CHECK(event.filePaths[1] == "/tmp/b.txt");
+
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::DragLeave);
+    CHECK(event.position.x == 80.0F);
+
+    CHECK_FALSE(host.pollEvent(event));
+}
+
+TEST_CASE("fake_host_start_drag_records_and_injects_failure",
+          "[platform][m15]") {
+    FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow(WindowDesc{});
+    REQUIRE(id.has_value());
+
+    // 默认成功（fake 模拟可用服务）；负载完整记录。
+    lumen::platform::DragOutPayload payload;
+    payload.text = "drag me";
+    CHECK(host.startDrag(*id, payload).ok);
+    REQUIRE(host.dragStartCalls.size() == 1);
+    CHECK(host.dragStartCalls[0].window == *id);
+    CHECK(host.dragStartCalls[0].payload.text == "drag me");
+    CHECK(host.dragStartCalls[0].result.ok);
+
+    // 失败注入：结构化 Unavailable，调用仍记录。
+    host.setDragStartFailure(lumen::platform::ServiceResult::unavailable(
+        "fake host: drag start unavailable"));
+    const auto result = host.startDrag(*id, payload);
+    REQUIRE(host.dragStartCalls.size() == 2);
+    CHECK_FALSE(result.ok);
+    CHECK(result.error == lumen::platform::ServiceError::Unavailable);
+    CHECK(host.dragStartCalls[1].result.error ==
+          lumen::platform::ServiceError::Unavailable);
+
+    // 能力位默认 false（fake host 不隐含拖放可用；由测试显式覆写）。
+    CHECK_FALSE(host.capabilities().dragDropReceive);
+    CHECK_FALSE(host.capabilities().dragDropStart);
+}
+
+TEST_CASE("sdl3_host_drag_drop_capabilities_and_start_drag_unavailable",
+          "[platform][m15]") {
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    lumen::platform::Sdl3ApplicationHost host;
+    REQUIRE(host.initialize());
+
+    // 拖入事件随视频子系统可用；拖出发起 SDL 3.2.10 无 API——能力位
+    // 如实 false，调用返回结构化 Unavailable（不阻塞、可诊断）。
+    const auto capabilities = host.capabilities();
+    CHECK(capabilities.dragDropReceive);
+    CHECK_FALSE(capabilities.dragDropStart);
+
+    lumen::platform::DragOutPayload payload;
+    payload.text = "out";
+    const auto result = host.startDrag(core::WindowId{1}, payload);
+    CHECK_FALSE(result.ok);
+    CHECK(result.error == lumen::platform::ServiceError::Unavailable);
+    CHECK(!result.message.empty());
+}

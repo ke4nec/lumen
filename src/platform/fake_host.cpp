@@ -372,6 +372,52 @@ void FakeApplicationHost::reattachSurface(core::WindowId id) {
 
 FakeClipboard* FakeApplicationHost::fakeClipboard() { return &clipboard_; }
 
+// --- M15：OS 拖入事件注入 ---
+
+void FakeApplicationHost::pushDragEnter(core::WindowId id,
+                                        core::Offset position) {
+    core::HostEvent event =
+        makeEvent(core::HostEventType::DragEnter, id);
+    event.position = position;
+    queue_.push_back(std::move(event));
+}
+
+void FakeApplicationHost::pushDragMove(core::WindowId id,
+                                       core::Offset position) {
+    core::HostEvent event =
+        makeEvent(core::HostEventType::DragMove, id);
+    event.position = position;
+    queue_.push_back(std::move(event));
+}
+
+void FakeApplicationHost::pushDragDropText(core::WindowId id,
+                                           core::Offset position,
+                                           std::string text) {
+    core::HostEvent event =
+        makeEvent(core::HostEventType::DragDrop, id);
+    event.position = position;
+    event.text = std::move(text);
+    queue_.push_back(std::move(event));
+}
+
+void FakeApplicationHost::pushDragDropFiles(
+    core::WindowId id, core::Offset position,
+    std::vector<std::string> paths) {
+    core::HostEvent event =
+        makeEvent(core::HostEventType::DragDrop, id);
+    event.position = position;
+    event.filePaths = std::move(paths);
+    queue_.push_back(std::move(event));
+}
+
+void FakeApplicationHost::pushDragLeave(core::WindowId id,
+                                        core::Offset position) {
+    core::HostEvent event =
+        makeEvent(core::HostEventType::DragLeave, id);
+    event.position = position;
+    queue_.push_back(std::move(event));
+}
+
 FakeTextInputSession* FakeApplicationHost::fakeTextInputSession(
     core::WindowId id) {
     WindowEntry* entry = find(id);
@@ -456,6 +502,15 @@ ServiceResult FakeApplicationHost::setWindowIcon(core::WindowId id,
                                     : ServiceResult::success();
 }
 
+ServiceResult FakeApplicationHost::startDrag(core::WindowId id,
+                                             const DragOutPayload& payload) {
+    ServiceResult result =
+        dragStartFailure_.has_value() ? *dragStartFailure_
+                                      : ServiceResult::success();
+    dragStartCalls.push_back(DragStartCall{id, payload, result});
+    return result;
+}
+
 void FakeApplicationHost::queueFileDialogResult(FileDialogResult result) {
     dialogResults_.push_back(std::move(result));
 }
@@ -474,6 +529,10 @@ void FakeApplicationHost::setNotificationFailure(ServiceResult failure) {
 
 void FakeApplicationHost::setIconFailure(ServiceResult failure) {
     iconFailure_ = std::move(failure);
+}
+
+void FakeApplicationHost::setDragStartFailure(ServiceResult failure) {
+    dragStartFailure_ = std::move(failure);
 }
 
 }  // namespace lumen::platform

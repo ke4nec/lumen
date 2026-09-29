@@ -142,6 +142,15 @@ enum class HostEventType : std::uint8_t {
     SystemThemeChanged,
     // 高对比/减少动画/字体缩放变化；宿主先更新 capabilities 再广播。
     SystemAccessibilityChanged,
+    // M15：OS 拖入会话（应用内重排拖拽不经宿主——见 InteractionController
+    // 拖放状态机）。DragEnter = 会话进入窗口；DragMove = 悬停位置更新；
+    // DragDrop = 释放交付（text 或 filePaths 携带负载，position 为落点）；
+    // DragLeave = 未释放离开。SDL 3.2.10 无显式 leave 事件，宿主在
+    // DROP_COMPLETE 且本次会话未交付负载时合成 DragLeave。
+    DragEnter,
+    DragMove,
+    DragDrop,
+    DragLeave,
 };
 
 struct HostEvent {

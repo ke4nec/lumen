@@ -58,6 +58,9 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     void setCursor(core::WindowId id, SystemCursor cursor) override;
     [[nodiscard]] ServiceResult setWindowIcon(
         core::WindowId id, const WindowIcon& icon) override;
+    // M15：拖出（SDL 3.2.10 无 API——结构化 Unavailable，能力位 false）。
+    [[nodiscard]] ServiceResult startDrag(
+        core::WindowId id, const DragOutPayload& payload) override;
 
     // --- 自定义标题栏（lumen-titlebar-design §4.3） ---
     void minimizeWindow(core::WindowId id) override;
@@ -85,6 +88,9 @@ class Sdl3ApplicationHost final : public ApplicationHost {
         SystemCursor cursorShape{SystemCursor::Arrow};
         // 自定义标题栏：拖拽区谓词（窗口逻辑坐标）；空 = 无拖拽区。
         std::function<bool(core::Offset)> dragRegion{};
+        // M15：本次 OS 拖入会话是否已交付负载（DROP_COMPLETE 时无负载
+        // 则合成 DragLeave）。
+        bool dropDelivered{false};
     };
 
     // M4：文件对话框异步完成暂存（回调线程填充，pollEvent 消费）。

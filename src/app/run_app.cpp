@@ -651,6 +651,14 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                 case HostEventType::FileDialogCompleted:
                     notify(*runtime, event, render::FrameReason::Input);
                     break;
+                // M15：OS 拖入会话转发应用（onEvent 消费落点/负载；应用
+                // 变更状态后自行请求帧）。框架内重排拖拽不经此路径。
+                case HostEventType::DragEnter:
+                case HostEventType::DragMove:
+                case HostEventType::DragDrop:
+                case HostEventType::DragLeave:
+                    notify(*runtime, event, render::FrameReason::Input);
+                    break;
                 default:
                     break;
             }

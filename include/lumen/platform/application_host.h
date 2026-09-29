@@ -138,6 +138,14 @@ struct WindowIcon {
     std::vector<std::uint8_t> rgba{};
 };
 
+// M15：拖出负载（应用 → OS/其他应用；文本或文件路径，至少一项非空）。
+// 当前固定 SDL 3.2.10 无拖出发起 API，startDrag 结构化 Unavailable，
+// dragDropStart 能力位如实为 false；SDL 升级后重评。
+struct DragOutPayload {
+    std::string text{};
+    std::vector<std::string> filePaths{};
+};
+
 // TextField 编辑状态快照（grapheme cluster 索引，plan §3.2）。平台转换
 // 只发生在适配层；候选词锚点使用 caretRect（逻辑坐标）。
 struct TextInputEditingState {
@@ -190,6 +198,11 @@ struct PlatformCapabilities {
     bool openUrl{false};
     bool cursorShape{false};
     bool windowIcon{false};
+    // M15：拖放。dragDropReceive = OS 拖入事件可到达（DragEnter/Move/
+    // Drop/Leave 经 pollEvent 交付）；dragDropStart = 应用可发起拖出
+    // （startDrag 受理）。
+    bool dragDropReceive{false};
+    bool dragDropStart{false};
     // 至少一项 OS 偏好已查询成功；个别未暴露的字段保留安全默认值。
     bool systemAccessibilityPreferences{false};
 };
@@ -249,6 +262,12 @@ class ApplicationHost {
     // 窗口图标（straight RGBA8）。
     [[nodiscard]] virtual ServiceResult setWindowIcon(
         core::WindowId id, const WindowIcon& icon);
+    // --- M15：拖放 ---
+    // 拖出发起（负载 = 文本或文件路径）。受理只代表平台接受请求；
+    // 会话进度不回灌事件（OS 侧由用户完成）。默认 Unavailable（契约
+    // host/未支持平台结构化降级）。
+    [[nodiscard]] virtual ServiceResult startDrag(
+        core::WindowId id, const DragOutPayload& payload);
 
     // --- 自定义标题栏（lumen-titlebar-design §4.3）：窗口操作与拖拽区 ---
     // 默认实现安全 no-op（契约 host/未支持平台结构化降级）；无效窗口 id

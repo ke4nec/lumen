@@ -297,6 +297,10 @@ bool Sdl3ApplicationHost::initialize() {
     capabilities_.openUrl = true;
     capabilities_.cursorShape = true;
     capabilities_.windowIcon = true;
+    // M15：拖入事件随视频子系统到达（DROP_* 翻译见 translateEvent）；
+    // 拖出发起 SDL 3.2.10 无 API（startDrag 结构化 Unavailable）。
+    capabilities_.dragDropReceive = true;
+    capabilities_.dragDropStart = false;
     // M12：系统主题查询（SDL_GetSystemTheme，3.2.0 起可用；此前
     // "SDL 3.2 无查询"注释有误）。UNKNOWN 保持安全默认 false。
     capabilities_.prefersDarkMode =
@@ -635,6 +639,59 @@ std::size_t Sdl3ApplicationHost::translateEvent(
             core::HostEvent event;
             event.type = core::HostEventType::SystemThemeChanged;
             push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_DROP_BEGIN:
+        case SDL_EVENT_DROP_POSITION:
+        case SDL_EVENT_DROP_FILE:
+        case SDL_EVENT_DROP_TEXT:
+        case SDL_EVENT_DROP_COMPLETE: {
+            // M15：OS 拖入会话（m15-roadmap §3）。BEGIN 开会话（清交付
+            // 标志），POSITION 是悬停更新，FILE/TEXT 交付负载；
+            // COMPLETE 在本次会话未交付负载时合成 DragLeave——SDL
+            // 3.2.10 无显式 leave 事件。
+            const auto it = windows_.find(sdlEvent.drop.windowID);
+            if (it == windows_.end()) {
+                break;
+            }
+            core::HostEvent event;
+            event.window = windowIdOf(sdlEvent.drop.windowID);
+            event.position =
+                core::Offset{sdlEvent.drop.x, sdlEvent.drop.y};
+            switch (sdlEvent.type) {
+                case SDL_EVENT_DROP_BEGIN:
+                    it->second.dropDelivered = false;
+                    event.type = core::HostEventType::DragEnter;
+                    break;
+                case SDL_EVENT_DROP_POSITION:
+                    event.type = core::HostEventType::DragMove;
+                    break;
+                case SDL_EVENT_DROP_FILE:
+                    if (sdlEvent.drop.data != nullptr) {
+                        event.filePaths.emplace_back(sdlEvent.drop.data);
+                        it->second.dropDelivered = true;
+                        event.type = core::HostEventType::DragDrop;
+                    }
+                    break;
+                case SDL_EVENT_DROP_TEXT:
+                    if (sdlEvent.drop.data != nullptr) {
+                        event.text = sdlEvent.drop.data;
+                        it->second.dropDelivered = true;
+                        event.type = core::HostEventType::DragDrop;
+                    }
+                    break;
+                case SDL_EVENT_DROP_COMPLETE:
+                default:
+                    // 交付过负载则 DragDrop 已终结束会话；否则视为未释放
+                    // 离开（拖出窗口/按 Esc 取消）。
+                    if (!it->second.dropDelivered) {
+                        event.type = core::HostEventType::DragLeave;
+                    }
+                    break;
+            }
+            if (event.type != core::HostEventType::None) {
+                push(std::move(event));
+            }
             break;
         }
         default:
@@ -998,6 +1055,14 @@ ServiceResult Sdl3ApplicationHost::setWindowIcon(core::WindowId id,
                                      std::string(SDL_GetError()));
     }
     return ServiceResult::success();
+}
+
+ServiceResult Sdl3ApplicationHost::startDrag(core::WindowId,
+                                             const DragOutPayload&) {
+    // M15：固定 SDL 3.2.10 无拖出发起 API（receive-only）；能力位
+    // dragDropStart 如实 false，SDL 升级后在此接入并翻转能力。
+    return ServiceResult::unavailable(
+        "SDL 3.2.10 provides no drag-start API (receive-only)");
 }
 
 Sdl3ApplicationHost::WindowEntry* Sdl3ApplicationHost::find(

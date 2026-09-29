@@ -113,6 +113,9 @@ class FakeApplicationHost final : public ApplicationHost {
     void setCursor(core::WindowId id, SystemCursor cursor) override;
     [[nodiscard]] ServiceResult setWindowIcon(
         core::WindowId id, const WindowIcon& icon) override;
+    // M15：拖出（记录 + 失败注入；默认成功，模拟可用服务）。
+    [[nodiscard]] ServiceResult startDrag(
+        core::WindowId id, const DragOutPayload& payload) override;
 
     // --- 自定义标题栏（lumen-titlebar-design §4.3）：窗口操作（记录 +
     // 状态驱动语义合一：更新 metrics 并入队对应事件） ---
@@ -154,6 +157,15 @@ class FakeApplicationHost final : public ApplicationHost {
     void pushSystemThemeChanged(bool prefersDarkMode);
     void pushSystemAccessibilityChanged(bool highContrast, bool reduceAnimation,
                                         float fontScale);
+    // M15：OS 拖入会话事件注入（DragEnter/Move/Leave 只带位置；Drop 携带
+    // 文本或文件负载——与宿主翻译后的归一化字段一致）。
+    void pushDragEnter(core::WindowId id, core::Offset position);
+    void pushDragMove(core::WindowId id, core::Offset position);
+    void pushDragDropText(core::WindowId id, core::Offset position,
+                          std::string text);
+    void pushDragDropFiles(core::WindowId id, core::Offset position,
+                           std::vector<std::string> paths);
+    void pushDragLeave(core::WindowId id, core::Offset position);
 
     // --- 状态驱动：先更新 WindowMetrics，再入队事件（plan §3.1） ---
     void setLifecycle(core::AppLifecycle next);
@@ -186,6 +198,8 @@ class FakeApplicationHost final : public ApplicationHost {
     void setOpenUrlFailure(ServiceResult failure);
     void setNotificationFailure(ServiceResult failure);
     void setIconFailure(ServiceResult failure);
+    // M15：注入拖出失败；空 = 成功。
+    void setDragStartFailure(ServiceResult failure);
 
     // 记录（断言用）。
     struct OpenUrlCall {
@@ -213,6 +227,14 @@ class FakeApplicationHost final : public ApplicationHost {
         bool operator==(const IconCall&) const = default;
     };
     std::vector<IconCall> iconCalls{};
+    // M15：拖出调用记录（结果 = 成功或注入的失败）。
+    struct DragStartCall {
+        core::WindowId window{};
+        DragOutPayload payload{};
+        ServiceResult result{};
+        bool operator==(const DragStartCall&) const = default;
+    };
+    std::vector<DragStartCall> dragStartCalls{};
     // 自定义标题栏：窗口操作记录（minimize/maximize-toggle/close）与
     // 各窗口拖拽区谓词（测试直接调用谓词断言注册结果）。
     std::vector<std::string> windowCommandCalls{};
@@ -246,6 +268,7 @@ class FakeApplicationHost final : public ApplicationHost {
     std::optional<ServiceResult> openUrlFailure_{};
     std::optional<ServiceResult> notificationFailure_{};
     std::optional<ServiceResult> iconFailure_{};
+    std::optional<ServiceResult> dragStartFailure_{};
 };
 
 }  // namespace lumen::platform
