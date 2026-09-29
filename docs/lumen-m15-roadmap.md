@@ -187,3 +187,13 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 ## 10. 完成记录
 
 （模板同主路线图 §10：完成日期/提交号/变更/测试/平台/已知限制/回滚点。自 M15 起逐里程碑追加。）
+
+### M15 进行中状态记录（2026-09-29，实现阶段落地）
+
+- 完成日期：实现批次 2026-09-29（未达总出口——三桌面 OS 拖入 smoke 未做）。
+- 提交号：f0f2773（平台契约）/ df9579b（core 会话状态机）/ 9c43240（List 行重排 + 非模态视觉 overlay + DragDropTokens）/ 66bad59（DataGrid 行/列重排 + 键盘/语义等价）。
+- 变更：契约与实现详见 [`lumen-drag-drop-design.md`](lumen-drag-drop-design.md)（§1–§9）。分层——HostEvent DragEnter/Move/Drop/Leave + startDrag 结构化降级（SDL 3.2.10 无拖出 API，能力位如实 false）；InteractionController 会话状态机（arm 认领 → 8px 阈值 → Start/Move/Drop/Cancel；手势仲裁表：scrollbar/splitter/slider/文本选区优先，触摸行拖拽让位滚动）；List/DataGrid 行重排（onReorder 先移除后插入语义）+ DataGrid 表头列拖拽（moveColumn 区域钳制）；Alt+↑/↓ 键盘等价与语义 MoveUp/MoveDown（kActionMoveUp/Down + moveCollectionRow sink，Expand/Collapse 同型）；ghost/插入指示线经框架**非模态视觉 overlay**（`setVisualOverlayBuilder`——模态 overlay 的 pointerCancel 语义不适用，设计 §5）；DragDropTokens（视觉系统 §3.4 + `design/drag-drop.html`）。
+- 测试：Linux CPU Debug 863/863（新增 20 用例：平台 3 + core 会话 6 + List/DataGrid 11，`[m15]`/`[dragdrop]` 标签）。基准 hash 未回退（全量含既有像素/哈希断言）。
+- 平台：本地 Linux 全部验证（含 SDL dummy 能力位冒烟）；Windows/macOS 以 CI 为事实来源；**三桌面真实 OS 文件/文本拖入 smoke 未做**（四态：接口已存在 + headless 已验证）。
+- 已知限制：触摸行/列拖拽不认领（触摸拖动保持滚动语义，专用句柄认领通道就绪但无消费方）；拖拽中无自动滚动；无 Esc 中途取消；ghost 抓取偏移固定；拖出（OS drag start）结构化 Unavailable 待 SDL 升级。List 语义 action 暴露随首个应用需求补。
+- 回滚点：`1e1c19c`（M15 起点前）。

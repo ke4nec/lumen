@@ -152,6 +152,14 @@ Skia/GPU Release 779/779，无跳过；详见
   提供 build/状态逻辑；`runApp` 支持单窗口兼容入口和多个 `AppWindow` 绑定，
   按 `HostEvent.window` 隔离输入、DPI、IME、renderer、语义桥和帧调度。
   宿主窗口生命周期仍由调用方拥有；最后一个运行时关闭后主循环结束。
+- 拖放（M15 实现批次 2026-09-29）：OS 拖入经 `HostEvent` DragEnter/
+  Move/Drop/Leave 归一化交付（SDL DROP_* 翻译；COMPLETE 无负载合成
+  DragLeave），`startDrag` 结构化 Unavailable（SDL 3.2.10 无拖出 API，
+  `dragDropStart` 能力位如实 false）；应用内 List/DataGrid 行重排与
+  DataGrid 列拖拽经 core 会话状态机（arm/阈值/仲裁表），Alt+↑/↓ 与语义
+  MoveUp/MoveDown 提供非指针路径。当前四态 = 接口已存在 + headless 已
+  验证（契约见 [`lumen-drag-drop-design.md`](lumen-drag-drop-design.md)）；
+  三桌面真实 OS 拖入 smoke 未做，拖出待 SDL 升级。
 - 平台服务已统一接口（M4：文件选择/OpenURL/通知/光标/图标 + 能力报
   告）；M12 已收口原生后端——通知与强调色走 native seam（Win32/
   DBus/AppKit），SDL 系统主题输入经 `SDL_GetSystemTheme` +
