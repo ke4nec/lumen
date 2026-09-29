@@ -152,6 +152,13 @@ Skia/GPU Release 779/779，无跳过；详见
   提供 build/状态逻辑；`runApp` 支持单窗口兼容入口和多个 `AppWindow` 绑定，
   按 `HostEvent.window` 隔离输入、DPI、IME、renderer、语义桥和帧调度。
   宿主窗口生命周期仍由调用方拥有；最后一个运行时关闭后主循环结束。
+- 窗口与系统集成（M16 实现批次 2026-09-29）：全屏（`toggleFullscreen` +
+  WindowFullscreenEntered/Exited 事件）、置顶、OS 模态（SDL_SetWindowParent
+  + SetWindowModal）契约与三桌面能力位；系统托盘经 SDL_tray（菜单激活回灌
+  TrayActivated）；全局快捷键契约就绪但无平台后端（能力位 false + 结构化
+  Unavailable）；windows/macos 新增 package-skia-gpu 包变体。当前四态 =
+  接口已存在 + headless 已验证（Linux）；真实平台 smoke 与 macOS 原生
+  菜单栏/交通灯未做。
 - 拖放（M15 实现批次 2026-09-29）：OS 拖入经 `HostEvent` DragEnter/
   Move/Drop/Leave 归一化交付（SDL DROP_* 翻译；COMPLETE 无负载合成
   DragLeave），`startDrag` 结构化 Unavailable（SDL 3.2.10 无拖出 API，

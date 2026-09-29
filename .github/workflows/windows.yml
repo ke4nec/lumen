@@ -394,3 +394,54 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf build-pkg/unpack build-pkg/lumen-*
+
+  # M16：Skia+GPU 便携包变体（package-skia + LUMEN_ENABLE_GPU；解包
+  # 冒烟 headless + GPU 一帧——counter 自带回退，无硬件 runner 不阻塞）。
+  package-skia-gpu:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: windows-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            windows-fetchcontent-
+      - name: Configure (portable package + Skia + GPU)
+        run: >
+          cmake -S . -B build-pkg
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_PACKAGE=ON
+          -DLUMEN_ENABLE_SKIA=ON
+          -DLUMEN_ENABLE_GPU=ON
+      - name: Build (Release)
+        run: cmake --build build-pkg --config Release
+      - name: Package (CPack)
+        run: cpack --config CPackConfig.cmake -C Release
+        working-directory: build-pkg
+      - name: Unpack smoke (headless + GPU frame)
+        shell: bash
+        working-directory: build-pkg
+        run: |
+          mkdir unpack && cd unpack
+          7z x ../*.zip > /dev/null
+          pkg=$(ls -d lumen-*)
+          ./$pkg/bin/lumen-counter.exe --headless
+          ./$pkg/bin/lumen-settings.exe --headless
+          ./$pkg/bin/lumen-counter.exe --renderer gpu --diagnostics --frames 2
+      - name: Relocated SDK consumer
+        run: python -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-package-skia-gpu-${{ runner.os }}
+          path: build-pkg/lumen-*
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
+      - name: Cleanup package intermediates
+        if: always()
+        shell: bash
+        run: rm -rf build-pkg/unpack build-pkg/lumen-*

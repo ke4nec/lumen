@@ -447,3 +447,67 @@ jobs:
       - name: Cleanup package intermediates
         if: always()
         run: rm -rf build-pkg/unpack build-pkg/lumen-*
+
+  # M16：Skia+GPU 便携包变体（package-skia + LUMEN_ENABLE_GPU；解包
+  # 冒烟 headless + 软件 GL GPU 一帧——counter 自带回退）。
+  package-skia-gpu:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (SDL3/Catch2/Skia)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: macos-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            macos-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: macos-ccache-pkg-gpu-${{ github.sha }}
+          restore-keys: |
+            macos-ccache-pkg-gpu-
+            macos-ccache-pkg-
+            macos-ccache-
+      - name: Install ccache + ninja
+        run: brew install ccache ninja || brew upgrade ccache ninja || true
+      - name: Configure (portable package + Skia + GPU)
+        run: >
+          cmake -S . -B build-pkg -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_BUILD_PACKAGE=ON
+          -DLUMEN_ENABLE_SKIA=ON
+          -DLUMEN_ENABLE_GPU=ON
+      - name: Build
+        run: cmake --build build-pkg --config Release
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
+      - name: Package (CPack)
+        run: cpack --config CPackConfig.cmake
+        working-directory: build-pkg
+      - name: Unpack smoke (headless + GPU frame)
+        working-directory: build-pkg
+        run: |
+          mkdir unpack && cd unpack
+          tar xzf ../*.tar.gz 2>/dev/null || unzip -q ../*.zip
+          pkg=$(ls -d lumen-*)
+          ./$pkg/bin/lumen-counter --headless
+          ./$pkg/bin/lumen-settings --headless
+          ./$pkg/bin/lumen-counter --renderer gpu --diagnostics --frames 2
+      - name: Relocated SDK consumer
+        run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-package-skia-gpu-${{ runner.os }}
+          path: build-pkg/lumen-*
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
+      - name: Cleanup package intermediates
+        if: always()
+        run: rm -rf build-pkg/unpack build-pkg/lumen-*

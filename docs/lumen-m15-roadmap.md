@@ -197,3 +197,17 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 - 平台：本地 Linux 全部验证（含 SDL dummy 能力位冒烟）；Windows/macOS 以 CI 为事实来源；**三桌面真实 OS 文件/文本拖入 smoke 未做**（四态：接口已存在 + headless 已验证）。
 - 已知限制：触摸行/列拖拽不认领（触摸拖动保持滚动语义，专用句柄认领通道就绪但无消费方）；拖拽中无自动滚动；无 Esc 中途取消；ghost 抓取偏移固定；拖出（OS drag start）结构化 Unavailable 待 SDL 升级。List 语义 action 暴露随首个应用需求补。
 - 回滚点：`1e1c19c`（M15 起点前）。
+
+### M16 进行中状态记录（2026-09-29，实现批次落地）
+
+- 完成日期：实现批次 2026-09-29（未达总出口——真实平台 smoke 与 macOS 原生菜单栏/交通灯未做）。
+- 提交号：abf2f75（窗口能力）/ d5d5c44（托盘 + 快捷键契约）/（本批：包变体与状态记录）。
+- 变更：
+  - 窗口能力：`toggleFullscreen`/`setAlwaysOnTop`/`setWindowModal`（SDL3 组合 SDL_SetWindowParent+SetWindowModal）；`WindowFullscreenEntered/Exited` 事件 + `WindowMetrics.fullscreen`；能力位 windowFullscreen/AlwaysOnTop/Modal 如实报告；Fake host 记录 + 状态驱动事件。
+  - 系统托盘：SDL_tray 跨平台直连（图标/tooltip/菜单；激活经互斥队列 → `TrayActivated` 回灌归属窗口；separator 以禁用 "-" 近似——SDL 3.2.10 无 separator 条目）；`setTray/removeTray` + Fake 记录/失败注入。
+  - 全局快捷键：契约（`GlobalHotkeySpec` + `registerGlobalHotkey`/`unregisterGlobalHotkey` + `GlobalHotkey` 事件）就绪；**无平台后端**——SDL 3.2.10 无 API，Win32 RegisterHotKey/X11 XGrabKey/macOS seam 为后续增量，能力位恒 false + 结构化 Unavailable。窗口内命令分发不在此层（用户 G-1 命令注册表已实施）。
+  - 发布尾项：windows.yml/macos.yml 新增 `package-skia-gpu` 变体（package-skia + LUMEN_ENABLE_GPU + 解包 headless/GPU 帧冒烟；以 CI 首跑为事实来源）。
+- 测试：Linux CPU Debug 新增 4 用例（[m16]：fake 记录/事件回灌/失败注入、SDL dummy 能力位与结构化降级）。run_app 的 TrayActivated/GlobalHotkey 转发 case 已随并行 G-2 的 run_app 变更落地（工作区）。
+- 平台：本地 Linux 验证；Windows/macOS 以 CI 为事实来源（含新 package-skia-gpu 首跑）。
+- 已知限制：macOS 原生菜单栏（NSMenu 单向映射）与交通灯/borderless 最大化回退未实施（无 macOS 编译环境，按证据规则登记为增量）；全局快捷键无平台后端；托盘 submenu/checkbox 条目未接（SDL_tray 能力就绪，按需增量）。
+- 回滚点：`bfe4d43`（M16 起点前）。
