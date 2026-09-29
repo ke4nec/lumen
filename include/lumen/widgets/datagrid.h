@@ -56,6 +56,14 @@ namespace lumen::widgets {
 // 单元格水平对齐（设计文档 §12：数值/日期列 End = 右对齐）。
 enum class DataColumnAlign : std::uint8_t { Start, End };
 
+// 排序键（多列排序 §11.2）：向量序 = 优先级（front 为主排序）；相等值
+// 保持源顺序由应用执行（稳定排序）。
+struct SortKey {
+    std::string columnKey{};
+    bool ascending{true};
+    bool operator==(const SortKey&) const = default;
+};
+
 // 列定义（应用装配；width 为固定像素宽，>= minWidth 且 >= 40）。
 struct DataColumn {
     std::string key{};
@@ -112,16 +120,29 @@ class DataGridController final : public core::VirtualListSource {
     void setEstimatedExtent(float extent);
 
     // --- 排序/筛选（回调契约；数据重排由应用执行） ---
-    // 排序状态由网格维护（表头指示器同源）。点击循环为升序 → 降序 →
-    // 清除（§11.2）；清除时回调以空列 key 触发，应用恢复源顺序后重建。
+    // 排序状态由网格维护（表头指示器同源）。多列排序（§11.2）：向量序
+    // = 优先级；普通点击 = 以单列循环 升序 → 降序 → 清除（该列已是唯一
+    // 排序列时延续循环，否则收敛为单列升序）；Shift 点击 = 追加/更新该列
+    // 为最低优先级，升序 → 降序 → 移除（移除后序号连续）。清除时回调以
+    // 空列 key 触发，应用恢复源顺序后重建。
     // 编辑中的草稿先提交，校验失败中止本次排序（§13.1）。
+    // onSortRequest 为单列兼容回调（主排序键；既有接线不变）；
+    // onSortRequestMulti 携带完整多列状态（§11.2 相等值稳定排序在应用）。
     std::function<void(const std::string& columnKey, bool ascending)>
         onSortRequest{};
-    [[nodiscard]] const std::string& sortColumn() const {
-        return sortColumn_;
+    std::function<void(const std::vector<SortKey>&)> onSortRequestMulti{};
+    [[nodiscard]] const std::vector<SortKey>& sortKeys() const {
+        return sortKeys_;
     }
-    [[nodiscard]] bool sortAscending() const { return sortAscending_; }
-    void requestSort(const std::string& columnKey);
+    [[nodiscard]] const std::string& sortColumn() const {
+        static const std::string kNone;
+        return sortKeys_.empty() ? kNone : sortKeys_.front().columnKey;
+    }
+    [[nodiscard]] bool sortAscending() const {
+        return sortKeys_.empty() || sortKeys_.front().ascending;
+    }
+    // extend = Shift 追加语义（指针路径按修饰键透传）。
+    void requestSort(const std::string& columnKey, bool extend = false);
     // 筛选回调契约：应用提供过滤入口（工具栏/表头上下文均可），网格只
     // 约定回调与刷新路径，不内置过滤 UI。
     std::function<void()> onFilterRequest{};
@@ -372,8 +393,8 @@ class DataGridController final : public core::VirtualListSource {
     // 编辑态（row key + 列 key）；文本经 shell state owner+":edit"。
     std::optional<std::pair<std::string, std::string>> editing_{};
     std::string editError_{};
-    std::string sortColumn_{};
-    bool sortAscending_{true};
+    // 多列排序状态（front = 主排序；表头指示器/回调同源）。
+    std::vector<SortKey> sortKeys_{};
     std::string currentColumn_{};
     // 可用行 key 缓存（表头全选态/全选切换；setRowCount/setKeyOf/
     // setRowEnabledOf 失效）。

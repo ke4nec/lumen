@@ -72,9 +72,10 @@ void DataGridController::setColumns(std::vector<DataColumn> columns) {
     if (!columnVisible(currentColumn_)) {
         currentColumn_ = firstVisibleColumn();
     }
-    if (!sortColumn_.empty() && !columnExists(sortColumn_)) {
-        sortColumn_.clear();
-    }
+    // 列集移除的排序键随之失效（序号自然连续）。
+    std::erase_if(sortKeys_, [this](const SortKey& key) {
+        return !columnExists(key.columnKey);
+    });
     requestRebuild();
 }
 
@@ -198,7 +199,8 @@ void DataGridController::setEstimatedExtent(float extent) {
 
 // --- 排序 ---
 
-void DataGridController::requestSort(const std::string& columnKey) {
+void DataGridController::requestSort(const std::string& columnKey,
+                                     bool extend) {
     if (!columnExists(columnKey)) {
         return;
     }
@@ -211,20 +213,35 @@ void DataGridController::requestSort(const std::string& columnKey) {
     if (!commitPendingEdit()) {
         return;
     }
-    // 单列循环：升序 → 降序 → 清除（§11.2）；清除以空列 key 回调。
-    if (sortColumn_ == columnKey) {
-        if (sortAscending_) {
-            sortAscending_ = false;
+    // §11.2 多列循环：extend（Shift）= 追加/更新该列为最低优先级，
+    // 升序 → 降序 → 移除；普通点击 = 单列循环（该列已是唯一排序列时
+    // 延续，否则收敛为单列升序）——单列路径与既有契约逐位一致。
+    const auto at = std::find_if(
+        sortKeys_.begin(), sortKeys_.end(),
+        [&](const SortKey& key) { return key.columnKey == columnKey; });
+    if (extend) {
+        if (at == sortKeys_.end()) {
+            sortKeys_.push_back(SortKey{columnKey, true});
+        } else if (at->ascending) {
+            at->ascending = false;
         } else {
-            sortColumn_.clear();
-            sortAscending_ = true;
+            sortKeys_.erase(at);
+        }
+    } else if (at != sortKeys_.end() && sortKeys_.size() == 1) {
+        if (at->ascending) {
+            at->ascending = false;
+        } else {
+            sortKeys_.clear();
         }
     } else {
-        sortColumn_ = columnKey;
-        sortAscending_ = true;
+        sortKeys_.clear();
+        sortKeys_.push_back(SortKey{columnKey, true});
     }
     if (onSortRequest) {
-        onSortRequest(sortColumn_, sortAscending_);
+        onSortRequest(sortColumn(), sortAscending());
+    }
+    if (onSortRequestMulti) {
+        onSortRequestMulti(sortKeys_);
     }
     requestRebuild();
 }
@@ -433,7 +450,10 @@ core::Widget DataGridController::build() const {
         // Button 内容对齐扩展（设计文档 §16 已知限制）。
         const bool hasHandle = column.resizable;
         core::Widget cell;
-        const bool sorted = column.key == sortColumn_;
+        const auto sortAt = std::find_if(
+            sortKeys_.begin(), sortKeys_.end(),
+            [&](const SortKey& key) { return key.columnKey == column.key; });
+        const bool sorted = sortAt != sortKeys_.end();
         if (column.sortable) {
             cell = core::makeButton(column.header);
             cell.buttonVariant = core::ButtonVariant::Ghost;
@@ -441,8 +461,10 @@ core::Widget DataGridController::build() const {
             cell.key = owner_ + ":head:" + column.key;
             cell.alignContentStart = true;
             if (sorted) {
-                cell.icon = sortAscending_ ? core::IconId::ChevronUp
-                                           : core::IconId::ChevronDown;
+                // 多列优先级数字标记待 Button 内容通道扩展（§18 已知
+                // 限制）；方向 chevron 与单列同形。
+                cell.icon = sortAt->ascending ? core::IconId::ChevronUp
+                                              : core::IconId::ChevronDown;
             }
         } else {
             cell = core::makeText(column.header, cellTextStyle(kHeaderSecondary));
@@ -544,7 +566,8 @@ void DataGridController::attach(app::AppShell& shell, std::string ownerKey) {
                    rest.rfind(sortPrefix, 0) == 0) {
             const std::string columnKey = rest.substr(sortPrefix.size());
             if (!columnKey.empty()) {
-                requestSort(columnKey);
+                // Shift = 多列追加/更新（§11.2，extend 语义）。
+                requestSort(columnKey, shift);
                 return true;
             }
         }
@@ -1028,14 +1051,20 @@ void DataGridController::requestRebuild() {
 
 core::Widget DataGridController::buildHeaderCheckCell() const {
     const auto& keys = selectableKeys();
+    // 三态（§11.3/§18）：全部选中 = 勾选；部分选中 = indeterminate
+    //（Widget.indeterminate → accent 填充 + 横线，语义 value="mixed"）；
+    // 无可用行 = 未勾选 + 禁用。
     bool all = !keys.empty();
+    bool some = false;
     for (const auto& key : keys) {
         if (!selection_.isSelected(key)) {
             all = false;
-            break;
+        } else {
+            some = true;
         }
     }
     auto checkbox = core::makeCheckbox("", "", owner_ + ":header-check", all);
+    checkbox.indeterminate = !all && some;
     checkbox.semanticsLabel = "全选当前结果中的可用行";
     checkbox.enabled = !keys.empty();
     // 整格命中都走全选（token 宽整格命中区域，§12）；Checkbox 仅作视觉/
@@ -1097,6 +1126,10 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
         }
         // 单元格：固定列宽 + 水平内边距（§12）+ 单行省略 + 点击身份
         //（定位列焦点；onClick 与节点 key 同串，激活路径按 key 解析）。
+        // 统一格式盒（Container，key cellId:box）：当前格（current 行 ×
+        // current 列）的内嵌焦点环经盒边框承载 focusRing token（§12）。
+        // 盒无条件存在——环的出现不得改变格的结构 identity（双击检测/
+        // damage 按身份配对）；编辑中的格由编辑器自身表达焦点，盒仍保留。
         auto cell = core::makeText(cellText(index, column.key),
                                    cellTextStyle());
         cell.onClick = "grid:" + owner_ + ":cell:" + key + ":" + column.key;
@@ -1105,18 +1138,30 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
             // 数值/日期右对齐：内容盒内右置（Text 无段内对齐，经 Row
             // 主轴对齐实现；文本仍按剩余宽省略）。
             cell.width = std::max(0.0F, column.width - 2.0F * kCellPaddingX);
-            auto box = core::makeRow(
+            auto inner = core::makeRow(
                 {std::move(cell)}, core::MainAxisAlignment::End,
                 core::CrossAxisAlignment::Center);
-            box.width = column.width;
-            box.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
-            box.key = cellId + ":box";
-            cells.push_back(std::move(box));
-            continue;
+            inner.width = column.width;
+            inner.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
+            inner.key = cellId + ":align";
+            cell = std::move(inner);
+        } else {
+            cell.width = column.width;
+            cell.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
         }
-        cell.width = column.width;
-        cell.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
-        cells.push_back(std::move(cell));
+        auto box = core::makeContainer(std::move(cell), column.width);
+        box.key = cellId + ":box";
+        if (column.key == currentColumn_ &&
+            key == selection_.currentKey() &&
+            !(editing_ && editing_->first == key &&
+              editing_->second == column.key)) {
+            const style::Theme& theme = shell_ != nullptr
+                                            ? shell_->theme()
+                                            : style::Theme::dark();
+            box.styleOverrides.border = theme.colors.focusRing;
+            box.styleOverrides.borderWidth = theme.metrics.focusRingWidth;
+        }
+        cells.push_back(std::move(box));
     }
     auto content = core::makeRow(std::move(cells));
     content.flex = 1.0F;

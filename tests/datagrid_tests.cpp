@@ -8,7 +8,10 @@
 // 显隐/顺序/minWidth、复选框选择列、双击进入编辑。
 // 2026-09-28 第三批：双轴几何（横向视口 + 表头/数据同源平移 + 滚轮
 // 分量路由）、内容窄于视口的铺满收敛、列宽手柄（拖动/钳制/双击复位/
-// 键盘步进/Tab 停靠）、调宽先提交编辑。
+// 键盘步进/Tab 停靠）、调宽先提交编辑。第四批：多列排序（Shift 追加/
+// 循环/移除/普通点击收敛/指针透传/列集收缩清键）、当前格焦点环（统一
+// 格式盒 + identity 稳定回归）、表头复选框三态（indeterminate + 语义
+// value="mixed"）。
 // 水平虚拟化/RTL/拖放为后续增量（不在本文件断言）。
 
 #include <catch2/catch_approx.hpp>
@@ -19,8 +22,10 @@
 #include <string>
 #include <vector>
 
+#include "lumen/accessibility/semantics.h"
 #include "lumen/app/app_shell.h"
 #include "lumen/core/render_node.h"
+#include "lumen/core/style.h"
 #include "lumen/core/widget.h"
 #include "lumen/core/clipboard.h"
 #include "lumen/widgets/datagrid.h"
@@ -158,7 +163,8 @@ TEST_CASE("datagrid_virtualizes_rows_and_builds_cells", "[widgets][datagrid]") {
     // 表头存在。
     const auto* header = core::findNodeByKey(fx.shell.root(), "grid:header");
     REQUIRE(header != nullptr);
-    // 单元格契约（§12/§16）：固定列宽 + 水平内边距 12 + 单行省略。
+    // 单元格契约（§12/§16/§18）：统一格式盒（Container）内嵌内容——
+    // 固定列宽 + 水平内边距 12 + 单行省略；当前格环经盒边框承载。
     const core::Widget row0 = fx.grid.buildItem(0);
     REQUIRE(row0.children.size() == 1);
     const core::Widget& content = row0.children.front();
@@ -166,11 +172,14 @@ TEST_CASE("datagrid_virtualizes_rows_and_builds_cells", "[widgets][datagrid]") {
     REQUIRE(content.children.size() == 4);
     CHECK(content.children.front().width.value_or(0.0F) == 44.0F);
     const core::Widget& nameCell = content.children[1];
+    REQUIRE(nameCell.type == core::WidgetType::Container);
     CHECK(nameCell.width.value_or(0.0F) == 100.0F);
-    CHECK(nameCell.padding.left == 12.0F);
-    CHECK(nameCell.textStyle.overflow == core::TextOverflow::Ellipsis);
-    CHECK(nameCell.textStyle.maxLines == 1);
-    CHECK(nameCell.onClick == "grid:grid:cell:r0:name");
+    REQUIRE(nameCell.children.size() == 1);
+    const core::Widget& nameText = nameCell.children.front();
+    CHECK(nameText.padding.left == 12.0F);
+    CHECK(nameText.textStyle.overflow == core::TextOverflow::Ellipsis);
+    CHECK(nameText.textStyle.maxLines == 1);
+    CHECK(nameText.onClick == "grid:grid:cell:r0:name");
 }
 
 TEST_CASE("datagrid_selection_follows_clicks_and_keyboard", "[widgets][datagrid]") {
@@ -503,11 +512,14 @@ TEST_CASE("datagrid_numeric_column_aligns_end_and_custom_empty_state", "[widgets
     const core::Widget row0 = fx.grid.buildItem(0);
     const core::Widget& content = row0.children.front();
     REQUIRE(content.children.size() == 4);
-    // End 列 = Row 盒（主轴 End）内嵌省略文本；Start 列为裸文本。
-    CHECK(content.children[1].type == core::WidgetType::Text);
-    CHECK(content.children[2].type == core::WidgetType::Row);
-    CHECK(content.children[2].mainAxis == core::MainAxisAlignment::End);
-    CHECK(content.children[2].children.front().textStyle.overflow ==
+    // §18 统一格式盒：全部列为 Container（key 后缀 :box）；End 列盒内
+    // 是主轴 End 的 Row（内嵌省略文本），Start 列盒内是裸文本。
+    CHECK(content.children[1].type == core::WidgetType::Container);
+    CHECK(content.children[2].type == core::WidgetType::Container);
+    const core::Widget& qtyAlign = content.children[2].children.front();
+    CHECK(qtyAlign.type == core::WidgetType::Row);
+    CHECK(qtyAlign.mainAxis == core::MainAxisAlignment::End);
+    CHECK(qtyAlign.children.front().textStyle.overflow ==
           core::TextOverflow::Ellipsis);
 
     // 自定义空态（数据状态壳由应用组合，§14）。
@@ -807,4 +819,152 @@ TEST_CASE("datagrid_resize_commits_edit_and_blocks_on_failure",
     fx.shell.pointerUp(core::Offset{again.x + 50.0F, again.y});
     REQUIRE(fx.edited.size() == 1);
     CHECK(fx.edited.front() == "0:qty:42");
+}
+
+// --- 2026-09-28 第四批（设计文档 §18：多列排序 + 当前格环 + 表头三态） ---
+
+TEST_CASE("datagrid_multi_sort_shift_appends_and_cycles", "[widgets][datagrid]") {
+    GridFixture fx;
+    auto columns = fx.grid.columns();
+    columns[1].sortable = true;  // qty 也参与排序
+    fx.grid.setColumns(columns);
+    std::vector<std::string> multi{};
+    fx.grid.onSortRequestMulti =
+        [&](const std::vector<widgets::SortKey>& keys) {
+            multi.clear();
+            for (const auto& key : keys) {
+                multi.push_back(key.columnKey +
+                                (key.ascending ? "+" : "-"));
+            }
+        };
+
+    // 单列起步（既有契约）；Shift 追加 qty 为最低优先级。
+    fx.grid.requestSort("name");
+    fx.grid.requestSort("qty", /*extend=*/true);
+    REQUIRE(fx.grid.sortKeys().size() == 2);
+    CHECK(fx.grid.sortKeys()[0].columnKey == "name");
+    CHECK(fx.grid.sortKeys()[1].columnKey == "qty");
+    CHECK(fx.grid.sortKeys()[1].ascending);
+    REQUIRE(multi.size() == 2);
+    CHECK(multi[0] == "name+");
+    CHECK(multi[1] == "qty+");
+    // 兼容回调携带主排序键。
+    CHECK(fx.grid.sortColumn() == "name");
+    CHECK(fx.grid.sortAscending());
+    REQUIRE(fx.sortedBy.back() == "name+");
+
+    // Shift 循环：qty 升 → 降 → 移除（序号连续）。
+    fx.grid.requestSort("qty", true);
+    CHECK_FALSE(fx.grid.sortKeys()[1].ascending);
+    CHECK(multi.back() == "qty-");
+    fx.grid.requestSort("qty", true);
+    REQUIRE(fx.grid.sortKeys().size() == 1);
+    CHECK(fx.grid.sortKeys().front().columnKey == "name");
+
+    // 多列在位时普通点击收敛为单列升序（§11.2 替换排序列表）。
+    fx.grid.requestSort("qty", true);
+    REQUIRE(fx.grid.sortKeys().size() == 2);
+    fx.grid.requestSort("name");
+    REQUIRE(fx.grid.sortKeys().size() == 1);
+    CHECK(fx.grid.sortKeys().front().columnKey == "name");
+    CHECK(fx.grid.sortKeys().front().ascending);
+
+    // 指针路径：Shift+点击表头追加（修饰键透传到 extend 语义）。
+    fx.render();
+    fx.click("grid:head:qty", core::kModifierShift);
+    REQUIRE(fx.grid.sortKeys().size() == 2);
+    CHECK(fx.grid.sortKeys()[1].columnKey == "qty");
+
+    // 列集移除排序列：键失效清除、序号连续。
+    auto shrink = fx.grid.columns();
+    shrink[1].sortable = false;
+    shrink.erase(shrink.begin() + 1);
+    fx.grid.setColumns(shrink);
+    REQUIRE(fx.grid.sortKeys().size() == 1);
+    CHECK(fx.grid.sortKeys().front().columnKey == "name");
+}
+
+TEST_CASE("datagrid_current_cell_ring_follows_current_cell",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.render();
+    const core::Color ring = fx.shell.theme().colors.focusRing;
+    const float ringWidth = fx.shell.theme().metrics.focusRingWidth;
+    fx.grid.setCurrentKey("r2", false);
+    fx.grid.setCurrentColumn("qty");
+    fx.render();
+
+    // (r2, qty) = 当前格：格式盒边框承载 focusRing token（§12 内嵌环）。
+    const auto* ringed =
+        core::findNodeByKey(fx.shell.root(), "grid:cell:r2:qty:box");
+    REQUIRE(ringed != nullptr);
+    CHECK(ringed->commonStyle().border == ring);
+    CHECK(ringed->commonStyle().borderWidth == ringWidth);
+    // 同行其他格不带环。
+    const auto* plain =
+        core::findNodeByKey(fx.shell.root(), "grid:cell:r2:name:box");
+    REQUIRE(plain != nullptr);
+    CHECK(plain->commonStyle().borderWidth == 0.0F);
+    CHECK(plain->commonStyle().border == core::Color::transparent());
+
+    // current 移动：环跟随到新格、旧格恢复无环。
+    fx.grid.setCurrentKey("r3", false);
+    fx.render();
+    const auto* next =
+        core::findNodeByKey(fx.shell.root(), "grid:cell:r3:qty:box");
+    REQUIRE(next != nullptr);
+    CHECK(next->commonStyle().border == ring);
+    const auto* previous =
+        core::findNodeByKey(fx.shell.root(), "grid:cell:r2:qty:box");
+    REQUIRE(previous != nullptr);
+    CHECK(previous->commonStyle().borderWidth == 0.0F);
+
+    // 格式盒无条件存在（identity 稳定）：双击当前格仍进入编辑（回归）。
+    fx.shell.tick(1000);
+    fx.click("grid:cell:r1:qty");
+    fx.shell.tick(1200);
+    fx.click("grid:cell:r1:qty");
+    CHECK(fx.grid.editing());
+    CHECK(fx.shell.state().get("grid:edit") == "6");
+}
+
+TEST_CASE("datagrid_header_check_three_state_semantics", "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.grid.setSelectionMode(SelectionMode::Extended);
+    fx.render();
+
+    // 部分选中：indeterminate（accent 填充 + 横线；语义 value="mixed"）。
+    fx.grid.selection().setSelected({"r0", "r3"});
+    fx.render();
+    const auto* check =
+        core::findNodeByKey(fx.shell.root(), "grid:header-check");
+    REQUIRE(check != nullptr);
+    CHECK_FALSE(check->checked);
+    CHECK(check->indeterminate);
+    const auto* resolved = std::get_if<core::CheckboxResolvedStyle>(
+        &check->style.component);
+    REQUIRE(resolved != nullptr);
+    CHECK(resolved->indeterminate);
+
+    accessibility::SemanticsBuildOptions options;
+    accessibility::SemanticsTree tree =
+        accessibility::buildSemanticsTree(fx.shell.root(), options);
+    const auto* node = tree.find(check->identity);
+    REQUIRE(node != nullptr);
+    CHECK(node->value == "mixed");
+    CHECK((node->flags & accessibility::kSemanticsChecked) == 0);
+
+    // 全选：checked（value="true"）；无选中：未勾选（value="false"）。
+    fx.click("grid:header-check-cell");
+    fx.render();
+    const auto* all =
+        core::findNodeByKey(fx.shell.root(), "grid:header-check");
+    REQUIRE(all != nullptr);
+    CHECK(all->checked);
+    CHECK_FALSE(all->indeterminate);
+    tree = accessibility::buildSemanticsTree(fx.shell.root(), options);
+    const auto* allNode = tree.find(all->identity);
+    REQUIRE(allNode != nullptr);
+    CHECK(allNode->value == "true");
+    CHECK((allNode->flags & accessibility::kSemanticsChecked) != 0);
 }
