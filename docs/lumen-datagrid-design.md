@@ -667,9 +667,12 @@ Row `padding.left = 窗口首列前缀偏移`、宽 = 滚动区宽——格 x �
   同一纵向 ScrollController（冻结区滚轮/拖动/惯性直驱同源，T5.4）；
   冻结行 key 前缀 `frow:`（identity 独立）、`buildEmpty` 留白（空态
   只在滚动区）、`tabStopKey` 空。
-- **语义去重**（T5.5）：框架新增 `Widget.excludeFromSemantics`（声明
-  式，makeNode 拷贝，collectNodes 子树早退）——冻结区行不进语义树，
-  滚动区行承载（RecordingBridge 断言每数据行恰一个 listItem）。
+- **语义去重**（T5.5，§22.1 修正后口径）：框架 `Widget.
+  excludeFromSemantics`（声明式，makeNode 拷贝，collectNodes 子树早退
+  + 父 children 剪枝）保留给装饰性排除；冻结行**不整树排除**（复选框
+  格与 pinned 列格只在此物化）——行壳置 `excludeFromFocus`（Tab 唯一
+  入口在滚动区行）、以 Group 角色进语义树承载独占内容，listItem 播报
+  仍由滚动区行唯一承载。
 - **跨区一致**（T5.4/T5.7）：选择/禁用/current 标记经同一选择集重建
   天然同步；冻结行不置 collectionRow（不进 Tab/焦点遍历——唯一入口在
   滚动区行）；点击冻结区格 = 同一行点击语义（列焦点/编辑/激活同路径，
@@ -708,9 +711,10 @@ Row `padding.left = 窗口首列前缀偏移`、宽 = 滚动区宽——格 x �
 
 （2026-09-29 追记：两条已知限制收口。其一，冻结行 hover——冻结区行
 改与滚动区行同置 `collectionRow`（hover/pressed 追踪与分隔线绘制对齐，
-样式经 resolveListPart 既有 hovered/pressed 分支），`excludeFromSemantics`
-兼任"非焦点公民"标记：交互层 List Tab 收集跳过被排除的行副本，焦点
-唯一入口保持在滚动区行（`interaction.cpp` collect 谓词）。回归用例
+样式经 resolveListPart 既有 hovered/pressed 分支）；"非焦点公民"标记
+初版由 `excludeFromSemantics` 兼任，§22.1 重构后由专用
+`excludeFromFocus` 承接（交互层 List Tab 收集跳过，焦点唯一入口保持
+在滚动区行）。回归用例
 `REGRESSION_frozen_rows_carry_hover_without_tab_stop`；datagrid 39/39、
 全量 840/840（Debug）/ 842/842（Release 目录）。基准影响：datagrid-wide
 帧哈希 `9de43d88 → 4c641cd5`（每冻结行新增分隔线命令 +32/+0.8%），同
@@ -780,3 +784,84 @@ fills_row`、`datagrid_cell_padding_follows_density`；3 处既有断言更新
 
 已知限制：表头 hover 文字变 contentPrimary（设计稿 th hover）待 Button
 前景状态通道；多列优先级角标仍待内容通道扩展（§18 已知限制不变）。
+
+## 22. 2026-09-29 深度 review 收口（语义可达/unpin 落点/键盘路由/杂项）
+
+对本阶段提交的二次 review（跨 DataGrid/GPU 渲染/字体异步/CI 四线）
+发现的缺陷收口；本节记录 DataGrid 与 core 侧，GPU 侧见
+`lumen-skia-gpu-parity-plan.md` 追记。
+
+### 22.1 冻结区语义承载重构（§20.2 T5.5 / §20.4 追记一的修正）
+
+- **问题**：`excludeFromSemantics` 整树排除冻结行，但冻结区不是纯
+  副本——行复选框格与 pinned 列格**只**在冻结区物化（§21.2 后滚动区行
+  不再重复物化选择列），整树排除使读屏用户读不到任何 pinned 列文本、
+  选择模式下勾选控件不可达。且 `collectNodes` 对被排除子树早退但父节点
+  仍无条件收录 child id——语义树留下悬空引用（AT-SPI `GetChildAtIndex`
+  报 UNKNOWN_OBJECT、UIA 兄弟遍历在首个被排除子节点处截断）。
+- **修复**：两职责拆分。框架新增 `Widget.excludeFromFocus`（键盘焦点
+  排除：Tab 收集与集合行 Tab 候选跳过，指针 hover/press/click 不受
+  影响）承接"非焦点公民"标记；`collectNodes` 构建父节点 children 时
+  同步剪枝被排除子树（`excludeFromSemantics` 原语保留给应用做装饰性
+  排除，剪枝后健全）。冻结行**不整树排除**：行壳不设
+  semanticsRole/actions，以 Group 角色进语义树承载独占内容——行级
+  listItem/selected 播报仍由滚动区行唯一承载（每数据行恰一个
+  listItem 不变），读屏阅读顺序 = 冻结列（复选框 + pinned 文本）→
+  滚动列，与视觉列序一致。
+- **用例**：`datagrid_frozen_region_carries_exclusive_semantics_and_
+  clicks_sync` 改名重写（断言 `grid:check:r0` Checkbox 语义可达、
+  `grid:cell:r0:name` Text 语义可达、恰 10 listItem、frow 置
+  excludeFromFocus 且不置 excludeFromSemantics）。
+
+### 22.2 unpin 落点修正（§19 T5.1 契约对齐）
+
+实现曾把 unpin 列插到全列向量末尾，与 §19 T5.1/§20.2"滚动组首"
+契约相反（且被旧测试锁死）。修正：pin/unpin 落点统一为"擦除后首个
+非 pinned 位"——既是冻结组尾也是滚动组首（两分支同位推导），
+`datagrid_pin_model_prefix_invariant_and_commit_guard` 补多冻结列
+区分锚（unpin name 后落 note 右侧、qty 左侧，非末尾），
+`datagrid_frozen_degrades_without_pinned_columns` 的 ensureColumnVisible
+场景随新列序调整（滚动组首列本就可见 no-op，越界列滚入断言换列）。
+
+### 22.3 列宽手柄键盘路由（§20.3 键盘契约补记）
+
+`handleKey` 此前不看焦点位置无条件消费 Left/Right/Home/End——应用按
+onKey 契约接线（AppShell 先转发、消费后不进交互层）后，Tab 聚焦手柄
+再按方向键移动的是列焦点/首行，splitter 键盘步进（stepBy/stepToEdge）
+永远不可达；既有手柄用例因 fixture 未接 onKey 而各测各的入口，掩盖
+冲突。修复：焦点在 `owner_:hnd:` 前缀上时六键不消费（编辑态不至此——
+编辑器持有焦点）。`GridFixture` 增可选 `wireOnKey` 参数（按文档集成
+方式接线），新用例 `REGRESSION_resize_handle_keyboard_reachable_with_
+onKey_wired` 在真实接线方式下锁定步进可达 + 列焦点/行不被抢 + 焦点
+离开手柄后方向键恢复网格语义。
+
+### 22.4 杂项收口
+
+- **表头全选格键盘/语义可达**：`buildHeaderCheckCell` 的整格 Row 置
+  `collectionRow` + `semanticsActions(focus|activate)`——Tab 候选与
+  Enter/Space 激活（activateCollectionRow → 行点击 sink）、读屏 Activate
+  通道；此前纯键盘/读屏用户无法触达全选（Single/Multiple 模式无
+  Ctrl+A 退路）。显式高走 crossOverride，不触发行最小高钳制（表头高
+  36 < 档位 minHeight 40）。Tab 序相应从"视口根→排序钮→手柄"变为
+  "全选格→视口根→排序钮→手柄"。
+- **setColumns 编辑守卫**：换列集前先 `commitPendingEdit()`（§13.1 视图
+  变化先提交）；校验失败不阻断数据重置、草稿随失效列取消——此前换入
+  不含编辑列的列集后编辑器不再物化、focusedBind 悬空，之后还会发出
+  带已删列 key 的 onCellEdited。用例
+  `datagrid_set_columns_discards_dangling_edit`。
+- **剪贴板 ⌘ 修饰**：Ctrl+C/V 判定补 `kModifierGui`（§21.1 第 7 条导航
+  键同口径；macOS 在册目标平台）。
+- **头文件清账**：删除 `gridWidth()`/`columnPrefixWidth()` 死声明
+  （区域拆分后被 `frozenContentWidth`/`scrollRegionWidth`/
+  `columnLeftInRegion` 取代）；`setEstimatedExtent` 标注固定行高改造后
+  为兼容空操作。
+- **render_commands.h 注释**：DrawShadow 字段编码注释改为与实现一致
+  （transform.tx/ty + strokeWidth；旧注释描述 2026-09-13 已废弃的
+  rect.origin/rect.size.width 编码）。
+
+### 22.5 测试与验证
+
+新增/重写 4 用例（22.1 重写 1、22.3 新增 1、22.4 新增 2），修正 3 处
+既有断言（pin 序、退化场景、手柄 Tab 次数）。datagrid 42/42；全量
+843/843（Debug）/845/845（Release）/844/844（a11y 桥 ON）。GPU 冒烟
+用例本机无硬件自跳过（同既有口径），胶囊并集修复见 parity 计划追记。

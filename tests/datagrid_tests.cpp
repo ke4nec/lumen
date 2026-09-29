@@ -70,7 +70,11 @@ struct GridFixture {
     std::vector<std::string> edited{};
     std::vector<std::string> activated{};
 
-    GridFixture() : shell(makeConfig(&grid)), grid() {
+    // wireOnKey：按文档集成方式把 ShellConfig.onKey 接到 grid.handleKey
+    //（datagrid.h §键盘契约）——手柄键盘路由等集成缝回归测试用；默认
+    // 不接（各用例直测两侧入口）。
+    explicit GridFixture(bool wireOnKey = false)
+        : shell(makeConfig(&grid, wireOnKey)), grid() {
         shell.controller().setClipboard(&clipboard);
         grid.attach(shell, "grid");
         grid.setColumns({
@@ -101,11 +105,19 @@ struct GridFixture {
         };
     }
 
-    static app::ShellConfig makeConfig(DataGridController* grid) {
+    static app::ShellConfig makeConfig(DataGridController* grid,
+                                       bool wireOnKey) {
         app::ShellConfig config;
         config.initialView = core::Size{400.0F, 300.0F};
         // build 引用成员地址：lambda 在 shell 构造完成后才会执行。
         config.build = [grid] { return grid->build(); };
+        if (wireOnKey) {
+            config.onKey = [grid](app::AppShell&, core::Key key,
+                                  core::KeyModifiers modifiers,
+                                  char keyChar) {
+                return grid->handleKey(key, modifiers, keyChar);
+            };
+        }
         return config;
     }
 
@@ -788,7 +800,9 @@ TEST_CASE("datagrid_resize_handle_keyboard_steps_and_tab_stop",
     GridFixture fx;
     fx.render();
     fx.render();
-    // Tab 序（键盘可达性）：横向视口根 → 表头排序钮 → 首个手柄。
+    // Tab 序（键盘可达性）：全选格（Extended 默认渲染）→ 横向视口根
+    // → 表头排序钮 → 首个手柄。
+    fx.shell.keyDown(core::Key::Tab);
     fx.shell.keyDown(core::Key::Tab);
     fx.shell.keyDown(core::Key::Tab);
     fx.shell.keyDown(core::Key::Tab);
@@ -803,6 +817,40 @@ TEST_CASE("datagrid_resize_handle_keyboard_steps_and_tab_stop",
     CHECK(fx.grid.columns()[0].width == Catch::Approx(40.0F));
     fx.shell.keyDown(core::Key::End);
     CHECK(fx.grid.columns()[0].width == Catch::Approx(40.0F));
+}
+
+TEST_CASE("REGRESSION_resize_handle_keyboard_reachable_with_onKey_wired",
+          "[widgets][datagrid]") {
+    // 文档集成方式（datagrid.h §键盘）：ShellConfig.onKey 转发
+    // grid.handleKey——AppShell 先调 onKey、消费后不进交互层。此前
+    // handleKey 不看焦点位置无条件消费 Left/Right/Home，按此接线后
+    // Tab 聚焦手柄再按方向键移动的是列焦点/首行，splitter 键盘步进
+    // （stepBy/stepToEdge）永远不可达；现有手柄用例因 fixture 未接
+    // onKey 而各测各的入口，掩盖了冲突。
+    GridFixture fx{true};
+    fx.render();
+    fx.render();
+    fx.shell.keyDown(core::Key::Tab);
+    fx.shell.keyDown(core::Key::Tab);
+    fx.shell.keyDown(core::Key::Tab);
+    fx.shell.keyDown(core::Key::Tab);
+    REQUIRE(fx.shell.focus().focusedKey() == "grid:hnd:name");
+    // 直接驱动选择集设当前行（不经 setCurrentKey——那会移走焦点）。
+    fx.grid.selection().moveTo("r3", false);
+    fx.render();
+    // Right 经让位到达 splitter 路径：列宽步进 +10，列焦点/行不动。
+    fx.shell.keyDown(core::Key::Right);
+    CHECK(fx.grid.columns()[0].width == Catch::Approx(110.0F));
+    CHECK(fx.grid.currentColumn() == "name");
+    CHECK(fx.grid.selection().currentKey() == "r3");
+    // Home 到边（收缩 minWidth）；行不被拉回首行。
+    fx.shell.keyDown(core::Key::Home);
+    CHECK(fx.grid.columns()[0].width == Catch::Approx(40.0F));
+    CHECK(fx.grid.selection().currentKey() == "r3");
+    // 焦点离开手柄后方向键恢复网格语义（列焦点移动）。
+    fx.shell.focus().setFocus("grid:item:r3");
+    fx.shell.keyDown(core::Key::Right);
+    CHECK(fx.grid.currentColumn() == "qty");
 }
 
 TEST_CASE("datagrid_resize_commits_edit_and_blocks_on_failure",
@@ -989,6 +1037,74 @@ TEST_CASE("datagrid_header_check_three_state_semantics", "[widgets][datagrid]") 
     CHECK((allNode->flags & accessibility::kSemanticsChecked) != 0);
 }
 
+TEST_CASE("datagrid_header_check_cell_is_keyboard_reachable",
+          "[widgets][datagrid]") {
+    // review 收口：全选格（Row + onClick）此前未置 collectionRow——Tab
+    // 永远到不了它，纯键盘用户无法触达全选/清空（Single/Multiple 模式
+    // 无 Ctrl+A 退路）。现在整格是 Tab 候选 + Enter/Space 激活目标，
+    // 语义树暴露 Activate。
+    GridFixture fx;
+    fx.grid.setSelectionMode(SelectionMode::Multiple);
+    fx.render();
+    fx.render();
+
+    // Tab 序：横向视口根 → 全选格（表头排序钮与手柄在其后）。
+    fx.shell.keyDown(core::Key::Tab);
+    CHECK(fx.shell.focus().focusedKey() == "grid:header-check-cell");
+    fx.shell.keyDown(core::Key::Enter);
+    CHECK(fx.grid.selection().isSelected("r0"));
+    CHECK(fx.grid.selection().isSelected("r9"));
+
+    // 语义 Activate 通道（读屏回车）。
+    accessibility::SemanticsBuildOptions options;
+    accessibility::SemanticsTree tree =
+        accessibility::buildSemanticsTree(fx.shell.root(), options);
+    const auto* cell = core::findNodeByKey(fx.shell.root(),
+                                           "grid:header-check-cell");
+    REQUIRE(cell != nullptr);
+    const auto* node = tree.find(cell->identity);
+    REQUIRE(node != nullptr);
+    CHECK((node->actions & accessibility::kActionActivate) != 0);
+}
+
+TEST_CASE("datagrid_set_columns_discards_dangling_edit",
+          "[widgets][datagrid]") {
+    // review 收口：编辑中换入不含编辑列的列集——此前编辑器不再物化、
+    // focusedBind 悬空，之后还会发出带已删列 key 的 onCellEdited。
+    // 现在：草稿合法则先提交；校验失败则随失效列取消，不再外泄。
+    GridFixture fx;
+    fx.grid.setCellValidator("qty", [](const std::string& text) {
+        return text.find_first_not_of("0123456789") == std::string::npos
+                   ? ""
+                   : "digits only";
+    });
+    REQUIRE(fx.grid.beginEdit(0, "qty"));
+    fx.render();
+    fx.shell.state().set("grid:edit", "42");
+    fx.grid.setColumns({
+        DataColumn{"name", "Name", 100.0F, true, true, false},
+        DataColumn{"note", "Note", 140.0F, false, false, true},
+    });
+    CHECK_FALSE(fx.grid.editing());
+    REQUIRE(fx.edited.size() == 1);
+    CHECK(fx.edited.front() == "0:qty:42");
+
+    // 校验失败的草稿：换列集后取消，不发 onCellEdited。
+    fx.grid.setCellValidator("note", [](const std::string& text) {
+        return text.find_first_not_of("0123456789") == std::string::npos
+                   ? ""
+                   : "digits only";
+    });
+    REQUIRE(fx.grid.beginEdit(0, "note"));
+    fx.render();
+    fx.shell.state().set("grid:edit", "abc");
+    fx.grid.setColumns({
+        DataColumn{"name", "Name", 100.0F, true, true, false},
+    });
+    CHECK_FALSE(fx.grid.editing());
+    CHECK(fx.edited.size() == 1);
+}
+
 // --- 2026-09-29 第五批（设计文档 §19：冻结列） ---
 
 TEST_CASE("datagrid_frozen_region_pins_columns_and_keeps_alignment",
@@ -1076,18 +1192,28 @@ TEST_CASE("datagrid_pin_model_prefix_invariant_and_commit_guard",
         return out;
     };
     CHECK(keys() == std::vector<std::string>{"qty", "name", "note"});
+    // unpin = 滚动组首（§19 T5.1/§20.2：分界线右侧第一位，不是全列
+    // 末尾；回归锚：9563017 曾误落滚动组尾）。qty 是唯一冻结列，取消后
+    // 滚动组首即全列 0 位，位置不变。
     CHECK(fx.grid.setColumnPinned("qty", false));
-    CHECK(keys() == std::vector<std::string>{"name", "note", "qty"});
+    CHECK(keys() == std::vector<std::string>{"qty", "name", "note"});
     // 未知列拒绝；重复 pin 幂等。
     CHECK_FALSE(fx.grid.setColumnPinned("nope", true));
     CHECK(fx.grid.setColumnPinned("name", true));
     CHECK(fx.grid.setColumnPinned("name", true));
-    CHECK(keys() == std::vector<std::string>{"name", "note", "qty"});
+    CHECK(keys() == std::vector<std::string>{"name", "qty", "note"});
 
-    // moveColumn 组内钳制：qty 已 unpin（上一步），note 移到 0（name 之前
-    // = 冻结组内）被钳到滚动组首（index 1）。
+    // moveColumn 组内钳制：note 移到 0（name 之前 = 冻结组内）被钳到
+    // 滚动组首（index 1）。
     CHECK(fx.grid.moveColumn("note", 0));
     CHECK(keys() == std::vector<std::string>{"name", "note", "qty"});
+
+    // 多冻结列区分锚：pin note（冻结组尾）后 unpin name——落点是滚动
+    // 组首（note 之后、qty 之前），旧实现误落全列末尾。
+    CHECK(fx.grid.setColumnPinned("note", true));
+    CHECK(keys() == std::vector<std::string>{"name", "note", "qty"});
+    CHECK(fx.grid.setColumnPinned("name", false));
+    CHECK(keys() == std::vector<std::string>{"note", "name", "qty"});
 
     // pin/unpin 先提交编辑（§13.1）：校验失败中止区域调整。
     fx.grid.setCellValidator("qty", [](const std::string& text) {
@@ -1108,28 +1234,48 @@ TEST_CASE("datagrid_pin_model_prefix_invariant_and_commit_guard",
     CHECK(fx.edited.front() == "0:qty:42");
 }
 
-TEST_CASE("datagrid_frozen_region_excludes_semantics_and_clicks_sync",
+TEST_CASE("datagrid_frozen_region_carries_exclusive_semantics_and_clicks_sync",
           "[widgets][datagrid]") {
     GridFixture fx;
     CHECK(fx.grid.setColumnPinned("name", true));
     fx.render();
 
-    // 语义去重（T5.5）：冻结区行/格不进语义树，滚动区行承载——每数据行
-    // 恰一个 listItem 语义节点。
+    // 语义承载（T5.5/§22.1）：行壳以 Group 进树（不设 listItem——
+    // 行级播报仍由滚动区行唯一承载，恰 10 个 listItem）；冻结区独占
+    // 内容（行复选框、pinned 列格）必须可达——整树排除会让读屏用户
+    // 读不到它们（回归锚：9563017 曾整树排除）。
     accessibility::SemanticsBuildOptions options;
     accessibility::SemanticsTree tree =
         accessibility::buildSemanticsTree(fx.shell.root(), options);
     int listItems = 0;
+    const auto* checkNode =
+        core::findNodeByKey(fx.shell.root(), "grid:check:r0");
+    const auto* pinnedNode =
+        core::findNodeByKey(fx.shell.root(), "grid:cell:r0:name");
+    REQUIRE(checkNode != nullptr);
+    REQUIRE(pinnedNode != nullptr);
+    const accessibility::SemanticsNode* rowCheck =
+        tree.find(checkNode->identity);
+    const accessibility::SemanticsNode* pinnedText =
+        tree.find(pinnedNode->identity);
+    const auto* frozenRow =
+        core::findNodeByKey(fx.shell.root(), "grid:frow:r0");
+    REQUIRE(frozenRow != nullptr);
     for (const auto& [id, node] : tree.nodes) {
         (void)id;
         if (node.role == accessibility::SemanticsRole::ListItem) ++listItems;
     }
-    const auto* frozenRow =
-        core::findNodeByKey(fx.shell.root(), "grid:frow:r0");
-    REQUIRE(frozenRow != nullptr);
-    CHECK(frozenRow->excludeFromSemantics);
-    // 滚动区 10 行承载语义；冻结副本被排除（恰好 10 个 listItem）。
+    CHECK(frozenRow->excludeFromFocus);
+    CHECK_FALSE(frozenRow->excludeFromSemantics);
+    // 滚动区 10 行承载行级语义（恰 10 个 listItem，无重复播报）。
     CHECK(listItems == 10);
+    // 冻结区独占内容可达：行复选框（Checkbox 角色 + 标签）与 pinned
+    // 列格文本（Text 角色）。
+    REQUIRE(rowCheck != nullptr);
+    CHECK(rowCheck->role == accessibility::SemanticsRole::Checkbox);
+    CHECK(rowCheck->label == "选择 r0");
+    REQUIRE(pinnedText != nullptr);
+    CHECK(pinnedText->role == accessibility::SemanticsRole::Text);
 
     // 点击冻结区格（cell 身份）：选择 + 列焦点同步到逻辑行（滚动区行
     // 成为焦点载体；复选框格路径本就不改 current，§11.3）。
@@ -1166,7 +1312,7 @@ TEST_CASE("REGRESSION_frozen_rows_carry_hover_without_tab_stop",
           "[widgets][datagrid]") {
     // §20.4 已知限制收口：冻结区行与滚动区行同为 collectionRow——hover
     // 高亮在冻结区呈现（resolveListPart 既有 hovered 分支）；同时
-    // excludeFromSemantics 副本不成为 Tab 停靠点（焦点唯一入口仍在
+    // excludeFromFocus 副本不成为 Tab 停靠点（焦点唯一入口仍在
     // 滚动区行）。
     GridFixture fx;
     CHECK(fx.grid.setColumnPinned("name", true));
@@ -1235,11 +1381,15 @@ TEST_CASE("datagrid_frozen_degrades_without_pinned_columns",
     fx.render();
     fx.grid.ensureColumnVisible("name");  // pinned：no-op
     CHECK(fx.grid.hScroll().offset() == Catch::Approx(0.0F));
-    // 加宽 note 使其越界，编辑它应滚入视口。
+    // unpin 修正（§19 T5.1）：note 现落滚动组首（分界线右侧第一位），
+    // 本就可见——ensure no-op。旧实现落全列末尾时此处需滚动。
+    fx.grid.ensureColumnVisible("note");
+    CHECK(fx.grid.hScroll().offset() == Catch::Approx(0.0F));
+    // 加宽 qty 使其越界，滚入视口。
     CHECK(fx.grid.resizeColumn("qty", 300.0F));
     fx.render();
     fx.render();
-    fx.grid.ensureColumnVisible("note");
+    fx.grid.ensureColumnVisible("qty");
     fx.render();
     CHECK(fx.grid.hScroll().offset() > 0.0F);
 }

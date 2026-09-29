@@ -65,6 +65,14 @@ core::TextStyle headerTextStyle(const style::Theme& theme) {
 // --- 列模型 ---
 
 void DataGridController::setColumns(std::vector<DataColumn> columns) {
+    // 列集替换先落编辑态（§13.1 视图变化先提交）：提交成功自然关闭；
+    // 校验失败不阻断数据重置，但草稿随失效列一并取消——否则换入不含
+    // 编辑列的列集后编辑器不再物化、focusedBind 悬空（后续键入丢失），
+    // 之后 commitEdit 还会向应用发出带已删列 key 的 onCellEdited
+    //（行侧 indexOfKey 兜底同模式，review：setColumns 缺守卫）。
+    if (!commitPendingEdit()) {
+        cancelEdit();
+    }
     columns_ = std::move(columns);
     for (auto& column : columns_) {
         // 全局下限 40；业务列 minWidth 只能更高（§11.1）。
@@ -201,14 +209,13 @@ bool DataGridController::setColumnPinned(const std::string& columnKey,
         DataColumn moved = columns_[i];
         moved.pinned = pinned;
         columns_.erase(columns_.begin() + static_cast<std::ptrdiff_t>(i));
-        // 前缀不变式：pin = 移到冻结组尾；unpin = 移到滚动组首。
+        // 前缀不变式（§19 T5.1/§20.2）：pin = 移到冻结组尾；unpin = 移到
+        // 滚动组首。两分支落点是同一位置——"首个非 pinned 位"既是冻结
+        // 组尾也是滚动组首（取消冻结的列出现在分界线右侧第一位，不是
+        // 全列末尾）；全 pinned/空表时 at=size/0，仍满足不变式。
         std::size_t at = 0;
-        if (pinned) {
-            while (at < columns_.size() && columns_[at].pinned) {
-                ++at;
-            }
-        } else {
-            at = columns_.size();
+        while (at < columns_.size() && columns_[at].pinned) {
+            ++at;
         }
         columns_.insert(columns_.begin() + static_cast<std::ptrdiff_t>(at),
                         std::move(moved));
@@ -800,8 +807,22 @@ bool DataGridController::handleKey(core::Key key, core::KeyModifiers modifiers,
         }
         return false;
     }
-    const bool ctrl = (modifiers & core::kModifierCtrl) != 0;
-    // 剪贴板。
+    // 焦点在本网格列宽手柄（owner+":hnd:" 前缀，§16/§22.3）：方向键与
+    // Home/End 让位给交互层的 splitter 键盘路径（stepBy/stepToEdge）。
+    // 应用按 onKey 契约先转发本函数，若在此消费，手柄聚焦时的 Left/
+    // Right 会变成移动列焦点、Home 会跳首行——键盘步进永远不可达
+    //（review：路由冲突；编辑态不至此——编辑器持有焦点）。
+    if (shell_ != nullptr &&
+        (key == core::Key::Left || key == core::Key::Right ||
+         key == core::Key::Up || key == core::Key::Down ||
+         key == core::Key::Home || key == core::Key::End)) {
+        if (shell_->focus().focusedKey().starts_with(owner_ + ":hnd:")) {
+            return false;
+        }
+    }
+    // 剪贴板（⌘ 同 Ctrl——38b9fca 导航键同口径；macOS 在册目标平台）。
+    const bool ctrl =
+        (modifiers & (core::kModifierCtrl | core::kModifierGui)) != 0;
     if (ctrl && (keyChar == 'c' || keyChar == 'C')) {
         return copySelection() > 0;
     }
@@ -1250,6 +1271,14 @@ core::Widget DataGridController::buildHeaderCheckCell() const {
     cell.height = headerExtentPx();  // 整 token 宽 × 表头高命中（§12）
     cell.onClick = "grid:" + owner_ + ":checkall";
     cell.key = owner_ + ":header-check-cell";
+    // 键盘/语义可达（review 收口）：collectionRow 使整格成为 Tab 候选与
+    // Enter/Space 激活目标（activateCollectionRow → 行点击 sink），
+    // semanticsActions 暴露语义 Activate——此前纯键盘/读屏用户无法触达
+    // 全选（Extended 可退而 Ctrl+A，Single/Multiple 无通路）。显式高
+    // 走 crossOverride，不触发行最小高钳制（表头高 36 < 档位 40）。
+    cell.collectionRow = true;
+    cell.semanticsActions =
+        accessibility::kActionFocus | accessibility::kActionActivate;
     return cell;
 }
 
@@ -1384,9 +1413,12 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
 
 core::Widget DataGridController::buildFrozenItem(std::size_t index) const {
     // 冻结区行（§19 T5.3/T5.5）：与滚动区行是同一逻辑行的两个视图——
-    // 选择/禁用/行点击语义同串；key 前缀 frow: 避开滚动区 identity；
-    // excludeFromSemantics 防语义重复（滚动区行承载），同时是交互层
-    // 的"非焦点公民"标记（Tab 收集跳过——唯一入口在滚动区行）。
+    // 选择/禁用/行点击语义同串；key 前缀 frow: 避开滚动区 identity。
+    // excludeFromFocus：Tab 唯一入口在滚动区行（指针 hover/press/click
+    // 仍参与，§20.4）。语义侧不整树排除（§22.1）：行复选框格与 pinned
+    // 列格只在此物化，整树排除会让读屏用户读不到它们；行壳不设
+    // semanticsRole/actions，以 Group 角色进树承载独占内容——行级
+    // listItem/selected 播报仍由滚动区行唯一承载，不重复。
     // collectionRow 与滚动区行一致置位：hover/pressed 状态与分隔线
     // 绘制对齐（§20.4 已知限制收口——此前冻结行无 hover 高亮）。
     const std::string key = keyOf(index);
@@ -1403,7 +1435,7 @@ core::Widget DataGridController::buildFrozenItem(std::size_t index) const {
                                             : core::ListPart::Row;
     row.enabled = rowEnabled(index);
     row.height = rowExtentPx();
-    row.excludeFromSemantics = true;
+    row.excludeFromFocus = true;
     std::vector<core::Widget> cells;
     cells.reserve(columns_.size() + 1);
     if (selection_.mode() != SelectionMode::None) {
@@ -1771,8 +1803,8 @@ core::Widget DataGridController::FrozenRegionSource::buildEmpty() const {
 }
 
 std::string DataGridController::FrozenRegionSource::tabStopKey() const {
-    // Tab 唯一入口在滚动区行（T5.3）；冻结行不带 collectionRow，本就
-    // 不产生 Tab 候选。
+    // Tab 唯一入口在滚动区行（T5.3）；冻结行 excludeFromFocus，集合行
+    // Tab 候选收集跳过（interaction.cpp traverseFocus）。
     return {};
 }
 

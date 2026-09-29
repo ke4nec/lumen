@@ -58,7 +58,10 @@ struct RenderNode {
     ScrollAxis scrollAxis{ScrollAxis::Vertical};
     bool checked{false};         // Checkbox/Switch 状态
     bool indeterminate{false};   // Checkbox 三态（accent 填充 + 横线）
-    bool excludeFromSemantics{false};  // 子树不进语义树（冻结区副本）
+    bool excludeFromSemantics{false};  // 子树不进语义树（装饰/重复视图）
+    // 键盘焦点排除（Widget.excludeFromFocus 布局期复制；interaction 的
+    // Tab 收集跳过——指针路径不受影响）。
+    bool excludeFromFocus{false};
     // 虚拟化视口（VirtualList/List/Tree/TreeList）携带数据源：交互层
     // 滚轮/拖动滚动据此直接驱动源控制器的 ScrollController，应用无需
     // 按 key 接线（collection-controls-design §6.5）。

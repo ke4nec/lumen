@@ -129,6 +129,9 @@ class DataGridController final : public core::VirtualListSource {
     // 变化须经本入口或 setRowCount 通知，否则表头勾选显示滞后
     //（全选/行选择/编辑等动作路径始终实时查询）。
     void setRowEnabledOf(std::function<bool(std::size_t)> enabledOf);
+    // 固定行高改造（§19 P0.1）后行高恒按 Theme.dataGrid.rowExtent 推导，
+    // 估算值不再被读取——本入口保留兼容但为空操作；行高经主题密度档
+    // 调整。
     void setEstimatedExtent(float extent);
 
     // --- 排序/筛选（回调契约；数据重排由应用执行） ---
@@ -222,6 +225,8 @@ class DataGridController final : public core::VirtualListSource {
     // 移动列焦点；Enter 进入编辑（或激活；只读列回退 onRowActivated）；
     // Escape 取消编辑；Ctrl+C/Ctrl+V 剪贴板（编辑态不拦截——编辑器自身
     // 消费剪贴板/方向键/文本键；Enter 提交，IME composing 期间除外）。
+    // 焦点在列宽手柄上时方向键/Home/End 不消费——留给交互层 splitter
+    // 键盘路径（stepBy/stepToEdge，§22.3）。
     // Key 枚举无 F 键，编辑入口契约 = Enter + beginEdit API。
     bool handleKey(core::Key key, core::KeyModifiers modifiers,
                    char keyChar = 0);
@@ -437,11 +442,6 @@ class DataGridController final : public core::VirtualListSource {
     [[nodiscard]] float resizeHitWidthPx() const;
     // 格内水平内边距（§12：metrics.controlPaddingX 密度档 8/12/16）。
     [[nodiscard]] float cellPaddingXPx() const;
-    // 内容总宽 = 选择列 + Σ可见列宽；行/表头/List 同源（对齐不变式）。
-    // 内容窄于视口时取视口宽（行背景铺满视口；视口宽经源接缝跟踪）。
-    [[nodiscard]] float gridWidth() const;
-    // 列右缘边界与前列累计（内容坐标；手柄源换算用）。
-    [[nodiscard]] float columnPrefixWidth(const std::string& columnKey) const;
     [[nodiscard]] const DataColumn* findColumn(
         const std::string& columnKey) const;
     // setColumns 同步手柄源（按列 key 建档；既有键复用——地址稳定，

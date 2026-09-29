@@ -1265,9 +1265,9 @@ bool InteractionController::traverseFocus(const RenderNode& root,
                 const std::string preferred = node.virtualSource->tabStopKey();
                 const RenderNode* candidate = nullptr;
                 for (const auto& row : node.children) {
-                    // excludeFromSemantics 行是同一逻辑行的视觉副本
-                    //（DataGrid 冻结区）：焦点唯一入口在主视图行。
-                    if (!row.collectionRow || row.excludeFromSemantics ||
+                    // excludeFromFocus 行是同一逻辑行的第二视图（DataGrid
+                    // 冻结区）：指针交互参与，焦点唯一入口在主视图行。
+                    if (!row.collectionRow || row.excludeFromFocus ||
                         !row.enabled || row.onClick.empty()) {
                         continue;
                     }
@@ -1286,7 +1286,7 @@ bool InteractionController::traverseFocus(const RenderNode& root,
                 (node.type == WidgetType::TextField && !node.bind.empty() &&
                  node.enabled);
             const bool activatable =
-                node.enabled &&
+                node.enabled && !node.excludeFromFocus &&
                 ((node.type == WidgetType::Button &&
                   !node.onClick.empty()) ||
                  ((node.type == WidgetType::Checkbox ||
