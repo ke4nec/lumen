@@ -102,7 +102,7 @@
 
 | 编号 | 状态 | 去向/备注 |
 | --- | --- | --- |
-| G-1 | 待处理 | 建议并入 M16 |
+| G-1 | 已完成（2026-09-29） | 命令分发层落地：[`lumen-command-dispatch-design.md`](lumen-command-dispatch-design.md)、`include/lumen/app/command_registry.h`；随附 SDL 和弦字符修复；系统级热键留 M16 同模型第二层 |
 | G-2 | 待处理 | 建议并入 M18 或先行 |
 | G-3 | 待处理 | 建议随 M16 |
 | G-4 | 待处理 | 建议随 M17 穿插 |

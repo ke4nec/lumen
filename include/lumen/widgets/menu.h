@@ -11,7 +11,9 @@
 // tick 推进的直驱输出保持即时终态（与状态过渡 motionEnabled 同口径），
 // reduceAnimation 时长归零 = 首拍即达终态。
 //
-// 快捷键文本只展示、不执行（分发在应用 onKey；框架不建全局加速键表）。
+// 快捷键执行：MenuItem::command 非空时从命令注册表派生展示串/启用态并
+// 经注册表触发（键盘同路径，lumen-command-dispatch-design.md）；仅写
+// shortcut 串的旧用法保持"只展示、不执行"（分发在应用 onKey/注册表）。
 // checkable 项的 checked 由应用维护（点击 → onCommand → 应用翻转 →
 // 应用按需重开菜单）。子菜单懒构建（hasSubmenu + SubmenuProvider）。
 
@@ -37,7 +39,11 @@ struct MenuItem {
     bool separator{false};     // 分隔线行（不可聚焦，不进语义树语义）
     bool checkable{false};     // 勾选槽显示；checked 状态应用维护
     bool checked{false};
-    std::string shortcut{};    // 展示文本（"Ctrl+S"）；仅显示，不执行
+    std::string shortcut{};    // 展示文本（"Ctrl+S"）；command 非空时从
+                               // 命令注册表派生（单一数据源）
+    // G-1：命令 id。非空时快捷键列与启用态从 shell.commands() 派生，
+    // 激活走注册表 invoke（与键盘同路径）；注册表未知时回退 onCommand。
+    std::string command{};
     bool hasSubmenu{false};    // true 时 submenu 回调提供子级（懒构建）
     bool enabled{true};
     char mnemonic{0};          // Alt+keyChar 助记字母（0 = 无）

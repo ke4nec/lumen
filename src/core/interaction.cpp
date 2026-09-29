@@ -1085,8 +1085,8 @@ void InteractionController::cancelComposition() {
 
 // --- 键盘 ---
 
-void InteractionController::keyDown(Key key) {
-    keyDown(key, kModifierNone, 0);
+bool InteractionController::keyDown(Key key) {
+    return keyDown(key, kModifierNone, 0);
 }
 
 bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
@@ -1099,26 +1099,28 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
     const bool shift = (modifiers & kModifierShift) != 0;
 
     // Ctrl/Gui 快捷键（plan §3.2：Ctrl/Command 快捷键；M1：undo/redo）。
+    // 字段聚焦时编辑和弦优先于应用命令（G-1 字段保护；AppShell::keyDown
+    // 的分发顺序见 lumen-command-dispatch-design §4）。
     if (ctrlLike && keyChar != 0) {
         switch (keyChar) {
             case 'z':
             case 'Z':
                 if (composingActive_) {
-                    return;
+                    return true;
                 }
                 if (shift) {
                     redo();
                 } else {
                     undo();
                 }
-                return;
+                return true;
             case 'y':
             case 'Y':
                 if (composingActive_) {
-                    return;
+                    return true;
                 }
                 redo();
-                return;
+                return true;
             case 'a':
             case 'A': {
                 const auto next = buildValue().selectAll();
@@ -1127,7 +1129,7 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
                     historyFor(focusedBind_)
                         .push(buildValue(), text::EditKind::Selection);
                 }
-                return;
+                return true;
             }
             case 'c':
             case 'C':
@@ -1135,7 +1137,7 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
                     (void)clipboard_->setText(
                         buildValue().selectedText());
                 }
-                return;
+                return true;
             case 'x':
             case 'X':
                 if (clipboard_ != nullptr && hasSelection()) {
@@ -1144,7 +1146,7 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
                 applyEdit([](const text::TextEditingValue& value) {
                     return value.insertText("");
                 });
-                return;
+                return true;
             case 'v':
             case 'V':
                 if (clipboard_ != nullptr && clipboard_->hasText()) {
@@ -1154,7 +1156,7 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
                         return value.insertText(pasted);
                     });
                 }
-                return;
+                return true;
             default:
                 break;
         }
@@ -1167,14 +1169,14 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
                     return value.deleteBackward();
                 },
                 text::EditKind::Delete);
-            return;
+            return true;
         case Key::Delete:
             applyEdit(
                 [](const text::TextEditingValue& value) {
                     return value.deleteForward();
                 },
                 text::EditKind::Delete);
-            return;
+            return true;
         case Key::Left:
             if (ctrlLike) {
                 applyEdit(
@@ -1189,7 +1191,7 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
                     },
                     text::EditKind::Selection);
             }
-            return;
+            return true;
         case Key::Right:
             if (ctrlLike) {
                 applyEdit(
@@ -1204,21 +1206,21 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
                     },
                     text::EditKind::Selection);
             }
-            return;
+            return true;
         case Key::Home:
             applyEdit(
                 [shift](const text::TextEditingValue& value) {
                     return value.moveCaretToStart(shift);
                 },
                 text::EditKind::Selection);
-            return;
+            return true;
         case Key::End:
             applyEdit(
                 [shift](const text::TextEditingValue& value) {
                     return value.moveCaretToEnd(shift);
                 },
                 text::EditKind::Selection);
-            return;
+            return true;
         case Key::Enter:
             if (focusedMultiline_) {
                 applyEdit(
@@ -1226,25 +1228,25 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
                         return value.insertText("\n");
                     },
                     text::EditKind::Insert);
-                return;
+                return true;
             }
             focus_.clearFocus();
             focusedBind_.clear();
             composition_.clear();
             selection_ = {};
             composingActive_ = false;
-            return;
+            return true;
         case Key::Escape:
             if (composingActive_) {
                 cancelComposition();
-                return;
+                return true;
             }
             focus_.clearFocus();
             focusedBind_.clear();
             composition_.clear();
             selection_ = {};
             composingActive_ = false;
-            return;
+            return true;
         case Key::None:
         case Key::Tab:
         case Key::Backtab:
@@ -1252,26 +1254,28 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
         case Key::Down:
         case Key::PageUp:
         case Key::PageDown:
-            return;
+            return true;
     }
 }
 
-void InteractionController::keyDown(const RenderNode& root, Key key,
+bool InteractionController::keyDown(const RenderNode& root, Key key,
                                     KeyModifiers modifiers, char keyChar) {
     // Tab/Shift-Tab：焦点遍历（plan §3.2 键盘焦点遍历）。
     if (key == Key::Tab || key == Key::Backtab) {
         const bool backward =
             key == Key::Backtab || (modifiers & kModifierShift) != 0;
         if (traverseFocus(root, backward)) {
-            return;
+            return true;
         }
     }
     // Enter/Space 激活聚焦的可激活节点（Button/Checkbox/Switch；与语义
-    // activate 共用，阶段8C）。
-    if (key == Key::Enter || keyChar == ' ') {
+    // activate 共用，阶段8C）。未激活（无聚焦目标）时不消费——纯键命
+    // 令（如默认按钮）继续回退（G-1）。
+    if (key == Key::Enter ||
+        (keyChar == ' ' &&
+         (modifiers & (kModifierCtrl | kModifierAlt | kModifierGui)) == 0)) {
         if (focusedBind_.empty()) {
-            activateFocusedButton(root);
-            return;
+            return activateFocusedButton(root);
         }
     }
     // 无编辑焦点时的滚动键：PageUp/PageDown/方向键/Home/End → wheelSink
@@ -1301,7 +1305,7 @@ void InteractionController::keyDown(const RenderNode& root, Key key,
                 focused->splitterSource->stepBy(forward ? step : -step);
             }
             requestRebuild();
-            return;
+            return true;
         }
     }
     // M6：聚焦 Slider 的 Left/Right 调值（±5，夹取 0..100）。
@@ -1317,7 +1321,7 @@ void InteractionController::keyDown(const RenderNode& root, Key key,
             const int next = std::clamp(
                 current + (key == Key::Right ? 5 : -5), 0, 100);
             store_.set(slider->bind, std::to_string(next));
-            return;
+            return true;
         }
     }
     if (focusedBind_.empty() &&
@@ -1325,9 +1329,9 @@ void InteractionController::keyDown(const RenderNode& root, Key key,
          key == Key::Right || key == Key::Up || key == Key::Down ||
          key == Key::Home || key == Key::End)) {
         (void)scrollKey(root, key);
-        return;
+        return true;
     }
-    keyDown(key, modifiers, keyChar);
+    return keyDown(key, modifiers, keyChar);
 }
 
 bool InteractionController::traverseFocus(const RenderNode& root,
@@ -1480,27 +1484,27 @@ bool InteractionController::traverseFocus(const RenderNode& root,
     return true;
 }
 
-void InteractionController::activateFocusedButton(const RenderNode& root) {
+bool InteractionController::activateFocusedButton(const RenderNode& root) {
     if (focus_.focusedKey().empty() || !focusedBind_.empty()) {
-        return;
+        return false;
     }
     const RenderNode* node = findNodeByIdentity(root, focus_.focusedIdentity());
     if (node == nullptr) {
         node = findNodeByKey(root, focus_.focusedKey());
     }
     if (node == nullptr || !node->enabled) {
-        return;
+        return false;
     }
     if (node->type == WidgetType::Checkbox ||
         node->type == WidgetType::Switch || node->type == WidgetType::Radio) {
         toggleChecked(*node);
-        return;
+        return true;
     }
     // 集合行（Row/Container）与 Button 共用激活路径。
     const bool activatableRow = node->collectionRow && !node->onClick.empty();
     if ((node->type != WidgetType::Button && !activatableRow) ||
         node->onClick.empty()) {
-        return;
+        return false;
     }
     // 集合行键盘激活（collection-controls-design §6.2）：Enter/Space 激活
     // 聚焦行——与行 onClick（选择）同一节点，先选择后激活；key/identity
@@ -1529,6 +1533,7 @@ void InteractionController::activateFocusedButton(const RenderNode& root) {
             break;
         }
     }
+    return true;
 }
 
 void InteractionController::toggleChecked(const RenderNode& node) {

@@ -5,6 +5,7 @@
 # Fake host、SDL host 或测试 renderer）。
 add_library(lumen-app STATIC
     app_shell.cpp
+    command_registry.cpp
     font_loader.cpp
     run_app.cpp
 )

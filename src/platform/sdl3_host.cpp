@@ -130,12 +130,13 @@ core::KeyModifiers mapSdlModifiers(SDL_Keymod mod) {
     return modifiers;
 }
 
-// 无修饰时可打印字符（Ctrl/Command 快捷键判定用）；SDL 逻辑键码在
-// ASCII 范围内直接对应字符。
+// 可打印字符（Ctrl/Command/Alt 和弦判定用；G-1 命令分发与编辑和弦需
+// 要修饰键下的字母）；SDL 逻辑键码在 ASCII 范围内直接对应字符。消费方
+//（编辑和弦/菜单 mnemonic/命令匹配）自行归一大小写；带 Ctrl/Alt/Gui 的
+// 空格激活需调用方排除（interaction 树键处理与菜单行激活均已排除）。
 char mapKeyChar(SDL_Keycode key, core::KeyModifiers modifiers) {
-    if ((modifiers & (core::kModifierCtrl | core::kModifierAlt |
-                      core::kModifierGui)) == 0 &&
-        key >= 0x20 && key < 0x7F) {
+    (void)modifiers;
+    if (key >= 0x20 && key < 0x7F) {
         return static_cast<char>(key);
     }
     return 0;

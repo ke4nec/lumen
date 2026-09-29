@@ -30,6 +30,7 @@
 
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
+#include "lumen/app/command_registry.h"
 #include "lumen/core/damage.h"
 #include "lumen/core/element.h"
 #include "lumen/core/geometry.h"
@@ -120,6 +121,22 @@ class AppShell {
     [[nodiscard]] core::HandlerRegistry& handlers() { return handlers_; }
     [[nodiscard]] core::FocusManager& focus() { return focus_; }
     [[nodiscard]] const core::FocusManager& focus() const { return focus_; }
+    // G-1 命令注册表：键盘/菜单/工具栏/语义共享的命令模型（单一数据
+    // 源；见 command_registry.h 与 lumen-command-dispatch-design.md）。
+    [[nodiscard]] CommandRegistry& commands() { return commands_; }
+    [[nodiscard]] const CommandRegistry& commands() const { return commands_; }
+    // 显式命令调用（菜单项/工具栏按钮/语义 action/系统热键回灌与键盘
+    // 同路径）；未知或禁用返回 false。
+    [[nodiscard]] bool invokeCommand(const std::string& id) {
+        return commands_.invoke(*this, id);
+    }
+    // 应用声明的模态状态（对话框打开/关闭；makeDialog 类主树模态由应
+    // 用知会）。与框架模态 overlay（菜单/下拉）取或——模态期 Window 与
+    // FocusDomain 命令被屏蔽，仅 Modal 域命令分发（设计文档 §3）。
+    void setModalActive(bool active) { appModal_ = active; }
+    [[nodiscard]] bool isModalActive() const {
+        return appModal_ || overlayModal_;
+    }
     [[nodiscard]] core::InteractionController& controller() {
         return controller_;
     }
@@ -377,6 +394,12 @@ class AppShell {
     [[nodiscard]] const core::RenderNode& eventTree() const {
         return overlayRoot_.has_value() ? *overlayRoot_ : root_;
     }
+    // G-1：命令分发的两个相位（chordPhase = 仅和弦 / 否则仅纯键）。
+    // 返回是否分发（禁用命中不分发，键继续走交互层）。
+    bool dispatchCommand(core::Key key, core::KeyModifiers modifiers,
+                         char keyChar, bool chordPhase);
+    // 焦点是否位于 domain（FocusScope key/identity）域内（任意祖先域）。
+    [[nodiscard]] bool focusInDomain(const std::string& domain) const;
     void syncInteractionSnapshot();
     [[nodiscard]] const text::FontManager& textFontSource() const;
     [[nodiscard]] const core::RenderNode* findFocusedField(
@@ -445,6 +468,11 @@ class AppShell {
     ShellConfig config_{};
     core::StateStore state_{};
     core::HandlerRegistry handlers_{};
+    // G-1 命令注册表 + 模态状态（appModal_ = 应用声明；overlayModal_ =
+    // 框架模态 overlay；合并视图见 isModalActive）。
+    CommandRegistry commands_{};
+    bool appModal_{false};
+    bool overlayModal_{false};
     std::map<std::string, core::StateStore::ObserverId> subscriptions_{};
     core::FocusManager focus_{};
     // M1：正式字体事实（声明在 controller_ 之前，析构原序保证原始指针

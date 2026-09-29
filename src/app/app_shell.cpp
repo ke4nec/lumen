@@ -9,6 +9,7 @@
 #include "lumen/core/text_field.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <set>
@@ -366,6 +367,7 @@ void AppShell::setOverlay(core::Widget overlay) {
     overlayBuilder_ = {};
     overlayWheel_ = {};
     overlayDrag_ = {};
+    overlayModal_ = true;  // G-1：模态 overlay 屏蔽 Window/FocusDomain 命令
     overlayTemplate_ = std::move(overlay);
     // 打开（首次）覆盖主树像素：全量重绘；替换已打开的 overlay 走
     // overlay 子树 diff（rebuildIfDirty 汇入 damage）。
@@ -378,6 +380,7 @@ void AppShell::setOverlayBuilder(
     ScrollDragSink drag, AnimateSink animate) {
     // Cancel against the current event tree/sink before installing the new modal.
     controller_.pointerCancel();
+    overlayModal_ = true;  // G-1：模态 overlay 屏蔽 Window/FocusDomain 命令
     overlayBuilder_ = std::move(builder);
     overlayWheel_ = std::move(wheel);
     overlayDrag_ = std::move(drag);
@@ -392,6 +395,7 @@ void AppShell::clearOverlay() {
     overlayWheel_ = {};
     overlayDrag_ = {};
     overlayAnimate_ = {};
+    overlayModal_ = false;
     if (!overlayTemplate_.has_value() && !overlayRoot_.has_value()) {
         return;
     }
@@ -413,11 +417,13 @@ void AppShell::clearOverlay() {
 void AppShell::setVisualOverlayBuilder(
     std::function<std::optional<core::Widget>()> builder) {
     // 非模态：不取消活动指针/焦点——输入仍由主树拖放会话拥有；仅叠加
-    // 视觉层。替换语义与 setOverlayBuilder 一致（builder 每帧重求值）。
+    // 视觉层（不置 overlayModal_：拖拽 ghost 不屏蔽窗口命令）。替换语
+    // 义与 setOverlayBuilder 一致（builder 每帧重求值）。
     overlayBuilder_ = std::move(builder);
     overlayWheel_ = {};
     overlayDrag_ = {};
     overlayAnimate_ = {};
+    overlayModal_ = false;
     dirty_ = true;
     fullRepaintPending_ = true;
 }
@@ -427,6 +433,7 @@ void AppShell::clearVisualOverlay() {
     overlayWheel_ = {};
     overlayDrag_ = {};
     overlayAnimate_ = {};
+    overlayModal_ = false;
     if (!overlayTemplate_.has_value() && !overlayRoot_.has_value()) {
         return;
     }
@@ -528,11 +535,110 @@ void AppShell::cancelComposition() { controller_.cancelComposition(); }
 void AppShell::keyDown(core::Key key, core::KeyModifiers modifiers,
                        char keyChar) {
     rebuildIfDirty();
-    // 应用级键拦截（Escape/返回统一规则等）：消费后不进交互层。
+    // 应用级键拦截（Escape/返回统一规则等）：消费后不进命令层与交互层。
     if (config_.onKey && config_.onKey(*this, key, modifiers, keyChar)) {
         return;
     }
-    controller_.keyDown(eventTree(), key, modifiers, keyChar);
+    // G-1 命令分发（lumen-command-dispatch-design §4）：和弦相位先于交
+    // 互层（Ctrl+S 在字段聚焦时仍分发；内建编辑和弦除外）；纯键相位在
+    // 交互层未消费后兜底（Tab 遍历/滚动/字段编辑优先）。
+    if (dispatchCommand(key, modifiers, keyChar, /*chordPhase=*/true)) {
+        return;
+    }
+    if (controller_.keyDown(eventTree(), key, modifiers, keyChar)) {
+        return;
+    }
+    (void)dispatchCommand(key, modifiers, keyChar, /*chordPhase=*/false);
+}
+
+// --- G-1：命令分发（命令注册表见 command_registry.h） ---
+
+namespace {
+
+// 内建编辑和弦（字段保护集，lumen-command-dispatch-design §4）：字段
+// 聚焦时 Ctrl/Gui + Z/Y/A/C/X/V（±Shift，无 Alt）仍归编辑路径。
+bool isBuiltinEditChord(const KeyBinding& binding) {
+    if (binding.key != core::Key::None || binding.letter == 0) {
+        return false;
+    }
+    if ((binding.modifiers & core::kModifierAlt) != 0) {
+        return false;
+    }
+    const bool ctrlLike = (binding.modifiers &
+                           (core::kModifierCtrl | core::kModifierGui)) != 0;
+    if (!ctrlLike) {
+        return false;
+    }
+    switch (std::tolower(static_cast<unsigned char>(binding.letter))) {
+        case 'z':
+        case 'y':
+        case 'a':
+        case 'c':
+        case 'x':
+        case 'v':
+            return true;
+        default:
+            return false;
+    }
+}
+
+// 焦点 identity 是否位于 domain（FocusScope key/identity）域内：自根
+// 深搜，携带"已在域内"标志（任意祖先域命中即算域内——嵌套域外层命令
+// 覆盖内层，设计文档 §3）。
+bool identityInDomain(const core::RenderNode& node,
+                      const std::string& focusedIdentity,
+                      const std::string& domain, bool inDomain) {
+    bool here = inDomain;
+    if (!here && node.type == core::WidgetType::FocusScope &&
+        (node.key == domain || node.identity == domain)) {
+        here = true;
+    }
+    if (here && node.identity == focusedIdentity) {
+        return true;
+    }
+    for (const auto& child : node.children) {
+        if (identityInDomain(child, focusedIdentity, domain, here)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+bool AppShell::focusInDomain(const std::string& domain) const {
+    if (domain.empty() || focus_.focusedIdentity().empty()) {
+        return false;
+    }
+    return identityInDomain(root_, focus_.focusedIdentity(), domain, false);
+}
+
+bool AppShell::dispatchCommand(core::Key key, core::KeyModifiers modifiers,
+                               char keyChar, bool chordPhase) {
+    if (commands_.empty()) {
+        return false;
+    }
+    const bool fieldFocused = controller_.wantsTextInput();
+    const CommandSpec* hit = commands_.match(
+        key, modifiers, keyChar, isModalActive(), chordPhase,
+        [this, fieldFocused, chordPhase](const CommandSpec& spec) {
+            if (spec.scope == CommandScope::FocusDomain &&
+                !focusInDomain(spec.domain)) {
+                return false;
+            }
+            // 字段聚焦时内建编辑和弦仍归字段（无修饰纯键不会到这一相
+            // ——编辑路径已消费）。
+            if (fieldFocused && chordPhase &&
+                isBuiltinEditChord(spec.binding)) {
+                return false;
+            }
+            return true;
+        });
+    if (hit == nullptr || (hit->enabled && !hit->enabled())) {
+        return false;
+    }
+    hit->invoke(*this);
+    return true;
 }
 
 // --- 帧管线 ---

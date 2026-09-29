@@ -902,13 +902,12 @@ class SettingsApp {
             return barMenuItems("sub:" + id);
         });
         menuBar_.attach(shell_);
+        // 命令分发层（G-1，lumen-command-dispatch-design）：菜单命令注册
+        // 进框架注册表——快捷键真实触发，显示串/启用态由注册表派生
+        //（barMenuItems 的 .command 字段），键盘与菜单点击同一路径。
+        registerAppCommands();
         const auto forwardCommand = [this](const std::string& id) {
-            lastMenuCommand_ = id;
-            if (id == "toggle-sidebar") {
-                const bool on = shell_.state().get("sidebar") != "true";
-                shell_.state().set("sidebar", on ? "true" : "false");
-            }
-            shell_.markDirty();
+            handleMenuCommand(id);
         };
         menuBar_.onCommand = forwardCommand;
         contextMenu_.onCommand = forwardCommand;
@@ -1320,32 +1319,86 @@ class SettingsApp {
         return core::withVariant(std::move(button), variant);
     }
 
-    // 菜单类控件演示数据（menu-controls-design §5 模型：快捷键仅展示，
-    // checkable 状态读 StateStore）。
+    // 菜单命令统一处理（onCommand 与命令注册表共用）。
+    void handleMenuCommand(const std::string& id) {
+        lastMenuCommand_ = id;
+        if (id == "toggle-sidebar") {
+            const bool on = shell_.state().get("sidebar") != "true";
+            shell_.state().set("sidebar", on ? "true" : "false");
+        }
+        shell_.markDirty();
+    }
+
+    // G-1：注册窗口命令（与菜单/工具栏共享同一命令模型）。save-as 演示
+    // 禁用态派生（注册表 enabled=false → 菜单行禁用）。
+    void registerAppCommands() {
+        const auto menuCommand = [this](const std::string& id) {
+            return [this, id](app::AppShell&) { handleMenuCommand(id); };
+        };
+        auto& commands = shell_.commands();
+        using app::CommandScope;
+        using app::CommandSpec;
+        using app::KeyBinding;
+        commands.registerCommand({.id = "new",
+                                  .label = "新建窗口",
+                                  .binding = KeyBinding::chord(
+                                      'n', core::kModifierCtrl),
+                                  .invoke = menuCommand("new")});
+        commands.registerCommand({.id = "open",
+                                  .label = "打开…",
+                                  .binding = KeyBinding::chord(
+                                      'o', core::kModifierCtrl),
+                                  .invoke = menuCommand("open")});
+        commands.registerCommand({.id = "save",
+                                  .label = "保存",
+                                  .binding = KeyBinding::chord(
+                                      's', core::kModifierCtrl),
+                                  .invoke = menuCommand("save")});
+        app::CommandSpec saveAs;
+        saveAs.id = "save-as";
+        saveAs.label = "另存为…";
+        saveAs.enabled = [] { return false; };
+        saveAs.invoke = menuCommand("save-as");
+        commands.registerCommand(std::move(saveAs));
+        commands.registerCommand({.id = "toggle-sidebar",
+                                  .label = "显示侧栏",
+                                  .binding = KeyBinding::chord(
+                                      'b', core::kModifierCtrl),
+                                  .invoke = menuCommand("toggle-sidebar")});
+        commands.registerCommand({.id = "shortcuts",
+                                  .label = "快捷键总览",
+                                  .binding = KeyBinding::chord(
+                                      '/', core::kModifierCtrl),
+                                  .invoke = menuCommand("shortcuts")});
+    }
+
+    // 菜单类控件演示数据（menu-controls-design §5 模型：command 项的
+    // 快捷键列/启用态从注册表派生，checkable 状态读 StateStore）。
     [[nodiscard]] widgets::MenuItems barMenuItems(
         const std::string& id) const {
         widgets::MenuItems items;
         if (id == "file") {
             items.push_back({.id = "new", .label = "新建窗口",
-                             .shortcut = "Ctrl+N"});
+                             .command = "new"});
             items.push_back({.id = "open", .label = "打开…",
                              .icon = core::IconId::Search,
-                             .shortcut = "Ctrl+O"});
+                             .command = "open"});
             items.push_back({.id = "sep", .separator = true});
             items.push_back({.id = "save", .label = "保存",
-                             .shortcut = "Ctrl+S"});
+                             .command = "save"});
             items.push_back({.id = "save-as", .label = "另存为…",
-                             .enabled = false});
+                             .command = "save-as"});
         } else if (id == "view") {
             items.push_back({.id = "toggle-sidebar", .label = "显示侧栏",
                              .checkable = true,
                              .checked = shell_.state().get("sidebar") == "true",
-                             .shortcut = "Ctrl+B", .mnemonic = 's'});
+                             .command = "toggle-sidebar",
+                             .mnemonic = 's'});
             items.push_back({.id = "density", .label = "密度",
                              .hasSubmenu = true});
         } else if (id == "help") {
             items.push_back({.id = "shortcuts", .label = "快捷键总览",
-                             .shortcut = "Ctrl+/"});
+                             .command = "shortcuts"});
             items.push_back({.id = "about", .label = "关于 lumen"});
         } else if (id == "sub:density") {
             items.push_back({.id = "density-compact", .label = "紧凑（32px）",

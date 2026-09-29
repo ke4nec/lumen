@@ -19,6 +19,9 @@ set(LUMEN_TEST_SOURCES
     counter_fallback_tests.cpp
     # M2：应用壳（runApp/AppShell）headless 验收——Fake host 驱动。
     app_shell_tests.cpp
+    # G-1：命令分发层（docs/lumen-command-dispatch-design.md）——域优先
+    # 级、模态屏蔽、冲突仲裁、字段保护与菜单同路径派生。
+    command_registry_tests.cpp
     # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
     grid_virtual_tests.cpp
     # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、

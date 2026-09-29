@@ -33,6 +33,29 @@ constexpr float kSubmenuSlidePx = 4.0F;
 // 级联深度上限（防递归 submenu 构造异常；应用菜单典型 ≤ 3）。
 constexpr std::size_t kMaxCascadeDepth = 8;
 
+// G-1：命令项解析（lumen-command-dispatch-design §5）——快捷键列与启
+// 用态从命令注册表派生（单一数据源，菜单显示串不与实际绑定分叉）。
+// 未注册的 command id 不改写（保留应用自写串/启用态；激活时回退
+// onCommand 旧路径——渐进迁移期命令可后注册）。
+void resolveCommandItems(app::AppShell& shell, MenuItems& items) {
+    for (auto& item : items) {
+        if (item.separator || item.command.empty()) {
+            continue;
+        }
+        const lumen::app::CommandSpec* spec =
+            shell.commands().find(item.command);
+        if (spec == nullptr) {
+            continue;
+        }
+        const std::string label =
+            lumen::app::bindingLabel(spec->binding);
+        if (!label.empty()) {
+            item.shortcut = label;
+        }
+        item.enabled = item.enabled && (!spec->enabled || spec->enabled());
+    }
+}
+
 // 行高：metrics 最小高度与排版行高的最大值（fontScale 极端时文本行高
 // 可超过控件最小高度；DropdownController 同口径）。
 float menuRowHeight(const style::Theme& theme) {
@@ -265,6 +288,7 @@ void ContextMenuController::openAnchored(app::AppShell& shell,
     if (items.empty()) {
         return;
     }
+    resolveCommandItems(shell, items);
     // 复开：清旧 handler/overlay（不动焦点——focusRestoreKey_ 是本次
     // 唤起方的恢复目标，close 的恢复语义留给真正关闭）。
     levels_.clear();
@@ -462,7 +486,13 @@ void ContextMenuController::activate(app::AppShell& shell, std::size_t level,
         return;
     }
     const std::string id = item.id;
+    const std::string command = item.command;
     close(shell);
+    // G-1：命令路径（与键盘分发同一注册表；注册表未知/禁用回退旧
+    // onCommand——禁用项理论上不可达，防御注册表动态变化的窗口期）。
+    if (!command.empty() && shell.commands().invoke(shell, command)) {
+        return;
+    }
     if (onCommand) {
         onCommand(id);
     }
@@ -479,6 +509,7 @@ void ContextMenuController::expandSubmenu(app::AppShell& shell,
     if (items.empty()) {
         return;
     }
+    resolveCommandItems(shell, items);
     // 级联锚 = 父行矩形（overlay 树内即视口坐标；父行可见、面板不动，
     // 几何取自当前帧）。
     core::Rect anchor{};
@@ -637,8 +668,11 @@ bool ContextMenuController::handleKey(app::AppShell& shell, core::Key key,
         default:
             break;
     }
-    // Space（Key::None + keyChar ' '）：激活（Enter 同路径）。
-    if (key == core::Key::None && keyChar == ' ') {
+    // Space（Key::None + keyChar ' '）：激活（Enter 同路径）。和弦修饰
+    // 键下不算空格激活（keyChar 现随和弦携带字母，G-1）。
+    if (key == core::Key::None && keyChar == ' ' &&
+        (mods & (core::kModifierCtrl | core::kModifierAlt |
+                 core::kModifierGui)) == 0) {
         activate(shell, levels_.size() - 1, deep.highlight);
         return true;
     }
