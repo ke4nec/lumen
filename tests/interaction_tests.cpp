@@ -612,3 +612,287 @@ TEST_CASE("hover_tracking_covers_collection_rows", "[interaction]") {
     controller.pointerMove(root, Offset{60.0F, 100.0F});
     CHECK(controller.hoveredIdentity().empty());
 }
+
+// --- M15：框架内拖放会话状态机（m15-roadmap §3） ---
+
+namespace {
+
+// 三行固定尺寸按钮（280x50）；arm sink 按 "row-" key 前缀认领。
+Widget dragRowButton(int index) {
+    return makeButton("row " + std::to_string(index), {}, {}, 0.0F,
+                      "row-" + std::to_string(index), 280.0F, 50.0F,
+                      "click" + std::to_string(index));
+}
+
+Widget dragRowsUi() {
+    return makeColumn({dragRowButton(0), dragRowButton(1), dragRowButton(2)});
+}
+
+struct DragSessionRecorder {
+    std::vector<DragPhase> phases{};
+    std::vector<Offset> positions{};
+    std::vector<std::string> sources{};
+    std::size_t dropChainSize{0};
+    std::string dropDeepestKey{};
+    std::size_t startChainSize{0};
+};
+
+// 注册按 "row-" 前缀认领的 arm sink；返回 arm sink 是否被咨询过。
+bool armRows(InteractionController& controller, bool touchAllowed) {
+    bool consulted = false;
+    controller.addDragArmSink(
+        [&consulted, touchAllowed](
+            const std::vector<const RenderNode*>& chain, PointerDevice,
+            DragSourceClaim& claim) {
+            consulted = true;
+            for (const RenderNode* node : chain) {
+                if (node->key.rfind("row-", 0) == 0) {
+                    claim.key = node->key;
+                    claim.identity = node->identity;
+                    claim.touchAllowed = touchAllowed;
+                    return true;
+                }
+            }
+            return false;
+        });
+    return consulted;  // 值无意义；sink 内闭包记录咨询状态。
+}
+
+DragSessionRecorder recordDragSession(InteractionController& controller) {
+    DragSessionRecorder recorder;
+    controller.addDragSessionSink(
+        [&recorder](DragPhase phase, Offset position,
+                    const std::vector<const RenderNode*>& chain,
+                    const std::string& sourceKey, const std::string&) {
+            recorder.phases.push_back(phase);
+            recorder.positions.push_back(position);
+            recorder.sources.push_back(sourceKey);
+            if (phase == DragPhase::Start) {
+                recorder.startChainSize = chain.size();
+            }
+            if (phase == DragPhase::Drop) {
+                recorder.dropChainSize = chain.size();
+                recorder.dropDeepestKey =
+                    chain.empty() ? std::string{} : chain.front()->key;
+            }
+        });
+    return recorder;
+}
+
+}  // namespace
+
+TEST_CASE("drag_session_starts_after_threshold_moves_and_drops",
+          "[interaction][m15]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+
+    int clicks = 0;
+    handlers["click0"] = [&clicks] { ++clicks; };
+    handlers["click2"] = [&clicks] { ++clicks; };
+
+    const RenderNode root = layoutOf(dragRowsUi());
+    armRows(controller, /*touchAllowed=*/false);
+    DragSessionRecorder recorder = recordDragSession(controller);
+
+    const Offset row0 = centerOf(root, "row-0");
+    const Offset row2 = centerOf(root, "row-2");
+
+    // 按下 + 阈值内小位移：不开会话，仍是按压。
+    controller.pointerDown(root, row0);
+    controller.pointerMove(root, row0 + Offset{0.0F, 4.0F});
+    CHECK_FALSE(controller.dragSessionActive());
+    CHECK(recorder.phases.empty());
+
+    // 越过启动阈值（默认 8px 曼哈顿）：Start + 同拍 Move。
+    controller.pointerMove(root, row0 + Offset{0.0F, 12.0F});
+    REQUIRE(controller.dragSessionActive());
+    REQUIRE(recorder.phases.size() == 2);
+    CHECK(recorder.phases[0] == DragPhase::Start);
+    CHECK(recorder.phases[1] == DragPhase::Move);
+    CHECK(controller.dragSourceKey() == "row-0");
+    CHECK(recorder.sources.front() == "row-0");
+    CHECK(recorder.startChainSize >= 1);
+    CHECK(controller.isDragging());  // 会话释放不触发点击。
+
+    // 再移动一拍：Move 携带新位置。
+    controller.pointerMove(root, row0 + Offset{0.0F, 30.0F});
+    REQUIRE(recorder.phases.size() == 3);
+    CHECK(recorder.phases[2] == DragPhase::Move);
+    CHECK(recorder.positions[2].y > recorder.positions[1].y);
+
+    // 释放在 row-2 上：Drop 携带落点命中链，最深命中是 row-2。
+    controller.pointerUp(root, row2);
+    CHECK_FALSE(controller.dragSessionActive());
+    REQUIRE(recorder.phases.size() == 4);
+    CHECK(recorder.phases[3] == DragPhase::Drop);
+    CHECK(recorder.dropChainSize >= 1);
+    CHECK(recorder.dropDeepestKey == "row-2");
+    // 拖放释放绝不触发点击（按压源与释放目标都注册了 handler）。
+    CHECK(clicks == 0);
+}
+
+TEST_CASE("drag_below_threshold_release_still_clicks",
+          "[interaction][m15]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+
+    int clicks = 0;
+    handlers["click0"] = [&clicks] { ++clicks; };
+    const RenderNode root = layoutOf(dragRowsUi());
+    armRows(controller, false);
+    DragSessionRecorder recorder = recordDragSession(controller);
+
+    // arm 认领的按压在阈值下释放：普通点击（微抖动不误启会话）。
+    const Offset row0 = centerOf(root, "row-0");
+    controller.pointerDown(root, row0);
+    controller.pointerMove(root, row0 + Offset{0.0F, 5.0F});
+    controller.pointerUp(root, row0 + Offset{0.0F, 5.0F});
+    CHECK(recorder.phases.empty());
+    CHECK(clicks == 1);
+}
+
+TEST_CASE("drag_session_cancel_ends_without_drop", "[interaction][m15]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+
+    const RenderNode root = layoutOf(dragRowsUi());
+    armRows(controller, false);
+    DragSessionRecorder recorder = recordDragSession(controller);
+
+    const Offset row0 = centerOf(root, "row-0");
+    controller.pointerDown(root, row0);
+    controller.pointerMove(root, row0 + Offset{0.0F, 20.0F});
+    REQUIRE(controller.dragSessionActive());
+    controller.pointerCancel();
+    CHECK_FALSE(controller.dragSessionActive());
+    REQUIRE_FALSE(recorder.phases.empty());
+    CHECK(recorder.phases.back() == DragPhase::Cancel);
+    // Cancel 之后再无 Move/Drop。
+    controller.pointerMove(root, row0 + Offset{0.0F, 40.0F});
+    controller.pointerUp(root, row0);
+    CHECK(recorder.phases.back() == DragPhase::Cancel);
+    CHECK(recorder.phases.size() == 3);  // Start + Move + Cancel。
+}
+
+TEST_CASE("drag_threshold_is_configurable", "[interaction][m15]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+
+    const RenderNode root = layoutOf(dragRowsUi());
+    armRows(controller, false);
+    DragSessionRecorder recorder = recordDragSession(controller);
+    controller.setDragThresholdPx(30.0F);
+
+    const Offset row0 = centerOf(root, "row-0");
+    controller.pointerDown(root, row0);
+    controller.pointerMove(root, row0 + Offset{0.0F, 20.0F});
+    CHECK_FALSE(controller.dragSessionActive());
+    controller.pointerMove(root, row0 + Offset{0.0F, 31.0F});
+    CHECK(controller.dragSessionActive());
+    controller.pointerUp(root, row0);
+}
+
+TEST_CASE("touch_row_drag_defers_to_scroll_until_handle_claims",
+          "[interaction][m15]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+
+    // 高内容（6 行 x 50px = 300px）放入 200px 视口：纵向可滚。
+    const auto scrollableUi = [] {
+        std::vector<Widget> rows;
+        for (int i = 0; i < 6; ++i) {
+            rows.push_back(dragRowButton(i));
+        }
+        return makeScrollView(makeColumn(std::move(rows)), "viewport", 300.0F,
+                              200.0F);
+    };
+
+    // 触摸 + 行整体认领（touchAllowed=false）：拖动路由为视口滚动。
+    {
+        InteractionController controller(store, handlers, focus);
+        controller.setScrollDragSink(
+            [](const RenderNode*, const RenderNode*, Offset, Offset,
+               ScrollDragPhase, std::uint64_t) { return true; });
+        armRows(controller, /*touchAllowed=*/false);
+        DragSessionRecorder recorder = recordDragSession(controller);
+        const RenderNode root = layoutOf(scrollableUi());
+        const Offset row0 = centerOf(root, "row-0");
+        controller.pointerDown(root, row0, 0, kModifierNone,
+                               PointerButton::Primary, PointerDevice::Touch);
+        controller.pointerMove(root, row0 + Offset{0.0F, 40.0F});
+        CHECK(controller.isScrollDragging());
+        CHECK_FALSE(controller.dragSessionActive());
+        CHECK(recorder.phases.empty());
+        controller.pointerUp(root, row0 + Offset{0.0F, 40.0F});
+    }
+    // 触摸 + 专用句柄认领（touchAllowed=true）：拖放会话优先于滚动。
+    {
+        InteractionController controller(store, handlers, focus);
+        controller.setScrollDragSink(
+            [](const RenderNode*, const RenderNode*, Offset, Offset,
+               ScrollDragPhase, std::uint64_t) { return true; });
+        armRows(controller, /*touchAllowed=*/true);
+        DragSessionRecorder recorder = recordDragSession(controller);
+        const RenderNode root = layoutOf(scrollableUi());
+        const Offset row0 = centerOf(root, "row-0");
+        controller.pointerDown(root, row0, 0, kModifierNone,
+                               PointerButton::Primary, PointerDevice::Touch);
+        controller.pointerMove(root, row0 + Offset{0.0F, 40.0F});
+        CHECK_FALSE(controller.isScrollDragging());
+        REQUIRE(controller.dragSessionActive());
+        CHECK(recorder.phases.front() == DragPhase::Start);
+        controller.pointerUp(root, row0 + Offset{0.0F, 40.0F});
+    }
+}
+
+TEST_CASE("drag_arm_skipped_for_text_field_press", "[interaction][m15]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+
+    // 字段行 + 普通行：字段命中走选区路径（selecting_），arm 不咨询。
+    Widget ui = makeColumn({
+        makeTextField("edit me", {}, {}, {}, 0.0F, "field", 280.0F, 40.0F,
+                      "fieldBind"),
+        dragRowButton(0),
+    });
+    const RenderNode root = layoutOf(std::move(ui));
+
+    bool armConsulted = false;
+    controller.addDragArmSink(
+        [&armConsulted](const std::vector<const RenderNode*>& chain,
+                        PointerDevice, DragSourceClaim& claim) {
+            armConsulted = true;
+            for (const RenderNode* node : chain) {
+                if (node->key.rfind("row-", 0) == 0) {
+                    claim.key = node->key;
+                    claim.identity = node->identity;
+                    return true;
+                }
+            }
+            return false;
+        });
+    DragSessionRecorder recorder = recordDragSession(controller);
+
+    const Offset field = centerOf(root, "field");
+    controller.pointerDown(root, field);
+    // 字段命中即锁定选区路径（selecting_）：arm sink 不被咨询——文本
+    // 选区拖动优先于拖放（roadmap §3 仲裁表）。
+    CHECK_FALSE(armConsulted);
+    CHECK(controller.focusedBind() == "fieldBind");
+    controller.pointerMove(root, field + Offset{30.0F, 0.0F});
+    CHECK_FALSE(controller.dragSessionActive());
+    // 字段拖动扩展选区（既有路径），无拖放会话。
+    CHECK(recorder.phases.empty());
+    controller.pointerUp(root, field + Offset{30.0F, 0.0F});
+}

@@ -246,7 +246,8 @@ class AppShell {
     // 不变）。
     void pointerDown(core::Offset position,
                      core::KeyModifiers modifiers = core::kModifierNone,
-                     core::PointerButton button = core::PointerButton::Primary);
+                     core::PointerButton button = core::PointerButton::Primary,
+                     core::PointerDevice device = core::PointerDevice::Mouse);
     void pointerMove(core::Offset position);
     void pointerUp(core::Offset position,
                    core::PointerButton button = core::PointerButton::Primary);

@@ -308,7 +308,8 @@ void InteractionController::pointerDown(const RenderNode& root,
                                         Offset position,
                                         std::uint64_t timestampMs,
                                         KeyModifiers modifiers,
-                                        PointerButton button) {
+                                        PointerButton button,
+                                        PointerDevice device) {
     std::vector<const RenderNode*> chain;
     const RenderNode* target = hitTestChain(root, position, chain);
     updatePointerHover(root, position);
@@ -342,6 +343,11 @@ void InteractionController::pointerDown(const RenderNode& root,
     sliderDragIdentity_.clear();
     splitterDragIdentity_.clear();
     splitterDragSource_ = nullptr;
+    dragArmedActive_ = false;
+    dragArmTouchAllowed_ = false;
+    dragArmDevice_ = device;
+    dragSourceKey_.clear();
+    dragSourceIdentity_.clear();
     dragAnchor_ = position;
     dragCurrent_ = position;
     // Gesture anchor: every press can become a drag, clickable or not.
@@ -496,6 +502,23 @@ void InteractionController::pointerDown(const RenderNode& root,
     if (!splitterDragIdentity_.empty() && !splitterPressKey.empty()) {
         focus_.setFocus(splitterPressKey, splitterDragIdentity_);
     }
+    // M15：拖放源认领。置于所有独占路径之后（scrollbar 已 return、
+    // splitter/slider 已锁定、字段命中 selecting_=true）——这些手势
+    // 优先于拖放（roadmap §3 仲裁表）。认领本身不改变按压/点击语义：
+    // 只有 pointerMove 越过启动阈值才开会话，未越阈值的释放仍走点击。
+    if (splitterDragIdentity_.empty() && sliderDragIdentity_.empty() &&
+        !selecting_ && !dragArmSinks_.empty()) {
+        DragSourceClaim claim{};
+        for (const auto& sink : dragArmSinks_) {
+            if (sink(chain, device, claim)) {
+                dragArmedActive_ = true;
+                dragArmTouchAllowed_ = claim.touchAllowed;
+                dragSourceKey_ = std::move(claim.key);
+                dragSourceIdentity_ = std::move(claim.identity);
+                break;
+            }
+        }
+    }
 }
 
 void InteractionController::placeCaretByHit(const RenderNode& field,
@@ -619,6 +642,36 @@ void InteractionController::pointerMove(const RenderNode& root,
         }
         return;
     }
+    // M15：拖放会话（m15-roadmap §3 手势仲裁）：arm 认领的按压越过启动
+    // 阈值后开会话，此后指针只驱动 Move；认领有效时下方滚动拖动路由不
+    // 劫持该按压（行拖拽意图先于视口滚动）。触摸未显式认领（行整体
+    // 拖拽）的 arm 无效——触摸列表拖动保持滚动语义，走下方既有路径。
+    // 未越启动阈值前保持按压（释放仍是点击，微抖动不误启）。
+    const bool dragArmedEligible =
+        dragArmedActive_ && !dragSessionSinks_.empty() &&
+        (dragArmDevice_ != PointerDevice::Touch || dragArmTouchAllowed_);
+    if (dragArmedEligible || dragSessionActive_) {
+        if (!dragSessionActive_ &&
+            std::abs(delta.x) + std::abs(delta.y) > dragThresholdPx_) {
+            dragging_ = true;  // 会话释放不触发点击/双击。
+            dragSessionActive_ = true;
+            std::vector<const RenderNode*> startChain;
+            (void)hitTestChain(root, position, startChain);
+            for (const auto& sink : dragSessionSinks_) {
+                sink(DragPhase::Start, position, startChain, dragSourceKey_,
+                     dragSourceIdentity_);
+            }
+        }
+        if (dragSessionActive_) {
+            std::vector<const RenderNode*> moveChain;
+            (void)hitTestChain(root, position, moveChain);
+            for (const auto& sink : dragSessionSinks_) {
+                sink(DragPhase::Move, position, moveChain, dragSourceKey_,
+                     dragSourceIdentity_);
+            }
+        }
+        return;
+    }
     if (!dragging_ && std::abs(delta.x) + std::abs(delta.y) > kDragSlopPx) {
         dragging_ = true;
         // M10：越过 slop 的拖动若不在文本选区路径上，且起点命中滚动
@@ -739,6 +792,12 @@ void InteractionController::pointerUp(const RenderNode& root,
     const bool wasDragging = dragging_;
     const bool wasScrollDragging = scrollDragging_;
     const std::string scrollDragIdentity = std::move(scrollDragIdentity_);
+    // M15：拖放会话释放状态先行捕获（armed 随会话/按压一并结束）。
+    const bool wasDragSession = dragSessionActive_;
+    const std::string dragSourceKey = std::move(dragSourceKey_);
+    const std::string dragSourceIdentity = std::move(dragSourceIdentity_);
+    dragSessionActive_ = false;
+    dragArmedActive_ = false;
     pressedKey_.clear();
     pressedIdentity_.clear();
     armedOnClick_.clear();
@@ -761,6 +820,17 @@ void InteractionController::pointerUp(const RenderNode& root,
     if (!pressSplitterIdentity.empty() &&
         focus_.focusedIdentity() == pressSplitterIdentity) {
         focus_.clearFocus();
+    }
+    // M15：拖放会话释放（Drop 携带落点命中链）。dragging_ 在会话启动时
+    // 已置位——下方点击/双击路径天然不触发；此处直接终结按压。
+    if (wasDragSession) {
+        std::vector<const RenderNode*> dropChain;
+        (void)hitTestChain(root, position, dropChain);
+        for (const auto& sink : dragSessionSinks_) {
+            sink(DragPhase::Drop, position, dropChain, dragSourceKey,
+                 dragSourceIdentity_);
+        }
+        return;
     }
     if (releasedScrollbarPress) {
         if (releasedScrollbarUsesSink && scrollDragSink_) {
@@ -882,6 +952,18 @@ void InteractionController::pointerUp(const RenderNode& root,
 void InteractionController::pointerCancel() {
     // 取消：解除按压/拖动/选区拖动；已建立的选区保留（plan §3.1 取消
     // 语义），点击绝不触发。
+    // M15：拖放会话取消（无释放语义，空命中链；armed 一并解除）。
+    if (dragSessionActive_) {
+        const std::string cancelSourceKey = std::move(dragSourceKey_);
+        const std::string cancelSourceIdentity =
+            std::move(dragSourceIdentity_);
+        dragSessionActive_ = false;
+        for (const auto& sink : dragSessionSinks_) {
+            sink(DragPhase::Cancel, Offset{}, {}, cancelSourceKey,
+                 cancelSourceIdentity);
+        }
+    }
+    dragArmedActive_ = false;
     pressedKey_.clear();
     pressedIdentity_.clear();
     armedOnClick_.clear();
@@ -1521,8 +1603,23 @@ bool InteractionController::expandCollectionRow(const RenderNode& node, bool exp
     return false;
 }
 
-void InteractionController::addSecondaryPressSink(SecondaryPressSink sink) {
-    secondaryPressSinks_.push_back(std::move(sink));
+// --- M15：框架内拖放会话 ---
+
+void InteractionController::addDragArmSink(DragArmSink sink) {
+    dragArmSinks_.push_back(std::move(sink));
+}
+
+void InteractionController::addDragSessionSink(DragSessionSink sink) {
+    dragSessionSinks_.push_back(std::move(sink));
+}
+
+void InteractionController::setDragThresholdPx(float px) {
+    if (px > 0.0F && std::isfinite(px)) {
+        dragThresholdPx_ = px;
+    }
+}
+
+void InteractionController::addSecondaryPressSink(SecondaryPressSink sink) {    secondaryPressSinks_.push_back(std::move(sink));
 }
 
 void InteractionController::addPointerMoveSink(PointerMoveSink sink) {

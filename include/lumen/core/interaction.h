@@ -60,6 +60,20 @@ enum class PointerCursor : std::uint8_t {
     PointingHand,  // Scrollbar thumb, including its wider hit area.
 };
 
+// --- M15：框架内拖放会话（m15-roadmap §3；应用内行/列重排） ---
+// 会话阶段：Start（越过启动阈值）→ Move（每拍，带当前位置命中链）→
+// Drop（释放，带落点命中链）/ Cancel（指针取消/窗口失焦，空命中链）。
+enum class DragPhase : std::uint8_t { Start, Move, Drop, Cancel };
+
+// 拖拽源认领结果（DragArmSink 输出）。key/identity 跨重建携带（会话
+// 期间可能整树重建）；touchAllowed = 触摸按压是否也认领——行整体
+// 拖拽不认领（触摸列表拖动保持滚动语义），专用拖拽句柄认领。
+struct DragSourceClaim {
+    std::string key{};
+    std::string identity{};
+    bool touchAllowed{false};
+};
+
 // v0.3 阶段8B (plan §3.2): TextField 编辑模型升级为 selection/composing。
 // 命中定位用 TextLayout（布局与绘制同一份），光标/删除按 grapheme
 // cluster，Shift 扩展选区，Ctrl/Gui 快捷键（A/C/X/V），双击选词，拖动
@@ -81,7 +95,8 @@ class InteractionController {
     void pointerDown(const RenderNode& root, Offset position,
                      std::uint64_t timestampMs = 0,
                      KeyModifiers modifiers = kModifierNone,
-                     PointerButton button = PointerButton::Primary);
+                     PointerButton button = PointerButton::Primary,
+                     PointerDevice device = PointerDevice::Mouse);
     void pointerMove(const RenderNode& root, Offset position,
                      std::uint64_t timestampMs = 0);
     void pointerUp(const RenderNode& root, Offset position,
@@ -186,6 +201,35 @@ class InteractionController {
     using SecondaryPressSink = std::function<bool(
         const std::vector<const RenderNode*>& hitChain, Offset position)>;
     void addSecondaryPressSink(SecondaryPressSink sink);
+
+    // --- M15：框架内拖放会话（应用内行/列重排等） ---
+    // 源认领 sink：pointerDown 命中链咨询（首个返回 true 的认领）。认领
+    // 不改变按压/点击语义——释放前未越过启动阈值仍是普通点击；且不与
+    // scrollbar/splitter/slider/文本选区路径共存（这些路径已锁定时不
+    // 咨询）。device 为按下设备（触摸仲裁见 DragSourceClaim）。
+    using DragArmSink = std::function<bool(
+        const std::vector<const RenderNode*>& hitChain,
+        PointerDevice device, DragSourceClaim& outClaim)>;
+    void addDragArmSink(DragArmSink sink);
+    // 会话阶段回调（全部 sink 通知，按 source key 前缀过滤——与
+    // RowClickSink 同语义）。Start 后整树可能重建：sink 内只依赖
+    // sourceKey/sourceIdentity 与当拍命中链，不得持有跨拍节点指针。
+    using DragSessionSink = std::function<void(
+        DragPhase phase, Offset position,
+        const std::vector<const RenderNode*>& hitChain,
+        const std::string& sourceKey, const std::string& sourceIdentity)>;
+    void addDragSessionSink(DragSessionSink sink);
+    // 会话进行中（Start 后 Drop/Cancel 前）。
+    [[nodiscard]] bool dragSessionActive() const {
+        return dragSessionActive_;
+    }
+    // 当前会话源 key（无会话为空；ghost/插入指示等视觉查询用）。
+    [[nodiscard]] const std::string& dragSourceKey() const {
+        return dragSourceKey_;
+    }
+    // 拖放启动阈值（逻辑像素，曼哈顿距离；默认 8 = 点击 slop 的 2 倍，
+    // 微抖动仍为点击）。会话开启前设置有效。
+    void setDragThresholdPx(float px);
 
     // 指针移动观察：AppShell 在 overlay 命中分发后，以主树通知。
     // MenuBar 用它在菜单已打开时按 hover 切换顶级菜单。
@@ -360,6 +404,16 @@ class InteractionController {
     std::vector<RowExpansionSink> rowExpansionSinks_{};
     std::vector<SecondaryPressSink> secondaryPressSinks_{};
     std::vector<PointerMoveSink> pointerMoveSinks_{};
+    // M15：拖放会话（arm 认领 → 阈值启动 → Move → Drop/Cancel）。
+    std::vector<DragArmSink> dragArmSinks_{};
+    std::vector<DragSessionSink> dragSessionSinks_{};
+    bool dragArmedActive_{false};
+    bool dragArmTouchAllowed_{false};
+    PointerDevice dragArmDevice_{PointerDevice::Mouse};
+    std::string dragSourceKey_{};
+    std::string dragSourceIdentity_{};
+    bool dragSessionActive_{false};
+    float dragThresholdPx_{8.0F};
     // 源视口拖动惯性登记（弱引用源 ScrollController；End 起滑时加入，
     // 推进到停止即移除）。
     std::vector<ScrollController*> sourceFlinging_{};

@@ -595,7 +595,7 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                     break;
                 case HostEventType::PointerDown:
                     shell.pointerDown(event.position, event.modifiers,
-                                      event.button);
+                                      event.button, event.device);
                     if (event.device != core::PointerDevice::Touch) {
                         syncPointerCursor(*runtime);
                     }

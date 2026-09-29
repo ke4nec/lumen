@@ -412,11 +412,12 @@ void AppShell::clearOverlay() {
 
 void AppShell::pointerDown(core::Offset position,
                            core::KeyModifiers modifiers,
-                           core::PointerButton button) {
+                           core::PointerButton button,
+                           core::PointerDevice device) {
     dismissTooltips();
     rebuildIfDirty();
     controller_.pointerDown(eventTree(), position, lastTickMs_, modifiers,
-                            button);
+                            button, device);
 }
 
 void AppShell::pointerMove(core::Offset position) {
