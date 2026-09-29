@@ -527,7 +527,7 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
 
 以下方向在 M13 之后按实际需要评估，不承诺版本：
 
-2026-09-29 更新：经自研 GUI 标准缺口分析，拖放、桌面窗口与系统集成、控件细节池（auto-hide/RTL 镜像/双轴联滚/跨行列合并/Splitter 塌缩/菜单 mnemonic/行内编辑/DataGrid 筛选等）、开发者诊断工具与富文本/复杂脚本已收敛为 M15–M19 增强链，规划与出口条件移至 [`lumen-m15-roadmap.md`](lumen-m15-roadmap.md)；本池保留未提升方向与后续新增项。
+2026-09-29 更新：经自研 GUI 标准缺口分析，拖放、桌面窗口与系统集成、控件细节池（auto-hide/RTL 镜像/双轴联滚/跨行列合并/Splitter 塌缩/菜单 mnemonic/行内编辑/DataGrid 筛选等）、开发者诊断工具与富文本/复杂脚本已收敛为 M15–M19 增强链，规划与出口条件移至 [`lumen-m15-roadmap.md`](lumen-m15-roadmap.md)；本池保留未提升方向与后续新增项。同日第二轮「好用实用」缺口分析确认的 M15–M19 之外条目（快捷键命令分发、崩溃兜底与持久日志、剪贴板深度等）登记于 [`lumen-gap-backlog.md`](lumen-gap-backlog.md) 附加待办池。
 
 - HarfBuzz 级合字与富文本：Skia 预编译包已附带 skshaper/harfbuzz/icu 归档，`FontManager::shapeCluster` 接口已预留多 glyph 返回。
 - 多窗口：`runApp` 已按 `event.window` 路由多个 `AppShell` 实例；宿主层多窗口 API
