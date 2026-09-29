@@ -203,6 +203,10 @@ struct PlatformCapabilities {
     // （startDrag 受理）。
     bool dragDropReceive{false};
     bool dragDropStart{false};
+    // M16：窗口能力（toggleFullscreen/setAlwaysOnTop/setWindowModal）。
+    bool windowFullscreen{false};
+    bool windowAlwaysOnTop{false};
+    bool windowModal{false};
     // 至少一项 OS 偏好已查询成功；个别未暴露的字段保留安全默认值。
     bool systemAccessibilityPreferences{false};
 };
@@ -268,6 +272,17 @@ class ApplicationHost {
     // host/未支持平台结构化降级）。
     [[nodiscard]] virtual ServiceResult startDrag(
         core::WindowId id, const DragOutPayload& payload);
+
+    // --- M16：窗口能力（结果经事件/窗口操作记录交付） ---
+    // 全屏进入/退出切换；结果经 WindowFullscreenEntered/Exited 事件
+    // 交付（无效窗口安全 no-op，单窗口宿主可挂靠首窗口——窗口操作先例）。
+    virtual void toggleFullscreen(core::WindowId id);
+    // 常驻置顶（无事件——同步请求即生效语义）。
+    virtual void setAlwaysOnTop(core::WindowId id, bool onTop);
+    // OS 级模态父子窗口（parent 为空 = 解除模态）。无效窗口/父窗口返回
+    // 结构化 Failed；成功返回 success。
+    [[nodiscard]] virtual ServiceResult setWindowModal(
+        core::WindowId id, core::WindowId parent);
 
     // --- 自定义标题栏（lumen-titlebar-design §4.3）：窗口操作与拖拽区 ---
     // 默认实现安全 no-op（契约 host/未支持平台结构化降级）；无效窗口 id

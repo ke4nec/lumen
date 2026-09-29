@@ -61,6 +61,11 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     // M15：拖出（SDL 3.2.10 无 API——结构化 Unavailable，能力位 false）。
     [[nodiscard]] ServiceResult startDrag(
         core::WindowId id, const DragOutPayload& payload) override;
+    // --- M16：窗口能力 ---
+    void toggleFullscreen(core::WindowId id) override;
+    void setAlwaysOnTop(core::WindowId id, bool onTop) override;
+    [[nodiscard]] ServiceResult setWindowModal(core::WindowId id,
+                                               core::WindowId parent) override;
 
     // --- 自定义标题栏（lumen-titlebar-design §4.3） ---
     void minimizeWindow(core::WindowId id) override;
@@ -91,6 +96,10 @@ class Sdl3ApplicationHost final : public ApplicationHost {
         // M15：本次 OS 拖入会话是否已交付负载（DROP_COMPLETE 时无负载
         // 则合成 DragLeave）。
         bool dropDelivered{false};
+        // M16：全屏状态（toggleFullscreen 翻转；事件翻译回填）。
+        bool fullscreen{false};
+        // M16：置顶请求缓存（SDL 无查询；重复设置去重用）。
+        bool alwaysOnTop{false};
     };
 
     // M4：文件对话框异步完成暂存（回调线程填充，pollEvent 消费）。

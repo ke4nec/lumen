@@ -39,6 +39,18 @@ ServiceResult ApplicationHost::startDrag(core::WindowId,
         "drag start not supported by this host");
 }
 
+// --- M16：窗口能力（默认安全 no-op/结构化降级） ---
+
+void ApplicationHost::toggleFullscreen(core::WindowId) {}
+
+void ApplicationHost::setAlwaysOnTop(core::WindowId, bool) {}
+
+ServiceResult ApplicationHost::setWindowModal(core::WindowId,
+                                              core::WindowId) {
+    return ServiceResult::unavailable(
+        "window modality not supported by this host");
+}
+
 // --- 自定义标题栏（lumen-titlebar-design §4.3）：默认安全 no-op ---
 
 void ApplicationHost::minimizeWindow(core::WindowId) {}

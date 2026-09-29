@@ -544,6 +544,15 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                     scheduler.requestFrame(render::FrameReason::Input,
                                            runtime->id);
                     break;
+                // M16：全屏切换（metrics 查询即时反映；尺寸变化另经
+                // Resize 事件到达）。
+                case HostEventType::WindowFullscreenEntered:
+                case HostEventType::WindowFullscreenExited:
+                    applyMetrics(*runtime);
+                    notify(*runtime, event, render::FrameReason::Input);
+                    scheduler.requestFrame(render::FrameReason::Resize,
+                                           runtime->id);
+                    break;
                 case HostEventType::WindowFocusGained:
                     runtime->focused = true;
                     // M13：窗口激活转发（provider 发 window:activate；

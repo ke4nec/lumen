@@ -122,6 +122,11 @@ class FakeApplicationHost final : public ApplicationHost {
     void minimizeWindow(core::WindowId id) override;
     void toggleMaximizeWindow(core::WindowId id) override;
     void requestWindowClose(core::WindowId id) override;
+    // --- M16：窗口能力（同记录 + 状态驱动语义） ---
+    void toggleFullscreen(core::WindowId id) override;
+    void setAlwaysOnTop(core::WindowId id, bool onTop) override;
+    [[nodiscard]] ServiceResult setWindowModal(core::WindowId id,
+                                               core::WindowId parent) override;
     // M13：记录型 raise（AT 抓焦点链路断言）。
     void raiseWindow(core::WindowId id) override;
     void setWindowDragRegion(
@@ -239,6 +244,15 @@ class FakeApplicationHost final : public ApplicationHost {
     // 各窗口拖拽区谓词（测试直接调用谓词断言注册结果）。
     std::vector<std::string> windowCommandCalls{};
     std::map<core::WindowId, std::function<bool(core::Offset)>> dragRegions{};
+    // M16：置顶/模态记录（fullscreen 走 windowCommandCalls + 事件）。
+    std::vector<std::pair<core::WindowId, bool>> alwaysOnTopCalls{};
+    struct ModalCall {
+        core::WindowId window{};
+        core::WindowId parent{};
+        ServiceResult result{};
+        bool operator==(const ModalCall&) const = default;
+    };
+    std::vector<ModalCall> modalCalls{};
 
   private:
     struct WindowEntry {

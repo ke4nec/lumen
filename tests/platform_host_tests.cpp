@@ -799,3 +799,77 @@ TEST_CASE("sdl3_host_drag_drop_capabilities_and_start_drag_unavailable",
     CHECK(result.error == lumen::platform::ServiceError::Unavailable);
     CHECK(!result.message.empty());
 }
+
+// --- M16：窗口能力（全屏/置顶/OS 模态：记录 + 状态驱动事件） ---
+
+TEST_CASE("fake_host_window_capabilities_record_and_sync",
+          "[platform][m16]") {
+    FakeApplicationHost host;
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow(WindowDesc{});
+    REQUIRE(id.has_value());
+    core::HostEvent event{};
+    while (host.pollEvent(event)) {
+    }
+
+    // 全屏切换：metrics 同步 + Entered/Exited 事件；再切一次回到窗口态。
+    host.toggleFullscreen(*id);
+    CHECK_FALSE(host.windowMetrics(*id)->fullscreen == false);
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::WindowFullscreenEntered);
+    CHECK(event.window == *id);
+    host.toggleFullscreen(*id);
+    REQUIRE(host.pollEvent(event));
+    CHECK(event.type == core::HostEventType::WindowFullscreenExited);
+    CHECK(host.windowMetrics(*id).has_value());
+    CHECK_FALSE(host.windowMetrics(*id)->fullscreen);
+
+    // 置顶与模态：记录 + 结构化结果；无效父窗口 Failed。
+    host.setAlwaysOnTop(*id, true);
+    REQUIRE(host.alwaysOnTopCalls.size() == 1);
+    CHECK(host.alwaysOnTopCalls[0].first == *id);
+    CHECK(host.alwaysOnTopCalls[0].second);
+    CHECK(host.setWindowModal(*id, core::WindowId{999}).error ==
+          lumen::platform::ServiceError::Failed);
+    REQUIRE(host.modalCalls.size() == 1);
+    CHECK(host.setWindowModal(*id, core::WindowId{}).ok);
+    CHECK(host.modalCalls.size() == 2);
+
+    // 命令记录含 fullscreen（与 minimize/maximize 同通道）。
+    bool sawFullscreen = false;
+    for (const auto& call : host.windowCommandCalls) {
+        if (call == "fullscreen") sawFullscreen = true;
+    }
+    CHECK(sawFullscreen);
+}
+
+TEST_CASE("sdl3_host_window_capabilities_smoke", "[platform][m16]") {
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    lumen::platform::Sdl3ApplicationHost host;
+    REQUIRE(host.initialize());
+    const auto caps = host.capabilities();
+    CHECK(caps.windowFullscreen);
+    CHECK(caps.windowAlwaysOnTop);
+    CHECK(caps.windowModal);
+
+    const auto id = host.createWindow(WindowDesc{});
+    REQUIRE(id.has_value());
+    // dummy 后端调用安全（成败由平台决定；不崩溃即冒烟通过）。
+    host.toggleFullscreen(*id);
+    host.setAlwaysOnTop(*id, true);
+    (void)host.setWindowModal(*id, core::WindowId{999});
+    // 无效窗口模态：结构化 Failed。
+    CHECK(host.setWindowModal(core::WindowId{7}, core::WindowId{}).error ==
+          lumen::platform::ServiceError::Failed);
+    core::HostEvent event{};
+    int pumped = 0;
+    while (host.pollEvent(event) && pumped < 16) {
+        ++pumped;
+    }
+    host.destroyWindow(*id);
+    host.shutdown();
+}

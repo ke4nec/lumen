@@ -302,6 +302,10 @@ bool Sdl3ApplicationHost::initialize() {
     // 拖出发起 SDL 3.2.10 无 API（startDrag 结构化 Unavailable）。
     capabilities_.dragDropReceive = true;
     capabilities_.dragDropStart = false;
+    // M16：窗口能力（SDL3.2：SDL_SetWindowFullscreen/AlwaysOnTop/Modal）。
+    capabilities_.windowFullscreen = true;
+    capabilities_.windowAlwaysOnTop = true;
+    capabilities_.windowModal = true;
     // M12：系统主题查询（SDL_GetSystemTheme，3.2.0 起可用；此前
     // "SDL 3.2 无查询"注释有误）。UNKNOWN 保持安全默认 false。
     capabilities_.prefersDarkMode =
@@ -574,6 +578,24 @@ std::size_t Sdl3ApplicationHost::translateEvent(
             }
             core::HostEvent event;
             event.type = core::HostEventType::WindowMaximized;
+            event.window = windowIdOf(sdlEvent.window.windowID);
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+        case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN: {
+            // M16：全屏进入/退出（toggleFullscreen 或系统途径；metrics
+            // 同步经事件消费者查询 windowMetrics 即时反映）。
+            const auto it = windows_.find(sdlEvent.window.windowID);
+            if (it == windows_.end()) {
+                break;
+            }
+            it->second.fullscreen =
+                sdlEvent.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN;
+            core::HostEvent event;
+            event.type = it->second.fullscreen
+                             ? core::HostEventType::WindowFullscreenEntered
+                             : core::HostEventType::WindowFullscreenExited;
             event.window = windowIdOf(sdlEvent.window.windowID);
             push(std::move(event));
             break;
@@ -1064,6 +1086,69 @@ ServiceResult Sdl3ApplicationHost::startDrag(core::WindowId,
     // dragDropStart 如实 false，SDL 升级后在此接入并翻转能力。
     return ServiceResult::unavailable(
         "SDL 3.2.10 provides no drag-start API (receive-only)");
+}
+
+// --- M16：窗口能力 ---
+
+void Sdl3ApplicationHost::toggleFullscreen(core::WindowId id) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr) {
+        return;
+    }
+    const bool enter = !entry->fullscreen;
+    if (!SDL_SetWindowFullscreen(
+            static_cast<SDL_Window*>(
+                entry->window->nativeSurface().nativeWindow),
+            enter)) {
+        return;  // 平台拒绝：状态不变，事件不产生（诚实降级）。
+    }
+    // 状态由 ENTER/LEAVE_FULLSCREEN 事件翻译回填（系统途径进入也一致）。
+}
+
+void Sdl3ApplicationHost::setAlwaysOnTop(core::WindowId id, bool onTop) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr || entry->alwaysOnTop == onTop) {
+        return;
+    }
+    entry->alwaysOnTop = onTop;
+    SDL_SetWindowAlwaysOnTop(
+        static_cast<SDL_Window*>(
+            entry->window->nativeSurface().nativeWindow),
+        onTop);
+}
+
+ServiceResult Sdl3ApplicationHost::setWindowModal(core::WindowId id,
+                                                  core::WindowId parent) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr) {
+        return ServiceResult::failed("window not found");
+    }
+    // SDL 3.2.10：父子关系经 SDL_SetWindowParent，模态经
+    // SDL_SetWindowModal（两参数）——组合表达 OS 级模态窗口。
+    if (!parent.valid()) {
+        if (!SDL_SetWindowModal(
+                static_cast<SDL_Window*>(
+                    entry->window->nativeSurface().nativeWindow),
+                false)) {
+            return ServiceResult::failed(std::string("SDL_SetWindowModal: ") +
+                                         SDL_GetError());
+        }
+        return ServiceResult::success();
+    }
+    WindowEntry* parentEntry = find(parent);
+    if (parentEntry == nullptr) {
+        return ServiceResult::failed("parent window not found");
+    }
+    SDL_Window* self =
+        static_cast<SDL_Window*>(entry->window->nativeSurface().nativeWindow);
+    SDL_Window* parentWindow = static_cast<SDL_Window*>(
+        parentEntry->window->nativeSurface().nativeWindow);
+    if (!SDL_SetWindowParent(self, parentWindow) ||
+        !SDL_SetWindowModal(self, true)) {
+        return ServiceResult::failed(std::string("SDL_SetWindowModal: ") +
+                                     SDL_GetError());
+    }
+    return ServiceResult::success();
 }
 
 Sdl3ApplicationHost::WindowEntry* Sdl3ApplicationHost::find(

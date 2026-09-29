@@ -304,8 +304,42 @@ void FakeApplicationHost::toggleMaximizeWindow(core::WindowId id) {
                                target));
 }
 
-void FakeApplicationHost::requestWindowClose(core::WindowId id) {
-    windowCommandCalls.push_back("close");
+// --- M16：窗口能力（记录 + 状态驱动事件） ---
+
+void FakeApplicationHost::toggleFullscreen(core::WindowId id) {
+    WindowEntry* entry = find(id);
+    if (entry == nullptr) {
+        return;
+    }
+    windowCommandCalls.push_back("fullscreen");
+    entry->metrics.fullscreen = !entry->metrics.fullscreen;
+    queue_.push_back(makeEvent(
+        entry->metrics.fullscreen
+            ? core::HostEventType::WindowFullscreenEntered
+            : core::HostEventType::WindowFullscreenExited,
+        id));
+}
+
+void FakeApplicationHost::setAlwaysOnTop(core::WindowId id, bool onTop) {
+    if (find(id) == nullptr) {
+        return;
+    }
+    alwaysOnTopCalls.emplace_back(id, onTop);
+}
+
+ServiceResult FakeApplicationHost::setWindowModal(core::WindowId id,
+                                                  core::WindowId parent) {
+    ServiceResult result = ServiceResult::success();
+    if (find(id) == nullptr) {
+        result = ServiceResult::failed("window not found");
+    } else if (parent.valid() && find(parent) == nullptr) {
+        result = ServiceResult::failed("parent window not found");
+    }
+    modalCalls.push_back(ModalCall{id, parent, result});
+    return result;
+}
+
+void FakeApplicationHost::requestWindowClose(core::WindowId id) {    windowCommandCalls.push_back("close");
     // 与 SDL host 同语义：合成 WindowCloseRequested 事件（应用侧
     // requestClose 统一拦截规则）；无效 id 挂靠首个窗口。
     core::WindowId target = id;
