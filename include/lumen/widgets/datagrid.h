@@ -33,7 +33,10 @@
 // 常量等值）。2026-09-29 第五/六批（§19/§20）：冻结列（DataColumn.
 // pinned 前缀不变式 + 区域拆分 + 共享纵向几何 + 语义排除副本）与水平
 // 虚拟化（滚动区列窗口物化，复制/粘贴/排序/列宽 API 始终作用于全列
-// 集）。RTL 镜像/拖放仍为后续增量。
+// 集）。2026-09-29 M15 落地行/列拖拽重排（setRowReorderable/
+// setColumnReorderable——行 onRowReorder 回调、表头拖拽提交 moveColumn、
+// Alt+↑/↓ 键盘等价与语义 MoveUp/MoveDown，契约见
+// docs/lumen-drag-drop-design.md）。RTL 镜像仍为后续增量。
 //
 // UI 线程独占；控制器生命周期必须覆盖 shell（sink 注册于 attach）。
 
@@ -170,6 +173,23 @@ class DataGridController final : public core::VirtualListSource {
     }
     // 行激活（无可编辑列时 Enter 的语义出口）。
     std::function<void(const std::string& rowKey)> onRowActivated{};
+
+    // --- M15：行/列拖拽重排（drag-drop-design §4/§5） ---
+    // 行重排：与 List 同契约（触摸行拖拽让位滚动；ghost/指示线经框架
+    // 视觉 overlay）。onRowReorder(from, to) = 先移除后插入语义；数据
+    // 序由应用维护——回调内更新并 setRowCount + 重建。
+    void setRowReorderable(bool enabled);
+    std::function<void(std::size_t fromRow, std::size_t toRow)> onRowReorder{};
+    // 列重排：表头拖拽（认领表头格，含不可排序列）；提交经 moveColumn
+    //（列模型由控制器自持，无需回调）并钳制在列所属区域内。键盘等价：
+    // 行 Alt+↑/↓（current 行上下移）；语义 MoveUp/MoveDown 同路径。
+    void setColumnReorderable(bool enabled);
+    // 会话状态（测试断言）。
+    [[nodiscard]] bool dragActive() const { return dragActive_; }
+    [[nodiscard]] std::size_t dragFromRow() const { return dragFromRow_; }
+    [[nodiscard]] std::size_t dragInsertBefore() const {
+        return dragInsertRow_;
+    }
 
     // --- 剪贴板（TSV） ---
     // 选中行按行序拼 TSV 写入宿主剪贴板；返回写入行数（0 = 无剪贴板/
@@ -451,6 +471,20 @@ class DataGridController final : public core::VirtualListSource {
     [[nodiscard]] const ColumnResizeSource* resizeSourceFor(
         const std::string& columnKey) const;
     void requestRebuild();
+    // --- M15：拖拽重排会话 ---
+    // sourceKey 前缀分派：行（item:/frow:）或表头格（head:）。
+    void dragSession(core::DragPhase phase, core::Offset position,
+                     const std::string& sourceKey);
+    void endDragSession();
+    // 行 key 自命中链解析（row:/cell: 两种 onClick；滚动/冻结两区皆可）。
+    [[nodiscard]] std::string rowKeyFromChain(
+        const std::vector<const core::RenderNode*>& chain) const;
+    [[nodiscard]] std::string columnKeyFromChain(
+        const std::vector<const core::RenderNode*>& chain) const;
+    // current 行上移/下移一格（键盘 Alt+↑/↓ 与语义 MoveUp/MoveDown
+    // 共用；返回是否提交了重排）。
+    [[nodiscard]] bool moveCurrentRow(const std::string& rowKey, bool up);
+    [[nodiscard]] core::Widget buildDragOverlay() const;
 
     core::VirtualListController base_{};
     // 横向滚动（滚动区表头与数据共享，§17；经右区 ScrollView 的源接缝
@@ -491,6 +525,17 @@ class DataGridController final : public core::VirtualListSource {
     mutable bool scrollPrefixDirty_{true};
     app::AppShell* shell_{nullptr};
     std::string owner_{"grid"};
+    // M15：重排会话状态（dragKind：行/列）。
+    bool rowReorderEnabled_{false};
+    bool columnReorderEnabled_{false};
+    bool dragActive_{false};
+    bool dragColumn_{false};
+    std::size_t dragFromRow_{0};
+    std::size_t dragInsertRow_{0};
+    std::string dragColumnKey_{};
+    std::string dragInsertColumnKey_{};
+    bool dragInsertAfterColumn_{false};
+    core::Offset dragPointer_{};
 };
 
 }  // namespace lumen::widgets

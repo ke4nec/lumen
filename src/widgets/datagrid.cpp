@@ -767,6 +767,65 @@ void DataGridController::attach(app::AppShell& shell, std::string ownerKey) {
         }
         return true;
     });
+    // M15：拖拽重排（drag-drop-design §4/§5）。行认领按 row:/cell:
+    // onClick（滚动/冻结两区同串）；表头认领按 head: 节点 key（含不可
+    // 排序列）。触摸均不认领——列表/网格触摸拖动保持滚动。
+    shell.controller().addDragArmSink(
+        [this](const std::vector<const core::RenderNode*>& chain,
+               core::PointerDevice, core::DragSourceClaim& claim) {
+            if (rowReorderEnabled_) {
+                const std::string rowKey = rowKeyFromChain(chain);
+                std::size_t index = 0;
+                if (!rowKey.empty() && indexOfKey(rowKey, index) &&
+                    rowEnabled(index)) {
+                    for (const core::RenderNode* node : chain) {
+                        if (!node->collectionRow) {
+                            continue;
+                        }
+                        if (node->key == owner_ + ":item:" + rowKey ||
+                            node->key == owner_ + ":frow:" + rowKey) {
+                            claim.key = node->key;
+                            claim.identity = node->identity;
+                            claim.touchAllowed = false;
+                            return true;
+                        }
+                    }
+                }
+            }
+            if (columnReorderEnabled_) {
+                const std::string prefix = owner_ + ":head:";
+                for (const core::RenderNode* node : chain) {
+                    if (node->key.rfind(prefix, 0) == 0 &&
+                        columnExists(node->key.substr(prefix.size()))) {
+                        claim.key = node->key;
+                        claim.identity = node->identity;
+                        claim.touchAllowed = false;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        });
+    shell.controller().addDragSessionSink(
+        [this](core::DragPhase phase, core::Offset position,
+               const std::vector<const core::RenderNode*>&,
+               const std::string& sourceKey, const std::string&) {
+            dragSession(phase, position, sourceKey);
+        });
+    // 语义 MoveUp/MoveDown（读屏等价；与 Alt+↑/↓ 键盘路径共用，
+    // drag-drop-design §7）。
+    shell.controller().addRowMoveSink(
+        [this](const std::string& nodeKey, bool up) {
+            const std::string itemPrefix = owner_ + ":item:";
+            const std::string frowPrefix = owner_ + ":frow:";
+            std::string rowKey;
+            if (nodeKey.rfind(itemPrefix, 0) == 0) {
+                rowKey = nodeKey.substr(itemPrefix.size());
+            } else if (nodeKey.rfind(frowPrefix, 0) == 0) {
+                rowKey = nodeKey.substr(frowPrefix.size());
+            }
+            return !rowKey.empty() && moveCurrentRow(rowKey, up);
+        });
 }
 
 // --- 键盘 ---
@@ -806,6 +865,14 @@ bool DataGridController::handleKey(core::Key key, core::KeyModifiers modifiers,
             return true;
         }
         return false;
+    }
+    // M15：Alt+↑/↓ = current 行上下移一格（拖拽重排的键盘等价路径；
+    // 编辑态不至此——编辑器持有方向键）。
+    if (rowReorderEnabled_ && (modifiers & core::kModifierAlt) != 0 &&
+        (key == core::Key::Up || key == core::Key::Down) &&
+        !selection_.currentKey().empty()) {
+        return moveCurrentRow(selection_.currentKey(),
+                              key == core::Key::Up);
     }
     // 焦点在本网格列宽手柄（owner+":hnd:" 前缀，§16/§22.3）：方向键与
     // Home/End 让位给交互层的 splitter 键盘路径（stepBy/stepToEdge）。
@@ -1378,6 +1445,12 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
     row.listPart = index + 1 == itemCount() ? core::ListPart::LastRow
                                             : core::ListPart::Row;
     row.enabled = rowEnabled(index);
+    // M15：行可重排时暴露 MoveUp/MoveDown（读屏等价，滚动区行是语义
+    // 承载者——冻结区行壳不设 actions，§19 T5.5 口径不变）。
+    if (rowReorderEnabled_) {
+        row.semanticsActions |= accessibility::kActionMoveUp |
+                                accessibility::kActionMoveDown;
+    }
     // 固定行高（§19 P0.1）：行壳显式定高（Theme.dataGrid.rowExtent）；
     // 格式盒同高（格内容不再影响行高，实测回填已忽略）。
     row.height = rowExtentPx();
@@ -1832,6 +1905,332 @@ void DataGridController::ensureColumnVisible(const std::string& columnKey) {
         hScroll_.scrollTo(next);
         requestRebuild();
     }
+}
+
+
+// --- M15：行/列拖拽重排（drag-drop-design §4/§5） ---
+
+void DataGridController::setRowReorderable(bool enabled) {
+    rowReorderEnabled_ = enabled;
+}
+
+void DataGridController::setColumnReorderable(bool enabled) {
+    columnReorderEnabled_ = enabled;
+}
+
+std::string DataGridController::rowKeyFromChain(
+    const std::vector<const core::RenderNode*>& chain) const {
+    const std::string rowPrefix = "grid:" + owner_ + ":row:";
+    const std::string cellPrefix = "grid:" + owner_ + ":cell:";
+    for (const core::RenderNode* node : chain) {
+        if (node->onClick.rfind(rowPrefix, 0) == 0) {
+            return node->onClick.substr(rowPrefix.size());
+        }
+        if (node->onClick.rfind(cellPrefix, 0) == 0) {
+            std::string rowKey;
+            std::string columnKey;
+            if (parseCellRef(node->onClick.substr(cellPrefix.size()), rowKey,
+                             columnKey)) {
+                return rowKey;
+            }
+        }
+    }
+    return {};
+}
+
+std::string DataGridController::columnKeyFromChain(
+    const std::vector<const core::RenderNode*>& chain) const {
+    const std::string prefix = owner_ + ":head:";
+    for (const core::RenderNode* node : chain) {
+        if (node->key.rfind(prefix, 0) == 0) {
+            return node->key.substr(prefix.size());
+        }
+    }
+    return {};
+}
+
+bool DataGridController::moveCurrentRow(const std::string& rowKey, bool up) {
+    if (!rowReorderEnabled_ || onRowReorder == nullptr) {
+        return false;
+    }
+    std::size_t from = 0;
+    if (!indexOfKey(rowKey, from) || !rowEnabled(from)) {
+        return false;
+    }
+    // 边界（首行上移/末行下移）：动作归属本网格，无位移即消费。
+    if (up ? from == 0 : from + 1 >= itemCount()) {
+        return true;
+    }
+    if (!commitPendingEdit()) {
+        return true;  // 编辑提交失败：视图变化中止（§13.1 同口径）。
+    }
+    onRowReorder(from, up ? from - 1 : from + 1);
+    requestRebuild();
+    return true;
+}
+
+void DataGridController::dragSession(core::DragPhase phase,
+                                     core::Offset position,
+                                     const std::string& sourceKey) {
+    if (phase == core::DragPhase::Start) {
+        const std::string headPrefix = owner_ + ":head:";
+        if (columnReorderEnabled_ &&
+            sourceKey.rfind(headPrefix, 0) == 0) {
+            const std::string columnKey = sourceKey.substr(headPrefix.size());
+            if (!columnExists(columnKey)) {
+                return;
+            }
+            dragActive_ = true;
+            dragColumn_ = true;
+            dragColumnKey_ = columnKey;
+            dragInsertColumnKey_ = columnKey;
+            dragInsertAfterColumn_ = false;
+        } else if (rowReorderEnabled_) {
+            std::string rowKey;
+            const std::string itemPrefix = owner_ + ":item:";
+            const std::string frowPrefix = owner_ + ":frow:";
+            if (sourceKey.rfind(itemPrefix, 0) == 0) {
+                rowKey = sourceKey.substr(itemPrefix.size());
+            } else if (sourceKey.rfind(frowPrefix, 0) == 0) {
+                rowKey = sourceKey.substr(frowPrefix.size());
+            }
+            std::size_t from = 0;
+            if (rowKey.empty() || !indexOfKey(rowKey, from)) {
+                return;
+            }
+            dragActive_ = true;
+            dragColumn_ = false;
+            dragFromRow_ = from;
+            dragInsertRow_ = from;
+        } else {
+            return;
+        }
+        dragPointer_ = position;
+        if (shell_ != nullptr) {
+            // 非模态视觉 overlay（不取消活动指针；ghost/指示线）。
+            shell_->setVisualOverlayBuilder(
+                [this]() -> std::optional<core::Widget> {
+                    if (!dragActive_) {
+                        return std::nullopt;
+                    }
+                    return buildDragOverlay();
+                });
+        }
+        requestRebuild();
+        return;
+    }
+    if (!dragActive_) {
+        return;
+    }
+    switch (phase) {
+        case core::DragPhase::Start:
+            break;  // 不可达（上方已处理）。
+        case core::DragPhase::Move: {
+            dragPointer_ = position;
+            if (shell_ == nullptr) {
+                break;
+            }
+            // 会话命中链来自事件树（ghost overlay 活跃期 = overlay 树）；
+            // 落点按主树解析（drag-drop-design §5）。
+            std::vector<const core::RenderNode*> mainChain;
+            (void)core::hitTestChain(shell_->root(), position, mainChain);
+            if (!dragColumn_) {
+                const std::string targetKey = rowKeyFromChain(mainChain);
+                std::size_t target = 0;
+                if (!targetKey.empty() && indexOfKey(targetKey, target)) {
+                    if (target == dragFromRow_) {
+                        dragInsertRow_ = dragFromRow_;
+                    } else {
+                        const core::RenderNode* node =
+                            core::findNodeByKey(shell_->root(),
+                                                owner_ + ":item:" + targetKey);
+                        if (node == nullptr) {
+                            node = core::findNodeByKey(
+                                shell_->root(),
+                                owner_ + ":frow:" + targetKey);
+                        }
+                        const core::Offset origin =
+                            core::absoluteOffset(shell_->root(),
+                                                 node->key);
+                        const bool belowMiddle =
+                            position.y >
+                            origin.y + node->size.height * 0.5F;
+                        dragInsertRow_ =
+                            belowMiddle ? target + 1 : target;
+                    }
+                }
+            } else {
+                const std::string targetKey = columnKeyFromChain(mainChain);
+                if (!targetKey.empty() &&
+                    columnExists(targetKey)) {
+                    if (targetKey == dragColumnKey_) {
+                        dragInsertColumnKey_ = targetKey;
+                        dragInsertAfterColumn_ = false;
+                    } else {
+                        const core::RenderNode* node = core::findNodeByKey(
+                            shell_->root(),
+                            owner_ + ":head:" + targetKey);
+                        const core::Offset origin =
+                            core::absoluteOffset(shell_->root(),
+                                                 node->key);
+                        dragInsertAfterColumn_ =
+                            position.x >
+                            origin.x + node->size.width * 0.5F;
+                        dragInsertColumnKey_ = targetKey;
+                    }
+                }
+            }
+            requestRebuild();
+            break;
+        }
+        case core::DragPhase::Drop: {
+            if (!dragColumn_) {
+                const std::size_t gap = dragInsertRow_;
+                const std::size_t from = dragFromRow_;
+                endDragSession();
+                if (gap != from && onRowReorder != nullptr) {
+                    // 先移除后插入：间隙在源行之后时最终行号 -1。
+                    const std::size_t to = gap > from ? gap - 1 : gap;
+                    if (to != from) {
+                        onRowReorder(from, to);
+                    }
+                }
+            } else {
+                const std::string fromKey = dragColumnKey_;
+                const std::string targetKey = dragInsertColumnKey_;
+                const bool after = dragInsertAfterColumn_;
+                endDragSession();
+                if (fromKey.empty() || targetKey.empty()) {
+                    break;
+                }
+                std::size_t fromPos = 0;
+                std::size_t targetPos = 0;
+                for (std::size_t i = 0; i < columns_.size(); ++i) {
+                    if (columns_[i].key == fromKey) {
+                        fromPos = i;
+                    }
+                    if (columns_[i].key == targetKey) {
+                        targetPos = i;
+                    }
+                }
+                // moveColumn 是先删后插（toIndex = 最终向量位）。
+                std::size_t toIndex = after ? targetPos + 1 : targetPos;
+                if (targetPos > fromPos) {
+                    toIndex = after ? targetPos : targetPos - 1;
+                }
+                if (toIndex != fromPos) {
+                    (void)moveColumn(fromKey, toIndex);  // 内部钳制区域。
+                }
+            }
+            break;
+        }
+        case core::DragPhase::Cancel:
+            endDragSession();
+            break;
+    }
+}
+
+void DataGridController::endDragSession() {
+    dragActive_ = false;
+    dragColumnKey_.clear();
+    dragInsertColumnKey_.clear();
+    if (shell_ != nullptr) {
+        shell_->clearVisualOverlay();
+    }
+    requestRebuild();
+}
+
+core::Widget DataGridController::buildDragOverlay() const {
+    if (shell_ == nullptr) {
+        return core::Widget{};
+    }
+    const style::Theme& theme = shell_->theme();
+    const style::DragDropTokens& tokens = theme.dragDrop;
+    const core::Size view = shell_->view();
+
+    core::Widget ghost;
+    ghost.type = core::WidgetType::Container;
+    ghost.color = tokens.ghostSurface;
+    ghost.radius = core::CornerRadius::all(theme.metrics.cardRadius);
+    ghost.elevation = 2.0F;
+    ghost.styleOverrides.border = tokens.ghostBorder;
+    ghost.styleOverrides.borderWidth = theme.metrics.controlBorderWidth;
+    ghost.padding = core::EdgeInsets::symmetric(8.0F, 4.0F);
+    if (!dragColumn_) {
+        // 行 ghost：整行内容（buildItem 已含行壳样式，剥离行级点击语
+        // 义——ghost 纯视觉）。
+        core::Widget row = buildItem(dragFromRow_);
+        row.onClick = {};
+        row.key = owner_ + ":drag-ghost-row";
+        ghost.children.push_back(std::move(row));
+    } else {
+        const DataColumn* column = findColumn(dragColumnKey_);
+        ghost.children.push_back(
+            core::makeText(column != nullptr ? column->header
+                                             : std::string()));
+    }
+    ghost = core::withStackPosition(
+        std::move(ghost),
+        core::Offset{dragPointer_.x + tokens.ghostGrabOffsetX,
+                     dragPointer_.y - tokens.ghostGrabOffsetY});
+    ghost.key = owner_ + ":drag-ghost";
+
+    // 指示线：行会话 = 水平线于目标行上边界；列会话 = 垂直线于目标列
+    // 边界（含表头全高）。
+    core::Widget indicator;
+    indicator.type = core::WidgetType::Container;
+    indicator.color = tokens.dropIndicator;
+    indicator.key = owner_ + ":drag-indicator";
+    if (!dragColumn_) {
+        indicator.height = tokens.indicatorThickness;
+        std::size_t gap = std::min(dragInsertRow_, itemCount());
+        std::string rowKey = gap < itemCount() ? keyOf(gap) : std::string{};
+        const core::RenderNode* node =
+            rowKey.empty()
+                ? nullptr
+                : core::findNodeByKey(shell_->root(),
+                                      owner_ + ":item:" + rowKey);
+        if (node == nullptr && !rowKey.empty()) {
+            node = core::findNodeByKey(shell_->root(),
+                                       owner_ + ":frow:" + rowKey);
+        }
+        if (node != nullptr) {
+            const core::Offset origin =
+                core::absoluteOffset(shell_->root(), node->key);
+            indicator.width = node->size.width;
+            indicator = core::withStackPosition(
+                std::move(indicator),
+                core::Offset{origin.x, origin.y});
+        }
+    } else {
+        indicator.width = tokens.indicatorThickness;
+        const core::RenderNode* node =
+            core::findNodeByKey(shell_->root(),
+                                owner_ + ":head:" + dragInsertColumnKey_);
+        const core::RenderNode* grid =
+            core::findNodeByKey(shell_->root(), owner_);
+        if (node != nullptr && grid != nullptr) {
+            const core::Offset origin =
+                core::absoluteOffset(shell_->root(), node->key);
+            const core::Offset gridOrigin =
+                core::absoluteOffset(shell_->root(), owner_);
+            indicator.height = grid->size.height;
+            const float x = dragInsertAfterColumn_
+                                ? origin.x + node->size.width
+                                : origin.x;
+            indicator = core::withStackPosition(
+                std::move(indicator),
+                core::Offset{x, gridOrigin.y});
+        }
+    }
+
+    core::Widget overlay = core::makeStack(
+        {std::move(indicator), std::move(ghost)},
+        core::StackAlignment::TopLeft);
+    overlay.key = owner_ + ":drag-overlay";
+    overlay.width = view.width;
+    overlay.height = view.height;
+    return overlay;
 }
 
 }  // namespace lumen::widgets

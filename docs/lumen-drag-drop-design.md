@@ -114,8 +114,12 @@ Sink 契约（`lumen-core/interaction.h`）：
 
 ## 7. 无障碍
 
-- 拖放功能不得成为纯指针路径：键盘等价（行移动命令/上下文菜单）与
-  语义 action（Reorder/MoveUp/MoveDown）随 DataGrid 批次落地（§9）。
+- 拖放功能不得成为纯指针路径：DataGrid 行暴露语义 `moveUp`/`moveDown`
+  （`kActionMoveUp/kActionMoveDown`，`semanticsActionsName` 序列含
+  "moveUp"/"moveDown"）；语义分发经 `moveCollectionRow`（Interaction
+  Controller，Expand/Collapse 同型 sink 路由）。键盘等价 = Alt+↑/↓ 移动
+  current 行（DataGrid `handleKey`；编辑态让位编辑器）。List 的语义
+  action 暴露随首个应用需求补（会话机制已就绪，见 §9）。
 - 瞬态 ghost/指示线会作为 overlay 子树短暂进入语义树（generic 节点，
   无 role/action）；若读屏噪音可辨，后续增量可引入 decorative 标志。
 
@@ -128,7 +132,9 @@ Sink 契约（`lumen-core/interaction.h`）：
   命中不咨询 arm。
 - `tests/drag_reorder_tests.cpp`（[dragdrop]）：List 重排提交（上下向）、
   插入间隙跟踪、阈值内点击保持、Cancel 回退与 overlay 清理、
-  ghost/指示线渲染契约、未启用不认领、token 派生。
+  ghost/指示线渲染契约、未启用不认领、token 派生；DataGrid 行拖拽
+  提交、Alt+↑/↓ 键盘移动、行语义 action（MoveUp/MoveDown 暴露与
+  moveCollectionRow 路由）、列拖拽提交（moveColumn 先删后插）。
 
 ## 9. 实施状态（分阶段）
 
@@ -136,8 +142,8 @@ Sink 契约（`lumen-core/interaction.h`）：
 | --- | --- | --- |
 | 平台契约 | HostEvent Drag* + startDrag 降级 + 能力位 + Fake/SDL | 2026-09-29 落地（提交 f0f2773） |
 | core 状态机 | arm/阈值/Move/Drop/Cancel + 仲裁 + device 参数 | 2026-09-29 落地（提交 df9579b） |
-| List 重排 | onReorder + 非模态视觉 overlay + DragDropTokens | 2026-09-29 落地 |
-| DataGrid 行/列重排 | 行重排复用 List 机制 + reorderColumn + 键盘等价 + 语义 action | 进行中 |
+| List 重排 | onReorder + 非模态视觉 overlay + DragDropTokens | 2026-09-29 落地（提交 9c43240） |
+| DataGrid 行/列重排 | 行重排复用会话机制 + 表头拖拽 moveColumn + Alt+↑/↓ + 语义 MoveUp/MoveDown | 2026-09-29 落地 |
 | 真实平台 smoke | 三桌面 OS 文件/文本拖入窗口 smoke | 未做（四态：headless 已验证） |
 
 已知限制（本版）：拖拽中无自动滚动（近边缘不滚动，用户可先滚再拖）；

@@ -354,6 +354,8 @@ std::string semanticsActionsName(std::uint32_t actions) {
     }
     if ((actions & kActionExpand) != 0) append("expand");
     if ((actions & kActionCollapse) != 0) append("collapse");
+    if ((actions & kActionMoveUp) != 0) append("moveUp");
+    if ((actions & kActionMoveDown) != 0) append("moveDown");
     return result;
 }
 
@@ -447,6 +449,15 @@ SemanticsActionStatus performSemanticsAction(
         return context.controller != nullptr && renderNode != nullptr &&
             context.controller->expandCollectionRow(*renderNode, action == kActionExpand)
             ? SemanticsActionStatus::Handled : SemanticsActionStatus::NotHandled;
+    }
+
+    // M15：重排键盘/读屏等价（drag-drop-design §7）。
+    if (action == kActionMoveUp || action == kActionMoveDown) {
+        return context.controller != nullptr && renderNode != nullptr &&
+            context.controller->moveCollectionRow(*renderNode,
+                                                  action == kActionMoveUp)
+            ? SemanticsActionStatus::Handled
+            : SemanticsActionStatus::NotHandled;
     }
 
     if (action == kActionActivate || action == kActionDismiss) {

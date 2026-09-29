@@ -118,8 +118,13 @@ None/Single/Multiple/Extended；Ctrl+单击切换、Shift+单击/移动区间；
 
 - **水平虚拟化/双轴滚动协调**：列固定像素宽 + 应用包横向 ScrollView；
   列数极大时的水平虚拟化、双轴滚动条协调未实现。
-- **RTL 镜像**、**行内编辑富化**（多行/下拉单元编辑器）、**拖放**、
-  **列重排**：独立增量。
+- **RTL 镜像**、**行内编辑富化**（多行/下拉单元编辑器）——原「拖放」
+  增量已于 2026-09-29 按 M15 落地：行拖拽重排 `setRowReorderable` +
+  `onRowReorder`（先移除后插入语义，冻结/滚动两区均可发起与接收）、
+  表头拖拽列重排 `setColumnReorderable`（提交经 `moveColumn`，区域
+  钳制沿用）、Alt+↑/↓ 键盘等价与行语义 MoveUp/MoveDown；契约与
+  视觉见 [`lumen-drag-drop-design.md`](lumen-drag-drop-design.md)、
+  实现记录 §23。
 - 编辑器无失焦自动提交（TextField 无 blur 事件契约）；应用按需在路由
   切换等时机调用 `commitEdit()`。
 
@@ -865,3 +870,22 @@ onKey_wired` 在真实接线方式下锁定步进可达 + 列焦点/行不被抢
 既有断言（pin 序、退化场景、手柄 Tab 次数）。datagrid 42/42；全量
 843/843（Debug）/845/845（Release）/844/844（a11y 桥 ON）。GPU 冒烟
 用例本机无硬件自跳过（同既有口径），胶囊并集修复见 parity 计划追记。
+
+## 23. 2026-09-29 M15 拖拽重排实现记录（行 onRowReorder + 表头列拖拽）
+
+- 变更：`DataGridController::setRowReorderable/setColumnReorderable`；
+  attach 注册 drag arm/session sink 与 row move sink（行认领按
+  `grid:<owner>:{row|cell}:` onClick，表头按 `<owner>:head:<col>` 节点
+  key——含不可排序列）；`handleKey` 增加 Alt+↑/↓（current 行上下移，
+  编辑态/列宽手柄聚焦让位口径不变）；行壳暴露语义 MoveUp/MoveDown
+  （滚动区行为语义承载者，冻结区行壳不设 actions——§19 T5.5 口径）。
+  列重排提交经 `moveColumn`（先删后插；pinned 组内钳制，跨界仍走
+  `setColumnPinned`）。ghost/插入指示线经框架非模态视觉 overlay
+  （`setVisualOverlayBuilder`，不取消活动指针——模态 overlay 的
+  pointerCancel 语义会杀掉自己的会话，见 drag-drop-design §5）。
+- 测试：`tests/drag_reorder_tests.cpp` 4 用例（行拖拽提交/Alt 键盘/
+  语义 action 暴露与路由/列拖拽提交）；语义 action 名序列断言覆盖
+  RecordingBridge 口径。
+- 已知限制：触摸行/列拖拽不认领（触摸拖动保持滚动）；列拖拽目标解析
+  依赖表头物化（水平虚拟化窗口外列为 sticky 上次目标）；跨列拖拽期间
+  无自动横向滚动。

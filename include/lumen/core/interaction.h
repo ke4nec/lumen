@@ -122,12 +122,14 @@ class InteractionController {
 
     // --- 键盘 ---
     // 兼容入口：无修饰键/树上下文的编辑键处理。
-    void keyDown(Key key);
+    // 返回是否消费（G-1：AppShell 在命令分发相位之间据此决定回退）。
+    bool keyDown(Key key);
     // 修饰键感知的编辑处理（Ctrl/Gui + A/C/X/V、Shift 选区、Ctrl 词移）。
-    void keyDown(Key key, KeyModifiers modifiers, char keyChar = 0);
+    bool keyDown(Key key, KeyModifiers modifiers, char keyChar = 0);
     // 树上下文键处理：Tab/Shift-Tab 焦点遍历、Enter/Space 激活聚焦
-    // Button（与语义 actions 共用路径，阶段8C）。
-    void keyDown(const RenderNode& root, Key key,
+    // Button（与语义 actions 共用路径，阶段8C）。返回是否消费：纯键命
+    // 令（Escape 等）仅在交互层未消费时分发。
+    bool keyDown(const RenderNode& root, Key key,
                  KeyModifiers modifiers = kModifierNone, char keyChar = 0);
 
     // --- 滚轮转发（8D ScrollController 消费；返回 true 表示已处理） ---
@@ -194,6 +196,11 @@ class InteractionController {
     using RowExpansionSink = std::function<bool(const std::string& rowKey, bool expanded)>;
     void addRowExpansionSink(RowExpansionSink sink);
     bool expandCollectionRow(const RenderNode& node, bool expanded);
+    // M15：行重排等价路径（语义 MoveUp/MoveDown 与键盘 Alt+↑/↓ 共用；
+    // 返回 true = 已消费）。
+    using RowMoveSink = std::function<bool(const std::string& rowKey, bool up)>;
+    void addRowMoveSink(RowMoveSink sink);
+    bool moveCollectionRow(const RenderNode& node, bool up);
 
     // --- 菜单类控件：Secondary（右键）按下 sink（menu-controls-design
     // §6.2）。命中链不做 enabled 过滤（对禁用行弹“属性”类菜单合法）；
@@ -388,8 +395,9 @@ class InteractionController {
     // 循环，不越过边界（plan §3.4）。
     bool traverseFocus(const RenderNode& root, bool backward);
     // 激活聚焦的可激活节点（Button/Checkbox/Switch；Enter/Space/语义
-    // activate 共用）。
-    void activateFocusedButton(const RenderNode& root);
+    // activate 共用）。返回是否激活（G-1：未激活时 Enter 继续回退命令
+    // 分发）。
+    bool activateFocusedButton(const RenderNode& root);
 
     StateStore& store_;
     const HandlerRegistry& handlers_;
@@ -402,6 +410,7 @@ class InteractionController {
     std::vector<RowClickSink> rowClickSinks_{};
     std::vector<RowFocusSink> rowFocusSinks_{};
     std::vector<RowExpansionSink> rowExpansionSinks_{};
+    std::vector<RowMoveSink> rowMoveSinks_{};
     std::vector<SecondaryPressSink> secondaryPressSinks_{};
     std::vector<PointerMoveSink> pointerMoveSinks_{};
     // M15：拖放会话（arm 认领 → 阈值启动 → Move → Drop/Cancel）。

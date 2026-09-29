@@ -73,6 +73,10 @@ enum SemanticsActions : std::uint32_t {
     kActionDismiss = 1U << 4,
     kActionExpand = 1U << 5,
     kActionCollapse = 1U << 6,
+    // M15：拖放重排的键盘/读屏等价（drag-drop-design §7——拖放功能
+    // 不得成为纯指针路径）。
+    kActionMoveUp = 1U << 7,
+    kActionMoveDown = 1U << 8,
 };
 
 [[nodiscard]] std::string semanticsActionsName(std::uint32_t actions);

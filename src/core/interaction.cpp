@@ -1089,10 +1089,10 @@ void InteractionController::keyDown(Key key) {
     keyDown(key, kModifierNone, 0);
 }
 
-void InteractionController::keyDown(Key key, KeyModifiers modifiers,
+bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
                                     char keyChar) {
     if (focusedBind_.empty()) {
-        return;
+        return false;
     }
     const bool ctrlLike =
         (modifiers & (kModifierCtrl | kModifierGui)) != 0;
@@ -1599,6 +1599,19 @@ bool InteractionController::expandCollectionRow(const RenderNode& node, bool exp
     const std::string key = node.key;
     for (const auto& sink : rowExpansionSinks_) {
         if (sink && sink(key, expanded)) return true;
+    }
+    return false;
+}
+
+void InteractionController::addRowMoveSink(RowMoveSink sink) {
+    rowMoveSinks_.push_back(std::move(sink));
+}
+
+bool InteractionController::moveCollectionRow(const RenderNode& node, bool up) {
+    if (!node.enabled || !node.collectionRow) return false;
+    const std::string key = node.key;
+    for (const auto& sink : rowMoveSinks_) {
+        if (sink && sink(key, up)) return true;
     }
     return false;
 }
