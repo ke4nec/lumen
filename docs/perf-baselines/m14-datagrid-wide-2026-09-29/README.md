@@ -42,3 +42,12 @@
   `CMAKE_BUILD_TYPE` 为空（无优化构建），本文件历史各档均在该配置下
   生成（JSON `build_type` 字段如实记录为 `""`）；README 此前"Release"
   表述指目录名而非优化配置。json `build_type` 字段为事实来源。
+- **目录重建为真 Release（2026-09-29）**：build-release 原地重配置
+  `CMAKE_BUILD_TYPE=Release`（`-O3 -DNDEBUG`，其余选项不变）并全量
+  重建（842/842 通过）。帧哈希跨优化级别不变（内容同一性验证：
+  `4c641cd57f2a4f11` 与无优化档一致；card-grid `42fe122e01f706f6`
+  同样一致），本文件 JSON 已用 Release 运行重新生成——hash 不变、
+  `build_type="Release"`，frame p50 56.3ms（无优化档 ~372ms 的 1/6.6，
+  系配置差异非代码变化）。**此后本场景的基线比较一律以本档
+  （Release 配置）为准**；此前各档（312/322/~372ms）为无优化构建的
+  历史快照，不与之直接比较。

@@ -11,19 +11,19 @@
   "measured_frames": 300,
   "partial_repaint_frames": 300,
   "toolchain": "15.2.0",
-  "build_type": "",
+  "build_type": "Release",
   "commit": "working-tree",
   "platform": "linux",
   "alpha_mode": "opaque",
   "clear_alpha": 255,
   "measurement_scope": "headless; paint includes submit; no present",
   "phases": {
-    "frame": {"p50_us": 341032.4, "p95_us": 421879.4, "mean_us": 349999.7, "allocs_p50": 0, "alloc_bytes_p50": 0},
+    "frame": {"p50_us": 56343.9, "p95_us": 62545.9, "mean_us": 56987.2, "allocs_p50": 0, "alloc_bytes_p50": 0},
     "gpu_wait": {"p50_us": 0.0, "p95_us": 0.0, "mean_us": 0.0, "allocs_p50": 0, "alloc_bytes_p50": 0},
-    "layout": {"p50_us": 129917.3, "p95_us": 172714.8, "mean_us": 135309.0, "allocs_p50": 79122, "alloc_bytes_p50": 1976567},
-    "paint": {"p50_us": 144335.6, "p95_us": 181132.2, "mean_us": 148597.2, "allocs_p50": 61397, "alloc_bytes_p50": 1480432},
-    "reconcile": {"p50_us": 1678.1, "p95_us": 2324.2, "mean_us": 1735.8, "allocs_p50": 602, "alloc_bytes_p50": 2760},
-    "submit": {"p50_us": 62444.4, "p95_us": 76190.0, "mean_us": 63690.1, "allocs_p50": 0, "alloc_bytes_p50": 0}
+    "layout": {"p50_us": 11985.0, "p95_us": 14671.0, "mean_us": 12328.7, "allocs_p50": 79122, "alloc_bytes_p50": 1976567},
+    "paint": {"p50_us": 29655.3, "p95_us": 33642.2, "mean_us": 30017.0, "allocs_p50": 61397, "alloc_bytes_p50": 1480432},
+    "reconcile": {"p50_us": 302.8, "p95_us": 565.2, "mean_us": 317.8, "allocs_p50": 602, "alloc_bytes_p50": 2760},
+    "submit": {"p50_us": 19858.6, "p95_us": 22147.4, "mean_us": 20028.9, "allocs_p50": 0, "alloc_bytes_p50": 0}
   },
   "frame_hash": "4c641cd57f2a4f11"
 }
