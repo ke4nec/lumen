@@ -4,11 +4,15 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <string>
 
@@ -18,6 +22,7 @@
 #include "lumen/dsl/dsl.h"
 #include "lumen/platform/fake_host.h"
 #include "lumen/render/renderer.h"
+#include "lumen/text/font_manager.h"
 
 using lumen::app::AppShell;
 using lumen::app::AppWindow;
@@ -911,6 +916,31 @@ std::string writeRawRgba(const char* name, int width, int height,
     return path.string();
 }
 
+// M14-C：异步字体测试用最小管理器（与占位度量不同的族名/度量，便于
+// 断言热替换确实落地）。
+class StubAsyncFontManager final : public lumen::text::FontManager {
+  public:
+    [[nodiscard]] lumen::text::FontBackend backend() const override {
+        return lumen::text::FontBackend::Placeholder;
+    }
+    [[nodiscard]] std::string resolveFamily(
+        const lumen::text::FontQuery&, char32_t) const override {
+        return "stub-async";
+    }
+    [[nodiscard]] bool glyphMetrics(const lumen::text::FontQuery&, char32_t,
+                                    lumen::text::GlyphMetrics* out)
+        const override {
+        if (out != nullptr) {
+            *out = lumen::text::GlyphMetrics{0.5F, 0.7F, 0.3F};
+        }
+        return true;
+    }
+    [[nodiscard]] std::vector<std::string> availableFamilies()
+        const override {
+        return {"stub-async"};
+    }
+};
+
 }  // namespace
 
 TEST_CASE("run_app_resource_completions_drive_frames", "[app]") {
@@ -1049,6 +1079,134 @@ TEST_CASE("run_app_requeues_resources_after_surface_reattach", "[app]") {
     CHECK(manager->diagnostics().reuploads == 1);
     // 重排队后的上传命令在恢复帧被真实消费（内部 CPU renderer 统计）。
     CHECK(shell.stats().uploads >= 1);
+}
+
+TEST_CASE("run_app_async_fonts_swap_placeholder_to_loaded", "[app]") {
+    // M14-C：asyncFonts 时首帧占位度量（首个 poll 在首帧绘制前，工厂
+    // 门闭合），后台工厂完成后热替换并请求资源帧；退出由观察到替换的
+    // poll 触发，不依赖帧数与异步完成的竞态时序。
+    FakeApplicationHost host;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool releaseFactory = false;
+    bool factoryRan = false;
+    bool observedPlaceholderFirst = false;
+
+    ShellConfig config;
+    config.initialView = Size{200, 100};
+    config.build = [] {
+        return lumen::core::withKey(
+            lumen::core::makeText("async fonts"), "async-fonts-text");
+    };
+    AppShell shell{config};
+
+    RunOptions options;
+    options.asyncFonts = true;
+    options.idleWaitMs = 10;
+    options.fontFactory = [&]() -> std::shared_ptr<lumen::text::FontManager> {
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait_for(lock, std::chrono::seconds(5),
+                    [&] { return releaseFactory; });
+        factoryRan = true;
+        return std::make_shared<StubAsyncFontManager>();
+    };
+    options.poll = [&](AppShell& shellRef, std::uint64_t) {
+        if (shellRef.fontManager() == nullptr) {
+            if (!observedPlaceholderFirst) {
+                observedPlaceholderFirst = true;
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    releaseFactory = true;
+                }
+                cv.notify_all();
+            }
+            return false;
+        }
+        host.pushQuit();
+        return false;
+    };
+
+    REQUIRE(host.initialize());
+    host.createWindow({});
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(factoryRan);
+    CHECK(observedPlaceholderFirst);
+    REQUIRE(shell.fontManager() != nullptr);
+    CHECK(shell.fontManager()->availableFamilies() ==
+          std::vector<std::string>{"stub-async"});
+}
+
+TEST_CASE("run_app_async_fonts_failure_keeps_placeholder", "[app]") {
+    // M14-C：异步工厂失败（返回空）时保持占位、不阻塞启动；退出由
+    // 计数 poll 触发（给后台工厂留出完成与交付窗口）。
+    FakeApplicationHost host;
+    std::atomic<int> factoryCalls{0};
+
+    ShellConfig config;
+    config.initialView = Size{200, 100};
+    config.build = [] {
+        return lumen::core::withKey(
+            lumen::core::makeText("fonts failed"), "async-fonts-failed");
+    };
+    AppShell shell{config};
+
+    RunOptions options;
+    options.asyncFonts = true;
+    options.idleWaitMs = 5;
+    options.fontFactory = [&]() -> std::shared_ptr<lumen::text::FontManager> {
+        ++factoryCalls;
+        return nullptr;
+    };
+    int polls = 0;
+    options.poll = [&](AppShell&, std::uint64_t) {
+        if (++polls >= 8) {
+            host.pushQuit();
+        }
+        return false;
+    };
+
+    REQUIRE(host.initialize());
+    host.createWindow({});
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(factoryCalls.load() == 1);
+    CHECK(shell.fontManager() == nullptr);
+}
+
+TEST_CASE("run_app_async_fonts_cancelled_by_exit_joins_worker", "[app]") {
+    // M14-C：退出先于工厂完成时（预置 Quit），FontLoader 析构 join
+    // 工作线程并丢弃未交付结果——取消路径不悬挂、不复活。
+    FakeApplicationHost host;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool releaseFactory = false;
+    bool factoryRan = false;
+
+    ShellConfig config;
+    config.initialView = Size{200, 100};
+    config.build = [] {
+        return lumen::core::withKey(lumen::core::makeText("cancel"),
+                                    "async-fonts-cancel");
+    };
+    AppShell shell{config};
+
+    RunOptions options;
+    options.asyncFonts = true;
+    options.idleWaitMs = 10;
+    options.fontFactory = [&]() -> std::shared_ptr<lumen::text::FontManager> {
+        std::unique_lock<std::mutex> lock(mutex);
+        // 有界等待：保证析构 join 在有限时间完成。
+        cv.wait_for(lock, std::chrono::milliseconds(300),
+                    [&] { return releaseFactory; });
+        factoryRan = true;
+        return std::make_shared<StubAsyncFontManager>();
+    };
+
+    REQUIRE(host.initialize());
+    host.createWindow({});
+    host.pushQuit();  // 首轮事件泵即退出，字体永远不交付。
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(factoryRan);  // join 等到了工厂返回（结果被丢弃）。
+    CHECK(shell.fontManager() == nullptr);
 }
 
 TEST_CASE("run_app_preserves_scroll_and_focus_across_minimize_restore",

@@ -2001,12 +2001,21 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   （设备重建重排队）、`run_app_preserves_scroll_and_focus_across_
   minimize_restore`（最小化停帧/恢复重建帧期间滚动偏移 + 焦点 + 编辑
   值保持，settings 同款 onWheel/withScrollOffset 应用接线）。
-- 已知限制：字体仍为同步工厂（失败诊断字符串，无异步生命周期——按
-  M14-C 范围记为后续增量）；干净容器级包验证仍以 CI runner 为准。
-  （2026-09-29 追记：surface 重建（reattach）资源重排队已补齐——
+- 已知限制：干净容器级包验证仍以 CI runner 为准。
+  （2026-09-29 追记一：surface 重建（reattach）资源重排队已补齐——
   `SurfaceReattached` 事件现与 renderer 替换路径同语义调用
   `handleDeviceRebuilt`，测试 `run_app_requeues_resources_after_surface_
   reattach`。）
+  （2026-09-29 追记二：字体异步生命周期已补齐——`app::FontLoader`
+  （`include/lumen/app/font_loader.h`）+ `RunOptions.asyncFonts`（默认
+  false 保持同步语义/测试确定性）：true 时 fontFactory 移到后台线程
+  执行（fontconfig/CoreText/GDI 枚举不阻塞首帧，首帧占位度量），
+  完成后 runApp 在 UI 线程热替换 `setFontManager` 并请求资源帧；
+  失败保持占位 + 诊断；析构 join = 取消语义。`AppShell::fontManager()`
+  新增只读访问器。测试 `run_app_async_fonts_swap_placeholder_to_loaded`/
+  `failure_keeps_placeholder`/`cancelled_by_exit_joins_worker`（20 轮
+  重跑稳定）。示例保持同步接线（smoke 诊断输出顺序不变），应用按
+  首帧延迟需求自行选择开启。）
 
 ### M14-D 阶段记录：DataGrid 首版契约（2026-09-24）
 

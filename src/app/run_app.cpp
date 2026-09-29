@@ -4,6 +4,7 @@
 // FrameScheduler；ApplicationHost 只提供归一化事件和平台服务。
 
 #include "lumen/app/app_shell.h"
+#include "lumen/app/font_loader.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -77,6 +78,8 @@ struct WindowRuntime {
     RendererSetup setup{};
     std::unique_ptr<accessibility::AccessibilityBridge> nativeA11y{};
     std::unique_ptr<render::FrameScheduler> scheduler{};
+    // M14-C：asyncFonts 时的后台字体加载（完成 pump 见主循环）。
+    std::unique_ptr<FontLoader> fontLoader{};
     platform::PlatformWindow* presentWindow{nullptr};
     core::PointerCursor lastCursor{core::PointerCursor::Arrow};
     std::uint64_t idleTurns{0};
@@ -202,7 +205,26 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         applyAccessibilityPreferences(runtime);
         shell.setRenderer(runtime.setup.renderer);
         if (runtime.app.options.fontFactory) {
-            if (auto fonts = runtime.app.options.fontFactory()) {
+            // M14-C：asyncFonts 时工厂移到后台线程（首帧占位度量），
+            // 完成后在主循环热替换；同步路径保持原语义。
+            if (runtime.app.options.asyncFonts) {
+                // RunOptions 工厂无诊断出参：成功取 manager->diagnostic()，
+                // 失败由工厂闭包自行输出细节，此处给框架级摘要。
+                runtime.fontLoader = std::make_unique<FontLoader>(
+                    [factory = runtime.app.options.fontFactory](
+                        std::string* diagnostics)
+                        -> std::shared_ptr<text::FontManager> {
+                        auto fonts = factory();
+                        if (diagnostics != nullptr) {
+                            *diagnostics =
+                                fonts != nullptr
+                                    ? fonts->diagnostic()
+                                    : "async font factory kept placeholder "
+                                      "metrics";
+                        }
+                        return fonts;
+                    });
+            } else if (auto fonts = runtime.app.options.fontFactory()) {
                 shell.setFontManager(std::move(fonts));
             }
         }
@@ -396,6 +418,27 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                     runtime.scheduler->requestFrame(
                         render::FrameReason::Input, runtime.id);
                 }
+            }
+        }
+        // M14-C：异步字体 pump——后台工厂完成（成功/失败）后在 UI 线程
+        // 交付一次：成功热替换 AppShell 字体（占位→正式度量全帧重绘）
+        // 并请求资源帧；失败保持占位，诊断经 options.diagnostics 输出。
+        // 未完成时零成本跳过；交付后 loader 即可析构（join 已完成）。
+        for (auto& runtime : runtimes) {
+            if (!runtime.active || runtime.fontLoader == nullptr ||
+                !runtime.fontLoader->finished()) {
+                continue;
+            }
+            std::string fontDiagnostics;
+            auto fonts = runtime.fontLoader->pump(&fontDiagnostics);
+            runtime.fontLoader.reset();
+            if (fonts != nullptr) {
+                runtime.app.shell->setFontManager(std::move(fonts));
+                runtime.scheduler->requestFrame(
+                    render::FrameReason::Resource, runtime.id);
+            }
+            if (runtime.app.options.diagnostics) {
+                std::printf("[diag] fonts: %s\n", fontDiagnostics.c_str());
             }
         }
         // M14-C：资源完成 pump（每管理器一次；多窗口共享管理器时按完成

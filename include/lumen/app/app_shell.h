@@ -192,6 +192,11 @@ class AppShell {
     void setRenderer(render::Renderer* renderer);
     // M1：正式字体事实注入（布局/绘制/命中测试/IME 查询共享）。
     void setFontManager(std::shared_ptr<const text::FontManager> fonts);
+    // M14-C：当前字体源（未注入/异步加载未完成时为空 = 占位度量）。
+    [[nodiscard]] std::shared_ptr<const text::FontManager> fontManager()
+        const {
+        return textFonts_;
+    }
     // M14-C：资源管理器注入（upload/unload 命令前置进每帧命令表；
     // 完成 pump 与资源帧请求由 runApp 驱动）。nullptr = 无资源层。
     void setResourceManager(
@@ -537,6 +542,13 @@ struct RunOptions {
         onRendererFailure{};
     // 字体工厂（Skia 后端时返回 SkiaFontManager；返回空保持占位）。
     std::function<std::shared_ptr<text::FontManager>()> fontFactory{};
+    // M14-C：字体异步生命周期。true 时 fontFactory 移到后台线程执行
+    //（fontconfig/CoreText/GDI 枚举不阻塞首帧，首帧占位度量渲染），
+    // 完成后 runApp 热替换 AppShell 字体并请求资源帧；失败保持占位 +
+    // 诊断（options.diagnostics 时输出）。工厂在装配期读取的决策
+    //（如按 renderer 后端选择管理器）应在工厂闭包内定格。默认 false
+    // 保持同步语义（首帧即正式度量，测试确定性不变）。
+    bool asyncFonts{false};
     // 窗口图标 provider（渲染器装配后、首帧前调用一次；返回 width<=0
     // 跳过，宿主 windowIcon 能力缺失时不调用。setWindowIcon 失败时诊断
     // 降级，不阻塞启动——exe/桌面图标资源由打包层提供，此处只覆盖
