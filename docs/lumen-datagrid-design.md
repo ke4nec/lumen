@@ -711,7 +711,11 @@ Row `padding.left = 窗口首列前缀偏移`、宽 = 滚动区宽——格 x �
 样式经 resolveListPart 既有 hovered/pressed 分支），`excludeFromSemantics`
 兼任"非焦点公民"标记：交互层 List Tab 收集跳过被排除的行副本，焦点
 唯一入口保持在滚动区行（`interaction.cpp` collect 谓词）。回归用例
-`REGRESSION_frozen_rows_carry_hover_without_tab_stop`。其二，loose 交叉
+`REGRESSION_frozen_rows_carry_hover_without_tab_stop`；datagrid 39/39、
+全量 840/840（Debug）/ 842/842（Release 目录）。基准影响：datagrid-wide
+帧哈希 `9de43d88 → 4c641cd5`（每冻结行新增分隔线命令 +32/+0.8%），同
+配置交错 A/B 三轮 frame p50 delta 中位 +0.42%（10% 门槛内），已按
+perf gate 流程重归档（见基线目录 README 注记）。其二，loose 交叉
 宿主分界线——review 修复后的兜底高度（表头块 + 1px + totalExtent）在
 固定行高（P0.1）下与真实内容高严格相等，loose 退化值即正确值，不再
 视为缺陷。）

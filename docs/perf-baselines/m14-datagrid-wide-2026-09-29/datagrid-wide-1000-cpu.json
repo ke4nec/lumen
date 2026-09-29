@@ -5,8 +5,8 @@
   "viewport": [1920, 1080],
   "cards": [6, 8],
   "nodes": 2081,
-  "commands_per_frame": 3982,
-  "culled_commands": 252,
+  "commands_per_frame": 4014,
+  "culled_commands": 258,
   "warmup_frames": 30,
   "measured_frames": 300,
   "partial_repaint_frames": 300,
@@ -18,12 +18,12 @@
   "clear_alpha": 255,
   "measurement_scope": "headless; paint includes submit; no present",
   "phases": {
-    "frame": {"p50_us": 322180.5, "p95_us": 384742.8, "mean_us": 328826.0, "allocs_p50": 0, "alloc_bytes_p50": 0},
+    "frame": {"p50_us": 341032.4, "p95_us": 421879.4, "mean_us": 349999.7, "allocs_p50": 0, "alloc_bytes_p50": 0},
     "gpu_wait": {"p50_us": 0.0, "p95_us": 0.0, "mean_us": 0.0, "allocs_p50": 0, "alloc_bytes_p50": 0},
-    "layout": {"p50_us": 121103.5, "p95_us": 142221.8, "mean_us": 124123.9, "allocs_p50": 79058, "alloc_bytes_p50": 1976567},
-    "paint": {"p50_us": 137787.0, "p95_us": 172920.6, "mean_us": 141657.1, "allocs_p50": 61397, "alloc_bytes_p50": 1480432},
-    "reconcile": {"p50_us": 1549.9, "p95_us": 2045.4, "mean_us": 1615.1, "allocs_p50": 602, "alloc_bytes_p50": 2760},
-    "submit": {"p50_us": 60099.8, "p95_us": 73863.1, "mean_us": 61730.2, "allocs_p50": 0, "alloc_bytes_p50": 0}
+    "layout": {"p50_us": 129917.3, "p95_us": 172714.8, "mean_us": 135309.0, "allocs_p50": 79122, "alloc_bytes_p50": 1976567},
+    "paint": {"p50_us": 144335.6, "p95_us": 181132.2, "mean_us": 148597.2, "allocs_p50": 61397, "alloc_bytes_p50": 1480432},
+    "reconcile": {"p50_us": 1678.1, "p95_us": 2324.2, "mean_us": 1735.8, "allocs_p50": 602, "alloc_bytes_p50": 2760},
+    "submit": {"p50_us": 62444.4, "p95_us": 76190.0, "mean_us": 63690.1, "allocs_p50": 0, "alloc_bytes_p50": 0}
   },
-  "frame_hash": "9de43d88ca5bf861"
+  "frame_hash": "4c641cd57f2a4f11"
 }
