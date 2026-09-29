@@ -11,6 +11,7 @@ target_link_libraries(lumen-scene-bench PRIVATE
     lumen-layout
     lumen-render
     lumen-accessibility
+    lumen-widgets
 )
 
 # M7：--backend skia（离屏光栅 SkiaRenderer；同场景同工具链比较）。

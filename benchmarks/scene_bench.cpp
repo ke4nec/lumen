@@ -36,6 +36,7 @@
 #include "lumen/core/widget.h"
 #include "lumen/layout/layout.h"
 #include "lumen/accessibility/semantics.h"
+#include "lumen/widgets/datagrid.h"
 #include "lumen/render/cpu_renderer.h"
 #ifdef LUMEN_BENCH_HAS_SKIA
 #include "lumen/render/skia_renderer.h"
@@ -315,6 +316,50 @@ class VirtualListScene {
 
   private:
     mutable lumen::core::VirtualListController controller_{};
+};
+
+// --- M14-D datagrid-wide 场景（lumen-datagrid-design §19 T6.5）----------------------
+//
+// 100 列 × N 行（默认 1000，列宽 80 → 滚动内容 8000px）DataGrid：每帧
+// 横向滚动 32px（列窗口滑动 → 列物化/回收）+ 活动行文本变化（真实构建
+// 负载）。输出节点数验证 O(可见行 × 可见列)——水平虚拟化的确定性预算。
+
+class DataGridWideScene {
+  public:
+    static constexpr int kColumns = 100;
+
+    explicit DataGridWideScene(int rows) {
+        std::vector<lumen::widgets::DataColumn> columns;
+        columns.reserve(static_cast<std::size_t>(kColumns));
+        for (int i = 0; i < kColumns; ++i) {
+            const std::string key = "c" + std::to_string(i);
+            columns.push_back(lumen::widgets::DataColumn{
+                key, key, 80.0F, true, i > 0, i > 0});
+        }
+        grid_.setColumns(std::move(columns));
+        grid_.setRowCount(static_cast<std::size_t>(rows));
+        grid_.setCellText([this](std::size_t row, const std::string& column) {
+            const bool active =
+                row == frame_ % (itemCount_ != 0 ? itemCount_ : 1);
+            return column + "#" + std::to_string(row) +
+                   (active ? "@" + std::to_string(frame_) : "");
+        });
+        itemCount_ = static_cast<int>(grid_.itemCount());
+    }
+
+    [[nodiscard]] Widget root(int frame) {
+        frame_ = frame;
+        grid_.hScroll().scrollBy(32.0F);
+        if (grid_.hScroll().offset() >= grid_.hScroll().maxScrollOffset()) {
+            grid_.hScroll().scrollTo(0.0F);
+        }
+        return grid_.build();
+    }
+
+  private:
+    mutable lumen::widgets::DataGridController grid_{};
+    int itemCount_{0};
+    int frame_{0};
 };
 
 // --- M7 基准场景 -------------------------------------------------------------------
@@ -704,6 +749,8 @@ struct Options {
     int items{1000};
     // 非 0 = 当前为 virtual-list 场景（--items 更新场景名）。
     int scenarioItems{0};
+    // datagrid-wide 场景行数（--rows 或 datagrid-wide-N）。
+    int datagridRows{1000};
     // M7：后端选择（cpu = CpuRenderer；skia = 离屏光栅 SkiaRenderer；
     // gpu = Skia Ganesh on a hidden SDL OpenGL surface）。
     std::string backend{"cpu"};
@@ -755,6 +802,16 @@ Options parseOptions(int argc, char** argv) {
             } else if (value == "card-grid-6x8-1080p") {
                 options.scenario = value;
                 options.scenarioItems = 0;
+            } else if (value == "datagrid-wide") {
+                options.scenario = "datagrid-wide-" +
+                                   std::to_string(options.datagridRows) +
+                                   "-1080p";
+            } else if (value.rfind("datagrid-wide-", 0) == 0) {
+                options.datagridRows =
+                    itemCount(value.substr(strlen("datagrid-wide-")));
+                options.scenario = "datagrid-wide-" +
+                                   std::to_string(options.datagridRows) +
+                                   "-1080p";
             } else if (value == "text-heavy" || value == "grid" ||
                        value == "semantics-diff" ||
                        value == "resource-upload") {
@@ -764,6 +821,13 @@ Options parseOptions(int argc, char** argv) {
             } else {
                 std::fprintf(stderr, "unknown scenario: %s\n", value.c_str());
                 std::exit(2);
+            }
+        } else if (flag == "--rows" && i + 1 < argc) {
+            options.datagridRows = itemCount(argv[++i]);
+            if (options.scenario.rfind("datagrid-wide", 0) == 0) {
+                options.scenario = "datagrid-wide-" +
+                                   std::to_string(options.datagridRows) +
+                                   "-1080p";
             }
         } else if (flag == "--items" && i + 1 < argc) {
             options.items = itemCount(argv[++i]);
@@ -775,7 +839,7 @@ Options parseOptions(int argc, char** argv) {
             std::fprintf(stderr,
                          "usage: lumen-scene-bench [--frames N] [--warmup N] [--json] "
                          "[--scenario card-grid-6x8-1080p|virtual-list[-N]|text-heavy|"
-                         "grid|semantics-diff|resource-upload] [--items N] "
+                         "grid|semantics-diff|resource-upload|datagrid-wide[-N]] [--rows N] "
                          "[--backend cpu|skia|gpu] [--dump-frame PATH]\n");
             std::exit(2);
         }
@@ -946,6 +1010,7 @@ int main(int argc, char** argv) {
     std::unique_ptr<GridScene> gridScene;
     std::unique_ptr<SemanticsDiffScene> semanticsScene;
     std::unique_ptr<ResourceUploadScene> uploadScene;
+    std::unique_ptr<DataGridWideScene> datagridScene;
     BenchApp::RootBuilder rootAt;
     if (options.scenario.rfind("virtual-list", 0) == 0) {
         listScene = std::make_unique<VirtualListScene>(options.items);
@@ -969,6 +1034,12 @@ int main(int argc, char** argv) {
         uploadScene = std::make_unique<ResourceUploadScene>();
         rootAt = [uploadScene = uploadScene.get()](int frame) {
             return uploadScene->root(frame);
+        };
+    } else if (options.scenario.rfind("datagrid-wide", 0) == 0) {
+        datagridScene = std::make_unique<DataGridWideScene>(
+            options.datagridRows);
+        rootAt = [datagridScene = datagridScene.get()](int frame) {
+            return datagridScene->root(frame);
         };
     } else {
         rootAt = [](int frame) { return BenchScene::root(frame); };

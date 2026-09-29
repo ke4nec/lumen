@@ -317,11 +317,13 @@ ScrollbarTokens scrollbarTokensFrom(const ColorScheme& colors, ControlDensity de
 
 DataGridTokens dataGridTokensFrom(ControlDensity density) {
     // lumen-datagrid-design §12 / 视觉系统 §3.3：几何三档
-    //（headerExtent 32/36/44、selectionColumnWidth 44/44/52、
-    // resizeHitWidth 8/10/16）；Comfortable（Medium 档）与首批控制器
-    // 常量等值，既有像素输出零变化。颜色沿用 list/集合行 token。
+    //（rowExtent 32/40/48、headerExtent 32/36/44、selectionColumnWidth
+    // 44/44/52、resizeHitWidth 8/10/16）；Comfortable（Medium 档）与
+    // 首批控制器常量等值，既有像素输出零变化。颜色沿用 list/集合行
+    // token。
     const auto index = densityBaseIndex(density);
     DataGridTokens tokens;
+    tokens.rowExtent = std::array{32.0F, 40.0F, 48.0F}[index];
     tokens.headerExtent = std::array{32.0F, 36.0F, 44.0F}[index];
     tokens.selectionColumnWidth = std::array{44.0F, 44.0F, 52.0F}[index];
     tokens.resizeHitWidth = std::array{8.0F, 10.0F, 16.0F}[index];
@@ -692,6 +694,7 @@ void scaleComponentSizes(Theme& theme, float factor) {
     theme.tree.indentStep *= factor;
     theme.tree.chevronHitExtent *= factor;
     theme.tree.chevronIconSize *= factor;
+    theme.dataGrid.rowExtent *= factor;
     theme.dataGrid.headerExtent *= factor;
     theme.dataGrid.selectionColumnWidth *= factor;
     theme.dataGrid.resizeHitWidth *= factor;

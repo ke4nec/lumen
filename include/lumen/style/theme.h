@@ -379,6 +379,9 @@ struct ScrollbarTokens {
 // 密度三档由 dataGridTokensFrom 烘焙；颜色沿用集合行/列表 token（表头
 // surfaceSunken、分隔线 borderDefault），本组只承载网格几何。
 struct DataGridTokens {
+    // 数据行高（§12：Compact 32 / Comfortable 40 / Touch 48；固定行高
+    // 是冻结区与滚动区几何对齐与水平虚拟化窗口推导的前提，§19 P0.1）。
+    float rowExtent{40.0F};
     // 表头行高（§12：Compact 32 / Comfortable 36 / Touch 44）。
     float headerExtent{36.0F};
     // 选择辅助列宽（选择列整格命中；44 / 44 / 52）。

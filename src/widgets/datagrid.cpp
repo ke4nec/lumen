@@ -69,6 +69,7 @@ void DataGridController::setColumns(std::vector<DataColumn> columns) {
         column.width = std::max(column.width, column.minWidth);
     }
     syncColumnSources();
+    scrollPrefixDirty_ = true;
     if (!columnVisible(currentColumn_)) {
         currentColumn_ = firstVisibleColumn();
     }
@@ -95,6 +96,7 @@ bool DataGridController::resizeColumn(const std::string& columnKey,
         }
         // 钳制到列 minWidth（自身 >= 40）。
         column.width = std::max(width, column.minWidth);
+        scrollPrefixDirty_ = true;
         requestRebuild();
         return true;
     }
@@ -125,6 +127,7 @@ bool DataGridController::setColumnVisible(const std::string& columnKey,
             return false;
         }
         column.visible = visible;
+        scrollPrefixDirty_ = true;
         if (!visible && currentColumn_ == columnKey) {
             // 当前列被隐藏：列焦点回退首个可见列。
             currentColumn_ = firstVisibleColumn();
@@ -149,7 +152,20 @@ bool DataGridController::moveColumn(const std::string& columnKey,
     if (!found || columns_.empty()) {
         return false;
     }
-    toIndex = std::min(toIndex, columns_.size() - 1);
+    // 组内移动（§19 T5.1 前缀不变式）：pinned 列只在冻结组内移动、非
+    // pinned 只在滚动组内移动；跨界经 setColumnPinned 显式表达。
+    const bool pinned = columns_[from].pinned;
+    std::size_t groupBegin = 0;
+    while (groupBegin < columns_.size() &&
+           columns_[groupBegin].pinned != pinned) {
+        ++groupBegin;
+    }
+    std::size_t groupEnd = groupBegin;
+    while (groupEnd < columns_.size() &&
+           columns_[groupEnd].pinned == pinned) {
+        ++groupEnd;
+    }
+    toIndex = std::clamp(toIndex, groupBegin, groupEnd - 1);
     if (from == toIndex) {
         return true;
     }
@@ -161,8 +177,43 @@ bool DataGridController::moveColumn(const std::string& columnKey,
     columns_.erase(columns_.begin() + static_cast<std::ptrdiff_t>(from));
     columns_.insert(columns_.begin() + static_cast<std::ptrdiff_t>(toIndex),
                     std::move(moved));
+    scrollPrefixDirty_ = true;
     requestRebuild();
     return true;
+}
+
+bool DataGridController::setColumnPinned(const std::string& columnKey,
+                                         bool pinned) {
+    for (std::size_t i = 0; i < columns_.size(); ++i) {
+        if (columns_[i].key != columnKey) {
+            continue;
+        }
+        if (columns_[i].pinned == pinned) {
+            return true;
+        }
+        // 区域调整先提交编辑（§13.1；失败中止）。
+        if (!commitPendingEdit()) {
+            return false;
+        }
+        DataColumn moved = columns_[i];
+        moved.pinned = pinned;
+        columns_.erase(columns_.begin() + static_cast<std::ptrdiff_t>(i));
+        // 前缀不变式：pin = 移到冻结组尾；unpin = 移到滚动组首。
+        std::size_t at = 0;
+        if (pinned) {
+            while (at < columns_.size() && columns_[at].pinned) {
+                ++at;
+            }
+        } else {
+            at = columns_.size();
+        }
+        columns_.insert(columns_.begin() + static_cast<std::ptrdiff_t>(at),
+                        std::move(moved));
+        scrollPrefixDirty_ = true;
+        requestRebuild();
+        return true;
+    }
+    return false;
 }
 
 // --- 数据装配 ---
@@ -363,6 +414,9 @@ bool DataGridController::beginEdit(std::size_t row,
     editing_ = std::make_pair(rowKey, columnKey);
     editError_.clear();
     shell_->state().set(owner_ + ":edit", cellText(row, columnKey));
+    // 编辑目标列滚入横向视口（§19 P0.2：编辑器物化是 requestFieldFocus
+    // 落地与可见性的前提）。
+    ensureColumnVisible(columnKey);
     // 焦点意图（环）+ 程序化编辑焦点（重建后 focusedBind 建立——文本
     // 输入/IME 直接路由到编辑器，无需先点击）。
     shell_->focus().setFocus(owner_ + ":editor");
@@ -430,18 +484,31 @@ void DataGridController::setEmptyBuilder(
     requestRebuild();
 }
 
-core::Widget DataGridController::build() const {
-    const bool checkboxes = selection_.mode() != SelectionMode::None;
+core::Widget DataGridController::buildRegionHeader(bool frozen) const {
     const float headerExtent = headerExtentPx();
     const float handleWidth = resizeHitWidthPx();
     std::vector<core::Widget> headerCells;
-    headerCells.reserve(columns_.size() + 1);
-    if (checkboxes) {
+    if (frozen && selection_.mode() != SelectionMode::None) {
         headerCells.push_back(buildHeaderCheckCell());
     }
+    // 滚动区表头窗口物化（§19 T6.2）：只构建可见列窗口 + 首列前缀偏移
+    //（padding.left），格 x 坐标稳定不变式保持；冻结区不窗口化。
+    std::size_t windowFirst = 0;
+    std::size_t windowEnd = 0;
+    if (!frozen) {
+        std::tie(windowFirst, windowEnd) = visibleColumnWindow();
+    }
+    std::size_t scrollAt = 0;  // 滚动区列序（与 scrollPrefix 对齐）
     for (const auto& column : columns_) {
-        if (!column.visible) {
+        if (!column.visible || column.pinned != frozen) {
             continue;
+        }
+        if (!frozen) {
+            // 窗口外的滚动区列跳过（物化窗口，§19 T6.2）。
+            if (scrollAt < windowFirst || scrollAt >= windowEnd) {
+                ++scrollAt;
+                continue;
+            }
         }
         // 表头（TreeList 同口径）：可排序列 = Ghost 按钮（hover chrome +
         // 排序指示图标）；其余 = 辅助色静态文本。可调整列右缘带列宽手柄
@@ -481,30 +548,82 @@ core::Widget DataGridController::build() const {
         box.width = column.width;
         box.key = owner_ + ":headbox:" + column.key;
         headerCells.push_back(std::move(box));
+        if (!frozen) {
+            ++scrollAt;
+        }
     }
     auto header = core::makeRow(std::move(headerCells));
-    header.key = owner_ + ":header";
+    header.key = frozen ? owner_ + ":frozen-header" : owner_ + ":header";
     header.height = headerExtent;
-    header.width = gridWidth();
+    header.width = frozen ? frozenContentWidth() : scrollRegionWidth();
     header.crossAxis = core::CrossAxisAlignment::Center;
+    if (!frozen) {
+        const auto& prefix = scrollPrefix();
+        if (windowFirst < scrollColumnOrder_.size() && windowEnd > windowFirst) {
+            header.padding = core::EdgeInsets{prefix[windowFirst], 0.0F,
+                                              0.0F, 0.0F};
+        }
+    }
+    return header;
+}
 
+core::Widget DataGridController::build() const {
+    const float headerExtent = headerExtentPx();
+    const bool hasFrozen = frozenContentWidth() > 0.0F;
+
+    // 滚动区（§17 双轴 + §19 第五批区域拆分）：表头与数据区共享横向
+    // offset；源接缝（hSource_）让交互层直驱 hScroll_（滚轮/拖动/惯性/
+    // 滚动条/语义），应用零接线。scrollOffset 每次重建写回。
+    auto scrollHeader = buildRegionHeader(false);
     auto list = core::makeList(this, owner_);
-    // 显式宽（横向视口主轴无界）：行被 tight 到内容宽；内容窄于视口时
-    // 铺满视口（行背景完整，视口宽经源接缝跟踪收敛）。
-    list.width = gridWidth();
+    // 显式宽（横向视口主轴无界）：行被 tight 到滚动区行宽；内容窄于
+    // 视口时铺满视口（行背景完整，视口宽经源接缝跟踪收敛）。
+    list.width = scrollRegionWidth();
     list.flex = 1.0F;
-    auto body = core::makeColumn({std::move(header), std::move(list)});
+    auto body = core::makeColumn({std::move(scrollHeader), std::move(list)});
     body.key = owner_ + ":body";
-    body.width = gridWidth();
-
-    // 根横向视口（§17 双轴几何）：表头与数据区共享横向 offset；源接缝
-    // （hSource_）让交互层直驱 hScroll_（滚轮/拖动/惯性/滚动条/语义），
-    // 应用零接线。scrollOffset 每次重建写回（布局期钳制到 scrollExtent）。
-    auto view = core::makeScrollView(std::move(body), owner_);
+    body.width = scrollRegionWidth();
+    auto view = core::makeScrollView(std::move(body), owner_ + ":scroll");
     view.scrollAxis = core::ScrollAxis::Horizontal;
     view.virtualSource = &hSource_;
     view.scrollOffset = hScroll_.offset();
-    return view;
+    // flex 撑满根 Row 剩余宽（总宽 − 冻结区 − 分界线）。
+    view.flex = 1.0F;
+
+    if (!hasFrozen) {
+        // 无冻结内容（无选择列且无 pinned 列）：结构与第三批等价——根
+        // 即横向视口（键 owner_ 保持兼容）。
+        view.key = owner_;
+        return view;
+    }
+
+    // 冻结区（§19 第五批）：冻结表头 + 冻结 List 与滚动区共享纵向几何
+    //（FrozenRegionSource 全部委托网格自持的固定行高推导）；横向 offset
+    // 只属于右区。分界线 = 1px borderStrong（§12：不依赖阴影）。
+    auto frozenHeader = buildRegionHeader(true);
+    auto frozenList =
+        core::makeList(static_cast<const core::VirtualListSource*>(
+                           &frozenSource_),
+                       owner_ + ":frozen");
+    frozenList.width = frozenContentWidth();
+    frozenList.flex = 1.0F;
+    auto frozenBody =
+        core::makeColumn({std::move(frozenHeader), std::move(frozenList)});
+    frozenBody.key = owner_ + ":frozen-body";
+    frozenBody.width = frozenContentWidth();
+
+    const style::Theme& theme =
+        shell_ != nullptr ? shell_->theme() : style::Theme::dark();
+    // 分界线高度 = 表头 + 内容高兜底（tight 交叉宿主中被 Stretch 拉满）。
+    auto freezeLine = core::makeContainerLeaf(
+        1.0F, std::optional<float>(headerExtent + totalExtent()), {}, {},
+        theme.colors.borderStrong, owner_ + ":freeze-line");
+
+    auto root = core::makeRow(
+        {std::move(frozenBody), std::move(freezeLine), std::move(view)});
+    root.key = owner_;
+    root.crossAxis = core::CrossAxisAlignment::Stretch;
+    return root;
 }
 
 // --- shell 接线 ---
@@ -692,6 +811,7 @@ bool DataGridController::handleKey(core::Key key, core::KeyModifiers modifiers,
             return false;
         }
         currentColumn_ = columns_[next].key;
+        ensureColumnVisible(currentColumn_);
         requestRebuild();
         return true;
     }
@@ -728,43 +848,59 @@ void DataGridController::setCurrentColumn(const std::string& columnKey) {
     // 只接受可见列（隐藏列没有可定位的格）。
     if (!columnVisible(columnKey)) return;
     currentColumn_ = columnKey;
+    ensureColumnVisible(columnKey);
     requestRebuild();
 }
 
-// --- VirtualListSource（几何委托 base_） ---
+// --- VirtualListSource（纵向几何自持：固定行高，§19 P0.1） ---
+//
+// 行高取 Theme.dataGrid.rowExtent（Comfortable 40 与集合行旧实测值等值，
+// 像素零变化）。extent/offset/窗口全部按行高直接推导——冻结区与滚动区
+// 两个 List 的几何因此严格等值（§19 冻结列前提），noteExtent 实测回填
+// 忽略（materialize 循环一轮即稳定）；base_ 只保留 itemCount、纵向
+// ScrollController 与键查找。
 
 std::size_t DataGridController::itemCount() const {
     return base_.itemCount();
 }
 
 float DataGridController::estimatedExtent() const {
-    return base_.estimatedExtent();
+    return rowExtentPx();
 }
 
 float DataGridController::extentOf(std::size_t index) const {
-    return base_.extentOf(index);
+    return index < base_.itemCount() ? rowExtentPx() : 0.0F;
 }
 
 float DataGridController::scrollOffset() const { return base_.scrollOffset(); }
 
-float DataGridController::totalExtent() const { return base_.totalExtent(); }
+float DataGridController::totalExtent() const {
+    return static_cast<float>(base_.itemCount()) * rowExtentPx();
+}
 
 float DataGridController::offsetOfIndex(std::size_t index) const {
-    return base_.offsetOfIndex(index);
+    return static_cast<float>(index) * rowExtentPx();
 }
 
 std::pair<std::size_t, std::size_t> DataGridController::visibleRange(
     float viewportExtent, float cacheExtent) const {
-    return base_.visibleRange(viewportExtent, cacheExtent);
+    // 通用窗口推导（VirtualListSource::visibleRangeAt：extentOf/
+    // offsetOfIndex 二分）——固定行高下即区间切分。
+    return visibleRangeAt(scrollOffset(), viewportExtent, cacheExtent);
 }
 
 void DataGridController::noteExtent(std::size_t index, float extent) const {
-    base_.noteExtent(index, extent);
+    // 固定行高：布局实测回填忽略（幂等 no-op；行壳显式定高一致）。
+    (void)index;
+    (void)extent;
 }
 
 void DataGridController::updateViewport(float viewportExtent,
                                         float contentPadding) const {
-    base_.updateViewport(viewportExtent, contentPadding);
+    // 纵向 extents 自持（原委托 base_ 的内部 totalExtent 是估算口径，
+    // 固定行高下直接按真实内容高钳制纵向滚动范围）。
+    base_.scrollController()->updateExtents(viewportExtent,
+                                            totalExtent() + contentPadding);
 }
 
 bool DataGridController::indexOfKey(const std::string& key,
@@ -967,7 +1103,8 @@ void DataGridController::moveEditor(const std::string& fromRow,
             continue;
         }
         // 先滚动对齐再进入编辑：行在视口外时编辑器必须被物化，
-        // requestFieldFocus 才能在重建后落地。
+        // requestFieldFocus 才能在重建后落地（横向对齐由 beginEdit 内
+        // 的 ensureColumnVisible 承担，§19 P0.2）。
         scrollToKey(keyOf(row), ScrollAlignment::Visible);
         (void)beginEdit(row, editColumns[static_cast<std::size_t>(flat) %
                                           columnCount]);
@@ -1078,6 +1215,85 @@ core::Widget DataGridController::buildHeaderCheckCell() const {
     return cell;
 }
 
+core::Widget DataGridController::buildRowCheckCell(
+    const std::string& key) const {
+    // 行复选框列：格级命中切换该行（不改 current），整格 token 宽命中。
+    auto checkbox = core::makeCheckbox(
+        "", "", owner_ + ":check:" + key, selection_.isSelected(key));
+    checkbox.semanticsLabel = "选择 " + key;
+    auto cell = core::makeRow({std::move(checkbox)},
+                              core::MainAxisAlignment::Center,
+                              core::CrossAxisAlignment::Center);
+    cell.width = selectionColumnWidthPx();
+    cell.onClick = "grid:" + owner_ + ":check:" + key;
+    cell.key = owner_ + ":check-cell:" + key;
+    return cell;
+}
+
+core::Widget DataGridController::buildCell(std::size_t index,
+                                           const std::string& key,
+                                           const DataColumn& column) const {
+    const std::string cellId = owner_ + ":cell:" + key + ":" + column.key;
+    if (editing_ && editing_->first == key &&
+        editing_->second == column.key) {
+        // 编辑器：绑定 state（commitEdit 读取）；宽度与列对齐。
+        auto editor = core::makeTextField(
+            {}, editError_.empty() ? "edit" : editError_);
+        editor.bind = owner_ + ":edit";
+        editor.width = column.width;
+        editor.flex = 0.0F;
+        editor.key = owner_ + ":editor";
+        editor.invalid = !editError_.empty();
+        return editor;
+    }
+    // 单元格：固定列宽 + 水平内边距（§12）+ 单行省略 + 点击身份
+    //（定位列焦点；onClick 与节点 key 同串，激活路径按 key 解析）。
+    // 统一格式盒（Container，key cellId:box）：当前格（current 行 ×
+    // current 列）的内嵌焦点环经盒边框承载 focusRing token（§12）。
+    // 盒无条件存在——环的出现不得改变格的结构 identity（双击检测/
+    // damage 按身份配对）；编辑中的格由编辑器自身表达焦点，盒仍保留。
+    auto cell = core::makeText(cellText(index, column.key), cellTextStyle());
+    cell.onClick = "grid:" + owner_ + ":cell:" + key + ":" + column.key;
+    cell.key = cellId;
+    if (column.align == DataColumnAlign::End) {
+        // 数值/日期右对齐：内容盒内右置（Text 无段内对齐，经 Row
+        // 主轴对齐实现；文本仍按剩余宽省略）。
+        cell.width = std::max(0.0F, column.width - 2.0F * kCellPaddingX);
+        auto inner = core::makeRow({std::move(cell)},
+                                   core::MainAxisAlignment::End,
+                                   core::CrossAxisAlignment::Center);
+        inner.width = column.width;
+        inner.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
+        inner.key = cellId + ":align";
+        cell = std::move(inner);
+    } else {
+        cell.width = column.width;
+        cell.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
+    }
+    auto box = core::makeContainer(std::move(cell), column.width);
+    box.key = cellId + ":box";
+    if (column.key == currentColumn_ && key == selection_.currentKey() &&
+        !(editing_ && editing_->first == key &&
+          editing_->second == column.key)) {
+        const style::Theme& theme =
+            shell_ != nullptr ? shell_->theme() : style::Theme::dark();
+        box.styleOverrides.border = theme.colors.focusRing;
+        box.styleOverrides.borderWidth = theme.metrics.focusRingWidth;
+    }
+    return box;
+}
+
+namespace {
+// 禁用子树（行壳 disabled 时整行禁用，含复选框/编辑器——既有口径）。
+void disableSubtree(core::Widget& widget) {
+    const auto disable = [](auto&& self, core::Widget& w) -> void {
+        w.enabled = false;
+        for (auto& child : w.children) self(self, child);
+    };
+    disable(disable, widget);
+}
+}  // namespace
+
 core::Widget DataGridController::buildItem(std::size_t index) const {
     const std::string key = keyOf(index);
     core::Widget row;
@@ -1089,88 +1305,71 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
     row.listPart = index + 1 == itemCount() ? core::ListPart::LastRow
                                             : core::ListPart::Row;
     row.enabled = rowEnabled(index);
+    // 固定行高（§19 P0.1）：行壳显式定高（Theme.dataGrid.rowExtent）；
+    // 单行省略格内容高度均匀，实测回填已忽略。
+    row.height = rowExtentPx();
     std::vector<core::Widget> cells;
     cells.reserve(columns_.size() + 1);
     if (selection_.mode() != SelectionMode::None) {
-        // 行复选框列：格级命中切换该行（不改 current），整格 token 宽命中。
-        auto checkbox =
-            core::makeCheckbox("", "", owner_ + ":check:" + key,
-                               selection_.isSelected(key));
-        checkbox.semanticsLabel = "选择 " + key;
-        auto cell = core::makeRow({std::move(checkbox)},
-                                  core::MainAxisAlignment::Center,
-                                  core::CrossAxisAlignment::Center);
-        cell.width = selectionColumnWidthPx();
-        cell.onClick = "grid:" + owner_ + ":check:" + key;
-        cell.key = owner_ + ":check-cell:" + key;
-        cells.push_back(std::move(cell));
+        cells.push_back(buildRowCheckCell(key));
+    }
+    // 滚动区行窗口物化（§19 T6.2）：只构建可见列窗口，padding.left =
+    // 窗口首列前缀偏移（格 x 坐标稳定；窗口外命中落到行壳 = 行级点击，
+    // 已知取舍）。
+    const auto [windowFirst, windowEnd] = visibleColumnWindow();
+    const auto& prefix = scrollPrefix();
+    for (std::size_t at = windowFirst; at < windowEnd; ++at) {
+        cells.push_back(buildCell(index, key,
+                                  columns_[scrollColumnOrder_[at]]));
+    }
+    auto content = core::makeRow(std::move(cells));
+    content.flex = 1.0F;
+    if (windowFirst < scrollColumnOrder_.size() && windowEnd > windowFirst) {
+        content.padding =
+            core::EdgeInsets{prefix[windowFirst], 0.0F, 0.0F, 0.0F};
+    }
+    if (!row.enabled) {
+        disableSubtree(content);
+    }
+    row.children.push_back(std::move(content));
+    return row;
+}
+
+core::Widget DataGridController::buildFrozenItem(std::size_t index) const {
+    // 冻结区行（§19 T5.3/T5.5）：与滚动区行是同一逻辑行的两个视图——
+    // 选择/禁用/行点击语义同串；key 前缀 frow: 避开滚动区 identity；
+    // excludeFromSemantics 防语义重复（滚动区行承载）；不置
+    // collectionRow（不进 Tab/焦点遍历——唯一入口在滚动区行；hover 高亮
+    // 随 collectionRow 谓词缺失仅在滚动区呈现，已知限制）。
+    const std::string key = keyOf(index);
+    core::Widget row;
+    row.type = core::WidgetType::Row;
+    row.key = owner_ + ":frow:" + key;
+    row.selected = selection_.isSelected(key);
+    row.onClick = "grid:" + owner_ + ":row:" + key;
+    row.crossAxis = core::CrossAxisAlignment::Center;
+    row.padding = {};
+    row.listPart = index + 1 == itemCount() ? core::ListPart::LastRow
+                                            : core::ListPart::Row;
+    row.enabled = rowEnabled(index);
+    row.height = rowExtentPx();
+    row.excludeFromSemantics = true;
+    std::vector<core::Widget> cells;
+    cells.reserve(columns_.size() + 1);
+    if (selection_.mode() != SelectionMode::None) {
+        cells.push_back(buildRowCheckCell(key));
     }
     for (const auto& column : columns_) {
-        if (!column.visible) {
+        // 冻结区行只构建 pinned 可见列。
+        if (!column.visible || !column.pinned) {
             continue;
         }
-        const std::string cellId =
-            owner_ + ":cell:" + key + ":" + column.key;
-        if (editing_ && editing_->first == key &&
-            editing_->second == column.key) {
-            // 编辑器：绑定 state（commitEdit 读取）；宽度与列对齐。
-            auto editor = core::makeTextField(
-                {}, editError_.empty() ? "edit" : editError_);
-            editor.bind = owner_ + ":edit";
-            editor.width = column.width;
-            editor.flex = 0.0F;
-            editor.key = owner_ + ":editor";
-            editor.invalid = !editError_.empty();
-            cells.push_back(std::move(editor));
-            continue;
-        }
-        // 单元格：固定列宽 + 水平内边距（§12）+ 单行省略 + 点击身份
-        //（定位列焦点；onClick 与节点 key 同串，激活路径按 key 解析）。
-        // 统一格式盒（Container，key cellId:box）：当前格（current 行 ×
-        // current 列）的内嵌焦点环经盒边框承载 focusRing token（§12）。
-        // 盒无条件存在——环的出现不得改变格的结构 identity（双击检测/
-        // damage 按身份配对）；编辑中的格由编辑器自身表达焦点，盒仍保留。
-        auto cell = core::makeText(cellText(index, column.key),
-                                   cellTextStyle());
-        cell.onClick = "grid:" + owner_ + ":cell:" + key + ":" + column.key;
-        cell.key = cellId;
-        if (column.align == DataColumnAlign::End) {
-            // 数值/日期右对齐：内容盒内右置（Text 无段内对齐，经 Row
-            // 主轴对齐实现；文本仍按剩余宽省略）。
-            cell.width = std::max(0.0F, column.width - 2.0F * kCellPaddingX);
-            auto inner = core::makeRow(
-                {std::move(cell)}, core::MainAxisAlignment::End,
-                core::CrossAxisAlignment::Center);
-            inner.width = column.width;
-            inner.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
-            inner.key = cellId + ":align";
-            cell = std::move(inner);
-        } else {
-            cell.width = column.width;
-            cell.padding = core::EdgeInsets::symmetric(kCellPaddingX, 0.0F);
-        }
-        auto box = core::makeContainer(std::move(cell), column.width);
-        box.key = cellId + ":box";
-        if (column.key == currentColumn_ &&
-            key == selection_.currentKey() &&
-            !(editing_ && editing_->first == key &&
-              editing_->second == column.key)) {
-            const style::Theme& theme = shell_ != nullptr
-                                            ? shell_->theme()
-                                            : style::Theme::dark();
-            box.styleOverrides.border = theme.colors.focusRing;
-            box.styleOverrides.borderWidth = theme.metrics.focusRingWidth;
-        }
-        cells.push_back(std::move(box));
+        cells.push_back(buildCell(index, key, column));
     }
     auto content = core::makeRow(std::move(cells));
     content.flex = 1.0F;
     if (!row.enabled) {
-        const auto disable = [](auto&& self, core::Widget& widget) -> void {
-            widget.enabled = false;
-            for (auto& child : widget.children) self(self, child);
-        };
-        disable(disable, content);
+        disableSubtree(content);
     }
     row.children.push_back(std::move(content));
     return row;
@@ -1181,6 +1380,11 @@ core::Widget DataGridController::buildItem(std::size_t index) const {
 float DataGridController::headerExtentPx() const {
     return shell_ != nullptr ? shell_->theme().dataGrid.headerExtent
                              : style::DataGridTokens{}.headerExtent;
+}
+
+float DataGridController::rowExtentPx() const {
+    return shell_ != nullptr ? shell_->theme().dataGrid.rowExtent
+                             : style::DataGridTokens{}.rowExtent;
 }
 
 float DataGridController::selectionColumnWidthPx() const {
@@ -1194,36 +1398,105 @@ float DataGridController::resizeHitWidthPx() const {
                              : style::DataGridTokens{}.resizeHitWidth;
 }
 
-float DataGridController::gridWidth() const {
+float DataGridController::frozenContentWidth() const {
+    // 冻结区内容宽（§19 第五批）：选择复选框列常驻冻结区首列 + pinned
+    // 可见列宽和。
     float width = selection_.mode() != SelectionMode::None
                       ? selectionColumnWidthPx()
                       : 0.0F;
     for (const auto& column : columns_) {
-        if (column.visible) {
-            width += column.width;
-        }
-    }
-    // 内容窄于视口时铺满视口（行背景/表头完整；视口宽由源接缝跟踪，
-    // 两帧收敛——VirtualList extent 修正同模式）。scrollExtent 两种取法
-    // 等价：max(content, viewport) − viewport = max(0, content − viewport)。
-    return std::max(width, hViewportWidth_);
-}
-
-float DataGridController::columnPrefixWidth(
-    const std::string& columnKey) const {
-    // 真实内容坐标（不含视口铺满补白）：选择列 + 目标列之前的可见列宽。
-    float width = selection_.mode() != SelectionMode::None
-                      ? selectionColumnWidthPx()
-                      : 0.0F;
-    for (const auto& column : columns_) {
-        if (column.key == columnKey) {
-            break;
-        }
-        if (column.visible) {
+        if (column.visible && column.pinned) {
             width += column.width;
         }
     }
     return width;
+}
+
+float DataGridController::scrollContentWidth() const {
+    // 滚动区内容宽：非 pinned 可见列宽和。
+    float width = 0.0F;
+    for (const auto& column : columns_) {
+        if (column.visible && !column.pinned) {
+            width += column.width;
+        }
+    }
+    return width;
+}
+
+float DataGridController::scrollRegionWidth() const {
+    // 滚动区行宽 = max(滚动内容宽, 滚动视口宽)——内容窄于视口铺满
+    //（行背景/表头完整；视口宽由源接缝跟踪，两帧收敛）。scrollExtent
+    // 两种取法等价：max(content, viewport) − viewport =
+    // max(0, content − viewport)。
+    return std::max(scrollContentWidth(), hViewportWidth_);
+}
+
+float DataGridController::columnLeftInRegion(
+    const std::string& columnKey) const {
+    // 列在**所属区域内容坐标**中的左缘（§19 P0.3 区域感知前缀换算）：
+    // 冻结列相对冻结区原点（选择列不计——复选框列不属于 DataColumn
+    // 序列）、滚动列相对滚动区原点。
+    const DataColumn* column = findColumn(columnKey);
+    if (column == nullptr) {
+        return 0.0F;
+    }
+    float width = 0.0F;
+    for (const auto& candidate : columns_) {
+        if (candidate.key == columnKey) {
+            break;
+        }
+        if (candidate.visible && candidate.pinned == column->pinned) {
+            width += candidate.width;
+        }
+    }
+    return width;
+}
+
+const std::vector<float>& DataGridController::scrollPrefix() const {
+    if (scrollPrefixDirty_) {
+        scrollPrefix_.assign(1, 0.0F);
+        scrollColumnOrder_.clear();
+        for (std::size_t i = 0; i < columns_.size(); ++i) {
+            const DataColumn& column = columns_[i];
+            if (column.visible && !column.pinned) {
+                scrollPrefix_.push_back(scrollPrefix_.back() + column.width);
+                scrollColumnOrder_.push_back(i);
+            }
+        }
+        scrollPrefixDirty_ = false;
+    }
+    return scrollPrefix_;
+}
+
+std::pair<std::size_t, std::size_t> DataGridController::visibleColumnWindow()
+    const {
+    // 滚动区可见列窗口（§19 T6.1）：与 [offset − cache, offset + 视口 +
+    // cache] 相交的列区间（前缀和二分首列 + 线性尾扫；cache 覆盖窗口缘
+    // 手柄，列宽 >= 40 → 尾扫 O(可见列)）。
+    const auto& prefix = scrollPrefix();
+    const std::size_t count = scrollColumnOrder_.size();
+    if (count == 0) {
+        return {0, 0};
+    }
+    const float cache = 120.0F;
+    const float left = hScroll_.offset() - cache;
+    const float right =
+        hScroll_.offset() + std::max(hViewportWidth_, 0.0F) + cache;
+    std::size_t low = 0;
+    std::size_t high = count;
+    while (low < high) {
+        const std::size_t middle = low + (high - low) / 2;
+        if (prefix[middle + 1] <= left) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    std::size_t end = low;
+    while (end < count && prefix[end] < right) {
+        ++end;
+    }
+    return {low, end};
 }
 
 const DataColumn* DataGridController::findColumn(
@@ -1288,7 +1561,7 @@ float DataGridController::HorizontalViewportSource::scrollOffset() const {
 }
 
 float DataGridController::HorizontalViewportSource::totalExtent() const {
-    return owner_.gridWidth();
+    return owner_.scrollRegionWidth();
 }
 
 core::Widget DataGridController::HorizontalViewportSource::buildItem(
@@ -1299,7 +1572,8 @@ core::Widget DataGridController::HorizontalViewportSource::buildItem(
 
 void DataGridController::HorizontalViewportSource::updateViewport(
     float viewportExtent, float /*contentPadding*/) const {
-    owner_.hScroll_.updateExtents(viewportExtent, owner_.gridWidth());
+    owner_.hScroll_.updateExtents(viewportExtent,
+                                  owner_.scrollRegionWidth());
     // 视口宽跟踪：变化时请求一次重建（内容窄于视口的铺满 / 收窄），
     // 下一帧几何收敛。布局期 markDirty 会被 rebuildIfDirty 末尾清脏吞
     // 掉，走 requestRebuildAfterLayout 挂起通道（VirtualList 同帧重算
@@ -1320,29 +1594,35 @@ DataGridController::HorizontalViewportSource::scrollController() const {
 float DataGridController::ColumnResizeSource::offsetPx() const {
     const DataColumn* column = owner->findColumn(columnKey);
     return column != nullptr
-               ? owner->columnPrefixWidth(columnKey) + column->width
+               ? owner->columnLeftInRegion(columnKey) + column->width
                : 0.0F;
 }
 
 float DataGridController::ColumnResizeSource::minLeading() const {
     const DataColumn* column = owner->findColumn(columnKey);
     return column != nullptr
-               ? owner->columnPrefixWidth(columnKey) + column->minWidth
+               ? owner->columnLeftInRegion(columnKey) + column->minWidth
                : 0.0F;
 }
 
 float DataGridController::ColumnResizeSource::initialOffset() const {
-    return owner->columnPrefixWidth(columnKey) + initialWidth;
+    return owner->columnLeftInRegion(columnKey) + initialWidth;
 }
 
 float DataGridController::ColumnResizeSource::extentPx() const {
-    return owner->gridWidth();
+    // 区域宽度（§19 P0.3）：冻结列相对冻结区、滚动列相对滚动区。
+    const DataColumn* column = owner->findColumn(columnKey);
+    if (column == nullptr) {
+        return 0.0F;
+    }
+    return column->pinned ? owner->frozenContentWidth()
+                          : owner->scrollRegionWidth();
 }
 
 void DataGridController::ColumnResizeSource::dragTo(float offsetPx) const {
-    // 绝对边界位置 → 本列宽（resizeColumn 内部钳 minWidth）。
-    (void)owner->resizeColumn(columnKey,
-                              offsetPx - owner->columnPrefixWidth(columnKey));
+    // 绝对边界位置（区域坐标）→ 本列宽（resizeColumn 内部钳 minWidth）。
+    (void)owner->resizeColumn(
+        columnKey, offsetPx - owner->columnLeftInRegion(columnKey));
 }
 
 void DataGridController::ColumnResizeSource::stepBy(float deltaPx) const {
@@ -1364,6 +1644,100 @@ void DataGridController::ColumnResizeSource::stepToEdge(bool maxEdge) const {
 
 void DataGridController::ColumnResizeSource::reset() const {
     (void)owner->resizeColumn(columnKey, initialWidth);
+}
+
+// --- 冻结区行源（§19 T5.3）：纵向几何全权委托网格（固定行高自持） ---
+
+std::size_t DataGridController::FrozenRegionSource::itemCount() const {
+    return owner_.itemCount();
+}
+
+float DataGridController::FrozenRegionSource::estimatedExtent() const {
+    return owner_.estimatedExtent();
+}
+
+float DataGridController::FrozenRegionSource::extentOf(
+    std::size_t index) const {
+    return owner_.extentOf(index);
+}
+
+float DataGridController::FrozenRegionSource::scrollOffset() const {
+    return owner_.scrollOffset();
+}
+
+float DataGridController::FrozenRegionSource::totalExtent() const {
+    return owner_.totalExtent();
+}
+
+float DataGridController::FrozenRegionSource::offsetOfIndex(
+    std::size_t index) const {
+    return owner_.offsetOfIndex(index);
+}
+
+std::pair<std::size_t, std::size_t>
+DataGridController::FrozenRegionSource::visibleRange(
+    float viewportExtent, float cacheExtent) const {
+    return owner_.visibleRange(viewportExtent, cacheExtent);
+}
+
+core::Widget DataGridController::FrozenRegionSource::buildItem(
+    std::size_t index) const {
+    return owner_.buildFrozenItem(index);
+}
+
+void DataGridController::FrozenRegionSource::noteExtent(
+    std::size_t index, float extent) const {
+    owner_.noteExtent(index, extent);
+}
+
+void DataGridController::FrozenRegionSource::updateViewport(
+    float viewportExtent, float contentPadding) const {
+    // 与滚动区 List 等值双调用（两区视口高相同：同一根高减同一表头高）
+    // ——幂等，无实测分叉（§19 风险表）。
+    owner_.updateViewport(viewportExtent, contentPadding);
+}
+
+core::ScrollController*
+DataGridController::FrozenRegionSource::scrollController() const {
+    // 共享同一纵向控制器：冻结区滚轮/拖动/惯性直驱与滚动区同源（T5.4）。
+    return owner_.scrollController();
+}
+
+core::Widget DataGridController::FrozenRegionSource::buildEmpty() const {
+    // 空态只在滚动区呈现；冻结区留白（表头仍在）。
+    return {};
+}
+
+std::string DataGridController::FrozenRegionSource::tabStopKey() const {
+    // Tab 唯一入口在滚动区行（T5.3）；冻结行不带 collectionRow，本就
+    // 不产生 Tab 候选。
+    return {};
+}
+
+// --- 程序化列可见性（§19 P0.2） ---
+
+void DataGridController::ensureColumnVisible(const std::string& columnKey) {
+    const DataColumn* column = findColumn(columnKey);
+    if (column == nullptr || !column->visible || column->pinned) {
+        return;  // pinned 列恒可见；未知/隐藏列无几何可保证。
+    }
+    const float left = columnLeftInRegion(columnKey);
+    const float right = left + column->width;
+    const float viewport = hViewportWidth_;
+    const float offset = hScroll_.offset();
+    float next = offset;
+    // 最小移动：右缘越界先对齐右缘，左缘仍越界再对齐左缘。
+    if (right > offset + viewport) {
+        next = right - viewport;
+    }
+    if (left < next) {
+        next = left;
+    }
+    next = std::clamp(next, 0.0F, hScroll_.maxScrollOffset());
+    if (next != offset) {
+        hScroll_.scrollTo(next);
+        requestRebuild();
+    }
 }
 
 }  // namespace lumen::widgets

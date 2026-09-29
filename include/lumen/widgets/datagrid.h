@@ -28,9 +28,12 @@
 // offset——根 ScrollView 横轴 + 源视口接缝，滚轮/拖动/惯性/语义滚动由
 // 框架直驱，应用零接线）+ 表头列宽拖动手柄（复用 splitter 交互通道：
 // 拖动跟手、双击复位、键盘 Left/Right 步进、ResizeEW 悬停光标）+
-// Theme.dataGrid token 组（headerExtent/selectionColumnWidth/
+// Theme.dataGrid token 组（rowExtent/headerExtent/selectionColumnWidth/
 // resizeHitWidth 三档密度 + fontScale 派生，Comfortable 档与第二批
-// 常量等值）。水平虚拟化/冻结列/RTL 镜像/拖放仍为后续增量。
+// 常量等值）。2026-09-29 第五/六批（§19/§20）：冻结列（DataColumn.
+// pinned 前缀不变式 + 区域拆分 + 共享纵向几何 + 语义排除副本）与水平
+// 虚拟化（滚动区列窗口物化，复制/粘贴/排序/列宽 API 始终作用于全列
+// 集）。RTL 镜像/拖放仍为后续增量。
 //
 // UI 线程独占；控制器生命周期必须覆盖 shell（sink 注册于 attach）。
 
@@ -81,6 +84,10 @@ struct DataColumn {
     DataColumnAlign align{DataColumnAlign::Start};
     // false 时构建跳过该列（列管理；设计文档 §11.1 列布局状态）。
     bool visible{true};
+    // 冻结列（§19 第五批）：true 时该列进左冻结区（列向量维持 pinned
+    // 前缀不变式——pinned 列恒在非 pinned 列之前）；区域调整经
+    // setColumnPinned 显式表达。
+    bool pinned{false};
 };
 
 class DataGridController final : public core::VirtualListSource {
@@ -100,9 +107,14 @@ class DataGridController final : public core::VirtualListSource {
     columnWidths() const;
     // 列显隐（构建跳过不可见列；未知列拒绝）。
     bool setColumnVisible(const std::string& columnKey, bool visible);
-    // 列显示顺序（把 columnKey 移到全列向量的 toIndex；钳制到范围内，
-    // 未知列拒绝）。列向量的顺序即表头/单元格/TSV 列序。
+    // 列显示顺序（把 columnKey 移到全列向量的 toIndex；钳制到该列所属
+    // 区域内——pinned 列在冻结组内移动、非 pinned 在滚动组内移动，跨界
+    // 经 setColumnPinned 显式表达；未知列拒绝）。列向量顺序即表头/单元格
+    // /TSV 列序。
     bool moveColumn(const std::string& columnKey, std::size_t toIndex);
+    // 冻结区调整（§19 第五批）：true = 移入冻结组尾，false = 移回滚动组
+    // 首。先提交编辑（§13.1），失败中止；未知列拒绝。
+    bool setColumnPinned(const std::string& columnKey, bool pinned);
 
     // --- 数据装配 ---
     void setRowCount(std::size_t count);
@@ -228,8 +240,12 @@ class DataGridController final : public core::VirtualListSource {
     [[nodiscard]] const core::ScrollController& hScroll() const {
         return hScroll_;
     }
+    // 程序化把列滚入横向视口（§19 P0.2）：最小移动——只修被破坏的一侧
+    // 边界（右缘越界先对齐右缘，左缘越界再对齐左缘）；pinned 列恒可见
+    //（no-op）。setCurrentColumn/beginEdit/moveEditor 已接线。
+    void ensureColumnVisible(const std::string& columnKey);
 
-    // --- VirtualListSource（几何委托 base_） ---
+    // --- VirtualListSource（纵向几何自持：固定行高，§19 P0.1） ---
     [[nodiscard]] std::size_t itemCount() const override;
     [[nodiscard]] float estimatedExtent() const override;
     [[nodiscard]] float extentOf(std::size_t index) const override;
@@ -290,11 +306,43 @@ class DataGridController final : public core::VirtualListSource {
         DataGridController& owner_;
     };
 
+    // 冻结区行源（§19 第五批 T5.3）：与滚动区 List 共享同一纵向几何
+    //（ScrollController/offset/extent 全部委托网格自持的固定行高推导，
+    // 两区可见区严格等值）；buildItem 只构建冻结格（key 前缀 frow:，
+    // excludeFromSemantics 防语义重复），空态返回空白（空态只在滚动区
+    // 呈现）。
+    class FrozenRegionSource final : public core::VirtualListSource {
+      public:
+        explicit FrozenRegionSource(DataGridController& owner)
+            : owner_(owner) {}
+
+        [[nodiscard]] std::size_t itemCount() const override;
+        [[nodiscard]] float estimatedExtent() const override;
+        [[nodiscard]] float extentOf(std::size_t index) const override;
+        [[nodiscard]] float scrollOffset() const override;
+        [[nodiscard]] float totalExtent() const override;
+        [[nodiscard]] float offsetOfIndex(std::size_t index) const override;
+        [[nodiscard]] std::pair<std::size_t, std::size_t> visibleRange(
+            float viewportExtent, float cacheExtent) const override;
+        [[nodiscard]] core::Widget buildItem(std::size_t index) const override;
+        void noteExtent(std::size_t index, float extent) const override;
+        void updateViewport(float viewportExtent,
+                            float contentPadding) const override;
+        [[nodiscard]] core::ScrollController* scrollController()
+            const override;
+        [[nodiscard]] core::Widget buildEmpty() const override;
+        [[nodiscard]] std::string tabStopKey() const override;
+
+      private:
+        DataGridController& owner_;
+    };
+
     // 列宽手柄源（复用 core::SplitterSource 交互通道，§17）：offset =
-    // 该列右缘边界的绝对内容坐标（选择列 + 前序可见列宽 + 本列宽）；
-    // dragTo/stepBy 经 resizeColumn 落地（内部钳 minWidth），reset 双击
-    // 复位到 setColumns 时的初始宽。生命周期：按列 key 建档、地址稳定
-    //（RenderNode/交互层按指针持有；列集刷新复用同键源）。
+    // 该列右缘边界的**区域内容坐标**（冻结列相对冻结区原点、滚动列相对
+    // 滚动区原点；§19 P0.3）；dragTo/stepBy 经 resizeColumn 落地（内部钳
+    // minWidth），reset 双击复位到 setColumns 时的初始宽。生命周期：按列
+    // key 建档、地址稳定（RenderNode/交互层按指针持有；列集刷新复用同
+    // 键源）。
     class ColumnResizeSource final : public core::SplitterSource {
       public:
         DataGridController* owner{};
@@ -320,6 +368,20 @@ class DataGridController final : public core::VirtualListSource {
     [[nodiscard]] bool rowEnabled(std::size_t index) const;
     [[nodiscard]] bool columnExists(const std::string& columnKey) const;
     [[nodiscard]] bool columnVisible(const std::string& columnKey) const;
+    // 区域几何（§19 第五批）：pinned 前缀不变式下的分区宽度与列坐标。
+    [[nodiscard]] float frozenContentWidth() const;
+    [[nodiscard]] float scrollContentWidth() const;
+    // 滚动区行宽 = max(滚动内容宽, 滚动视口宽)——内容窄于视口铺满。
+    [[nodiscard]] float scrollRegionWidth() const;
+    // 列在**所属区域内容坐标**中的左缘（冻结列相对冻结区原点、滚动列
+    // 相对滚动区原点；P0.3 区域感知前缀换算）。
+    [[nodiscard]] float columnLeftInRegion(const std::string& columnKey) const;
+    // 水平虚拟化（§19 第六批）：滚动区列前缀和缓存（非 pinned 可见列，
+    // front = 0）+ 可见列窗口 [first, end)（二分 + cache 边距）。窗口只
+    // 影响物化——复制/粘贴/排序/列宽 API 始终作用于全列集。
+    [[nodiscard]] const std::vector<float>& scrollPrefix() const;
+    [[nodiscard]] std::pair<std::size_t, std::size_t> visibleColumnWindow()
+        const;
     [[nodiscard]] std::string firstEditableColumn() const;
     [[nodiscard]] std::string firstVisibleColumn() const;
     [[nodiscard]] std::size_t firstVisibleIndex() const;
@@ -354,7 +416,18 @@ class DataGridController final : public core::VirtualListSource {
     // 表头列宽手柄（可调整列右缘；splitter 交互通道，§17）。
     [[nodiscard]] core::Widget buildResizeHandle(
         const DataColumn& column) const;
+    // 区域构建（§19 第五批 T5.2）：表头按区域拆分（frozen = 复选框列 +
+    // pinned 列；scroll = 其余可见列），数据行同理（buildItem 构建滚动
+    // 区行，buildFrozenItem 构建冻结区行——同一逻辑行的两个视图）。
+    [[nodiscard]] core::Widget buildRegionHeader(bool frozen) const;
+    [[nodiscard]] core::Widget buildFrozenItem(std::size_t index) const;
+    // 行首选择复选框格 / 单元格构建（滚动区与冻结区共用；§19 T5.3）。
+    [[nodiscard]] core::Widget buildRowCheckCell(const std::string& key) const;
+    [[nodiscard]] core::Widget buildCell(std::size_t index,
+                                         const std::string& key,
+                                         const DataColumn& column) const;
     // 主题几何（Theme.dataGrid；无 shell 时退回 Comfortable 默认）。
+    [[nodiscard]] float rowExtentPx() const;
     [[nodiscard]] float headerExtentPx() const;
     [[nodiscard]] float selectionColumnWidthPx() const;
     [[nodiscard]] float resizeHitWidthPx() const;
@@ -374,10 +447,12 @@ class DataGridController final : public core::VirtualListSource {
     void requestRebuild();
 
     core::VirtualListController base_{};
-    // 横向滚动（表头与数据区共享，§17；经根 ScrollView 的源接缝由框架
-    // 直驱滚轮/拖动/惯性）。
+    // 横向滚动（滚动区表头与数据共享，§17；经右区 ScrollView 的源接缝
+    // 由框架直驱滚轮/拖动/惯性）。
     core::ScrollController hScroll_{core::ScrollAxis::Horizontal};
     HorizontalViewportSource hSource_{*this};
+    // 冻结区行源（与滚动区 List 共享纵向几何，§19 T5.3）。
+    FrozenRegionSource frozenSource_{*this};
     // 手柄源按列 key 建档（map 节点地址稳定；键删除不回收，见
     // syncColumnSources 契约）。
     std::map<std::string, ColumnResizeSource> columnSources_{};
@@ -400,8 +475,14 @@ class DataGridController final : public core::VirtualListSource {
     // setRowEnabledOf 失效）。
     mutable std::vector<std::string> selectableKeysCache_{};
     mutable bool selectableKeysDirty_{true};
-    // 横向视口宽跟踪（源接缝回填；内容窄于视口时行铺满视口的收敛依据）。
+    // 横向视口宽跟踪（源接缝回填，§19 区域拆分后 = 滚动区视口宽；
+    // 滚动内容窄于视口时滚动区行铺满的收敛依据）。
     mutable float hViewportWidth_{0.0F};
+    // 列窗口缓存（§19 T6.1；列模型变化时失效，首帧 hViewportWidth_=0 时
+    // 窗口仅 cache 边距内列，两帧收敛——同铺满口径）。
+    mutable std::vector<float> scrollPrefix_{};
+    mutable std::vector<std::size_t> scrollColumnOrder_{};
+    mutable bool scrollPrefixDirty_{true};
     app::AppShell* shell_{nullptr};
     std::string owner_{"grid"};
 };

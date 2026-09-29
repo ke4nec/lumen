@@ -12,7 +12,10 @@
 // 循环/移除/普通点击收敛/指针透传/列集收缩清键）、当前格焦点环（统一
 // 格式盒 + identity 稳定回归）、表头复选框三态（indeterminate + 语义
 // value="mixed"）。
-// 水平虚拟化/RTL/拖放为后续增量（不在本文件断言）。
+// 2026-09-29 第五/六批（设计文档 §19/§20）：冻结列（pinned 模型/区域
+// 拆分/共享纵向几何/语义排除/分界线/跨区编辑键盘）、水平虚拟化（列
+// 窗口物化/窗口无关复制编辑/datagrid-wide 基准预算断言）。
+// RTL/拖放为后续增量（不在本文件断言）。
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -142,6 +145,7 @@ TEST_CASE("datagrid_virtualizes_rows_and_builds_cells", "[widgets][datagrid]") {
     auto root = fx.grid.build();
     fx.shell.markDirty();
     fx.render();
+    fx.render();  // 视口宽/列窗口两帧收敛（§19 T6.2 同铺满口径）
     // 首屏物化 < 总行数（虚拟化；视口 300 高 / 行高 40）。
     std::size_t rows = 0;
     std::size_t texts = 0;
@@ -159,7 +163,9 @@ TEST_CASE("datagrid_virtualizes_rows_and_builds_cells", "[widgets][datagrid]") {
     // 每物化行 3 个单元格文本；表头 = 2 个静态文本 + 1 个可排序 Ghost
     // 按钮（name）+ 表头复选框格（Extended 默认模式）。
     CHECK(texts >= rows * 3 + 2);
-    CHECK(checkboxes == rows);
+    // 复选框格双区出现（§19 T5.2/T5.3：选择列常驻冻结区——滚动区行 +
+    // 冻结区行各一份；无 pinned 列时冻结行只有复选框格）。
+    CHECK(checkboxes == rows * 2);
     // 表头存在。
     const auto* header = core::findNodeByKey(fx.shell.root(), "grid:header");
     REQUIRE(header != nullptr);
@@ -509,6 +515,8 @@ TEST_CASE("datagrid_numeric_column_aligns_end_and_custom_empty_state", "[widgets
     auto columns = fx.grid.columns();
     columns[1].align = widgets::DataColumnAlign::End;  // qty 数值列右对齐
     fx.grid.setColumns(columns);
+    fx.render();
+    fx.render();  // 列窗口收敛（buildItem 窗口物化，§19 T6.2）
     const core::Widget row0 = fx.grid.buildItem(0);
     const core::Widget& content = row0.children.front();
     REQUIRE(content.children.size() == 4);
@@ -661,10 +669,12 @@ TEST_CASE("datagrid_horizontal_viewport_scrolls_header_and_rows_together",
     CHECK(fx.grid.resizeColumn("name", 300.0F));
     fx.render();
     fx.render();  // 视口宽跟踪收敛
-    const auto* view = core::findNodeByKey(fx.shell.root(), "grid");
+    // §19 区域拆分：滚动视口 = grid:scroll（选择复选框列常驻冻结区，
+    // 冻结宽 44 + 分界线 1 → 滚动视口宽 355）；滚动内容 300+80+140=520。
+    const auto* view = core::findNodeByKey(fx.shell.root(), "grid:scroll");
     REQUIRE(view != nullptr);
     CHECK(view->scrollAxis == core::ScrollAxis::Horizontal);
-    CHECK(view->scrollExtent == Catch::Approx(164.0F));
+    CHECK(view->scrollExtent == Catch::Approx(165.0F));
 
     // 横向滚轮（数据区，纯 x 分量）：框架经源接缝直驱 hScroll_，表头与
     // 数据行同源平移（共享横向 offset）。
@@ -699,24 +709,26 @@ TEST_CASE("datagrid_horizontal_viewport_scrolls_header_and_rows_together",
 
 TEST_CASE("datagrid_rows_fill_viewport_when_content_narrower",
           "[widgets][datagrid]") {
-    GridFixture fx;  // 内容 44+100+80+140 = 364 < 视口 400
+    GridFixture fx;
+    // §19 区域拆分：选择列 44 常驻冻结区 + 分界线 1 → 滚动视口 355；
+    // 滚动内容 100+80+140 = 320 < 355 → 滚动区行铺满视口。
     fx.render();
     fx.render();     // 视口宽跟踪收敛（铺满不出现尾部空隙）
     const auto* row = core::findNodeByKey(fx.shell.root(), "grid:item:r0");
     REQUIRE(row != nullptr);
     // 行宽 = List 宽 − 容器水平内边距 2（集合行既有口径）。
-    CHECK(row->size.width == Catch::Approx(398.0F));
-    CHECK(core::findNodeByKey(fx.shell.root(), "grid")->scrollExtent ==
+    CHECK(row->size.width == Catch::Approx(353.0F));
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:scroll")->scrollExtent ==
           Catch::Approx(0.0F));
 
-    // 加宽超视口后：行宽 = 内容宽（564 − 内边距 2），出现横向滚动范围。
+    // 加宽超视口后：滚动内容 300+80+140 = 520 > 355，出现横向滚动范围。
     CHECK(fx.grid.resizeColumn("name", 300.0F));
     fx.render();
     const auto* wide = core::findNodeByKey(fx.shell.root(), "grid:item:r0");
     REQUIRE(wide != nullptr);
-    CHECK(wide->size.width == Catch::Approx(562.0F));
-    CHECK(core::findNodeByKey(fx.shell.root(), "grid")->scrollExtent ==
-          Catch::Approx(164.0F));
+    CHECK(wide->size.width == Catch::Approx(518.0F));
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:scroll")->scrollExtent ==
+          Catch::Approx(165.0F));
 
     // 密度切换：Theme.dataGrid 驱动表头高（Compact 32，视口宽跟踪重算）。
     fx.shell.setTheme(style::Theme::dark(style::ControlDensity::Compact));
@@ -967,4 +979,340 @@ TEST_CASE("datagrid_header_check_three_state_semantics", "[widgets][datagrid]") 
     REQUIRE(allNode != nullptr);
     CHECK(allNode->value == "true");
     CHECK((allNode->flags & accessibility::kSemanticsChecked) != 0);
+}
+
+// --- 2026-09-29 第五批（设计文档 §19：冻结列） ---
+
+TEST_CASE("datagrid_frozen_region_pins_columns_and_keeps_alignment",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    // pin name（44 选择列 + 100 = 冻结宽 144；分界线 1 → 滚动视口 255）。
+    CHECK(fx.grid.setColumnPinned("name", true));
+    fx.render();
+    fx.render();
+    const auto* frozenBody =
+        core::findNodeByKey(fx.shell.root(), "grid:frozen-body");
+    const auto* line = core::findNodeByKey(fx.shell.root(), "grid:freeze-line");
+    const auto* view = core::findNodeByKey(fx.shell.root(), "grid:scroll");
+    REQUIRE(frozenBody != nullptr);
+    REQUIRE(line != nullptr);
+    REQUIRE(view != nullptr);
+    CHECK(frozenBody->size.width == Catch::Approx(144.0F));
+    CHECK(line->size.width == Catch::Approx(1.0F));
+    CHECK(line->commonStyle().background == fx.shell.theme().colors.borderStrong);
+    CHECK(view->size.width == Catch::Approx(255.0F));
+    // 滚动内容 80+140 = 220 < 255 → 无横向滚动。
+    CHECK(view->scrollExtent == Catch::Approx(0.0F));
+
+    // 两区行同 y 对齐（固定行高 + 共享可见区）。
+    const core::Offset scrollRow =
+        core::absoluteOffset(fx.shell.root(), "grid:item:r0");
+    const core::Offset frozenRow =
+        core::absoluteOffset(fx.shell.root(), "grid:frow:r0");
+    CHECK(frozenRow.y == Catch::Approx(scrollRow.y));
+    // 区间宽 = 144 冻结 + 1 分界（绝对 x 含 List 既有 1px 水平内边距）。
+    CHECK(scrollRow.x - frozenRow.x == Catch::Approx(145.0F));
+
+    // 纵向滚轮在冻结区生效（共享纵向控制器）。
+    CHECK(fx.shell.wheel(core::Offset{70.0F, 150.0F},
+                         core::Offset{0.0F, 80.0F}));
+    fx.render();
+    const core::Offset scrolledFrozen =
+        core::absoluteOffset(fx.shell.root(), "grid:frow:r0");
+    CHECK(scrolledFrozen.y < frozenRow.y);
+    const core::Offset scrolledScroll =
+        core::absoluteOffset(fx.shell.root(), "grid:item:r0");
+    CHECK(scrolledScroll.y == Catch::Approx(scrolledFrozen.y));
+}
+
+TEST_CASE("datagrid_frozen_columns_stay_fixed_while_scroll_region_pans",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    CHECK(fx.grid.setColumnPinned("name", true));
+    // 加宽滚动内容：qty → 300（滚动内容 300+140 = 440 > 视口 255）。
+    CHECK(fx.grid.resizeColumn("qty", 300.0F));
+    fx.render();
+    fx.render();
+    const auto* view = core::findNodeByKey(fx.shell.root(), "grid:scroll");
+    REQUIRE(view != nullptr);
+    CHECK(view->scrollExtent == Catch::Approx(185.0F));
+
+    // 横向滚轮：滚动区（表头/行）平移，冻结区纹丝不动。
+    const core::Offset frozenHeader =
+        core::absoluteOffset(fx.shell.root(), "grid:frozen-header");
+    const core::Offset frozenCell =
+        core::absoluteOffset(fx.shell.root(), "grid:cell:r0:name");
+    const core::Offset scrollCell =
+        core::absoluteOffset(fx.shell.root(), "grid:cell:r0:qty");
+    CHECK(fx.shell.wheel(core::Offset{200.0F, 150.0F},
+                         core::Offset{60.0F, 0.0F}));
+    fx.render();
+    CHECK(fx.grid.hScroll().offset() == Catch::Approx(60.0F));
+    CHECK(core::absoluteOffset(fx.shell.root(), "grid:frozen-header").x ==
+          Catch::Approx(frozenHeader.x));
+    CHECK(core::absoluteOffset(fx.shell.root(), "grid:cell:r0:name").x ==
+          Catch::Approx(frozenCell.x));
+    CHECK(core::absoluteOffset(fx.shell.root(), "grid:cell:r0:qty").x ==
+          Catch::Approx(scrollCell.x - 60.0F));
+}
+
+TEST_CASE("datagrid_pin_model_prefix_invariant_and_commit_guard",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.render();
+    // pin/unpin 移动：pin = 冻结组尾，unpin = 滚动组首。
+    CHECK(fx.grid.setColumnPinned("qty", true));
+    auto keys = [&] {
+        std::vector<std::string> out;
+        for (const auto& column : fx.grid.columns()) out.push_back(column.key);
+        return out;
+    };
+    CHECK(keys() == std::vector<std::string>{"qty", "name", "note"});
+    CHECK(fx.grid.setColumnPinned("qty", false));
+    CHECK(keys() == std::vector<std::string>{"name", "note", "qty"});
+    // 未知列拒绝；重复 pin 幂等。
+    CHECK_FALSE(fx.grid.setColumnPinned("nope", true));
+    CHECK(fx.grid.setColumnPinned("name", true));
+    CHECK(fx.grid.setColumnPinned("name", true));
+    CHECK(keys() == std::vector<std::string>{"name", "note", "qty"});
+
+    // moveColumn 组内钳制：qty 已 unpin（上一步），note 移到 0（name 之前
+    // = 冻结组内）被钳到滚动组首（index 1）。
+    CHECK(fx.grid.moveColumn("note", 0));
+    CHECK(keys() == std::vector<std::string>{"name", "note", "qty"});
+
+    // pin/unpin 先提交编辑（§13.1）：校验失败中止区域调整。
+    fx.grid.setCellValidator("qty", [](const std::string& text) {
+        return text.find_first_not_of("0123456789") == std::string::npos
+                   ? ""
+                   : "digits only";
+    });
+    REQUIRE(fx.grid.beginEdit(0, "qty"));
+    fx.render();
+    fx.shell.state().set("grid:edit", "abc");
+    CHECK_FALSE(fx.grid.setColumnPinned("qty", true));
+    CHECK(fx.grid.editing());
+    CHECK_FALSE(fx.grid.columns()[2].pinned);
+    fx.shell.state().set("grid:edit", "42");
+    CHECK(fx.grid.setColumnPinned("qty", true));
+    CHECK_FALSE(fx.grid.editing());
+    REQUIRE(fx.edited.size() == 1);
+    CHECK(fx.edited.front() == "0:qty:42");
+}
+
+TEST_CASE("datagrid_frozen_region_excludes_semantics_and_clicks_sync",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    CHECK(fx.grid.setColumnPinned("name", true));
+    fx.render();
+
+    // 语义去重（T5.5）：冻结区行/格不进语义树，滚动区行承载——每数据行
+    // 恰一个 listItem 语义节点。
+    accessibility::SemanticsBuildOptions options;
+    accessibility::SemanticsTree tree =
+        accessibility::buildSemanticsTree(fx.shell.root(), options);
+    int listItems = 0;
+    for (const auto& [id, node] : tree.nodes) {
+        (void)id;
+        if (node.role == accessibility::SemanticsRole::ListItem) ++listItems;
+    }
+    const auto* frozenRow =
+        core::findNodeByKey(fx.shell.root(), "grid:frow:r0");
+    REQUIRE(frozenRow != nullptr);
+    CHECK(frozenRow->excludeFromSemantics);
+    // 滚动区 10 行承载语义；冻结副本被排除（恰好 10 个 listItem）。
+    CHECK(listItems == 10);
+
+    // 点击冻结区格（cell 身份）：选择 + 列焦点同步到逻辑行（滚动区行
+    // 成为焦点载体；复选框格路径本就不改 current，§11.3）。
+    fx.click("grid:cell:r3:name");
+    fx.render();
+    CHECK(fx.grid.selection().currentKey() == "r3");
+    CHECK(fx.grid.selection().isSelected("r3"));
+    CHECK(fx.grid.currentColumn() == "name");
+    CHECK(fx.shell.focus().focusedKey() == "grid:item:r3");
+    // 滚动区选中态同步（同一选择集重建）。
+    const auto* twin = core::findNodeByKey(fx.shell.root(), "grid:item:r3");
+    REQUIRE(twin != nullptr);
+    CHECK(twin->selected);
+
+    // 跨区编辑：可编辑列 pin 后双击冻结区格进入编辑（编辑器物化于冻结
+    // 区）；Enter 提交走既有编辑事务。
+    CHECK(fx.grid.setColumnPinned("qty", true));
+    fx.render();
+    fx.shell.tick(1000);
+    fx.click("grid:cell:r1:qty");
+    fx.shell.tick(1200);
+    fx.click("grid:cell:r1:qty");
+    CHECK(fx.grid.editing());
+    fx.render();  // requestFieldFocus 经 rebuildIfDirty 落地（beginEdit 同模式）
+    CHECK(fx.shell.controller().focusedBind() == "grid:edit");
+    fx.shell.textInput("9");
+    CHECK(fx.grid.handleKey(core::Key::Enter, core::kModifierNone));
+    CHECK_FALSE(fx.grid.editing());
+    REQUIRE(fx.edited.size() == 1);
+    CHECK(fx.edited.front() == "1:qty:69");
+}
+
+TEST_CASE("datagrid_frozen_degrades_without_pinned_columns",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    fx.render();
+    fx.render();
+    // 无 pinned 列：选择复选框列仍常驻冻结区（44 + 1 分界）。
+    REQUIRE(core::findNodeByKey(fx.shell.root(), "grid:frozen-body") !=
+            nullptr);
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:frozen-body")
+              ->size.width == Catch::Approx(44.0F));
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:scroll")->size.width ==
+          Catch::Approx(355.0F));
+
+    // 全部列 pin：滚动内容 0 → 横向滚动禁用、结构不崩。
+    CHECK(fx.grid.setColumnPinned("name", true));
+    CHECK(fx.grid.setColumnPinned("qty", true));
+    CHECK(fx.grid.setColumnPinned("note", true));
+    fx.render();
+    fx.render();
+    const auto* view = core::findNodeByKey(fx.shell.root(), "grid:scroll");
+    REQUIRE(view != nullptr);
+    CHECK(view->scrollExtent == Catch::Approx(0.0F));
+    // 冻结区容纳全部列（复选框 44 + 320），滚动区只剩空行壳。
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:frozen-body")
+              ->size.width == Catch::Approx(364.0F));
+    // 纵向滚动与选择仍正常（空 current 的 Down = 选中首行）。
+    CHECK(fx.grid.handleKey(core::Key::Down, core::kModifierNone));
+    CHECK(fx.grid.selection().currentKey() == "r0");
+    CHECK(fx.grid.handleKey(core::Key::Down, core::kModifierNone));
+    CHECK(fx.grid.selection().currentKey() == "r1");
+
+    // ensureColumnVisible（P0.2）：pinned 列 no-op；滚动列滚入视口。
+    fx.grid.setColumnPinned("qty", false);
+    fx.grid.setColumnPinned("note", false);
+    fx.render();
+    fx.render();
+    fx.grid.ensureColumnVisible("name");  // pinned：no-op
+    CHECK(fx.grid.hScroll().offset() == Catch::Approx(0.0F));
+    // 加宽 note 使其越界，编辑它应滚入视口。
+    CHECK(fx.grid.resizeColumn("qty", 300.0F));
+    fx.render();
+    fx.render();
+    fx.grid.ensureColumnVisible("note");
+    fx.render();
+    CHECK(fx.grid.hScroll().offset() > 0.0F);
+}
+
+// --- 2026-09-29 第六批（设计文档 §19.3：水平虚拟化） ---
+
+namespace {
+// 100 列 × 50 行宽网格（列宽 80，内容 8000px >> 视口）。
+struct WideGridFixture {
+    app::AppShell shell;
+    DataGridController grid;
+    FakeClipboard clipboard;
+    std::vector<std::string> edited{};
+
+    WideGridFixture() : shell(makeConfig(&grid)), grid() {
+        shell.controller().setClipboard(&clipboard);
+        grid.attach(shell, "grid");
+        std::vector<DataColumn> columns;
+        columns.reserve(100);
+        for (int i = 0; i < 100; ++i) {
+            const std::string key = "c" + std::to_string(i);
+            columns.push_back(DataColumn{key, key, 80.0F, true, i > 0,
+                                         i > 0});
+        }
+        grid.setColumns(std::move(columns));
+        grid.setRowCount(50);
+        grid.setCellText([](std::size_t r, const std::string& c) {
+            return c + "#" + std::to_string(r);
+        });
+        grid.onCellEdited = [this](std::size_t row, const std::string& col,
+                                   const std::string& text) {
+            edited.push_back(std::to_string(row) + ":" + col + ":" + text);
+        };
+    }
+
+    static app::ShellConfig makeConfig(DataGridController* grid) {
+        app::ShellConfig config;
+        config.initialView = core::Size{400.0F, 300.0F};
+        config.build = [grid] { return grid->build(); };
+        return config;
+    }
+
+    void render() {
+        (void)shell.renderFrame();
+        (void)shell.renderFrame();  // 视口宽/列窗口两帧收敛
+    }
+};
+}  // namespace
+
+TEST_CASE("datagrid_wide_materializes_only_visible_column_window",
+          "[widgets][datagrid]") {
+    WideGridFixture fx;
+    fx.render();
+    // 复选框列冻结（44+1）→ 滚动视口 355；窗口 = 355 + 2×120 cache →
+    // ~8 列（80px 列宽）。物化格数 O(可见行 × 可见列)，与 100 列总量
+    // 无关（确定性 headless 断言，§19 T6.5 预算口径）。
+    std::size_t cellBoxes = 0;
+    std::size_t materializedRows = 0;
+    const std::function<void(const core::RenderNode&)> walk =
+        [&](const core::RenderNode& node) {
+            if (node.key.starts_with("grid:item:")) ++materializedRows;
+            if (node.key.ends_with(":box") &&
+                node.key.starts_with("grid:cell:")) {
+                ++cellBoxes;
+            }
+            for (const auto& child : node.children) walk(child);
+        };
+    walk(fx.shell.root());
+    CHECK(cellBoxes < materializedRows * 12);   // 远小于 100 列全物化
+    CHECK(cellBoxes >= materializedRows * 5);   // 窗口确实覆盖多列
+    // 窗口外列不物化（首列在 cache 内必物化；尾列 100 距视口 > cache）。
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:cell:r0:c0:box") !=
+          nullptr);
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:cell:r0:c99:box") ==
+          nullptr);
+
+    // 滚动推进：窗口滑动，尾部列进入物化窗口。
+    CHECK(fx.shell.wheel(core::Offset{200.0F, 150.0F},
+                         core::Offset{600.0F, 0.0F}));
+    fx.render();
+    CHECK(fx.grid.hScroll().offset() == Catch::Approx(600.0F));
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:cell:r0:c8:box") !=
+          nullptr);
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:cell:r0:c0:box") ==
+          nullptr);
+}
+
+TEST_CASE("datagrid_wide_copy_and_edit_are_window_independent",
+          "[widgets][datagrid]") {
+    WideGridFixture fx;
+    fx.render();
+    CHECK(fx.shell.wheel(core::Offset{200.0F, 150.0F},
+                         core::Offset{600.0F, 0.0F}));
+    fx.render();
+    // TSV 复制作用于全列集（窗口只影响物化，§19 T6.2）。
+    fx.grid.selection().setSelected({"r0"});
+    CHECK(fx.grid.copySelection() == 1);
+    const std::string tsv = fx.clipboard.text();
+    CHECK(tsv.starts_with("c0#0\t"));   // 首列在窗口外仍复制
+    CHECK(tsv.ends_with("\tc99#0"));    // 尾列同样
+
+    // 窗口外列进入编辑：ensureColumnVisible 滚入视口（§19 P0.2/T6.3）。
+    CHECK(fx.grid.beginEdit(0, "c90"));
+    fx.render();
+    CHECK(fx.grid.hScroll().offset() >= 600.0F);
+    CHECK(core::findNodeByKey(fx.shell.root(), "grid:editor") != nullptr);
+    CHECK(fx.shell.controller().focusedBind() == "grid:edit");
+    fx.shell.textInput("!");
+    CHECK(fx.grid.handleKey(core::Key::Enter, core::kModifierNone));
+    REQUIRE(fx.edited.size() == 1);
+    CHECK(fx.edited.front() == "0:c90:c90#0!");
+
+    // 拖宽改变前缀：缓存失效重算，窗口边界正确（T6.1 失效点）。
+    const float before = fx.grid.hScroll().offset();
+    CHECK(fx.grid.resizeColumn("c50", 160.0F));
+    fx.render();
+    CHECK(fx.grid.hScroll().offset() == Catch::Approx(before));
+    CHECK(fx.grid.columnWidths()[50].second == Catch::Approx(160.0F));
 }
