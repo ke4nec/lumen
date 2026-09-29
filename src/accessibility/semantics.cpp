@@ -211,7 +211,12 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
     }
 
     for (const auto& child : node.children) {
-        semantic.children.push_back(child.identity);
+        // 被排除的子树不写入 tree.nodes（上方早退）；children 必须同步
+        // 剪枝，否则留下悬空 id——AT-SPI GetChildAtIndex / UIA 兄弟遍历
+        // 会解析到不存在的节点。
+        if (!child.excludeFromSemantics) {
+            semantic.children.push_back(child.identity);
+        }
     }
     if (isRoot) {
         tree.rootId = semantic.id;
