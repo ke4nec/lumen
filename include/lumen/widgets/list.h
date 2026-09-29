@@ -59,6 +59,23 @@ class ListController final : public core::VirtualListSource {
     // 激活（双击 / Enter / 语义 Activate 同路径）。
     std::function<void(const std::string& key)> onActivated{};
 
+    // --- M15：行拖拽重排（lumen-drag-drop-design §4） ---
+    // 启用后 attach 注册的 arm/session sink 生效：行整体按下拖动越过
+    // 启动阈值开会话（触摸不认领——列表触摸拖动保持滚动语义）；ghost
+    // 与插入指示线经框架 overlay 绘制（Theme.dragDrop token）。
+    void setReorderable(bool enabled);
+    // 重排提交：fromIndex = 源行号，toIndex = 重排后源项落点行号（先
+    // 移除后插入语义）。控制器不改应用数据序——应用在回调内更新数据
+    // 并触发重建。
+    std::function<void(std::size_t fromIndex, std::size_t toIndex)> onReorder{};
+    // 会话状态（示例回显/测试断言；无会话时 dragActive=false）。
+    [[nodiscard]] bool dragActive() const { return dragActive_; }
+    [[nodiscard]] std::size_t dragFromIndex() const { return dragFromIndex_; }
+    // 当前插入间隙（0..itemCount；指示线画在该行上边界，count = 尾部）。
+    [[nodiscard]] std::size_t dragInsertBefore() const {
+        return dragInsertIndex_;
+    }
+
     // --- shell 接线 ---
     // 应用持有控制器并在构建前调用一次；ownerKey 必须与 makeList 的
     // key 一致（行 key/handler 名按它命名空间隔离）。控制器生命周期
@@ -110,6 +127,14 @@ class ListController final : public core::VirtualListSource {
     void rowClicked(const std::string& key, bool ctrl, bool shift);
     void activate(const std::string& key);
     void requestRebuild();
+    // M15：拖放会话回调（sourceKey = 行节点 key，owner+":item:"+行 key）。
+    void dragSession(core::DragPhase phase, core::Offset position,
+                     const std::string& sourceKey);
+    void endDragSession();
+    [[nodiscard]] core::Widget buildDragOverlay() const;
+    [[nodiscard]] std::string clickPrefix() const {
+        return "list:" + owner_ + ":";
+    }
 
     core::VirtualListController base_{};
     SelectionModel selection_{};
@@ -120,6 +145,12 @@ class ListController final : public core::VirtualListSource {
     std::function<core::Widget()> emptyBuilder_{};
     app::AppShell* shell_{nullptr};
     std::string owner_{"list"};
+    // M15：重排会话状态。
+    bool reorderEnabled_{false};
+    bool dragActive_{false};
+    std::size_t dragFromIndex_{0};
+    std::size_t dragInsertIndex_{0};
+    core::Offset dragPointer_{};
 };
 
 }  // namespace lumen::widgets

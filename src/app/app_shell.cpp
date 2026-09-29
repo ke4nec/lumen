@@ -408,6 +408,36 @@ void AppShell::clearOverlay() {
     controller_.pointerCancel();
 }
 
+// --- M15：非模态视觉 overlay（拖拽 ghost/插入指示线） ---
+
+void AppShell::setVisualOverlayBuilder(
+    std::function<std::optional<core::Widget>()> builder) {
+    // 非模态：不取消活动指针/焦点——输入仍由主树拖放会话拥有；仅叠加
+    // 视觉层。替换语义与 setOverlayBuilder 一致（builder 每帧重求值）。
+    overlayBuilder_ = std::move(builder);
+    overlayWheel_ = {};
+    overlayDrag_ = {};
+    overlayAnimate_ = {};
+    dirty_ = true;
+    fullRepaintPending_ = true;
+}
+
+void AppShell::clearVisualOverlay() {
+    overlayBuilder_ = {};
+    overlayWheel_ = {};
+    overlayDrag_ = {};
+    overlayAnimate_ = {};
+    if (!overlayTemplate_.has_value() && !overlayRoot_.has_value()) {
+        return;
+    }
+    overlayTemplate_.reset();
+    overlayRoot_.reset();
+    hasPreviousOverlayRoot_ = false;
+    dirty_ = true;
+    fullRepaintPending_ = true;
+    // 不清焦点/不取消指针：拖放会话的 Drop/Cancel 由交互层收尾。
+}
+
 // --- 事件分发 ---
 
 void AppShell::pointerDown(core::Offset position,

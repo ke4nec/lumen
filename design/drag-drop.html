@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen 拖放设计稿 · 行重排 ghost 与插入指示线</title>
+<meta name="description" content="Lumen M15 拖放（List 行重排）的视觉设计稿，配套 docs/lumen-drag-drop-design.md，视觉规格对齐 docs/lumen-visual-system-design.md §3.4。">
+<style>
+  :root {
+    color-scheme: light dark;
+    /* 拟真应用：Core Dark（与 design/*.html 一致的 token 值） */
+    --app-bg: #18181b;
+    --app-surface: #27272e;
+    --app-surface-elevated: #34343e;      /* ghostSurface = surfaceElevated */
+    --app-ink: #f1f1f4;
+    --app-ink-muted: #8c8c98;
+    --app-border: #52525b;
+    --app-border-strong: #a1a1aa;         /* ghostBorder = borderStrong */
+    --app-accent: #568cf0;                /* dropIndicator = accent */
+    --radius: 8px;
+    --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px;
+    font-family: var(--font-ui);
+    background: #e9edf3;
+    color: #172033;
+    display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start;
+  }
+  h1 { font-size: 15px; margin: 0 0 4px; letter-spacing: .2px; }
+  p.note { font-size: 12px; color: #69758b; margin: 0 0 14px; max-width: 420px; line-height: 1.6; }
+  /* 拟真窗口 */
+  .window {
+    width: 380px; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 24px 70px rgba(31, 48, 77, .18);
+    background: var(--app-bg);
+  }
+  .titlebar {
+    height: 36px; display: flex; align-items: center; padding: 0 14px;
+    background: var(--app-surface); color: var(--app-ink-muted); font-size: 12px;
+    border-bottom: 1px solid var(--app-border);
+  }
+  .rows { position: relative; padding: 8px; }
+  .row {
+    height: 40px; display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; margin-bottom: 4px; border-radius: var(--radius);
+    background: var(--app-surface); color: var(--app-ink); font-size: 13px;
+    border: 1px solid transparent;
+  }
+  .row .grip { color: var(--app-ink-muted); letter-spacing: 2px; font-size: 12px; }
+  .row.dragging { opacity: .35; }                /* 源行退场提示 */
+  .row.hover { background: #2e2e36; }
+  /* 插入指示线：accent 2px，行上边界（间隙 2 = 行 1 之下） */
+  .indicator {
+    height: 2px; background: var(--app-accent); border-radius: 1px;
+    margin: 0 0 2px 12px; width: calc(100% - 24px);
+    box-shadow: 0 0 0 1px rgba(86, 140, 240, .25);
+  }
+  /* ghost：surfaceElevated + borderStrong 1px + L2 阴影，抓取偏移 (10, -16) */
+  .ghost {
+    position: absolute; left: 96px; top: 96px; z-index: 5;
+    height: 40px; display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; min-width: 210px;
+    border-radius: var(--radius);
+    background: var(--app-surface-elevated);
+    border: 1px solid var(--app-border-strong);
+    color: var(--app-ink); font-size: 13px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .45);   /* L2 */
+    pointer-events: none;
+  }
+  .ghost .grip { color: var(--app-ink-muted); letter-spacing: 2px; font-size: 12px; }
+  .cursor {
+    position: absolute; left: 86px; top: 112px; z-index: 6;
+    font-size: 18px; pointer-events: none;
+  }
+  .spec { width: 320px; font-size: 12.5px; line-height: 1.7; }
+  .spec table { border-collapse: collapse; width: 100%; background: rgba(255,255,255,.86); border-radius: 10px; overflow: hidden; box-shadow: 0 12px 40px rgba(31,48,77,.10); }
+  .spec th, .spec td { text-align: left; padding: 7px 12px; border-bottom: 1px solid #e3e8f0; }
+  .spec th { background: #f2f5fa; font-weight: 600; }
+  .spec code { background: #eef2f8; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+</style>
+</head>
+<body>
+  <div>
+    <h1>行拖拽重排——拖动中</h1>
+    <p class="note">行 1 拖至行 1/行 2 之间：ghost（surfaceElevated + borderStrong 描边 + L2 阴影）按抓取偏移跟随指针；插入指示线（accent，2px）画在目标间隙的上行边界。源行退场提示 35% 不透明度仅为示意——实现以 ghost 为唯一位移反馈，源行保持原位。</p>
+    <div class="window">
+      <div class="titlebar">files — Lumen</div>
+      <div class="rows">
+        <div class="row"><span class="grip">⠿</span>Item 0</div>
+        <div class="row dragging"><span class="grip">⠿</span>Item 1</div>
+        <div class="indicator"></div>
+        <div class="row"><span class="grip">⠿</span>Item 2</div>
+        <div class="row"><span class="grip">⠿</span>Item 3</div>
+        <div class="row"><span class="grip">⠿</span>Item 4</div>
+        <div class="ghost"><span class="grip">⠿</span>Item 1</div>
+        <div class="cursor">➤</div>
+      </div>
+    </div>
+  </div>
+  <div class="spec">
+    <h1>Token（Theme.dragDrop）</h1>
+    <table>
+      <tr><th>Token</th><th>值（Core Dark）</th></tr>
+      <tr><td><code>dropIndicator</code></td><td>accent <code>#568cf0</code>，厚度 2px</td></tr>
+      <tr><td><code>ghostSurface</code></td><td>surfaceElevated <code>#34343e</code></td></tr>
+      <tr><td><code>ghostBorder</code></td><td>borderStrong <code>#a1a1aa</code>，1px</td></tr>
+      <tr><td><code>ghostGrabOffsetX</code></td><td>10px（指针右移）</td></tr>
+      <tr><td><code>ghostGrabOffsetY</code></td><td>16px（ghost 顶边高于指针）</td></tr>
+      <tr><td>阴影</td><td>L2（与 Dropdown/Tooltip 同层）</td></tr>
+    </table>
+    <p class="note">交互契约（启动阈值 8px 曼哈顿、先移除后插入语义、触摸行拖拽让位滚动）见 <code>docs/lumen-drag-drop-design.md</code>。</p>
+  </div>
+</body>
+</html>

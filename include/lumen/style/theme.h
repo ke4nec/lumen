@@ -392,6 +392,25 @@ struct DataGridTokens {
     bool operator==(const DataGridTokens&) const = default;
 };
 
+// M15 拖放（lumen-drag-drop-design §6 / 视觉系统 §3.3）：拖拽 ghost 表面
+// 与落点插入指示。颜色从 ColorScheme 派生；几何为固定基础值（不随密度
+// 分档——指示线/ghost 偏移是交互反馈而非控件部件）。
+struct DragDropTokens {
+    // 落点插入指示线（accent 实色；厚度 indicatorThickness）。
+    core::Color dropIndicator{86, 140, 240, 255};
+    // 拖拽 ghost 表面与描边（surfaceElevated / borderStrong 派生）；ghost
+    // 文本沿用 contentPrimary。
+    core::Color ghostSurface{52, 52, 62, 255};
+    core::Color ghostBorder{161, 161, 170, 255};
+    float indicatorThickness{2.0F};
+    // ghost 抓取偏移：指针位置相对 ghost 左上角的偏移（x 正 = 右移，
+    // y 正 = ghost 顶边在指针上方该距离——近似按住行中段的手感）。
+    float ghostGrabOffsetX{10.0F};
+    float ghostGrabOffsetY{16.0F};
+
+    bool operator==(const DragDropTokens&) const = default;
+};
+
 // 主题值对象（§4 建议结构的实现）。light/dark/high contrast/font
 // scale/density/reduced motion 都由 fromSettings 与工厂派生。
 struct Theme {
@@ -415,6 +434,7 @@ struct Theme {
     ListTokens list{};
     TreeTokens tree{};
     DataGridTokens dataGrid{};
+    DragDropTokens dragDrop{};
     // M11：派生元数据（值语义，参与 ==）。应用直接读取，替代按色值
     // 反推（gallery/settings 旧的 pageBackground 比较启发式）。
     ThemeDirection direction{ThemeDirection::CoreDark};
@@ -470,6 +490,7 @@ struct Theme {
     ControlDensity density = ControlDensity::Comfortable);
 [[nodiscard]] DataGridTokens dataGridTokensFrom(
     ControlDensity density = ControlDensity::Comfortable);
+[[nodiscard]] DragDropTokens dragDropTokensFrom(const ColorScheme& colors);
 
 // density → 基准档索引（0/1/2）。
 [[nodiscard]] std::uint8_t densityBaseIndex(ControlDensity density);

@@ -248,6 +248,23 @@ current cell 内绘制焦点环，不在全行每个格同时绘制。冻结区�
 线厚 = 指示器 12% 向上取 1px）；checked 优先（两者同真按全选呈现）。语义
 value="mixed"、不带 checked flag。禁用态沿用 disabledBackground 降级。
 
+### 3.4 拖放反馈 token（2026-09-29 落地，M15）
+
+拖拽 ghost 与落点插入指示线由 [`lumen-drag-drop-design.md`](lumen-drag-drop-design.md)
+定义，token 走 `Theme.dragDrop`（`DragDropTokens` +
+`dragDropTokensFrom(colors)` 颜色派生）：
+
+| Token | 派生来源 | 说明 |
+| --- | --- | --- |
+| dropIndicator | `colors.accent` | 插入指示线（行上边界） |
+| ghostSurface | `colors.surfaceElevated` | ghost 表面（L2 阴影） |
+| ghostBorder | `colors.borderStrong` | ghost 1px 描边 |
+| indicatorThickness | 固定 2 | 指示线厚度（逻辑 px） |
+| ghostGrabOffsetX/Y | 固定 10 / 16 | ghost 相对指针的抓取偏移 |
+
+几何不随密度分档（交互反馈非控件部件）；控件不得绕过 token 写死常量。
+ghost 文本沿用 contentPrimary。原型见 `design/drag-drop.html`。
+
 ## 4. Theme 模型
 
 Theme 是可复制、不可变使用的值对象，由应用或窗口根节点拥有，不使用全局可变单例。

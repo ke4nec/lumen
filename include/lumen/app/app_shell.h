@@ -232,6 +232,14 @@ class AppShell {
                            WheelSink wheel = {}, ScrollDragSink drag = {},
                            AnimateSink animate = {});
     void clearOverlay();
+    // M15：非模态视觉 overlay（拖拽 ghost/插入指示线）。与模态 overlay
+    // 的差异：安装/解除不取消活动指针、不清焦点——拖放会话仍由交互层
+    // 的主树手势拥有，本层只叠加视觉（drag-drop-design §5）。与模态
+    // overlay 共用同一槽位（互斥；拖拽期间不会有菜单打开）。命中期
+    // eventTree() 仍切到 overlay 树——会话回调自行对主树解析落点。
+    void setVisualOverlayBuilder(
+        std::function<std::optional<core::Widget>()> builder);
+    void clearVisualOverlay();
     [[nodiscard]] bool hasOverlay() const {
         return overlayTemplate_.has_value();
     }

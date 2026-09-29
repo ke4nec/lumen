@@ -2,6 +2,8 @@
 
 #include "lumen/widgets/list.h"
 
+#include <optional>
+
 // 语义层共享实现（与 Tree 同契约）：键盘导航/滚动对齐/sink 接线/区间序列。
 #include "collection_common.h"
 
@@ -89,6 +91,39 @@ void ListController::attach(app::AppShell& shell, std::string ownerKey) {
         if (indexOfKey(key, index) && itemEnabled(index)) selection_.setCurrent(key);
         return true;
     });
+    // M15：行拖拽重排（drag-drop-design §4）。arm 认领行（触摸不认领，
+    // 行整体拖拽让位滚动）；会话 sink 按 source key 前缀过滤（多集合
+    // 共存时各列表只消费自己的会话）。
+    shell.controller().addDragArmSink(
+        [this](const std::vector<const core::RenderNode*>& chain,
+               core::PointerDevice, core::DragSourceClaim& claim) {
+            if (!reorderEnabled_) {
+                return false;
+            }
+            for (const core::RenderNode* node : chain) {
+                if (node->onClick.rfind(clickPrefix(), 0) != 0) {
+                    continue;
+                }
+                const std::string key =
+                    node->onClick.substr(clickPrefix().size());
+                std::size_t index = 0;
+                if (!key.empty() && indexOfKey(key, index) &&
+                    itemEnabled(index)) {
+                    claim.key = node->key;
+                    claim.identity = node->identity;
+                    claim.touchAllowed = false;
+                    return true;
+                }
+                return false;
+            }
+            return false;
+        });
+    shell.controller().addDragSessionSink(
+        [this](core::DragPhase phase, core::Offset position,
+               const std::vector<const core::RenderNode*>&,  // 命中链按主树重解析
+               const std::string& sourceKey, const std::string&) {
+            dragSession(phase, position, sourceKey);
+        });
 }
 
 void ListController::scrollToKey(const std::string& key,
@@ -184,6 +219,163 @@ void ListController::requestRebuild() {
     if (shell_ != nullptr) {
         shell_->markDirty();
     }
+}
+
+// --- M15：行拖拽重排 ---
+
+void ListController::setReorderable(bool enabled) {
+    reorderEnabled_ = enabled;
+}
+
+void ListController::dragSession(core::DragPhase phase, core::Offset position,
+                                 const std::string& sourceKey) {
+    // 会话归属：sourceKey 是行节点 key（owner+":item:"+行 key）。
+    const std::string itemPrefix = owner_ + ":item:";
+    if (sourceKey.rfind(itemPrefix, 0) != 0) {
+        return;
+    }
+    const std::string rowKey = sourceKey.substr(itemPrefix.size());
+    std::size_t fromIndex = 0;
+    if (!indexOfKey(rowKey, fromIndex)) {
+        return;  // 会话开始后数据变更使源行消失：不响应。
+    }
+    switch (phase) {
+        case core::DragPhase::Start:
+            dragActive_ = true;
+            dragFromIndex_ = fromIndex;
+            dragInsertIndex_ = fromIndex;
+            dragPointer_ = position;
+            if (shell_ != nullptr) {
+                // 非模态视觉 overlay：不取消活动指针（会话仍在进行）。
+                shell_->setVisualOverlayBuilder(
+                    [this]() -> std::optional<core::Widget> {
+                        if (!dragActive_) {
+                            return std::nullopt;
+                        }
+                        return buildDragOverlay();
+                    });
+            }
+            requestRebuild();
+            break;
+        case core::DragPhase::Move: {
+            dragPointer_ = position;
+            // 会话 sink 收到的命中链来自事件树——ghost overlay 活跃期即
+            // overlay 树；落点必须按主树解析。
+            if (shell_ == nullptr) {
+                break;
+            }
+            std::vector<const core::RenderNode*> mainChain;
+            (void)core::hitTestChain(shell_->root(), position, mainChain);
+            for (const core::RenderNode* node : mainChain) {
+                if (node->onClick.rfind(clickPrefix(), 0) != 0) {
+                    continue;
+                }
+                const std::string targetKey =
+                    node->onClick.substr(clickPrefix().size());
+                std::size_t target = 0;
+                if (!indexOfKey(targetKey, target)) {
+                    break;
+                }
+                if (target == fromIndex) {
+                    dragInsertIndex_ = fromIndex;  // 悬停源行自身：无位移。
+                    break;
+                }
+                // 行下半落点 = 插入其后（间隙 +1）；上边界按绝对原点。
+                const core::Offset origin =
+                    core::absoluteOffset(shell_->root(), node->key);
+                const bool belowMiddle =
+                    position.y > origin.y + node->size.height * 0.5F;
+                dragInsertIndex_ = belowMiddle ? target + 1 : target;
+                break;
+            }
+            requestRebuild();  // ghost 跟手 + 指示线更新。
+            break;
+        }
+        case core::DragPhase::Drop: {
+            const std::size_t gap = dragInsertIndex_;
+            endDragSession();
+            if (gap == fromIndex) {
+                break;
+            }
+            // 先移除后插入：间隙在源行之后时最终落点行号 -1。
+            const std::size_t toIndex = gap > fromIndex ? gap - 1 : gap;
+            if (onReorder != nullptr && toIndex != fromIndex) {
+                onReorder(fromIndex, toIndex);
+            }
+            break;
+        }
+        case core::DragPhase::Cancel:
+            endDragSession();
+            break;
+    }
+}
+
+void ListController::endDragSession() {
+    dragActive_ = false;
+    if (shell_ != nullptr) {
+        shell_->clearVisualOverlay();
+    }
+    requestRebuild();
+}
+
+core::Widget ListController::buildDragOverlay() const {
+    if (shell_ == nullptr) {
+        return core::Widget{};
+    }
+    const style::Theme& theme = shell_->theme();
+    const style::DragDropTokens& tokens = theme.dragDrop;
+    const core::Size view = shell_->view();
+
+    // 拖拽 ghost：源行内容 + DragDropTokens 表面/描边，抓取偏移跟随
+    // 指针。纯视觉（无 barrier/FocusScope）——拖放会话本身接管输入。
+    core::Widget content = itemBuilder_ != nullptr
+                               ? itemBuilder_(dragFromIndex_)
+                               : core::makeText("");
+    content.flex = 0.0F;
+    core::Widget ghost;
+    ghost.type = core::WidgetType::Container;
+    ghost.color = tokens.ghostSurface;
+    ghost.radius = core::CornerRadius::all(theme.metrics.cardRadius);
+    ghost.elevation = 2.0F;  // L2：与 Dropdown/Tooltip 同层（§4.5）。
+    ghost.styleOverrides.border = tokens.ghostBorder;
+    ghost.styleOverrides.borderWidth = theme.metrics.controlBorderWidth;
+    ghost.padding = core::EdgeInsets::symmetric(8.0F, 4.0F);
+    ghost.children.push_back(std::move(content));
+    ghost = core::withStackPosition(
+        std::move(ghost),
+        core::Offset{dragPointer_.x + tokens.ghostGrabOffsetX,
+                     dragPointer_.y - tokens.ghostGrabOffsetY});
+    ghost.key = owner_ + ":drag-ghost";
+
+    // 插入指示线：目标行上边界（间隙 0..count；count = 内容尾部）。
+    // 视口坐标 = 视口原点 + offsetOfIndex(间隙) - 滚动偏移。
+    core::Widget indicator;
+    indicator.type = core::WidgetType::Container;
+    indicator.color = tokens.dropIndicator;
+    indicator.height = tokens.indicatorThickness;
+    if (const core::RenderNode* viewport =
+            core::findNodeByKey(shell_->root(), owner_)) {
+        indicator.width = viewport->size.width;
+        const core::Offset origin = core::absoluteOffset(shell_->root(), owner_);
+        const float scroll = base_.scrollController() != nullptr
+                                 ? base_.scrollController()->offset()
+                                 : 0.0F;
+        const std::size_t gap =
+            std::min(dragInsertIndex_, base_.itemCount());
+        const float boundaryY =
+            origin.y + base_.offsetOfIndex(gap) - scroll;
+        indicator = core::withStackPosition(
+            std::move(indicator), core::Offset{origin.x, boundaryY});
+    }
+    indicator.key = owner_ + ":drag-indicator";
+
+    core::Widget overlay = core::makeStack(
+        {std::move(indicator), std::move(ghost)},
+        core::StackAlignment::TopLeft);
+    overlay.key = owner_ + ":drag-overlay";
+    overlay.width = view.width;
+    overlay.height = view.height;
+    return overlay;
 }
 
 // --- VirtualListSource：几何全部委托 M3 控制器（extent 缓存/锚点稳定/

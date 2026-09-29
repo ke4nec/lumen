@@ -330,6 +330,16 @@ DataGridTokens dataGridTokensFrom(ControlDensity density) {
     return tokens;
 }
 
+DragDropTokens dragDropTokensFrom(const ColorScheme& colors) {
+    // M15（lumen-drag-drop-design §6 / 视觉系统 §3.3）：指示线 accent、
+    // ghost 表面/描边 surfaceElevated/borderStrong；几何固定不分密度档。
+    DragDropTokens tokens;
+    tokens.dropIndicator = colors.accent;
+    tokens.ghostSurface = colors.surfaceElevated;
+    tokens.ghostBorder = colors.borderStrong;
+    return tokens;
+}
+
 ListTokens listTokensFrom(const ColorScheme& colors) {
     ListTokens tokens;
     tokens.background = colors.surface;
@@ -623,6 +633,7 @@ Theme baseTheme(bool darkMode, ControlDensity density,
     theme.tree.row = theme.list;
     theme.tree.chevronContent = theme.colors.contentSecondary;
     theme.dataGrid = dataGridTokensFrom(theme.metrics.density);
+    theme.dragDrop = dragDropTokensFrom(theme.colors);
     theme.direction = direction;
     theme.darkMode = darkMode;
     return theme;
@@ -674,6 +685,7 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     theme.tree.row = theme.list;
     theme.tree.chevronContent = theme.colors.contentSecondary;
     theme.dataGrid = dataGridTokensFrom(theme.metrics.density);
+    theme.dragDrop = dragDropTokensFrom(theme.colors);
 }
 
 void scaleComponentSizes(Theme& theme, float factor) {
@@ -854,6 +866,7 @@ Theme adaptPlatformTheme(const Theme& base,
         adapted.progressBar = progressBarTokensFrom(adapted.colors);
         adapted.tabs = tabsTokensFrom(adapted.colors);
         adapted.scrollbar = scrollbarTokensFrom(adapted.colors, adapted.metrics.density);
+        adapted.dragDrop = dragDropTokensFrom(adapted.colors);
         adapted.list = listTokensFrom(adapted.colors);
         if (settings.highContrast) {
             adapted.list.hovered = blendOver(adapted.list.background, adapted.colors.hoverOverlay);
