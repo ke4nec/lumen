@@ -103,6 +103,11 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
                   const SemanticsBuildOptions& options,
                   const std::vector<core::Rect>& clipViewports,
                   SemanticsTree& tree) {
+    // 语义子树排除（Widget.excludeFromSemantics）：同一逻辑行的第二
+    // 视图（DataGrid 冻结区行副本）不进语义树，防重复播报。
+    if (node.excludeFromSemantics) {
+        return;
+    }
     const core::Offset origin = absolute + node.offset;
     SemanticsNode semantic;
     semantic.id = node.identity;

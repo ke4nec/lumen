@@ -372,6 +372,10 @@ struct Widget {
     // false——只应由圆角 chrome 容器（标题栏等）声明，普通内容容器
     // 不裁剪。
     bool clipRounded{false};
+    // 语义子树排除（datagrid §19 T5.5 首用）：true 时该节点及子树不进
+    // 语义树（DataGrid 冻结区行与滚动区行是同一逻辑行的两个视图，滚动
+    // 区行承载语义，冻结副本排除防重复播报）。默认 false。
+    bool excludeFromSemantics{false};
 
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
     // handler in the app's HandlerRegistry. `bindPrefix` preserves the

@@ -162,6 +162,7 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
             : dragged ? scrollbar.dragged : hovered ? scrollbar.hovered : scrollbar.rest;
     }
     node.enabled = widget.enabled;
+    node.excludeFromSemantics = widget.excludeFromSemantics;
     node.invalid = widget.invalid;
     node.selected = widget.selected;
     node.collectionRow = widget.collectionRow;
