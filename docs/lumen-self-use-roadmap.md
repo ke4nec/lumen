@@ -73,7 +73,7 @@ Lumen 的自用版不是通用的 Flutter 替代品，而是一个边界清楚�
 | 增强链 M11 | 已完成 v0.4 视觉方向与控件体验 | 四方向 Theme 变体/Tooltip hover 延迟/框架级 overlay/Dropdown 浮动菜单（见 §10 M11 完成记录） |
 | 增强链 M12 | 已完成平台服务与发布补全 | 系统主题事件/强调色输入、三平台原生通知、三平台 OS 可访问性偏好查询、AppImage/.app/包变体（见 §10 M12 完成记录） |
 | 增强链 M13 | 进行中（Linux Orca 回环已完成） | 契约扩展/runApp 装配/UIA fragment 树、Linux AT-SPI2（含窗口激活链路与 Orca 回环，2026-09-23）、macOS NSAccessibility；Windows 讲述人/NVDA 与 macOS VoiceOver 人工回环待平台验收（见 §10 M13 记录与追记） |
-| M14 实战可用收敛 | 进行中（B/D 阶段证据落地；A 为 Linux 部分，C 首版） | M14-B 三后端门禁+A/A 全过（2026-09-24 归档）；M14-C 资源接线/结构化诊断首版；M14-D DataGrid 首版契约 + 第二批 P0 可靠性/列模型 + 第三批双轴几何/列宽拖宽/token 组 + 第四批多列排序/当前格环/表头三态（2026-09-28，设计 §16–18）；M14-A Linux 1h 浸泡+窗口冒烟（跨平台人工清单未做，见 §10 各阶段记录） |
+| M14 实战可用收敛 | 进行中（B/D 阶段证据落地；A 为 Linux 部分，C 首版） | M14-B 三后端门禁+A/A 全过（2026-09-24 归档）；M14-C 资源接线/结构化诊断首版；M14-D DataGrid 首版契约 + 第二批 P0 可靠性/列模型 + 第三批双轴几何/列宽拖宽/token 组 + 第四批多列排序/当前格环/表头三态（2026-09-28，设计 §16–18）+ 第五/六批冻结列/水平虚拟化（2026-09-29，设计 §19–20）；M14-A Linux 1h 浸泡+窗口冒烟（跨平台人工清单未做，见 §10 各阶段记录） |
 | 按需控件增强 · 集合控件 | 已完成 List/Tree/TreeList 与共享选择模型 | 四选择模式/树扁平化/源视口滚动框架接管（见 §10 集合控件完成记录） |
 | 按需控件增强 · 菜单与分栏 | 已完成 ContextMenu/MenuBar 与 Splitter | Secondary 通道/M11 overlay 菜单面板/分隔条框架接管（见 §10 对应完成记录） |
 | 按需控件增强 · 自定义标题栏 | 已完成无边框窗口 chrome | customTitleBar/拖拽区谓词/窗口操作宿主服务（见 §10 标题栏完成记录） |
@@ -2103,6 +2103,34 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
 - 已知限制（§18.4）：多列优先级角标待 Button 内容通道；水平虚拟化/
   冻结列（任务分解见设计文档 §19：共享前置件 → 冻结列 P1 → 水平
   虚拟化 P2）/RTL/拖放/Grid 专属语义仍为后续增量。
+
+### M14-D 阶段记录：DataGrid 第五/六批——冻结列与水平虚拟化（2026-09-29）
+
+- 提交号：（本变更提交，见 Git 历史 `feat(widgets)`）
+- 依据：`docs/lumen-datagrid-design.md` §19 分解 → §20 实现记录。
+- P0：`Theme.dataGrid.rowExtent`（32/40/48，固定行高——纵向几何自持，
+  noteExtent no-op，冻结区/滚动区几何严格等值的前提）；ensureColumnVisible
+  （最小移动，接线列焦点/编辑路径，收口编辑器横向可见性）；区域感知
+  前缀换算（手柄源跨区等价）。
+- 冻结列：`DataColumn.pinned` 前缀不变式（pin=冻结组尾/unpin=滚动组
+  首/moveColumn 组内钳制/先提交编辑）；区域拆分（Row[冻结区, 1px
+  borderStrong 分界线, 滚动区 ScrollView flex]；无冻结内容退化为第三批
+  结构）；FrozenRegionSource（共享纵向 ScrollController + 固定行高等值
+  窗口，冻结行 key 前缀 frow:、buildEmpty 留白）；框架
+  `Widget.excludeFromSemantics`（语义子树排除——冻结行副本不进语义树，
+  RecordingBridge 断言每数据行恰一个 listItem）。
+- 水平虚拟化：滚动区列前缀和缓存 + visibleColumnWindow（二分 + cache
+  120px）；表头/行窗口物化 + 首列前缀偏移（格 x 稳定不变式）；复制/
+  粘贴/排序/列宽 API 始终全列集；基准场景 `datagrid-wide[-N]`（100 列
+  × N 行）首跑归档 `docs/perf-baselines/m14-datagrid-wide-2026-09-29/`
+  （两跑同 hash 4d439f0470edd282）。
+- 测试：datagrid +7 用例（冻结几何/共享纵滚/横滚隔离/pin 序与提交
+  守卫/语义去重/退化策略/窗口物化与推进/窗口无关复制编辑），3 处既有
+  断言更新；datagrid 29/29、全量 828/828（Debug）/830/830（Release）；
+  card-grid 基准哈希不变。
+- 已知限制（§20.4）：冻结行 hover 仅滚动区、首帧列窗口两帧收敛、
+  loose 交叉宿主分界线退化为内容高；RTL/拖放/Grid 专属语义仍为后续
+  增量。
 
 ### M14-B 阶段记录：性能门槛收口（2026-09-24）
 

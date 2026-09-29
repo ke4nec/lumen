@@ -2,10 +2,11 @@
 
 > 状态：首版实现（2026-09-24，M14-D 契约切片）+ 2026-09-28 第二批
 > 增强（P0 可靠性 + P1 列模型切片，§16）、第三批（双轴几何 + 列宽拖宽
-> + Theme.dataGrid token 组，§17）与第四批（多列排序 + 当前格焦点环 +
-> 表头复选框三态，§18）。实现
+> + Theme.dataGrid token 组，§17）、第四批（多列排序 + 当前格焦点环 +
+> 表头复选框三态，§18）与第五/六批（冻结列 + 水平虚拟化，§19/§20，
+> 2026-09-29）。实现
 > `include/lumen/widgets/datagrid.h` + `src/widgets/datagrid.cpp`；测试
-> `tests/datagrid_tests.cpp`（24 用例：21 datagrid_* + 3 回归）+ token
+> `tests/datagrid_tests.cpp`（29 用例：26 datagrid_* + 3 回归）+ token
 > 派生用例。§10–15 为增强
 > 提案与能力审计；
 > [`design/datagrid.html`](../design/datagrid.html) 为增强目标交互稿，
@@ -526,10 +527,10 @@ value="mixed"/"true"）；`datagrid_virtualizes_rows...` 与
 剩余增量：水平虚拟化、冻结列（任务分解见 §19）、RTL 镜像、拖放、
 Grid 专属语义（§13.2 provider）、多列优先级角标。
 
-## 19. 冻结列与水平虚拟化实施提案（任务分解，2026-09-29）
+## 19. 冻结列与水平虚拟化实施提案（任务分解，2026-09-29；已按本节落地，实现记录见 §20）
 
-本节是 §17.5/§18.4 两个剩余几何增量的实施细化，供批次排期与验收；
-概念契约沿用 §11.1（列布局状态含 pinned）、§12（冻结分界）、§14
+本节是 §17.5/§18.4 两个剩余几何增量的实施细化；P0/第五批/第六批已于
+2026-09-29 全部落地（见 §20）。概念契约沿用 §11.1（列布局状态含 pinned）、§12（冻结分界）、§14
 （P2 规模预算）。实施顺序：**共享前置件 → 冻结列（第五批，P1）→
 水平虚拟化（第六批，P2）**——冻结先定型区域结构，虚拟化窗口逻辑
 只需作用域滚动区；反之先虚拟化后拆区需要迁移窗口逻辑，返工更大。
@@ -612,3 +613,84 @@ Row `padding.left = 窗口首列前缀偏移`、宽 = 滚动区宽——格 x �
 **规模边界**：水平虚拟化目标是百列量级（§14 P2）；万列场景的前缀和/
 序列化成本另评。十万行/百列的性能结论必须来自实测设备与归档基准，
 不得以 HTML 原型或小样本外推。
+
+## 20. 2026-09-29 第五/六批实现记录（冻结列 + 水平虚拟化）
+
+按 §19 分解落地 P0 三项前置件、第五批冻结列（T5.1–T5.9）与第六批水平
+虚拟化（T6.1–T6.7）。C++ 变更：`style::DataGridTokens.rowExtent`、
+`DataGridController`（区域拆分/列窗口）与一处框架接缝（语义子树排除）。
+
+### 20.1 P0 前置件
+
+- **rowExtent token + 固定行高**（P0.1）：`Theme.dataGrid.rowExtent`
+  （32/40/48 三档 + fontScale；Comfortable 40 与集合行旧实测值等值，
+  像素零变化）。行壳显式定高；`VirtualListSource` 纵向几何自持——
+  extentOf/totalExtent/offsetOfIndex 按行高直接推导，`noteExtent`
+  no-op（实测回填忽略），`visibleRange` 走通用 `visibleRangeAt` 二分，
+  `updateViewport` 直接钳制纵向控制器范围。`setEstimatedExtent` 成为
+  no-op（保留 API 兼容）。这是冻结区与滚动区几何严格等值的前提。
+- **ensureColumnVisible**（P0.2）：最小移动（右缘越界先对齐右缘、左缘
+  仍越界再对齐左缘、钳 maxOffset）；pinned 列 no-op。接线
+  setCurrentColumn/beginEdit/moveEditor/Left-Right——第三批遗留的
+  "编辑器横向可见性不保证"随之收口。
+- **区域感知前缀**（P0.3）：`columnLeftInRegion`（冻结列相对冻结区
+  原点、滚动列相对滚动区原点）+ 手柄源 offset/minLeading/extent 区域
+  化——拖宽绝对边界语义跨区域等价。
+
+### 20.2 第五批：冻结列（T5.1–T5.7）
+
+- **pinned 模型**（T5.1）：`DataColumn.pinned` + `setColumnPinned`
+  （pin = 冻结组尾、unpin = 滚动组首，先提交编辑、失败中止）；
+  `moveColumn` 组内钳制（跨界经 pin/unpin 显式表达）；列向量维持
+  pinned 前缀不变式；选择复选框列常驻冻结区首列。
+- **区域拆分**（T5.2）：`build()` 根 = `Row[冻结区 Column, 1px
+  borderStrong 分界线, 滚动区 ScrollView(flex)]`（crossAxis Stretch——
+  分界线在 tight 交叉宿主拉满，显式 高度 = 表头 + 内容高兜底）；无
+  冻结内容（无选择列且无 pinned 列）时退化为第三批结构（根 = 横向
+  ScrollView，键 owner_ 兼容）。滚动视口键 `owner_:scroll`，flex 撑满
+  剩余宽。
+- **FrozenRegionSource**（T5.3）：冻结 List 的源全部委托网格自持的
+  纵向几何（两区视口高相同 → updateViewport 等值幂等双调用）；共享
+  同一纵向 ScrollController（冻结区滚轮/拖动/惯性直驱同源，T5.4）；
+  冻结行 key 前缀 `frow:`（identity 独立）、`buildEmpty` 留白（空态
+  只在滚动区）、`tabStopKey` 空。
+- **语义去重**（T5.5）：框架新增 `Widget.excludeFromSemantics`（声明
+  式，makeNode 拷贝，collectNodes 子树早退）——冻结区行不进语义树，
+  滚动区行承载（RecordingBridge 断言每数据行恰一个 listItem）。
+- **跨区一致**（T5.4/T5.7）：选择/禁用/current 标记经同一选择集重建
+  天然同步；冻结行不置 collectionRow（不进 Tab/焦点遍历——唯一入口在
+  滚动区行）；点击冻结区格 = 同一行点击语义（列焦点/编辑/激活同路径，
+  编辑器物化于所属区）；冻结列手柄区域坐标拖宽。
+
+### 20.3 第六批：水平虚拟化（T6.1–T6.4）
+
+- **列窗口**（T6.1）：滚动区非 pinned 可见列前缀和缓存（列模型五处
+  变化点失效重算 O(n)）+ `visibleColumnWindow`（前缀和二分首列 +
+  线性尾扫；cache 120px 覆盖窗口缘手柄）。
+- **窗口物化**（T6.2）：滚动区表头与数据行只构建窗口列 + 首列前缀
+  偏移（Row padding.left）——格 x 坐标稳定不变式保持；冻结区不窗口
+  化。复制/粘贴/排序/列宽 API 始终作用于全列集（测试锁定：窗口外列
+  的 TSV 完整性）。
+- **可见性接线**（T6.3）：编辑/列焦点路径经 ensureColumnVisible 滚入
+  （编辑器物化是 requestFieldFocus 落地前提）。
+- **基准**（T6.5）：`lumen-scene-bench --scenario datagrid-wide[-N]`
+  （100 列 × N 行，默认 1000）；确定性节点预算断言在
+  `datagrid_wide_materializes_only_visible_column_window`；首跑基线
+  归档 `docs/perf-baselines/m14-datagrid-wide-2026-09-29/`（两跑同
+  hash 4d439f0470edd282）。
+
+### 20.4 测试与已知限制
+
+新增 7 用例（冻结区 pin 几何对齐/共享纵滚、横滚隔离、pin 序与提交
+守卫、语义去重与点击同步、无 pinned 退化与全 pin 退化、宽网格窗口
+物化与推进、窗口无关复制编辑）+ 3 处既有断言更新（复选框双区、滚动
+视口键、窗口收敛帧）。datagrid 29/29、全量 828/828（Debug）/830/830
+（Release）；card-grid 基准哈希不变（接缝对既有场景 no-op）。
+
+已知限制：冻结行 hover 高亮仅在滚动区（不置 collectionRow 的既有
+谓词；选中/current 已同步）；首帧列窗口仅 cache 边距内列、两帧收敛
+（hViewportWidth_ 跟踪同铺满口径；offset 触及 maxOffset 钳制时表头/
+行窗口可能单帧不一致后收敛）；横向 offset 触底时 Shift+纵轮投影/
+边界链式沿用 scroll-design 既有契约；冻结区在 loose 交叉宿主中分界
+线退化为内容高（Stretch 判定依赖 tight 交叉）。RTL 镜像/拖放/Grid
+专属语义仍为后续增量。

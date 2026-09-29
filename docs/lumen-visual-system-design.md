@@ -188,7 +188,7 @@ Tree 的 `indentStep=20`、`chevronHitExtent=24`、`chevronIconSize=16` 来自
 使用 Medium density，桌面触屏或需要更大操作区域时可选择 Large/Touch。应用明确选择 density，
 不能依赖窗口平台类型隐式改变颜色或组件语义。
 
-### 3.3 DataGrid 增强视觉映射（2026-09-28 提案；P0/列模型/双轴列宽/多列排序切片已落地）
+### 3.3 DataGrid 增强视觉映射（2026-09-28 提案；P0/列模型/双轴列宽/多列排序/冻结列切片已落地）
 
 配套 [DataGrid 增强设计 §10–18](lumen-datagrid-design.md#10-2026-09-28-能力审计与增强提案)
 与 [HTML 交互稿](../design/datagrid.html)。2026-09-28 第二批实现已落地：
@@ -196,20 +196,22 @@ Tree 的 `indentStep=20`、`chevronHitExtent=24`、`chevronIconSize=16` 来自
 Ghost 按钮表头与选择复选框列（宽 44 常量）。第三批落地 `Theme.dataGrid`
 token 组（headerExtent/selectionColumnWidth/resizeHitWidth 三档 + 双轴横向
 视口 + 列宽手柄）；第四批落地多列排序状态机、当前格内嵌焦点环与表头复选框
-三态。以下映射其余部分为目标态。
+三态；第五/六批（2026-09-29）落地 `rowExtent`（32/40/48，固定行高）、冻结
+列（分界线 = 1px borderStrong 垂直实线，选择列常驻冻结区）与滚动区列窗口
+物化。以下映射其余部分为目标态。
 
 | 部件 | 现有语义 / 组件 token 来源 |
 | --- | --- |
 | 数据区 / 表头 / 浮层 | colors.surface / surfaceSunken / surfaceElevated |
 | 行 hover / pressed / selected | list.hovered / list.pressed / list.selected；分别派生自 surfaceSunken、surface/accent 0.32 混合、不透明 accentContainer |
 | 正文 / 辅助文字 / 禁用 | colors.contentPrimary / contentSecondary / disabledContent |
-| 行分隔 / 冻结边界 | colors.borderDefault / borderStrong，默认 1 logical px；高对比跟随 Theme |
+| 行分隔 / 冻结边界 | colors.borderDefault / borderStrong，默认 1 logical px；高对比跟随 Theme（**冻结分界线已落地 §20.2**） |
 | 选中标记 | list.selectionMarker / markerWidth / markerInset（3px / 4px） |
 | 当前单元格 | colors.focusRing + metrics.focusRingWidth 内嵌环（**已落地 §18**：current 行 × current 列的格式盒边框承载，与行选择独立；格式盒无条件存在保持格 identity 稳定） |
 | 编辑错误 | textField invalid border（colors.statusError）+ colors.errorContent 错误文字；不挤高固定行（**invalid 边框已落地**；错误浮层为目标态） |
 | 业务状态 | colors.statusSuccess / statusWarning / errorContent，始终配文字或图形 |
 | 排版 | typography.body 14、typography.caption 12；金额/日期使用等宽数字并右对齐（**右对齐已落地**；等宽数字 font feature 为目标态） |
-| 行高 / 格内边距 / 圆角 | metrics.minHeight、controlPaddingX、controlRadius；外壳 metrics.cardRadius=8（**格内边距已落地**） |
+| 行高 / 格内边距 / 圆角 | metrics.minHeight、controlPaddingX、controlRadius；外壳 metrics.cardRadius=8（**格内边距已落地；行高 = dataGrid.rowExtent 固定行高已落地 §20.1**） |
 
 拟新增的几何 token 均置于未来 `Theme.dataGrid`，在实现时与 layout/hit-test/paint
 使用同一份 resolved 值，不将 HTML 像素常量复制进 painter：
