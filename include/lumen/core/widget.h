@@ -270,6 +270,11 @@ struct Widget {
     // v0.3 阶段8D（plan §3.4）：
     // Checkbox/Switch 的选中状态（applyBinds 从 bind 值解析）。
     bool checked{false};
+    // Checkbox 三态视觉（visual-system §6.4 / datagrid §12 表头全选）：
+    // indeterminate=true 时指示器画 accent 填充 + 横线（非勾号），语义
+    // value="mixed"。声明式状态（无 bind 通道——集合选择等由控制器按
+    // 选择集重建）；checked 保持 false。
+    bool indeterminate{false};
     // ScrollView/ListView/VirtualList 的当前滚动偏移（应用侧
     // ScrollController 持有，重建时写回；VirtualList 亦经 source 读取）。
     float scrollOffset{0.0F};

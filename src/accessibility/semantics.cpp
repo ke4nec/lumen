@@ -129,9 +129,14 @@ void collectNodes(const RenderNode& node, core::Offset absolute, bool isRoot,
             // 视觉系统：selected 与 checked 同样折算（resolver 已把
             // selected 计入选中视觉，语义保持一致，§7.3）。
             semantic.label = node.text;
-            semantic.value =
-                (node.checked || node.selected) ? "true" : "false";
-            if (node.checked || node.selected) {
+            // 三态（Widget.indeterminate，集合选择部分选中）：value
+            // ="mixed"（ARIA 术语），不带 checked flag。
+            semantic.value = node.indeterminate &&
+                                     !(node.checked || node.selected)
+                                 ? "mixed"
+                                 : ((node.checked || node.selected) ? "true"
+                                                                    : "false");
+            if (!node.indeterminate && (node.checked || node.selected)) {
                 semantic.flags |= kSemanticsChecked;
             }
             break;

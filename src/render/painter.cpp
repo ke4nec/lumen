@@ -992,12 +992,29 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
                     common.focusWidth);
             }
             sink.drawRect(indicatorRect,
-                          checkbox->checked ? checkbox->indicatorChecked
-                                            : checkbox->indicator,
+                          checkbox->checked || checkbox->indeterminate
+                              ? checkbox->indicatorChecked
+                              : checkbox->indicator,
                           CornerRadius::all(indicatorRadius));
             sink.drawRectStroke(indicatorRect, checkbox->indicatorOutline,
                                 CornerRadius::all(indicatorRadius), common.borderWidth);
-            if (checkbox->checked) {
+            if (checkbox->indeterminate) {
+                // 三态（visual-system §6.4）：accent 填充 + 居中横线
+                //（markInset 同勾号内缩；系统惯例的"部分选中"形）。
+                const float inset = checkbox->markInset;
+                const float lineThickness =
+                    std::max(1.0F, std::round(indicator * 0.12F));
+                const Rect dashBox{
+                    Offset{indicatorRect.origin.x + inset,
+                           indicatorCenterY - lineThickness * 0.5F},
+                    Size{std::max(0.0F, indicatorRect.size.width -
+                                            2.0F * inset),
+                         lineThickness}};
+                if (dashBox.size.width > 1.0F) {
+                    sink.drawRect(dashBox, checkbox->mark,
+                                  CornerRadius::all(lineThickness * 0.5F));
+                }
+            } else if (checkbox->checked) {
                 // On：accent 填充 + 勾号（目录折线按 markInset 内缩）。
                 const auto& polylines =
                     core::iconPolylines(core::IconId::Check);

@@ -98,6 +98,7 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.semanticsRole = widget.semanticsRole;
     node.semanticsActions = widget.semanticsActions;
     node.checked = widget.checked;
+    node.indeterminate = widget.indeterminate;
     node.scrollOffset = widget.scrollOffset;
     node.scrollAxis = widget.scrollAxis;
     node.imageId = widget.imageId;

@@ -57,6 +57,7 @@ struct RenderNode {
     // painter 滚动条、交互层输入分量都沿该轴解释（默认纵向）。
     ScrollAxis scrollAxis{ScrollAxis::Vertical};
     bool checked{false};         // Checkbox/Switch 状态
+    bool indeterminate{false};   // Checkbox 三态（accent 填充 + 横线）
     // 虚拟化视口（VirtualList/List/Tree/TreeList）携带数据源：交互层
     // 滚轮/拖动滚动据此直接驱动源控制器的 ScrollController，应用无需
     // 按 key 接线（collection-controls-design §6.5）。

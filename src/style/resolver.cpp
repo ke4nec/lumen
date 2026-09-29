@@ -510,6 +510,10 @@ ResolvedStyle resolveCheckbox(const Widget& widget,
     checkbox.labelGap = tokens.labelGap;
     checkbox.slotSize = indicatorSlot(theme, checkbox.indicatorSize);
     checkbox.checked = state.checked || state.selected;
+    // 三态声明（Widget.indeterminate；集合选择部分选中，visual-system
+    // §6.4）。checked 优先：两者同真按全选呈现。
+    checkbox.indeterminate =
+        widget.indeterminate && !checkbox.checked;
 
     if (state.disabled) {
         // 禁用仍可辨认 checked：填充降级为禁用面，勾号/轮廓/文字取

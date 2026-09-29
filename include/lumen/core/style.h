@@ -85,6 +85,9 @@ struct CheckboxResolvedStyle {
     // 是否聚焦不改变槽位与标签起点。
     float slotSize{0.0F};
     bool checked{false};
+    // 三态（声明式，Widget.indeterminate；集合选择"部分选中"由控制器按
+    // 选择集重建）：checked=false 时生效——accent 填充 + 横线替代勾号。
+    bool indeterminate{false};
     bool operator==(const CheckboxResolvedStyle&) const = default;
 };
 
