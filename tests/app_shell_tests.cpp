@@ -1007,6 +1007,50 @@ TEST_CASE("run_app_requeues_resources_after_renderer_replacement", "[app]") {
     CHECK(manager->diagnostics().reuploads == 1);
 }
 
+TEST_CASE("run_app_requeues_resources_after_surface_reattach", "[app]") {
+    // M14-C：surface 分离/重挂（resetSurface 重建渲染目标）后，Ready 资源
+    // 与 renderer 替换路径同语义重排队上传——surface 生命周期不依赖应用
+    // 自行补上传（此前 reattach 路径漏掉 handleDeviceRebuilt）。
+    FakeApplicationHost host;
+    auto manager = std::make_shared<lumen::render::ResourceManager>();
+    lumen::render::PixelBuffer pixels;
+    pixels.width = 2;
+    pixels.height = 2;
+    pixels.rgba.assign(16, 90);
+    pixels.rgba[3] = pixels.rgba[7] = pixels.rgba[11] = pixels.rgba[15] = 255;
+    const auto handle = manager->registerImage(std::move(pixels));
+    REQUIRE(handle.valid());
+
+    ShellConfig config;
+    config.initialView = Size{200, 100};
+    config.build = [&] {
+        return lumen::core::withKey(
+            lumen::core::makeImage(manager->ready(handle)
+                                       ? manager->imageId(handle)
+                                       : 0,
+                                   "reattach-src"),
+            "m14c-reattach-image");
+    };
+    AppShell shell{config};
+
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow({});
+    REQUIRE(id.has_value());
+    host.detachSurface(*id);
+    host.reattachSurface(*id);
+    host.pushQuit();
+
+    RunOptions options;
+    options.resourceManager = manager;
+    options.maxFrames = 3;
+    options.idleWaitMs = 20;
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(manager->state(handle) == lumen::render::ResourceState::Ready);
+    CHECK(manager->diagnostics().reuploads == 1);
+    // 重排队后的上传命令在恢复帧被真实消费（内部 CPU renderer 统计）。
+    CHECK(shell.stats().uploads >= 1);
+}
+
 TEST_CASE("run_app_preserves_scroll_and_focus_across_minimize_restore",
           "[app]") {
     // M14-C：最小化（停帧）/恢复（重建帧）期间状态保持契约——滚动偏移

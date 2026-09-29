@@ -529,6 +529,13 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                     break;
                 case HostEventType::SurfaceReattached:
                     applyMetrics(*runtime);
+                    // M14-C：surface 分离期间渲染目标可能随窗口一起销毁，
+                    // 与 renderer 替换路径同语义重排队 Ready 资源（幂等，
+                    // ImageId 不变；上传命令随下一帧前置输出）。
+                    if (runtime->app.options.resourceManager) {
+                        runtime->app.options.resourceManager
+                            ->handleDeviceRebuilt();
+                    }
                     syncWindowVisibility(*runtime);
                     scheduler.requestFrame(render::FrameReason::Resize,
                                            runtime->id);

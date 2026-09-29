@@ -2002,9 +2002,11 @@ host 和共享 runner 的一次性结果只能作为诊断证据，不能直接�
   minimize_restore`（最小化停帧/恢复重建帧期间滚动偏移 + 焦点 + 编辑
   值保持，settings 同款 onWheel/withScrollOffset 应用接线）。
 - 已知限制：字体仍为同步工厂（失败诊断字符串，无异步生命周期——按
-  M14-C 范围记为后续增量）；surface 重建（reattach）不触发资源重排队
-  （仅 renderer 替换路径，M7 验证的设备重建语义）；干净容器级包验证
-  仍以 CI runner 为准。
+  M14-C 范围记为后续增量）；干净容器级包验证仍以 CI runner 为准。
+  （2026-09-29 追记：surface 重建（reattach）资源重排队已补齐——
+  `SurfaceReattached` 事件现与 renderer 替换路径同语义调用
+  `handleDeviceRebuilt`，测试 `run_app_requeues_resources_after_surface_
+  reattach`。）
 
 ### M14-D 阶段记录：DataGrid 首版契约（2026-09-24）
 
