@@ -1,0 +1,188 @@
+# Lumen M15+ 增强链路线图
+
+> 文档状态：规划（2026-09-29）
+> 定位：收纳 2026-09-29「自研 GUI 标准缺口分析」结论，形成 M14 之后的后续增强里程碑链。
+> 编号规则：延续自用路线图编号，M9 冻结不变；本文件维护 M15 起的规划与完成记录，M0–M14 的状态与完成记录仍以 [`lumen-self-use-roadmap.md`](lumen-self-use-roadmap.md) 为准。
+> 范围基线：Windows/Linux/macOS 桌面。移动端维持 M9 冻结，本文不产生任何移动端任务；数据库、网络、同步与账号仍属应用层。
+
+## 1. 缺口来源与需求映射
+
+### 1.1 分析结论（2026-09-29）
+
+按自研 GUI 框架通用标准（渲染、布局、控件、文本、输入、窗口、无障碍、i18n、工具链、发布）对照：Lumen 的工程骨架（三后端命令一致、性能门禁、语义契约、四态验收、便携发布、文档同步）完成度高；缺口集中在**交互层（拖放完全缺失）**与**平台深度集成层（窗口能力/托盘/原生菜单/全局快捷键）**，其次是文本深度（富文本/复杂脚本）、控件细节池与开发者工具。
+
+| 优先级 | 需求 | 现状证据（2026-09-29） | 归属 |
+| --- | --- | --- | --- |
+| P0 | 拖放（OS 拖入 + 应用内行/列重排） | `include/`、`src/` 全文检索无任何 DnD 实现 | M15 |
+| P0 | M14-A Windows/macOS 真实验收（读屏回环/真实 IME/透明合成/浸泡） | 回环脚本 `tests/uia_reader_loop.py`/`voiceover_loop.py` 就绪，现场人工验收未做 | 不新开编号，仍属 M14 出口 |
+| P1 | 桌面窗口与系统集成（全屏/置顶/OS 模态/托盘/全局快捷键/macOS 原生菜单栏/交通灯） | 窗口能力仅 min/max/restore/DPI（`application_host.h`） | M16 |
+| P1 | 发布尾项（Windows/macOS GPU 包、CPack Bundle） | package-skia-gpu 变体仅 Linux llvmpipe | M16 |
+| P2 | 控件细节池（auto-hide/RTL 镜像/双轴联滚/跨行列合并/Splitter 塌缩/菜单 mnemonic/行内编辑/DataGrid 筛选等） | 各设计文档「已知限制」与主路线图按需池 | M17 |
+| P2 | 开发者诊断工具（inspector/帧统计/headless dump） | 仅 JSON 基准报告与 poll 换根热重载接缝 | M18 |
+| P1（按需） | 富文本与复杂脚本（HarfBuzz 合字/完整 UBA/TextSpan） | shaping 为逐 grapheme cluster、bidi 为 UAX#9 确定性子集 | M19（按需启用） |
+
+### 1.2 不纳入本链
+
+- 移动端（M9 冻结）、数据库/网络/同步（应用层）、CSS/Flutter API 兼容层、3D/WASM、DSL 可编程化/脚本能力。
+- 框架级 i18n/本地化资源系统：维持主路线图 §1.2 边界，由应用自行管理字符串与区域设置；若未来目标应用明确需要，再按需评估（不预设编号）。
+- 桌面专用 GPU 后端（Graphite/Vulkan/Metal/D3D）：维持按需评估池，不因本链改变。
+
+## 2. 依赖与进入条件
+
+```text
+M14 实战可用收敛（总出口）
+        ↓
+M15 拖放 ────────┐   M15/M16 无强依赖，可并行或换序
+M16 窗口与系统集成 ┘
+        ↓
+M17 控件细节与 RTL 镜像（池式交付；行/列重排相关项依赖 M15）
+M18 开发者诊断工具（仅依赖 M14-C 诊断通道，可任意穿插）
+M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
+```
+
+- **M15 进入条件**：M14-B/M14-C 已收口、M14-D 达到默认交付。M14-A 跨平台人工验收未完成不阻塞 M15 开工，但「实战可用」的宣称仍以 M14 总出口为准（四态规则不变）。
+- **M17** 中 DataGrid 列拖序、List/Tree 行重排依赖 M15；其余条目相互独立，允许按实际需要选取子集交付，未交付项必须留在本文件并保持状态如实。
+- **M18** 只依赖 M14-C 结构化诊断通道，可在 M15–M17 期间任意穿插。
+- **M19** 由用户明确的产品需求触发（阿拉伯/南亚脚本或富文本），触发前不排期。
+
+## 3. M15：拖放（P0）
+
+**目标**：补齐自用工具高频的拖放闭环——OS→应用的文件/文本拖入，应用内 List/Tree/DataGrid 行重排与 DataGrid 列拖序；键盘等价与无障碍契约同步交付。
+
+**实现**
+
+1. 平台契约（`lumen-platform`）
+   - `HostEvent` 新增 Drop 类事件（文件/文本 + windowId + 指针位置，及 enter/leave/position 用于落点反馈）；`ApplicationHost` 新增 `startDrag(WindowId, DragPayload)` 拖出接口；`PlatformCapabilities.dragDrop` 如实报告接收/拖出两项能力。
+   - SDL3 host：接收走 `SDL_EVENT_DROP_*`；拖出依赖 SDL 版本能力，固定 SDL 3.2.10 缺失时结构化 Unavailable（不阻塞启动），SDL 升级时重评。
+   - Fake host：拖入/拖出确定性记录 + 失败注入（沿用 M4 服务模式）。
+2. core 交互层
+   - `InteractionController` 拖放会话状态机（pending → dragging → dropped/cancelled；指针取消复用既有取消事件）；拖拽启动阈值 token 化。
+   - 手势仲裁表：拖放 vs TextField 选区拖动 vs M10 滚动 `applyDrag` vs DataGrid 列宽拖宽（splitter 通道）——统一优先级并以 headless 用例锁定。
+3. widgets 层
+   - List/Tree/DataGrid `onReorder` 回调（stable key 驱动，与 SelectionModel 正交）；DataGrid `reorderColumn`（复用列宽手柄通道经验，见 DataGrid 设计 §17.3）。
+   - 拖拽 ghost 经 M11 框架级 overlay 承载；drop 目标高亮 token 化（经 [`lumen-visual-system-design.md`](lumen-visual-system-design.md) 增补 DragDrop token 组，控件不写死常量）。
+4. 无障碍
+   - 拖放功能必须提供键盘等价路径（如 Alt+↑/↓ 移动、上下文菜单命令）与语义 action（Reorder/MoveUp/MoveDown）；语义树暴露可重排性。纯指针路径不得成为唯一路径。
+
+**接口约束**
+
+- 拖放会话由 UI 线程拥有；平台回调只投递不可变数据（M4 异步回调同步模式）。
+- 重排不得破坏 stable key/identity 规则；重排后焦点、语义、滚动位置与编辑状态保持（复用 M3 回收测试模式）。
+- OS 拖入能力不可用时应用零影响启动：能力 false + 结构化降级。
+- 新增 token/视觉走视觉系统文档同步更新（含 `design/*.html` 对齐）。
+
+**验证**
+
+- headless：状态机全路径（启动/越过阈值/取消/落点命中/跨窗口）、手势仲裁、重排后状态保持、键盘等价与语义 action、Fake host 失败注入。
+- 窗口 smoke：三桌面真实 OS 文件/文本拖入 settings/Gallery。
+- 性能：拖拽进行中的帧不破 10% 门槛；无会话的静态场景零额外动画帧、既有 frame hash 不变。
+
+**出口条件**：三桌面 OS 拖入 smoke 通过；行/列重排 + 键盘等价有 headless 证据；拖出能力如实报告（可用或结构化不可用）；性能门槛与既有 hash 全绿。
+
+## 4. M16：桌面窗口与系统集成（P1，含发布尾项）
+
+**目标**：把窗口能力与系统集成补齐到「个人工具可长期驻留」水平：全屏、置顶、OS 级模态、系统托盘、全局快捷键、macOS 原生菜单栏与交通灯；收口 Windows/macOS GPU 包尾项。
+
+**实现**
+
+1. 窗口能力：`ApplicationHost` 新增 `toggleFullscreen`/`setAlwaysOnTop`/`setWindowModal(parent)`；结果经 Window 事件交付（FullscreenChanged/AlwaysOnTopChanged/ModalChanged 类），`WindowMetrics` 与能力报告同步。SDL3 对应 API 以固定版本为准，缺失项结构化 Unavailable。
+2. 系统托盘：TrayIcon 服务（图标/tooltip/菜单/点击事件）；SDL 无对应能力时走三平台原生 seam（Win32 `Shell_NotifyIcon`、Linux StatusNotifierItem D-Bus、macOS `NSStatusItem`），复用 M12 `native_services_*` 模式；托盘菜单事件回灌 `HostEvent`。
+3. 全局快捷键：Win32 `RegisterHotKey`、macOS Carbon/NSEvent、Linux X11 `XGrabKey`；Wayland 无标准门户时如实 Unavailable，不伪装支持。
+4. macOS 原生菜单栏与标题栏：自绘 MenuBar 的数据模型单向映射到 `NSMenu`（数据单一来源仍是框架菜单模型）；标题栏 macOS 交通灯与 borderless 最大化回退策略收口（同步 [`lumen-titlebar-design.md`](lumen-titlebar-design.md)）。
+5. 发布尾项：package-skia-gpu 变体扩展至 Windows/macOS；CPack Bundle 生成器收口；新形态以 CI 首跑为事实来源。
+6. 全部新能力进入 `PlatformCapabilities` 与 M14-C 结构化诊断。
+
+**接口约束**：公共头无平台 SDK 类型；原生实现限于 platform 目标；服务失败不阻塞 UI 线程；能力报告遵守四态规则。
+
+**验证**：Fake host 断言 + 失败注入；三桌面 smoke（全屏切换、DPI 变化下置顶、OS 模态父子行为、托盘显示/菜单/点击、全局快捷键触发、macOS 菜单栏与交通灯操作）；包变体 CI 解包冒烟。
+
+**出口条件**：settings/Gallery 演示全部新能力；不可用环境结构化降级且诊断可读；Windows/macOS GPU 包 CI 通过。
+
+## 5. M17：控件细节与 RTL 镜像（P2，池式交付）
+
+**目标**：收口各设计文档「已知限制」中已识别的控件增量；逐项独立验收，不破坏既有契约。
+
+**实现**（每项须同步对应设计文档与 `design/*.html`）
+
+| 项 | 内容 | 设计文档 |
+| --- | --- | --- |
+| auto-hide 滚动条 | 显隐过渡（MotionTokens 驱动；reduceAnimation 直达终态） | [`lumen-scroll-design.md`](lumen-scroll-design.md) |
+| 同视口双轴联滚 | 横纵滚轮/触摸在对角输入下联滚 | [`lumen-scroll-design.md`](lumen-scroll-design.md) |
+| RTL UI 镜像 | textDirection 语义（start/end 对齐映射、滚动条/分隔线/chevron/进度方向镜像）；与 M1 bidi 文本子集协同 | [`lumen-visual-system-design.md`](lumen-visual-system-design.md) |
+| Grid 跨行列合并 | rowspan/colspan；横向网格按需评估 | 框架计划文档 |
+| Splitter 窗格塌缩 | 塌缩/KeepRatio + `.lumen` 节点 | [`lumen-splitter-design.md`](lumen-splitter-design.md) |
+| 菜单增强 | mnemonic 下划线、Alt/F10 单键、触摸长按 | [`lumen-menu-controls-design.md`](lumen-menu-controls-design.md) |
+| 行内编辑 | Tree/List 行内编辑（复用 TextField 编辑事务契约） | [`lumen-collection-controls-design.md`](lumen-collection-controls-design.md) |
+| DataGrid 增量 | 筛选面板与搜索（`onFilterRequest` 接线/条件模型/无结果状态，设计 §11.2）；异步提交 draft+saveError 契约（§13.1）；表头 hover 前景与多列优先级角标（Button 内容通道扩展）；Grid/Table 专属语义 role 与单元格级焦点导航（§8） | [`lumen-datagrid-design.md`](lumen-datagrid-design.md) |
+| DSL/基准补齐 | 上述新能力与既有 Spin/Toolbar/StatusBar/Splitter 的 `.lumen` 节点与基准场景 | DSL 文档 |
+
+**接口约束**：每项可独立交付；未启用新特性的场景 frame hash 不变；RTL 镜像只发生在布局与 token 解析层，渲染命令保持物理 LTR 坐标，命中测试契约不变。
+
+**验证**：每项 headless 覆盖；RTL 黄金用例（Row 对齐/滚动/DataGrid 冻结列/分隔线镜像）；性能门槛不回退。
+
+**出口条件**：清单全部实现，或未实现项在本文件保持「待交付」状态并同步到支持矩阵已知限制；无未文档化的行为分叉。
+
+## 6. M18：开发者诊断工具（P2）
+
+**目标**：缩短「看到问题 → 定位」路径，为自用开发提供框架级诊断工具。
+
+**实现**
+
+1. Inspector：运行时 Widget/Element 树可视化（type/key/WidgetState/ResolvedStyle/bounds/damage），节点选中 → bounds overlay；overlay 走普通 RenderCommand 绘制，三后端一致。
+2. 语义树视图：复用 RecordingAccessibilityBridge 数据（identity diff/焦点/action 记录）。
+3. 帧统计 overlay：FrameReason 分布、build/layout/paint/submit 分相、fps、命令数/节点数（与基准计数同源，经 FrameScheduler 供给）。
+4. headless dump：`--dump-tree/--dump-style/--dump-semantics` 文本化导出，与既有命令录制/回放、像素导出配套，构成无窗口对照工具链。
+5. 接线：诊断开关（环境变量或 RunOptions）统一走 M14-C 结构化诊断通道，不新增散乱输出。
+
+**接口约束**
+
+- 默认关闭且零开销：关闭态基准 frame hash 与性能必须与基线完全一致（CI 断言）；开启态属于诊断场景，允许帧输出不同。
+- inspector 代码不进入公共头依赖路径，不改变应用的链接面。
+- overlay 作为独立诊断层提交，不参与应用帧的 damage/缓存判定。
+
+**验证**：headless dump golden 对照；三后端开启态冒烟；关闭态 hash/性能与归档基线对照。
+
+**出口条件**：dump 工具纳入 CI 工具链（`build-commands.md` 收录用法）；inspector 三桌面窗口 smoke 可用；零开销断言入 CI。
+
+## 7. M19：富文本与复杂脚本（按需启用）
+
+**状态**：按产品需要启用（原 M14-E 升格为独立里程碑）；未触发前不排期、不占增强链顺序。
+
+**触发条件**：目标应用明确需要阿拉伯文/南亚复杂脚本高保真排版，或混排样式富文本成为产品需求；由用户明确需求触发。
+
+**实现**
+
+1. 富文本模型：TextSpan 树（样式继承与局部覆盖）、布局/命中/选区/caret 与 `EditingHistory` 事务扩展、DSL/builder 支持。
+2. HarfBuzz 合字 shaping：接入 Skia 预编译包自带的 skshaper/harfbuzz/icu 归档（版本随 Skia pin 固定）；`FontManager::shapeCluster` 已预留多 glyph 返回；CPU-only 构建保持占位可用。
+3. 完整 UBA：显式嵌入/隔离控制、镜像括号、数字定形；grapheme 边界仍为唯一编辑索引。
+4. 语言相关字体 fallback 策略。
+
+**接口约束**：不改变编辑事务/选区/无障碍索引契约；harfbuzz/icu 固定版本并记录许可证（FetchContent 规则）；CPU-only 构建可独立编译。
+
+**验证**：固定字体环境的 glyph/cluster/命中测试证据；富文本黄金用例 + undo/redo 事务；既有 zh/en 用例与基线零变化。
+
+**出口条件**：目标语言集合与富文本场景收口；既有编辑/语义/性能门槛不回退。
+
+## 8. 风险与处理顺序
+
+| 风险 | 表现 | 处理顺序 |
+| --- | --- | --- |
+| SDL 能力边界（拖出/托盘/全局快捷键等） | 固定 SDL 3.2.10 缺 API | 构建期探测 + 原生 seam + 结构化降级；能力如实报告，不伪装 |
+| 拖放 × stable key/焦点复用 | 重排后状态串项 | 契约测试先于实现（M3 回收测试模式） |
+| 手势仲裁冲突 | 拖放/滚动/选区/列宽互抢 | InteractionController 统一优先级表 + headless 锁定 |
+| 双源菜单（自绘 + macOS 原生） | 状态分叉 | 数据单一来源为框架菜单模型，原生层只做渲染与事件回灌 |
+| RTL 镜像波及面 | 坐标系混乱 | 镜像限定在布局/token 解析层，渲染命令保持物理 LTR；黄金用例先行 |
+| 富文本依赖体量 | harfbuzz/icu 引入风险 | M19 按需触发；版本/许可证固定；CPU-only 可用 |
+| inspector 开销 | 基准回退 | 默认关闭零开销断言入 CI |
+
+## 9. 测试、CI 与证据要求
+
+沿用主路线图 §6 全部规则：headless 先行、三后端命令一致、四态能力描述、性能 p50/p95 ≤10% 门槛、frame hash 稳定、CI 矩阵不变。本链附加要求：
+
+- 每个里程碑的完成记录追加到本文件 §10（模板同主路线图 §10）。
+- 能力/支持矩阵变化必须在同一变更中更新 [`support-matrix.md`](support-matrix.md)。
+- 涉及窗口/系统服务的项，Fake host 断言之外必须补三桌面真实 smoke，或如实标注「未覆盖平台」。
+
+## 10. 完成记录
+
+（模板同主路线图 §10：完成日期/提交号/变更/测试/平台/已知限制/回滚点。自 M15 起逐里程碑追加。）
