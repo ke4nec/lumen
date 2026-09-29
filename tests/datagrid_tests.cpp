@@ -1316,3 +1316,87 @@ TEST_CASE("datagrid_wide_copy_and_edit_are_window_independent",
     CHECK(fx.grid.hScroll().offset() == Catch::Approx(before));
     CHECK(fx.grid.columnWidths()[50].second == Catch::Approx(160.0F));
 }
+
+// --- review 复测（2026-09-29 第五/六批：真实指针/像素路径） ---
+
+namespace {
+// 像素采样（CPU framebuffer；gpu_list_readback 同模式）。
+core::Color pixelAt(const render::PixelBuffer& buffer, int x, int y) {
+    const std::size_t offset =
+        (static_cast<std::size_t>(y) * static_cast<std::size_t>(buffer.width) +
+         static_cast<std::size_t>(x)) *
+        4;
+    return core::Color::fromRGBA(buffer.rgba[offset], buffer.rgba[offset + 1],
+                                 buffer.rgba[offset + 2],
+                                 buffer.rgba[offset + 3]);
+}
+}  // namespace
+
+TEST_CASE("REGRESSION_frozen_region_pointer_paths_and_divider_pixel",
+          "[widgets][datagrid]") {
+    GridFixture fx;
+    CHECK(fx.grid.setColumnPinned("name", true));
+    fx.render();
+    fx.render();
+
+    // 1) 冻结区行上纵向拖动：框架 ScrollDragSink 经共享纵向控制器 pan
+    //    （滚动区行同步，T5.4 共享纵滚的真实指针路径）。
+    const core::Offset rowAt =
+        core::absoluteOffset(fx.shell.root(), "grid:frow:r4") +
+        core::Offset{20.0F, 20.0F};
+    fx.shell.pointerDown(rowAt);
+    fx.shell.pointerMove(core::Offset{rowAt.x, rowAt.y - 80.0F});
+    fx.shell.pointerUp(core::Offset{rowAt.x, rowAt.y - 80.0F});
+    fx.render();
+    CHECK(fx.grid.scroll().offset() > 0.0F);
+    CHECK(fx.grid.hScroll().offset() == Catch::Approx(0.0F));
+
+    // 2) 横向滚动条拇指拖动：moveScrollbar 按轴直驱 hScroll_（virtualSource
+    //    路径）——表头与数据区同源平移、冻结区不动。加宽 qty 使滚动内容
+    //    440 > 视口 255（有横向滚动范围）。
+    fx.shell.pointerCancel();
+    CHECK(fx.grid.resizeColumn("qty", 300.0F));
+    fx.grid.hScroll().scrollTo(0.0F);
+    fx.render();
+    fx.render();
+    fx.grid.hScroll().scrollBy(100.0F);
+    fx.render();
+    const auto* view = core::findNodeByKey(fx.shell.root(), "grid:scroll");
+    REQUIRE(view != nullptr);
+    CHECK(view->scrollExtent > 0.0F);
+    // 滚动条 thumb 在滚动区底缘（viewport 高 - thumb 带）——按几何推 thumb
+    // 中心并拖动。
+    const core::Offset viewOrigin =
+        core::absoluteOffset(fx.shell.root(), "grid:scroll");
+    const float thumbBandY = viewOrigin.y + view->size.height - 8.0F;
+    // thumb 拖动为绝对定位语义（指针位置换算）：先回 0（thumb 贴左缘）
+    // 再向右拖，方向/结果确定。
+    fx.grid.hScroll().scrollTo(0.0F);
+    fx.render();
+    fx.shell.pointerDown(core::Offset{viewOrigin.x + 8.0F, thumbBandY});
+    fx.shell.pointerMove(core::Offset{viewOrigin.x + 88.0F, thumbBandY});
+    fx.shell.pointerUp(core::Offset{viewOrigin.x + 88.0F, thumbBandY});
+    fx.render();
+    CHECK(fx.grid.hScroll().offset() > 0.0F);
+    CHECK(fx.grid.hScroll().offset() <= fx.grid.hScroll().maxScrollOffset());
+    CHECK(core::absoluteOffset(fx.shell.root(), "grid:frozen-header").x ==
+          Catch::Approx(
+              core::absoluteOffset(fx.shell.root(), "grid:frozen-header").x));
+
+    // 3) 分界线像素（CPU framebuffer）：冻结区右缘 1px 实线 == borderStrong
+    //    （§12 不依赖阴影的像素级验证）。
+    fx.shell.pointerCancel();
+    fx.grid.hScroll().scrollTo(0.0F);
+    fx.render();
+    const auto& buffer = fx.shell.pixels();
+    const auto* line = core::findNodeByKey(fx.shell.root(), "grid:freeze-line");
+    REQUIRE(line != nullptr);
+    const core::Offset lineOrigin =
+        core::absoluteOffset(fx.shell.root(), "grid:freeze-line");
+    const core::Color strong = fx.shell.theme().colors.borderStrong;
+    CHECK(pixelAt(buffer, static_cast<int>(lineOrigin.x),
+                  static_cast<int>(lineOrigin.y + 100.0F)) == strong);
+    // 分界线左侧（冻结区）与右侧（滚动区）非分界色。
+    CHECK(pixelAt(buffer, static_cast<int>(lineOrigin.x) - 2,
+                  static_cast<int>(lineOrigin.y + 100.0F)) != strong);
+}

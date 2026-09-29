@@ -694,3 +694,12 @@ Row `padding.left = 窗口首列前缀偏移`、宽 = 滚动区宽——格 x �
 边界链式沿用 scroll-design 既有契约；冻结区在 loose 交叉宿主中分界
 线退化为内容高（Stretch 判定依赖 tight 交叉）。RTL 镜像/拖放/Grid
 专属语义仍为后续增量。
+
+**review 修复（同日追记）**：根横向视口补 `showScrollbar = true`——
+review 复测发现横向滚动缺可视滚动条且拇指无法拖动（scrollbarThickness
+仅随 showScrollbar 设置，moveScrollbar 拇指路径直驱 hScroll_ 由此才
+可达）；thumb 绘制进入帧输出，datagrid-wide 基线同日重归档（README
+注记，未改阈值）。新增复测用例 `REGRESSION_frozen_region_pointer_
+paths_and_divider_pixel`：冻结区行真实指针纵向 pan、横向滚动条拇指
+拖动（绝对定位语义）与分界线 CPU 像素断言。a11y 桥 ON 构建相关
+66 项通过。

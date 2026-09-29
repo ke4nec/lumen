@@ -589,6 +589,11 @@ core::Widget DataGridController::build() const {
     view.scrollOffset = hScroll_.offset();
     // flex 撑满根 Row 剩余宽（总宽 − 冻结区 − 分界线）。
     view.flex = 1.0F;
+    // 横向滚动条（review 发现缺失）：scrollExtent>0 时底缘实绘 thumb
+    //（token 驱动、不占布局），拇指拖动经源接缝直驱 hScroll_——双轴
+    // 几何的可视 affordance；scrollExtent=0（内容放得下）时 painter
+    // 自然不画。
+    view.showScrollbar = true;
 
     if (!hasFrozen) {
         // 无冻结内容（无选择列且无 pinned 列）：结构与第三批等价——根
