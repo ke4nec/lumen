@@ -974,8 +974,9 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   峰值内存和重建次数。目标数值由 DP-8 决定；在决定前只能要求“相对基线不回退”，不能
   虚构固定毫秒数。当前先交付 headless 的 12/100/1000 L0 fixture，覆盖规范化
   serialize/read、schema、compile、layout 和 CPU paint；它记录阶段耗时并断言重复运行的
-  DOM、RenderNode 和 frame hash 一致。虚拟列表/组合件、峰值内存和真实重建次数仍待 D3
-  预览容器与 DP-8 决策后补齐。
+  DOM、RenderNode 和 frame hash 一致。当前另有运行时 Widget 虚拟列表 fixture，验证大列表
+  只物化可见窗口；L2 DesignDocument 虚拟列表/组合件 schema、峰值内存和真实重建次数仍待
+  D3 预览容器与 DP-8 决策后补齐。
 
 **验收**：键盘和辅助技术可以完成 D2 的选择/定位与 D3 的属性编辑/保存；高 DPI、高对比
 和字体缩放下布局、命中和语义仍一致；相同输入重复运行产生相同规范化文档和诊断排序。
@@ -1179,8 +1180,8 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `219` 个断言、
-  `17` 个测试用例通过；`ctest -R 'designer|document_store'` 为 `28/28` 通过。此前未受
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `225` 个断言、
+  `18` 个测试用例通过；`ctest -R 'designer|document_store'` 为 `29/29` 通过。此前未受
   工作区 app shell 变更影响的全量基线为 `972/972`；当前未提交的 app shell/bounds overlay
   变更使全量总数变为 978，并在 `debug_overlays_draw_only_when_enabled` 处失败，后续权限错误
   是同一测试目标被中断后的级联，不归因于本阶段 DSL 改动。
@@ -1195,7 +1196,9 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   原子替换，主文件损坏时只从有效恢复副本返回文档。
 - F6 性能基线：`designer_performance_tests.cpp` 覆盖 12、100、1000 节点的规范化读回、
   schema、compile、layout、CPU paint 和重复运行确定性；另有 12 节点 `.lumen` 导入 fixture。
-  测试只输出阶段耗时供后续 DP-8 建立相对基线，不冻结跨机器的绝对毫秒门槛。
+  同一 fixture 还覆盖 1000 项运行时 VirtualList 的窗口物化与 frame hash；测试只输出阶段
+  耗时供后续 DP-8 建立相对基线，不冻结跨机器的绝对毫秒门槛。L2 设计文档节点和组合件
+  预览仍未登记 schema。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；失败编译只更新结构化诊断，替换成功编译会关闭旧 session，文档
   身份变化时清除旧帧。`designer_preview_frame_tests.cpp` 覆盖这些恢复和代数边界。

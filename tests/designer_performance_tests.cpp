@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -9,6 +10,7 @@
 
 #include "lumen/dsl/design_codec.h"
 #include "lumen/dsl/design_schema.h"
+#include "lumen/core/virtual_list.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
 #include "lumen/render/painter.h"
@@ -188,4 +190,51 @@ TEST_CASE("designer performance baseline imports the twelve node L0 source",
     INFO("12 node source parse_us=" << parseTime.count());
     INFO(timingSummary("12 node source", fixture));
     CHECK(fixture.frameHash != 0);
+}
+
+TEST_CASE("designer runtime preview virtualizes a large list deterministically",
+          "[designer][f6][performance]") {
+    lumen::core::VirtualListController source;
+    source.setItemCount(1000);
+    source.setEstimatedExtent(32.0F);
+    source.setItemBuilder([](std::size_t index) {
+        auto item = lumen::core::makeText("Preview item " +
+                                          std::to_string(index));
+        item.key = "item-" + std::to_string(index);
+        item.height = 32.0F;
+        return item;
+    });
+    const auto widget = lumen::core::makeVirtualList(
+        &source, "preview-list", std::nullopt, 600.0F, 200.0F);
+
+    const auto layoutBegin = Clock::now();
+    const auto first = lumen::layout::LayoutEngine::layout(
+        widget, Constraints::tight(Size{800.0F, 600.0F}));
+    const auto layoutTime = std::chrono::duration_cast<std::chrono::microseconds>(
+        Clock::now() - layoutBegin);
+    REQUIRE(first.children.size() > 0);
+    CHECK(first.children.size() < 50);
+    CHECK(first.children.size() < source.itemCount());
+
+    lumen::render::CpuRenderer renderer;
+    const auto paintBegin = Clock::now();
+    renderer.beginFrame(Size{800.0F, 600.0F});
+    lumen::render::paintScene(renderer, first);
+    renderer.endFrame();
+    const auto paintTime = std::chrono::duration_cast<std::chrono::microseconds>(
+        Clock::now() - paintBegin);
+    const auto firstHash = lumen::render::frameHash(renderer.pixels());
+
+    const auto second = lumen::layout::LayoutEngine::layout(
+        widget, Constraints::tight(Size{800.0F, 600.0F}));
+    lumen::render::CpuRenderer repeatedRenderer;
+    repeatedRenderer.beginFrame(Size{800.0F, 600.0F});
+    lumen::render::paintScene(repeatedRenderer, second);
+    repeatedRenderer.endFrame();
+    CHECK(first == second);
+    CHECK(lumen::render::frameHash(repeatedRenderer.pixels()) == firstHash);
+    CHECK(firstHash != 0);
+    INFO("virtual-list layout_us=" << layoutTime.count()
+         << " paint_us=" << paintTime.count()
+         << " materialized=" << first.children.size());
 }
