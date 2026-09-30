@@ -168,6 +168,15 @@ TEST_CASE("document store rejects invalid saves without touching the file",
     unsupported.schemaVersion = 2;
     CHECK_FALSE(store.save(path.string(), unsupported, diagnostics));
     CHECK(diagnostics.front().code == "store.schema_version");
+
+    auto duplicateIds = valid;
+    duplicateIds.root.children.front().id = duplicateIds.root.id;
+    CHECK_FALSE(store.save(path.string(), duplicateIds, diagnostics));
+    REQUIRE_FALSE(diagnostics.empty());
+    CHECK(diagnostics.front().code == "schema.duplicate_node_id");
+    const auto afterDuplicate = store.load(path.string());
+    REQUIRE(afterDuplicate.ok());
+    CHECK(afterDuplicate.document == valid);
 }
 
 TEST_CASE("document store migration failure blocks publication",

@@ -139,6 +139,15 @@ TEST_CASE("designer schema validates types, enums, ranges and structure",
 
     auto tooMany = parseLumenSource("page p { Text(\"x\") { Text(\"y\") } }");
     REQUIRE_FALSE(tooMany.ok());
+
+    DesignDocument duplicateIds;
+    duplicateIds.root = DesignNode{1, "Column"};
+    duplicateIds.root.children = {DesignNode{1, "Text"}};
+    diagnostics = validateDesignDocument(duplicateIds);
+    REQUIRE(std::find_if(diagnostics.begin(), diagnostics.end(),
+                         [](const auto& error) {
+                             return error.code == "schema.duplicate_node_id";
+                         }) != diagnostics.end());
 }
 
 TEST_CASE("designer schema inventory covers registry persistence categories",

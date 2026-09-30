@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <limits>
+#include <set>
 #include <type_traits>
 #include <utility>
 
@@ -578,7 +579,16 @@ void addStyled(std::vector<PropertySpec>& properties) {
 }
 
 void validateNode(const DesignNode& node, const std::string& path, bool root,
+                  std::set<DesignNodeId>& ids,
                   std::vector<DesignError>& diagnostics) {
+    if (node.id == 0) {
+        diagnostics.push_back(schemaError(
+            "schema.node_id", node, "node id must be nonzero", path));
+    } else if (!ids.insert(node.id).second) {
+        diagnostics.push_back(schemaError(
+            "schema.duplicate_node_id", node,
+            "node id must be unique within the document", path));
+    }
     const NodeSchema* schema = findNodeSchema(node.type);
     if (schema == nullptr) {
         diagnostics.push_back(schemaError(
@@ -647,7 +657,7 @@ void validateNode(const DesignNode& node, const std::string& path, bool root,
     }
     for (std::size_t i = 0; i < node.children.size(); ++i) {
         validateNode(node.children[i], path + ".children[" + std::to_string(i) + "]",
-                     false, diagnostics);
+                     false, ids, diagnostics);
     }
 }
 
@@ -786,7 +796,8 @@ std::vector<DesignError> validateDesignDocument(const DesignDocument& document) 
                                       "root node id must be nonzero"));
         return diagnostics;
     }
-    validateNode(document.root, "root", true, diagnostics);
+    std::set<DesignNodeId> ids;
+    validateNode(document.root, "root", true, ids, diagnostics);
     return diagnostics;
 }
 
