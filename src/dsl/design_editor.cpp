@@ -1,5 +1,6 @@
 #include "lumen/dsl/design_editor.h"
 
+#include <algorithm>
 #include <sstream>
 #include <utility>
 
@@ -101,6 +102,43 @@ bool DesignSelectionModel::select(DesignNodeId id, DesignSelectionMode mode,
                 state_.anchor.reset();
             }
             break;
+    }
+    return true;
+}
+
+void DesignSelectionModel::collectOrder(
+    const DesignNode& node, std::vector<DesignNodeId>& order) {
+    order.push_back(node.id);
+    for (const auto& child : node.children) collectOrder(child, order);
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) collectOrder(child, order);
+    }
+}
+
+bool DesignSelectionModel::selectRange(DesignNodeId id,
+                                       const DesignDocument& document) {
+    if (!validId(id, document)) return false;
+    const DesignNodeId anchor = state_.anchor.value_or(id);
+    if (!validId(anchor, document)) {
+        return select(id, DesignSelectionMode::Replace, document);
+    }
+
+    std::vector<DesignNodeId> order;
+    collectOrder(document.root, order);
+    const auto anchorIt = std::find(order.begin(), order.end(), anchor);
+    const auto targetIt = std::find(order.begin(), order.end(), id);
+    if (anchorIt == order.end() || targetIt == order.end()) return false;
+
+    const auto first = std::min(anchorIt, targetIt);
+    const auto last = std::max(anchorIt, targetIt);
+    state_.ids.clear();
+    for (auto it = first; it != last + 1; ++it) state_.ids.insert(*it);
+    state_.primary = id;
+    state_.anchor = anchor;
+    if (state_.captured.has_value() &&
+        !state_.ids.contains(*state_.captured)) {
+        state_.captured.reset();
     }
     return true;
 }

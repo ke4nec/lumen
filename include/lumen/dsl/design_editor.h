@@ -37,6 +37,8 @@ class DesignSelectionModel {
 
     [[nodiscard]] bool select(DesignNodeId id, DesignSelectionMode mode,
                               const DesignDocument& document);
+    [[nodiscard]] bool selectRange(DesignNodeId id,
+                                   const DesignDocument& document);
     [[nodiscard]] bool setSelection(
         std::set<DesignNodeId> ids, std::optional<DesignNodeId> primary,
         std::optional<DesignNodeId> anchor, const DesignDocument& document);
@@ -50,6 +52,8 @@ class DesignSelectionModel {
                                        DesignNodeId id);
     [[nodiscard]] static bool validId(DesignNodeId id,
                                       const DesignDocument& document);
+    static void collectOrder(const DesignNode& node,
+                             std::vector<DesignNodeId>& order);
 
     DesignSelection state_{};
 };

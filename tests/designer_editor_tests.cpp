@@ -81,6 +81,13 @@ TEST_CASE("designer selection stays on document ids and supports modes",
     REQUIRE(model.setSelection({2, 3}, 3, 2, document));
     CHECK(model.state().primary == 3);
     CHECK(model.state().anchor == 2);
+
+    REQUIRE(model.select(2, DesignSelectionMode::Replace, document));
+    REQUIRE(model.selectRange(3, document));
+    CHECK(model.state().ids ==
+          std::set<lumen::dsl::DesignNodeId>{2, 3});
+    CHECK(model.state().primary == 3);
+    CHECK(model.state().anchor == 2);
 }
 
 TEST_CASE("designer document transactions are atomic and restore selection",
