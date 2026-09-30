@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "lumen/core/widget.h"
@@ -74,6 +75,11 @@ struct DesignCompileResult {
 
 [[nodiscard]] std::string serializeDesignDocument(
     const DesignDocument& document);
+
+// Validates one raw JSON value stored in an unknown-field extension.
+// Extension values must remain structured JSON so serialization cannot
+// silently change their type to a string.
+[[nodiscard]] bool isValidDesignJsonValue(std::string_view source);
 
 [[nodiscard]] DesignCompileResult compileDesignDocument(
     const DesignDocument& document, DesignRuntimeContext& context);

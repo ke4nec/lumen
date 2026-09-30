@@ -579,6 +579,19 @@ void addStyled(std::vector<PropertySpec>& properties) {
     return error;
 }
 
+void validateUnknownFields(const std::map<std::string, std::string>& fields,
+                           const DesignNode& node, const std::string& path,
+                           std::vector<DesignError>& diagnostics) {
+    for (const auto& [name, raw] : fields) {
+        if (!isValidDesignJsonValue(raw)) {
+            diagnostics.push_back(schemaError(
+                "schema.invalid_unknown_field", node,
+                "unknown field '" + name + "' must contain a JSON value",
+                path, name));
+        }
+    }
+}
+
 void validateNode(const DesignNode& node, const std::string& path, bool root,
                   std::set<DesignNodeId>& ids,
                   std::vector<DesignError>& diagnostics) {
@@ -597,6 +610,7 @@ void validateNode(const DesignNode& node, const std::string& path, bool root,
             "node type '" + node.type + "' is not registered", path));
         return;
     }
+    validateUnknownFields(node.unknownFields, node, path, diagnostics);
     if (root && !schema->canBeRoot) {
         diagnostics.push_back(schemaError("schema.root_type", node,
                                           "node type cannot be a root", path));
@@ -796,6 +810,13 @@ std::vector<DesignError> validateDesignDocument(const DesignDocument& document) 
         diagnostics.push_back(errorAt("schema.root_id", "<design>",
                                       "root node id must be nonzero"));
         return diagnostics;
+    }
+    for (const auto& [name, raw] : document.unknownFields) {
+        if (!isValidDesignJsonValue(raw)) {
+            diagnostics.push_back(errorAt(
+                "schema.invalid_unknown_field", "<design>",
+                "unknown field '" + name + "' must contain a JSON value"));
+        }
     }
     std::set<DesignNodeId> ids;
     validateNode(document.root, "root", true, ids, diagnostics);

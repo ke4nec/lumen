@@ -225,6 +225,15 @@ TEST_CASE("document store rejects invalid saves without touching the file",
     const auto afterMissingIdentity = store.load(path.string());
     REQUIRE(afterMissingIdentity.ok());
     CHECK(afterMissingIdentity.document == valid);
+
+    auto invalidExtension = valid;
+    invalidExtension.unknownFields["future"] = "{\"enabled\":";
+    CHECK_FALSE(store.save(path.string(), invalidExtension, diagnostics));
+    REQUIRE_FALSE(diagnostics.empty());
+    CHECK(diagnostics.front().code == "schema.invalid_unknown_field");
+    const auto afterInvalidExtension = store.load(path.string());
+    REQUIRE(afterInvalidExtension.ok());
+    CHECK(afterInvalidExtension.document == valid);
 }
 
 TEST_CASE("document store migration failure blocks publication",

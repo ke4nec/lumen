@@ -1072,6 +1072,12 @@ std::string serializeDesignDocument(const DesignDocument& document) {
     return jsonValue(jsonObject(std::move(root)));
 }
 
+bool isValidDesignJsonValue(std::string_view source) {
+    const std::string owned{source};
+    JsonParser parser(owned, "<unknown-field>");
+    return parser.parse().has_value();
+}
+
 DesignReadResult readDesignDocument(const std::string& source,
                                     std::string filename) {
     JsonParser parser(source, filename);
