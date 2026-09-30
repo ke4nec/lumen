@@ -155,31 +155,29 @@ class JsonParser {
                 case 'r': result += '\r'; break;
                 case 't': result += '\t'; break;
                 case 'u': {
-                    if (index_ + 4 > source_.size()) {
-                        fail("codec.escape", "short Unicode escape");
-                        return std::nullopt;
-                    }
                     unsigned int codePoint = 0;
-                    for (int i = 0; i < 4; ++i) {
-                        const char digit = source_[index_++];
-                        codePoint <<= 4;
-                        if (digit >= '0' && digit <= '9') {
-                            codePoint += static_cast<unsigned int>(digit - '0');
-                        } else if (digit >= 'a' && digit <= 'f') {
-                            codePoint += static_cast<unsigned int>(digit - 'a' + 10);
-                        } else if (digit >= 'A' && digit <= 'F') {
-                            codePoint += static_cast<unsigned int>(digit - 'A' + 10);
-                        } else {
-                            fail("codec.escape", "invalid Unicode escape");
+                    if (!parseUnicodeQuad(codePoint)) return std::nullopt;
+                    if (codePoint >= 0xd800U && codePoint <= 0xdbffU) {
+                        if (index_ + 6 > source_.size() || source_[index_] != '\\' ||
+                            source_[index_ + 1] != 'u') {
+                            fail("codec.escape", "missing Unicode low surrogate");
                             return std::nullopt;
                         }
-                    }
-                    if (codePoint > 0x7fU) {
-                        fail("codec.escape",
-                             "non-ASCII Unicode escapes are not supported");
+                        index_ += 2;
+                        unsigned int lowSurrogate = 0;
+                        if (!parseUnicodeQuad(lowSurrogate) ||
+                            lowSurrogate < 0xdc00U || lowSurrogate > 0xdfffU) {
+                            fail("codec.escape", "invalid Unicode surrogate pair");
+                            return std::nullopt;
+                        }
+                        codePoint = 0x10000U +
+                                    ((codePoint - 0xd800U) << 10U) +
+                                    (lowSurrogate - 0xdc00U);
+                    } else if (codePoint >= 0xdc00U && codePoint <= 0xdfffU) {
+                        fail("codec.escape", "unexpected Unicode low surrogate");
                         return std::nullopt;
                     }
-                    result += static_cast<char>(codePoint);
+                    appendUtf8(codePoint, result);
                     break;
                 }
                 default:
@@ -189,6 +187,47 @@ class JsonParser {
         }
         fail("codec.unterminated_string");
         return std::nullopt;
+    }
+
+    [[nodiscard]] bool parseUnicodeQuad(unsigned int& value) {
+        if (index_ + 4 > source_.size()) {
+            fail("codec.escape", "short Unicode escape");
+            return false;
+        }
+        value = 0;
+        for (int i = 0; i < 4; ++i) {
+            const char digit = source_[index_++];
+            value <<= 4U;
+            if (digit >= '0' && digit <= '9') {
+                value += static_cast<unsigned int>(digit - '0');
+            } else if (digit >= 'a' && digit <= 'f') {
+                value += static_cast<unsigned int>(digit - 'a' + 10);
+            } else if (digit >= 'A' && digit <= 'F') {
+                value += static_cast<unsigned int>(digit - 'A' + 10);
+            } else {
+                fail("codec.escape", "invalid Unicode escape");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static void appendUtf8(unsigned int codePoint, std::string& output) {
+        if (codePoint <= 0x7fU) {
+            output += static_cast<char>(codePoint);
+        } else if (codePoint <= 0x7ffU) {
+            output += static_cast<char>(0xc0U | (codePoint >> 6U));
+            output += static_cast<char>(0x80U | (codePoint & 0x3fU));
+        } else if (codePoint <= 0xffffU) {
+            output += static_cast<char>(0xe0U | (codePoint >> 12U));
+            output += static_cast<char>(0x80U | ((codePoint >> 6U) & 0x3fU));
+            output += static_cast<char>(0x80U | (codePoint & 0x3fU));
+        } else {
+            output += static_cast<char>(0xf0U | (codePoint >> 18U));
+            output += static_cast<char>(0x80U | ((codePoint >> 12U) & 0x3fU));
+            output += static_cast<char>(0x80U | ((codePoint >> 6U) & 0x3fU));
+            output += static_cast<char>(0x80U | (codePoint & 0x3fU));
+        }
     }
 
     [[nodiscard]] std::optional<JsonValue> parseNumber() {

@@ -132,6 +132,34 @@ TEST_CASE("designer codec rejects non-decimal node ids", "[designer][p1]") {
     }
 }
 
+TEST_CASE("designer codec decodes Unicode escapes", "[designer][p1]") {
+    const auto result = readDesignDocument(
+        R"({"documentId":"doc","format":"lumen.design",
+           "pageName":"\u4e2d\u6587",
+           "root":{"id":"1","type":"Text","properties":{
+             "text":{"kind":"string","value":"\uD83D\uDE00"}}},
+           "schemaVersion":1})",
+        "unicode.design");
+    REQUIRE(result.ok());
+    CHECK(result.document.pageName == "\xE4\xB8\xAD\xE6\x96\x87");
+    const auto& text = result.document.root.properties.at("text");
+    REQUIRE(std::holds_alternative<std::string>(text.value));
+    CHECK(std::get<std::string>(text.value) == "\xF0\x9F\x98\x80");
+    CHECK(readDesignDocument(serializeDesignDocument(result.document),
+                             "unicode-roundtrip.design")
+              .ok());
+
+    const auto invalidSurrogate = readDesignDocument(
+        R"({"documentId":"doc","format":"lumen.design",
+           "pageName":"\uDE00",
+           "root":{"id":"1","type":"Text","properties":{}},
+           "schemaVersion":1})",
+        "invalid-unicode.design");
+    REQUIRE_FALSE(invalidSurrogate.ok());
+    REQUIRE(invalidSurrogate.error.has_value());
+    CHECK(invalidSurrogate.error->code == "codec.escape");
+}
+
 TEST_CASE("designer document does not accept a runtime-only reference in P1",
           "[designer][p1]") {
     DesignDocument document;
