@@ -3,9 +3,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "lumen/core/render_node.h"
 #include "lumen/dsl/design_codec.h"
+#include "lumen/layout/layout.h"
 
 using lumen::core::Color;
+using lumen::core::Constraints;
+using lumen::core::Size;
 using lumen::dsl::DesignDocument;
 using lumen::dsl::DesignNode;
 using lumen::dsl::DesignRuntimeContext;
@@ -16,6 +20,7 @@ using lumen::dsl::compileDesignDocument;
 using lumen::dsl::parseLumenSource;
 using lumen::dsl::readDesignDocument;
 using lumen::dsl::serializeDesignDocument;
+using lumen::layout::LayoutEngine;
 
 TEST_CASE("designer document imports and round trips the L0 DOM",
           "[designer][p1]") {
@@ -138,6 +143,33 @@ TEST_CASE("designer document compiles to the independent C++ builder golden",
     CHECK(compiled.trace.nodes.size() == 3);
     CHECK(compiled.trace.nodes.at(document.document.root.id).documentId ==
           document.document.root.id);
+}
+
+TEST_CASE("designer compile trace identities locate laid out nodes",
+          "[designer][p4]") {
+    const auto parsed = parseLumenSource(
+        "page trace { Column { Text(\"plain\") "
+        "Button(\"Keyed\", key: \"button\") } }");
+    REQUIRE(parsed.ok());
+
+    const auto compiled = compileDesignDocument(parsed.document);
+    REQUIRE(compiled.ok());
+    const auto renderTree = LayoutEngine::layout(
+        compiled.root, Constraints::tight(Size{640.0F, 480.0F}));
+
+    REQUIRE(compiled.trace.nodes.size() == 3);
+    CHECK(compiled.trace.nodes.at(parsed.document.root.id).runtimeIdentity ==
+          "/i:0");
+    CHECK(compiled.trace.nodes.at(parsed.document.root.children[0].id)
+              .runtimeIdentity == "/i:0/i:0");
+    CHECK(compiled.trace.nodes.at(parsed.document.root.children[1].id)
+              .runtimeIdentity == "/i:0/k:button");
+    for (const auto& [id, reference] : compiled.trace.nodes) {
+        (void)id;
+        CHECK(lumen::core::findNodeByIdentity(renderTree,
+                                               reference.runtimeIdentity) !=
+              nullptr);
+    }
 }
 
 TEST_CASE("designer compiler preserves codec strings outside DSL escapes",

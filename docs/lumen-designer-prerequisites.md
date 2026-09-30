@@ -1200,13 +1200,13 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   枚举 domain 和引用存储位置约束。
 - P3 专属筛选 `build-debug/tests/lumen-tests "[designer][p3]"` 为 `45` 个断言、
   `6` 个测试用例通过，覆盖类型化解析、错误引用隔离、session 关闭回调和 lease 生命周期。
-- P4 专属筛选 `build-debug/tests/lumen-tests "[designer][p4]"` 为 `53` 个断言、
-  `4` 个测试用例通过，覆盖 source map、DPI/zoom/pan 变换和稳定 ID 结构编辑。
+- P4 专属筛选 `build-debug/tests/lumen-tests "[designer][p4]"` 为 `62` 个断言、
+  `5` 个测试用例通过，覆盖 source map、DPI/zoom/pan 变换、稳定 ID 结构编辑和布局 trace 定位。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存和恢复副本失败清理，为 `586` 个断言、`7` 个测试用例通过。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `331` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `58/58` 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1022/1022`；
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `59/59` 通过。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1023/1023`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、

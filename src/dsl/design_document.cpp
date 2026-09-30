@@ -932,8 +932,8 @@ template <typename Integer>
     return widget;
 }
 
-void fillTrace(const DesignNode& node, const std::string& path,
-               CompileTrace& trace) {
+void fillTrace(const DesignNode& node, const std::string& parentIdentity,
+               std::size_t index, CompileTrace& trace) {
     std::string key;
     if (const auto found = node.properties.find("key");
         found != node.properties.end()) {
@@ -941,11 +941,13 @@ void fillTrace(const DesignNode& node, const std::string& path,
             key = *value;
         }
     }
+    const std::string segment =
+        key.empty() ? "i:" + std::to_string(index) : "k:" + key;
+    const std::string runtimeIdentity = parentIdentity + "/" + segment;
     trace.nodes[node.id] = CompiledNodeRef{
-        node.id, key.empty() ? "i:" + path : "k:" + key, key, false};
+        node.id, runtimeIdentity, key, false};
     for (std::size_t i = 0; i < node.children.size(); ++i) {
-        fillTrace(node.children[i], path + ".children[" + std::to_string(i) + "]",
-                  trace);
+        fillTrace(node.children[i], runtimeIdentity, i, trace);
     }
 }
 
@@ -1182,7 +1184,7 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
     result.root = std::move(*compiled);
     disableUnresolvedReferenceNode(document.root, result.root,
                                    unresolvedReferences);
-    fillTrace(document.root, "root", result.trace);
+    fillTrace(document.root, {}, 0, result.trace);
     return result;
 }
 
