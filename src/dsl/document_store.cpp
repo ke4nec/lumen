@@ -254,6 +254,14 @@ bool DocumentStore::save(const std::string& path,
                 errorAt("store.write", path, "unable to write temporary document"));
             return false;
         }
+        output.close();
+        if (!output) {
+            std::error_code cleanupError;
+            fs::remove(temporary, cleanupError);
+            diagnostics.push_back(
+                errorAt("store.write", path, "unable to close temporary document"));
+            return false;
+        }
     }
 
     std::error_code ec;
