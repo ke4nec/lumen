@@ -230,17 +230,21 @@ bool DocumentStore::save(const std::string& path,
     if (!diagnostics.empty()) return false;
 
     namespace fs = std::filesystem;
-    if (expectedRevision.has_value()) {
+    const auto revisionMatches = [&] {
+        if (!expectedRevision.has_value()) return true;
         const auto currentRevision = fileRevision(path);
         const bool fileExists = currentRevision.has_value();
-        const bool matches = expectedRevision.value() ==
-                             (fileExists ? *currentRevision : 0);
-        if (!matches) {
-            diagnostics.push_back(errorAt(
-                "store.revision_conflict", path,
-                "document changed after it was loaded"));
-            return false;
-        }
+        return expectedRevision.value() ==
+               (fileExists ? *currentRevision : 0);
+    };
+    const auto reportRevisionConflict = [&] {
+        diagnostics.push_back(errorAt(
+            "store.revision_conflict", path,
+            "document changed after it was loaded"));
+    };
+    if (!revisionMatches()) {
+        reportRevisionConflict();
+        return false;
     }
     const std::string temporary = temporaryPath(path);
     {
@@ -271,6 +275,15 @@ bool DocumentStore::save(const std::string& path,
         }
     }
 
+    // Recheck after the potentially slow write so an external edit cannot be
+    // silently replaced by the atomic rename below.
+    if (!revisionMatches()) {
+        std::error_code cleanupError;
+        fs::remove(temporary, cleanupError);
+        reportRevisionConflict();
+        return false;
+    }
+
     std::error_code ec;
     const bool hasPrimary = fs::exists(path, ec);
     if (ec) {
@@ -289,6 +302,12 @@ bool DocumentStore::save(const std::string& path,
                 errorAt("store.backup", path, "unable to create recovery copy"));
             return false;
         }
+    }
+    if (!revisionMatches()) {
+        std::error_code cleanupError;
+        fs::remove(temporary, cleanupError);
+        reportRevisionConflict();
+        return false;
     }
     ec.clear();
     if (!atomicReplace(temporary, path, ec)) {

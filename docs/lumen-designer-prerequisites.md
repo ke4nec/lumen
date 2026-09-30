@@ -1212,8 +1212,9 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
   代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译不写入这些运行时
   字段；P4 的 SourceMap 只保存节点/属性 span，坐标变换只在画布交互层使用，编辑器操作不
-  把 runtime identity 写回文档；P5 保存先校验 DOM，再写唯一临时文件、保留 `.bak` 并
-  原子替换，主文件损坏时只从有效恢复副本返回文档。
+  把 runtime identity 写回文档；P5 保存先校验 DOM 和 expected revision，再写唯一临时文件，
+  并在写入及恢复副本生成后再次检查 revision，保留 `.bak` 后原子替换；主文件损坏时只从
+  有效恢复副本返回文档。
 - F6 性能基线：`designer_performance_tests.cpp` 覆盖 12、100、1000 节点的规范化读回、
   schema、compile、layout、CPU paint 和重复运行确定性；另有 12 节点 `.lumen` 导入 fixture。
   同一 fixture 还覆盖 1000 项运行时 VirtualList 的窗口物化与 frame hash；测试只输出阶段
