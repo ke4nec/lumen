@@ -1,12 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
 #include <system_error>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "lumen/dsl/document_store.h"
 
@@ -18,10 +23,18 @@ using lumen::dsl::serializeDesignDocument;
 
 namespace {
 
+std::uint64_t processId() {
+#ifdef _WIN32
+    return static_cast<std::uint64_t>(GetCurrentProcessId());
+#else
+    return static_cast<std::uint64_t>(::getpid());
+#endif
+}
+
 fs::path tempPath(const char* tag) {
     return fs::temp_directory_path() /
            ("lumen-design-store-" + std::string(tag) + "-" +
-            std::to_string(::getpid()));
+            std::to_string(processId()));
 }
 
 DesignDocument sampleDocument() {
