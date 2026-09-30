@@ -76,6 +76,10 @@ TEST_CASE("designer preview context reports missing references but keeps a frame
     const auto compiled = compileDesignDocument(parsed.document, context);
     REQUIRE_FALSE(compiled.ok());
     REQUIRE(compiled.root.type == lumen::core::WidgetType::Button);
+    CHECK_FALSE(compiled.root.enabled);
+    CHECK(compiled.root.invalid);
+    CHECK(compiled.root.bind.empty());
+    CHECK(compiled.root.onClick.empty());
     REQUIRE(compiled.session);
     REQUIRE(compiled.diagnostics.size() == 1);
     CHECK(compiled.diagnostics.front().code == "reference.missing");
@@ -93,6 +97,29 @@ TEST_CASE("designer preview context rejects a wrong typed reference handle",
     REQUIRE(compiled.diagnostics.size() == 1);
     CHECK(compiled.diagnostics.front().code == "reference.type");
     CHECK(compiled.diagnostics.front().property == "bind");
+    CHECK_FALSE(compiled.root.enabled);
+    CHECK(compiled.root.invalid);
+}
+
+TEST_CASE("designer unresolved references disable only their source node",
+          "[designer][p3]") {
+    const auto parsed = parseLumenSource(
+        "page preview { Column { Button(\"Broken\", bind: missing) "
+        "Button(\"Works\", onClick: save) } }");
+    REQUIRE(parsed.ok());
+
+    MapDesignRuntimeContext context;
+    context.registerReference(DesignReferenceKind::Handler, "save");
+    const auto compiled = compileDesignDocument(parsed.document, context);
+    REQUIRE_FALSE(compiled.ok());
+    REQUIRE(compiled.root.children.size() == 2);
+    CHECK_FALSE(compiled.root.children[0].enabled);
+    CHECK(compiled.root.children[0].invalid);
+    CHECK(compiled.root.children[0].bind.empty());
+    CHECK(compiled.root.children[0].onClick.empty());
+    CHECK(compiled.root.children[1].enabled);
+    CHECK_FALSE(compiled.root.children[1].invalid);
+    CHECK(compiled.root.children[1].onClick == "save");
 }
 
 TEST_CASE("designer runtime session cancels close callbacks exactly once",

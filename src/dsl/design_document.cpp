@@ -1,6 +1,7 @@
 #include "lumen/dsl/design_codec.h"
 #include "lumen/dsl/design_schema.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cerrno>
@@ -943,13 +944,15 @@ void fillTrace(const DesignNode& node, const std::string& path,
     return std::nullopt;
 }
 
-void validateRuntimeReferences(const DesignNode& node, const std::string& path,
-                              const DesignRuntimeContext& context,
-                              DesignRuntimeSession& session,
-                              std::vector<DesignError>& diagnostics) {
+void validateRuntimeReferences(
+    const DesignNode& node, const std::string& path,
+    const DesignRuntimeContext& context, DesignRuntimeSession& session,
+    std::set<DesignNodeId>& unresolved,
+    std::vector<DesignError>& diagnostics) {
     for (const auto& [name, reference] : node.references) {
         const auto kind = referenceKind(name);
         if (!kind.has_value()) {
+            unresolved.insert(node.id);
             DesignError diagnostic = errorAt(
                 "compile.reference_kind", "<design>",
                 "reference kind '" + name + "' is not registered");
@@ -959,6 +962,7 @@ void validateRuntimeReferences(const DesignNode& node, const std::string& path,
             diagnostics.push_back(std::move(diagnostic));
         } else if (*kind != DesignReferenceKind::Binding &&
                    *kind != DesignReferenceKind::Handler) {
+            unresolved.insert(node.id);
             DesignError diagnostic = errorAt(
                 "reference.unsupported", "<design>",
                 "reference kind '" + name + "' needs a component schema");
@@ -969,6 +973,7 @@ void validateRuntimeReferences(const DesignNode& node, const std::string& path,
         } else if (context.validatesReferences()) {
             DesignReference resolved;
             if (!context.resolveReference(*kind, reference, resolved)) {
+                unresolved.insert(node.id);
                 DesignError diagnostic = errorAt(
                     "reference.missing", "<design>",
                     "reference '" + reference + "' was not found");
@@ -977,6 +982,7 @@ void validateRuntimeReferences(const DesignNode& node, const std::string& path,
                 diagnostic.property = name;
                 diagnostics.push_back(std::move(diagnostic));
             } else if (resolved.kind != *kind || resolved.stableName != reference) {
+                unresolved.insert(node.id);
                 DesignError diagnostic = errorAt(
                     "reference.type", "<design>",
                     "reference resolver returned the wrong typed handle");
@@ -992,7 +998,25 @@ void validateRuntimeReferences(const DesignNode& node, const std::string& path,
     for (std::size_t i = 0; i < node.children.size(); ++i) {
         validateRuntimeReferences(
             node.children[i], path + ".children[" + std::to_string(i) + "]",
-            context, session, diagnostics);
+            context, session, unresolved, diagnostics);
+    }
+}
+
+void disableUnresolvedReferenceNode(const DesignNode& node, core::Widget& widget,
+                                   const std::set<DesignNodeId>& unresolved) {
+    if (unresolved.contains(node.id)) {
+        // Keep the node type and geometry inspectable, but prevent a failed
+        // reference from reaching application handlers or state bindings.
+        widget.enabled = false;
+        widget.invalid = true;
+        widget.bind.clear();
+        widget.onClick.clear();
+    }
+    const std::size_t count =
+        std::min(node.children.size(), widget.children.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        disableUnresolvedReferenceNode(node.children[i], widget.children[i],
+                                       unresolved);
     }
 }
 
@@ -1122,8 +1146,9 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
         result.diagnostics.push_back(std::move(diagnostic));
     }
     if (!result.diagnostics.empty()) return result;
+    std::set<DesignNodeId> unresolvedReferences;
     validateRuntimeReferences(document.root, "root", context, *result.session,
-                              result.diagnostics);
+                              unresolvedReferences, result.diagnostics);
     std::set<DesignNodeId> ids;
     std::optional<DesignError> error;
     const auto emitted = emitNode(document.root, ids, "root", error);
@@ -1150,6 +1175,8 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
         return result;
     }
     result.root = parsed.root;
+    disableUnresolvedReferenceNode(document.root, result.root,
+                                   unresolvedReferences);
     fillTrace(document.root, "root", result.trace);
     return result;
 }

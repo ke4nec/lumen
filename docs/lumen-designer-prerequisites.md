@@ -1023,7 +1023,8 @@ DOM→Widget 编译入口；F2/P2 已完成 L0 `NodeSchema`/`PropertySpec` 显�
 入口执行类型、枚举、范围、子节点、引用存储位置和不可持久化预览属性约束，并以
 `widgetFieldInventory()` 守护 Widget 字段分类；F3/P3 已完成类型化 `DesignRuntimeContext`、
 离线 map context、引用诊断和带代数、可取消关闭回调及引用 lease 保活的
-`DesignRuntimeSession`。
+`DesignRuntimeSession`；引用缺失或类型错误时保留节点类型/几何用于检查，同时禁用该节点并
+清除 `bind`/`onClick`，避免未解析引用触发业务行为。
 `designer_document_tests.cpp`
 覆盖 DOM round-trip、C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和
 P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 12 节点注册、访问器、非法属性和
@@ -1173,7 +1174,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 | `designer_accessibility` | 语义树、键盘、IME、高对比、字体缩放 | 无颜色唯一信息；键盘完成同等流程；preedit 不进 DOM |
 | `preview_determinism` | 固定 context、连续编译、异步结果乱序 | DOM/诊断/frame hash 按声明稳定；旧代数结果被丢弃 |
 
-### 10.3 本轮核对记录（2026-09-30）
+### 10.3 本轮核对记录（2026-10-01）
 
 - 规划基线：`e2c61ef`；F1/P1 实现新增 `design_document.h`、`design_codec.h`、
   `design_document.cpp`、`designer_document_tests.cpp`，F2/P2 追加 `design_schema.h`、
@@ -1190,9 +1191,11 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
 - P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `2235` 个断言、
   `4` 个测试用例通过，覆盖 Widget 字段清单、访问器回读和引用存储位置约束。
+- P3 专属筛选 `build-debug/tests/lumen-tests "[designer][p3]"` 为 `45` 个断言、
+  `6` 个测试用例通过，覆盖类型化解析、错误引用隔离、session 关闭回调和 lease 生命周期。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `268` 个断言、
-  `22` 个测试用例通过；标准 `ctest -R 'designer|document_store'` 为 `39/39` 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1007/1007`；
+  `22` 个测试用例通过；标准 `ctest -R 'designer|document_store'` 为 `40/40` 通过。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1008/1008`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
