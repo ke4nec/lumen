@@ -2,6 +2,8 @@ add_library(lumen-widgets STATIC
     dropdown.cpp
     form.cpp
     navigator.cpp
+    # G-4：对话框便利层（dialog-host-design；复用 makeDialog 契约）。
+    dialog_host.cpp
     # 集合控件（collection-controls-design）：共享选择模型与三控制器。
     selection.cpp
     list.cpp
