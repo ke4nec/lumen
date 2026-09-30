@@ -705,11 +705,13 @@ TEST_CASE("list_widget_stays_within_size_budget", "[collection]") {
     // P2 水平滚动轴标志（ScrollAxis，bool 簇无空槽）+1B 触发对齐 → +8B
     // = 832B；Spin/StatusBar 控件（2026-09）progressIndeterminate bool
     // + iconRotation float → +8B = 840B；同批 clipRounded bool（圆角
-    // 裁剪声明，框架化角部例外）触发对齐 → 848B。Debug 构建的 MSVC STL
-    // _ITERATOR_DEBUG_LEVEL=2 令每个容器（std::string/std::vector）膨胀
-    // +8B，属工具链开销而非 Widget 声明增长，故按构建模式分别断言。
+    // 裁剪声明，框架化角部例外）触发对齐 → 848B；M17（2026-09-30）
+    // scrollbarAutoHide/塌缩标志 bool 簇再越对齐 → 856B。Debug 构建的
+    // MSVC STL _ITERATOR_DEBUG_LEVEL=2 令每个容器（std::string/
+    // std::vector）膨胀 +8B，属工具链开销而非 Widget 声明增长，故按
+    // 构建模式分别断言。
 #ifdef NDEBUG
-    CHECK(sizeof(Widget) <= 848);
+    CHECK(sizeof(Widget) <= 856);
 #else
     CHECK(sizeof(Widget) <= 952);
 #endif

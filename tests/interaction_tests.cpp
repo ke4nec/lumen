@@ -637,9 +637,12 @@ struct DragSessionRecorder {
     std::size_t startChainSize{0};
 };
 
-// 注册按 "row-" 前缀认领的 arm sink；返回 arm sink 是否被咨询过。
-bool armRows(InteractionController& controller, bool touchAllowed) {
-    bool consulted = false;
+// 注册按 "row-" 前缀认领的 arm sink；咨询状态写入调用方拥有的
+// consulted（sink 生命周期与控制器一致——局部变量按引用捕获会在
+// armRows 返回后悬空，栈保护器下 abort）。
+void armRows(InteractionController& controller, bool touchAllowed,
+             bool& consulted) {
+    consulted = false;
     controller.addDragArmSink(
         [&consulted, touchAllowed](
             const std::vector<const RenderNode*>& chain, PointerDevice,
@@ -655,7 +658,6 @@ bool armRows(InteractionController& controller, bool touchAllowed) {
             }
             return false;
         });
-    return consulted;  // 值无意义；sink 内闭包记录咨询状态。
 }
 
 DragSessionRecorder recordDragSession(InteractionController& controller) {
@@ -693,7 +695,8 @@ TEST_CASE("drag_session_starts_after_threshold_moves_and_drops",
     handlers["click2"] = [&clicks] { ++clicks; };
 
     const RenderNode root = layoutOf(dragRowsUi());
-    armRows(controller, /*touchAllowed=*/false);
+    bool armConsulted = false;
+    armRows(controller, /*touchAllowed=*/false, armConsulted);
     DragSessionRecorder recorder = recordDragSession(controller);
 
     const Offset row0 = centerOf(root, "row-0");
@@ -743,7 +746,8 @@ TEST_CASE("drag_below_threshold_release_still_clicks",
     int clicks = 0;
     handlers["click0"] = [&clicks] { ++clicks; };
     const RenderNode root = layoutOf(dragRowsUi());
-    armRows(controller, false);
+    bool armConsulted = false;
+    armRows(controller, false, armConsulted);
     DragSessionRecorder recorder = recordDragSession(controller);
 
     // arm 认领的按压在阈值下释放：普通点击（微抖动不误启会话）。
@@ -762,7 +766,8 @@ TEST_CASE("drag_session_cancel_ends_without_drop", "[interaction][m15]") {
     InteractionController controller(store, handlers, focus);
 
     const RenderNode root = layoutOf(dragRowsUi());
-    armRows(controller, false);
+    bool armConsulted = false;
+    armRows(controller, false, armConsulted);
     DragSessionRecorder recorder = recordDragSession(controller);
 
     const Offset row0 = centerOf(root, "row-0");
@@ -787,7 +792,8 @@ TEST_CASE("drag_threshold_is_configurable", "[interaction][m15]") {
     InteractionController controller(store, handlers, focus);
 
     const RenderNode root = layoutOf(dragRowsUi());
-    armRows(controller, false);
+    bool armConsulted = false;
+    armRows(controller, false, armConsulted);
     DragSessionRecorder recorder = recordDragSession(controller);
     controller.setDragThresholdPx(30.0F);
 
@@ -822,7 +828,8 @@ TEST_CASE("touch_row_drag_defers_to_scroll_until_handle_claims",
         controller.setScrollDragSink(
             [](const RenderNode*, const RenderNode*, Offset, Offset,
                ScrollDragPhase, std::uint64_t) { return true; });
-        armRows(controller, /*touchAllowed=*/false);
+        bool armConsulted = false;
+        armRows(controller, /*touchAllowed=*/false, armConsulted);
         DragSessionRecorder recorder = recordDragSession(controller);
         const RenderNode root = layoutOf(scrollableUi());
         const Offset row0 = centerOf(root, "row-0");
@@ -840,7 +847,8 @@ TEST_CASE("touch_row_drag_defers_to_scroll_until_handle_claims",
         controller.setScrollDragSink(
             [](const RenderNode*, const RenderNode*, Offset, Offset,
                ScrollDragPhase, std::uint64_t) { return true; });
-        armRows(controller, /*touchAllowed=*/true);
+        bool armConsulted = false;
+        armRows(controller, /*touchAllowed=*/true, armConsulted);
         DragSessionRecorder recorder = recordDragSession(controller);
         const RenderNode root = layoutOf(scrollableUi());
         const Offset row0 = centerOf(root, "row-0");
