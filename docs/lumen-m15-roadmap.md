@@ -211,3 +211,23 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 - 平台：本地 Linux 验证；Windows/macOS 以 CI 为事实来源（含新 package-skia-gpu 首跑）。
 - 已知限制：macOS 原生菜单栏（NSMenu 单向映射）与交通灯/borderless 最大化回退未实施（无 macOS 编译环境，按证据规则登记为增量）；全局快捷键无平台后端；托盘 submenu/checkbox 条目未接（SDL_tray 能力就绪，按需增量）。
 - 回滚点：`bfe4d43`（M16 起点前）。
+
+### M17 进行中状态记录（2026-09-29，池式首项交付）
+
+- 完成日期：auto-hide 滚动条 2026-09-29（提交 859c58b）；其余池项未交付（见下）。
+- 变更：`withAutoHideScrollbar`（与 withScrollbar 组合）；滚动活动代数（InteractionController：滚轮/键盘/滚动条拖动/源视口拖动/惯性推进消费即递增）→ AppShell tick 按 `MotionTokens.scrollbarAutoHideMs`（默认 800ms，reduceAnimation 不归零）调度可见窗口 → 交互快照 `scrollbarActive` → 布局期 `RenderNode.scrollbarHidden`（painter 跳过拇指绘制；**几何/命中区保留**——悬停即重显、拖拽捕获不失效；scrollbarGeometry 的 alpha=0 即无滚动条既有语义不变）。
+- 测试：scrollbar suite 21 用例（新增 auto-hide 活动窗口/到期/悬停重显）；全量 895/895。
+- 未交付池项（本批未动，状态如实）：同视口双轴联滚、RTL UI 镜像、Grid 跨行列合并、Splitter 窗格塌缩/KeepRatio、菜单 mnemonic/F10/触摸长按、Tree/List 行内编辑、DataGrid 筛选面板与异步提交契约、`.lumen` DSL/基准场景补齐。
+- 回滚点：`5404ac8`（M17 起点前）。
+
+### M18 进行中状态记录（2026-09-29，首块交付）
+
+- 完成日期：headless 树导出 2026-09-29（提交 e253e89）。
+- 变更：`include/lumen/app/tree_dump.h`（header-only `dumpRenderTree`——先序遍历，type/key/identity/box/flags/scroll，确定性输出）；settings `--dump-tree`（首帧 → stdout → 退出 0，CI/脚本可 diff）。
+- 测试：确定性/标注/行数用例（app_shell_tests [m18]）。
+- 未交付池项：语义树 dump（--dump-semantics）、帧统计 overlay、inspector GUI、三桌面冒烟——首块为 dump 工具链入口，后续增量同源构建。
+- 回滚点：`859c58b`（M18 起点前）。
+
+### M19 触发条件评估（2026-09-29）
+
+按本文件 §2 约定，M19（富文本 TextSpan/HarfBuzz 合字/完整 UBA）**由用户明确的产品需求触发（阿拉伯/南亚脚本或富文本），触发前不排期**。截至本记录，无目标应用提出该需求——M19 维持按需池状态，不占增强链顺序。触发时按 §7 实施顺序执行（TextSpan 模型 → skshaper 接线 → 完整 UBA），出口条件不变。

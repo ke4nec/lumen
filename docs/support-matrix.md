@@ -152,6 +152,12 @@ Skia/GPU Release 779/779，无跳过；详见
   提供 build/状态逻辑；`runApp` 支持单窗口兼容入口和多个 `AppWindow` 绑定，
   按 `HostEvent.window` 隔离输入、DPI、IME、renderer、语义桥和帧调度。
   宿主窗口生命周期仍由调用方拥有；最后一个运行时关闭后主循环结束。
+- auto-hide 滚动条（M17，2026-09-29）：`withAutoHideScrollbar` 声明式开启；
+  滚动活动（滚轮/键盘/拖动/惯性）打开 800ms 可见窗口（
+  MotionTokens.scrollbarAutoHideMs），到期隐藏（`scrollbarHidden` 绘制跳过，
+  命中区保留——悬停重显）；reduceAnimation 不归零（可发现性行为）。
+- headless 树导出（M18 首块，2026-09-29）：`app::dumpRenderTree`（确定性）
+  + settings `--dump-tree`；语义 dump/inspector/帧统计 overlay 为后续增量。
 - 窗口与系统集成（M16 实现批次 2026-09-29）：全屏（`toggleFullscreen` +
   WindowFullscreenEntered/Exited 事件）、置顶、OS 模态（SDL_SetWindowParent
   + SetWindowModal）契约与三桌面能力位；系统托盘经 SDL_tray（菜单激活回灌
