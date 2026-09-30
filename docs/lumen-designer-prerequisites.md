@@ -1189,10 +1189,14 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
+- P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `35` 个断言、
+  `4` 个测试用例通过，覆盖 L0 DOM 导入、codec round-trip、Widget golden 和损坏诊断。
 - P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `2235` 个断言、
   `4` 个测试用例通过，覆盖 Widget 字段清单、访问器回读和引用存储位置约束。
 - P3 专属筛选 `build-debug/tests/lumen-tests "[designer][p3]"` 为 `45` 个断言、
   `6` 个测试用例通过，覆盖类型化解析、错误引用隔离、session 关闭回调和 lease 生命周期。
+- P4 专属筛选 `build-debug/tests/lumen-tests "[designer][p4]"` 为 `53` 个断言、
+  `4` 个测试用例通过，覆盖 source map、DPI/zoom/pan 变换和稳定 ID 结构编辑。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   迁移、恢复副本、revision 冲突、非法保存和恢复副本失败清理，为 `308` 个断言、`6` 个测试用例通过。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `269` 个断言、
