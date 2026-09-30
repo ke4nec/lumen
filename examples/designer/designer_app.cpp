@@ -90,6 +90,7 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
 
 void DesignerApp::attach() {
     outlineController_.setSelectionMode(widgets::SelectionMode::Single);
+    outlineController_.setModel(&outlineModel_);
     outlineController_.attach(shell_, "designer-outline");
     outlineController_.onActivated = [this](const std::string& key) {
         const auto id = outlineModel_.idForKey(key);
