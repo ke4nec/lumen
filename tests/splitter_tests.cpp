@@ -539,10 +539,13 @@ TEST_CASE("splitter_enter_toggles_collapse_on_focused_divider",
     app.splitter.setCollapsible(true);
     const Offset divider = app.dividerCenter();
 
-    // 指针按下建立分隔条焦点（§7.1 既有路径），松手后焦点保留？
-    // §7.1 松手即失焦——键盘路径经 Tab 进入：focusNode 程序聚焦。
-    const RenderNode* node = findNodeByKey(app.shell.root(), "main");
+    // 分隔条是容器内物化的 Button 型节点（key = "split:div:" + 容器
+    // key，splitterSource 挂在它身上——布局 §5.1）；focusNode 程序聚焦
+    //（§7.1 松手即失焦，键盘路径经 Tab/程序聚焦进入）。
+    const RenderNode* node =
+        findNodeByKey(app.shell.root(), "split:div:main");
     REQUIRE(node != nullptr);
+    REQUIRE(node->splitterSource != nullptr);
     app.shell.controller().focusNode(*node);
     CHECK(app.shell.focus().focusedIdentity() == node->identity);
 
@@ -553,13 +556,16 @@ TEST_CASE("splitter_enter_toggles_collapse_on_focused_divider",
     CHECK(app.shell.controller().keyDown(app.shell.root(), Key::Enter));
     CHECK_FALSE(app.splitter.collapsed());
 
-    // 不可塌缩分隔条聚焦时 Enter 不消费（回退按钮激活/纯键命令）。
+    // 不可塌缩分隔条聚焦时 Enter 走既有激活回退（分隔条是 Button 型
+    // 节点：activateFocusedButton 消费键、无 handler 无效果）——塌缩
+    // 状态不变。
     SplitterApp locked;
-    const RenderNode* lockedNode = findNodeByKey(locked.shell.root(), "main");
+    const RenderNode* lockedNode =
+        findNodeByKey(locked.shell.root(), "split:div:main");
     REQUIRE(lockedNode != nullptr);
     locked.shell.controller().focusNode(*lockedNode);
-    CHECK_FALSE(
-        locked.shell.controller().keyDown(locked.shell.root(), Key::Enter));
+    CHECK(locked.shell.controller().keyDown(locked.shell.root(), Key::Enter));
+    CHECK_FALSE(locked.splitter.collapsed());
 }
 
 TEST_CASE("splitter_keep_ratio_scales_offset_on_resize",

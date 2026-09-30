@@ -12,16 +12,18 @@ void SplitterController::noteLayout(float clampedOffset,
                                     float extent) const {
     const float newExtent = std::max(0.0F, extent);
     // M17（splitter-design §5.3）：KeepRatio——extent 变化时 offset 随
-    // 比例缩放后钳制（两窗格按比例分摊增量）；传入的 clampedOffset 是
-    // KeepOffset 口径的钳制值，本分支不采用（先按旧 extent 缩放，再更新
-    // lastExtent_）。KeepOffset（默认）沿用布局钳制（trailing 吃增量）。
+    // 比例缩放（两窗格按比例分摊增量）；钳制按**新** extent（先缩放、
+    // 更新 lastExtent_、再 clamp——clampOffset 的 max = extent - min
+    // 依赖新值）。传入的 clampedOffset 是 KeepOffset 口径，本分支不用。
     if (resizeBehavior_ == ResizeBehavior::KeepRatio && seeded_ &&
         lastExtent_ > 0.0F && newExtent > 0.0F) {
-        offset_ = clampOffset(offset_ * newExtent / lastExtent_);
+        const float scaled = offset_ * newExtent / lastExtent_;
+        lastExtent_ = newExtent;
+        offset_ = clampOffset(scaled);
     } else {
         offset_ = clampedOffset;
+        lastExtent_ = newExtent;
     }
-    lastExtent_ = newExtent;
     seeded_ = true;
     // 塌缩一致性：布局钳制把 offset 推离 min 时解除塌缩（塌缩标记必须
     // 符合视觉事实；KeepRatio 缩放同理）。
