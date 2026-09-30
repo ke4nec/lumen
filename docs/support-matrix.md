@@ -1,6 +1,7 @@
 # Lumen 桌面平台支持矩阵
 
-> 状态：2026-09-22 核对；保留 M0 四态定义，当前能力覆盖 M0–M8、M10–M13 provider 实施与按需控件增强；M9 冻结，不计入当前完成范围。三平台屏幕阅读器回环仍需真实桌面验收。
+> 状态：2026-09-30 核对；保留 M0 四态定义，当前能力覆盖 M0–M8、M10–M18 实现批次（M15 拖放、M16 窗口与系统集成、M17 控件细节池、M18 开发者诊断首批），各批次四态见下方「实现批次与真实平台缺口」；M9 冻结，不计入当前完成范围。三平台屏幕阅读器回环仍需真实桌面验收。
+> 后续完善顺序、缺口编号（R0–R10）与验收模板以 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 为任务入口；待现场验收项逐条登记于 [`platform-acceptance.md`](platform-acceptance.md)。
 > 当前产品范围（2026-09-14）：Windows/Linux/macOS 桌面；Android/iOS 暂不实现并冻结，M9 仅保留历史编号。
 > 构建命令与系统依赖的单一事实来源是
 > [`build-commands.md`](build-commands.md) 与 `.github/workflows/`。
@@ -38,9 +39,9 @@ zlib `v1.3.1`（仅 Windows Skia）。新增 FetchContent 依赖时固定版本�
 
 | 平台 | 窗口/输入 | 剪贴板 | 文本/IME | 无障碍 | 渲染 | CI 验证 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Windows | SDL3（宿主多窗口、resize/DPI、触摸 pointer id；`runApp` 按 `WindowId` 隔离多个 `AppShell`） | SDL3 剪贴板（`platform::Clipboard`） | UTF-8 commit + IME preedit（TSF 经 SDL）；修饰键/逻辑键归一化 | 语义树 + Recording 桥；UIA 已实施，需 `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON`；未编入时能力报告 false | CPU、Skia 光栅、Skia GPU（软件回退见下表） | `windows.yml`：cpu / a11y-bridge / skia-raster / skia-gpu / package / package-skia；platform-acceptance 的登录 Win32 runner 负责透明合成、字体冷启动、触摸板和 Narrator/NVDA |
+| Windows | SDL3（宿主多窗口、resize/DPI、触摸 pointer id；`runApp` 按 `WindowId` 隔离多个 `AppShell`） | SDL3 剪贴板（`platform::Clipboard`） | UTF-8 commit + IME preedit（TSF 经 SDL）；修饰键/逻辑键归一化 | 语义树 + Recording 桥；UIA 已实施，需 `LUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON`；未编入时能力报告 false | CPU、Skia 光栅、Skia GPU（软件回退见下表） | `windows.yml`：cpu / a11y-bridge / skia-raster / skia-gpu / package / package-skia / package-skia-gpu；platform-acceptance 的登录 Win32 runner 负责透明合成、字体冷启动、触摸板和 Narrator/NVDA |
 | Linux | SDL3（X11/Wayland） | 同上 | UTF-8 + IBus/Fcitx preedit（候选词锚点经 `SDL_SetTextInputArea`） | 语义树 + Recording 桥；AT-SPI2 provider 已编入（需桌面总线），Orca 回环待验 | 同上 | `linux.yml`：cpu / skia / skia-gpu / package / package-skia / package-skia-gpu；`.github/workflows/platform-acceptance.yml` 的 self-hosted X11/Wayland job 负责真实窗口、IME、剪贴板、GPU/present 故障注入 |
-| macOS | SDL3（菜单关闭经统一关闭规则） | 同上 | UTF-8 + 输入法 preedit（经 SDL） | 语义树 + Recording 桥；NSAccessibility provider 已编入（需 NSWindow），VoiceOver 回环待验 | 同上 | `macos.yml`：cpu / skia-gpu / package / package-skia；platform-acceptance 的登录 Aqua runner 负责真实 IME、生命周期、透明窗口和 VoiceOver |
+| macOS | SDL3（菜单关闭经统一关闭规则） | 同上 | UTF-8 + 输入法 preedit（经 SDL） | 语义树 + Recording 桥；NSAccessibility provider 已编入（需 NSWindow），VoiceOver 回环待验 | 同上 | `macos.yml`：cpu / skia-gpu / package / package-skia / package-skia-gpu；platform-acceptance 的登录 Aqua runner 负责真实 IME、生命周期、透明窗口和 VoiceOver |
 
 三平台共用：`ApplicationHost` 契约、归一化 `HostEvent`（时间戳/修饰键/
 逻辑与物理键/指针设备/pointer id/滚轮/取消/关闭请求）、语义树与 action
@@ -60,10 +61,11 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 宿主。macOS preferred body font 需 11.0，减少动态效果查询需 10.12，低版本
 保留对应默认值；这不是任意应用字体设置的全局缩放接口。
 
-### 验证快照（2026-09-22，源码基线 `41cd603831eaed37558ebb32ceddebc8f93cff4f`）
+### 验证快照（行内标注日期与源码基线）
 
 | 环境 | 已核对证据 | 验证边界 |
 | --- | --- | --- |
+| 本地 Linux / GCC / Debug（2026-09-30，源码基线 `3fede85215551c75552da3f007fa4db7296ba95e`） | 全量 `ctest` 935/935 通过（含 M15–M18 批次与 Gallery DataGrid 工作台用例；默认 OFF 的 GPU/Skia/原生无障碍开关除外） | 本地无桌面会话，不产生真实平台证据；不据此提升任何「真实平台已验证」状态，也不更新支持矩阵三平台行 |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
 | Linux CI | [linux 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116406) 全部 job 成功，含 Xvfb/llvmpipe GPU、CPU/Skia 包与 AppImage 构建 | GPU 窗口 smoke 显式断言 `backend=skia-gpu`；不替代 Wayland、真实输入法/触控板/合成器及干净桌面包验收 |
@@ -75,6 +77,27 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 五类固定场景的 p50/p95、submit/GPU wait、分配量及命令数，门槛为不超过 10%；
 固定基准提交与候选在同一 runner 交替实测，双方三次取中位数并归档完整元数据。
 旧 `working-tree` 基线仅保留为历史样本，不参与门槛；headless 耗时不包含 present。
+
+### 实现批次与真实平台缺口（2026-09-30）
+
+按 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 的缺口编号
+（R0–R10）汇总 2026-09-29/30 M15–M18 实现批次的四态。实现已交付不等于平台
+完成；「待现场」条目的平台、原因、降级与后续归属逐条登记于
+[`platform-acceptance.md`](platform-acceptance.md) 的待验收登记表。
+
+| 缺口 | 四态（2026-09-30） | 说明 |
+| --- | --- | --- |
+| R0 三桌面真实验收 | 接口已存在 + headless 已验证 | Linux X11/Wayland 有部分回环与浸泡记录；Windows/macOS 读屏、IME、跨应用剪贴板、透明合成、浸泡待现场 |
+| R1 发布与安装收口 | Linux 链条较完整；Windows/macOS 部分 | 三平台 package/package-skia/package-skia-gpu CI 变体可构建；Windows/macOS 干净机器安装、启动、升级/卸载未记录 |
+| R2 生产生命周期 | headless 已验证 | 恢复用例/资源重排队/字体异步生命周期有 headless 断言；Linux 1h 浸泡已有，Windows/macOS 浸泡待现场 |
+| R3 OS 拖放 | 接口已存在 + headless 已验证 | OS 拖入归一化事件与应用内重排/列拖序 headless 契约通过；三桌面真实拖入 smoke 待现场（`drag_drop_os_receive` 已纳入必检清单）；拖出结构化不可用（SDL 3.2.10） |
+| R4 桌面系统集成 | 部分接口已存在 | 全屏/置顶/OS 模态/托盘契约与 SDL 实现已有（headless 已验证）；全局快捷键仅契约无平台后端；macOS 原生菜单栏/交通灯未实现 |
+| R5 文本与剪贴板深度 | headless 已验证 | G-3 剪贴板 MIME 数据层/图片与自定义格式/变更广播有 headless 断言；三桌面真实 IME 与跨应用复制粘贴待现场 |
+| R6 开发者诊断 | 部分交付 | `dumpRenderTree`/`dumpSemanticsTree` + settings `--dump-tree`/`--dump-semantics` 已有；inspector、bounds/damage overlay、帧阶段统计 overlay、`--dump-style` 未做 |
+| R7 控件细节 | 按需池交付中 | 已交付 auto-hide 滚动条、Splitter 塌缩/KeepRatio、DataGrid 筛选接线、可编辑 ComboBox、DialogHost 便利层、ColorPicker；RTL 镜像、双轴联滚、菜单 mnemonic、行内编辑等在池 |
+| R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
+| R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；页面壳/状态摘要等组合组件未提取 |
+| R10 文档与证据同步 | 进行中 | 本表与待验收登记即该缺口的 2026-09-30 批次；后续状态变化须同一变更内更新 |
 
 ### 预乘 alpha 联调历史记录（2026-09-20）
 

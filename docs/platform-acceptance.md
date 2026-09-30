@@ -40,7 +40,10 @@ GPU swap 失败和软件 present 失败均进入预期诊断路径。
 64 MiB 压力、两次恢复且状态保持；短 smoke 不满足发布验收。`soak.json` 与
 人工记录分别归档。输入法取消、候选窗位置、多窗口 DPI/焦点隔离、跨应用复制粘贴、
 窗口生命周期、透明合成和硬件 GPU 恢复均需逐项记录步骤和结果；Windows 另加
-系统字体冷启动和触摸板。Xvfb 可用于回归脚本，本身不能作为真实桌面验收。
+系统字体冷启动和触摸板。OS 拖入（`drag_drop_os_receive`）需在真实会话记录
+三类路径：文件管理器拖文件入列表窗口、源应用拖选中文本入编辑框、拖离窗口
+或按 Esc 取消；`dragDropStart` 拖出能力保持结构化 Unavailable，不作为验收项。
+Xvfb 可用于回归脚本，本身不能作为真实桌面验收。
 
 ## 人工回环
 
@@ -92,7 +95,8 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
     "ime_preedit_commit_cancel": "pending", "ime_candidate_position": "pending",
     "clipboard_cross_app": "pending", "multiwindow_focus_dpi": "pending",
     "window_lifecycle": "pending", "transparent_composition": "pending",
-    "gpu_present_recovery_state": "pending", "soak_resources": "pending"
+    "gpu_present_recovery_state": "pending", "soak_resources": "pending",
+    "drag_drop_os_receive": "pending"
   },
   "readers": {
     "Orca": {
@@ -112,3 +116,26 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 才把 checks 改为 `pass`。附件应记录步骤、预期/实际结果并附日志或录像。
 检查器只验证记录完整性和归属，不代替人工判断。当前容器无真实桌面、AppKit
 或 Windows，不能据本地 headless 结果标记三平台人工回环完成。
+
+## 待验收登记（2026-09-30）
+
+按 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 的缺口编号，
+把“实现批次已交付（headless 契约通过）”与“真实平台缺口（必须现场验收）”
+分开登记。未覆盖项必须能回答：平台、原因、当前降级行为、后续归属。
+
+| 缺口 | 平台 | 实现状态（四态） | 未覆盖原因 | 当前降级行为 | 后续归属 |
+| --- | --- | --- | --- | --- | --- |
+| 读屏回环 Narrator/NVDA | Windows | 接口已存在（UIA provider 编入）+ headless 已验证 | 无登录 Win32 会话执行 `tests/uia_reader_loop.py` | provider 未编入时能力报告 false，应用照常运行 | R0 / M14 出口 |
+| 读屏回环 VoiceOver | macOS | 接口已存在（NSAccessibility 编入）+ headless 已验证 | 无登录 Aqua 会话执行 `tests/voiceover_loop.py` | 同上 | R0 / M14 出口 |
+| 真实 IME preedit/commit/cancel、候选框定位 | Windows/macOS | headless 已验证（IME 状态机） | 无现场输入法 | 候选锚点失效时回退字段内定位；提交不受阻 | R0 / R5 |
+| 跨应用剪贴板（文本/图片/自定义格式） | 三平台 | headless 已验证（G-3 core MIME + SDL data API） | 无跨应用真实复制现场 | `setText`/`setFormats` 失败返回 false，编辑状态不丢 | R0 / R5 |
+| 透明合成 | Windows texture 已实测；X11/Wayland/macOS 未验 | headless 已验证（预乘表示一致） | 无真实合成器现场 | 软件窗口不支持逐像素透明时按不透明提交 | R0 |
+| 1 小时双窗口浸泡 | Linux 已做（M14-A）；Windows/macOS 未做 | headless 已验证（恢复用例） | 无登录桌面长时运行 | 模拟 renderer 失效不冒充真实 GPU context loss | R2 |
+| OS 拖入真实 smoke | 三平台 | headless 已验证（M15 契约） | 无真实文件管理器/源应用拖拽现场 | `dragDropStart=false`（SDL 3.2.10 无拖出 API）+ 结构化 Unavailable | R3（本日已纳入 `drag_drop_os_receive` 必检项） |
+| 全局快捷键 | 三平台 | 接口已存在（契约 + Fake） | 无平台后端（Win32/X11/macOS 未实现） | `globalHotkeys=false` + 结构化 Unavailable | R4（实现后才可验收） |
+| macOS 原生菜单栏/交通灯 | macOS | 未实现 | 无实现 | 自绘 MenuBar/标题栏可用 | R4 |
+| GPU 包、CPack Bundle、干净机器启动 | Windows/macOS | CI 变体已构建（package-skia-gpu） | 无干净机器安装/启动记录 | CI 解包冒烟不替代真实验收 | R1 |
+
+新增缺口进入本表时同步更新 `check_platform_acceptance.py` 的必检集合与本文
+record 模板；实现推进改变四态时，本表与
+[`support-matrix.md`](support-matrix.md) 必须同一变更内更新。

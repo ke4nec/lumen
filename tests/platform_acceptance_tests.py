@@ -17,6 +17,19 @@ class EvidenceTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 validate_platform(record, dict(soak, **{key: value}), "linux-x11")
 
+    def test_drag_drop_os_receive_is_required_platform_check(self):
+        # R3 真实拖入 smoke：M15 实现批次交付 headless 契约后，OS 拖入必须进入
+        # 逐平台人工清单，不能只凭 Fake host 会话测试宣称完成。
+        record = {"platform_checks": {key: "pass" for key in PLATFORM_CASES}}
+        soak = dict(driver="x11", seconds=3600, windows=2, frames=100,
+                    resize_events=20, stress_mib=64, simulated_recoveries=2, state_preserved=True)
+        validate_platform(record, soak, "linux-x11")
+        for value in ("pending", None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                invalid = {"platform_checks": dict(record["platform_checks"],
+                                                   drag_drop_os_receive=value)}
+                validate_platform(invalid, soak, "linux-x11")
+
     def test_requires_current_commit_reader_cases_and_real_attachments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
