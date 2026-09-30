@@ -103,6 +103,16 @@ TEST_CASE("document store recovers the last valid backup after corruption",
     REQUIRE(store.save(path.string(), second, diagnostics));
     REQUIRE(fs::exists(DocumentStore::backupPath(path.string())));
 
+    auto semanticallyBroken = second;
+    semanticallyBroken.root.type = "UnknownNode";
+    std::ofstream(path, std::ios::trunc) <<
+        serializeDesignDocument(semanticallyBroken);
+    const auto schemaRecovered = store.load(path.string());
+    REQUIRE(schemaRecovered.ok());
+    REQUIRE(schemaRecovered.recovered);
+    CHECK(schemaRecovered.document.root.properties.at("key") ==
+          first.root.properties.at("key"));
+
     std::ofstream(path, std::ios::trunc) << "{\"truncated\":";
     const auto recovered = store.load(path.string());
     REQUIRE(recovered.ok());

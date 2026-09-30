@@ -141,48 +141,61 @@ bool DocumentStore::migrate(DesignDocument& document,
 
 DocumentLoadResult DocumentStore::load(const std::string& path) const {
     namespace fs = std::filesystem;
-    const auto primary = readFile(path);
-    if (primary.ok()) {
+
+    const auto prepare = [&](const DesignReadResult& read,
+                             bool recovered, std::uint64_t revision,
+                             std::vector<DesignError> diagnostics) {
         DocumentLoadResult result;
-        result.document = primary.document;
-        result.revision = fileRevision(path).value_or(0);
+        result.document = read.document;
+        result.recovered = recovered;
+        result.revision = revision;
         result.migrated = result.document.schemaVersion != kCurrentSchemaVersion;
-        if (!migrate(result.document, result.diagnostics)) {
+        result.diagnostics = std::move(diagnostics);
+        bool valid = read.ok();
+        if (valid && !migrate(result.document, result.diagnostics)) {
+            valid = false;
             result.document = {};
-            return result;
         }
-        const auto schemaDiagnostics = validateDesignDocument(result.document);
-        result.diagnostics.insert(result.diagnostics.end(),
-                                  schemaDiagnostics.begin(),
-                                  schemaDiagnostics.end());
-        if (!schemaDiagnostics.empty()) result.document = {};
-        return result;
+        if (valid) {
+            const auto schemaDiagnostics = validateDesignDocument(result.document);
+            result.diagnostics.insert(result.diagnostics.end(),
+                                      schemaDiagnostics.begin(),
+                                      schemaDiagnostics.end());
+            if (!schemaDiagnostics.empty()) {
+                valid = false;
+                result.document = {};
+            }
+        }
+        return std::pair{std::move(result), valid};
+    };
+
+    const auto primary = readFile(path);
+    std::vector<DesignError> primaryDiagnostics;
+    if (primary.ok()) {
+        auto [result, valid] = prepare(primary, false,
+                                       fileRevision(path).value_or(0), {});
+        if (valid) return result;
+        primaryDiagnostics = std::move(result.diagnostics);
+    } else {
+        primaryDiagnostics.push_back(*primary.error);
     }
 
     const std::string backup = backupPath(path);
     std::error_code existsError;
     if (!fs::exists(backup, existsError) || existsError) {
-        return DocumentLoadResult{DesignDocument{}, {*primary.error}, false, false};
+        return DocumentLoadResult{DesignDocument{}, std::move(primaryDiagnostics),
+                                 false, false};
     }
     const auto recovered = readFile(backup);
     if (!recovered.ok()) {
-        return DocumentLoadResult{
-            DesignDocument{}, {*primary.error, *recovered.error}, false, false};
+        primaryDiagnostics.push_back(*recovered.error);
+        return DocumentLoadResult{DesignDocument{}, std::move(primaryDiagnostics),
+                                  false, false};
     }
-    DocumentLoadResult result;
-    result.document = recovered.document;
-    result.recovered = true;
-    result.revision = fileRevision(path).value_or(0);
-    result.diagnostics.push_back(*primary.error);
-    result.migrated = result.document.schemaVersion != kCurrentSchemaVersion;
-    if (!migrate(result.document, result.diagnostics)) {
-        result.document = {};
-        return result;
-    }
-    const auto schemaDiagnostics = validateDesignDocument(result.document);
-    result.diagnostics.insert(result.diagnostics.end(), schemaDiagnostics.begin(),
-                              schemaDiagnostics.end());
-    if (!schemaDiagnostics.empty()) result.document = {};
+    auto [result, valid] = prepare(
+        recovered, true, fileRevision(path).value_or(0),
+        std::move(primaryDiagnostics));
+    (void)valid;
     return result;
 }
 

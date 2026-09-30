@@ -1031,7 +1031,8 @@ session 关闭回调和引用 lease 在关闭时释放。F4/P4 已完成 `Design
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
 和命名 slot，并在复制时分配新 ID、清除复制副本的旧 source span、在重排时保持原 ID；编译结果
 同时返回 SourceMap 和 CompileTrace。P2 registry 仍只覆盖 L0，P3 尚未构造 controller 或资源裸指针；F5 的
-DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢复已完成。F6 已增加设计器
+DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢复已完成；主文件的读取、迁移或
+schema 失败均尝试有效恢复副本。F6 已增加设计器
 应用层的 `DesignDocumentTransaction`/`DesignDocumentHistory`、会话级 `DesignSelectionModel`
 和统一 `DesignDiagnostic` 基础契约；事务覆盖副本提交、失败回滚、mergeKey（保存 revision
 会阻断跨保存合并）、undo/redo、选择恢复及 document/saved revision，诊断覆盖阶段、source
