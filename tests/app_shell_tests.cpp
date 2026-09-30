@@ -17,6 +17,7 @@
 #include <string>
 
 #include "lumen/app/app_shell.h"
+#include "lumen/app/tree_dump.h"
 #include "lumen/core/render_node.h"
 #include "lumen/core/state.h"
 #include "lumen/dsl/dsl.h"
@@ -1280,3 +1281,27 @@ TEST_CASE("run_app_preserves_scroll_and_focus_across_minimize_restore",
 }
 
 
+
+// --- M18：headless 树导出（tree_dump.h；settings --dump-tree 同源） ---
+
+TEST_CASE("dump_render_tree_is_deterministic_and_labeled",
+          "[app][m18]") {
+    lumen::app::ShellConfig config;
+    config.initialView = {200.0F, 100.0F};
+    config.build = [] {
+        return lumen::core::makeColumn(
+            {lumen::core::withKey(lumen::core::makeButton("OK"), "ok-btn"),
+             lumen::core::withKey(lumen::core::makeText("label"), "t1")});
+    };
+    lumen::app::AppShell shell(config);
+    (void)shell.renderFrame();
+
+    const std::string first = lumen::app::dumpRenderTree(shell.root());
+    const std::string second = lumen::app::dumpRenderTree(shell.root());
+    CHECK(first == second);  // 确定性（无指针/时间）。
+    CHECK(first.find("key=ok-btn") != std::string::npos);
+    CHECK(first.find("key=t1") != std::string::npos);
+    CHECK(first.find("type=") != std::string::npos);
+    // 树深至少 3（根 → column 子 → …），行数 = 节点数。
+    CHECK(std::count(first.begin(), first.end(), '\n') >= 3);
+}

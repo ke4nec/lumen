@@ -11,6 +11,7 @@
 
 #include "settings_app.h"
 #include "lumen/app/app_shell.h"
+#include "lumen/app/tree_dump.h"
 #include "lumen/platform/sdl3_host.h"
 #include "lumen/text/system_font_manager.h"
 
@@ -21,6 +22,9 @@ using lumen::examples::SettingsApp;
 struct Options {
     bool headless{false};
     bool diagnostics{false};
+    // M18：headless 树导出（首帧布局后打印 dumpRenderTree 并退出；
+    // CI/脚本对照工具，见 include/lumen/app/tree_dump.h）。
+    bool dumpTree{false};
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -31,6 +35,8 @@ Options parseOptions(int argc, char** argv) {
             options.headless = true;
         } else if (flag == "--diagnostics") {
             options.diagnostics = true;
+        } else if (flag == "--dump-tree") {
+            options.dumpTree = true;
         }
     }
     return options;
@@ -264,6 +270,14 @@ int main(int argc, char** argv) {
     const Options options = parseOptions(argc, argv);
     SettingsApp app;
     try {
+        if (options.dumpTree) {
+            // M18：确定性树导出（首帧 → stdout → 退出码 0）。
+            app.setView(lumen::core::Size{800.0F, 600.0F});
+            (void)app.renderFrame();
+            const std::string dump = lumen::app::dumpRenderTree(app.root());
+            std::fwrite(dump.data(), 1, dump.size(), stdout);
+            return 0;
+        }
         if (options.headless) {
             return runHeadless(app);
         }
