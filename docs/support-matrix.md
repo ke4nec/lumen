@@ -152,6 +152,13 @@ Skia/GPU Release 779/779，无跳过；详见
   提供 build/状态逻辑；`runApp` 支持单窗口兼容入口和多个 `AppWindow` 绑定，
   按 `HostEvent.window` 隔离输入、DPI、IME、renderer、语义桥和帧调度。
   宿主窗口生命周期仍由调用方拥有；最后一个运行时关闭后主循环结束。
+- Splitter 塌缩/KeepRatio（M17，2026-09-30）：`setCollapsible/setCollapsed`
+  （塌缩钉 minLeading，移离 min 自动解除）+ Enter/Space 切换（不可塌缩
+  回退激活路径）；ResizeBehavior 双行为（KeepRatio 等比缩放）。
+- DataGrid 筛选接线（M17，2026-09-30）：`requestFilter`（编辑守卫入口）+
+  `setFilterActive`（无结果空态文案切换）；筛选面板 UI 仍由应用提供。
+- headless 语义树导出（M18，2026-09-30）：`buildSemanticsSnapshot` +
+  `dumpSemanticsTree` + settings `--dump-semantics`（与 --dump-tree 同链）。
 - auto-hide 滚动条（M17，2026-09-29）：`withAutoHideScrollbar` 声明式开启；
   滚动活动（滚轮/键盘/拖动/惯性）打开 800ms 可见窗口（
   MotionTokens.scrollbarAutoHideMs），到期隐藏（`scrollbarHidden` 绘制跳过，
