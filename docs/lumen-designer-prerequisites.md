@@ -919,7 +919,8 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
 ```
 
 错误码而不是展示文案作为测试和 CI 的稳定断言；行列、节点 ID 和属性名用于编辑器跳转。
-多个相同引用错误应按 `(code, file, documentId, property)` 去重，同时保留发生次数。警告
+多个相同引用错误仅在 `(code, file, documentId, nodeId, nodePath, property, sourceSpan)`
+完全相同时去重，同时保留发生次数；不同节点或源位置必须各自保留。警告
 不能让文档静默丢字段，错误不能被“替换为空值”掩盖。
 
 #### 恢复矩阵
