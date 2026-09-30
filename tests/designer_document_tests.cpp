@@ -96,6 +96,13 @@ TEST_CASE("designer document diagnostics reject unsupported and damaged input",
     REQUIRE(future.ok());
     CHECK(future.document.root.unknownFields.at("future") == "{\"x\":1}");
     CHECK(future.document.unknownFields.at("future") == "true");
+    const auto futureRoundTrip = readDesignDocument(
+        serializeDesignDocument(future.document), "future-roundtrip.design");
+    REQUIRE(futureRoundTrip.ok());
+    CHECK(futureRoundTrip.document.root.unknownFields ==
+          future.document.root.unknownFields);
+    CHECK(futureRoundTrip.document.unknownFields ==
+          future.document.unknownFields);
 
     const auto duplicate = readDesignDocument(
         R"({"documentId":"doc","format":"lumen.design","pageName":"p",

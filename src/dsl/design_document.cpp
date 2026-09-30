@@ -366,6 +366,15 @@ class JsonParser {
     return result;
 }
 
+[[nodiscard]] JsonValue jsonRaw(std::string_view raw) {
+    const std::string source{raw};
+    JsonParser parser(source, "<unknown-field>");
+    if (auto value = parser.parse(); value.has_value()) {
+        return std::move(*value);
+    }
+    return jsonString(source);
+}
+
 [[nodiscard]] JsonValue jsonNumberValue(double value) {
     JsonValue result;
     result.kind = JsonValue::Kind::Number;
@@ -533,7 +542,7 @@ class JsonParser {
     object["unknownFields"] = jsonObject([&] {
         std::map<std::string, JsonValue> values;
         for (const auto& [name, value] : node.unknownFields) {
-            values[name] = jsonString(value);
+            values[name] = jsonRaw(value);
         }
         return values;
     }());
@@ -566,6 +575,15 @@ class JsonParser {
     for (const auto& [name, child] : value->object) {
         if (child.kind != JsonValue::Kind::String) return false;
         out[name] = child.string;
+    }
+    return true;
+}
+
+[[nodiscard]] bool readRawMap(const JsonValue* value,
+                              std::map<std::string, std::string>& out) {
+    if (value == nullptr || value->kind != JsonValue::Kind::Object) return false;
+    for (const auto& [name, child] : value->object) {
+        out[name] = jsonValue(child);
     }
     return true;
 }
@@ -647,9 +665,9 @@ class JsonParser {
         return std::nullopt;
     }
     if (const auto* unknown = member(value, "unknownFields");
-        unknown != nullptr && !readStringMap(unknown, node.unknownFields)) {
+        unknown != nullptr && !readRawMap(unknown, node.unknownFields)) {
         error = errorAt("codec.unknown_fields", file,
-                        "unknown field values must be strings");
+                        "unknown fields must be a JSON object");
         return std::nullopt;
     }
     if (const auto* children = member(value, "children");
@@ -1004,7 +1022,7 @@ std::string serializeDesignDocument(const DesignDocument& document) {
     root["unknownFields"] = jsonObject([&] {
         std::map<std::string, JsonValue> values;
         for (const auto& [name, value] : document.unknownFields) {
-            values[name] = jsonString(value);
+            values[name] = jsonRaw(value);
         }
         return values;
     }());
@@ -1062,10 +1080,10 @@ DesignReadResult readDesignDocument(const std::string& source,
     document.pageName = std::move(pageName);
     document.root = std::move(*decodedRoot);
     if (const auto* unknown = member(*value, "unknownFields");
-        unknown != nullptr && !readStringMap(unknown, document.unknownFields)) {
+        unknown != nullptr && !readRawMap(unknown, document.unknownFields)) {
         return DesignReadResult{
             DesignDocument{}, errorAt("codec.unknown_fields", filename,
-                                      "unknown field values must be strings")};
+                                      "unknown fields must be a JSON object")};
     }
     static const std::set<std::string> knownFields = {
         "documentId", "format", "pageName", "root", "schemaVersion",
