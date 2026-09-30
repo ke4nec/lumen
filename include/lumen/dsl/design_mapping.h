@@ -39,7 +39,7 @@ class DesignCoordinateTransform {
 
     [[nodiscard]] bool setDeviceScale(float value);
     [[nodiscard]] bool setZoom(float value);
-    void setPan(core::Offset value) { pan_ = value; }
+    [[nodiscard]] bool setPan(core::Offset value);
 
     [[nodiscard]] core::Offset pixelsToDesign(core::Offset pixels) const;
     [[nodiscard]] core::Offset designToPixels(core::Offset design) const;

@@ -53,9 +53,11 @@ TEST_CASE("designer coordinates round trip through dpi zoom and pan",
     DesignCoordinateTransform transform;
     REQUIRE(transform.setDeviceScale(1.25F));
     REQUIRE(transform.setZoom(1.5F));
-    transform.setPan(Offset{10.0F, 20.0F});
+    REQUIRE(transform.setPan(Offset{10.0F, 20.0F}));
     CHECK_FALSE(transform.setDeviceScale(0.0F));
     CHECK_FALSE(transform.setZoom(std::nanf("")));
+    CHECK_FALSE(transform.setPan(Offset{std::nanf(""), 20.0F}));
+    CHECK(transform.pan() == Offset{10.0F, 20.0F});
 
     const Offset design{32.0F, 18.0F};
     const auto pixels = transform.designToPixels(design);

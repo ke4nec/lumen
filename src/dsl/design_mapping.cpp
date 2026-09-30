@@ -67,6 +67,12 @@ bool DesignCoordinateTransform::setZoom(float value) {
     return true;
 }
 
+bool DesignCoordinateTransform::setPan(core::Offset value) {
+    if (!std::isfinite(value.x) || !std::isfinite(value.y)) return false;
+    pan_ = value;
+    return true;
+}
+
 core::Offset DesignCoordinateTransform::pixelsToDesign(
     core::Offset pixels) const {
     const core::Offset logical{pixels.x / deviceScale_,
