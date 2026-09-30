@@ -295,6 +295,7 @@ bool DesignDocumentHistory::commit(
         transaction.baseRevision_ != documentRevision_ ||
         transaction.before_ != document ||
         transaction.selectionBefore_ != selection ||
+        transaction.working_.documentId != transaction.before_.documentId ||
         !selectionMatchesDocument(transaction.selectionBefore_,
                                    transaction.before_) ||
         !selectionMatchesDocument(transaction.selectionAfter_,

@@ -219,6 +219,23 @@ TEST_CASE("designer document transactions are atomic and restore selection",
     CHECK_FALSE(history.commit(document, selection, std::move(invalidSchema)));
     CHECK(document.root.type == "Row");
     CHECK(history.undoSize() == 1);
+
+    auto identityChange = history.begin(document, selection);
+    DesignDocumentCommand changeIdentity;
+    changeIdentity.label = "Change document identity";
+    changeIdentity.affectedIds = {1};
+    changeIdentity.apply = [](DesignDocument& candidate) {
+        candidate.documentId = "unexpected-document";
+        return true;
+    };
+    changeIdentity.revert = [](DesignDocument& candidate) {
+        candidate.documentId = "designer-editor";
+        return true;
+    };
+    REQUIRE(identityChange.apply(std::move(changeIdentity)));
+    CHECK_FALSE(history.commit(document, selection, std::move(identityChange)));
+    CHECK(document.documentId == "designer-editor");
+    CHECK(history.undoSize() == 1);
 }
 
 TEST_CASE("designer history merges commands and clears redo branches",
