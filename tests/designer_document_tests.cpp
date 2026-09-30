@@ -1,3 +1,4 @@
+#include <set>
 #include <string>
 
 #include <catch2/catch_test_macros.hpp>
@@ -44,6 +45,65 @@ TEST_CASE("designer document imports and round trips the L0 DOM",
     REQUIRE(decoded.ok());
     CHECK(decoded.document == parsed.document);
     CHECK(serializeDesignDocument(decoded.document) == encoded);
+}
+
+TEST_CASE("designer codec round trips every frozen L0 node",
+          "[designer][p1]") {
+    const auto parsed = parseLumenSource(
+        R"(page all_l0 {
+            Column(key: "root", padding: 16, mainAxis: center,
+                   crossAxis: stretch) {
+                Container(key: "container", color: #102030) {
+                    Text("inside", key: "container-text")
+                }
+                Row(key: "row", spacing: 4, mainAxis: spaceBetween,
+                    crossAxis: center) {
+                    Text("label", key: "text", fontSize: 18)
+                    Button("Save", key: "button", variant: tonal, onClick: save)
+                    TextField(key: "field", placeholder: "Type", bind: value,
+                              maxLines: 2)
+                    Checkbox("Ready", key: "checkbox", checked: true)
+                    Switch("Enabled", key: "switch", checked: false)
+                }
+                Stack(key: "stack", alignment: center) {
+                    Text("stacked", key: "stack-text", left: 4, top: 8)
+                }
+                ScrollView(key: "scroll") {
+                    Text("scroll", key: "scroll-text")
+                }
+                ListView(key: "list") {
+                    Text("list", key: "list-text")
+                }
+                FocusScope(key: "focus") {
+                    Text("focus", key: "focus-text")
+                }
+            }
+        })",
+        "all-l0.lumen");
+    REQUIRE(parsed.ok());
+
+    std::set<std::string> types;
+    const auto collectTypes = [&](const auto& self,
+                                  const DesignNode& node) -> void {
+        types.insert(node.type);
+        for (const auto& child : node.children) self(self, child);
+    };
+    collectTypes(collectTypes, parsed.document.root);
+    CHECK(types == std::set<std::string>{
+                       "Button", "Checkbox", "Column", "Container",
+                       "FocusScope", "ListView", "Row", "ScrollView", "Stack",
+                       "Switch", "Text", "TextField"});
+
+    auto document = parsed.document;
+    document.unknownFields["future"] = "{\"enabled\":true}";
+    document.root.unknownFields["futureRoot"] = "[1,2,3]";
+    const auto encoded = serializeDesignDocument(document);
+    const auto decoded = readDesignDocument(encoded, "all-l0.design");
+    REQUIRE(decoded.ok());
+    CHECK(decoded.document == document);
+    CHECK(serializeDesignDocument(decoded.document) == encoded);
+    CHECK(decoded.document.root.source.has_value());
+    CHECK(decoded.document.root.propertySources.contains("padding"));
 }
 
 TEST_CASE("designer document compiles to the existing widget golden",
