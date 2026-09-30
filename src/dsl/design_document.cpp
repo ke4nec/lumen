@@ -1,4 +1,5 @@
 #include "lumen/dsl/design_codec.h"
+#include "lumen/dsl/design_schema.h"
 
 #include <cctype>
 #include <cmath>
@@ -985,6 +986,16 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
             errorAt("compile.root", "<design>", "root node type is required"));
         return result;
     }
+    for (auto diagnostic : validateDesignDocument(document)) {
+        if (diagnostic.code == "schema.unknown_node") {
+            diagnostic.code = "compile.unknown_node";
+        } else if (diagnostic.code == "schema.unknown_reference" ||
+                   diagnostic.code == "schema.invalid_reference") {
+            diagnostic.code = "compile.reference_kind";
+        }
+        result.diagnostics.push_back(std::move(diagnostic));
+    }
+    if (!result.diagnostics.empty()) return result;
     std::set<DesignNodeId> ids;
     std::optional<DesignError> error;
     const auto emitted = emitNode(document.root, ids, "root", error);

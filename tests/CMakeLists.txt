@@ -85,6 +85,7 @@ set(LUMEN_TEST_SOURCES
     motion_scroll_tests.cpp
     dsl_tests.cpp
     designer_document_tests.cpp
+    designer_schema_tests.cpp
     damage_tests.cpp
     tween_tests.cpp
     platform_smoke_tests.cpp

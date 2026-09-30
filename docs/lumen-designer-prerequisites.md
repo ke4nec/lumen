@@ -1014,9 +1014,11 @@ D3 可编辑设计器
 | F6 / D3 | 工具箱、属性面板、结构编辑、undo/redo、资源授权 | P1–P5 + G-D13–G-D16 全部通过后再做真实编辑流程 | 退回只读 D2，不宣称双向完成 |
 
 F0 是源码边界核对；F1/P1 已完成 L0 语义 DOM、`.lumen` 导入、规范化设计文档 codec 和
-DOM→Widget 编译入口。`designer_document_tests.cpp` 覆盖 DOM round-trip、C++ builder
-golden、未知节点/损坏输入、未知字段保留、重复 ID 和 P1 运行时引用拒绝。F2–F5 的 API
-形状已细化；F2 开始前不应把 P1 的显式属性表误写成完整 schema registry。
+DOM→Widget 编译入口；F2/P2 已完成 L0 `NodeSchema`/`PropertySpec` 显式注册表，并由编译
+入口执行类型、枚举、范围和子节点约束。`designer_document_tests.cpp` 覆盖 DOM round-trip、
+C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和 P1 运行时引用拒绝；
+`designer_schema_tests.cpp` 覆盖 12 节点注册、访问器、非法属性和结构诊断。F3–F5 的 API
+形状已细化；P2 的 registry 仍只覆盖 L0，不代表全控件 schema 已完成。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1147,16 +1149,19 @@ golden、未知节点/损坏输入、未知字段保留、重复 ID 和 P1 运�
 ### 10.3 本轮核对记录（2026-09-30）
 
 - 规划基线：`e2c61ef`；F1/P1 实现新增 `design_document.h`、`design_codec.h`、
-  `design_document.cpp` 和 `designer_document_tests.cpp`，工作区另有既存的平台 host 修改，
+  `design_document.cpp`、`designer_document_tests.cpp`，F2/P2 追加 `design_schema.h`、
+  `design_schema.cpp`、`designer_schema_tests.cpp`；工作区另有既存的平台 host 修改，
   未把它们作为设计器证据。
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：`946/946` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个
-  测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器或 D2/D3 功能状态。
+- 结果：`948/948` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个和
+  P2 的 2 个测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器或 D2/D3
+  功能状态。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
-  RuntimeContext 引用注入、属性 schema、DocumentStore 迁移和编辑事务留在 F2–F6。
+  RuntimeContext 引用注入、DocumentStore 迁移和编辑事务留在 F3–F6；L1–L3 节点 schema
+  仍未登记。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
   代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译不写入这些运行时

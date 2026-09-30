@@ -1,6 +1,7 @@
 add_library(lumen-dsl STATIC
     dsl.cpp
     design_document.cpp
+    design_schema.cpp
     text_dsl.cpp
 )
 
