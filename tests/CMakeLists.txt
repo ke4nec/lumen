@@ -34,6 +34,9 @@ set(LUMEN_TEST_SOURCES
     # G-4：可编辑 ComboBox（docs/lumen-combo-box-design.md）——过滤/
     # 选择/键盘路径（复用 ContextMenu overlay）。
     combo_box_tests.cpp
+    # G-4：ColorPicker（docs/lumen-color-picker-design.md）——HSV 派生/
+    # 色板反推/hex 降级。
+    color_picker_tests.cpp
     # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
     grid_virtual_tests.cpp
     # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、

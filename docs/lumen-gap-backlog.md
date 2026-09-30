@@ -105,7 +105,7 @@
 | G-1 | 已完成（2026-09-29） | 命令分发层落地：[`lumen-command-dispatch-design.md`](lumen-command-dispatch-design.md)、`include/lumen/app/command_registry.h`；随附 SDL 和弦字符修复；系统级热键留 M16 同模型第二层 |
 | G-2 | 已完成（2026-09-29） | 崩溃兜底与持久日志落地：[`lumen-runtime-diagnostics-design.md`](lumen-runtime-diagnostics-design.md)、`include/lumen/diagnostics/runtime_diagnostics.h`（新模块 lumen-diagnostics）+ 注入进程冒烟；runApp 可选接线默认零开销 |
 | G-3 | 已完成（2026-09-30） | 剪贴板深度落地：[`lumen-clipboard-service-design.md`](lumen-clipboard-service-design.md)、core MIME 数据层（默认实现降级）+ SDL data API + ClipboardChanged 广播；Windows/macOS 图片位如实 false（原生 seam 遗留） |
-| G-4 | 进行中（2026-09-30 前两批落地） | DialogHost（[`lumen-dialog-host-design.md`](lumen-dialog-host-design.md)）与编辑 ComboBox（[`lumen-combo-box-design.md`](lumen-combo-box-design.md)）已交付；ColorPicker 后续批次 |
+| G-4 | 已完成（2026-09-30；DatePicker 留按需池） | DialogHost（[`lumen-dialog-host-design.md`](lumen-dialog-host-design.md)）、编辑 ComboBox（[`lumen-combo-box-design.md`](lumen-combo-box-design.md)）、ColorPicker（[`lumen-color-picker-design.md`](lumen-color-picker-design.md)）三批交付 |
 | G-5 | 待处理 | 建议 M15 后或随 M17 |
 | G-6 | 待处理 | 随时可做 |
 | G-7 | 待处理 | 按需，建议与 G-6 组合 |

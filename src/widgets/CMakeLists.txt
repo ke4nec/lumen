@@ -6,6 +6,8 @@ add_library(lumen-widgets STATIC
     dialog_host.cpp
     # G-4：可编辑 ComboBox（combo-box-design；复用 ContextMenu overlay）。
     combo_box.cpp
+    # G-4：ColorPicker（color-picker-design；色板 + HSV 滑条组合件）。
+    color_picker.cpp
     # 集合控件（collection-controls-design）：共享选择模型与三控制器。
     selection.cpp
     list.cpp

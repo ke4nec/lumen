@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Lumen ColorPicker mockup（G-4）</title>
+<style>
+  body { background: #18181b; color: #e4e4e7;
+         font-family: system-ui, sans-serif; padding: 32px; }
+  h2 { font-size: 13px; color: #a1a1aa; font-weight: 500; margin: 0 0 12px; }
+  .card { width: 260px; background: #27272a; border: 1px solid #3f3f46;
+          border-radius: 10px; padding: 16px; display: flex;
+          flex-direction: column; gap: 12px; }
+  .previewRow { display: flex; align-items: center; gap: 8px;
+                font-size: 13px; }
+  .preview { width: 24px; height: 24px; border-radius: 6px;
+             background: #42a5f5; border: 1px solid #3f3f46; }
+  .slider { display: flex; align-items: center; gap: 8px; font-size: 12px;
+            color: #a1a1aa; }
+  .track { flex: 1; height: 4px; border-radius: 2px; position: relative; }
+  .thumb { position: absolute; top: 50%; width: 14px; height: 14px;
+           border-radius: 50%; background: #e4e4e7;
+           transform: translate(-50%, -50%); box-shadow: 0 1px 3px #0008; }
+  .track.h { background: linear-gradient(90deg, #f55, #ff5, #5f5, #5ff, #55f, #f5f, #f55); }
+  .track.s { background: linear-gradient(90deg, #8888, #42a5f5); }
+  .track.v { background: linear-gradient(90deg, #0000, #42a5f5); }
+  .palette { display: grid; grid-template-columns: repeat(6, 20px); gap: 4px; }
+  .swatch { width: 20px; height: 20px; border-radius: 4px; cursor: pointer;
+            border: 1px solid #0004; }
+  .hint { font-size: 12px; color: #a1a1aa; margin-top: 8px; max-width: 260px; }
+</style>
+</head>
+<body>
+  <h2>ColorPicker（G-4c）：预览 + H/S/V 滑条 + 色板</h2>
+  <div class="card">
+    <div class="previewRow"><div class="preview"></div><span>#42A5F5</span></div>
+    <div class="slider">H<div class="track h"><div class="thumb" style="left:58%"></div></div></div>
+    <div class="slider">S<div class="track s"><div class="thumb" style="left:68%"></div></div></div>
+    <div class="slider">V<div class="track v"><div class="thumb" style="left:96%"></div></div></div>
+    <div class="palette">
+      <div class="swatch" style="background:#ef5350"></div>
+      <div class="swatch" style="background:#ec407a"></div>
+      <div class="swatch" style="background:#ab47bc"></div>
+      <div class="swatch" style="background:#7e57c2"></div>
+      <div class="swatch" style="background:#5c6bc0"></div>
+      <div class="swatch" style="background:#42a5f5"></div>
+      <div class="swatch" style="background:#29b6f6"></div>
+      <div class="swatch" style="background:#26a69a"></div>
+      <div class="swatch" style="background:#66bb6a"></div>
+      <div class="swatch" style="background:#9ccc65"></div>
+      <div class="swatch" style="background:#ffee58"></div>
+      <div class="swatch" style="background:#ffa726"></div>
+    </div>
+  </div>
+  <div class="hint">swatch 填充 = 数据色（「颜色即内容」例外条款）；滑条点击色板后反推同步；结果 = "#RRGGBB" 写 bind，非法 hex 降级黑色。</div>
+</body>
+</html>

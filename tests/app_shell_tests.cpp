@@ -1305,3 +1305,30 @@ TEST_CASE("dump_render_tree_is_deterministic_and_labeled",
     // 树深至少 3（根 → column 子 → …），行数 = 节点数。
     CHECK(std::count(first.begin(), first.end(), '\n') >= 3);
 }
+
+// --- M18：语义树导出（dumpSemanticsTree；settings --dump-semantics 同源） ---
+
+TEST_CASE("dump_semantics_tree_is_deterministic_and_typed",
+          "[app][m18]") {
+    lumen::app::ShellConfig config;
+    config.initialView = {200.0F, 100.0F};
+    config.build = [] {
+        return lumen::core::makeColumn(
+            {lumen::core::withKey(lumen::core::makeButton("OK"), "ok-btn"),
+             lumen::core::withKey(lumen::core::makeText("label"), "t1")});
+    };
+    lumen::app::AppShell shell(config);
+    (void)shell.renderFrame();
+
+    const lumen::accessibility::SemanticsTree tree =
+        shell.buildSemanticsSnapshot();
+    const std::string first = lumen::app::dumpSemanticsTree(tree);
+    const std::string second =
+        lumen::app::dumpSemanticsTree(shell.buildSemanticsSnapshot());
+    CHECK(first == second);  // 确定性（map 有序 + 无指针/时间）。
+    CHECK(first.find("role=window") != std::string::npos);
+    // 按钮语义节点：label 来自文本、可激活。
+    CHECK(first.find("label=\"OK\"") != std::string::npos);
+    CHECK(first.find("actions=focus activate") != std::string::npos);
+    CHECK(first.find("children=") != std::string::npos);
+}
