@@ -206,6 +206,9 @@ TEST_CASE("document store temporary names do not reuse legacy process-local path
     for (int serial = 1; serial <= 128; ++serial) {
         std::ofstream(path.string() + ".tmp-" + std::to_string(serial))
             << "stale-" << serial;
+        std::ofstream(path.string() + ".tmp-" + std::to_string(processId()) +
+                      "-" + std::to_string(serial))
+            << "stale-process-" << serial;
     }
 
     DocumentStore store;
@@ -218,6 +221,15 @@ TEST_CASE("document store temporary names do not reuse legacy process-local path
         const std::string contents((std::istreambuf_iterator<char>(input)),
                                    std::istreambuf_iterator<char>());
         CHECK(contents == "stale-" + std::to_string(serial));
+
+        std::ifstream processInput(
+            path.string() + ".tmp-" + std::to_string(processId()) + "-" +
+            std::to_string(serial));
+        REQUIRE(processInput);
+        const std::string processContents(
+            (std::istreambuf_iterator<char>(processInput)),
+            std::istreambuf_iterator<char>());
+        CHECK(processContents == "stale-process-" + std::to_string(serial));
     }
 }
 

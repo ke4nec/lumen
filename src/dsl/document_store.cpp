@@ -59,15 +59,22 @@ bool atomicReplace(const std::string& temporary, const std::string& path,
 }
 
 [[nodiscard]] std::string temporaryPath(const std::string& path) {
-    const auto serial = gTemporaryFileId.fetch_add(1);
+    namespace fs = std::filesystem;
+
+    for (;;) {
+        const auto serial = gTemporaryFileId.fetch_add(1);
 #ifdef _WIN32
-    const auto process =
-        static_cast<unsigned long long>(GetCurrentProcessId());
+        const auto process =
+            static_cast<unsigned long long>(GetCurrentProcessId());
 #else
-    const auto process = static_cast<unsigned long long>(::getpid());
+        const auto process = static_cast<unsigned long long>(::getpid());
 #endif
-    return path + ".tmp-" + std::to_string(process) + "-" +
-           std::to_string(serial);
+        const std::string candidate =
+            path + ".tmp-" + std::to_string(process) + "-" +
+            std::to_string(serial);
+        std::error_code error;
+        if (!fs::exists(candidate, error) || error) return candidate;
+    }
 }
 
 [[nodiscard]] DesignError storeError(const std::string& code,
