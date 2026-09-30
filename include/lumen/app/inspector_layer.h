@@ -66,13 +66,36 @@ namespace inspector_layer_detail {
 
 }  // namespace inspector_layer_detail
 
+// 按 identity 解析钉住节点（跨重建稳定——identity 是路径身份）；返回
+// 绝对矩形。未找到（子树移除/重建变化）返回 nullptr。
+[[nodiscard]] inline const core::RenderNode* findNodeByIdentityAt(
+    const core::RenderNode& node, core::Offset absolute,
+    const std::string& identity, core::Rect& outRect) {
+    const core::Rect rect{absolute, node.size};
+    if (node.identity == identity) {
+        outRect = rect;
+        return &node;
+    }
+    for (const auto& child : node.children) {
+        const core::Offset childBase{absolute.x + child.offset.x,
+                                     absolute.y + child.offset.y};
+        if (const core::RenderNode* hit =
+                findNodeByIdentityAt(child, childBase, identity, outRect)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
 // 检视图层（配色经 FrameOverlayStyle 派生；outline 为命中高亮描边色，
 // 2px）。view 尺寸取 scene.size；focusedIdentity 非空且命中节点一致时
-// 追加 [focused] 标记。
+// 追加 [focused] 标记。pinnedIdentity 非空 = 钉住态：命中改按 identity
+// 解析（悬停位置仅作未钉住时的输入），面板追加 [pinned] 标记与样式明
+// 细行（common 段关键值，--dump-style 同口径）。
 [[nodiscard]] inline core::RenderNode makeInspectorLayer(
     const core::RenderNode& scene, core::Offset pointer,
     const std::string& focusedIdentity, const FrameOverlayStyle& style,
-    core::Color outline) {
+    core::Color outline, const std::string& pinnedIdentity = {}) {
     using inspector_layer_detail::infoRow;
     using bounds_overlay_detail::outlineNode;
 
@@ -82,9 +105,13 @@ namespace inspector_layer_detail {
     constexpr float kMargin = 8.0F;
     constexpr float kPanelWidth = 300.0F;
 
+    const bool pinned = !pinnedIdentity.empty();
     core::Rect hitRect{};
     const core::RenderNode* hit =
-        findNodeAt(scene, core::Offset{0.0F, 0.0F}, pointer, hitRect);
+        pinned
+            ? findNodeByIdentityAt(scene, core::Offset{0.0F, 0.0F},
+                                   pinnedIdentity, hitRect)
+            : findNodeAt(scene, core::Offset{0.0F, 0.0F}, pointer, hitRect);
 
     struct Row {
         std::string text{};
@@ -92,7 +119,9 @@ namespace inspector_layer_detail {
     };
     std::vector<Row> rows;
     if (hit == nullptr) {
-        rows.push_back(Row{"inspector: no node at pointer", true});
+        rows.push_back(Row{pinned ? "inspector: pinned node gone"
+                                  : "inspector: no node at pointer",
+                           true});
     } else {
         char line[160];
         std::snprintf(line, sizeof(line), "type=%d",
@@ -100,6 +129,9 @@ namespace inspector_layer_detail {
         std::string first = line;
         if (!hit->key.empty()) {
             first += " key=" + hit->key;
+        }
+        if (pinned) {
+            first += " [pinned]";
         }
         rows.push_back(Row{first, true});
         if (!hit->identity.empty()) {
@@ -133,6 +165,26 @@ namespace inspector_layer_detail {
         if (hit->selected) flags += " selected";
         if (!flags.empty()) {
             rows.push_back(Row{std::string("flags:") + flags, false});
+        }
+        // 钉住态：样式明细（common 段关键值；--dump-style 同口径）。
+        if (pinned) {
+            const core::CommonResolvedStyle& common =
+                core::commonStyle(hit->style.component);
+            auto colorHex = [](core::Color color) {
+                char buffer[10];
+                std::snprintf(buffer, sizeof(buffer), "%02x%02x%02x%02x",
+                              color.r, color.g, color.b, color.a);
+                return std::string("#") + buffer;
+            };
+            rows.push_back(Row{"bg=" + colorHex(common.background) +
+                                   " fg=" + colorHex(common.foreground) +
+                                   " border=" + colorHex(common.border),
+                               false});
+            std::snprintf(line, sizeof(line),
+                          "radius=%.0f borderWidth=%.1f min=%.0fx%.0f",
+                          common.radius.topLeft, common.borderWidth,
+                          hit->style.minWidth, hit->style.minHeight);
+            rows.push_back(Row{line, false});
         }
     }
 

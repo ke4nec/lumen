@@ -407,8 +407,20 @@ class AppShell {
     // R6：inspector 检视图层（inspector_layer.h；纯绘制——悬停检视最
     // 近指针位置的主树最深命中节点：信息面板 + 2px 命中高亮）。指针移
     // 动即标脏刷新（显式开启才有的额外帧）；关闭零开销、frame hash
-    // 不变。点击 pin 为后续增量。
+    // 不变。
     void setDebugInspector(bool enabled);
+    // inspector 钉住态（调试模式契约）：开启 inspector 时点击被检视器
+    // 捕获——钉住命中节点（identity 跨重建稳定；面板追加样式明细行），
+    // 再点换钉目标，Esc 解钉回悬停态。捕获期间点击不进应用（调试语
+    // 义如实声明；指针/键盘其余路径不受影响）。滚轮/键盘穿透不拦截。
+    void inspectorUnpin();
+    // 钉住态查询（测试/诊断回显）。
+    [[nodiscard]] const std::string& inspectorPinnedIdentity() const {
+        return inspectorPinnedIdentity_;
+    }
+    [[nodiscard]] core::Offset inspectorLastPointer() const {
+        return lastPointer_;
+    }
     // 当前快照（合并 renderer stats/capabilities 与采样值；未开启采样
     // 时阶段/计数字段为 0，renderer 字段仍如实）。非 const：stats() 与
     // capabilities() 按既有先例为非 const。
@@ -605,6 +617,8 @@ class AppShell {
     bool debugFrameStats_{false};
     bool debugInspector_{false};
     core::Offset lastPointer_{};
+    // inspector 钉住节点 identity（空 = 悬停态）。
+    std::string inspectorPinnedIdentity_{};
     render::CpuRenderer cpuRenderer_{1.0F};
     render::Renderer* externalRenderer_{nullptr};
     // M5：语义桥（外部拥有）与上次推送树/焦点。

@@ -475,6 +475,21 @@ void AppShell::pointerDown(core::Offset position,
                            std::uint32_t pointerId) {
     dismissTooltips();
     rebuildIfDirty();
+    // R6 inspector 钉住态（调试模式）：点击被检视器捕获——主键点击
+    // 钉住/换钉最深命中节点，不进应用交互层。Secondary/Middle 保持原
+    // 路径（右键属性菜单等调试常用伴生操作不劫持）。
+    if (debugInspector_ && button == core::PointerButton::Primary) {
+        // 钉住/换钉始终按点击位置解析（identity 跨重建稳定；点击空区
+        // = 解钉）。
+        lastPointer_ = position;
+        core::Rect hitRect{};
+        const core::RenderNode* hit =
+            findNodeAt(root_, core::Offset{0.0F, 0.0F}, position, hitRect);
+        inspectorPinnedIdentity_ =
+            hit != nullptr ? hit->identity : std::string{};
+        dirty_ = true;
+        return;
+    }
     controller_.pointerDown(eventTree(), position, lastTickMs_, modifiers,
                             button, device, pointerId);
 }
@@ -496,6 +511,11 @@ void AppShell::pointerMove(core::Offset position, std::uint32_t pointerId) {
 void AppShell::pointerUp(core::Offset position, core::PointerButton button,
                          std::uint32_t pointerId) {
     rebuildIfDirty();
+    if (debugInspector_ && button == core::PointerButton::Primary &&
+        !inspectorPinnedIdentity_.empty()) {
+        // 配对吞掉（点击已被捕获成钉住；无手势残留）。
+        return;
+    }
     controller_.pointerUp(eventTree(), position, lastTickMs_, button,
                           pointerId);
 }
@@ -566,6 +586,13 @@ void AppShell::cancelComposition() { controller_.cancelComposition(); }
 void AppShell::keyDown(core::Key key, core::KeyModifiers modifiers,
                        char keyChar) {
     rebuildIfDirty();
+    // R6 inspector 钉住态：Escape 解钉（悬停态不拦截——应用 Escape 规
+    // 则不受影响）。
+    if (debugInspector_ && !inspectorPinnedIdentity_.empty() &&
+        key == core::Key::Escape) {
+        inspectorUnpin();
+        return;
+    }
     // 应用级键拦截（Escape/返回统一规则等）：消费后不进命令层与交互层。
     if (config_.onKey && config_.onKey(*this, key, modifiers, keyChar)) {
         return;
@@ -940,7 +967,8 @@ void AppShell::paintFrame(bool forceFullRepaint) {
         commands.extend(render::recordScene(
             makeInspectorLayer(root_, lastPointer_, focus_.focusedIdentity(),
                                FrameOverlayStyle::fromTheme(theme_),
-                               theme_.colors.accent),
+                               theme_.colors.accent,
+                               inspectorPinnedIdentity_),
             options, textFontSource()));
     }
     renderer.noteCpuBuildMs(
@@ -1037,6 +1065,16 @@ void AppShell::setDebugFrameStats(bool enabled) {
 
 void AppShell::setDebugInspector(bool enabled) {
     debugInspector_ = enabled;
+    if (!enabled) {
+        inspectorUnpin();
+    }
+}
+
+void AppShell::inspectorUnpin() {
+    if (!inspectorPinnedIdentity_.empty()) {
+        inspectorPinnedIdentity_.clear();
+        dirty_ = true;
+    }
 }
 
 void AppShell::setDebugDamageOverlay(bool enabled) {

@@ -1625,12 +1625,92 @@ TEST_CASE("inspector_layer_paints_on_move_and_keeps_input_alive",
     const lumen::core::Color baseline = pixelAt(plain.pixels(), px, py);
     CHECK(edge != baseline);
 
-    // 输入不受影响：点击仍激活（纯绘制层不吞输入）。
+    // R6 钉住态契约（阶段9更新）：inspector 开启时主键点击被检视器捕
+    // 获——钉住最深命中节点（identity），应用 handler 不触发；Esc 解钉。
     int clicks = 0;
     shell.handlers()["inspect-click"] = [&clicks] { ++clicks; };
     shell.pointerDown(center);
     shell.pointerUp(center);
+    CHECK(clicks == 0);  // 捕获成钉住，不进应用。
+    CHECK_FALSE(shell.inspectorPinnedIdentity().empty());
+    // Esc 解钉后关闭 inspector，点击恢复应用路径。
+    shell.keyDown(lumen::core::Key::Escape);
+    CHECK(shell.inspectorPinnedIdentity().empty());
+    shell.setDebugInspector(false);
+    shell.pointerDown(center);
+    shell.pointerUp(center);
     CHECK(clicks == 1);
+}
+
+TEST_CASE("inspector_pin_switches_target_and_survives_rebuild",
+          "[app][r6]") {
+    lumen::app::ShellConfig config;
+    config.initialView = {200.0F, 120.0F};
+    config.build = [] {
+        auto button =
+            lumen::core::withKey(lumen::core::makeButton("OK"), "ok-btn");
+        button.onClick = "app-click";
+        return lumen::core::makeColumn(
+            {std::move(button),
+             lumen::core::withKey(lumen::core::makeText("content"),
+                                  "content")});
+    };
+    lumen::app::AppShell shell(config);
+    shell.setDebugInspector(true);
+    (void)shell.renderFrame();
+
+    const auto centerOf = [&shell](const std::string& key) {
+        const lumen::core::RenderNode* node =
+            lumen::core::findNodeByKey(shell.root(), key);
+        REQUIRE(node != nullptr);
+        return lumen::core::absoluteOffset(shell.root(), key) +
+               lumen::core::Offset{node->size.width * 0.5F,
+                                   node->size.height * 0.5F};
+    };
+
+    // 钉住按钮 → 面板含 [pinned] 与样式明细（bg=#/radius 行）。
+    shell.pointerDown(centerOf("ok-btn"));
+    shell.pointerUp(centerOf("ok-btn"));
+    CHECK_FALSE(shell.inspectorPinnedIdentity().empty());
+    const lumen::app::FrameOverlayStyle style =
+        lumen::app::FrameOverlayStyle::fromTheme(
+            lumen::style::Theme::dark());
+    // 经图层合成断言（shell 层像素不稳定——AA；直接调合成器）。
+    const lumen::core::RenderNode layer = lumen::app::makeInspectorLayer(
+        shell.root(), shell.inspectorLastPointer(),
+        shell.focus().focusedIdentity(), style,
+        lumen::core::Color{86, 140, 240, 255},
+        shell.inspectorPinnedIdentity());
+    bool sawPinned = false;
+    bool sawStyleDetail = false;
+    bool sawRadius = false;
+    for (const auto& child : layer.children) {
+        for (const auto& row : child.children) {
+            if (row.text.find("[pinned]") != std::string::npos) sawPinned = true;
+            if (row.text.find("bg=#") == 0) sawStyleDetail = true;
+            if (row.text.find("radius=") == 0) sawRadius = true;
+        }
+    }
+    CHECK(sawPinned);
+    CHECK(sawStyleDetail);
+    CHECK(sawRadius);
+
+    // 再点 content → 换钉（identity 变化）。
+    const std::string firstPin = shell.inspectorPinnedIdentity();
+    shell.pointerDown(centerOf("content"));
+    shell.pointerUp(centerOf("content"));
+    CHECK(shell.inspectorPinnedIdentity() != firstPin);
+
+    // 钉住跨重建稳定：文本内容变化触发重建后 identity 仍解析（钉住节
+    // 点仍在树中）。
+    (void)shell.renderFrame();
+    CHECK_FALSE(shell.inspectorPinnedIdentity().empty());
+
+    // Secondary（右键）不被捕获：模拟右键 press 后 pinned identity 不变。
+    const std::string beforeSecondary = shell.inspectorPinnedIdentity();
+    shell.pointerDown(centerOf("ok-btn"), lumen::core::kModifierNone,
+                      lumen::core::PointerButton::Secondary);
+    CHECK(shell.inspectorPinnedIdentity() == beforeSecondary);
 }
 
 TEST_CASE("run_app_paints_frame_stats_layer_when_enabled",

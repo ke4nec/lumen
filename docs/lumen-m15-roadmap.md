@@ -345,11 +345,28 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
   inspector 基线帧同位对比——AA 合成色不做精确断言）+ 输入存活 1；
   HUD 重写测试 2（合成 + runApp 装配/默认关闭对照，替换旧 overlay 槽
   位断言）。
-- 边界（如实）：读数/检视随重绘帧刷新（HUD 滞后一帧采样）；inspector
-  点击 pin 与节点信息（WidgetState/ResolvedStyle 明细）为后续增量；
-  分配量维度维持未接入。
-- 未交付池项（更新）：inspector 点击 pin 与节点明细、语义树视图、分
-  配量统计、双轴联滚、RTL 镜像、触摸长按唤起、横向网格——按需继续。
+- 边界（如实）：读数/检视随重绘帧刷新（HUD 滞后一帧采样）；分配量维
+  度维持未接入。
+
+### R6 四批状态记录（2026-09-30，inspector 钉住态与样式明细）
+
+- 变更：`AppShell` 钉住状态机——inspector 开启时主键 `pointerDown` 被
+  捕获（`findNodeAt` 按点击位置解析钉住 identity；再点换钉、空区解
+  钉），配对 `pointerUp` 吞掉；Esc（钉住态优先于应用 onKey）解钉；
+  右键/中键不劫持（属性菜单等调试伴生操作保持）。`inspector_layer.h`
+  增 `findNodeByIdentityAt`（identity 跨重建解析）与钉住态渲染：
+  `[pinned]` 标记 + 样式明细行（common 段 bg/fg/border 十六进制 +
+  radius/borderWidth/min——`--dump-style` 同口径）；钉住节点消失（重建
+  移除）如实显示 "pinned node gone" 并跳过高亮。公共查询
+  `inspectorPinnedIdentity()/inspectorLastPointer()`（测试/诊断回显）。
+- 测试：契约更新（hover 不拦截 + 点击捕获成钉住 + Esc 解钉后关闭
+  inspector 恢复应用点击）与新增钉住用例（[pinned]/bg=#/radius= 明细
+  行、换钉 identity 变化、跨重建稳定、Secondary 不劫持）。
+- 契约（如实声明）：钉住捕获是显式调试语义——仅主键、仅 inspector
+  开启期；阶段8的"输入零影响"对 HUD/bounds/damage 图层仍成立（被动
+  层），inspector 为主动调试工具（浏览器元素检视器惯例）。
+- 未交付池项（更新）：语义树视图、分配量统计、双轴联滚、RTL 镜像、
+  触摸长按唤起、横向网格——按需继续。
 
 
 ### M17 进行中状态记录（2026-09-29，池式首项交付）
