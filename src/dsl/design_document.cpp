@@ -605,8 +605,12 @@ class JsonParser {
     }
     char* idEnd = nullptr;
     errno = 0;
+    const bool decimalId = !idText.empty() &&
+                           std::all_of(idText.begin(), idText.end(), [](char c) {
+                               return c >= '0' && c <= '9';
+                           });
     const std::uint64_t id = std::strtoull(idText.c_str(), &idEnd, 10);
-    if (idText.empty() || errno == ERANGE ||
+    if (!decimalId || errno == ERANGE ||
         idEnd != idText.c_str() + idText.size() || id == 0) {
         error = errorAt("codec.node_id", file, "node id must be a nonzero string");
         return std::nullopt;

@@ -114,6 +114,24 @@ TEST_CASE("designer document diagnostics reject unsupported and damaged input",
     CHECK(duplicate.error->code == "codec.duplicate_node_id");
 }
 
+TEST_CASE("designer codec rejects non-decimal node ids", "[designer][p1]") {
+    const auto sourceForId = [](const std::string& id) {
+        return std::string{
+                   R"({"documentId":"doc","format":"lumen.design",
+                      "pageName":"p","root":{"id":")"} +
+               id + R"(","type":"Text","properties":{}},
+                      "schemaVersion":1})";
+    };
+
+    for (const std::string id : {"-1", "+1", " 1"}) {
+        const auto result =
+            readDesignDocument(sourceForId(id), "invalid-id.design");
+        REQUIRE_FALSE(result.ok());
+        REQUIRE(result.error.has_value());
+        CHECK(result.error->code == "codec.node_id");
+    }
+}
+
 TEST_CASE("designer document does not accept a runtime-only reference in P1",
           "[designer][p1]") {
     DesignDocument document;
