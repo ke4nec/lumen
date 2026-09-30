@@ -9,9 +9,11 @@
 #include <algorithm>
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "lumen/core/windowing.h"
+#include "lumen/diagnostics/runtime_diagnostics.h"
 #include "lumen/platform/application_host.h"
 #include "lumen/render/frame_scheduler.h"
 
@@ -102,6 +104,35 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
     }
     if (!host.initialize()) {
         return 1;
+    }
+
+    // G-2：崩溃兜底与持久日志（进程级；首个配置了目录的窗口生效）。
+    // start() 检测上次脏标记；正常退出在 cleanup 后 cleanShutdown（清
+    // 标记）。崩溃路径不经此（处理器直接终止）。摘要回传配置窗口的
+    // RunOptions.lastRunCrashSummary（应用据此提示"上次已崩溃"）。
+    std::optional<diagnostics::RuntimeDiagnostics> runtimeDiagnostics;
+    for (auto& window : windows) {
+        if (window.options.diagnosticsDirectory.empty()) {
+            continue;
+        }
+        diagnostics::RuntimeDiagnosticsOptions diagOptions;
+        diagOptions.directory = window.options.diagnosticsDirectory;
+        diagOptions.appName = window.options.diagnosticsAppName;
+        runtimeDiagnostics.emplace(std::move(diagOptions));
+        if (!runtimeDiagnostics->start()) {
+            runtimeDiagnostics.reset();
+            continue;
+        }
+        window.options.lastRunCrashSummary =
+            runtimeDiagnostics->lastRunCrash();
+        if (window.options.diagnostics) {
+            const auto& crash = runtimeDiagnostics->lastRunCrash();
+            std::fprintf(stdout,
+                         "[diag] last-run-crashed=%d report=%s log=%s\n",
+                         crash.crashed ? 1 : 0,
+                         crash.reportPath.c_str(), crash.logPath.c_str());
+        }
+        break;
     }
 
     render::RealtimeClock clock;
@@ -660,6 +691,11 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                 case HostEventType::FileDialogCompleted:
                     notify(*runtime, event, render::FrameReason::Input);
                     break;
+                // M16：托盘菜单激活/全局快捷键转发应用（onEvent 消费）。
+                case HostEventType::TrayActivated:
+                case HostEventType::GlobalHotkey:
+                    notify(*runtime, event, render::FrameReason::Input);
+                    break;
                 // M15：OS 拖入会话转发应用（onEvent 消费落点/负载；应用
                 // 变更状态后自行请求帧）。框架内重排拖拽不经此路径。
                 case HostEventType::DragEnter:
@@ -821,6 +857,10 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         }
     }
     cleanup();
+    // G-2：干净退出清脏标记 + 冲刷日志 + 恢复处理器（崩溃路径不经此）。
+    if (runtimeDiagnostics.has_value()) {
+        runtimeDiagnostics->cleanShutdown();
+    }
     return exitCode;
 }
 

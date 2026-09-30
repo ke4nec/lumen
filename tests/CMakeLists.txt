@@ -22,6 +22,9 @@ set(LUMEN_TEST_SOURCES
     # G-1：命令分发层（docs/lumen-command-dispatch-design.md）——域优先
     # 级、模态屏蔽、冲突仲裁、字段保护与菜单同路径派生。
     command_registry_tests.cpp
+    # G-2：崩溃兜底与持久日志（docs/lumen-runtime-diagnostics-design.md）
+    # ——脏标记生命周期、日志分级/滚动、关闭态零开销。
+    runtime_diagnostics_tests.cpp
     # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
     grid_virtual_tests.cpp
     # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、
@@ -168,6 +171,7 @@ target_link_libraries(lumen-tests PRIVATE
     lumen-render
     lumen-text
     lumen-accessibility
+    lumen-diagnostics
     lumen-widgets
     lumen-platform
     lumen-dsl
@@ -228,6 +232,17 @@ find_package(Python3 QUIET COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME platform_acceptance_evidence_integrity
         COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/platform_acceptance_tests.py)
+endif()
+
+# G-2：崩溃注入冒烟（独立进程 + script 模式断言；POSIX 信号语义）。
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    add_executable(crash_injector crash_injector.cpp)
+    target_compile_features(crash_injector PRIVATE cxx_std_20)
+    target_link_libraries(crash_injector PRIVATE lumen-diagnostics)
+    add_test(NAME crash_injector_smoke
+        COMMAND ${CMAKE_COMMAND}
+            -DINJECTOR=$<TARGET_FILE:crash_injector>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/crash_injector_smoke.cmake)
 endif()
 
 if(LUMEN_ENABLE_GPU AND LUMEN_BUILD_EXAMPLES AND

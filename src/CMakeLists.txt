@@ -6,6 +6,8 @@ add_subdirectory(layout)
 add_subdirectory(render)
 add_subdirectory(text)
 add_subdirectory(accessibility)
+# G-2：崩溃兜底与持久日志（平台无关；runApp 可选接线）。
+add_subdirectory(diagnostics)
 add_subdirectory(widgets)
 # lumen-platform 自行按 LUMEN_BUILD_MOBILE_CORE 排除 SDL 适配源（8E）。
 add_subdirectory(platform)

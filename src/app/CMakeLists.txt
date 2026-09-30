@@ -21,6 +21,7 @@ target_link_libraries(lumen-app PUBLIC
     lumen-render
     lumen-text
     lumen-accessibility
+    lumen-diagnostics
     lumen-platform
 )
 target_compile_features(lumen-app PUBLIC cxx_std_20)

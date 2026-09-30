@@ -215,6 +215,11 @@ int runWindowed(SettingsApp& app, const Options& options) {
     runOptions.windowDesc.width = 800;
     runOptions.windowDesc.height = 600;
     runOptions.diagnostics = options.diagnostics;
+    // G-2：崩溃兜底与持久日志（平台惯例目录；runApp 安装/清理，检测到
+    // 上次崩溃时输出 [diag] last-run-crashed 行并回传摘要）。
+    runOptions.diagnosticsDirectory =
+        lumen::diagnostics::defaultDiagnosticsDirectory("lumen-settings");
+    runOptions.diagnosticsAppName = "lumen-settings";
 
     // 桌面系统字体（与 gallery 同口径：Windows 雅黑优先；失败回退占位）。
     runOptions.fontFactory = []()
