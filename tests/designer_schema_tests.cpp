@@ -11,6 +11,7 @@ using lumen::dsl::DesignDocument;
 using lumen::dsl::DesignEnum;
 using lumen::dsl::DesignNode;
 using lumen::dsl::DesignValue;
+using lumen::dsl::compileDesignDocument;
 using lumen::dsl::findNodeSchema;
 using lumen::dsl::findPropertySpec;
 using lumen::dsl::nodeSchemaRegistry;
@@ -69,6 +70,33 @@ TEST_CASE("designer schema properties round trip through their Widget accessors"
         REQUIRE(height->set);
         REQUIRE(height->set(widget, DesignValue{}));
         CHECK(height->get(widget) == DesignValue{});
+    }
+}
+
+TEST_CASE("designer compiler applies every L0 declaration through the registry",
+          "[designer][p2]") {
+    for (const auto& schema : nodeSchemaRegistry()) {
+        DesignDocument document;
+        document.pageName = "schema-compile";
+        document.root = DesignNode{1, schema.type};
+        for (const auto& property : schema.properties) {
+            if (property.persistence ==
+                lumen::dsl::PropertyPersistence::Declaration) {
+                document.root.properties[property.name] = property.defaultValue;
+            }
+        }
+
+        const auto compiled = compileDesignDocument(document);
+        REQUIRE(compiled.ok());
+        for (const auto& property : schema.properties) {
+            if (property.persistence !=
+                lumen::dsl::PropertyPersistence::Declaration) {
+                continue;
+            }
+            REQUIRE(property.get);
+            CHECK(property.get(compiled.root) ==
+                  document.root.properties.at(property.name));
+        }
     }
 }
 

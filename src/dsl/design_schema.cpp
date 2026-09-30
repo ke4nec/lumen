@@ -367,6 +367,9 @@ template <typename T>
         switch (kind) {
             case PropertyKind::Boolean: return boolOf(value) != nullptr;
             case PropertyKind::Number: {
+                if (std::holds_alternative<std::monostate>(value.value)) {
+                    return property == "width" || property == "height";
+                }
                 const auto* number = numberOf(value);
                 if (number == nullptr || !numberRepresentable<float>(*number)) {
                     return false;
