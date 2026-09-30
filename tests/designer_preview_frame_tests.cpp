@@ -7,6 +7,26 @@ using lumen::dsl::DesignPreviewFrame;
 using lumen::dsl::MapDesignRuntimeContext;
 using lumen::dsl::parseLumenSource;
 
+TEST_CASE("designer preview frame keeps a placeholder for missing references",
+          "[designer][f6][diagnostic]") {
+    const auto parsed = parseLumenSource(
+        "page preview { Button(\"Save\", bind: missing, key: \"save\") }");
+    REQUIRE(parsed.ok());
+
+    MapDesignRuntimeContext context;
+    DesignPreviewFrame frame;
+    CHECK_FALSE(frame.update(parsed.document, context));
+    CHECK(frame.hasFrame());
+    CHECK(frame.widget().type == lumen::core::WidgetType::Button);
+    CHECK(frame.trace().nodes.size() == 1);
+    REQUIRE(frame.diagnostics().size() == 1);
+    CHECK(frame.diagnostics().front().code == "reference.missing");
+    CHECK(frame.diagnostics().front().recoverability ==
+          DesignDiagnosticRecoverability::Placeholder);
+    REQUIRE(frame.session());
+    CHECK(frame.session()->active());
+}
+
 TEST_CASE("designer preview frame keeps the last good compile on failure",
           "[designer][f6][diagnostic]") {
     const auto parsed = parseLumenSource(

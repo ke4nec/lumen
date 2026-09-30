@@ -23,6 +23,19 @@ bool DesignPreviewFrame::update(const DesignDocument& document,
     const auto compiled = compileDesignDocument(document, context);
     setDiagnostics(compiled.diagnostics);
     if (!compiled.ok()) {
+        // Reference failures still produce a traced placeholder Widget. Keep
+        // it as the current frame so an offline preview remains inspectable.
+        if (!compiled.trace.nodes.empty()) {
+            if (session_) session_->close();
+            widget_ = compiled.root;
+            trace_ = compiled.trace;
+            sourceMap_ = compiled.sourceMap;
+            session_ = compiled.session;
+            documentId_ = document.documentId;
+            hasFrame_ = true;
+            ++generation_;
+            return false;
+        }
         if (!sameDocument(document.documentId)) {
             const auto errors = compiled.diagnostics;
             clear();
