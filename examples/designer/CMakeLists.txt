@@ -46,5 +46,20 @@ if(LUMEN_BUILD_TESTS)
             --file ${PROJECT_SOURCE_DIR}/examples/designer/gallery.lumen
             --max-frames 3)
     set_tests_properties(designer_gallery_window_smoke PROPERTIES TIMEOUT 40)
+  elseif(WIN32 OR APPLE)
+    add_test(NAME designer_window_smoke
+        COMMAND ${CMAKE_COMMAND} -E env
+            SDL_AUDIODRIVER=dummy
+            $<TARGET_FILE:lumen-designer>
+            --file ${PROJECT_SOURCE_DIR}/examples/counter/counter.lumen
+            --max-frames 3)
+    set_tests_properties(designer_window_smoke PROPERTIES TIMEOUT 40)
+    add_test(NAME designer_gallery_window_smoke
+        COMMAND ${CMAKE_COMMAND} -E env
+            SDL_AUDIODRIVER=dummy
+            $<TARGET_FILE:lumen-designer>
+            --file ${PROJECT_SOURCE_DIR}/examples/designer/gallery.lumen
+            --max-frames 3)
+    set_tests_properties(designer_gallery_window_smoke PROPERTIES TIMEOUT 40)
   endif()
 endif()

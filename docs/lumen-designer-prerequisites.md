@@ -1080,7 +1080,8 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 接入真实 `AppShell`，提供只读画布、大纲树、属性/诊断面板、主题/密度/交互状态预览、
 `--watch` 热重载、`--headless` 冒烟和 Linux/Xvfb 窗口 smoke；counter 与覆盖全部 L0
 节点的 gallery fixture 已纳入同一组验证。Windows/macOS 三桌面窗口现场验收和现有运行时
-Gallery 的完整样本覆盖仍待补齐。
+Gallery 的完整样本覆盖仍待补齐；在 Windows/macOS 构建中，CMake 同样注册原生窗口 smoke，
+但本工作区尚未取得这两桌面的现场结果。
 
 ### 6.3 D3：可编辑设计器
 
