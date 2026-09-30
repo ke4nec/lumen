@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Lumen ComboBox mockup（G-4）</title>
+<style>
+  :root {
+    --page-bg: #18181b; --surface: #27272a; --surface-elevated: #2e2e33;
+    --border: #3f3f46; --text: #e4e4e7; --text-muted: #a1a1aa;
+    --accent: #818cf8; --accent-subtle: #312e81;
+  }
+  body { background: var(--page-bg); color: var(--text);
+         font-family: system-ui, sans-serif; padding: 32px;
+         display: flex; gap: 48px; flex-wrap: wrap; }
+  .case { width: 300px; }
+  .case h2 { font-size: 13px; color: var(--text-muted); font-weight: 500;
+             margin: 0 0 12px; }
+  .combo { display: flex; align-items: stretch; }
+  .field { flex: 1; background: var(--surface); border: 1px solid var(--border);
+           border-radius: 6px 0 0 6px; padding: 8px 12px; font-size: 14px;
+           outline: none; }
+  .field:focus { border-color: var(--accent); }
+  .caret { width: 30px; background: var(--surface);
+           border: 1px solid var(--border); border-left: none;
+           border-radius: 0 6px 6px 0; display: flex; align-items: center;
+           justify-content: center; color: var(--text-muted);
+           font-size: 12px; cursor: pointer; }
+  .panel { margin-top: 4px; background: var(--surface-elevated);
+           border: 1px solid var(--border); border-radius: 8px;
+           box-shadow: 0 12px 24px rgba(0,0,0,.4); padding: 4px;
+           font-size: 14px; }
+  .item { padding: 7px 12px; border-radius: 5px; }
+  .item.hl { background: var(--accent-subtle); color: var(--accent); }
+  .hint { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+  <div class="case">
+    <h2>收起态（自由值 "mango"）</h2>
+    <div class="combo">
+      <input class="field" value="mango" readonly>
+      <div class="caret">▼</div>
+    </div>
+    <div class="hint">TextField 自由编辑；▾ 唤起（点击/键盘同路径）</div>
+  </div>
+  <div class="case">
+    <h2>展开态（空过滤 → 全量）</h2>
+    <div class="combo">
+      <input class="field" value="" readonly>
+      <div class="caret">▲</div>
+    </div>
+    <div class="panel">
+      <div class="item hl">Apple</div>
+      <div class="item">Banana</div>
+      <div class="item">Cherry</div>
+      <div class="item">Durian</div>
+    </div>
+    <div class="hint">锚定值行下方，不足翻上；高亮首项</div>
+  </div>
+  <div class="case">
+    <h2>输入过滤（"an" → Banana）</h2>
+    <div class="combo">
+      <input class="field" value="an" readonly>
+      <div class="caret">▲</div>
+    </div>
+    <div class="panel">
+      <div class="item hl">Banana</div>
+    </div>
+    <div class="hint">大小写不敏感子串（label/value）；无匹配关闭</div>
+  </div>
+</body>
+</html>
