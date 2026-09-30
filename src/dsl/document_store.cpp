@@ -220,6 +220,12 @@ bool DocumentStore::save(const std::string& path,
                          std::vector<DesignError>& diagnostics,
                          std::optional<std::uint64_t> expectedRevision) const {
     diagnostics.clear();
+    if (document.documentId.empty()) {
+        diagnostics.push_back(errorAt(
+            "store.document_id", path,
+            "documentId is required before saving a design document"));
+        return false;
+    }
     if (document.schemaVersion != kCurrentSchemaVersion) {
         diagnostics.push_back(errorAt(
             "store.schema_version", path,

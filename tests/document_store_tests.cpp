@@ -177,6 +177,15 @@ TEST_CASE("document store rejects invalid saves without touching the file",
     const auto afterDuplicate = store.load(path.string());
     REQUIRE(afterDuplicate.ok());
     CHECK(afterDuplicate.document == valid);
+
+    auto missingIdentity = valid;
+    missingIdentity.documentId.clear();
+    CHECK_FALSE(store.save(path.string(), missingIdentity, diagnostics));
+    REQUIRE_FALSE(diagnostics.empty());
+    CHECK(diagnostics.front().code == "store.document_id");
+    const auto afterMissingIdentity = store.load(path.string());
+    REQUIRE(afterMissingIdentity.ok());
+    CHECK(afterMissingIdentity.document == valid);
 }
 
 TEST_CASE("document store migration failure blocks publication",
