@@ -11,6 +11,7 @@
 #include <SDL3/SDL.h>
 
 #include "lumen/platform/sdl3_window.h"
+#include "global_hotkeys.h"
 #include "native_services.h"
 
 namespace lumen::platform {
@@ -404,9 +405,21 @@ bool Sdl3ApplicationHost::initialize() {
     capabilities_.windowModal = true;
     // G-8：窗口位置记忆（SDL_SetWindowPosition/GetWindowPosition 三桌面）。
     capabilities_.windowPosition = true;
-    // M16：系统托盘（SDL_tray 跨平台）；全局快捷键无平台后端（降级）。
+    // M16：系统托盘（SDL_tray 跨平台）。全局快捷键走平台接缝（R4）：
+    // Linux X11 真实后端（XGrabKey 独立连接）；Wayland/无显示/其他
+    // 平台结构化不可用——能力位与注册失败原因一致。
     capabilities_.systemTray = true;
-    capabilities_.globalHotkeys = false;
+    auto hotkeyProbe = hotkeys::probeGlobalHotkeySession();
+    hotkeys_ = hotkeys::createX11Backend(hotkeyProbe);
+    if (hotkeys_ != nullptr) {
+        capabilities_.globalHotkeys = true;
+    } else {
+        capabilities_.globalHotkeys = false;
+        hotkeyUnavailableReason_ = hotkeyProbe.available
+                                       ? "global hotkeys: no display "
+                                         "connection"
+                                       : hotkeyProbe.reason;
+    }
     // G-3：剪贴板深度。MIME 数据读写走 SDL data API（三桌面）；变更事
     // 件 SDL_EVENT_CLIPBOARD_UPDATE（三桌面）。image/png 只对 Linux
     // X11/Wayland 报 true（Windows 注册格式名不匹配、macOS 未真机验
@@ -458,6 +471,9 @@ void Sdl3ApplicationHost::shutdown() {
     lifecycle_ = core::AppLifecycle::Terminating;
     // M16：托盘先于视频子系统销毁（回调不再触发）。
     destroyTray();
+    // R4：快捷键先于视频子系统释放（独立 X 连接 ungrab + 关闭）。
+    hotkeys_.reset();
+    hotkeyUnavailableReason_.clear();
     accessibilityPreferences_.reset();
     for (auto& [id, entry] : windows_) {
         if (entry.cursor != nullptr) {
@@ -948,18 +964,23 @@ ServiceResult Sdl3ApplicationHost::setTray(core::WindowId ownerWindow,
 void Sdl3ApplicationHost::removeTray() { destroyTray(); }
 
 ServiceResult Sdl3ApplicationHost::registerGlobalHotkey(
-    core::WindowId, const GlobalHotkeySpec&) {
-    // M16：SDL 3.2.10 无系统级快捷键 API；Win32 RegisterHotKey/X11
-    // XGrabKey/macOS seam 为后续增量（m16-roadmap §4），能力位如实
-    // false，窗口内命令分发走命令注册表。
-    return ServiceResult::unavailable(
-        "global hotkeys: no platform backend yet (SDL 3.2.10)");
+    core::WindowId ownerWindow, const GlobalHotkeySpec& spec) {
+    // R4：活跃后端直接委托（校验/冲突/释放均结构化）；其余保持
+    // Unavailable + 探测原因（能力位 false 的可读出口）。
+    if (hotkeys_ != nullptr) {
+        return hotkeys_->registerHotkey(ownerWindow, spec);
+    }
+    return ServiceResult::unavailable("global hotkeys: " +
+                                      hotkeyUnavailableReason_);
 }
 
 ServiceResult Sdl3ApplicationHost::unregisterGlobalHotkey(
-    const std::string&) {
-    return ServiceResult::unavailable(
-        "global hotkeys: no platform backend yet (SDL 3.2.10)");
+    const std::string& id) {
+    if (hotkeys_ != nullptr) {
+        return hotkeys_->unregisterHotkey(id);
+    }
+    return ServiceResult::unavailable("global hotkeys: " +
+                                      hotkeyUnavailableReason_);
 }
 
 bool Sdl3ApplicationHost::pollEvent(core::HostEvent& out) {
@@ -997,6 +1018,21 @@ bool Sdl3ApplicationHost::pollEvent(core::HostEvent& out) {
             out.type = core::HostEventType::TrayActivated;
             out.window = trayEvent->window;
             out.text = std::move(trayEvent->command);
+            out.timestampMs = SDL_GetTicks();
+            refreshLifecycle();
+            return true;
+        }
+    }
+    // R4：全局快捷键（X11 后端在本连接上排队；非阻塞轮询，命中转
+    // GlobalHotkey 事件——text = 注册 id，window = 注册时 owner）。
+    if (hotkeys_ != nullptr) {
+        core::WindowId hotkeyWindow{};
+        std::string hotkeyId{};
+        if (hotkeys_->poll(hotkeyWindow, hotkeyId)) {
+            out = core::HostEvent{};
+            out.type = core::HostEventType::GlobalHotkey;
+            out.window = hotkeyWindow;
+            out.text = std::move(hotkeyId);
             out.timestampMs = SDL_GetTicks();
             refreshLifecycle();
             return true;

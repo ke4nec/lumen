@@ -212,6 +212,37 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 - 已知限制：macOS 原生菜单栏（NSMenu 单向映射）与交通灯/borderless 最大化回退未实施（无 macOS 编译环境，按证据规则登记为增量）；全局快捷键无平台后端；托盘 submenu/checkbox 条目未接（SDL_tray 能力就绪，按需增量）。
 - 回滚点：`bfe4d43`（M16 起点前）。
 
+### R4 全局快捷键 X11 后端状态记录（2026-09-30）
+
+- 变更：`src/platform/global_hotkeys.h/.cpp`（内部接缝，不出公共头）——
+  纯映射（`keysymForLumenKey`/`modifierMask`，显式映射不依赖位序）+ 会话
+  探测（`probeGlobalHotkeySession`：XDG_SESSION_TYPE=wayland 或
+  WAYLAND_DISPLAY 在场且无会话声明 → 结构化不可用——XWayland grab 只覆
+  盖 X11 客户端，不宣称系统级）+ X11 后端（独立 `XOpenDisplay` 连接，
+  `XGrabKey` 抓根窗口按键：owner_events=False、锁定键 8 组合各 grab、
+  事件匹配剔除锁定掩码；BadAccess 经临时错误处理器 + XSync 检测冲突并
+  回滚全部组合）。`Sdl3ApplicationHost` 装配：probe 通过且能开显示 →
+  `globalHotkeys=true` + 注册/注销委托 + `pollEvent` 非阻塞轮询转
+  `GlobalHotkey` 事件；shutdown 先于视频子系统释放连接。Xlib 的
+  None/True/False 宏与 core 枚举冲突——include 后 `#undef`，X 调用用
+  字面量。CMake：Linux 下 `global_hotkeys_x11.cpp` 入平台库，x11 缺失
+  时源码 `__has_include` 自空化（dbus seam 同模式）。
+- 测试：映射纯函数契约（keysym 值/修饰位，headless）；结构化分支测试改
+  造为按探测结果断言（X11 会话 = 注册/重复 id/未知注销三态；其余 =
+  Unavailable + 可读原因）——本机 Wayland（不可用分支）、Xvfb X11（后
+  端分支）、显式 wayland（不可用分支）三环境各跑通；XTEST 端到端
+  （`LUMEN_GLOBAL_HOTKEY_E2E=1` 显式开启，普通 ctest 跳过）：注册
+  Alt+Escape → 合成按键 → `GlobalHotkey` 事件送达（text=id、window=
+  owner）→ 注销后同按键不泄漏。Xvfb 极简 keymap 的 Control_L 键码会映
+  射到锁定修饰符（合成 state 为 Lock|Mod1），e2e 用 Alt 单修饰组合规
+  避——真实键盘无此问题，如实注释。
+- 四态：接口已存在 + headless 已验证（映射单测/三环境结构化分支）+
+  X11 协议级已验证（Xvfb XTEST 端到端）；真实桌面（非 Xvfb）按键验收
+  待现场（platform-acceptance 登记）。
+- 未交付池项：Win32 RegisterHotKey（消息窗口）与 macOS
+  RegisterEventHotKey 后端（保持结构化 Unavailable + 命名原因；按真实
+  需求与编译环境启用）、托盘 submenu/checkbox、macOS 原生菜单栏/交通灯。
+
 ### M17 进行中状态记录（2026-09-29，池式首项交付）
 
 - 完成日期：auto-hide 滚动条 2026-09-29（提交 859c58b）；其余池项未交付（见下）。

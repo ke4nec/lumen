@@ -16,6 +16,10 @@ namespace lumen::platform {
 // M16：托盘菜单项回调上下文（定义在 .cpp；宿主持有、与托盘同寿命）。
 struct TrayEntryContext;
 
+namespace hotkeys {
+class Backend;  // 内部接缝（src/platform/global_hotkeys.h；X11 后端）。
+}
+
 namespace native {
 class AccessibilityPreferenceMonitor;
 struct SystemAccessibilityPreferences;
@@ -158,6 +162,10 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     void* tray_{nullptr};
     std::mutex trayMutex_{};
     std::deque<PendingTrayActivation> trayPending_{};
+    // R4：全局快捷键后端（非空 = 平台后端活跃，capabilities 如实
+    // true）；probe 不可用原因留作注册失败时的结构化诊断。
+    std::unique_ptr<hotkeys::Backend> hotkeys_{};
+    std::string hotkeyUnavailableReason_{};
     std::vector<std::unique_ptr<TrayEntryContext>> trayContexts_{};
 };
 

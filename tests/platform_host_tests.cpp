@@ -9,14 +9,30 @@
 #include <catch2/catch_test_macros.hpp>
 #include <SDL3/SDL.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <thread>
 #include <vector>
 
 #include "lumen/platform/fake_host.h"
 #include "lumen/platform/sdl3_host.h"
 #include "counter_app.h"
+
+#if defined(__linux__) && defined(LUMEN_HAS_XTEST)
+#include <X11/Xlib.h>
+#include <X11/extensions/XTest.h>
+// Xlib 的 None/True/False 宏与 core 枚举冲突（同 global_hotkeys_x11.cpp）。
+#undef None
+#undef True
+#undef False
+#endif
+// 内部接缝（纯映射/probe；不出公共头，测试与实现同仓直连）。
+#if defined(__linux__)
+#include "global_hotkeys.h"
+#endif
 
 using lumen::platform::ApplicationHost;
 using lumen::platform::FakeApplicationHost;
@@ -935,8 +951,7 @@ TEST_CASE("fake_host_tray_and_hotkeys_record_and_deliver",
     CHECK(event.text == "capture");
 }
 
-TEST_CASE("sdl3_host_tray_smoke_and_hotkeys_unavailable",
-          "[platform][m16]") {
+TEST_CASE("sdl3_host_tray_smoke_and_hotkeys_structured", "[platform][m16]") {
 #ifdef _WIN32
     _putenv("SDL_VIDEODRIVER=dummy");
 #else
@@ -945,7 +960,10 @@ TEST_CASE("sdl3_host_tray_smoke_and_hotkeys_unavailable",
     lumen::platform::Sdl3ApplicationHost host;
     REQUIRE(host.initialize());
     CHECK(host.capabilities().systemTray);
-    CHECK_FALSE(host.capabilities().globalHotkeys);
+    // R4：快捷键能力随平台接缝如实（X11 可用 = true，其余 false）；
+    // 注册结果在两种状态下都必须结构化。
+    const bool hotkeysAvailable = host.capabilities().globalHotkeys;
+    CAPTURE(hotkeysAvailable);
 
     // dummy 后端托盘创建可能失败——结果必须结构化（ok 或 Failed 带诊断）。
     TraySetup tray;
@@ -958,13 +976,152 @@ TEST_CASE("sdl3_host_tray_smoke_and_hotkeys_unavailable",
     }
     host.removeTray();
 
-    // 快捷键：无平台后端——结构化 Unavailable + 可读原因。
     GlobalHotkeySpec spec;
     spec.id = "x";
+    spec.modifiers = core::kModifierCtrl | core::kModifierAlt;
+    spec.key = core::Key::Escape;
     const auto hotkeyResult =
         host.registerGlobalHotkey(core::WindowId{1}, spec);
-    CHECK_FALSE(hotkeyResult.ok);
-    CHECK(hotkeyResult.error == lumen::platform::ServiceError::Unavailable);
-    CHECK(!hotkeyResult.message.empty());
+    if (hotkeysAvailable) {
+        // X11 后端（Xvfb/真实 X 会话）：合法注册成立；重复 id 与未知
+        // 注销都结构化 Failed。
+        CHECK(hotkeyResult.ok);
+        const auto duplicate =
+            host.registerGlobalHotkey(core::WindowId{1}, spec);
+        CHECK_FALSE(duplicate.ok);
+        CHECK(duplicate.error == lumen::platform::ServiceError::Failed);
+        CHECK(!duplicate.message.empty());
+        CHECK(host.unregisterGlobalHotkey("x").ok);
+        const auto unknown = host.unregisterGlobalHotkey("x");
+        CHECK_FALSE(unknown.ok);
+        CHECK(unknown.error == lumen::platform::ServiceError::Failed);
+    } else {
+        // 无平台后端（Wayland/无显示/Win/mac 未实现）——Unavailable
+        // + 可读原因。
+        CHECK_FALSE(hotkeyResult.ok);
+        CHECK(hotkeyResult.error == lumen::platform::ServiceError::Unavailable);
+        CHECK(!hotkeyResult.message.empty());
+        CHECK_FALSE(host.unregisterGlobalHotkey("x").ok);
+    }
     host.shutdown();
 }
+
+// --- R4：X11 全局快捷键（映射纯函数 + XTEST 端到端） ---
+// 接缝符号仅随 Linux 源文件存在（global_hotkeys.cpp X11 分支），其他
+// 平台不编译本组用例。
+#if defined(__linux__)
+
+TEST_CASE("x11_hotkey_mapping_translates_core_keys", "[platform][m16]") {
+    namespace hotkeys = lumen::platform::hotkeys;
+    using lumen::core::Key;
+    // keysym 值与 <X11/keysymdef.h> 同值（确定性契约，格式/回放共用）。
+    CHECK(hotkeys::keysymForLumenKey(Key::Escape) == 0xff1b);
+    CHECK(hotkeys::keysymForLumenKey(Key::Enter) == 0xff0d);
+    CHECK(hotkeys::keysymForLumenKey(Key::Backtab) == 0xff89);
+    CHECK(hotkeys::keysymForLumenKey(Key::PageUp) == 0xff55);
+    CHECK(hotkeys::keysymForLumenKey(Key::Delete) == 0xffff);
+    CHECK(hotkeys::keysymForLumenKey(Key::None) == 0);
+    // 修饰位显式映射（Shift/Ctrl/Alt=Mod1/Gui=Mod4）。
+    CHECK(hotkeys::modifierMask(core::kModifierShift) == (1 << 0));
+    CHECK(hotkeys::modifierMask(core::kModifierCtrl) == (1 << 2));
+    CHECK(hotkeys::modifierMask(core::kModifierAlt) == (1 << 3));
+    CHECK(hotkeys::modifierMask(core::kModifierGui) == (1 << 6));
+    CHECK(hotkeys::modifierMask(core::kModifierCtrl | core::kModifierAlt) ==
+          ((1 << 2) | (1 << 3)));
+    CHECK(hotkeys::modifierMask(0) == 0);
+}
+
+TEST_CASE("x11_global_hotkey_end_to_end_with_xtest", "[platform][m16]") {
+#if defined(LUMEN_HAS_XTEST)
+    const char* enabled = ::getenv("LUMEN_GLOBAL_HOTKEY_E2E");
+    if (enabled == nullptr || std::string{enabled} != "1") {
+        // 显式开启的现场验证（X11 会话 + XTEST；CI 由 platform-acceptance
+        // 或人工执行，普通 ctest 跳过）。
+        WARN("LUMEN_GLOBAL_HOTKEY_E2E=1 not set — skipping XTEST e2e");
+        return;
+    }
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    lumen::platform::Sdl3ApplicationHost host;
+    REQUIRE(host.initialize());
+    if (!host.capabilities().globalHotkeys) {
+        WARN("global hotkeys unavailable in this session — skipping e2e");
+        host.shutdown();
+        return;
+    }
+    const auto windowId = host.createWindow(WindowDesc{});
+    REQUIRE(windowId.has_value());
+    core::HostEvent event{};
+    while (host.pollEvent(event)) {
+    }
+
+    GlobalHotkeySpec spec;
+    spec.id = "e2e";
+    // Alt+Escape：Xvfb 极简 keymap 中 Control_L 的键码可能映射到锁定修
+    // 饰符（合成 state 为 Lock|Mod1 而非 Ctrl|Alt），真实键盘无此问题；
+    // 测试选 Alt 单修饰组合，依赖真实 Mod1 键码。
+    spec.modifiers = core::kModifierAlt;
+    spec.key = core::Key::Escape;
+    REQUIRE(host.registerGlobalHotkey(*windowId, spec).ok);
+
+    // XTEST 合成 Alt+Escape（Alt_L 0xffe9 / Escape 0xff1b）；事件经根
+    // 窗口 grab 投递到后端连接。
+    Display* xtest = XOpenDisplay(nullptr);
+    REQUIRE(xtest != nullptr);
+    const auto fakeKey = [&](unsigned long keysym, bool press) {
+        const KeyCode code = XKeysymToKeycode(xtest, keysym);
+        REQUIRE(code != 0);
+        REQUIRE(XTestFakeKeyEvent(xtest, code, press ? 1 : 0, 0));
+    };
+    fakeKey(0xffe9, true);   // Alt_L down
+    fakeKey(0xff1b, true);   // Escape down
+    fakeKey(0xff1b, false);  // Escape up
+    fakeKey(0xffe9, false);  // Alt_L up
+    XSync(xtest, 0);  // Bool=False（Xlib 宏已 undef）。
+
+    const auto isE2E = [](const core::HostEvent& e) {
+        return e.type == core::HostEventType::GlobalHotkey &&
+               e.text == "e2e";
+    };
+    bool delivered = false;
+    core::HostEvent hotkey{};
+    for (int attempt = 0; attempt < 100 && !delivered; ++attempt) {
+        while (host.pollEvent(event)) {
+            if (isE2E(event)) {
+                delivered = true;
+                hotkey = event;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    REQUIRE(delivered);
+    CHECK(hotkey.window == *windowId);
+
+    // 注销后同一合成按键不再回灌。
+    REQUIRE(host.unregisterGlobalHotkey("e2e").ok);
+    fakeKey(0xffe9, true);
+    fakeKey(0xff1b, true);
+    fakeKey(0xff1b, false);
+    fakeKey(0xffe9, false);
+    XSync(xtest, 0);  // Bool=False（Xlib 宏已 undef）。
+    bool leaked = false;
+    for (int attempt = 0; attempt < 50 && !leaked; ++attempt) {
+        while (host.pollEvent(event)) {
+            if (isE2E(event)) {
+                leaked = true;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK_FALSE(leaked);
+    XCloseDisplay(xtest);
+    host.shutdown();
+#else
+    WARN("XTEST e2e is Linux-only");
+#endif
+}
+
+#endif  // defined(__linux__)

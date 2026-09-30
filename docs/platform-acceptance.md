@@ -132,7 +132,7 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 | 透明合成 | Windows texture 已实测；X11/Wayland/macOS 未验 | headless 已验证（预乘表示一致） | 无真实合成器现场 | 软件窗口不支持逐像素透明时按不透明提交 | R0 |
 | 1 小时双窗口浸泡 | Linux 已做（M14-A）；Windows/macOS 未做 | headless 已验证（恢复用例） | 无登录桌面长时运行 | 模拟 renderer 失效不冒充真实 GPU context loss | R2 |
 | OS 拖入真实 smoke | 三平台 | headless 已验证（M15 契约） | 无真实文件管理器/源应用拖拽现场 | `dragDropStart=false`（SDL 3.2.10 无拖出 API）+ 结构化 Unavailable | R3（本日已纳入 `drag_drop_os_receive` 必检项） |
-| 全局快捷键 | 三平台 | 接口已存在（契约 + Fake） | 无平台后端（Win32/X11/macOS 未实现） | `globalHotkeys=false` + 结构化 Unavailable | R4（实现后才可验收） |
+| 全局快捷键真实按键 | Windows/macOS/Linux X11 | Linux X11 后端已交付（Xvfb XTEST 端到端通过）；Win32/macOS 后端未实现 | X11 桌面后端活跃（`globalHotkeys=true`），真实键盘按键验收待现场；Wayland 会话 = `globalHotkeys=false` + 结构化 Unavailable（如实）；Win32/macOS = 结构化 Unavailable | R4（Win32/macOS 为实现缺口；Linux X11 为验收缺口） |
 | macOS 原生菜单栏/交通灯 | macOS | 未实现 | 无实现 | 自绘 MenuBar/标题栏可用 | R4 |
 | GPU 包、CPack Bundle、干净机器启动 | Windows/macOS | CI 变体已构建（package-skia-gpu） | 无干净机器安装/启动记录 | CI 解包冒烟不替代真实验收 | R1 |
 

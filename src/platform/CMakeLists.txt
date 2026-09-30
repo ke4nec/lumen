@@ -11,6 +11,10 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
   list(APPEND LUMEN_PLATFORM_SOURCES
       sdl3_window.cpp
       sdl3_host.cpp)
+  # R4：全局快捷键接缝（全平台编译——Win32/macOS 走源码内 stub 分支
+  # 返回平台真实原因；Linux 且 Xlib 头存在时编入 X11 后端，缺失时同
+  # 样自空化，与 dbus seam 同模式）。
+  list(APPEND LUMEN_PLATFORM_SOURCES global_hotkeys.cpp)
   # M12：原生服务 seam（通知/强调色；SDL 3.2 无 API）。三实现按平台
   # 条件编译自空化，公共契约无平台类型。
   list(APPEND LUMEN_PLATFORM_SOURCES
@@ -59,6 +63,13 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
         target_compile_definitions(lumen-platform PRIVATE LUMEN_HAS_DBUS=1)
         target_include_directories(lumen-platform PRIVATE ${DBUS_INCLUDE_DIRS})
         target_link_libraries(lumen-platform PRIVATE ${DBUS_LIBRARIES})
+      endif()
+      # R4：全局快捷键 X11 后端链接（源码按 __has_include 自判编译分支，
+      # 缺失时自空化——此处只补头文件路径与库）。
+      pkg_check_modules(X11HOTKEY QUIET x11)
+      if(X11HOTKEY_FOUND)
+        target_include_directories(lumen-platform PRIVATE ${X11HOTKEY_INCLUDE_DIRS})
+        target_link_libraries(lumen-platform PRIVATE ${X11HOTKEY_LIBRARIES})
       endif()
     endif()
   endif()
