@@ -1045,6 +1045,8 @@ schema 失败均尝试有效恢复副本。F6 已增加设计器
 span、恢复策略和稳定去重。F6
 同时通过 `DesignDocumentEditor` 提供 schema 门控的声明属性/运行时引用编辑，编辑成功或清除时
 移除失效的属性 source span，拒绝 `PreviewOnly` 和错误引用值。
+同一文档事务还保持根节点的 `DesignNodeId` 不变，防止在未切换 `documentId` 时替换选择和
+SourceMap 的根锚点。
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
 真实 D3 应用出口尚未完成。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
@@ -1207,7 +1209,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   和重复 runtime identity 诊断。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、迁移身份校验、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `598` 个断言、`8` 个测试用例通过。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `335` 个断言、
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
   `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `61/61` 通过。
   未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1025/1025`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
