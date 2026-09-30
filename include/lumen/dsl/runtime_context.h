@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,8 +24,11 @@ enum class DesignReferenceKind {
 struct DesignReference {
     DesignReferenceKind kind{DesignReferenceKind::Binding};
     std::string stableName{};
+    std::shared_ptr<const void> lifetimeToken{};
 
-    bool operator==(const DesignReference&) const = default;
+    bool operator==(const DesignReference& other) const {
+        return kind == other.kind && stableName == other.stableName;
+    }
 };
 
 // P3 resolves names to typed, opaque handles. The handle deliberately carries
@@ -52,9 +56,11 @@ class MapDesignRuntimeContext final : public DesignRuntimeContext {
   public:
     [[nodiscard]] bool validatesReferences() const override { return true; }
 
-    void registerReference(DesignReferenceKind kind, std::string name) {
+    void registerReference(DesignReferenceKind kind, std::string name,
+                           std::shared_ptr<const void> lifetimeToken = {}) {
         const ReferenceKey key{kind, name};
-        references_[key] = DesignReference{kind, std::move(name)};
+        references_[key] =
+            DesignReference{kind, std::move(name), std::move(lifetimeToken)};
     }
 
     [[nodiscard]] bool resolveReference(DesignReferenceKind kind,
@@ -91,6 +97,16 @@ class DesignRuntimeSession {
     [[nodiscard]] std::uint64_t generation() const { return generation_; }
     [[nodiscard]] bool active() const { return active_; }
 
+    // A resolved reference can keep an application-owned source or resource
+    // alive for exactly the preview session that consumed it.
+    void retain(std::shared_ptr<const void> lifetimeToken) {
+        if (active_ && lifetimeToken) {
+            leases_.push_back(std::move(lifetimeToken));
+        }
+    }
+
+    [[nodiscard]] std::size_t leaseCount() const { return leases_.size(); }
+
     // Preview resources register cancellation here. Closing a session is
     // idempotent and drains callbacks before close() returns.
     void onClose(CloseCallback callback) {
@@ -107,6 +123,7 @@ class DesignRuntimeSession {
         active_ = false;
         auto callbacks = std::move(closeCallbacks_);
         for (auto& callback : callbacks) callback();
+        leases_.clear();
     }
 
   private:
@@ -118,6 +135,7 @@ class DesignRuntimeSession {
     std::uint64_t generation_{0};
     bool active_{true};
     std::vector<CloseCallback> closeCallbacks_{};
+    std::vector<std::shared_ptr<const void>> leases_{};
 };
 
 }  // namespace lumen::dsl

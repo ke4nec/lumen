@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <memory>
 #include <string>
 
 #include "lumen/dsl/design_codec.h"
@@ -26,6 +27,24 @@ class WrongTypeContext final : public DesignRuntimeContext {
                               name};
         return true;
     }
+};
+
+class LeasedContext final : public DesignRuntimeContext {
+  public:
+    explicit LeasedContext(std::shared_ptr<int> lease)
+        : lease_(std::move(lease)) {}
+
+    [[nodiscard]] bool validatesReferences() const override { return true; }
+
+    [[nodiscard]] bool resolveReference(DesignReferenceKind kind,
+                                        const std::string& name,
+                                        DesignReference& out) const override {
+        out = DesignReference{kind, name, lease_};
+        return true;
+    }
+
+  private:
+    std::shared_ptr<int> lease_{};
 };
 
 }  // namespace
@@ -91,4 +110,26 @@ TEST_CASE("designer runtime session cancels close callbacks exactly once",
     session.onClose([&lateCallbackCalled] { lateCallbackCalled = true; });
     CHECK(lateCallbackCalled);
     CHECK(cancelled == 1);
+}
+
+TEST_CASE("designer preview session retains resolved reference leases",
+          "[designer][p3]") {
+    const auto parsed = parseLumenSource(
+        "page preview { Button(\"Save\", bind: enabled) }");
+    REQUIRE(parsed.ok());
+    auto lease = std::make_shared<int>(42);
+    const std::weak_ptr<int> weakLease = lease;
+    const auto compiled = [&] {
+        LeasedContext context{lease};
+        return compileDesignDocument(parsed.document, context);
+    }();
+    REQUIRE(compiled.ok());
+    REQUIRE(compiled.session);
+    CHECK(compiled.session->leaseCount() == 1);
+    lease.reset();
+    CHECK_FALSE(weakLease.expired());
+
+    compiled.session->close();
+    CHECK(compiled.session->leaseCount() == 0);
+    CHECK(weakLease.expired());
 }

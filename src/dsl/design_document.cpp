@@ -927,6 +927,7 @@ void fillTrace(const DesignNode& node, const std::string& path,
 
 void validateRuntimeReferences(const DesignNode& node, const std::string& path,
                               const DesignRuntimeContext& context,
+                              DesignRuntimeSession& session,
                               std::vector<DesignError>& diagnostics) {
     for (const auto& [name, reference] : node.references) {
         const auto kind = referenceKind(name);
@@ -965,13 +966,15 @@ void validateRuntimeReferences(const DesignNode& node, const std::string& path,
                 diagnostic.nodePath = path;
                 diagnostic.property = name;
                 diagnostics.push_back(std::move(diagnostic));
+            } else {
+                session.retain(std::move(resolved.lifetimeToken));
             }
         }
     }
     for (std::size_t i = 0; i < node.children.size(); ++i) {
         validateRuntimeReferences(
             node.children[i], path + ".children[" + std::to_string(i) + "]",
-            context, diagnostics);
+            context, session, diagnostics);
     }
 }
 
@@ -1101,7 +1104,7 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
         result.diagnostics.push_back(std::move(diagnostic));
     }
     if (!result.diagnostics.empty()) return result;
-    validateRuntimeReferences(document.root, "root", context,
+    validateRuntimeReferences(document.root, "root", context, *result.session,
                               result.diagnostics);
     std::set<DesignNodeId> ids;
     std::optional<DesignError> error;

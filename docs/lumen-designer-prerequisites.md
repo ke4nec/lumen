@@ -1020,12 +1020,13 @@ D3 可编辑设计器
 F0 是源码边界核对；F1/P1 已完成 L0 语义 DOM、`.lumen` 导入、规范化设计文档 codec 和
 DOM→Widget 编译入口；F2/P2 已完成 L0 `NodeSchema`/`PropertySpec` 显式注册表，并由编译
 入口执行类型、枚举、范围和子节点约束；F3/P3 已完成类型化 `DesignRuntimeContext`、
-离线 map context、引用诊断和带代数、可取消关闭回调的 `DesignRuntimeSession`。
+离线 map context、引用诊断和带代数、可取消关闭回调及引用 lease 保活的
+`DesignRuntimeSession`。
 `designer_document_tests.cpp`
 覆盖 DOM round-trip、C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和
 P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 12 节点注册、访问器、非法属性和
-结构诊断；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留和
-session 关闭回调。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
+结构诊断；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留、
+session 关闭回调和引用 lease 在关闭时释放。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
 和命名 slot，并在复制时分配新 ID、在重排时保持原 ID；编译结果同时返回 SourceMap 和
 CompileTrace。P2 registry 仍只覆盖 L0，P3 尚未构造 controller 或资源裸指针；F5 的
