@@ -1185,7 +1185,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `258` 个断言、
-  `20` 个测试用例通过；现有可执行文件运行的 `ctest -R 'designer|document_store'` 为
+  `21` 个测试用例通过；现有可执行文件运行的 `ctest -R 'designer|document_store'` 为
   `33/33` 通过。标准 `lumen-tests` 重建目前被工作区 app shell 修改阻塞：
   `tests/app_shell_tests.cpp:1582` 在声明前使用 `pixelAt`；该错误不涉及本阶段 DSL 改动。
   此前未受工作区 app shell 变更影响的全量基线为 `972/972`，本阶段未宣称新的全量结果。
