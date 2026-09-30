@@ -128,9 +128,15 @@ class SplitterController {
     // 布局期回填（框架调用；应用只读）。
     [[nodiscard]] float lastExtent() const;     // 最近一次布局可用长度
 
-    // 窗口 resize 行为（首版只做 KeepOffset）。
+    // 窗口 resize 行为（M17 双行为均已落地；见 §5.3）。
     enum class ResizeBehavior { KeepOffset, KeepRatio };
-    void setResizeBehavior(ResizeBehavior behavior);   // KeepRatio 留 §14
+    void setResizeBehavior(ResizeBehavior behavior);
+    // M17 塌缩（§5.3）：collapsible 开启后 setCollapsed/toggleCollapsed
+    // 把分隔条钉到 minLeading，展开恢复塌缩前位置；塌缩中移离 min 的
+    // 任何输入（拖动/步进/设值）自动解除塌缩。
+    void setCollapsible(bool collapsible);
+    bool setCollapsed(bool collapsed) const;   // 已是目标态返回 false
+    [[nodiscard]] bool collapsed() const;
 
     // 位置变化回调（拖动逐拍/键盘步进/复位都会触发；UI 线程）。
     std::function<void(float offsetPx)> onOffsetChanged{};
@@ -189,7 +195,7 @@ layoutSplitter(node, constraints):
 | Right / Down | offset +16px（钳制到 max） |
 | Home | offset = minLeading（trailing 最大） |
 | End | offset = max（trailing = minTrailing） |
-| Enter / Space | 无操作（非命令控件；预留塌缩切换 §14） |
+| Enter / Space | 塌缩切换（M17 §5.3；不可塌缩/非聚焦分隔条不消费——回退按钮激活与纯键命令） |
 | Tab / Shift+Tab | 焦点离开（FocusManager 既有遍历；分隔条是普通可聚焦节点） |
 
 - 步进 16px（4px 网格 ×4；Medium 档）；Small/Large 密度各 12/24px（§9.2 尺度表）。
@@ -294,7 +300,14 @@ splitter.divider.focusRing  = color.focus.ring + focusWidth（内嵌）
 ## 13. 开放问题（实施前需确认）
 
 1. **Splitter 容器 role**：Group 复用（最小改动）vs 追加 `Splitter` role（语义更准，枚举尾部追加零风险）——建议追加。
-2. **KeepRatio resize 行为**：默认 KeepOffset 已定；KeepRatio（窗口按比例分摊）是否值得双行为维护——建议 P1 只做 KeepOffset，KeepRatio 留按需。
-3. **窗格塌缩**：双击窗格内 chevron 或分隔条拖过 min 即塌缩（Qt collapsible 模式）与"顶住"互斥；塌缩后键盘/语义如何展开——建议独立后续增强，首版顶住。
+2. **KeepRatio resize 行为**：✅ 已落地（M17 2026-09-29，`setResizeBehavior` 双行为；KeepRatio 在 noteLayout 按旧 extent 等比缩放后钳制；塌缩中 KeepRatio 缩放推离 min 会解除塌缩——已知取舍）。
+3. **窗格塌缩**：✅ 已落地（M17，API 塌缩 + Enter/Space 键盘切换；拖过 min 自动展开（collapse 清除）而非"拖过 min 即塌缩"——方向相反但满足"塌缩可发现/可退出"，chevron 双击入口与语义 action 留按需）。
 4. **RTL 布局**：Right/Left 键是否随阅读方向翻转（UAX#9 子集已入 M1，但布局镜像未做）——首版不翻转，随 RTL 布局能力统一评估。
 5. **offset 持久化约定**：是否提供 `serializeState()`/`loadState()` 便捷（纯值拷贝，无 IO）——低成本可选项，实施时定。
+
+## 15. M17 实现记录：窗格塌缩/展开与 KeepRatio（2026-09-29）
+
+- 变更：`core::SplitterSource` 增 `toggleCollapse()`/`collapsed()` 虚函数（默认 false = 不可塌缩，键不消费——契约 host 安全默认）；`SplitterController` 增 `ResizeBehavior`（KeepOffset 默认/KeepRatio）、`setCollapsible/setCollapsed/toggleCollapsed`（塌缩 = 钉到 minLeading，restore 点记忆塌缩前位置；`applyOffset`/`noteLayout` 中 offset 移离 min 自动解除塌缩——标记恒符合视觉事实）。KeepRatio 在 `noteLayout` 按旧 extent 等比缩放后钳制（先缩放后更新 lastExtent_）；KeepOffset 路径与既有实现逐字节等价。InteractionController Enter/Space 分支：聚焦分隔条且 `toggleCollapse()` 返回 true 时消费，否则回退按钮激活/纯键命令（G-1）。
+- 测试：`tests/splitter_tests.cpp` 4 用例（塌缩/展开往返与 no-op、拖动/步进/设值解除塌缩、Enter 切换与不可塌缩回退、KeepRatio 等比缩放/钳制与 KeepOffset 对照）。
+- 已知限制：chevron 双击塌缩入口与塌缩语义 action 未做（键盘是唯一切换路径——无指针-only 路径，满足非指针等价原则）；KeepRatio 与塌缩组合时缩放可能解除塌缩（文档化取舍）；`.lumen` 节点与基准场景未补（DSL 侧随下批）。
+- 验证边界：全量回归因并行会话的未提交 combo_box 编译错误暂不可跑；本批文件经 `g++ -fsyntax-only` 编译级验证且不依赖任何未提交代码，链接/测试级验证待并行文件修复后补跑。

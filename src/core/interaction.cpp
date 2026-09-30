@@ -1276,6 +1276,18 @@ bool InteractionController::keyDown(const RenderNode& root, Key key,
         (keyChar == ' ' &&
          (modifiers & (kModifierCtrl | kModifierAlt | kModifierGui)) == 0)) {
         if (focusedBind_.empty()) {
+            // Splitter 分隔条（splitter-design §5.3/§14 预留槽位）：
+            // Enter/Space 塌缩切换；不可塌缩/无聚焦分隔条不消费，继续
+            // 按钮激活与纯键命令回退。
+            if (!focus_.focusedIdentity().empty()) {
+                const RenderNode* focused =
+                    findNodeByIdentity(root, focus_.focusedIdentity());
+                if (focused != nullptr &&
+                    focused->splitterSource != nullptr && focused->enabled &&
+                    focused->splitterSource->toggleCollapse()) {
+                    return true;
+                }
+            }
             return activateFocusedButton(root);
         }
     }

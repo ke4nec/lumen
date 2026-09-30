@@ -477,3 +477,114 @@ TEST_CASE("run_app_applies_splitter_cursor_to_host",
     CHECK(host.cursorCalls.back().second ==
           lumen::platform::SystemCursor::Arrow);
 }
+
+// --- M17：窗格塌缩/展开与 KeepRatio（splitter-design §5.3） ---
+
+TEST_CASE("splitter_collapse_pins_to_min_and_expand_restores",
+          "[widgets][splitter][m17]") {
+    SplitterApp app;
+    app.splitter.setCollapsible(true);
+    REQUIRE(app.splitter.offset() == 200.0F);
+
+    // 塌缩：钉到 minLeading，collapsed 置位，回调触发。
+    CHECK(app.splitter.setCollapsed(true));
+    CHECK(app.splitter.collapsed());
+    CHECK(app.splitter.offset() == core::kSplitterDefaultMinPane);
+    CHECK(app.offsetChanges == 1);
+
+    // 重复塌缩 no-op（返回 false 不触发回调）。
+    CHECK_FALSE(app.splitter.setCollapsed(true));
+    CHECK(app.offsetChanges == 1);
+
+    // 展开恢复塌缩前位置。
+    CHECK(app.splitter.setCollapsed(false));
+    CHECK_FALSE(app.splitter.collapsed());
+    CHECK(app.splitter.offset() == 200.0F);
+    CHECK(app.offsetChanges == 2);
+
+    // 不可塌缩控制器：切换拒绝。
+    SplitterApp locked;
+    CHECK_FALSE(locked.splitter.toggleCollapse());
+    CHECK_FALSE(locked.splitter.collapsed());
+}
+
+TEST_CASE("splitter_drag_or_step_off_min_clears_collapsed",
+          "[widgets][splitter][m17]") {
+    SplitterApp app;
+    app.splitter.setCollapsible(true);
+    app.splitter.setCollapsed(true);
+    REQUIRE(app.splitter.collapsed());
+
+    // 拖动移离 min：自动解除塌缩（标记符合视觉事实）。
+    app.splitter.dragTo(260.0F);
+    CHECK_FALSE(app.splitter.collapsed());
+    CHECK(app.splitter.offset() == 260.0F);
+
+    // 再塌缩后键盘步进离开 min 同样解除。
+    app.splitter.setCollapsed(true);
+    REQUIRE(app.splitter.collapsed());
+    app.splitter.stepBy(20.0F);
+    CHECK_FALSE(app.splitter.collapsed());
+
+    // 程序 setOffset 到非 min 位置同样解除。
+    app.splitter.setCollapsed(true);
+    REQUIRE(app.splitter.collapsed());
+    app.splitter.setOffset(300.0F);
+    CHECK_FALSE(app.splitter.collapsed());
+}
+
+TEST_CASE("splitter_enter_toggles_collapse_on_focused_divider",
+          "[widgets][splitter][m17]") {
+    SplitterApp app;
+    app.splitter.setCollapsible(true);
+    const Offset divider = app.dividerCenter();
+
+    // 指针按下建立分隔条焦点（§7.1 既有路径），松手后焦点保留？
+    // §7.1 松手即失焦——键盘路径经 Tab 进入：focusNode 程序聚焦。
+    const RenderNode* node = findNodeByKey(app.shell.root(), "main");
+    REQUIRE(node != nullptr);
+    app.shell.controller().focusNode(*node);
+    CHECK(app.shell.focus().focusedIdentity() == node->identity);
+
+    // Enter：塌缩（消费）。
+    CHECK(app.shell.controller().keyDown(app.shell.root(), Key::Enter));
+    CHECK(app.splitter.collapsed());
+    // 再 Enter：展开（消费）。
+    CHECK(app.shell.controller().keyDown(app.shell.root(), Key::Enter));
+    CHECK_FALSE(app.splitter.collapsed());
+
+    // 不可塌缩分隔条聚焦时 Enter 不消费（回退按钮激活/纯键命令）。
+    SplitterApp locked;
+    const RenderNode* lockedNode = findNodeByKey(locked.shell.root(), "main");
+    REQUIRE(lockedNode != nullptr);
+    locked.shell.controller().focusNode(*lockedNode);
+    CHECK_FALSE(
+        locked.shell.controller().keyDown(locked.shell.root(), Key::Enter));
+}
+
+TEST_CASE("splitter_keep_ratio_scales_offset_on_resize",
+          "[widgets][splitter][m17]") {
+    // KeepRatio：noteLayout extent 200 → 400 时 offset 等比缩放（200 →
+    // 400；两窗格比例保持 1:1）。
+    SplitterController ratio{100.0F};
+    ratio.setResizeBehavior(
+        SplitterController::ResizeBehavior::KeepRatio);
+    ratio.noteLayout(100.0F, 200.0F);
+    ratio.noteLayout(100.0F, 400.0F);  // KeepOffset 口径会钳回 100。
+    CHECK(ratio.offset() == 200.0F);
+
+    // KeepOffset（默认）：位置保持，trailing 吃增量。
+    SplitterController keep{100.0F};
+    keep.noteLayout(100.0F, 200.0F);
+    keep.noteLayout(100.0F, 400.0F);
+    CHECK(keep.offset() == 100.0F);
+
+    // KeepRatio 钳制：放大后不低于 minLeading。
+    SplitterController small{10.0F};
+    small.setMinLeading(48.0F);
+    small.setResizeBehavior(
+        SplitterController::ResizeBehavior::KeepRatio);
+    small.noteLayout(10.0F, 100.0F);
+    small.noteLayout(10.0F, 300.0F);
+    CHECK(small.offset() == 48.0F);
+}
