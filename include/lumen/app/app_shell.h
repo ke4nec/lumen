@@ -31,6 +31,7 @@
 
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
+#include "lumen/app/bounds_overlay.h"
 #include "lumen/app/command_registry.h"
 #include "lumen/app/frame_debug.h"
 #include "lumen/core/damage.h"
@@ -401,6 +402,14 @@ class AppShell {
     // 时阶段/计数字段为 0，renderer 字段仍如实）。非 const：stats() 与
     // capabilities() 按既有先例为非 const。
     [[nodiscard]] FrameDebugSnapshot frameDebugSnapshot();
+    // R6：bounds/damage 调试图层（bounds_overlay.h；默认关闭零开销——
+    // 关闭时不合成、不录制，frame hash 不变）。开启后随重绘帧在主场景
+    // 命令后追加描画：bounds = 每节点 1px 外框（深度交替 focusRing/
+    // borderStrong）；damage = 本帧提交的逐矩形清单（statusError 半透
+    // 明填充）。纯绘制层：不驱动帧节奏、不进语义树；局部 damage 帧只
+    // 在 damage 区内重绘描画，跨帧可能残留描边（调试语义如实）。
+    void setDebugBoundsOverlay(bool enabled);
+    void setDebugDamageOverlay(bool enabled);
     [[nodiscard]] render::RendererCapabilities capabilities() {
         return activeRenderer().capabilities();
     }
@@ -575,6 +584,11 @@ class AppShell {
     std::size_t frameFpsCount_{0};
     std::size_t frameFpsHead_{0};
     void noteFrameSubmitted();
+    // R6：bounds/damage 调试图层开关与 damage 留存（damage 层描画本帧
+    // 提交前留存的矩形清单）。
+    bool debugBoundsOverlay_{false};
+    bool debugDamageOverlay_{false};
+    std::vector<core::Rect> lastFrameDamage_{};
     render::CpuRenderer cpuRenderer_{1.0F};
     render::Renderer* externalRenderer_{nullptr};
     // M5：语义桥（外部拥有）与上次推送树/焦点。
@@ -664,6 +678,11 @@ struct RunOptions {
     // 销；关闭时零额外帧、frame hash 与性能基线不变。分配量维度未接
     // 入（renderer stats 无该维度，见 support-matrix R6 登记）。
     bool frameDebugOverlay{false};
+    // R6：bounds/damage 调试图层（默认关闭零开销）。纯绘制层：只随重
+    // 绘帧在主场景命令后追加描画，不驱动帧节奏、不进语义树；开启后帧
+    // 不再具备确定性 hash（描画进入像素输出）。
+    bool debugBoundsOverlay{false};
+    bool debugDamageOverlay{false};
 };
 
 // 一个宿主窗口与其应用壳的绑定。每个窗口拥有独立的 RunOptions，因而

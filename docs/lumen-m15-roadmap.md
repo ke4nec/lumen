@@ -262,6 +262,27 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
   行内编辑、DataGrid 筛选面板 UI/条件模型、横向网格（按需评估）、
   inspector GUI/bounds overlay。
 
+### R6 续批状态记录（2026-09-30，bounds/damage 调试图层）
+
+- 变更：`include/lumen/app/bounds_overlay.h`（header-only 合成 RenderNode
+  平铺树——绝对 offset 为数据，无需布局坐标系统；`makeBoundsOverlayTree`
+  每节点 1px 描边叶/深度交替 focusRing·borderStrong，`makeDamageOverlayTree`
+  逐矩形半透明填充+描边）+ `AppShell::setDebugBoundsOverlay/
+  setDebugDamageOverlay`（paintFrame 主场景与 tooltip 命令后追加录制；
+  damage 层留存提交前逐矩形清单）+ `RunOptions.debugBoundsOverlay/
+  debugDamageOverlay`（settings/gallery `--bounds-overlay`/
+  `--damage-overlay`，可与 `--frame-overlay` 叠加）。纯绘制层：不驱动帧
+  节奏、不进语义树（全子树 excludeFromSemantics/Focus）、默认关闭零开销
+  （frame hash 不变，单测断言）。
+- 测试：合成树契约 2（节点计数/绝对偏移/深度色/空矩形跳过）+ 开关行为
+  1（关闭逐字节同输出与命令数；bounds/damage 开启改变像素与命令数；按
+  钮外框左缘像素 = 主题 borderStrong——CPU AA 描边实测）。首帧全量绘制
+  无 damage 清单（描画为空、hash 同基线，如实断言）；局部 damage 帧
+  （hover）描画进入像素。跨帧行为如实登记：局部帧只在 damage 区内重绘
+  描画，可能残留描边（调试语义）。
+- 未交付池项（更新）：inspector 交互式节点查看（选中 → 节点信息面板）、
+  语义树视图、分配量统计——M18 §6 编号继续。
+
 ### M17 进行中状态记录（2026-09-29，池式首项交付）
 
 - 完成日期：auto-hide 滚动条 2026-09-29（提交 859c58b）；其余池项未交付（见下）。

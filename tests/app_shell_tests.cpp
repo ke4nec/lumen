@@ -16,13 +16,17 @@
 #include <optional>
 #include <string>
 
+#include <cstdlib>
+
 #include "lumen/app/app_shell.h"
+#include "lumen/app/bounds_overlay.h"
 #include "lumen/app/frame_debug.h"
 #include "lumen/app/tree_dump.h"
 #include "lumen/core/render_node.h"
 #include "lumen/core/state.h"
 #include "lumen/dsl/dsl.h"
 #include "lumen/platform/fake_host.h"
+#include "lumen/render/painter.h"
 #include "lumen/render/renderer.h"
 #include "lumen/text/font_manager.h"
 
@@ -1476,4 +1480,143 @@ TEST_CASE("run_app_installs_frame_debug_overlay_when_enabled",
     CHECK(lumen::app::runApp(plainShell, plainHost, plainOptions) == 0);
     CHECK_FALSE(plainShell.hasOverlay());
     CHECK(plainShell.frameDebugSnapshot().nodeCount == 0);
+}
+
+// --- R6：bounds/damage 调试图层（bounds_overlay.h；默认关闭零开销） ---
+
+namespace {
+
+// 像素采样（CPU framebuffer；datagrid_tests 同模式）。
+lumen::core::Color pixelAt(const lumen::render::PixelBuffer& buffer, int x,
+                           int y) {
+    const std::size_t offset =
+        (static_cast<std::size_t>(y) *
+         static_cast<std::size_t>(buffer.width) +
+         static_cast<std::size_t>(x)) * 4;
+    return lumen::core::Color::fromRGBA(buffer.rgba[offset],
+                                        buffer.rgba[offset + 1],
+                                        buffer.rgba[offset + 2],
+                                        buffer.rgba[offset + 3]);
+}
+
+std::uint64_t countNodes(const lumen::core::RenderNode& node) {
+    std::uint64_t count = 1;
+    for (const auto& child : node.children) {
+        count += countNodes(child);
+    }
+    return count;
+}
+
+}  // namespace
+
+TEST_CASE("bounds_overlay_tree_outlines_every_node_at_absolute_offsets",
+          "[app][r6]") {
+    lumen::app::ShellConfig config;
+    config.initialView = {200.0F, 100.0F};
+    config.build = [] {
+        return lumen::core::makeColumn(
+            {lumen::core::withKey(lumen::core::makeButton("OK"), "ok-btn"),
+             lumen::core::withKey(lumen::core::makeText("label"), "t1")});
+    };
+    lumen::app::AppShell shell(config);
+    (void)shell.renderFrame();
+
+    const lumen::core::Color first{255, 0, 0, 255};
+    const lumen::core::Color second{0, 255, 0, 255};
+    const lumen::core::RenderNode overlay = lumen::app::makeBoundsOverlayTree(
+        shell.root(), first, second);
+    // 叶数 = 场景节点数（每节点一框；根框 + 每子节点框）。
+    CHECK(overlay.children.size() == countNodes(shell.root()));
+    // 根框在 (0,0)、尺寸 = 视口；深度交替描边色。
+    REQUIRE(!overlay.children.empty());
+    CHECK(overlay.children[0].offset.x == 0.0F);
+    CHECK(overlay.children[0].offset.y == 0.0F);
+    CHECK(overlay.children[0].size == shell.root().size);
+    CHECK(overlay.children[0].commonStyle().border == first);
+    CHECK(overlay.children[0].commonStyle().borderWidth == 1.0F);
+    // 全子树排除语义。
+    CHECK(overlay.excludeFromSemantics);
+}
+
+TEST_CASE("damage_overlay_tree_fills_each_rect_and_skips_empty",
+          "[app][r6]") {
+    std::vector<lumen::core::Rect> damage;
+    damage.push_back(lumen::core::Rect{lumen::core::Offset{4.0F, 6.0F},
+                                       lumen::core::Size{10.0F, 12.0F}});
+    damage.push_back(lumen::core::Rect{lumen::core::Offset{0.0F, 0.0F},
+                                       lumen::core::Size{0.0F, 5.0F}});
+    const lumen::core::RenderNode overlay = lumen::app::makeDamageOverlayTree(
+        damage, lumen::core::Color{224, 90, 96, 64},
+        lumen::core::Color{224, 90, 96, 255});
+    REQUIRE(overlay.children.size() == 1);  // 空矩形跳过。
+    CHECK(overlay.children[0].offset.x == 4.0F);
+    CHECK(overlay.children[0].commonStyle().background.a == 64);
+    CHECK(overlay.children[0].commonStyle().border.a == 255);
+}
+
+TEST_CASE("debug_overlays_draw_only_when_enabled", "[app][r6]") {
+    const auto makeConfig = [] {
+        lumen::app::ShellConfig config;
+        config.initialView = {200.0F, 120.0F};
+        config.build = [] {
+            return lumen::core::makeColumn(
+                {lumen::core::withKey(lumen::core::makeButton("OK"),
+                                      "ok-btn"),
+                 lumen::core::makeText("label")});
+        };
+        return config;
+    };
+    lumen::app::AppShell plain(makeConfig());
+    const std::uint64_t hash = plain.renderFrame();
+    const std::uint64_t commands =
+        plain.stats().commandCount;
+
+    // 关闭（默认/显式 false）：逐字节同输出、同命令数。
+    lumen::app::AppShell off(makeConfig());
+    off.setDebugBoundsOverlay(false);
+    off.setDebugDamageOverlay(false);
+    CHECK(off.renderFrame() == hash);
+    CHECK(off.stats().commandCount == commands);
+
+    // bounds 开启：输出与命令数变化（描画进入像素）。
+    lumen::app::AppShell bounds(makeConfig());
+    bounds.setDebugBoundsOverlay(true);
+    CHECK(bounds.renderFrame() != hash);
+    CHECK(bounds.stats().commandCount > commands);
+
+    // damage 开启：首帧全量绘制无 damage 清单（描画为空、hash 同基线）；
+    // hover 触发局部 damage 后的帧描画矩形清单。
+    const auto hoverCenter = [](lumen::app::AppShell& shell) {
+        const lumen::core::RenderNode* node =
+            lumen::core::findNodeByKey(shell.root(), "ok-btn");
+        REQUIRE(node != nullptr);
+        shell.pointerMove(lumen::core::absoluteOffset(shell.root(),
+                                                      "ok-btn") +
+                          lumen::core::Offset{node->size.width * 0.5F,
+                                              node->size.height * 0.5F});
+        return shell.renderFrame();
+    };
+    lumen::app::AppShell damage(makeConfig());
+    damage.setDebugDamageOverlay(true);
+    CHECK(damage.renderFrame() == hash);  // 全量帧：无矩形可描画。
+    const std::uint64_t hoverPlain = hoverCenter(plain);
+    CHECK(hoverCenter(damage) != hoverPlain);  // 局部帧：描画进入像素。
+
+    // bounds 描画落点：按钮外框左缘像素 = focusRing 色（scale=1，逻辑
+    // 坐标即设备坐标）。
+    const lumen::core::RenderNode* button =
+        lumen::core::findNodeByKey(bounds.root(), "ok-btn");
+    REQUIRE(button != nullptr);
+    const lumen::core::Offset origin =
+        lumen::core::absoluteOffset(bounds.root(), "ok-btn");
+    // 按钮是 scene 根（Column）的直接子项 = 描画深度 1 → borderStrong
+    //（Theme::dark 派生 palette.neutral400）；采样外框左缘中点。
+    const lumen::core::Color edge =
+        pixelAt(bounds.pixels(), static_cast<int>(origin.x),
+                static_cast<int>(origin.y + button->size.height * 0.5F));
+    const lumen::core::Color expected =
+        bounds.theme().colors.borderStrong;
+    CHECK(std::abs(edge.r - expected.r) <= 2);
+    CHECK(std::abs(edge.g - expected.g) <= 2);
+    CHECK(std::abs(edge.b - expected.b) <= 2);
 }

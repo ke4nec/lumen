@@ -355,6 +355,9 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                         FrameOverlayStyle::fromTheme(shellPtr->theme()));
                 });
         }
+        // R6：bounds/damage 调试图层（纯绘制层，无需帧循环介入）。
+        shell.setDebugBoundsOverlay(runtime.app.options.debugBoundsOverlay);
+        shell.setDebugDamageOverlay(runtime.app.options.debugDamageOverlay);
         if (runtime.app.options.diagnostics) {
             printStartupDiagnostics(
                 shell.capabilities(),

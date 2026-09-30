@@ -878,6 +878,11 @@ void AppShell::paintFrame(bool forceFullRepaint) {
             addNodeRect(damage, lastFocusedIdentity_, "");
         }
     }
+    // R6：damage 调试图层留存本帧提交的逐矩形清单（提交前副本；纯诊断
+    // 数据，不影响 damage 决策）。
+    if (debugDamageOverlay_) {
+        lastFrameDamage_ = damage;
+    }
 
     render::Renderer& renderer = activeRenderer();
     const auto bounds = core::damageBounds(damage, view_);
@@ -902,6 +907,22 @@ void AppShell::paintFrame(bool forceFullRepaint) {
     options.suppressedIdentities = {};
     for (const auto& tooltip : tooltipPaintNodes_) {
         commands.extend(render::recordScene(tooltip, options, textFontSource()));
+    }
+    // R6：bounds/damage 调试图层（主场景与 tooltip 之后追加——描画在最
+    // 上层；纯绘制，零额外帧：只随本重绘帧出现）。
+    if (debugBoundsOverlay_) {
+        commands.extend(render::recordScene(
+            makeBoundsOverlayTree(root_, theme_.colors.focusRing,
+                                  theme_.colors.borderStrong),
+            options, textFontSource()));
+    }
+    if (debugDamageOverlay_) {
+        commands.extend(render::recordScene(
+            makeDamageOverlayTree(
+                lastFrameDamage_,
+                core::scaleColorAlpha(theme_.colors.statusError, 0.25F),
+                theme_.colors.statusError),
+            options, textFontSource()));
     }
     renderer.noteCpuBuildMs(
         std::chrono::duration<double, std::milli>(
@@ -982,6 +1003,19 @@ void AppShell::noteFrameSubmitted() {
     frameNodeCount_ = countRenderNodes(root_);
     if (overlayRoot_.has_value()) {
         frameNodeCount_ += countRenderNodes(*overlayRoot_);
+    }
+}
+
+// --- R6：bounds/damage 调试图层（bounds_overlay.h；默认关闭零开销） ---
+
+void AppShell::setDebugBoundsOverlay(bool enabled) {
+    debugBoundsOverlay_ = enabled;
+}
+
+void AppShell::setDebugDamageOverlay(bool enabled) {
+    debugDamageOverlay_ = enabled;
+    if (!enabled) {
+        lastFrameDamage_.clear();
     }
 }
 

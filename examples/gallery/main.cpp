@@ -33,6 +33,9 @@ struct Options {
     bool dumpStyle{false};
     // R6：帧读数 HUD（窗口模式；runApp 装配非模态 overlay）。
     bool frameOverlay{false};
+    // R6：bounds/damage 调试图层（窗口模式；纯绘制层）。
+    bool boundsOverlay{false};
+    bool damageOverlay{false};
     std::uint64_t maxFrames{0};
     std::string sampleRoute{};
     std::string sampleKey{};
@@ -61,6 +64,10 @@ Options parseOptions(int argc, char** argv) {
             options.dumpStyle = true;
         } else if (flag == "--frame-overlay") {
             options.frameOverlay = true;
+        } else if (flag == "--bounds-overlay") {
+            options.boundsOverlay = true;
+        } else if (flag == "--damage-overlay") {
+            options.damageOverlay = true;
         } else if (flag == "--sample-route" && i + 1 < argc) {
             options.sampleRoute = argv[++i];
         } else if (flag == "--sample-key" && i + 1 < argc) {
@@ -441,6 +448,8 @@ int runWindowed(GalleryApp& app, const Options& options) {
     runOptions.maxFrames = options.maxFrames;
     // R6：帧读数 HUD（显式开启；默认关闭零额外帧）。
     runOptions.frameDebugOverlay = options.frameOverlay;
+    runOptions.debugBoundsOverlay = options.boundsOverlay;
+    runOptions.debugDamageOverlay = options.damageOverlay;
     // 窗口/任务栏图标（Core Dark 方向，design/gallery-icon.html 01 与
     // docs/lumen-gallery-icon-design.md）：按显示缩放现场光栅化任务栏
     // 主档 48——DPI>1 时直接产出更大母版（≥48 比例几何），系统不放大
