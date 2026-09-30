@@ -204,6 +204,7 @@ bool DesignDocumentHistory::commit(
     }
 
     if (cursor_ != 0 && !entry.mergeKey.empty() &&
+        entries_[cursor_ - 1].afterRevision != savedRevision_ &&
         entries_[cursor_ - 1].mergeKey == entry.mergeKey) {
         Entry& previous = entries_[cursor_ - 1];
         previous.after = entry.after;

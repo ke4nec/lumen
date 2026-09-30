@@ -1033,8 +1033,9 @@ session 关闭回调和引用 lease 在关闭时释放。F4/P4 已完成 `Design
 同时返回 SourceMap 和 CompileTrace。P2 registry 仍只覆盖 L0，P3 尚未构造 controller 或资源裸指针；F5 的
 DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢复已完成。F6 已增加设计器
 应用层的 `DesignDocumentTransaction`/`DesignDocumentHistory`、会话级 `DesignSelectionModel`
-和统一 `DesignDiagnostic` 基础契约；事务覆盖副本提交、失败回滚、mergeKey、undo/redo、
-选择恢复及 document/saved revision，诊断覆盖阶段、source span、恢复策略和稳定去重。F6
+和统一 `DesignDiagnostic` 基础契约；事务覆盖副本提交、失败回滚、mergeKey（保存 revision
+会阻断跨保存合并）、undo/redo、选择恢复及 document/saved revision，诊断覆盖阶段、source
+span、恢复策略和稳定去重。F6
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
 真实 D3 应用出口尚未完成。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
@@ -1183,7 +1184,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `247` 个断言、
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `258` 个断言、
   `20` 个测试用例通过；现有可执行文件运行的 `ctest -R 'designer|document_store'` 为
   `33/33` 通过。标准 `lumen-tests` 重建目前被工作区 app shell 修改阻塞：
   `tests/app_shell_tests.cpp:1582` 在声明前使用 `pixelAt`；该错误不涉及本阶段 DSL 改动。

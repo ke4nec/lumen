@@ -150,6 +150,30 @@ TEST_CASE("designer history merges commands and clears redo branches",
     CHECK(document.pageName == "branch");
 }
 
+TEST_CASE("designer history does not merge across a saved revision",
+          "[designer][f6][transaction]") {
+    auto document = sampleDocument();
+    DesignSelection selection;
+    DesignDocumentHistory history;
+
+    auto first = history.begin(document, selection);
+    REQUIRE(first.apply(renameCommand("", "a", "typing")));
+    REQUIRE(history.commit(document, selection, std::move(first)));
+    history.markSaved();
+
+    auto second = history.begin(document, selection);
+    REQUIRE(second.apply(renameCommand("a", "ab", "typing")));
+    REQUIRE(history.commit(document, selection, std::move(second)));
+    CHECK(history.undoSize() == 2);
+
+    REQUIRE(history.undo(document, selection));
+    CHECK(document.pageName == "a");
+    CHECK_FALSE(history.dirty());
+    REQUIRE(history.undo(document, selection));
+    CHECK(document.pageName.empty());
+    CHECK(history.dirty());
+}
+
 TEST_CASE("designer diagnostics have stable stages and deduplicate by location",
           "[designer][f6][diagnostic]") {
     DesignError error{"ref.missing", "page.design", SourcePos{4, 7},
