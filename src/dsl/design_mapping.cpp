@@ -1,8 +1,11 @@
 #include "lumen/dsl/design_mapping.h"
 
+#include <cctype>
 #include <cmath>
 #include <functional>
 #include <limits>
+
+#include "lumen/dsl/design_schema.h"
 
 namespace lumen::dsl {
 
@@ -16,6 +19,17 @@ void clearSourceSpans(DesignNode& node) {
         (void)slot;
         for (auto& child : children) clearSourceSpans(child);
     }
+}
+
+[[nodiscard]] bool validReferenceName(std::string_view value) {
+    if (value.empty()) return false;
+    const auto first = static_cast<unsigned char>(value.front());
+    if (std::isalpha(first) == 0 && value.front() != '_') return false;
+    for (const char character : value) {
+        const auto c = static_cast<unsigned char>(character);
+        if (std::isalnum(c) == 0 && character != '_') return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -325,6 +339,73 @@ std::optional<DesignNodeId> DesignDocumentEditor::duplicateNode(
         return std::nullopt;
     }
     return insertedId;
+}
+
+bool DesignDocumentEditor::setProperty(DesignNodeId nodeId,
+                                       std::string property,
+                                       DesignValue value) {
+    auto* node = findNode(document_.root, nodeId);
+    if (node == nullptr) return false;
+    const auto* schema = findNodeSchema(node->type);
+    if (schema == nullptr) return false;
+    const auto* spec = findPropertySpec(*schema, property);
+    if (spec == nullptr ||
+        spec->persistence != PropertyPersistence::Declaration ||
+        (spec->validate && !spec->validate(value))) {
+        return false;
+    }
+    node->properties[property] = std::move(value);
+    node->propertySources.erase(property);
+    return true;
+}
+
+bool DesignDocumentEditor::clearProperty(DesignNodeId nodeId,
+                                         std::string_view property) {
+    auto* node = findNode(document_.root, nodeId);
+    if (node == nullptr) return false;
+    const auto* schema = findNodeSchema(node->type);
+    if (schema == nullptr) return false;
+    const auto* spec = findPropertySpec(*schema, property);
+    if (spec == nullptr ||
+        spec->persistence != PropertyPersistence::Declaration) {
+        return false;
+    }
+    node->properties.erase(std::string{property});
+    node->propertySources.erase(std::string{property});
+    return true;
+}
+
+bool DesignDocumentEditor::setReference(DesignNodeId nodeId, std::string name,
+                                        std::string value) {
+    auto* node = findNode(document_.root, nodeId);
+    if (node == nullptr || !validReferenceName(value)) return false;
+    const auto* schema = findNodeSchema(node->type);
+    if (schema == nullptr) return false;
+    const auto* spec = findPropertySpec(*schema, name);
+    if (spec == nullptr || spec->kind != PropertyKind::Reference ||
+        spec->persistence != PropertyPersistence::RuntimeReference) {
+        return false;
+    }
+    node->references[name] = std::move(value);
+    node->properties.erase(name);
+    node->propertySources.erase(name);
+    return true;
+}
+
+bool DesignDocumentEditor::clearReference(DesignNodeId nodeId,
+                                          std::string_view name) {
+    auto* node = findNode(document_.root, nodeId);
+    if (node == nullptr) return false;
+    const auto* schema = findNodeSchema(node->type);
+    if (schema == nullptr) return false;
+    const auto* spec = findPropertySpec(*schema, name);
+    if (spec == nullptr || spec->kind != PropertyKind::Reference ||
+        spec->persistence != PropertyPersistence::RuntimeReference) {
+        return false;
+    }
+    node->references.erase(std::string{name});
+    node->propertySources.erase(std::string{name});
+    return true;
 }
 
 }  // namespace lumen::dsl

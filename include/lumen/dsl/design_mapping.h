@@ -74,6 +74,18 @@ class DesignDocumentEditor {
         DesignNodeId id, DesignNodeId newParentId, std::size_t index,
         std::string slot = {});
 
+    // Property edits are declaration-only. Runtime references use the
+    // separate reference methods so they cannot accidentally enter the
+    // persisted properties map.
+    [[nodiscard]] bool setProperty(DesignNodeId nodeId, std::string property,
+                                   DesignValue value);
+    [[nodiscard]] bool clearProperty(DesignNodeId nodeId,
+                                     std::string_view property);
+    [[nodiscard]] bool setReference(DesignNodeId nodeId, std::string name,
+                                    std::string value);
+    [[nodiscard]] bool clearReference(DesignNodeId nodeId,
+                                      std::string_view name);
+
   private:
     struct ParentLocation {
         DesignNode* parent{nullptr};

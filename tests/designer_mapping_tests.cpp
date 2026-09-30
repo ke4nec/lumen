@@ -17,6 +17,7 @@ using lumen::dsl::DesignNode;
 using lumen::dsl::DesignNodeId;
 using lumen::dsl::DesignSourceMap;
 using lumen::dsl::DesignSourceSpan;
+using lumen::dsl::DesignValue;
 using lumen::dsl::parseLumenSource;
 using lumen::dsl::SourcePos;
 using lumen::dsl::readDesignDocument;
@@ -139,4 +140,40 @@ TEST_CASE("designer duplicate nodes do not reuse source spans",
     CHECK(sourceMap.nodeSpan(originalId).has_value());
     CHECK_FALSE(sourceMap.nodeSpan(*duplicate).has_value());
     CHECK_FALSE(sourceMap.propertySpan(*duplicate, "text").has_value());
+}
+
+TEST_CASE("designer property edits validate persistence and references",
+          "[designer][f6][property]") {
+    const auto parsed = parseLumenSource(
+        "page mapping { Button(\"Save\", onClick: save, key: \"save\") }");
+    REQUIRE(parsed.ok());
+
+    DesignDocumentEditor editor{parsed.document};
+    auto& button = editor.document().root;
+    REQUIRE(button.propertySources.contains("text"));
+    CHECK(editor.setProperty(
+        button.id, "text", DesignValue{DesignValue::Variant{std::string{"Apply"}}}));
+    CHECK(std::get<std::string>(button.properties.at("text").value) ==
+          "Apply");
+    CHECK_FALSE(button.propertySources.contains("text"));
+
+    CHECK_FALSE(editor.setProperty(
+        button.id, "variant",
+        DesignValue{DesignValue::Variant{std::string{"tonal"}}}));
+    CHECK(editor.setReference(button.id, "onClick", "saveAgain"));
+    CHECK(button.references.at("onClick") == "saveAgain");
+    CHECK_FALSE(button.properties.contains("onClick"));
+    CHECK_FALSE(editor.setReference(button.id, "onClick", "bad-name"));
+    CHECK(button.references.at("onClick") == "saveAgain");
+    CHECK(editor.clearReference(button.id, "onClick"));
+    CHECK(button.references.empty());
+    CHECK(editor.clearProperty(button.id, "text"));
+    CHECK_FALSE(button.properties.contains("text"));
+    CHECK(validateDesignDocument(editor.document()).empty());
+
+    DesignDocument previewOnly;
+    previewOnly.root = DesignNode{1, "ScrollView"};
+    DesignDocumentEditor previewEditor{previewOnly};
+    CHECK_FALSE(previewEditor.setProperty(
+        1, "scrollOffset", DesignValue{DesignValue::Variant{5.0}}));
 }
