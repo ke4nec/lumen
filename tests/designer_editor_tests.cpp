@@ -91,6 +91,27 @@ TEST_CASE("designer selection stays on document ids and supports modes",
     CHECK(model.state().anchor == 2);
 }
 
+TEST_CASE("designer selection clears ids when document identity changes",
+          "[designer][f6][selection]") {
+    auto first = sampleDocument();
+    auto second = first;
+    second.documentId = "other-editor-document";
+
+    DesignSelectionModel model;
+    REQUIRE(model.select(2, DesignSelectionMode::Replace, first));
+    REQUIRE(model.capture(2));
+    model.setDocument(second);
+    CHECK(model.state().ids.empty());
+    CHECK_FALSE(model.state().primary.has_value());
+    CHECK_FALSE(model.state().anchor.has_value());
+    CHECK_FALSE(model.state().captured.has_value());
+
+    REQUIRE(model.select(3, DesignSelectionMode::Add, second));
+    CHECK(model.state().ids == std::set<lumen::dsl::DesignNodeId>{3});
+    CHECK(model.state().primary == 3);
+    CHECK(model.state().anchor == 3);
+}
+
 TEST_CASE("designer document transactions are atomic and restore selection",
           "[designer][f6][transaction]") {
     auto document = sampleDocument();

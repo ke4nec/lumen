@@ -105,8 +105,19 @@ bool DesignSelectionModel::validId(DesignNodeId id,
     return id != 0 && contains(document.root, id);
 }
 
+void DesignSelectionModel::activateDocument(const DesignDocument& document) {
+    if (documentId_ == document.documentId) return;
+    state_ = DesignSelection{};
+    documentId_ = document.documentId;
+}
+
+void DesignSelectionModel::setDocument(const DesignDocument& document) {
+    activateDocument(document);
+}
+
 bool DesignSelectionModel::select(DesignNodeId id, DesignSelectionMode mode,
                                   const DesignDocument& document) {
+    activateDocument(document);
     if (!validId(id, document)) return false;
 
     switch (mode) {
@@ -153,6 +164,7 @@ void DesignSelectionModel::collectOrder(
 
 bool DesignSelectionModel::selectRange(DesignNodeId id,
                                        const DesignDocument& document) {
+    activateDocument(document);
     if (!validId(id, document)) return false;
     const DesignNodeId anchor = state_.anchor.value_or(id);
     if (!validId(anchor, document)) {
@@ -181,6 +193,7 @@ bool DesignSelectionModel::selectRange(DesignNodeId id,
 bool DesignSelectionModel::setSelection(
     std::set<DesignNodeId> ids, std::optional<DesignNodeId> primary,
     std::optional<DesignNodeId> anchor, const DesignDocument& document) {
+    activateDocument(document);
     for (const auto id : ids) {
         if (!validId(id, document)) return false;
     }

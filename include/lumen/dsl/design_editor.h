@@ -35,6 +35,10 @@ class DesignSelectionModel {
   public:
     [[nodiscard]] const DesignSelection& state() const { return state_; }
 
+    // Selection ids belong to the active design document. Switching document
+    // identity clears ids that could otherwise collide with the new tree.
+    void setDocument(const DesignDocument& document);
+
     [[nodiscard]] bool select(DesignNodeId id, DesignSelectionMode mode,
                               const DesignDocument& document);
     [[nodiscard]] bool selectRange(DesignNodeId id,
@@ -54,8 +58,10 @@ class DesignSelectionModel {
                                       const DesignDocument& document);
     static void collectOrder(const DesignNode& node,
                              std::vector<DesignNodeId>& order);
+    void activateDocument(const DesignDocument& document);
 
     DesignSelection state_{};
+    std::string documentId_{};
 };
 
 struct DesignDocumentCommand {
