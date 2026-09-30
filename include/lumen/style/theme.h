@@ -168,6 +168,10 @@ struct MotionTokens {
     // 重复节奏——输入行为而非视觉过渡，reduceAnimation **不归零**（与
     // 其余字段不同，见 theme.cpp 注释）；其余四项为视觉动效，随
     // reduceAnimation 归零。
+    // M17（scroll-design §5）：滚动后滚动条驻留窗口（auto-hide）；
+    // reduceAnimation 不归零——驻留是可发现性行为而非视觉过渡（与
+    // spinRepeat 同口径；透明度切换本身无动画）。
+    std::uint32_t scrollbarAutoHideMs{800};
     std::uint32_t spinRepeatDelayMs{500};
     std::uint32_t spinRepeatIntervalMs{60};
     std::uint32_t statusbarMessageFadeMs{120};

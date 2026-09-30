@@ -349,6 +349,9 @@ struct Widget {
     bool selected{false};
     // --- M6 集中区（小字段连续，消除 padding） ---
     bool showScrollbar{false};  // 滚动条显隐（滚动视口）
+    // M17：auto-hide——滚动活动窗口外拇指透明（命中区保留：悬停/拖拽
+    // 即重新可见；scroll-design §5）。
+    bool scrollbarAutoHide{false};
     IconId icon{IconId::None};  // 图标语义 ID（Icon 节点/Button 图标位）
     float elevation{0.0F};  // 层级（ElevationTokens；0 = 无阴影）
     float transitionAlpha{1.0F};  // 控件转场透明度（reduceAnimation 恒 1）
@@ -753,6 +756,12 @@ inline Widget withRoundedClip(Widget child, bool clip = true) {
 
 inline Widget withScrollbar(Widget child, bool show = true) {
     child.showScrollbar = show;
+    return child;
+}
+
+// M17：滚动条 auto-hide（需与 withScrollbar 组合；悬停/拖拽恒可见）。
+inline Widget withAutoHideScrollbar(Widget child) {
+    child.scrollbarAutoHide = true;
     return child;
 }
 

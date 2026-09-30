@@ -533,6 +533,9 @@ class AppShell {
     bool frameHashValid_{false};
     std::uint32_t partialRepaintCount_{0};
     core::Size view_{800.0F, 600.0F};
+    // M17：auto-hide 滚动条调度（活动代数变化 → 可见窗口；到时隐藏）。
+    std::uint64_t scrollActivityGenSeen_{0};
+    std::uint64_t scrollbarHideAtMs_{0};
     float deviceScale_{1.0F};
     std::uint64_t frameIndex_{0};
     std::uint64_t lastTickMs_{0};

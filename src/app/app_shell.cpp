@@ -885,6 +885,18 @@ void AppShell::paintFrame(bool forceFullRepaint) {
 void AppShell::tick(std::uint64_t nowMs) {
     hasTicked_ = true;
     lastTickMs_ = nowMs;
+    // M17：滚动活动代数变化 → 打开 auto-hide 可见窗口（重置到时）；到时
+    // 关闭并置脏。reduceAnimation 不缩短该窗口（可发现性行为，token 注释）。
+    const std::uint64_t scrollGen = controller_.scrollActivityGeneration();
+    if (scrollGen != scrollActivityGenSeen_) {
+        scrollActivityGenSeen_ = scrollGen;
+        scrollbarHideAtMs_ =
+            nowMs + theme_.motion.scrollbarAutoHideMs;
+        markDirty();
+    } else if (scrollbarHideAtMs_ != 0 && nowMs >= scrollbarHideAtMs_) {
+        scrollbarHideAtMs_ = 0;
+        markDirty();
+    }
     bool animating = false;
     if (config_.caretBlink) {
         // caret 闪烁 tween（plan 阶段6）。应用拥有时钟；测试传固定时间戳保
@@ -1451,7 +1463,8 @@ void AppShell::syncInteractionSnapshot() {
     interactionSnapshot_ = style::InteractionStateSnapshot{
         controller_.hoveredIdentity(), controller_.pressedIdentity(),
         focus_.focusedIdentity(), controller_.hoveredScrollbarIdentity(),
-        controller_.draggedScrollbarIdentity()};
+        controller_.draggedScrollbarIdentity(),
+        /*scrollbarActive=*/scrollbarHideAtMs_ != 0};
 }
 
 const text::FontManager& AppShell::textFontSource() const {

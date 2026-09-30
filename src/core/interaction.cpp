@@ -729,6 +729,7 @@ void InteractionController::pointerMove(const RenderNode& root,
                 scrollDragSource_->noteDragSample(dragDelta, timestampMs);
                 if (scrollDragSource_->applyDrag(dragDelta)) {
                     requestRebuild();
+                    ++scrollActivityGeneration_;  // M17。
                 }
             } else {
                 scrollDragSink_(&root, viewport, position, move,
@@ -1677,6 +1678,7 @@ bool InteractionController::advanceSourceFling(std::uint64_t nowMs) {
                       return !scroller->isFlinging();
                   });
     if (active) {
+        ++scrollActivityGeneration_;  // M17：惯性推进也算活动。
         requestRebuild();
     }
     return active;
@@ -1687,6 +1689,9 @@ bool InteractionController::advanceSourceFling(std::uint64_t nowMs) {
 // |delta| > 1e8 为端点哨兵（跳到顶/底，测试与 Home/End 同路径）。
 bool InteractionController::scrollSourceViewport(ScrollController& scroller,
                                                  float dy) {
+    // M17：滚动尝试即计一次活动（auto-hide 可见窗口；边界端点的连续
+    // 尝试同样保持可见）。
+    ++scrollActivityGeneration_;
     if (std::abs(dy) > 1e8F) {
         scroller.scrollTo(dy > 0.0F ? scroller.maxScrollOffset() : 0.0F);
         requestRebuild();
@@ -1750,7 +1755,11 @@ bool InteractionController::wheel(const RenderNode& root, Offset position,
                 return scrollSourceViewport(*scroller, amount);
             }
         }
-        return wheelSink_ ? wheelSink_(root, viewport, position, effective) : false;
+        if (wheelSink_ != nullptr && wheelSink_(root, viewport, position, effective)) {
+            ++scrollActivityGeneration_;  // M17。
+            return true;
+        }
+        return false;
     }
     return false;
 }
@@ -1833,9 +1842,13 @@ bool InteractionController::scrollKey(const RenderNode& root, Key key) {
         return false;
     }
     // 水平视口的键盘滚动以 X 分量表达（sink 按轴消费）。
-    return wheelSink_(root, targetViewport != nullptr ? targetViewport : focused, Offset{},
+    if (wheelSink_(root, targetViewport != nullptr ? targetViewport : focused, Offset{},
                       horizontal ? Offset{amount, 0.0F}
-                                 : Offset{0.0F, amount});
+                                 : Offset{0.0F, amount})) {
+        ++scrollActivityGeneration_;  // M17。
+        return true;
+    }
+    return false;
 }
 
 // --- 剪贴板/编辑值 ---

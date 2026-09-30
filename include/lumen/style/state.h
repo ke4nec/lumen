@@ -33,6 +33,9 @@ struct InteractionStateSnapshot {
     std::string focusedIdentity{};
     std::string hoveredScrollbarIdentity{};
     std::string draggedScrollbarIdentity{};
+    // M17：滚动活动窗口内（auto-hide 滚动条保持可见；AppShell tick 按
+    // MotionTokens.scrollbarAutoHideMs 调度）。
+    bool scrollbarActive{false};
 
     [[nodiscard]] WidgetState stateFor(const std::string& identity,
                                        bool disabled, bool checked,

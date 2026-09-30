@@ -561,3 +561,61 @@ TEST_CASE("scrollbar_capture_does_not_switch_menu_bar_on_pointer_crossing", "[sc
     static_cast<void>(shell.renderFrame());
     CHECK(findNodeByKey(*shell.overlayRoot(), "menubar:m0:i0")->semanticsLabel == "view");
 }
+
+// --- M17：auto-hide 滚动条（活动窗口调度 + 悬停/拖拽恒可见） ---
+
+TEST_CASE("scrollbar_auto_hide_tracks_activity_window", "[scrollbar][m17]") {
+    VirtualListController source;
+    source.setItemCount(30);
+    source.setEstimatedExtent(40.0F);
+    source.setItemBuilder(
+        [](std::size_t) { return makeContainerLeaf(200.0F, 40.0F); });
+    app::ShellConfig config;
+    config.initialView = {240.0F, 240.0F};
+    config.build = [&source] {
+        // 既有 fixture 口径：视口经 Stack 定位（裸 VirtualList 作根不是
+        // 受支持的装配形态，paintFrame 崩溃与本特性无关）。
+        return makeStack({withStackPosition(
+            withAutoHideScrollbar(withScrollbar(
+                makeVirtualList(&source, "scroll", 200.0F, 200.0F))),
+            Offset{20.0F, 20.0F})});
+    };
+    app::AppShell shell(config);
+    // 走真实帧管线（paintFrame 先同步交互快照再重建——直接
+    // rebuildIfDirty 不刷新快照，读到的是上一拍状态）。
+    // 隐藏态经 scrollbarHidden 标志断言（颜色通道不再表达隐藏——几何/
+    // 命中保留，painter 跳过绘制）。
+    const auto barHidden = [&shell] {
+        (void)shell.renderFrame();
+        const RenderNode* view = findNodeByKey(shell.root(), "scroll");
+        REQUIRE(view != nullptr);
+        return view->scrollbarHidden;
+    };
+
+    // 空闲（无活动）：拇指透明（命中区保留）。
+    CHECK(barHidden());  // 先渲染首帧（tick 前首帧落地）。
+    shell.tick(100);
+    CHECK(barHidden());
+
+    // 滚轮滚动（框架源视口路径）：活动代数递增 → 可见窗口打开。
+    CHECK(shell.wheel(Offset{120.0F, 120.0F}, Offset{0.0F, 60.0F}));
+    shell.tick(110);
+    CHECK_FALSE(barHidden());
+
+    // 键盘滚动刷新窗口（在到期前再活动）。
+    shell.tick(400);
+    CHECK_FALSE(barHidden());
+
+    // 到期：隐藏。
+    shell.tick(909 + 800);
+    CHECK(barHidden());
+
+    // 悬停重显：指针移到拇指上（hover 判定为拇指区）→ hovered 恒可见。
+    shell.tick(2000);
+    shell.pointerMove(Offset{20.0F + 196.0F, 20.0F + 45.0F});
+    shell.tick(2000);
+    CHECK_FALSE(barHidden());
+    // 悬停期间即使活动窗口早已过期也保持可见。
+    shell.tick(4000);
+    CHECK_FALSE(barHidden());
+}

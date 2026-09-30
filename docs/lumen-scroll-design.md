@@ -1,6 +1,6 @@
 # Lumen 滚动系统设计（轴模型 / 输入路由 / 物理与语义契约）
 
-> 文档状态：核心实现与 Gallery 水平演示已完成（2026-09）；水平轴由 `docs/lumen-optimization-plan.md` P2 引入，本文档为当前行为契约的唯一来源。自动隐藏、RTL 与水平虚拟化仍是明确未完成项。
+> 文档状态：核心实现与 Gallery 水平演示已完成（2026-09）；水平轴由 `docs/lumen-optimization-plan.md` P2 引入，本文档为当前行为契约的唯一来源。auto-hide 滚动条已于 2026-09-29（M17）落地（§5.3）；RTL 与水平虚拟化仍是明确未完成项。
 > 输入：`include/lumen/core/scroll.h`（ScrollController）、`src/layout/layout.cpp::layoutScrollView`（视口约束与 offset 应用）、`src/render/painter.cpp`（滚动条）、`src/core/interaction.cpp`（滚轮/拖动/键盘路由）、`include/lumen/accessibility/bridge.h`（语义 scroll action）、M3/M10/M12 完成记录。
 > 相关既有文档：`lumen-visual-system-design.md` §滚动条（token/几何）、`lumen-collection-controls-design.md`（VirtualList 纵向虚拟化）。横纵交互稿：[scrollbar-controls.html](../design/scrollbar-controls.html)。
 
@@ -86,4 +86,4 @@
 
 - 无双轴联滚、无水平虚拟化、无 RTL（§1 非目标）。
 - Shift+纵轮投影是框架层约定（宿主无原生横轮事件时）；触控板双指横滑经 `scrollDelta.x` 原生到达。
-- 自动隐藏滚动条仍未实现；有溢出时保持常显，横纵滑块均支持直接拖动。
+- **auto-hide 滚动条已落地（2026-09-29，M17）**：`withAutoHideScrollbar`（与 `withScrollbar` 组合，滚动视口声明式开启）。滚动活动（滚轮/键盘/滚动条拖动/源视口拖动/惯性推进任一消费）打开 `MotionTokens.scrollbarAutoHideMs`（默认 800ms，reduceAnimation **不归零**——驻留是可发现性行为）可见窗口，到期隐藏；拇指隐藏拍经 `RenderNode.scrollbarHidden` 标志（painter 跳过绘制）表达——**几何/命中区保留**（悬停即重新可见，拖拽捕获不失效；`scrollbarGeometry` 的 alpha=0 即无滚动条语义不变）。hover/drag/disabled 恒可见。横纵滑块均支持直接拖动。

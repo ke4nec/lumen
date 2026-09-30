@@ -158,6 +158,12 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
             ? scrollbar.activeThumbWidth : scrollbar.thumbWidth;
         node.scrollbarMinLength = styleContext.theme.scrollbar.minLength;
         node.scrollbarInset = scrollbar.inset;
+        // M17 auto-hide：活动窗口外拇指不绘制（scrollbarHidden 标志——
+        // 几何/命中区保留，悬停即重新可见；dragged/hovered/disabled 恒
+        // 可见；颜色通道不受影响，scrollbarGeometry 语义不变）。
+        node.scrollbarHidden = widget.scrollbarAutoHide && widget.enabled &&
+            !hovered && !dragged &&
+            !styleContext.interaction.scrollbarActive;
         node.scrollbarColor = !widget.enabled ? scrollbar.disabled
             : dragged ? scrollbar.dragged : hovered ? scrollbar.hovered : scrollbar.rest;
     }

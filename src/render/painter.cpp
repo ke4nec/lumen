@@ -1120,11 +1120,17 @@ void paintNode(Sink& sink, const RenderNode& node, Offset absolute,
             paintChildren();
         } else paintChildren();
         // Scroll design §5: the same geometry owns paint and pointer input.
+        // M17：auto-hide 隐藏拍跳过绘制（几何/命中保留）。
         if (const auto bar = core::scrollbarGeometry(node)) {
             auto thumb = bar->thumb;
             thumb.origin = thumb.origin + origin;
-            sink.drawRect(thumb, core::scaleColorAlpha(node.scrollbarColor, nodeAlpha),
-                CornerRadius::all(std::min(thumb.size.width, thumb.size.height) * 0.5F));
+            if (!node.scrollbarHidden) {
+                sink.drawRect(
+                    thumb,
+                    core::scaleColorAlpha(node.scrollbarColor, nodeAlpha),
+                    CornerRadius::all(std::min(thumb.size.width,
+                                               thumb.size.height) * 0.5F));
+            }
         }
     } else {
         for (const auto& child : node.children) {

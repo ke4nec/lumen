@@ -237,6 +237,11 @@ class InteractionController {
     // 拖放启动阈值（逻辑像素，曼哈顿距离；默认 8 = 点击 slop 的 2 倍，
     // 微抖动仍为点击）。会话开启前设置有效。
     void setDragThresholdPx(float px);
+    // M17：滚动活动代数（滚轮/键盘/滚动条拖动/源视口拖动/惯性任一
+    // 消费即递增；AppShell tick 据此驱动 auto-hide 滚动条可见窗口）。
+    [[nodiscard]] std::uint64_t scrollActivityGeneration() const {
+        return scrollActivityGeneration_;
+    }
 
     // 指针移动观察：AppShell 在 overlay 命中分发后，以主树通知。
     // MenuBar 用它在菜单已打开时按 hover 切换顶级菜单。
@@ -423,6 +428,8 @@ class InteractionController {
     std::string dragSourceIdentity_{};
     bool dragSessionActive_{false};
     float dragThresholdPx_{8.0F};
+    // M17：滚动活动代数（单调递增）。
+    std::uint64_t scrollActivityGeneration_{0};
     // 源视口拖动惯性登记（弱引用源 ScrollController；End 起滑时加入，
     // 推进到停止即移除）。
     std::vector<ScrollController*> sourceFlinging_{};

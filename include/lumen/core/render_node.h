@@ -89,6 +89,9 @@ struct RenderNode {
     float scrollbarThickness{0.0F};
     // Resolved scrollbar state color/width; thickness is the wider hit track.
     Color scrollbarColor{};
+    // M17：auto-hide 隐藏拍（拇指不绘制；几何/命中保留——悬停重显与
+    // 拖拽捕获不失效，scrollbarGeometry 不因此返回空）。
+    bool scrollbarHidden{false};
     float scrollbarThumbWidth{0.0F};
     float scrollbarMinLength{24.0F};
     float scrollbarInset{4.0F};
