@@ -29,7 +29,7 @@ bool DesignPreviewState::setNodeValue(
     if (id == 0 || property.empty() || findNode(document.root, id) == nullptr) {
         return false;
     }
-    values[id][std::move(property)] = std::move(value);
+    values[document.documentId][id][std::move(property)] = std::move(value);
     return true;
 }
 
@@ -60,15 +60,21 @@ std::optional<DesignValue> DesignPreviewState::value(
     if (findNode(document.root, id) == nullptr || property.empty()) {
         return std::nullopt;
     }
-    const auto visualNode = visualOverrides_.find(id);
-    if (visualNode != visualOverrides_.end()) {
-        const auto visual = visualNode->second.find(std::string{property});
-        if (visual != visualNode->second.end()) return visual->second;
+    const auto visualDocument = visualOverrides_.find(document.documentId);
+    if (visualDocument != visualOverrides_.end()) {
+        const auto visualNode = visualDocument->second.find(id);
+        if (visualNode != visualDocument->second.end()) {
+            const auto visual = visualNode->second.find(std::string{property});
+            if (visual != visualNode->second.end()) return visual->second;
+        }
     }
-    const auto runtimeNode = runtimeValues_.find(id);
-    if (runtimeNode != runtimeValues_.end()) {
-        const auto runtime = runtimeNode->second.find(std::string{property});
-        if (runtime != runtimeNode->second.end()) return runtime->second;
+    const auto runtimeDocument = runtimeValues_.find(document.documentId);
+    if (runtimeDocument != runtimeValues_.end()) {
+        const auto runtimeNode = runtimeDocument->second.find(id);
+        if (runtimeNode != runtimeDocument->second.end()) {
+            const auto runtime = runtimeNode->second.find(std::string{property});
+            if (runtime != runtimeNode->second.end()) return runtime->second;
+        }
     }
     const auto* node = findNode(document.root, id);
     const auto declared = node->properties.find(std::string{property});

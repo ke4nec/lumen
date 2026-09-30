@@ -43,8 +43,9 @@ class DesignPreviewState {
     }
 
   private:
-    using NodeValues =
+    using NodePropertyValues =
         std::map<DesignNodeId, std::map<std::string, DesignValue>>;
+    using NodeValues = std::map<std::string, NodePropertyValues>;
 
     [[nodiscard]] static const DesignNode* findNode(const DesignNode& node,
                                                      DesignNodeId id);

@@ -1201,9 +1201,9 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   `4` 个测试用例通过，覆盖 source map、DPI/zoom/pan 变换和稳定 ID 结构编辑。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、恢复副本、revision 冲突、非法保存和恢复副本失败清理，为 `564` 个断言、`6` 个测试用例通过。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `302` 个断言、
-  `24` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `48/48` 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1012/1012`；
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `308` 个断言、
+  `25` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `49/49` 通过。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1013/1013`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
@@ -1224,7 +1224,9 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。
   诊断会补齐当前 `documentId`，并按节点 ID、路径和 source span 保留不同错误位置供错误列表
-  定位；`designer_preview_frame_tests.cpp` 覆盖这些恢复、聚合和代数边界。
+  定位；`designer_preview_frame_tests.cpp` 覆盖这些恢复、聚合和代数边界。`DesignPreviewState`
+  的 runtime snapshot 与 visual override 按 `documentId` 隔离，避免不同文档复用节点 ID 时
+  串用会话值；`designer_preview_tests.cpp` 覆盖跨文档同 ID 回归。
 - F6 无障碍基线：`designer_accessibility_tests.cpp` 从 L0 设计文档编译并布局语义树，验证
   稳定的 role/label/value、bounds、Button 激活动作和重复布局确定性；三桌面读屏和真正的
   设计器面板键盘流程仍属于 D2/D3 应用出口。

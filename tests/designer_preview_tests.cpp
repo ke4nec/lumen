@@ -44,6 +44,33 @@ TEST_CASE("designer preview values shadow declarations without mutating DOM",
           DesignValue::Variant{"42"});
 }
 
+TEST_CASE("designer preview values are isolated by document identity",
+          "[designer][f6][preview]") {
+    auto first = sampleDocument();
+    auto second = first;
+    second.documentId = "other-preview-document";
+    const auto textId = first.root.children.front().id;
+    second.root.children.front().properties["text"] =
+        DesignValue{DesignValue::Variant{"second-declared"}};
+
+    DesignPreviewState preview;
+    REQUIRE(preview.setRuntimeValue(
+        textId, "text", DesignValue{DesignValue::Variant{"first-runtime"}},
+        first));
+    CHECK(preview.value(textId, "text", first)->value ==
+          DesignValue::Variant{"first-runtime"});
+    CHECK(preview.value(textId, "text", second)->value ==
+          DesignValue::Variant{"second-declared"});
+
+    REQUIRE(preview.setVisualOverride(
+        textId, "text", DesignValue{DesignValue::Variant{"second-hover"}},
+        second));
+    CHECK(preview.value(textId, "text", first)->value ==
+          DesignValue::Variant{"first-runtime"});
+    CHECK(preview.value(textId, "text", second)->value ==
+          DesignValue::Variant{"second-hover"});
+}
+
 TEST_CASE("designer preview state does not dirty or serialize into a document",
           "[designer][f6][preview]") {
     auto document = sampleDocument();
