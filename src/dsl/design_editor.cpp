@@ -106,9 +106,36 @@ bool DesignSelectionModel::validId(DesignNodeId id,
 }
 
 void DesignSelectionModel::activateDocument(const DesignDocument& document) {
-    if (documentId_ == document.documentId) return;
-    state_ = DesignSelection{};
-    documentId_ = document.documentId;
+    if (documentId_ != document.documentId) {
+        state_ = DesignSelection{};
+        documentId_ = document.documentId;
+        return;
+    }
+
+    for (auto it = state_.ids.begin(); it != state_.ids.end();) {
+        if (validId(*it, document)) {
+            ++it;
+        } else {
+            it = state_.ids.erase(it);
+        }
+    }
+    if (state_.ids.empty()) {
+        state_.primary.reset();
+        state_.anchor.reset();
+    } else {
+        if (!state_.primary.has_value() ||
+            !state_.ids.contains(*state_.primary)) {
+            state_.primary = *state_.ids.begin();
+        }
+        if (!state_.anchor.has_value() ||
+            !state_.ids.contains(*state_.anchor)) {
+            state_.anchor = state_.primary;
+        }
+    }
+    if (state_.captured.has_value() &&
+        !state_.ids.contains(*state_.captured)) {
+        state_.captured.reset();
+    }
 }
 
 void DesignSelectionModel::setDocument(const DesignDocument& document) {

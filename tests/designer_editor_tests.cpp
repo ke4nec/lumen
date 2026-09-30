@@ -110,6 +110,29 @@ TEST_CASE("designer selection clears ids when document identity changes",
     CHECK(model.state().ids == std::set<lumen::dsl::DesignNodeId>{3});
     CHECK(model.state().primary == 3);
     CHECK(model.state().anchor == 3);
+
+    auto reloaded = second;
+    reloaded.root.children.pop_back();
+    model.setDocument(reloaded);
+    CHECK(model.state().ids.empty());
+    CHECK_FALSE(model.state().primary.has_value());
+    CHECK_FALSE(model.state().anchor.has_value());
+}
+
+TEST_CASE("designer selection reconciles same-document reloads",
+          "[designer][f6][selection]") {
+    auto document = sampleDocument();
+    DesignSelectionModel model;
+    REQUIRE(model.setSelection({2, 3}, 3, 2, document));
+    REQUIRE(model.capture(3));
+
+    auto reloaded = document;
+    reloaded.root.children.pop_back();
+    model.setDocument(reloaded);
+    CHECK(model.state().ids == std::set<lumen::dsl::DesignNodeId>{2});
+    CHECK(model.state().primary == 2);
+    CHECK(model.state().anchor == 2);
+    CHECK_FALSE(model.state().captured.has_value());
 }
 
 TEST_CASE("designer document transactions are atomic and restore selection",
