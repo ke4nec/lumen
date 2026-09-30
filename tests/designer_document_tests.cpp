@@ -13,7 +13,6 @@ using lumen::dsl::DesignValue;
 using lumen::dsl::DesignReferenceKind;
 using lumen::dsl::MapDesignRuntimeContext;
 using lumen::dsl::compileDesignDocument;
-using lumen::dsl::parseLumen;
 using lumen::dsl::parseLumenSource;
 using lumen::dsl::readDesignDocument;
 using lumen::dsl::serializeDesignDocument;
@@ -106,7 +105,7 @@ TEST_CASE("designer codec round trips every frozen L0 node",
     CHECK(decoded.document.root.propertySources.contains("padding"));
 }
 
-TEST_CASE("designer document compiles to the existing widget golden",
+TEST_CASE("designer document compiles to the independent C++ builder golden",
           "[designer][p1]") {
     const std::string source = R"(page preview {
         Column(key: "root", padding: 4, spacing: 8) {
@@ -122,9 +121,20 @@ TEST_CASE("designer document compiles to the existing widget golden",
     context.registerReference(DesignReferenceKind::Handler, "increment");
     const auto compiled = compileDesignDocument(document.document, context);
     REQUIRE(compiled.ok());
-    const auto expected = parseLumen(source);
-    REQUIRE(expected.ok());
-    CHECK(compiled.root == expected.root);
+
+    auto count = lumen::core::makeText(
+        "Count: ", lumen::core::TextStyle{18.0F}, {}, 0.0F, "label");
+    count.bind = "count";
+    count.bindPrefix = count.text;
+    auto add = lumen::core::makeButton("Add", {}, {}, 0.0F, "add");
+    add.buttonVariant = lumen::core::ButtonVariant::Tonal;
+    add.onClick = "increment";
+    const auto expected = lumen::core::makeColumn(
+        {std::move(count), std::move(add)},
+        lumen::core::MainAxisAlignment::Start,
+        lumen::core::CrossAxisAlignment::Start, 8.0F, lumen::core::EdgeInsets::all(4.0F),
+        {}, "root");
+    CHECK(compiled.root == expected);
     CHECK(compiled.trace.nodes.size() == 3);
     CHECK(compiled.trace.nodes.at(document.document.root.id).documentId ==
           document.document.root.id);
