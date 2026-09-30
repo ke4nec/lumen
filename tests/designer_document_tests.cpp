@@ -140,6 +140,21 @@ TEST_CASE("designer document compiles to the independent C++ builder golden",
           document.document.root.id);
 }
 
+TEST_CASE("designer compiler preserves codec strings outside DSL escapes",
+          "[designer][p1]") {
+    DesignDocument document;
+    document.pageName = "preview";
+    document.root = DesignNode{1, "Text"};
+    document.root.properties["text"] =
+        DesignValue{DesignValue::Variant{std::string("A\0B", 3)}};
+
+    const auto compiled = compileDesignDocument(document);
+    REQUIRE(compiled.ok());
+    CHECK(compiled.root.type == lumen::core::WidgetType::Text);
+    CHECK(compiled.root.text == std::string("A\0B", 3));
+    CHECK(compiled.root.bindPrefix == std::string("A\0B", 3));
+}
+
 TEST_CASE("designer document diagnostics reject unsupported and damaged input",
           "[designer][p1]") {
     DesignDocument unknown;

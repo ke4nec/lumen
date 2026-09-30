@@ -864,87 +864,11 @@ template <typename Integer>
     return true;
 }
 
-[[nodiscard]] bool isL0Node(const std::string& type) {
-    return type == "Container" || type == "Row" || type == "Column" ||
-           type == "Stack" || type == "Text" || type == "Button" ||
-           type == "TextField" || type == "ScrollView" ||
-           type == "ListView" || type == "Checkbox" || type == "Switch" ||
-           type == "FocusScope";
-}
-
-[[nodiscard]] bool validIdentifier(const std::string& value) {
-    if (value.empty()) return false;
-    const auto first = static_cast<unsigned char>(value.front());
-    if (!(std::isalpha(first) != 0 || value.front() == '_')) return false;
-    for (const char character : value) {
-        const auto c = static_cast<unsigned char>(character);
-        if (!(std::isalnum(c) != 0 || character == '_')) return false;
-    }
-    return true;
-}
-
-[[nodiscard]] std::string dslEscape(const std::string& value) {
-    std::string result = "\"";
-    for (const char c : value) {
-        switch (c) {
-            case '\\': result += "\\\\"; break;
-            case '"': result += "\\\""; break;
-            case '\n': result += "\\n"; break;
-            case '\r': result += "\\r"; break;
-            case '\t': result += "\\t"; break;
-            default: result += c; break;
-        }
-    }
-    return result + '"';
-}
-
-[[nodiscard]] std::string dslColor(core::Color color) {
-    std::ostringstream out;
-    out << '#' << std::hex << std::setfill('0') << std::setw(2)
-        << static_cast<int>(color.r) << std::setw(2)
-        << static_cast<int>(color.g) << std::setw(2)
-        << static_cast<int>(color.b);
-    if (color.a != 255) out << std::setw(2) << static_cast<int>(color.a);
-    return out.str();
-}
-
-[[nodiscard]] std::optional<std::string> dslLiteral(
-    const DesignValue& value, const std::string& property,
-    std::optional<DesignError>& error) {
-    if (const auto* boolean = std::get_if<bool>(&value.value)) {
-        return *boolean ? "true" : "false";
-    }
-    if (const auto* number = std::get_if<double>(&value.value)) {
-        if (!std::isfinite(*number)) {
-            error = errorAt("compile.invalid_number", "<design>",
-                            "property number must be finite");
-            return std::nullopt;
-        }
-        return jsonNumber(*number);
-    }
-    if (const auto* string = std::get_if<std::string>(&value.value)) {
-        return dslEscape(*string);
-    }
-    if (const auto* color = std::get_if<core::Color>(&value.value)) {
-        return dslColor(*color);
-    }
-    if (const auto* enumeration = std::get_if<DesignEnum>(&value.value)) {
-        if (!validIdentifier(enumeration->value)) {
-            error = errorAt("compile.invalid_enum", "<design>",
-                            "enum value must be an identifier");
-            return std::nullopt;
-        }
-        return enumeration->value;
-    }
-    error = errorAt("compile.invalid_value", "<design>",
-                    "property '" + property + "' has no value");
-    return std::nullopt;
-}
-
-[[nodiscard]] std::optional<std::string> emitNode(
+[[nodiscard]] std::optional<core::Widget> compileNode(
     const DesignNode& node, std::set<DesignNodeId>& ids, std::string path,
     std::optional<DesignError>& error) {
-    if (!isL0Node(node.type)) {
+    const NodeSchema* schema = findNodeSchema(node.type);
+    if (schema == nullptr) {
         DesignError diagnostic = errorAt(
             "compile.unknown_node", "<design>",
             "node type '" + node.type + "' is not registered in P1");
@@ -962,60 +886,33 @@ template <typename Integer>
         error = std::move(diagnostic);
         return std::nullopt;
     }
-    std::string output = node.type + "(";
-    bool first = true;
+
+    core::Widget widget = schema->makeDefault();
     for (const auto& [name, value] : node.properties) {
-        if (name.empty()) continue;
-        const auto literal = dslLiteral(value, name, error);
-        if (!literal.has_value()) return std::nullopt;
-        if (!first) output += ", ";
-        first = false;
-        output += name + ": ";
-        if (name == "bind" || name == "onClick") {
-            const auto* string = std::get_if<std::string>(&value.value);
-            if (string == nullptr || !validIdentifier(*string)) {
-                DesignError diagnostic = errorAt(
-                    "compile.reference_name", "<design>",
-                    "reference names must be identifiers");
-                diagnostic.nodeId = node.id;
-                diagnostic.nodePath = path;
-                diagnostic.property = name;
-                error = std::move(diagnostic);
-                return std::nullopt;
-            }
-            output += *string;
-        } else {
-            output += *literal;
-        }
-    }
-    for (const auto& [name, reference] : node.references) {
-        if (name != "bind" && name != "onClick") continue;
-        if (!validIdentifier(reference)) {
+        const PropertySpec* property = findPropertySpec(*schema, name);
+        if (property == nullptr ||
+            property->persistence != PropertyPersistence::Declaration ||
+            !property->set || !property->set(widget, value)) {
             DesignError diagnostic = errorAt(
-                "compile.reference_name", "<design>",
-                "reference names must be identifiers");
+                "compile.property", "<design>",
+                "property '" + name + "' cannot be applied to '" +
+                    node.type + "'");
             diagnostic.nodeId = node.id;
             diagnostic.nodePath = path;
             diagnostic.property = name;
             error = std::move(diagnostic);
             return std::nullopt;
         }
-        if (!first) output += ", ";
-        first = false;
-        output += name + ": " + reference;
     }
-    output += ")";
-    if (!node.children.empty()) {
-        output += " {";
-        for (std::size_t i = 0; i < node.children.size(); ++i) {
-            const auto child = emitNode(node.children[i], ids,
-                                        path + ".children[" + std::to_string(i) + "]",
-                                        error);
-            if (!child.has_value()) return std::nullopt;
-            output += ' ' + *child;
-        }
-        output += " }";
+
+    for (const auto& [name, reference] : node.references) {
+        if (name == "bind") widget.bind = reference;
+        if (name == "onClick") widget.onClick = reference;
     }
+    if (widget.type == core::WidgetType::Text) {
+        widget.bindPrefix = widget.text;
+    }
+
     if (!node.slots.empty()) {
         DesignError diagnostic = errorAt(
             "compile.unsupported_slots", "<design>",
@@ -1025,7 +922,14 @@ template <typename Integer>
         error = std::move(diagnostic);
         return std::nullopt;
     }
-    return output;
+    for (std::size_t i = 0; i < node.children.size(); ++i) {
+        const auto child = compileNode(
+            node.children[i], ids,
+            path + ".children[" + std::to_string(i) + "]", error);
+        if (!child.has_value()) return std::nullopt;
+        widget.children.push_back(std::move(*child));
+    }
+    return widget;
 }
 
 void fillTrace(const DesignNode& node, const std::string& path,
@@ -1270,30 +1174,12 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
                               unresolvedReferences, result.diagnostics);
     std::set<DesignNodeId> ids;
     std::optional<DesignError> error;
-    const auto emitted = emitNode(document.root, ids, "root", error);
-    if (!emitted.has_value()) {
+    const auto compiled = compileNode(document.root, ids, "root", error);
+    if (!compiled.has_value()) {
         result.diagnostics.push_back(std::move(*error));
         return result;
     }
-    const std::string page = validIdentifier(document.pageName)
-                                 ? document.pageName
-                                 : "DesignPreview";
-    const auto parsed = parseLumen("page " + page + " { " + *emitted + " }");
-    if (!parsed.ok()) {
-        DesignError diagnostic{parsed.error->message == "" ? "compile.dsl" :
-                                   "compile.dsl",
-                               parsed.error->file,
-                               parsed.error->pos,
-                               parsed.error->message,
-                               parsed.error->expected,
-                               parsed.error->found,
-                               0,
-                               {},
-                               {}};
-        result.diagnostics.push_back(std::move(diagnostic));
-        return result;
-    }
-    result.root = parsed.root;
+    result.root = std::move(*compiled);
     disableUnresolvedReferenceNode(document.root, result.root,
                                    unresolvedReferences);
     fillTrace(document.root, "root", result.trace);

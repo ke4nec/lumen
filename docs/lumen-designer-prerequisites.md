@@ -1192,9 +1192,9 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `81` 个断言、
-  `8` 个测试用例通过，覆盖 12 个 L0 节点 round-trip、codec 扩展字段、独立 C++ builder
-  Widget golden 和损坏诊断。
+- P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `85` 个断言、
+  `9` 个测试用例通过，覆盖 12 个 L0 节点 round-trip、codec 扩展字段、独立 C++ builder
+  Widget golden、codec 字符串边界和损坏诊断。
 - P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `2237` 个断言、
   `4` 个测试用例通过，覆盖 Widget 字段清单、访问器回读和引用存储位置约束。
 - P3 专属筛选 `build-debug/tests/lumen-tests "[designer][p3]"` 为 `45` 个断言、
@@ -1204,17 +1204,18 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、恢复副本、revision 冲突、非法保存和恢复副本失败清理，为 `564` 个断言、`6` 个测试用例通过。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `327` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `55/55` 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1019/1019`；
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `56/56` 通过。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1020/1020`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
   controller/resource 引用注入、真实资源加载和真实编辑流程仍留在 F6；L1–L3 节点 schema 仍未登记。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
-  代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译不写入这些运行时
-  字段；P4 的 SourceMap 只保存节点/属性 span，坐标变换只在画布交互层使用，编辑器操作不
-  把 runtime identity 写回文档；P5 保存先校验 DOM 和 expected revision，再写唯一临时文件，
+  代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译按 L0 schema
+  直接创建 Widget，不写入这些运行时字段；P4 的 SourceMap 只保存节点/属性 span，坐标
+  变换只在画布交互层使用，编辑器操作不把 runtime identity 写回文档；P5 保存先校验 DOM
+  和 expected revision，再写唯一临时文件，
   并在写入及恢复副本生成后再次检查 revision，保留 `.bak` 后原子替换；主文件损坏时只从
   有效恢复副本返回文档。
 - F6 性能基线：`designer_performance_tests.cpp` 覆盖 12、100、1000 节点的规范化读回、
