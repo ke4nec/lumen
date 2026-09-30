@@ -1013,9 +1013,10 @@ D3 可编辑设计器
 | F5 / P5 | DocumentStore、版本迁移、原子保存和恢复 | 旧 fixture、损坏输入、保存中断、旧画布保留、未知字段策略 | 原文件不变，报告结构化错误 |
 | F6 / D3 | 工具箱、属性面板、结构编辑、undo/redo、资源授权 | P1–P5 + G-D13–G-D16 全部通过后再做真实编辑流程 | 退回只读 D2，不宣称双向完成 |
 
-当前 F0 仅表示源码边界核对完成；它不表示设计器代码已存在。P1 的静态可行性核对已完成，
-代码实现和 `designer_document_tests.cpp` 仍是下一道验证门。F2–F5 的 API 形状已细化，但在
-F1 的类型、codec 和错误模型落地前不应提交具体实现。
+F0 是源码边界核对；F1/P1 已完成 L0 语义 DOM、`.lumen` 导入、规范化设计文档 codec 和
+DOM→Widget 编译入口。`designer_document_tests.cpp` 覆盖 DOM round-trip、C++ builder
+golden、未知节点/损坏输入、未知字段保留、重复 ID 和 P1 运行时引用拒绝。F2–F5 的 API
+形状已细化；F2 开始前不应把 P1 的显式属性表误写成完整 schema registry。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1145,15 +1146,22 @@ F1 的类型、codec 和错误模型落地前不应提交具体实现。
 
 ### 10.3 本轮核对记录（2026-09-30）
 
-- 源码 HEAD：`e2c61ef`。工作区另有既存的平台 host 修改；本轮没有把它们作为设计器证据，
-  也没有实现 P1–P5 或 D1–D3 代码，没有改变现有 DSL、Widget、AppShell 或构建配置。
-- 执行命令：`ctest --test-dir build-debug --output-on-failure`。
-- 结果：`942/942` 通过，耗时约 56.5 秒；这是当前 Linux Debug 构建树的无窗口测试证据，
-  不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器或设计器功能状态。
+- 规划基线：`e2c61ef`；F1/P1 实现新增 `design_document.h`、`design_codec.h`、
+  `design_document.cpp` 和 `designer_document_tests.cpp`，工作区另有既存的平台 host 修改，
+  未把它们作为设计器证据。
+- 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
+  `cmake --build build-debug --config Debug --target lumen-tests`、
+  `ctest --test-dir build-debug --output-on-failure -C Debug`。
+- 结果：`946/946` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个
+  测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器或 D2/D3 功能状态。
+- P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
+  `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
+  RuntimeContext 引用注入、属性 schema、DocumentStore 迁移和编辑事务留在 F2–F6。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
-  代码入口而 inspector、节点选择、bounds/damage overlay 未交付。
-- 未核对项：方案 A/B、DP-2–DP-8 尚未作产品决策；没有把现有 942 项测试误记为设计器
+  代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译不写入这些运行时
+  字段。
+- 未核对项：方案 A/B、DP-2–DP-8 尚未作产品决策；没有把现有 946 项测试误记为设计器
   round-trip、schema、DocumentId、RuntimeContext 或三桌面窗口验收。
 
 ### 10.4 进入实施前的评审问题

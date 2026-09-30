@@ -84,6 +84,7 @@ set(LUMEN_TEST_SOURCES
     # M10：动效与滚动体验（转场/整节点透明度/状态色过渡/惯性滚动）。
     motion_scroll_tests.cpp
     dsl_tests.cpp
+    designer_document_tests.cpp
     damage_tests.cpp
     tween_tests.cpp
     platform_smoke_tests.cpp
@@ -183,6 +184,21 @@ target_include_directories(lumen-tests PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/gallery
     ${stb_SOURCE_DIR}
 )
+
+# R4：X11 全局快捷键测试（内部接缝头 + XTEST 端到端；Linux 且依赖可用时）。
+if(UNIX AND NOT APPLE AND NOT LUMEN_BUILD_MOBILE_CORE)
+  target_include_directories(lumen-tests PRIVATE
+      ${PROJECT_SOURCE_DIR}/src/platform)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(X11TEST QUIET xtst)
+    if(X11TEST_FOUND)
+      target_compile_definitions(lumen-tests PRIVATE LUMEN_HAS_XTEST=1)
+      target_include_directories(lumen-tests PRIVATE ${X11TEST_INCLUDE_DIRS})
+      target_link_libraries(lumen-tests PRIVATE ${X11TEST_LIBRARIES})
+    endif()
+  endif()
+endif()
 
 target_link_libraries(lumen-tests PRIVATE
     lumen-core

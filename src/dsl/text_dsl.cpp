@@ -1,5 +1,7 @@
 #include "lumen/dsl/text_dsl.h"
 
+#include "lumen/dsl/design_codec.h"
+
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
@@ -334,6 +336,7 @@ struct AstAttr {
 
 struct AstNode {
     std::string name{};
+    std::string pageName{};
     SourcePos pos{};
     std::optional<Token> positional{};
     std::vector<AstAttr> attrs{};
@@ -380,6 +383,7 @@ class Parser {
                              std::to_string(nodes.size()) + " root widgets");
         }
         out = std::move(nodes.front());
+        out.pageName = pageName.text;
         return std::nullopt;
     }
 
@@ -1152,6 +1156,73 @@ class Converter {
     std::string file_;
 };
 
+[[nodiscard]] DesignValue designValueFromToken(const Token& token,
+                                               const std::string& domain) {
+    switch (token.type) {
+        case Tok::Ident:
+            if (token.text == "true") {
+                return DesignValue{DesignValue::Variant{true}};
+            }
+            if (token.text == "false") {
+                return DesignValue{DesignValue::Variant{false}};
+            }
+            return DesignValue{DesignValue::Variant{
+                DesignEnum{domain, token.text}}};
+        case Tok::Number:
+            return DesignValue{DesignValue::Variant{token.number}};
+        case Tok::String:
+            return DesignValue{DesignValue::Variant{token.text}};
+        case Tok::Color:
+            return DesignValue{DesignValue::Variant{token.color}};
+        default:
+            return DesignValue{};
+    }
+}
+
+void appendDesignNode(const AstNode& ast, DesignNode& out,
+                      DesignNodeId& nextId) {
+    out.id = nextId++;
+    out.type = ast.name;
+    out.source = DesignSourceSpan{ast.pos, ast.pos};
+    if (ast.positional.has_value()) {
+        out.properties["text"] =
+            designValueFromToken(*ast.positional, "text");
+    }
+    for (const auto& attr : ast.attrs) {
+        if (attr.name == "bind" || attr.name == "onClick") {
+            if (attr.value.type == Tok::Ident) {
+                out.references[attr.name] = attr.value.text;
+            }
+            continue;
+        }
+        out.properties[attr.name] = designValueFromToken(attr.value, attr.name);
+    }
+    out.children.reserve(ast.children.size());
+    for (const auto& child : ast.children) {
+        DesignNode converted;
+        appendDesignNode(child, converted, nextId);
+        out.children.push_back(std::move(converted));
+    }
+}
+
+[[nodiscard]] std::uint64_t designDocumentHash(const std::string& source,
+                                                const std::string& filename) {
+    constexpr std::uint64_t kFnvOffsetBasis = 14695981039346656037ULL;
+    constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+    std::uint64_t hash = kFnvOffsetBasis;
+    for (const char byte : filename + "\n" + source) {
+        hash ^= static_cast<unsigned char>(byte);
+        hash *= kFnvPrime;
+    }
+    return hash;
+}
+
+[[nodiscard]] DesignError designErrorFromDsl(const DslError& error,
+                                             std::string code = "parse.error") {
+    return DesignError{std::move(code), error.file, error.pos, error.message,
+                       error.expected, error.found, 0, {}, {}};
+}
+
 }  // namespace
 
 std::string DslError::format() const {
@@ -1194,6 +1265,39 @@ DslParseResult parseLumenFile(const std::string& path) {
     std::ostringstream buffer;
     buffer << file.rdbuf();
     return parseLumen(buffer.str(), path);
+}
+
+DesignParseResult parseLumenSource(const std::string& source,
+                                   std::string filename) {
+    std::vector<Token> tokens;
+    Lexer lexer(source, filename);
+    if (const auto failure = lexer.run(tokens)) {
+        return DesignParseResult{DesignDocument{},
+                                 designErrorFromDsl(*failure)};
+    }
+    Parser parser(std::move(tokens), filename);
+    AstNode root;
+    if (const auto failure = parser.parseDocument(root)) {
+        return DesignParseResult{DesignDocument{},
+                                 designErrorFromDsl(*failure)};
+    }
+    Converter converter(filename);
+    Widget compiled;
+    if (const auto failure = converter.convert(root, compiled)) {
+        return DesignParseResult{DesignDocument{},
+                                 designErrorFromDsl(*failure, "schema.error")};
+    }
+
+    DesignDocument document;
+    document.schemaVersion = 1;
+    document.documentId =
+        "lumen:" + std::to_string(designDocumentHash(source, filename));
+    document.pageName = root.pageName;
+    DesignNode converted;
+    DesignNodeId nextId = 1;
+    appendDesignNode(root, converted, nextId);
+    document.root = std::move(converted);
+    return DesignParseResult{std::move(document), std::nullopt};
 }
 
 namespace {
