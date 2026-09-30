@@ -261,6 +261,7 @@ bool DesignDocumentEditor::insertChild(DesignNodeId parentId,
                                        std::size_t index, DesignNode node,
                                        DesignNodeId* insertedId,
                                        std::string slot) {
+    clearSourceSpans(node);
     std::map<DesignNodeId, bool> used;
     collectIds(document_.root, used);
     if (!normalizeIds(node, used)) return false;

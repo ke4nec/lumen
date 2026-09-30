@@ -16,7 +16,9 @@ using lumen::dsl::DesignDocumentEditor;
 using lumen::dsl::DesignNode;
 using lumen::dsl::DesignNodeId;
 using lumen::dsl::DesignSourceMap;
+using lumen::dsl::DesignSourceSpan;
 using lumen::dsl::parseLumenSource;
+using lumen::dsl::SourcePos;
 using lumen::dsl::readDesignDocument;
 using lumen::dsl::serializeDesignDocument;
 using lumen::dsl::validateDesignDocument;
@@ -102,10 +104,16 @@ TEST_CASE("designer structural edits preserve stable ids and validate",
     CHECK(validateDesignDocument(editor.document()).empty());
 
     DesignNode inserted{0, "Text"};
+    inserted.source = DesignSourceSpan{SourcePos{1, 1}, SourcePos{1, 5}};
+    inserted.propertySources["text"] =
+        DesignSourceSpan{SourcePos{1, 2}, SourcePos{1, 4}};
     DesignNodeId insertedId = 0;
     REQUIRE(editor.insertChild(1, 0, std::move(inserted), &insertedId));
     REQUIRE(insertedId != 0);
     CHECK(editor.document().root.children.front().id == insertedId);
+    const auto sourceMap = DesignSourceMap::fromDocument(editor.document());
+    CHECK_FALSE(sourceMap.nodeSpan(insertedId).has_value());
+    CHECK_FALSE(sourceMap.propertySpan(insertedId, "text").has_value());
     CHECK(validateDesignDocument(editor.document()).empty());
 }
 
