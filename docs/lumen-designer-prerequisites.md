@@ -1180,7 +1180,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `235` 个断言、
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `237` 个断言、
   `19` 个测试用例通过；`ctest -R 'designer|document_store'` 为 `30/30` 通过。此前未受
   工作区 app shell 变更影响的全量基线为 `972/972`；当前未提交的 app shell/bounds overlay
   变更使全量总数变为 978，并在 `debug_overlays_draw_only_when_enabled` 处失败，后续权限错误
@@ -1202,7 +1202,8 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。
-  `designer_preview_frame_tests.cpp` 覆盖这些恢复和代数边界。
+  诊断会补齐当前 `documentId` 供错误列表定位；`designer_preview_frame_tests.cpp` 覆盖这些
+  恢复和代数边界。
 - F6 无障碍基线：`designer_accessibility_tests.cpp` 从 L0 设计文档编译并布局语义树，验证
   稳定的 role/label/value、bounds、Button 激活动作和重复布局确定性；三桌面读屏和真正的
   设计器面板键盘流程仍属于 D2/D3 应用出口。

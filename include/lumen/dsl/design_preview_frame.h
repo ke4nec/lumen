@@ -39,7 +39,8 @@ class DesignPreviewFrame {
 
   private:
     [[nodiscard]] bool sameDocument(std::string_view documentId) const;
-    void setDiagnostics(const std::vector<DesignError>& errors);
+    void setDiagnostics(const std::vector<DesignError>& errors,
+                        std::string_view documentId);
 
     core::Widget widget_{};
     CompileTrace trace_{};

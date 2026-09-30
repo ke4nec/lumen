@@ -21,6 +21,7 @@ TEST_CASE("designer preview frame keeps a placeholder for missing references",
     CHECK(frame.trace().nodes.size() == 1);
     REQUIRE(frame.diagnostics().size() == 1);
     CHECK(frame.diagnostics().front().code == "reference.missing");
+    CHECK(frame.diagnostics().front().documentId == parsed.document.documentId);
     CHECK(frame.diagnostics().front().recoverability ==
           DesignDiagnosticRecoverability::Placeholder);
     REQUIRE(frame.session());
@@ -50,6 +51,7 @@ TEST_CASE("designer preview frame keeps the last good compile on failure",
     CHECK(frame.generation() == previousGeneration);
     REQUIRE(frame.diagnostics().size() == 1);
     CHECK(frame.diagnostics().front().code == "compile.unknown_node");
+    CHECK(frame.diagnostics().front().documentId == broken.documentId);
     CHECK(frame.diagnostics().front().recoverability ==
           DesignDiagnosticRecoverability::KeepLastFrame);
     CHECK(frame.session()->active());

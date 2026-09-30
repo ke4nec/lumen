@@ -1,5 +1,7 @@
 #include "lumen/dsl/design_preview_frame.h"
 
+#include <utility>
+
 namespace lumen::dsl {
 
 bool DesignPreviewFrame::sameDocument(std::string_view documentId) const {
@@ -10,18 +12,19 @@ bool DesignPreviewFrame::sameDocument(std::string_view documentId) const {
 }
 
 void DesignPreviewFrame::setDiagnostics(
-    const std::vector<DesignError>& errors) {
+    const std::vector<DesignError>& errors, std::string_view documentId) {
     diagnostics_.clear();
     for (const auto& error : errors) {
-        appendDesignDiagnostic(diagnostics_,
-                               DesignDiagnostic::fromError(error));
+        auto diagnostic = DesignDiagnostic::fromError(error);
+        diagnostic.documentId = std::string{documentId};
+        appendDesignDiagnostic(diagnostics_, std::move(diagnostic));
     }
 }
 
 bool DesignPreviewFrame::update(const DesignDocument& document,
                                 DesignRuntimeContext& context) {
     const auto compiled = compileDesignDocument(document, context);
-    setDiagnostics(compiled.diagnostics);
+    setDiagnostics(compiled.diagnostics, document.documentId);
     if (!compiled.ok()) {
         // Reference failures still produce a traced placeholder Widget. Keep
         // it as the current frame so an offline preview remains inspectable.
@@ -39,7 +42,7 @@ bool DesignPreviewFrame::update(const DesignDocument& document,
         if (!sameDocument(document.documentId)) {
             const auto errors = compiled.diagnostics;
             clear();
-            setDiagnostics(errors);
+            setDiagnostics(errors, document.documentId);
         }
         if (compiled.session) compiled.session->close();
         return false;
