@@ -207,3 +207,37 @@ TEST_CASE("document store temporary names do not reuse legacy process-local path
         CHECK(contents == "stale-" + std::to_string(serial));
     }
 }
+
+TEST_CASE("document store backup failure preserves the primary document",
+          "[designer][p5]") {
+    const fs::path dir = tempPath("backup-failure");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const fs::path path = dir / "page.design";
+
+    const auto original = sampleDocument();
+    std::ofstream(path) << serializeDesignDocument(original);
+    REQUIRE(fs::create_directory(DocumentStore::backupPath(path.string()), ec));
+
+    auto replacement = original;
+    replacement.pageName = "replacement";
+    DocumentStore store;
+    std::vector<lumen::dsl::DesignError> diagnostics;
+    CHECK_FALSE(store.save(path.string(), replacement, diagnostics));
+    REQUIRE_FALSE(diagnostics.empty());
+    CHECK(diagnostics.front().code == "store.backup");
+
+    const auto loaded = store.load(path.string());
+    REQUIRE(loaded.ok());
+    CHECK(loaded.document == original);
+
+    bool temporaryFound = false;
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        if (entry.path().filename().string().rfind("page.design.tmp-", 0) ==
+            0) {
+            temporaryFound = true;
+        }
+    }
+    CHECK_FALSE(temporaryFound);
+}
