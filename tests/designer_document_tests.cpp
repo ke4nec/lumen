@@ -172,6 +172,28 @@ TEST_CASE("designer compile trace identities locate laid out nodes",
     }
 }
 
+TEST_CASE("designer compiler rejects duplicate runtime identities",
+          "[designer][p4]") {
+    const auto parsed = parseLumenSource(
+        "page trace { Column { Text(\"first\", key: \"dup\") "
+        "Text(\"second\", key: \"dup\") } }");
+    REQUIRE(parsed.ok());
+
+    const auto compiled = compileDesignDocument(parsed.document);
+    REQUIRE_FALSE(compiled.ok());
+    const auto diagnostic = std::find_if(
+        compiled.diagnostics.begin(), compiled.diagnostics.end(),
+        [](const auto& error) {
+            return error.code == "compile.duplicate_runtime_identity";
+        });
+    REQUIRE(diagnostic != compiled.diagnostics.end());
+    CHECK(diagnostic->nodeId == parsed.document.root.children[1].id);
+    CHECK(diagnostic->nodePath == "root.children[1]");
+    CHECK(diagnostic->property == "key");
+    CHECK(diagnostic->pos ==
+          parsed.document.root.children[1].propertySources.at("key").begin);
+}
+
 TEST_CASE("designer compiler preserves codec strings outside DSL escapes",
           "[designer][p1]") {
     DesignDocument document;

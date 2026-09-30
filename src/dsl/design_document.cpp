@@ -951,6 +951,48 @@ void fillTrace(const DesignNode& node, const std::string& parentIdentity,
     }
 }
 
+void validateRuntimeIdentities(
+    const DesignNode& node, const std::string& parentIdentity,
+    std::size_t index, const std::string& path,
+    std::map<std::string, DesignNodeId>& identities,
+    std::vector<DesignError>& diagnostics) {
+    std::string key;
+    if (const auto found = node.properties.find("key");
+        found != node.properties.end()) {
+        if (const auto* value = std::get_if<std::string>(&found->second.value)) {
+            key = *value;
+        }
+    }
+    const std::string segment =
+        key.empty() ? "i:" + std::to_string(index) : "k:" + key;
+    const std::string runtimeIdentity = parentIdentity + "/" + segment;
+    if (const auto found = identities.find(runtimeIdentity);
+        found != identities.end()) {
+        const auto source = node.propertySources.find("key");
+        const SourcePos position = source != node.propertySources.end()
+            ? source->second.begin
+            : node.source.has_value() ? node.source->begin : SourcePos{};
+        auto diagnostic = errorAt(
+            "compile.duplicate_runtime_identity", "<design>",
+            "runtime identity '" + runtimeIdentity + "' is shared by nodes " +
+                std::to_string(found->second) + " and " +
+                std::to_string(node.id), position);
+        diagnostic.nodeId = node.id;
+        diagnostic.nodePath = path;
+        if (!key.empty()) diagnostic.property = "key";
+        diagnostics.push_back(std::move(diagnostic));
+    } else {
+        identities.emplace(runtimeIdentity, node.id);
+    }
+    for (std::size_t childIndex = 0; childIndex < node.children.size();
+         ++childIndex) {
+        validateRuntimeIdentities(
+            node.children[childIndex], runtimeIdentity, childIndex,
+            path + ".children[" + std::to_string(childIndex) + "]",
+            identities, diagnostics);
+    }
+}
+
 [[nodiscard]] std::optional<DesignReferenceKind> referenceKind(
     const std::string& name) {
     if (name == "bind") return DesignReferenceKind::Binding;
@@ -1191,6 +1233,14 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
     std::set<DesignNodeId> unresolvedReferences;
     validateRuntimeReferences(document.root, "root", context, *result.session,
                               unresolvedReferences, result.diagnostics);
+    const std::size_t diagnosticsBeforeIdentityValidation =
+        result.diagnostics.size();
+    std::map<std::string, DesignNodeId> runtimeIdentities;
+    validateRuntimeIdentities(document.root, {}, 0, "root", runtimeIdentities,
+                              result.diagnostics);
+    if (result.diagnostics.size() != diagnosticsBeforeIdentityValidation) {
+        return result;
+    }
     std::set<DesignNodeId> ids;
     std::optional<DesignError> error;
     const auto compiled = compileNode(document.root, ids, "root", error);

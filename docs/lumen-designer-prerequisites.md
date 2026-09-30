@@ -770,7 +770,9 @@ struct CompileTrace {
 静态 DOM 节点在编译时按同一 child traversal 顺序登记，布局完成后用 root identity 和
 `findNodeByIdentity` 关联 bounds/style。虚拟列表行、Splitter 分隔条和集合空态标为
 `runtimeOnly`，不伪造 DocumentId。重排 keyless 节点会改变 runtime identity，但不会改变
-DocumentId；编辑器在下一次编译后重新建立映射。
+DocumentId；编辑器在下一次编译后重新建立映射。若重复 `key` 或其他路径组合使两个静态
+节点得到相同 runtime identity，编译器返回 `compile.duplicate_runtime_identity` 并绑定到
+后出现节点的 `DocumentId`/`key` source span，不生成不可信的 bounds 映射。
 
 #### P4.2 SourceMap 范围
 
@@ -1200,13 +1202,14 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   枚举 domain 和引用存储位置约束。
 - P3 专属筛选 `build-debug/tests/lumen-tests "[designer][p3]"` 为 `46` 个断言、
   `6` 个测试用例通过，覆盖类型化解析、错误引用隔离、session 关闭回调和 lease 生命周期。
-- P4 专属筛选 `build-debug/tests/lumen-tests "[designer][p4]"` 为 `62` 个断言、
-  `5` 个测试用例通过，覆盖 source map、DPI/zoom/pan 变换、稳定 ID 结构编辑和布局 trace 定位。
+- P4 专属筛选 `build-debug/tests/lumen-tests "[designer][p4]"` 为 `69` 个断言、
+  `6` 个测试用例通过，覆盖 source map、DPI/zoom/pan 变换、稳定 ID 结构编辑、布局 trace 定位
+  和重复 runtime identity 诊断。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、迁移身份校验、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `598` 个断言、`8` 个测试用例通过。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `335` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `59/59` 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1024/1024`；
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `61/61` 通过。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1025/1025`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
