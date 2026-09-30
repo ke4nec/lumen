@@ -1,5 +1,7 @@
 #include "lumen/dsl/design_workbench.h"
 
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <utility>
 
@@ -16,6 +18,23 @@ bool DesignPreviewWorkbench::openLumenSource(
     }
     return openDocumentInternal(std::move(parsed.document), context,
                                 sourceFile);
+}
+
+bool DesignPreviewWorkbench::openLumenFile(
+    const std::string& filename, DesignRuntimeContext* context) {
+    std::ifstream input(filename, std::ios::binary);
+    if (!input) {
+        DesignError error;
+        error.code = "read.io";
+        error.file = filename;
+        error.message = "cannot read .lumen source file";
+        setError(error);
+        return false;
+    }
+    return openLumenSource(
+        std::string{std::istreambuf_iterator<char>{input},
+                    std::istreambuf_iterator<char>{}},
+        filename, context);
 }
 
 bool DesignPreviewWorkbench::openDesignSource(

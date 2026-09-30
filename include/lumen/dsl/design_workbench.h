@@ -35,6 +35,9 @@ class DesignPreviewWorkbench {
     [[nodiscard]] bool openLumenSource(
         const std::string& source, std::string filename = "<memory>",
         DesignRuntimeContext* context = nullptr);
+    [[nodiscard]] bool openLumenFile(
+        const std::string& filename,
+        DesignRuntimeContext* context = nullptr);
     [[nodiscard]] bool openDesignSource(
         const std::string& source, std::string filename = "<memory>",
         DesignRuntimeContext* context = nullptr);

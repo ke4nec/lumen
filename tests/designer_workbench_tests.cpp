@@ -95,3 +95,16 @@ TEST_CASE("designer D2 workbench clears all session data explicitly",
     CHECK(workbench.diagnostics().empty());
     CHECK_FALSE(workbench.outline().has_value());
 }
+
+TEST_CASE("designer D2 workbench reports file read failures",
+          "[designer][d2]") {
+    DesignPreviewWorkbench workbench;
+    CHECK_FALSE(workbench.openLumenFile(
+        "/lumen/this-file-does-not-exist/design.lumen"));
+    REQUIRE(workbench.diagnostics().size() == 1);
+    CHECK(workbench.diagnostics().front().code == "read.io");
+    CHECK(workbench.diagnostics().front().file ==
+          "/lumen/this-file-does-not-exist/design.lumen");
+    CHECK_FALSE(workbench.document().has_value());
+    CHECK_FALSE(workbench.frame().hasFrame());
+}

@@ -98,6 +98,8 @@ if(LUMEN_BUILD_EXAMPLES)
   add_subdirectory(examples/gallery)
   # G-6：新应用脚手架（lumen-template；纳入 CI 冒烟防漂移）。
   add_subdirectory(examples/template)
+  # D2：只读设计器预览工作台（窗口路径 + headless 冒烟）。
+  add_subdirectory(examples/designer)
 endif()
 
 if(LUMEN_BUILD_BENCHMARKS)
@@ -192,7 +194,7 @@ if(LUMEN_BUILD_PACKAGE)
           docs/support-matrix.md docs/lumen-packaging.md
           DESTINATION ${CMAKE_INSTALL_DOCDIR})
   if(LUMEN_BUILD_EXAMPLES AND TARGET lumen-counter)
-    install(TARGETS lumen-counter lumen-settings lumen-gallery
+    install(TARGETS lumen-counter lumen-settings lumen-gallery lumen-designer
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     if(WIN32)
       # SDL3 DLL is installed by the SDL3-shared target above.
