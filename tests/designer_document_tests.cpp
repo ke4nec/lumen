@@ -114,6 +114,17 @@ TEST_CASE("designer document diagnostics reject unsupported and damaged input",
         "duplicate.design");
     REQUIRE_FALSE(duplicate.ok());
     CHECK(duplicate.error->code == "codec.duplicate_node_id");
+
+    const auto hugeSpan = readDesignDocument(
+        R"({"documentId":"doc","format":"lumen.design","pageName":"p",
+           "root":{"id":"1","type":"Text","properties":{},
+                   "source":{"begin":{"line":1e308,"column":1},
+                             "end":{"line":1e308,"column":2}}},
+           "schemaVersion":1})",
+        "huge-span.design");
+    REQUIRE_FALSE(hugeSpan.ok());
+    REQUIRE(hugeSpan.error.has_value());
+    CHECK(hugeSpan.error->code == "codec.source_span");
 }
 
 TEST_CASE("designer codec rejects non-decimal node ids", "[designer][p1]") {

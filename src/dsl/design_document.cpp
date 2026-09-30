@@ -642,13 +642,22 @@ class JsonParser {
     return jsonObject(std::move(object));
 }
 
-[[nodiscard]] bool integerInRange(double number, std::uint64_t& out) {
-    if (!std::isfinite(number) || number < 0 ||
-        number > static_cast<double>(std::numeric_limits<std::uint64_t>::max()) ||
+template <typename Integer>
+[[nodiscard]] bool integerInRange(double number, Integer& out) {
+    const double roundedMax =
+        static_cast<double>(std::numeric_limits<Integer>::max());
+    const double maxValue = [&] {
+        if constexpr (std::numeric_limits<Integer>::digits >
+                      std::numeric_limits<double>::digits) {
+            return std::nextafter(roundedMax, 0.0);
+        }
+        return roundedMax;
+    }();
+    if (!std::isfinite(number) || number < 0.0 || number > maxValue ||
         std::floor(number) != number) {
         return false;
     }
-    out = static_cast<std::uint64_t>(number);
+    out = static_cast<Integer>(number);
     return true;
 }
 
@@ -720,20 +729,25 @@ class JsonParser {
         for (const auto& [name, rawSpan] : propertySources->object) {
             const auto* begin = member(rawSpan, "begin");
             const auto* end = member(rawSpan, "end");
-            double beginLine = 0.0;
-            double beginColumn = 0.0;
-            double endLine = 0.0;
-            double endColumn = 0.0;
+            double beginLineValue = 0.0;
+            double beginColumnValue = 0.0;
+            double endLineValue = 0.0;
+            double endColumnValue = 0.0;
+            std::size_t beginLine = 0;
+            std::size_t beginColumn = 0;
+            std::size_t endLine = 0;
+            std::size_t endColumn = 0;
             if (begin == nullptr || end == nullptr ||
-                !numberValue(member(*begin, "line"), beginLine) ||
-                !numberValue(member(*begin, "column"), beginColumn) ||
-                !numberValue(member(*end, "line"), endLine) ||
-                !numberValue(member(*end, "column"), endColumn) ||
-                beginLine < 1.0 || beginColumn < 1.0 || endLine < 1.0 ||
-                endColumn < 1.0 || std::floor(beginLine) != beginLine ||
-                std::floor(beginColumn) != beginColumn ||
-                std::floor(endLine) != endLine ||
-                std::floor(endColumn) != endColumn || endLine < beginLine ||
+                !numberValue(member(*begin, "line"), beginLineValue) ||
+                !numberValue(member(*begin, "column"), beginColumnValue) ||
+                !numberValue(member(*end, "line"), endLineValue) ||
+                !numberValue(member(*end, "column"), endColumnValue) ||
+                !integerInRange(beginLineValue, beginLine) ||
+                !integerInRange(beginColumnValue, beginColumn) ||
+                !integerInRange(endLineValue, endLine) ||
+                !integerInRange(endColumnValue, endColumn) || beginLine < 1 ||
+                beginColumn < 1 || endLine < 1 || endColumn < 1 ||
+                endLine < beginLine ||
                 (endLine == beginLine && endColumn < beginColumn)) {
                 error = errorAt("codec.property_sources", file,
                                 "invalid property source span");
@@ -790,16 +804,24 @@ class JsonParser {
     if (const auto* source = member(value, "source"); source != nullptr) {
         const auto* begin = member(*source, "begin");
         const auto* end = member(*source, "end");
-        double beginLine = 0, beginColumn = 0, endLine = 0, endColumn = 0;
+        double beginLineValue = 0.0;
+        double beginColumnValue = 0.0;
+        double endLineValue = 0.0;
+        double endColumnValue = 0.0;
+        std::size_t beginLine = 0;
+        std::size_t beginColumn = 0;
+        std::size_t endLine = 0;
+        std::size_t endColumn = 0;
         if (begin == nullptr || end == nullptr ||
-            !numberValue(member(*begin, "line"), beginLine) ||
-            !numberValue(member(*begin, "column"), beginColumn) ||
-            !numberValue(member(*end, "line"), endLine) ||
-            !numberValue(member(*end, "column"), endColumn) ||
-            beginLine < 1 || beginColumn < 1 || endLine < 1 || endColumn < 1 ||
-            std::floor(beginLine) != beginLine ||
-            std::floor(beginColumn) != beginColumn ||
-            std::floor(endLine) != endLine || std::floor(endColumn) != endColumn ||
+            !numberValue(member(*begin, "line"), beginLineValue) ||
+            !numberValue(member(*begin, "column"), beginColumnValue) ||
+            !numberValue(member(*end, "line"), endLineValue) ||
+            !numberValue(member(*end, "column"), endColumnValue) ||
+            !integerInRange(beginLineValue, beginLine) ||
+            !integerInRange(beginColumnValue, beginColumn) ||
+            !integerInRange(endLineValue, endLine) ||
+            !integerInRange(endColumnValue, endColumn) || beginLine < 1 ||
+            beginColumn < 1 || endLine < 1 || endColumn < 1 ||
             endLine < beginLine ||
             (endLine == beginLine && endColumn < beginColumn)) {
             error = errorAt("codec.source_span", file, "invalid source span");
