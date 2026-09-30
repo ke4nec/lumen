@@ -338,3 +338,47 @@ TEST_CASE("datagrid_column_drag_reorder_commits", "[dragdrop][m15][grid]") {
     CHECK(app.grid.columns()[1].key == "name");
     CHECK(app.grid.columns()[2].key == "date");
 }
+
+// --- M15 review 回归：会话中源行消失后的清理（ghost 滞留防御） ---
+
+TEST_CASE("list_drag_session_cleans_overlay_when_source_row_vanishes",
+          "[dragdrop][m15]") {
+    ReorderApp app;
+    app.build();
+
+    const Offset start = app.rowCenter("i0");
+    app.shell.pointerDown(start);
+    app.shell.pointerMove(start + Offset{0.0F, 20.0F});
+    REQUIRE(app.list.dragActive());
+    app.shell.rebuildIfDirty();
+    REQUIRE(app.shell.hasOverlay());
+
+    // 会话中数据变更使源行消失（keyOf 默认 "i<index>"：缩到 0 行 →
+    // i0 不存在）。
+    app.list.setItemCount(0);
+    app.shell.rebuildIfDirty();
+
+    // Cancel：无论源行是否存在都必须清理会话与 overlay（review 修复：
+    // 此前提前 return，ghost 永久滞留）。
+    app.shell.pointerCancel();
+    CHECK_FALSE(app.list.dragActive());
+    CHECK_FALSE(app.shell.hasOverlay());
+}
+
+TEST_CASE("list_drag_drop_after_source_vanish_ends_without_commit",
+          "[dragdrop][m15]") {
+    ReorderApp app;
+    app.build();
+
+    const Offset start = app.rowCenter("i0");
+    app.shell.pointerDown(start);
+    app.shell.pointerMove(start + Offset{0.0F, 20.0F});
+    REQUIRE(app.list.dragActive());
+
+    app.list.setItemCount(0);
+    app.shell.rebuildIfDirty();
+    app.shell.pointerUp(start + Offset{0.0F, 20.0F});
+    CHECK_FALSE(app.list.dragActive());
+    CHECK_FALSE(app.shell.hasOverlay());
+    CHECK(app.reorders.empty());
+}

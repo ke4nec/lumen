@@ -242,3 +242,31 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 - 测试：splitter 4 + 修复重跑（909/909 时点全绿含 splitter）；语义 dump 1 + settings 二进制输出核对；datagrid 筛选 2（编译级 + 断言参考既有 fixture 口径）。
 - 验证边界（双会话并行）：G-5 pinch 会话在 app_shell/interaction 上持续编辑期间，全量 ctest 无法稳定运行；本批提交均不依赖未提交代码且经 `g++ -fsyntax-only` 编译级验证；909/909 为 M17-a review 修复后、G-5 大面积展开前的完整回归时点。最终回归以并行 G-5 收口后的全量 ctest 为准。
 - 未交付池项（更新）：双轴联滚（需 ScrollView 双 offset 数据结构，超薄契约范围，维持未交付）、RTL 镜像、Grid 跨行列合并、菜单 mnemonic、Tree/List 行内编辑、DataGrid 筛选面板 UI/条件模型、inspector GUI/帧统计 overlay。
+
+### M15–M19 实现 review 记录（2026-09-30，逐提交复审）
+
+全量重读 M15（拖放四提交）/M16（窗口/托盘/CI）/M17（auto-hide/splitter/筛选）/
+M18（双 dump）实现，发现并修复三处缺陷（提交：本批 fix）：
+
+1. **M16 托盘回调上下文 use-after-free**：SDL 托盘条目持久存在、可多次
+   激活，而 `trayEntryCallback` 以 `unique_ptr` 在首次激活即释放上下文
+   ——第二次点击悬空。修复：上下文由宿主 `trayContexts_` 持有（与托盘
+   同寿命，`destroyTray` 清空），回调只读入队。
+2. **M16 全屏状态 metrics 漂移**：`Sdl3ApplicationHost::windowMetrics()`
+   从不填 `fullscreen`（PlatformWindow 不承载该状态）——消费方恒读
+   false。修复：从宿主会话标志（ENTER/LEAVE_FULLSCREEN 事件回填）传播。
+3. **M15 List 拖放会话 ghost 滞留**：`dragSession` 顶部源行查找守卫对
+   Cancel/Drop 也生效——会话中数据变更使源行消失后 Cancel 永不执行
+   `endDragSession`（ghost overlay 永久滞留）。修复：Cancel 无条件清理；
+   Drop 先清理、源行存在才提交。
+
+复审确认无缺陷的区域：DataGrid 会话 Cancel 路径（结构不同，`dragActive_`
+守卫后无条件清理）；G-5 pinch 对拖放会话的仲裁（第二指落下经
+pointerCancel 正确取消会话）；M15 SDL DROP 翻译（null data 不投递）；
+M17 KeepRatio 与布局侧窄窗压缩的钳制一致性；auto-hide 活动代数与
+pinch 无耦合。已知非缺陷项维持登记：List 尾部间隙（gap==itemCount）
+指示线无定位（视觉缺失无害）、DataGrid 列指示线在水平虚拟化窗口外
+不显示（§23 已记）、拖放会话中数据变更的 gap 陈旧性由 onReorder 应用
+契约兜底。
+
+回归：928/928 全绿（含本批 3 个新回归测试）。

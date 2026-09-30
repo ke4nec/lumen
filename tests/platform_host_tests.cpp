@@ -863,6 +863,15 @@ TEST_CASE("sdl3_host_window_capabilities_smoke", "[platform][m16]") {
     REQUIRE(id.has_value());
     // dummy 后端调用安全（成败由平台决定；不崩溃即冒烟通过）。
     host.toggleFullscreen(*id);
+    // 全屏状态传播（review 修复：windowMetrics 需反映宿主会话标志）——
+    // 翻译到 ENTER 事件后 metrics.fullscreen 为 true。
+    core::HostEvent fsEvent{};
+    while (host.pollEvent(fsEvent)) {
+        if (fsEvent.type == core::HostEventType::WindowFullscreenEntered) {
+            CHECK(host.windowMetrics(*id)->fullscreen);
+            break;
+        }
+    }
     host.setAlwaysOnTop(*id, true);
     (void)host.setWindowModal(*id, core::WindowId{999});
     // 无效窗口模态：结构化 Failed。

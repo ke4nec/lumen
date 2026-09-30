@@ -839,26 +839,25 @@ std::size_t Sdl3ApplicationHost::translateEvent(
 
 // --- M16：系统托盘与全局快捷键 ---
 
-namespace {
-
-// 菜单项回调上下文（堆分配；生命周期 = 托盘重建/销毁，回调不会再触发
-// 后释放）。SDL 类型签名只出现在本 .cpp。
+// M16：托盘菜单项回调上下文（SDL 类型不出头文件；宿主 trayContexts_
+// 持有，随 destroyTray 清空）。
 struct TrayEntryContext {
     core::WindowId window{};
     std::string command{};
     Sdl3ApplicationHost* host{};
 };
 
+namespace {
+
 void trayEntryCallback(void* userdata, SDL_TrayEntry*) {
-    // 上下文单发（keepAlive 释放）——SDL 3.2.10 托盘条目回调每次激活
-    // 一次；重建托盘时旧条目随 SDL_DestroyTray 销毁，上下文不泄漏。
-    const std::unique_ptr<TrayEntryContext> keepAlive(
-        static_cast<TrayEntryContext*>(userdata));
-    if (keepAlive->host == nullptr) {
+    // 上下文由宿主持有（trayContexts_，与托盘同寿命）——SDL 托盘条目
+    // 持久存在、可多次激活（review 修复：此前 unique_ptr 首次激活即
+    // 释放导致二次激活 use-after-free）。回调只读入队。
+    const auto* context = static_cast<TrayEntryContext*>(userdata);
+    if (context == nullptr || context->host == nullptr) {
         return;
     }
-    keepAlive->host->noteTrayActivation(keepAlive->window,
-                                        keepAlive->command);
+    context->host->noteTrayActivation(context->window, context->command);
 }
 
 }  // namespace
@@ -879,6 +878,7 @@ void Sdl3ApplicationHost::destroyTray() {
     // 持有——这里只销毁托盘本体，上下文已随 keepAlive 自由）。
     SDL_DestroyTray(static_cast<SDL_Tray*>(tray_));
     tray_ = nullptr;
+    trayContexts_.clear();
 }
 
 ServiceResult Sdl3ApplicationHost::setTray(core::WindowId ownerWindow,
@@ -925,9 +925,11 @@ ServiceResult Sdl3ApplicationHost::setTray(core::WindowId ownerWindow,
                 continue;
             }
             if (!item.separator && !item.command.empty()) {
-                auto* context = new TrayEntryContext{
-                    ownerWindow, item.command, this};
-                SDL_SetTrayEntryCallback(entry, trayEntryCallback, context);
+                trayContexts_.push_back(
+                    std::make_unique<TrayEntryContext>(
+                        TrayEntryContext{ownerWindow, item.command, this}));
+                SDL_SetTrayEntryCallback(
+                    entry, trayEntryCallback, trayContexts_.back().get());
             }
         }
     }
@@ -1132,6 +1134,10 @@ std::optional<core::WindowMetrics> Sdl3ApplicationHost::windowMetrics(
         (SDL_GetWindowFlags(static_cast<SDL_Window*>(
              window.nativeSurface().nativeWindow)) &
          SDL_WINDOW_MAXIMIZED) != 0;
+    // M16：全屏状态来自宿主会话标志（ENTER/LEAVE_FULLSCREEN 事件回填；
+    // review 修复——此前 metrics.fullscreen 恒为默认 false，消费方读到
+    // 与真实状态漂移的值）。
+    metrics.fullscreen = it->second.fullscreen;
     // G-8：屏幕位置（物理像素；位置记忆回读）。
     int px = 0;
     int py = 0;

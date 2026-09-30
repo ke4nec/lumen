@@ -236,8 +236,20 @@ void ListController::dragSession(core::DragPhase phase, core::Offset position,
     }
     const std::string rowKey = sourceKey.substr(itemPrefix.size());
     std::size_t fromIndex = 0;
+    // M15 review 修复：Cancel 无条件清理（此前源行因数据变更消失时
+    // 提前 return，endDragSession 永不执行——ghost overlay 永久滞留）；
+    // Drop 同样先清理会话，源行存在才提交。
+    if (phase == core::DragPhase::Cancel) {
+        endDragSession();
+        return;
+    }
     if (!indexOfKey(rowKey, fromIndex)) {
-        return;  // 会话开始后数据变更使源行消失：不响应。
+        // 会话开始后数据变更使源行消失：Start/Move 不响应；Drop 清理
+        // 不提交。
+        if (phase == core::DragPhase::Drop) {
+            endDragSession();
+        }
+        return;
     }
     switch (phase) {
         case core::DragPhase::Start:

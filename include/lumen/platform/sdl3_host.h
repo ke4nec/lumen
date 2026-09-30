@@ -13,6 +13,9 @@
 
 namespace lumen::platform {
 
+// M16：托盘菜单项回调上下文（定义在 .cpp；宿主持有、与托盘同寿命）。
+struct TrayEntryContext;
+
 namespace native {
 class AccessibilityPreferenceMonitor;
 struct SystemAccessibilityPreferences;
@@ -150,9 +153,12 @@ class Sdl3ApplicationHost final : public ApplicationHost {
     // M4：进行中的文件对话框（至多几个；完成后移除）。
     std::vector<std::unique_ptr<PendingDialog>> dialogs_{};
     // M16：系统托盘（SDL_Tray* 不透明；空 = 未安装）与激活暂存。
+    // trayContexts_ 持有菜单项回调上下文（SDL 条目持久存在、可多次
+    // 激活——上下文必须与托盘同寿命，随 destroyTray 清空）。
     void* tray_{nullptr};
     std::mutex trayMutex_{};
     std::deque<PendingTrayActivation> trayPending_{};
+    std::vector<std::unique_ptr<TrayEntryContext>> trayContexts_{};
 };
 
 }  // namespace lumen::platform
