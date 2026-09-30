@@ -4,6 +4,8 @@
 #include <sstream>
 #include <utility>
 
+#include "lumen/dsl/design_schema.h"
+
 namespace lumen::dsl {
 namespace {
 
@@ -296,7 +298,8 @@ bool DesignDocumentHistory::commit(
         !selectionMatchesDocument(transaction.selectionBefore_,
                                    transaction.before_) ||
         !selectionMatchesDocument(transaction.selectionAfter_,
-                                   transaction.working_)) {
+                                  transaction.working_) ||
+        !validateDesignDocument(transaction.working_).empty()) {
         return false;
     }
 

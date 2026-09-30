@@ -202,6 +202,23 @@ TEST_CASE("designer document transactions are atomic and restore selection",
     CHECK(document.root.children.size() == 2);
     CHECK(selection.primary == 3);
     CHECK(history.undoSize() == 1);
+
+    auto invalidSchema = history.begin(document, selection);
+    DesignDocumentCommand unknownNode;
+    unknownNode.label = "Create invalid node";
+    unknownNode.affectedIds = {1};
+    unknownNode.apply = [](DesignDocument& candidate) {
+        candidate.root.type = "Unknown";
+        return true;
+    };
+    unknownNode.revert = [](DesignDocument& candidate) {
+        candidate.root.type = "Row";
+        return true;
+    };
+    REQUIRE(invalidSchema.apply(std::move(unknownNode)));
+    CHECK_FALSE(history.commit(document, selection, std::move(invalidSchema)));
+    CHECK(document.root.type == "Row");
+    CHECK(history.undoSize() == 1);
 }
 
 TEST_CASE("designer history merges commands and clears redo branches",
