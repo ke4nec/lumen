@@ -252,6 +252,7 @@ bool DesignDocumentHistory::commit(
     if (transaction.failed() || transaction.empty() ||
         transaction.baseRevision_ != documentRevision_ ||
         transaction.before_ != document ||
+        transaction.selectionBefore_ != selection ||
         !selectionMatchesDocument(transaction.selectionBefore_,
                                    transaction.before_) ||
         !selectionMatchesDocument(transaction.selectionAfter_,

@@ -121,6 +121,15 @@ TEST_CASE("designer document transactions are atomic and restore selection",
     CHECK(document.pageName == "edited");
     CHECK(selection.primary == 3);
 
+    auto staleSelection = history.begin(document, selection);
+    REQUIRE(staleSelection.apply(renameCommand("edited", "stale")));
+    const auto transactionSelection = selection;
+    selection = DesignSelection{{2}, 2, 2, std::nullopt, {}};
+    CHECK_FALSE(history.commit(document, selection, std::move(staleSelection)));
+    CHECK(document.pageName == "edited");
+    CHECK(selection.primary == 2);
+    selection = transactionSelection;
+
     auto failed = history.begin(document, selection);
     REQUIRE(failed.apply(renameCommand("edited", "next")));
     CHECK_FALSE(failed.apply(renameCommand("wrong", "never")));
