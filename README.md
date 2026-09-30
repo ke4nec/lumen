@@ -14,6 +14,8 @@ v0.2 计划
 provider 已接入三桌面平台，真实屏幕阅读器回环仍在平台验收中。
 面向自用工具类应用的桌面路线图见
 [`docs/lumen-self-use-roadmap.md`](docs/lumen-self-use-roadmap.md)。
+当前 GUI 完善顺序、剩余缺口和验收模板见
+[`docs/lumen-gui-completion-plan.md`](docs/lumen-gui-completion-plan.md)。
 统一构建/验证命令表见
 [`docs/build-commands.md`](docs/build-commands.md)，性能基线见
 [`docs/perf-baselines/README.md`](docs/perf-baselines/README.md)。
