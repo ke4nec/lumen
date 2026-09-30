@@ -124,5 +124,7 @@ TEST_CASE("designer preview generations discard late results and closed sessions
     generation.close();
     generation.close();
     CHECK(generation.compileGeneration() == closedGeneration + 1);
+    generation.invalidate();
+    CHECK(generation.compileGeneration() == closedGeneration + 1);
     CHECK_FALSE(generation.accepts(generation.beginCompile(), session));
 }

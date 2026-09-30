@@ -98,7 +98,9 @@ class DesignPreviewGeneration {
     [[nodiscard]] bool accepts(const DesignPreviewToken& token) const;
     [[nodiscard]] bool accepts(const DesignPreviewToken& token,
                                const DesignRuntimeSession& session) const;
-    void invalidate() { ++compileGeneration_; }
+    void invalidate() {
+        if (active_) ++compileGeneration_;
+    }
     void close() {
         if (!active_) return;
         active_ = false;
