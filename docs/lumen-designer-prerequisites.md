@@ -1030,7 +1030,8 @@ DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢�
 选择恢复及 document/saved revision，诊断覆盖阶段、source span、恢复策略和稳定去重。F6
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
-真实 D3 应用出口尚未完成。
+真实 D3 应用出口尚未完成。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
+visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1156,6 +1157,7 @@ compile 三元代数校验；仍负责把这些契约接入工具箱、属性面
 | `document_transaction` | 属性、多选、拖动、粘贴、undo/redo、mergeKey | 一次用户意图一个事务；失败全回滚；dirty/saved revision 正确 |
 | `document_store_faults` | 截断、未知字段、保存中断、外部修改 | 原文件不变；恢复副本可识别；禁止静默覆盖 |
 | `resource_policy_lifecycle` | scheme/根目录授权、符号链接、异步代数、session 关闭 | 非法资源有稳定诊断；绝对路径不进入文档；过期结果被丢弃 |
+| `preview_state_isolation` | 声明值、绑定快照、visual override、保存/undo | 预览切换不改 DOM、不产生 dirty、不写回 codec |
 | `designer_accessibility` | 语义树、键盘、IME、高对比、字体缩放 | 无颜色唯一信息；键盘完成同等流程；preedit 不进 DOM |
 | `preview_determinism` | 固定 context、连续编译、异步结果乱序 | DOM/诊断/frame hash 按声明稳定；旧代数结果被丢弃 |
 
@@ -1168,14 +1170,17 @@ compile 三元代数校验；仍负责把这些契约接入工具箱、属性面
   `design_mapping.cpp`、`designer_mapping_tests.cpp`，F5 追加 `document_store.h`、
   `document_store.cpp`、`document_store_tests.cpp`，F6 基础契约追加 `design_editor.h`、
   `design_editor.cpp`、`designer_editor_tests.cpp`，以及资源边界的 `design_resources.h`、
-  `design_resources.cpp`、`designer_resources_tests.cpp`；工作区另有既存的平台 host 修改，
+  `design_resources.cpp`、`designer_resources_tests.cpp`，以及预览隔离的 `design_preview.h`、
+  `design_preview.cpp`、`designer_preview_tests.cpp`；工作区另有既存的平台 host 修改，
   未把它们作为设计器证据。
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：`972/972` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个、
-  P2 的 2 个、P3 的 2 个、P4 的 3 个、P5 的 4 个和 F6 基础契约的 8 个测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器
-  或 D2/D3 功能状态。
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `108` 个断言、
+  `11` 个测试用例通过；`ctest -R 'designer|document_store'` 为 `22/22` 通过。此前未受
+  工作区 app shell 变更影响的全量基线为 `972/972`；当前未提交的 app shell/bounds overlay
+  变更使全量总数变为 978，并在 `debug_overlays_draw_only_when_enabled` 处失败，后续权限错误
+  是同一测试目标被中断后的级联，不归因于本阶段 DSL 改动。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
   controller/resource 引用注入、真实资源加载和真实编辑流程仍留在 F6；L1–L3 节点 schema 仍未登记。

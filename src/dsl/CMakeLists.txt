@@ -2,6 +2,7 @@ add_library(lumen-dsl STATIC
     dsl.cpp
     design_document.cpp
     design_editor.cpp
+    design_preview.cpp
     design_resources.cpp
     design_mapping.cpp
     design_schema.cpp
