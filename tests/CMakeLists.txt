@@ -91,6 +91,7 @@ set(LUMEN_TEST_SOURCES
     designer_editor_tests.cpp
     designer_preview_tests.cpp
     designer_preview_frame_tests.cpp
+    designer_workbench_tests.cpp
     designer_accessibility_tests.cpp
     designer_resources_tests.cpp
     designer_performance_tests.cpp

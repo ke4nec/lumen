@@ -1,0 +1,97 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include <string>
+#include <variant>
+
+#include "lumen/dsl/design_codec.h"
+#include "lumen/dsl/design_workbench.h"
+
+using lumen::dsl::DesignPreviewWorkbench;
+using lumen::dsl::DesignSelectionMode;
+
+TEST_CASE("designer D2 workbench exposes outline properties and trace selection",
+          "[designer][d2]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page preview { Column(key: \"root\") {"
+        " Text(\"Title\", key: \"title\")"
+        " Button(\"Save\", onClick: save, key: \"save\")"
+        " } }"));
+    REQUIRE(workbench.document().has_value());
+    REQUIRE(workbench.frame().hasFrame());
+
+    const auto outline = workbench.outline();
+    REQUIRE(outline.has_value());
+    CHECK(outline->id == workbench.document()->root.id);
+    CHECK(outline->key == "root");
+    REQUIRE(outline->children.size() == 2);
+    CHECK(outline->children[0].path == "root.children[0]");
+    CHECK(outline->children[0].key == "title");
+
+    const auto saveId = outline->children[1].id;
+    const auto properties = workbench.properties(saveId);
+    REQUIRE(properties.size() == 3);
+    CHECK(properties[0].name == "key");
+    REQUIRE(properties[0].value.has_value());
+    CHECK(std::get<std::string>(properties[0].value->value) == "save");
+    CHECK(properties[1].name == "onClick");
+    REQUIRE(properties[1].reference.has_value());
+    CHECK(*properties[1].reference == "save");
+    CHECK(properties[2].name == "text");
+    REQUIRE(properties[2].value.has_value());
+    CHECK(std::get<std::string>(properties[2].value->value) == "Save");
+
+    REQUIRE(workbench.selectRuntimeIdentity("/k:root/k:save"));
+    CHECK(workbench.selection().primary == saveId);
+    CHECK(workbench.runtimeIdentity(saveId) == "/k:root/k:save");
+    CHECK(workbench.selectNode(outline->children[0].id,
+                              DesignSelectionMode::Add));
+    CHECK(workbench.selection().ids.size() == 2);
+
+    const auto documentId = workbench.document()->documentId;
+    const auto encoded = serializeDesignDocument(*workbench.document());
+    REQUIRE(workbench.openDesignSource(encoded, "preview.design"));
+    CHECK(workbench.document()->documentId == documentId);
+    CHECK(workbench.frame().hasFrame());
+}
+
+TEST_CASE("designer D2 workbench preserves the last frame on document errors",
+          "[designer][d2]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page preview { Text(\"stable\", key: \"text\") }",
+        "preview.lumen"));
+    const auto originalDocument = workbench.document();
+    const auto originalGeneration = workbench.frame().generation();
+
+    CHECK_FALSE(workbench.openLumenSource("page preview {", "broken.lumen"));
+    REQUIRE(workbench.document() == originalDocument);
+    CHECK(workbench.frame().hasFrame());
+    CHECK(workbench.frame().generation() == originalGeneration);
+    REQUIRE(workbench.diagnostics().size() == 1);
+    CHECK(workbench.diagnostics().front().code.rfind("parse.", 0) == 0);
+    CHECK(workbench.diagnostics().front().file == "broken.lumen");
+
+    auto invalid = *originalDocument;
+    invalid.root.type = "Unknown";
+    CHECK_FALSE(workbench.openDesignSource(
+        serializeDesignDocument(invalid), "broken.design"));
+    CHECK(workbench.frame().hasFrame());
+    CHECK(workbench.frame().generation() == originalGeneration);
+    REQUIRE(workbench.diagnostics().size() == 1);
+    CHECK(workbench.diagnostics().front().code == "compile.unknown_node");
+    CHECK(workbench.diagnostics().front().file == "broken.design");
+}
+
+TEST_CASE("designer D2 workbench clears all session data explicitly",
+          "[designer][d2]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource("page preview { Text(\"x\") }"));
+    REQUIRE(workbench.selectNode(workbench.document()->root.id));
+    workbench.clear();
+    CHECK_FALSE(workbench.document().has_value());
+    CHECK_FALSE(workbench.frame().hasFrame());
+    CHECK(workbench.selection().ids.empty());
+    CHECK(workbench.diagnostics().empty());
+    CHECK_FALSE(workbench.outline().has_value());
+}
