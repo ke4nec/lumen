@@ -8,10 +8,9 @@
 // 件事：快照值类型 + 把快照组合成非模态视觉 overlay（左上角面板，
 // Stack 承载、排除语义与焦点——诊断图层不进入读屏树）。
 //
-// 语义边界：overlay builder 在重建期求值，读到的是上一帧的统计（读数
-// 滞后一帧）；分配量统计未接入（renderer stats 无该维度，见
-// support-matrix R6 登记）。文本含真实时间读数，因此开启 HUD 的帧不做
-// 确定性 hash 对照。
+// 语义边界：图层在提交前绘制，读数来自上一帧的采样（滞后一帧）；分
+// 配量统计未接入（renderer stats 无该维度，见 support-matrix R6 登
+// 记）。文本含真实时间读数，因此开启 HUD 的帧不做确定性 hash 对照。
 
 #include <cstdint>
 #include <cstdio>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "lumen/core/render_node.h"
-#include "lumen/core/widget.h"
 #include "lumen/style/theme.h"
 
 namespace lumen::app {
@@ -59,74 +57,96 @@ struct FrameOverlayStyle {
 
 namespace frame_debug_detail {
 
-// 组装一行读数 Text（11px；诊断图层小字号，密度无关）。
-[[nodiscard]] inline core::Widget statLine(std::string content,
-                                           core::Color color, std::string key) {
-    core::TextStyle style;
-    style.fontSize = 11.0F;
-    style.color = color;
-    return core::withKey(core::makeText(std::move(content), style),
-                         std::move(key));
+// 合成一行读数 Text 节点（11px；诊断图层小字号，密度无关；offset 为
+// 面板内绝对数据——本层不经布局）。
+[[nodiscard]] inline core::RenderNode statLine(core::Offset offset,
+                                               float width,
+                                               const std::string& content,
+                                               core::Color color) {
+    core::RenderNode node;
+    node.type = core::WidgetType::Text;
+    node.offset = offset;
+    node.size = core::Size{width, 15.0F};
+    node.text = content;
+    core::CommonResolvedStyle& common =
+        core::commonStyle(node.style.component);
+    common.text.fontSize = 11.0F;
+    common.text.color = color;
+    return node;
 }
 
 }  // namespace frame_debug_detail
 
-// 帧读数 HUD（非模态视觉 overlay 根）：Stack 铺满视口，左上角半透明
-// 面板承载阶段/计数读数。全子树 excludeFromSemantics + excludeFromFocus
-//（诊断图层不进入读屏树与 Tab 序）。fallbackReason 非空时追加告警行。
-[[nodiscard]] inline core::Widget makeFrameStatsOverlay(
+// 帧读数 HUD 图层（纯绘制 RenderNode 合成树——与 bounds/damage 调试
+// 层同架构）：左上角半透明面板 + 固定步进行。R6 修复（2026-09-30）：
+// 早前经视觉 overlay 槽位承载会随 eventTree 切换吞掉应用输入——本层
+// 在主场景命令后录制，不参与命中/焦点/语义，输入零影响。
+// fallbackReason 非空时追加告警行。面板尺寸随行数推导（确定性）。
+[[nodiscard]] inline core::RenderNode makeFrameStatsLayer(
     const FrameDebugSnapshot& snapshot, const FrameOverlayStyle& style) {
     using namespace frame_debug_detail;
 
     char line[160];
-    std::vector<core::Widget> lines;
-    lines.reserve(5);
+    struct Row {
+        std::string text{};
+        bool accent{false};
+    };
+    std::vector<Row> rows;
+    rows.reserve(5);
 
     std::snprintf(line, sizeof(line), "lumen frame #%llu %s",
                   static_cast<unsigned long long>(snapshot.frameIndex),
                   snapshot.backendName.c_str());
-    lines.push_back(statLine(line, style.accentText, "frame-stats-title"));
+    rows.push_back(Row{line, true});
 
-    std::snprintf(line, sizeof(line),
-                  "build %.2fms  layout %.2fms  paint %.2fms",
+    std::snprintf(line, sizeof(line), "build %.2fms  layout %.2fms  paint %.2fms",
                   snapshot.reconcileMs, snapshot.layoutMs, snapshot.paintMs);
-    lines.push_back(statLine(line, style.text, "frame-stats-stages"));
+    rows.push_back(Row{line, false});
 
-    std::snprintf(line, sizeof(line),
-                  "submit %.2fms  gpu wait %.2fms  fps %.1f",
+    std::snprintf(line, sizeof(line), "submit %.2fms  gpu wait %.2fms  fps %.1f",
                   snapshot.submitMs, snapshot.gpuWaitMs, snapshot.fps);
-    lines.push_back(statLine(line, style.text, "frame-stats-submit"));
+    rows.push_back(Row{line, false});
 
     std::snprintf(line, sizeof(line), "nodes %llu  cmds %llu  culled %llu",
                   static_cast<unsigned long long>(snapshot.nodeCount),
                   static_cast<unsigned long long>(snapshot.commandCount),
                   static_cast<unsigned long long>(snapshot.culledCommands));
-    lines.push_back(statLine(line, style.text, "frame-stats-counts"));
+    rows.push_back(Row{line, false});
 
     if (snapshot.fullFrameFallback || !snapshot.fallbackReason.empty()) {
         std::snprintf(line, sizeof(line), "fallback: %s",
                       snapshot.fallbackReason.empty()
                           ? "full-frame"
                           : snapshot.fallbackReason.c_str());
-        lines.push_back(statLine(line, style.accentText, "frame-stats-fallback"));
+        rows.push_back(Row{line, true});
     }
 
-    core::Widget panel = core::makeContainer(
-        core::makeColumn(std::move(lines), core::MainAxisAlignment::Start,
-                         core::CrossAxisAlignment::Start, 2.0F),
-        std::nullopt, std::nullopt,
-        core::EdgeInsets{8.0F, 6.0F, 8.0F, 6.0F},
-        core::EdgeInsets{8.0F, 8.0F, 8.0F, 8.0F}, style.panel,
-        core::CornerRadius::all(6.0F), "frame-stats-panel");
+    constexpr float kMargin = 8.0F;
+    constexpr float kPadX = 10.0F;
+    constexpr float kPadY = 7.0F;
+    constexpr float kLineStep = 15.0F;
+    constexpr float kPanelWidth = 280.0F;
+    const float panelHeight =
+        kPadY * 2.0F + static_cast<float>(rows.size()) * kLineStep;
+
+    core::RenderNode panel;
+    panel.type = core::WidgetType::Container;
+    panel.offset = core::Offset{kMargin, kMargin};
+    panel.size = core::Size{kPanelWidth, panelHeight};
     panel.excludeFromSemantics = true;
     panel.excludeFromFocus = true;
+    core::CommonResolvedStyle& common = core::commonStyle(panel.style.component);
+    common.background = style.panel;
+    common.radius = core::CornerRadius::all(6.0F);
 
-    core::Widget root = core::makeStack({std::move(panel)},
-                                        core::StackAlignment::TopLeft, {}, {},
-                                        "frame-stats-overlay");
-    root.excludeFromSemantics = true;
-    root.excludeFromFocus = true;
-    return root;
+    const float textWidth = kPanelWidth - kPadX * 2.0F;
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        panel.children.push_back(statLine(
+            core::Offset{kPadX, kPadY + static_cast<float>(i) * kLineStep},
+            textWidth, rows[i].text,
+            rows[i].accent ? style.accentText : style.text));
+    }
+    return panel;
 }
 
 }  // namespace lumen::app

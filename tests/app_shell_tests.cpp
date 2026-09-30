@@ -1411,80 +1411,85 @@ TEST_CASE("frame_stats_capture_preserves_frame_hash_when_enabled",
     CHECK(idle.layoutMs == 0.0);
 }
 
-TEST_CASE("frame_stats_overlay_composes_excluded_from_semantics",
+TEST_CASE("frame_stats_layer_synthesizes_and_never_blocks_input",
           "[app][r6]") {
     lumen::app::ShellConfig config;
     config.initialView = {200.0F, 120.0F};
-    config.build = [] { return lumen::core::makeText("content"); };
+    config.build = [] {
+        return lumen::core::makeColumn(
+            {lumen::core::withKey(lumen::core::makeButton("OK"), "ok-btn"),
+             lumen::core::makeText("content")});
+    };
     lumen::app::AppShell shell(config);
-    (void)shell.renderFrame();
 
+    // 图层合成：面板 + 每行一个 Text 节点（确定性尺寸/偏移数据）。
     lumen::app::FrameDebugSnapshot snapshot;
     snapshot.frameIndex = 7;
-    snapshot.fps = 60.0;
+    snapshot.fps = 60.0F;
     snapshot.nodeCount = 12;
     snapshot.backendName = "cpu";
     snapshot.fullFrameFallback = true;
     snapshot.fallbackReason = "damage-invalid";
-    shell.setVisualOverlayBuilder([&snapshot] {
-        return lumen::app::makeFrameStatsOverlay(
-            snapshot,
-            lumen::app::FrameOverlayStyle::fromTheme(
-                lumen::style::Theme::dark()));
-    });
-    shell.markDirty();
-    (void)shell.renderFrame();
+    const lumen::app::FrameOverlayStyle style =
+        lumen::app::FrameOverlayStyle::fromTheme(
+            lumen::style::Theme::dark());
+    const lumen::core::RenderNode layer =
+        lumen::app::makeFrameStatsLayer(snapshot, style);
+    REQUIRE(layer.type == lumen::core::WidgetType::Container);
+    CHECK(layer.children.size() == 5);  // 4 读数行 + fallback 告警行。
+    CHECK(layer.children[0].type == lumen::core::WidgetType::Text);
+    CHECK(layer.children[0].text.find("lumen frame #7") !=
+          std::string::npos);
+    CHECK(layer.children[4].text.find("damage-invalid") != std::string::npos);
+    CHECK(layer.commonStyle().background == style.panel);
 
-    REQUIRE(shell.overlayRoot() != nullptr);
-    CHECK(lumen::core::findNodeByKey(*shell.overlayRoot(),
-                                     "frame-stats-panel") != nullptr);
-    CHECK(lumen::core::findNodeByKey(*shell.overlayRoot(),
-                                     "frame-stats-stages") != nullptr);
-    CHECK(lumen::core::findNodeByKey(*shell.overlayRoot(),
-                                     "frame-stats-fallback") != nullptr);
-    // 诊断图层不进语义树（excludeFromSemantics 全子树）。
-    const std::string semantics = lumen::app::dumpSemanticsTree(
+    // R6 回归（2026-09-30 修复）：HUD 开启时应用输入不被吞——按钮仍
+    // 激活、语义树不含诊断文案（纯绘制层不进树）。
+    shell.setFrameStatsCapture(true);
+    shell.setDebugFrameStats(true);
+    const std::uint64_t hashWithLayer = shell.renderFrame();
+    const std::string semanticsBefore = lumen::app::dumpSemanticsTree(
         shell.buildSemanticsSnapshot());
-    CHECK(semantics.find("lumen frame") == std::string::npos);
-    CHECK(semantics.find("content") != std::string::npos);
+    CHECK(semanticsBefore.find("lumen frame") == std::string::npos);
+    CHECK(semanticsBefore.find("OK") != std::string::npos);
+    // 无图层基线 hash 不同（图层进入像素）。
+    lumen::app::AppShell plain(config);
+    CHECK(plain.renderFrame() != hashWithLayer);
+
+    const lumen::core::RenderNode* button =
+        lumen::core::findNodeByKey(shell.root(), "ok-btn");
+    REQUIRE(button != nullptr);
+    const lumen::core::Offset center =
+        lumen::core::absoluteOffset(shell.root(), "ok-btn") +
+        lumen::core::Offset{button->size.width * 0.5F,
+                            button->size.height * 0.5F};
+    // 按钮激活需要 onClick——重建同构配置（带 handler）验证点击不被
+    // HUD 图层吞掉（修复前 overlay 槽位吞掉全部应用输入）。
+    lumen::app::ShellConfig clickConfig = config;
+    clickConfig.build = [] {
+        auto button = lumen::core::withKey(lumen::core::makeButton("OK"),
+                                           "ok-btn");
+        button.onClick = "inspect-click";
+        return lumen::core::makeColumn(
+            {std::move(button), lumen::core::makeText("content")});
+    };
+    lumen::app::AppShell clickShell(clickConfig);
+    clickShell.setFrameStatsCapture(true);
+    clickShell.setDebugFrameStats(true);
+    (void)clickShell.renderFrame();
+    int clicks = 0;
+    clickShell.handlers()["inspect-click"] = [&clicks] { ++clicks; };
+    const lumen::core::RenderNode* clickButton =
+        lumen::core::findNodeByKey(clickShell.root(), "ok-btn");
+    REQUIRE(clickButton != nullptr);
+    const lumen::core::Offset clickCenter =
+        lumen::core::absoluteOffset(clickShell.root(), "ok-btn") +
+        lumen::core::Offset{clickButton->size.width * 0.5F,
+                            clickButton->size.height * 0.5F};
+    clickShell.pointerDown(clickCenter);
+    clickShell.pointerUp(clickCenter);
+    CHECK(clicks == 1);  // HUD 开启不吞点击（修复前 overlay 槽位会吞）。
 }
-
-TEST_CASE("run_app_installs_frame_debug_overlay_when_enabled",
-          "[app][r6]") {
-    lumen::platform::FakeApplicationHost host;
-    lumen::app::ShellConfig config;
-    config.initialView = lumen::core::Size{200.0F, 150.0F};
-    config.build = [] { return lumen::core::Widget{}; };
-    lumen::app::AppShell shell{config};
-    REQUIRE(host.initialize());
-
-    lumen::app::RunOptions options;
-    options.maxFrames = 3;
-    options.frameDebugOverlay = true;
-    CHECK(lumen::app::runApp(shell, host, options) == 0);
-    // HUD 装配 + 采样开启：overlay 槽位被占用且面板已物化。
-    CHECK(shell.hasOverlay());
-    REQUIRE(shell.overlayRoot() != nullptr);
-    CHECK(lumen::core::findNodeByKey(*shell.overlayRoot(),
-                                     "frame-stats-panel") != nullptr);
-    const lumen::app::FrameDebugSnapshot snapshot =
-        shell.frameDebugSnapshot();
-    CHECK(snapshot.frameIndex >= 1);
-    CHECK(snapshot.nodeCount > 0);
-    // 关闭旗标（默认）不装配：独立壳 + Fake host 对照。
-    lumen::platform::FakeApplicationHost plainHost;
-    lumen::app::AppShell plainShell{config};
-    REQUIRE(plainHost.initialize());
-    lumen::app::RunOptions plainOptions;
-    plainOptions.maxFrames = 2;
-    CHECK(lumen::app::runApp(plainShell, plainHost, plainOptions) == 0);
-    CHECK_FALSE(plainShell.hasOverlay());
-    CHECK(plainShell.frameDebugSnapshot().nodeCount == 0);
-}
-
-// --- R6：bounds/damage 调试图层（bounds_overlay.h；默认关闭零开销） ---
-
-namespace {
 
 // 像素采样（CPU framebuffer；datagrid_tests 同模式）。
 lumen::core::Color pixelAt(const lumen::render::PixelBuffer& buffer, int x,
@@ -1507,7 +1512,157 @@ std::uint64_t countNodes(const lumen::core::RenderNode& node) {
     return count;
 }
 
-}  // namespace
+// --- R6：inspector 检视图层（悬停信息 + 命中高亮；纯绘制零输入影响） ---
+
+TEST_CASE("inspector_layer_finds_deepest_node_and_composes_info",
+          "[app][r6]") {
+    lumen::app::ShellConfig config;
+    config.initialView = {200.0F, 120.0F};
+    config.build = [] {
+        return lumen::core::makeColumn(
+            {lumen::core::withKey(lumen::core::makeButton("OK"), "ok-btn"),
+             lumen::core::makeText("content")});
+    };
+    lumen::app::AppShell shell(config);
+    (void)shell.renderFrame();
+
+    // 深度命中：按钮中心 → 按钮子树最深节点（带绝对矩形）。
+    const lumen::core::RenderNode* button =
+        lumen::core::findNodeByKey(shell.root(), "ok-btn");
+    REQUIRE(button != nullptr);
+    const lumen::core::Offset center =
+        lumen::core::absoluteOffset(shell.root(), "ok-btn") +
+        lumen::core::Offset{button->size.width * 0.5F,
+                            button->size.height * 0.5F};
+    lumen::core::Rect hitRect{};
+    const lumen::core::RenderNode* hit =
+        lumen::app::findNodeAt(shell.root(), lumen::core::Offset{0.0F, 0.0F},
+                               center, hitRect);
+    REQUIRE(hit != nullptr);
+    CHECK(hitRect.size == button->size);
+    // 无命中：视口外。
+    lumen::core::Rect missRect{};
+    CHECK(lumen::app::findNodeAt(shell.root(),
+                                 lumen::core::Offset{0.0F, 0.0F},
+                                 lumen::core::Offset{999.0F, 999.0F},
+                                 missRect) == nullptr);
+
+    // 图层合成：高亮（2px 描边）+ 信息面板（首行 type/key；bounds 行）。
+    const lumen::app::FrameOverlayStyle style =
+        lumen::app::FrameOverlayStyle::fromTheme(
+            lumen::style::Theme::dark());
+    const lumen::core::RenderNode layer = lumen::app::makeInspectorLayer(
+        shell.root(), center, shell.focus().focusedIdentity(), style,
+        lumen::core::Color{86, 140, 240, 255});
+    REQUIRE(layer.children.size() >= 2);
+    CHECK(layer.children[0].commonStyle().borderWidth == 2.0F);
+    const lumen::core::RenderNode& panel = layer.children[1];
+    bool sawKey = false;
+    bool sawBounds = false;
+    bool sawStyle = false;
+    for (const auto& row : panel.children) {
+        if (row.text.find("key=ok-btn") != std::string::npos) sawKey = true;
+        if (row.text.find("bounds at=") == 0) sawBounds = true;
+        if (row.text.find("style=") == 0) sawStyle = true;
+    }
+    CHECK(sawKey);
+    CHECK(sawBounds);
+    CHECK(sawStyle);
+}
+
+TEST_CASE("inspector_layer_paints_on_move_and_keeps_input_alive",
+          "[app][r6]") {
+    lumen::app::ShellConfig config;
+    config.initialView = {200.0F, 120.0F};
+    config.build = [] {
+        auto button =
+            lumen::core::withKey(lumen::core::makeButton("OK"), "ok-btn");
+        button.onClick = "inspect-click";
+        return lumen::core::makeColumn(
+            {std::move(button), lumen::core::withKey(
+                                    lumen::core::makeText("content"),
+                                    "content")});
+    };
+    lumen::app::AppShell shell(config);
+    shell.setDebugInspector(true);
+    (void)shell.renderFrame();
+    const lumen::core::RenderNode* button =
+        lumen::core::findNodeByKey(shell.root(), "ok-btn");
+    REQUIRE(button != nullptr);
+    const lumen::core::Offset center =
+        lumen::core::absoluteOffset(shell.root(), "ok-btn") +
+        lumen::core::Offset{button->size.width * 0.5F,
+                            button->size.height * 0.5F};
+
+    // 指针移到 "content" 文本上（页面背景上——accent 描边可见）→ 标脏
+    // → 重绘携带检视图层（hash 变化；描边画在 deepest 命中节点的绝对
+    // 边界，2px accent）。hover/重建耦合的命令数不做等值断言。
+    const lumen::core::RenderNode* label =
+        findNodeByKey(shell.root(), "content");
+    REQUIRE(label != nullptr);
+    const lumen::core::Offset labelCenter =
+        absoluteOffset(shell.root(), "content") +
+        lumen::core::Offset{label->size.width * 0.5F,
+                            label->size.height * 0.5F};
+    const std::uint64_t before = shell.renderFrame();
+    shell.pointerMove(labelCenter);
+    const std::uint64_t after = shell.renderFrame();
+    CHECK(after != before);
+    lumen::core::Rect hitRect{};
+    const lumen::core::RenderNode* hit = lumen::app::findNodeAt(
+        shell.root(), lumen::core::Offset{0.0F, 0.0F}, labelCenter, hitRect);
+    REQUIRE(hit != nullptr);
+    // 描边带进入像素：与"同指针、无 inspector"基线帧的同位置像素不同
+    //（描边为 2px accent 环带；AA 覆盖率随底色合成，不做精确色断言）。
+    lumen::app::AppShell plain(config);
+    (void)plain.renderFrame();
+    plain.pointerMove(labelCenter);
+    (void)plain.renderFrame();
+    const int px = static_cast<int>(hitRect.origin.x);
+    const int py = static_cast<int>(hitRect.origin.y +
+                                    hitRect.size.height * 0.5F);
+    const lumen::core::Color edge = pixelAt(shell.pixels(), px, py);
+    const lumen::core::Color baseline = pixelAt(plain.pixels(), px, py);
+    CHECK(edge != baseline);
+
+    // 输入不受影响：点击仍激活（纯绘制层不吞输入）。
+    int clicks = 0;
+    shell.handlers()["inspect-click"] = [&clicks] { ++clicks; };
+    shell.pointerDown(center);
+    shell.pointerUp(center);
+    CHECK(clicks == 1);
+}
+
+TEST_CASE("run_app_paints_frame_stats_layer_when_enabled",
+          "[app][r6]") {
+    lumen::platform::FakeApplicationHost host;
+    lumen::app::ShellConfig config;
+    config.initialView = lumen::core::Size{200.0F, 150.0F};
+    config.build = [] { return lumen::core::Widget{}; };
+    lumen::app::AppShell shell{config};
+    REQUIRE(host.initialize());
+
+    lumen::app::RunOptions options;
+    options.maxFrames = 3;
+    options.frameDebugOverlay = true;
+    CHECK(lumen::app::runApp(shell, host, options) == 0);
+    // 图层路径：不占 overlay 槽位；采样开启；帧统计已产出。
+    CHECK_FALSE(shell.hasOverlay());
+    const lumen::app::FrameDebugSnapshot snapshot =
+        shell.frameDebugSnapshot();
+    CHECK(snapshot.frameIndex >= 1);
+    CHECK(snapshot.nodeCount > 0);
+
+    // 关闭旗标（默认）不装配：独立壳 + Fake host 对照。
+    lumen::platform::FakeApplicationHost plainHost;
+    lumen::app::AppShell plainShell{config};
+    REQUIRE(plainHost.initialize());
+    lumen::app::RunOptions plainOptions;
+    plainOptions.maxFrames = 2;
+    CHECK(lumen::app::runApp(plainShell, plainHost, plainOptions) == 0);
+    CHECK_FALSE(plainShell.hasOverlay());
+    CHECK(plainShell.frameDebugSnapshot().nodeCount == 0);
+}
 
 TEST_CASE("bounds_overlay_tree_outlines_every_node_at_absolute_offsets",
           "[app][r6]") {

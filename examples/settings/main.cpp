@@ -31,9 +31,10 @@ struct Options {
     bool dumpStyle{false};
     // R6：帧读数 HUD（窗口模式；runApp 装配非模态 overlay）。
     bool frameOverlay{false};
-    // R6：bounds/damage 调试图层（窗口模式；纯绘制层）。
+    // R6：bounds/damage/inspector 调试图层（窗口模式；纯绘制层）。
     bool boundsOverlay{false};
     bool damageOverlay{false};
+    bool inspector{false};
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -56,6 +57,8 @@ Options parseOptions(int argc, char** argv) {
             options.boundsOverlay = true;
         } else if (flag == "--damage-overlay") {
             options.damageOverlay = true;
+        } else if (flag == "--inspector") {
+            options.inspector = true;
         }
     }
     return options;
@@ -244,6 +247,7 @@ int runWindowed(SettingsApp& app, const Options& options) {
     runOptions.frameDebugOverlay = options.frameOverlay;
     runOptions.debugBoundsOverlay = options.boundsOverlay;
     runOptions.debugDamageOverlay = options.damageOverlay;
+    runOptions.debugInspector = options.inspector;
     // G-2：崩溃兜底与持久日志（平台惯例目录；runApp 安装/清理，检测到
     // 上次崩溃时输出 [diag] last-run-crashed 行并回传摘要）。
     runOptions.diagnosticsDirectory =

@@ -323,8 +323,33 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 - 已知限制（§6.6 如实登记）：无验证器通道（应用在 onItemEdited 校
   验，失败可再 beginEdit 回炉）；无 Tab 跨行移动（列表无可编辑格矩阵
   语义）。
-- 未交付池项（更新）：inspector 交互式节点查看、语义树视图、分配量统
-  计、双轴联滚、RTL 镜像、触摸长按唤起、横向网格——按需继续。
+
+### R6 三批状态记录（2026-09-30，HUD 输入修复 + inspector 悬停检视）
+
+- **缺陷修复（如实披露）**：帧读数 HUD（R6 首批）此前经
+  `setVisualOverlayBuilder` 承载——`eventTree()` 在 overlay 活跃期整体
+  切换到 overlay 树，非交互 HUD 面板吞掉全部应用输入（M15 拖拽 ghost
+  不受影响：仅存在于按住期，会话回调自行对主树解析）。本批重构：
+  `makeFrameStatsLayer`（合成 RenderNode 平铺树——面板 Container + 行
+  Text 绝对 offset 数据）在主场景命令后录制，与 bounds/damage 层同
+  构型；回归测试断言 HUD 开启时点击仍激活。`RunOptions.frameDebugOverlay`
+  语义不变（flag 兼容），实现从 overlay 槽位换为图层。
+- **inspector 悬停检视**（M18 §6.1 首版）：`inspector_layer.h`——
+  `findNodeAt`（先序最深命中 + 绝对矩形回写）+ `makeInspectorLayer`
+  （右上角信息面板：type/key/identity/[focused]/bounds/style 组件名/
+  scroll/text≤24 字/flags；2px accent 命中高亮描边；文案与
+  --dump-tree/--dump-style 同口径）。`AppShell::pointerMove` 记录最近指
+  针（inspector 开启时移动即标脏刷新）；`--inspector`（settings/
+  gallery）与 `RunOptions.debugInspector`。
+- 测试：图层合成/深度命中/无命中 1；悬停重绘 + 描边带进入像素（与无
+  inspector 基线帧同位对比——AA 合成色不做精确断言）+ 输入存活 1；
+  HUD 重写测试 2（合成 + runApp 装配/默认关闭对照，替换旧 overlay 槽
+  位断言）。
+- 边界（如实）：读数/检视随重绘帧刷新（HUD 滞后一帧采样）；inspector
+  点击 pin 与节点信息（WidgetState/ResolvedStyle 明细）为后续增量；
+  分配量维度维持未接入。
+- 未交付池项（更新）：inspector 点击 pin 与节点明细、语义树视图、分
+  配量统计、双轴联滚、RTL 镜像、触摸长按唤起、横向网格——按需继续。
 
 
 ### M17 进行中状态记录（2026-09-29，池式首项交付）

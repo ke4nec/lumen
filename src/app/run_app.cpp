@@ -343,21 +343,18 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         runtime.lastCursor = shell.pointerCursor();
         runtime.lastPollMs = clock.nowMs();
         runtime.lastDiagPrintMs = runtime.lastPollMs;
-        // R6：帧读数 HUD（显式开启才装配）——启用采样 + 安装非模态视觉
-        // overlay；主循环每调度帧标脏刷新读数（见 requestPendingFrame 前）。
+        // R6：帧读数 HUD（显式开启才装配）——启用采样 + 纯绘制图层
+        //（makeFrameStatsLayer；2026-09-30 修复：不再经视觉 overlay 槽
+        // 位——该槽位会随 eventTree 切换吞掉应用输入）；主循环每调度帧
+        // 标脏刷新读数（见 requestPendingFrame 前）。bounds/damage 调试
+        // 图层同构，无需帧循环介入。
         if (runtime.app.options.frameDebugOverlay) {
             shell.setFrameStatsCapture(true);
-            AppShell* shellPtr = runtime.app.shell;
-            shellPtr->setVisualOverlayBuilder(
-                [shellPtr]() -> std::optional<core::Widget> {
-                    return makeFrameStatsOverlay(
-                        shellPtr->frameDebugSnapshot(),
-                        FrameOverlayStyle::fromTheme(shellPtr->theme()));
-                });
+            shell.setDebugFrameStats(true);
         }
-        // R6：bounds/damage 调试图层（纯绘制层，无需帧循环介入）。
         shell.setDebugBoundsOverlay(runtime.app.options.debugBoundsOverlay);
         shell.setDebugDamageOverlay(runtime.app.options.debugDamageOverlay);
+        shell.setDebugInspector(runtime.app.options.debugInspector);
         if (runtime.app.options.diagnostics) {
             printStartupDiagnostics(
                 shell.capabilities(),

@@ -481,6 +481,12 @@ void AppShell::pointerDown(core::Offset position,
 
 void AppShell::pointerMove(core::Offset position, std::uint32_t pointerId) {
     rebuildIfDirty();
+    // R6 诊断：最近指针位置（inspector 层命中解析用）；inspector 开启
+    // 时移动即标脏（读数刷新——显式开启才有的额外帧）。
+    lastPointer_ = position;
+    if (debugInspector_) {
+        dirty_ = true;
+    }
     controller_.pointerMove(eventTree(), position, lastTickMs_, pointerId);
     if (pointerId == 0) {
         controller_.notifyPointerMove(root_, position);
@@ -924,6 +930,19 @@ void AppShell::paintFrame(bool forceFullRepaint) {
                 theme_.colors.statusError),
             options, textFontSource()));
     }
+    if (debugFrameStats_) {
+        commands.extend(render::recordScene(
+            makeFrameStatsLayer(frameDebugSnapshot(),
+                                FrameOverlayStyle::fromTheme(theme_)),
+            options, textFontSource()));
+    }
+    if (debugInspector_) {
+        commands.extend(render::recordScene(
+            makeInspectorLayer(root_, lastPointer_, focus_.focusedIdentity(),
+                               FrameOverlayStyle::fromTheme(theme_),
+                               theme_.colors.accent),
+            options, textFontSource()));
+    }
     renderer.noteCpuBuildMs(
         std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - buildStart)
@@ -1010,6 +1029,14 @@ void AppShell::noteFrameSubmitted() {
 
 void AppShell::setDebugBoundsOverlay(bool enabled) {
     debugBoundsOverlay_ = enabled;
+}
+
+void AppShell::setDebugFrameStats(bool enabled) {
+    debugFrameStats_ = enabled;
+}
+
+void AppShell::setDebugInspector(bool enabled) {
+    debugInspector_ = enabled;
 }
 
 void AppShell::setDebugDamageOverlay(bool enabled) {

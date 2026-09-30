@@ -34,6 +34,7 @@
 #include "lumen/app/bounds_overlay.h"
 #include "lumen/app/command_registry.h"
 #include "lumen/app/frame_debug.h"
+#include "lumen/app/inspector_layer.h"
 #include "lumen/core/damage.h"
 #include "lumen/core/element.h"
 #include "lumen/core/geometry.h"
@@ -398,6 +399,16 @@ class AppShell {
     // app::makeFrameStatsOverlay（runApp 经 RunOptions.frameDebugOverlay
     // 装配；读数滞后一帧——builder 在重建期求值）。
     void setFrameStatsCapture(bool enabled);
+    // R6 修复（2026-09-30）：帧读数 HUD 改为纯绘制图层（早前经视觉
+    // overlay 槽位承载会随 eventTree 切换吞掉应用输入）。开启后随重绘
+    // 帧在主场景命令后录制（makeFrameStatsLayer）；runApp 每调度帧标
+    // 脏刷新读数（显式开启才有的额外帧）。
+    void setDebugFrameStats(bool enabled);
+    // R6：inspector 检视图层（inspector_layer.h；纯绘制——悬停检视最
+    // 近指针位置的主树最深命中节点：信息面板 + 2px 命中高亮）。指针移
+    // 动即标脏刷新（显式开启才有的额外帧）；关闭零开销、frame hash
+    // 不变。点击 pin 为后续增量。
+    void setDebugInspector(bool enabled);
     // 当前快照（合并 renderer stats/capabilities 与采样值；未开启采样
     // 时阶段/计数字段为 0，renderer 字段仍如实）。非 const：stats() 与
     // capabilities() 按既有先例为非 const。
@@ -589,6 +600,11 @@ class AppShell {
     bool debugBoundsOverlay_{false};
     bool debugDamageOverlay_{false};
     std::vector<core::Rect> lastFrameDamage_{};
+    // R6：帧读数 HUD 图层开关 + 最近指针位置（inspector 层命中解析；
+    // 纯诊断数据，关闭时零记录）。
+    bool debugFrameStats_{false};
+    bool debugInspector_{false};
+    core::Offset lastPointer_{};
     render::CpuRenderer cpuRenderer_{1.0F};
     render::Renderer* externalRenderer_{nullptr};
     // M5：语义桥（外部拥有）与上次推送树/焦点。
@@ -673,16 +689,20 @@ struct RunOptions {
     std::function<void(const diagnostics::CrashSummary&)>
         onDiagnosticsStarted{};
     // R6：帧读数 HUD（默认关闭）。开启后 runApp 启用该窗口应用壳的
-    // 帧统计采样，并安装非模态视觉 overlay（左上角面板；读数滞后一
-    // 帧），且每调度帧标脏刷新——这是显式开启才有的额外帧与采样开
-    // 销；关闭时零额外帧、frame hash 与性能基线不变。分配量维度未接
-    // 入（renderer stats 无该维度，见 support-matrix R6 登记）。
+    // 帧统计采样并绘制纯图层（左上角面板；读数滞后一帧），且每调度帧
+    // 标脏刷新——这是显式开启才有的额外帧与采样开销；关闭时零额外
+    // 帧、frame hash 与性能基线不变。图层不经 overlay 槽位，不影响应
+    // 用输入。分配量维度未接入（renderer stats 无该维度，见
+    // support-matrix R6 登记）。
     bool frameDebugOverlay{false};
     // R6：bounds/damage 调试图层（默认关闭零开销）。纯绘制层：只随重
     // 绘帧在主场景命令后追加描画，不驱动帧节奏、不进语义树；开启后帧
     // 不再具备确定性 hash（描画进入像素输出）。
     bool debugBoundsOverlay{false};
     bool debugDamageOverlay{false};
+    // R6：inspector 检视图层（悬停信息面板 + 命中高亮；纯绘制不阻断
+    // 应用输入，指针移动驱动的额外帧仅在开启时出现）。
+    bool debugInspector{false};
 };
 
 // 一个宿主窗口与其应用壳的绑定。每个窗口拥有独立的 RunOptions，因而
