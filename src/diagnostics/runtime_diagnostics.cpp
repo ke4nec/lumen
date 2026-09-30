@@ -331,7 +331,12 @@ void RuntimeDiagnostics::cleanShutdown() {
 }
 
 void RuntimeDiagnostics::teardownRuntime(bool clearMarker) {
-    instance_.store(nullptr, std::memory_order_release);
+    // 仅摘除自己（另一实例 start 后 instance_ 指向它时不得误清）；
+    // 能力位如实归零（关停后查询不残留"已安装"）。
+    RuntimeDiagnostics* expected = this;
+    instance_.compare_exchange_strong(expected, nullptr,
+                                      std::memory_order_release);
+    capabilities_ = CrashCapabilities{};
     if (impl_ != nullptr) {
         if (running_.load(std::memory_order_acquire)) {
             {
@@ -385,7 +390,9 @@ void RuntimeDiagnostics::log(LogLevel level, std::string_view message) {
         return;
     }
     enqueueLogLine(level, message);
-    impl_->cv.notify_one();
+    // notify_all：flusher 与 flush() 共享本 cv；notify_one 可能只唤醒
+    // 正在等 written==enqueued 的 flush()，flusher 沉睡致日志滞留。
+    impl_->cv.notify_all();
 }
 
 void RuntimeDiagnostics::flush() {

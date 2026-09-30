@@ -182,6 +182,40 @@ TEST_CASE("pinch_not_armed_over_text_field", "[core][pinch]") {
     CHECK(shell.controller().touchPointerCount() == 0);
 }
 
+TEST_CASE("pinch_third_finger_ignored_until_pair_lifts",
+          "[core][pinch]") {
+    Harness harness;
+    AppShell& shell = harness.shell;
+    // 两指启动会话。
+    harness.twoFingerDown({100, 100}, {200, 100});
+    shell.pointerMove({80, 100}, 1);  // 距离 120 > 100：Begin
+    REQUIRE(harness.pinch.events.size() == 1);
+    CHECK(harness.pinch.events[0].phase == PinchPhase::Begin);
+    // 第三指落下：仅登记——不取消、不重置、无新事件。
+    shell.pointerDown({150, 200}, lumen::core::kModifierNone,
+                      lumen::core::PointerButton::Primary,
+                      PointerDevice::Touch, 3);
+    CHECK(harness.pinch.events.size() == 1);
+    CHECK(shell.controller().pinchActive());
+    CHECK(shell.controller().touchPointerCount() == 3);
+    // 第三指移动：不参与距离计算（无事件；配对距离未变）。
+    shell.pointerMove({999, 999}, 3);
+    CHECK(harness.pinch.events.size() == 1);
+    // 配对指移动：Update 照常（基于配对 id 而非表首两项）。
+    shell.pointerMove({70, 100}, 1);
+    REQUIRE(harness.pinch.events.size() == 2);
+    CHECK(harness.pinch.events[1].phase == PinchPhase::Update);
+    // 第三指抬起：不触发 End（非配对）。
+    shell.pointerUp({999, 999}, lumen::core::PointerButton::Primary, 3);
+    CHECK(harness.pinch.events.size() == 2);
+    CHECK(shell.controller().pinchActive());
+    // 配对指抬起：End。
+    shell.pointerUp({70, 100}, lumen::core::PointerButton::Primary, 1);
+    REQUIRE(harness.pinch.events.size() == 3);
+    CHECK(harness.pinch.events[2].phase == PinchPhase::End);
+    CHECK_FALSE(shell.controller().pinchActive());
+}
+
 TEST_CASE("pinch_single_finger_paths_unchanged_without_ids",
           "[core][pinch]") {
     Harness harness;

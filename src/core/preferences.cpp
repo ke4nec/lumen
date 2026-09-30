@@ -158,16 +158,31 @@ bool Preferences::save(const std::string& path) const {
     return true;
 }
 
+void Preferences::notifyObservers(const std::string& key) {
+    // 先拷贝 id 再回调（StateStore 同模式）：观察者内 subscribe/
+    // unsubscribe 不得使迭代器失效；本次通知开始后新登记的观察者不收
+    // 本次通知，通知前已移除的观察者跳过。
+    std::vector<ObserverId> ids;
+    ids.reserve(observers_.size());
+    for (const auto& [id, observer] : observers_) {
+        (void)observer;
+        ids.push_back(id);
+    }
+    for (const ObserverId id : ids) {
+        const auto current = observers_.find(id);
+        if (current != observers_.end()) {
+            current->second(key);
+        }
+    }
+}
+
 void Preferences::setString(const std::string& key, const std::string& value) {
     const auto it = values_.find(key);
     if (it != values_.end() && it->second == value) {
         return;  // 幂等：不通知
     }
     values_[key] = value;
-    for (const auto& [id, observer] : observers_) {
-        (void)id;
-        observer(key);
-    }
+    notifyObservers(key);
 }
 
 std::string Preferences::getString(const std::string& key,
@@ -230,19 +245,13 @@ bool Preferences::remove(const std::string& key) {
         return false;
     }
     values_.erase(it);
-    for (const auto& [id, observer] : observers_) {
-        (void)id;
-        observer(key);
-    }
+    notifyObservers(key);
     return true;
 }
 
 void Preferences::clear() {
     values_.clear();
-    for (const auto& [id, observer] : observers_) {
-        (void)id;
-        observer({});
-    }
+    notifyObservers({});
 }
 
 Preferences::ObserverId Preferences::subscribe(Observer observer) {

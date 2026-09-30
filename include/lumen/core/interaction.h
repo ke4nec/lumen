@@ -455,6 +455,10 @@ class InteractionController {
     bool pinchActive_{false};
     float pinchStartDist_{0.0F};
     Offset pinchStartCenter_{};
+    // 配对指（武装时的两指 id；0 = 无）。距离/中点/End 只认配对——
+    // 第三+指仅登记不参与计算，其抬起也不终止会话（H-4 review）。
+    std::uint32_t pinchPairA_{0};
+    std::uint32_t pinchPairB_{0};
     bool dragArmedActive_{false};
     bool dragArmTouchAllowed_{false};
     PointerDevice dragArmDevice_{PointerDevice::Mouse};

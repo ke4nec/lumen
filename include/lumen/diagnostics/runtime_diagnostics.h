@@ -104,7 +104,10 @@ class RuntimeDiagnostics {
     [[nodiscard]] std::string crashReportPath() const;
 
     // 进程级单例（处理器/便捷入口访问）。start() 设置、cleanShutdown/
-    // 析构清除。UI 线程独占语义由调用方保证。
+    // 析构摘除（仅当仍指向自己）。UI 线程独占语义由调用方保证。
+    // 单实例约束：进程内同时至多一个已 start 的实例（多实例先后 start
+    // 时后者覆盖 instance_，前者崩溃处理器失效）——runApp 与应用自持
+    // 二选一。
     [[nodiscard]] static RuntimeDiagnostics* instance() {
         return instance_.load(std::memory_order_acquire);
     }

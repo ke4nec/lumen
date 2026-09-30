@@ -16,7 +16,7 @@ SDL host 把 `SDL_EVENT_FINGER_*` 归一化为 Touch `PointerDown/Move/Up`（`ev
   - 起始指距 `dist > 0`；
   - **起始中点不在 TextField 上**（字段选区/编辑仲裁优先——lumen-scroll-design 触摸文本路径不受 pinch 干扰）。
 - **Move**（多指路径先于单指 hover/按压）：armed 时距离变化越过 **8px**（点击 slop 同量级）→ `Begin`；active 时每拍 `Update`（`scale = dist / startDist`，`center = 两指中点`）。
-- **任一指抬起** → `End` 回执，触摸表清空；后续单指回到普通路径。
+- **配对指抬起** → `End` 回执（以另一配对指位置计算最后 scale），触摸表清空；后续单指回到普通路径。第三+指（配对外）抬起仅移除登记。
 - **窗口失焦/系统取消**（`pointerCancel`）→ 静默清理（无 root 回执 End；sink 按 scale 值流消费，无状态残留）。
 
 ## 3. 仲裁（M15 手势仲裁表新增 pinch 位）
@@ -27,6 +27,7 @@ SDL host 把 `SDL_EVENT_FINGER_*` 归一化为 Touch `PointerDown/Move/Up`（`ev
 | 起始中点在 TextField | 不武装——两指用于字段选区/编辑 |
 | armed 未越阈值即抬指 | 回到单指语义（不产生 pinch、点击已在取消时作废） |
 | pinch 会话中的新 Move（id 0 或未知 id） | 忽略（不更新 hover） |
+| **第三+指落下/移动/抬起** | 仅登记——不取消会话、不参与距离计算、不触发 End（配对 id 固定为武装时的两指；只有配对指抬起才收尾） |
 
 ## 4. 应用接线
 

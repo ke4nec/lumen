@@ -153,6 +153,39 @@ TEST_CASE("preferences_atomic_save_leaves_no_half_file",
     CHECK(stuck.getString("x") == "y");
 }
 
+TEST_CASE("preferences_observer_mutation_during_notification",
+          "[core][preferences]") {
+    // H-1 review：观察者内 unsubscribe/subscribe 不得使迭代器失效
+    //（拷贝 id + 重查，StateStore 同模式）。
+    Preferences prefs;
+    int callsA = 0;
+    int callsB = 0;
+    int callsC = 0;
+    int callsD = 0;
+    lumen::core::Preferences::ObserverId idB = 0;
+    lumen::core::Preferences::ObserverId idD = 0;
+    (void)idD;
+    prefs.subscribe([&](const std::string&) {
+        ++callsA;
+        prefs.unsubscribe(idB);  // A 在通知中取消 B
+    });
+    idB = prefs.subscribe([&](const std::string&) { ++callsB; });
+    prefs.subscribe([&](const std::string&) {
+        ++callsC;
+        // C 在通知中新增 D——D 不收本次通知。
+        idD = prefs.subscribe([&](const std::string&) { ++callsD; });
+    });
+    prefs.setString("k", "v");
+    CHECK(callsA == 1);
+    CHECK(callsB == 0);  // 被 A 取消：未收到本次通知
+    CHECK(callsC == 1);
+    CHECK(callsD == 0);  // 通知中新增：不收本次
+    // 下一次通知 D 正常接收。
+    prefs.setString("k", "v2");
+    CHECK(callsC == 2);
+    CHECK(callsD == 1);
+}
+
 TEST_CASE("preferences_escape_roundtrip_specials", "[core][preferences]") {
     const std::string special = "a=b\\c\nd=e";
     CHECK(Preferences::unescape(Preferences::escape(special)) == special);

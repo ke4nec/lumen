@@ -53,7 +53,8 @@ class Preferences {
     [[nodiscard]] int version() const { return version_; }
     void setVersion(int version) { version_ = version; }
 
-    // --- 变更通知（值实际变化才通知；观测期间再次修改安全） ---
+    // --- 变更通知（值实际变化才通知；观察者内 subscribe/unsubscribe/
+    // 嵌套 set 安全——拷贝 id 后回调，StateStore 同模式） ---
     ObserverId subscribe(Observer observer);
     void unsubscribe(ObserverId id);
 
@@ -67,6 +68,7 @@ class Preferences {
     std::map<std::string, std::string> values_{};
     std::map<ObserverId, Observer> observers_{};
     ObserverId nextId_{1};
+    void notifyObservers(const std::string& key);
 };
 
 }  // namespace lumen::core
