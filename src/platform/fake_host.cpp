@@ -213,6 +213,11 @@ void FakeApplicationHost::pushSystemThemeChanged(bool prefersDarkMode) {
     queue_.push_back(makeEvent(core::HostEventType::SystemThemeChanged, {}));
 }
 
+void FakeApplicationHost::pushClipboardChanged() {
+    // G-3：会话级事件（无归属窗口；runApp 广播各活跃 runtime）。
+    queue_.push_back(makeEvent(core::HostEventType::ClipboardChanged, {}));
+}
+
 void FakeApplicationHost::setLifecycle(core::AppLifecycle next) {
     if (next == lifecycle_) {
         return;

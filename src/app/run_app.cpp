@@ -509,6 +509,7 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
             }
             if (event.type == HostEventType::SystemThemeChanged ||
                 event.type == HostEventType::SystemAccessibilityChanged ||
+                event.type == HostEventType::ClipboardChanged ||
                 (event.type == HostEventType::LifecycleChanged &&
                  !event.window.valid())) {
                 for (auto& runtime : runtimes) {

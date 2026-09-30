@@ -212,6 +212,14 @@ struct PlatformCapabilities {
     // seam 为后续增量；窗口内命令分发属命令注册表，不在此位）。
     bool systemTray{false};
     bool globalHotkeys{false};
+    // G-3：剪贴板深度（docs/lumen-clipboard-service-design.md）。
+    // clipboardFormats = MIME 数据读写（SDL data API，三桌面）；
+    // clipboardImage = image/png 跨应用读写已验证（Linux X11/Wayland ✓；
+    // Windows 注册格式名不匹配、macOS 待真机验证 → 如实 false，原生
+    // seam 为后续增量）；clipboardChange = 变更事件（ClipboardChanged）。
+    bool clipboardFormats{false};
+    bool clipboardImage{false};
+    bool clipboardChange{false};
     // 至少一项 OS 偏好已查询成功；个别未暴露的字段保留安全默认值。
     bool systemAccessibilityPreferences{false};
 };

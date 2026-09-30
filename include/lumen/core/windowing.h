@@ -164,6 +164,9 @@ enum class HostEventType : std::uint8_t {
     // M16：系统级全局快捷键触发（text = 快捷键 id；window = 注册时归属
     // 窗口）。窗口内命令分发不经此事件（属命令注册表）。
     GlobalHotkey,
+    // G-3：剪贴板内容变更（跨应用或本应用写入；窗口无关——window 为
+    // 空，runApp 转发首个窗口的 onEvent）。应用据此刷新"粘贴可用态"。
+    ClipboardChanged,
 };
 
 struct HostEvent {

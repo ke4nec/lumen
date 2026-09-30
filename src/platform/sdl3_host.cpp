@@ -158,6 +158,9 @@ core::PointerButton mapMouseButton(std::uint8_t button) {
 }  // namespace
 
 // --- Clipboard（SDL3 实现；失败时应用侧安全降级） ---
+// G-3：MIME 数据层走 SDL3 通用剪贴板 data API（SDL_GetClipboardData/
+// SDL_SetClipboardData，3.2 起三桌面可用；能力差异进 PlatformCapabilities
+// 如实报告——docs/lumen-clipboard-service-design.md §3）。
 class Sdl3ApplicationHost::Sdl3Clipboard final : public Clipboard {
   public:
     [[nodiscard]] bool hasText() const override {
@@ -176,6 +179,90 @@ class Sdl3ApplicationHost::Sdl3Clipboard final : public Clipboard {
         return SDL_SetClipboardText(value.c_str());
     }
     void clear() override { (void)SDL_SetClipboardText(""); }
+
+    // --- G-3：MIME 数据层 ---
+    [[nodiscard]] bool hasFormat(const std::string& mimeType) const override {
+        if (mimeType == kMimeText) {
+            return SDL_HasClipboardText();
+        }
+        return SDL_HasClipboardData(mimeType.c_str());
+    }
+    [[nodiscard]] std::vector<std::uint8_t> data(
+        const std::string& mimeType) const override {
+        if (mimeType == kMimeText) {
+            const std::string value = text();
+            return {value.begin(), value.end()};
+        }
+        std::size_t size = 0;
+        void* raw = SDL_GetClipboardData(mimeType.c_str(), &size);
+        if (raw == nullptr) {
+            return {};
+        }
+        const auto* bytes = static_cast<const std::uint8_t*>(raw);
+        std::vector<std::uint8_t> result(bytes, bytes + size);
+        SDL_free(raw);
+        return result;
+    }
+    bool setData(const std::string& mimeType,
+                 const std::vector<std::uint8_t>& bytes) override {
+        return setFormats({Entry{mimeType, bytes}});
+    }
+    // 多格式原子放置：字节所有权交 SDL 按需回调（其他进程粘贴时取数）；
+    // cleanup 释放；SDL_SetClipboardData 整体替换剪贴板。
+    bool setFormats(const std::vector<Entry>& entries) override {
+        if (entries.empty()) {
+            return SDL_ClearClipboardData();
+        }
+        auto* payload = new std::vector<Entry>(entries);
+        const char* mimeTypes[16] = {};
+        const std::size_t count = entries.size() < 16 ? entries.size() : 16;
+        for (std::size_t i = 0; i < count; ++i) {
+            mimeTypes[i] = (*payload)[i].mimeType.c_str();
+        }
+        const bool ok = SDL_SetClipboardData(
+            [](void* userdata, const char* mimeType, std::size_t* size)
+                -> const void* {
+                auto* items = static_cast<std::vector<Entry>*>(userdata);
+                for (const auto& entry : *items) {
+                    if (entry.mimeType == mimeType) {
+                        *size = entry.bytes.size();
+                        return entry.bytes.data();
+                    }
+                }
+                return nullptr;
+            },
+            [](void* userdata) {
+                delete static_cast<std::vector<Entry>*>(userdata);
+            },
+            payload, mimeTypes, count);
+        if (!ok) {
+            delete payload;
+            return false;
+        }
+        return true;
+    }
+    [[nodiscard]] std::vector<std::string> formats() const override {
+        std::vector<std::string> result;
+        if (SDL_HasClipboardText()) {
+            result.push_back(kMimeText);
+        }
+        std::size_t count = 0;
+        char** mimeTypes = SDL_GetClipboardMimeTypes(&count);
+        if (mimeTypes == nullptr) {
+            return result;
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            if (mimeTypes[i] != nullptr) {
+                result.emplace_back(mimeTypes[i]);
+            }
+        }
+        SDL_free(mimeTypes);
+        return result;
+    }
+
+  private:
+    static constexpr const char* kMimeText =
+        core::ClipboardProvider::kMimeText;
 };
 
 // --- TextInputSession（包装既有 PlatformWindow 文本输入接口） ---
@@ -309,6 +396,17 @@ bool Sdl3ApplicationHost::initialize() {
     // M16：系统托盘（SDL_tray 跨平台）；全局快捷键无平台后端（降级）。
     capabilities_.systemTray = true;
     capabilities_.globalHotkeys = false;
+    // G-3：剪贴板深度。MIME 数据读写走 SDL data API（三桌面）；变更事
+    // 件 SDL_EVENT_CLIPBOARD_UPDATE（三桌面）。image/png 只对 Linux
+    // X11/Wayland 报 true（Windows 注册格式名不匹配、macOS 未真机验
+    // 证——四态纪律如实降级，原生 seam 为后续增量）。
+    capabilities_.clipboardFormats = true;
+    capabilities_.clipboardChange = true;
+#if defined(__linux__)
+    capabilities_.clipboardImage = true;
+#else
+    capabilities_.clipboardImage = false;
+#endif
     // M12：系统主题查询（SDL_GetSystemTheme，3.2.0 起可用；此前
     // "SDL 3.2 无查询"注释有误）。UNKNOWN 保持安全默认 false。
     capabilities_.prefersDarkMode =
@@ -602,6 +700,14 @@ std::size_t Sdl3ApplicationHost::translateEvent(
                              ? core::HostEventType::WindowFullscreenEntered
                              : core::HostEventType::WindowFullscreenExited;
             event.window = windowIdOf(sdlEvent.window.windowID);
+            push(std::move(event));
+            break;
+        }
+        case SDL_EVENT_CLIPBOARD_UPDATE: {
+            // G-3：剪贴板内容变更（跨应用或本应用）。SDL 事件不带窗口
+            // （剪贴板是会话级）；window 留空，runApp 转发首个窗口。
+            core::HostEvent event;
+            event.type = core::HostEventType::ClipboardChanged;
             push(std::move(event));
             break;
         }

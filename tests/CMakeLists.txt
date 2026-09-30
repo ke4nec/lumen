@@ -25,6 +25,9 @@ set(LUMEN_TEST_SOURCES
     # G-2：崩溃兜底与持久日志（docs/lumen-runtime-diagnostics-design.md）
     # ——脏标记生命周期、日志分级/滚动、关闭态零开销。
     runtime_diagnostics_tests.cpp
+    # G-3：剪贴板深度（docs/lumen-clipboard-service-design.md）——MIME
+    # 数据层降级/多格式读写/失败注入与变更事件广播。
+    clipboard_tests.cpp
     # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
     grid_virtual_tests.cpp
     # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、

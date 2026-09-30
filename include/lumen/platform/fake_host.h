@@ -36,18 +36,88 @@ class FakeClipboard final : public Clipboard {
     [[nodiscard]] bool hasText() const override { return !text_.empty(); }
     [[nodiscard]] std::string text() const override { return text_; }
     bool setText(const std::string& value) override {
-        text_ = value;
         ++setCount;
-        return available_;
+        if (!available_) {
+            return false;  // 与 SDL 语义一致：失败不落账
+        }
+        text_ = value;
+        return true;
     }
-    void clear() override { text_.clear(); }
+    void clear() override {
+        text_.clear();
+        entries_.clear();
+    }
 
-    // 测试钩子：模拟“剪贴板不可用”（无桌面会话）。
+    // --- G-3：MIME 数据层（确定性记录 + 失败注入） ---
+    [[nodiscard]] bool hasFormat(const std::string& mimeType) const override {
+        if (!available_) {
+            return false;
+        }
+        if (mimeType == core::ClipboardProvider::kMimeText) {
+            return !text_.empty();
+        }
+        return findEntry(mimeType) != nullptr;
+    }
+    [[nodiscard]] std::vector<std::uint8_t> data(
+        const std::string& mimeType) const override {
+        const auto* entry = findEntry(mimeType);
+        return entry != nullptr ? entry->bytes : std::vector<std::uint8_t>{};
+    }
+    bool setData(const std::string& mimeType,
+                 const std::vector<std::uint8_t>& bytes) override {
+        return setFormats({Entry{mimeType, bytes}});
+    }
+    bool setFormats(const std::vector<Entry>& entries) override {
+        ++setFormatsCount;
+        if (!available_) {
+            return false;
+        }
+        entries_ = entries;
+        // text/plain 与既有 text() 视图互通（单一事实，双视图）。
+        text_.clear();
+        for (const auto& entry : entries_) {
+            if (entry.mimeType == core::ClipboardProvider::kMimeText) {
+                text_.assign(entry.bytes.begin(), entry.bytes.end());
+            }
+        }
+        return true;
+    }
+    [[nodiscard]] std::vector<std::string> formats() const override {
+        std::vector<std::string> result;
+        if (!available_) {
+            return result;
+        }
+        for (const auto& entry : entries_) {
+            result.push_back(entry.mimeType);
+        }
+        if (text_.empty() && entries_.empty()) {
+            return result;
+        }
+        if (!text_.empty() && findEntry(
+                                  core::ClipboardProvider::kMimeText) ==
+                                  nullptr) {
+            result.push_back(core::ClipboardProvider::kMimeText);
+        }
+        return result;
+    }
+
+    // 测试钩子：模拟”剪贴板不可用”（无桌面会话）。
     void setAvailable(bool available) { available_ = available; }
     std::uint64_t setCount{0};
+    std::uint64_t setFormatsCount{0};
 
   private:
+    [[nodiscard]] const Entry* findEntry(const std::string& mimeType) const {
+        for (const auto& entry : entries_) {
+            if (entry.mimeType == mimeType) {
+                return &entry;
+            }
+        }
+        return nullptr;
+    }
+
     std::string text_{};
+    std::vector<Entry> entries_{};
     bool available_{true};
 };
 
@@ -175,6 +245,8 @@ class FakeApplicationHost final : public ApplicationHost {
     // command、GlobalHotkey.text = 快捷键 id）。
     void pushTrayActivated(core::WindowId owner, std::string command);
     void pushGlobalHotkey(core::WindowId owner, std::string id);
+    // G-3：剪贴板内容变更事件注入（会话级，window 为空）。
+    void pushClipboardChanged();
     // M15：OS 拖入会话事件注入（DragEnter/Move/Leave 只带位置；Drop 携带
     // 文本或文件负载——与宿主翻译后的归一化字段一致）。
     void pushDragEnter(core::WindowId id, core::Offset position);
