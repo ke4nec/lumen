@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <limits>
+#include <type_traits>
 #include <utility>
 
 namespace lumen::dsl {
@@ -170,9 +172,29 @@ using core::WidgetType;
 }
 
 template <typename T>
+[[nodiscard]] bool numberRepresentable(double number) {
+    if (!std::isfinite(number)) return false;
+    if constexpr (std::is_floating_point_v<T>) {
+        const double maxValue =
+            static_cast<double>(std::numeric_limits<T>::max());
+        return number >= -maxValue && number <= maxValue;
+    }
+    const double roundedMax =
+        static_cast<double>(std::numeric_limits<T>::max());
+    const double maxValue = [&] {
+        if constexpr (std::numeric_limits<T>::digits >
+                      std::numeric_limits<double>::digits) {
+            return std::nextafter(roundedMax, 0.0);
+        }
+        return roundedMax;
+    }();
+    return number >= 0.0 && number <= maxValue && std::floor(number) == number;
+}
+
+template <typename T>
 [[nodiscard]] bool assignNumber(const DesignValue& value, T& destination) {
     const auto* number = numberOf(value);
-    if (number == nullptr) return false;
+    if (number == nullptr || !numberRepresentable<T>(*number)) return false;
     destination = static_cast<T>(*number);
     return true;
 }
@@ -346,13 +368,18 @@ template <typename T>
             case PropertyKind::Boolean: return boolOf(value) != nullptr;
             case PropertyKind::Number: {
                 const auto* number = numberOf(value);
-                if (number == nullptr || !std::isfinite(*number)) return false;
+                if (number == nullptr || !numberRepresentable<float>(*number)) {
+                    return false;
+                }
                 if (property == "weight") {
                     return *number >= 100 && *number <= 900 &&
                            std::floor(*number) == *number &&
                            std::fmod(*number, 100.0) == 0.0;
                 }
-                if (property == "maxLines" || property == "scrollOffset") {
+                if (property == "maxLines") {
+                    return numberRepresentable<std::size_t>(*number);
+                }
+                if (property == "scrollOffset") {
                     return *number >= 0;
                 }
                 return true;

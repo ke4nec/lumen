@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <limits>
 #include <set>
 #include <string>
 
@@ -88,6 +89,18 @@ TEST_CASE("designer schema validates types, enums, ranges and structure",
     CHECK(std::all_of(diagnostics.begin(), diagnostics.end(), [](const auto& error) {
         return error.code == "schema.invalid_property";
     }));
+
+    auto outOfRange = valid.document;
+    outOfRange.root.properties["width"] =
+        DesignValue{DesignValue::Variant{std::numeric_limits<double>::max()}};
+    outOfRange.root.properties["maxLines"] =
+        DesignValue{DesignValue::Variant{1.5}};
+    diagnostics = validateDesignDocument(outOfRange);
+    REQUIRE(diagnostics.size() == 2);
+    CHECK(std::all_of(diagnostics.begin(), diagnostics.end(),
+                      [](const auto& error) {
+                          return error.code == "schema.invalid_property";
+                      }));
 
     auto unknown = valid.document;
     unknown.root.properties["futureProperty"] =
