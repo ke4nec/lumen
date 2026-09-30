@@ -141,6 +141,16 @@ TEST_CASE("designer runtime session cancels close callbacks exactly once",
     CHECK(cancelled == 1);
 }
 
+TEST_CASE("designer runtime session closes callbacks when destroyed",
+          "[designer][p3]") {
+    int cancelled = 0;
+    {
+        lumen::dsl::DesignRuntimeSession session;
+        session.onClose([&cancelled] { ++cancelled; });
+    }
+    CHECK(cancelled == 1);
+}
+
 TEST_CASE("designer preview session retains resolved reference leases",
           "[designer][p3]") {
     const auto parsed = parseLumenSource(

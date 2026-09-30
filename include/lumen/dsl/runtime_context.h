@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <map>
 #include <memory>
@@ -94,6 +95,13 @@ class DesignRuntimeSession {
         : generation_(nextGeneration().fetch_add(1, std::memory_order_relaxed) +
                       1) {}
 
+    ~DesignRuntimeSession() noexcept { closeImpl(true); }
+
+    DesignRuntimeSession(const DesignRuntimeSession&) = delete;
+    DesignRuntimeSession& operator=(const DesignRuntimeSession&) = delete;
+    DesignRuntimeSession(DesignRuntimeSession&&) = delete;
+    DesignRuntimeSession& operator=(DesignRuntimeSession&&) = delete;
+
     [[nodiscard]] std::uint64_t generation() const { return generation_; }
     [[nodiscard]] bool active() const { return active_; }
 
@@ -119,14 +127,28 @@ class DesignRuntimeSession {
     }
 
     void close() {
-        if (!active_) return;
-        active_ = false;
-        auto callbacks = std::move(closeCallbacks_);
-        for (auto& callback : callbacks) callback();
-        leases_.clear();
+        closeImpl(false);
     }
 
   private:
+    void closeImpl(bool suppressExceptions) {
+        if (!active_) return;
+        active_ = false;
+        auto callbacks = std::move(closeCallbacks_);
+        std::exception_ptr firstException;
+        for (auto& callback : callbacks) {
+            try {
+                callback();
+            } catch (...) {
+                if (!firstException) firstException = std::current_exception();
+            }
+        }
+        leases_.clear();
+        if (!suppressExceptions && firstException) {
+            std::rethrow_exception(firstException);
+        }
+    }
+
     static std::atomic<std::uint64_t>& nextGeneration() {
         static std::atomic<std::uint64_t> value{0};
         return value;
