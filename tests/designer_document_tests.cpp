@@ -160,6 +160,45 @@ TEST_CASE("designer codec decodes Unicode escapes", "[designer][p1]") {
     CHECK(invalidSurrogate.error->code == "codec.escape");
 }
 
+TEST_CASE("designer codec rejects ambiguous JSON", "[designer][p1]") {
+    const auto leadingZero = readDesignDocument(
+        R"({"documentId":"doc","format":"lumen.design",
+           "pageName":"p","root":{"id":"1","type":"Text",
+           "properties":{}},"schemaVersion":01})",
+        "leading-zero.design");
+    REQUIRE_FALSE(leadingZero.ok());
+    REQUIRE(leadingZero.error.has_value());
+    CHECK(leadingZero.error->code == "codec.invalid_number");
+
+    const auto duplicateKey = readDesignDocument(
+        R"({"documentId":"doc","format":"lumen.design",
+           "pageName":"p","pageName":"shadow",
+           "root":{"id":"1","type":"Text","properties":{}},
+           "schemaVersion":1})",
+        "duplicate-key.design");
+    REQUIRE_FALSE(duplicateKey.ok());
+    REQUIRE(duplicateKey.error.has_value());
+    CHECK(duplicateKey.error->code == "codec.duplicate_key");
+
+    const auto missingFraction = readDesignDocument(
+        R"({"documentId":"doc","format":"lumen.design",
+           "pageName":"p","root":{"id":"1","type":"Text",
+           "properties":{}},"schemaVersion":1.})",
+        "missing-fraction.design");
+    REQUIRE_FALSE(missingFraction.ok());
+    REQUIRE(missingFraction.error.has_value());
+    CHECK(missingFraction.error->code == "codec.invalid_number");
+
+    const auto missingExponent = readDesignDocument(
+        R"({"documentId":"doc","format":"lumen.design",
+           "pageName":"p","root":{"id":"1","type":"Text",
+           "properties":{}},"schemaVersion":1e+})",
+        "missing-exponent.design");
+    REQUIRE_FALSE(missingExponent.ok());
+    REQUIRE(missingExponent.error.has_value());
+    CHECK(missingExponent.error->code == "codec.invalid_number");
+}
+
 TEST_CASE("designer document does not accept a runtime-only reference in P1",
           "[designer][p1]") {
     DesignDocument document;

@@ -233,24 +233,48 @@ class JsonParser {
     [[nodiscard]] std::optional<JsonValue> parseNumber() {
         const std::size_t begin = index_;
         if (index_ < source_.size() && source_[index_] == '-') ++index_;
-        while (index_ < source_.size() && source_[index_] >= '0' &&
-               source_[index_] <= '9') ++index_;
+        if (index_ >= source_.size()) {
+            fail("codec.invalid_number");
+            return std::nullopt;
+        }
+        if (source_[index_] == '0') {
+            ++index_;
+            if (index_ < source_.size() && source_[index_] >= '0' &&
+                source_[index_] <= '9') {
+                fail("codec.invalid_number", "leading zero in number");
+                return std::nullopt;
+            }
+        } else if (source_[index_] >= '1' && source_[index_] <= '9') {
+            while (index_ < source_.size() && source_[index_] >= '0' &&
+                   source_[index_] <= '9') {
+                ++index_;
+            }
+        } else {
+            fail("codec.invalid_number");
+            return std::nullopt;
+        }
         if (index_ < source_.size() && source_[index_] == '.') {
             ++index_;
+            const auto fractionBegin = index_;
             while (index_ < source_.size() && source_[index_] >= '0' &&
                    source_[index_] <= '9') ++index_;
+            if (fractionBegin == index_) {
+                fail("codec.invalid_number", "fraction requires digits");
+                return std::nullopt;
+            }
         }
         if (index_ < source_.size() &&
             (source_[index_] == 'e' || source_[index_] == 'E')) {
             ++index_;
             if (index_ < source_.size() &&
                 (source_[index_] == '+' || source_[index_] == '-')) ++index_;
+            const auto exponentBegin = index_;
             while (index_ < source_.size() && source_[index_] >= '0' &&
                    source_[index_] <= '9') ++index_;
-        }
-        if (begin == index_) {
-            fail("codec.invalid_number");
-            return std::nullopt;
+            if (exponentBegin == index_) {
+                fail("codec.invalid_number", "exponent requires digits");
+                return std::nullopt;
+            }
         }
         const std::string text = source_.substr(begin, index_ - begin);
         char* end = nullptr;
@@ -300,6 +324,10 @@ class JsonParser {
             auto key = parseString();
             if (!key.has_value()) return std::nullopt;
             if (!consume(':')) return std::nullopt;
+            if (result.object.contains(*key)) {
+                fail("codec.duplicate_key", "duplicate object key");
+                return std::nullopt;
+            }
             auto value = parseValue();
             if (!value.has_value()) return std::nullopt;
             result.object[std::move(*key)] = std::move(*value);
