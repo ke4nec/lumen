@@ -96,6 +96,8 @@ if(LUMEN_BUILD_EXAMPLES)
   add_subdirectory(examples/settings)
   # Widget Gallery：控件/布局/颜色方案/主题演示（与示例同级）。
   add_subdirectory(examples/gallery)
+  # G-6：新应用脚手架（lumen-template；纳入 CI 冒烟防漂移）。
+  add_subdirectory(examples/template)
 endif()
 
 if(LUMEN_BUILD_BENCHMARKS)

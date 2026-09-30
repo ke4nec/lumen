@@ -46,6 +46,9 @@ Windows/macOS GPU 包与 CPack Bundle 仍待补齐；开发归档和运行时产
 - `examples/counter/`：最小回归示例（窗口模式 + `--headless`）。
 - `examples/settings/`：v0.3 应用基础组件示例（滚动列表、表单校验、弹窗、
   导航、主题、无障碍标签；窗口模式 + `--headless`）。
+- `examples/template/`：新应用脚手架（G-6：自定义标题栏/菜单命令/
+  StateStore/Preferences 持久化/诊断；上手路径见
+  [`docs/lumen-getting-started.md`](docs/lumen-getting-started.md)）。
 - `examples/gallery/`：控件 Gallery（按钮变体/尺寸/状态、输入控件、布局、
   滚动与虚拟列表、进度/图标/弹窗反馈、颜色方案/排版/密度/ThemeScope）。
   壳层与 Overview 首屏对齐 `design/gallery.html` v1「Core Dark」设计稿
