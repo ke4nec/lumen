@@ -211,6 +211,22 @@ TEST_CASE("designer history does not merge across a saved revision",
     CHECK(history.dirty());
 }
 
+TEST_CASE("designer clearing history invalidates pending transactions",
+          "[designer][f6][transaction]") {
+    auto document = sampleDocument();
+    DesignSelection selection;
+    DesignDocumentHistory history;
+
+    auto pending = history.begin(document, selection);
+    REQUIRE(pending.apply(renameCommand("", "pending")));
+    history.clear();
+
+    CHECK_FALSE(history.commit(document, selection, std::move(pending)));
+    CHECK(document.pageName.empty());
+    CHECK_FALSE(history.dirty());
+    CHECK(history.undoSize() == 0);
+}
+
 TEST_CASE("designer diagnostics have stable stages and deduplicate by location",
           "[designer][f6][diagnostic]") {
     DesignError error{"ref.missing", "page.design", SourcePos{4, 7},

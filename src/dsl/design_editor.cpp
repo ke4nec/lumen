@@ -352,9 +352,10 @@ bool DesignDocumentHistory::redo(DesignDocument& document,
 void DesignDocumentHistory::clear() {
     entries_.clear();
     cursor_ = 0;
-    documentRevision_ = 0;
-    savedRevision_ = 0;
-    nextRevision_ = 1;
+    // Advance the baseline so transactions opened before clear() cannot
+    // publish into the new history epoch.
+    documentRevision_ = nextRevision_++;
+    savedRevision_ = documentRevision_;
 }
 
 std::string DesignDiagnostic::key() const {
