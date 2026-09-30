@@ -1,5 +1,6 @@
 #include <set>
 #include <string>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -322,17 +323,37 @@ TEST_CASE("designer codec decodes Unicode escapes", "[designer][p1]") {
                              "unicode-roundtrip.design")
               .ok());
 
-    std::string invalidUtf8 =
-        R"({"documentId":"doc","format":"lumen.design",
-           "pageName":")";
-    invalidUtf8.push_back(static_cast<char>(0xc3));
-    invalidUtf8 += R"(","root":{"id":"1","type":"Text","properties":{}},
-           "schemaVersion":1})";
-    const auto invalidUtf8Result =
-        readDesignDocument(invalidUtf8, "invalid-utf8.design");
-    REQUIRE_FALSE(invalidUtf8Result.ok());
-    REQUIRE(invalidUtf8Result.error.has_value());
-    CHECK(invalidUtf8Result.error->code == "codec.utf8");
+    const auto sourceWithPageName = [](const std::string& pageName) {
+        return std::string{
+                   R"({"documentId":"doc","format":"lumen.design",
+                      "pageName":")"} +
+               pageName + R"(","root":{"id":"1","type":"Text","properties":{}},
+                      "schemaVersion":1})";
+    };
+    const std::string rawUtf8 =
+        "\xE4\xB8\xAD\xE6\x96\x87\xF0\x9F\x98\x80";
+    const auto rawUtf8Result =
+        readDesignDocument(sourceWithPageName(rawUtf8), "raw-utf8.design");
+    REQUIRE(rawUtf8Result.ok());
+    CHECK(rawUtf8Result.document.pageName == rawUtf8);
+    CHECK(serializeDesignDocument(rawUtf8Result.document).find(rawUtf8) !=
+          std::string::npos);
+
+    const std::vector<std::string> invalidUtf8Cases{
+        std::string{"\xC3\x28", 2},          // invalid continuation
+        std::string{"\xE0\x80\x80", 3},     // overlong
+        std::string{"\xED\xA0\x80", 3},     // UTF-16 surrogate
+        std::string{"\xF4\x90\x80\x80", 4},  // above U+10FFFF
+        std::string{"\x80", 1},              // stray continuation
+        std::string{"\xF0\x90", 2},          // truncated four-byte sequence
+    };
+    for (const auto& invalid : invalidUtf8Cases) {
+        const auto invalidResult = readDesignDocument(
+            sourceWithPageName(invalid), "invalid-utf8.design");
+        REQUIRE_FALSE(invalidResult.ok());
+        REQUIRE(invalidResult.error.has_value());
+        CHECK(invalidResult.error->code == "codec.utf8");
+    }
 
     const auto invalidSurrogate = readDesignDocument(
         R"({"documentId":"doc","format":"lumen.design",

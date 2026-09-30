@@ -1196,7 +1196,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `88` 个断言、
+- P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `106` 个断言、
   `9` 个测试用例通过，覆盖 12 个 L0 节点 round-trip、codec 扩展字段、独立 C++ builder
   Widget golden、codec 字符串边界、非法 UTF-8 和损坏诊断。
 - P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `2740` 个断言、
