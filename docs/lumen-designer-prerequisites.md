@@ -1040,6 +1040,8 @@ schema 失败均尝试有效恢复副本。F6 已增加设计器
 和统一 `DesignDiagnostic` 基础契约；事务覆盖副本提交、失败回滚、mergeKey（保存 revision
 会阻断跨保存合并）、undo/redo、选择恢复及 document/saved revision，诊断覆盖阶段、source
 span、恢复策略和稳定去重。F6
+同时通过 `DesignDocumentEditor` 提供 schema 门控的声明属性/运行时引用编辑，编辑成功或清除时
+移除失效的属性 source span，拒绝 `PreviewOnly` 和错误引用值。
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
 真实 D3 应用出口尚未完成。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
