@@ -15,6 +15,11 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
   # 返回平台真实原因；Linux 且 Xlib 头存在时编入 X11 后端，缺失时同
   # 样自空化，与 dbus seam 同模式）。
   list(APPEND LUMEN_PLATFORM_SOURCES global_hotkeys.cpp)
+  if(WIN32)
+    # R4：Win32 全局快捷键后端（RegisterHotKey + 消息专用窗口；
+    # 编译门禁 = windows.yml，真实按键验收待现场）。
+    list(APPEND LUMEN_PLATFORM_SOURCES global_hotkeys_win.cpp)
+  endif()
   # M12：原生服务 seam（通知/强调色；SDL 3.2 无 API）。三实现按平台
   # 条件编译自空化，公共契约无平台类型。
   list(APPEND LUMEN_PLATFORM_SOURCES
@@ -39,8 +44,8 @@ target_link_libraries(lumen-platform PUBLIC lumen-core lumen-render)
 if(NOT LUMEN_BUILD_MOBILE_CORE)
   target_link_libraries(lumen-platform PRIVATE SDL3::SDL3)
   if(WIN32)
-    # M12：Windows 原生 seam（DWM 强调色）。
-    target_link_libraries(lumen-platform PRIVATE dwmapi)
+    # M12：Windows 原生 seam（DWM 强调色）；R4 RegisterHotKey（user32）。
+    target_link_libraries(lumen-platform PRIVATE dwmapi user32)
   endif()
   if(APPLE)
     # M12：macOS 原生 seam（AppKit：NSColor/NSColorSpace；Foundation：

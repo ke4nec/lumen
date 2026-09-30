@@ -270,6 +270,7 @@ std::unique_ptr<Backend> createX11Backend(Probe probe) {
 
 }  // namespace lumen::platform::hotkeys
 
+
 #else  // 无 X11 头（Windows/macOS 或无 Xlib 的 Linux）：stub 分支保持
 // 结构化不可用——sdl3_host 的能力探测/注册路径在所有平台一致编译。
 
@@ -279,10 +280,9 @@ long keysymForLumenKey(core::Key) { return 0; }
 int modifierMask(std::uint32_t) { return 0; }
 
 Probe probeGlobalHotkeySession() {
-#if defined(_WIN32)
-    return Probe{false,
-                 "win32 backend not implemented yet (RegisterHotKey)"};
-#elif defined(__APPLE__)
+    // Windows 由 createPlatformBackend 直连 Win32 后端（不经会话探测）；
+    // 此处只剩 macOS 与无 Xlib 的 Linux stub。
+#if defined(__APPLE__)
     return Probe{false,
                  "macos backend not implemented yet (RegisterEventHotKey)"};
 #else
@@ -298,3 +298,31 @@ std::unique_ptr<Backend> createX11Backend(Probe probe) {
 }  // namespace lumen::platform::hotkeys
 
 #endif
+
+
+namespace lumen::platform::hotkeys {
+
+std::unique_ptr<Backend> createPlatformBackend(Probe& probe) {
+#if defined(_WIN32)
+    // Win32：RegisterHotKey 后端（global_hotkeys_win.cpp；编译门禁 =
+    // windows.yml）。失败回退结构化不可用（原因如实）。
+    auto backend = createWin32Backend();
+    if (backend != nullptr) {
+        probe.available = true;
+        return backend;
+    }
+    probe.available = false;
+    probe.reason = "win32 backend init failed (message window)";
+    return nullptr;
+#elif defined(__APPLE__)
+    probe.available = false;
+    probe.reason = "macos backend not implemented yet (RegisterEventHotKey)";
+    return nullptr;
+#else
+    // Linux/BSD：会话探测 + X11（global_hotkeys.cpp X11 分支）。
+    probe = probeGlobalHotkeySession();
+    return createX11Backend(probe);
+#endif
+}
+
+}  // namespace lumen::platform::hotkeys

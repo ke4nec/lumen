@@ -50,8 +50,17 @@ class Backend {
 };
 
 // X11 后端工厂（probe.available=false 时返回 nullptr；实现见
-// global_hotkeys_x11.cpp，__has_include(<X11/Xlib.h>) 不满足时同样
-// nullptr + probe.reason 说明）。
+// global_hotkeys.cpp 的 X11 分支，无 Xlib 头时同样 nullptr）。
 [[nodiscard]] std::unique_ptr<Backend> createX11Backend(Probe probe);
+
+// Win32 后端工厂（RegisterHotKey + 消息专用窗口；实现 global_hotkeys_win.cpp
+// 仅 Windows 编译）。WM_HOTKEY 在 SDL 泵（同线程 DispatchMessage）期到
+// 达本窗口的 WndProc，入队后 pollEvent 消费——与托盘同模式。
+[[nodiscard]] std::unique_ptr<Backend> createWin32Backend();
+
+// 平台分发（sdl3_host 装配点）：_WIN32 → Win32；__APPLE__ → nullptr
+//（macOS 后端未实现，probe 给出原因）；其余 → 会话探测 + X11。
+[[nodiscard]] std::unique_ptr<Backend> createPlatformBackend(
+    Probe& probe);
 
 }  // namespace lumen::platform::hotkeys

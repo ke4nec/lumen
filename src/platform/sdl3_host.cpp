@@ -419,7 +419,7 @@ bool Sdl3ApplicationHost::initialize() {
     // 平台结构化不可用——能力位与注册失败原因一致。
     capabilities_.systemTray = true;
     auto hotkeyProbe = hotkeys::probeGlobalHotkeySession();
-    hotkeys_ = hotkeys::createX11Backend(hotkeyProbe);
+    hotkeys_ = hotkeys::createPlatformBackend(hotkeyProbe);
     if (hotkeys_ != nullptr) {
         capabilities_.globalHotkeys = true;
     } else {

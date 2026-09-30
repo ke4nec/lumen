@@ -243,6 +243,21 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
   RegisterEventHotKey 后端（保持结构化 Unavailable + 命名原因；按真实
   需求与编译环境启用）、托盘 submenu/checkbox、macOS 原生菜单栏/交通灯。
 
+### R4 Win32 后端状态记录（2026-09-30）
+
+- 变更：`global_hotkeys_win.cpp`（仅 Windows 编译）——RegisterHotKey +
+  消息专用窗口（HWND_MESSAGE）；WM_HOTKEY 经 SDL 泵（同线程
+  DispatchMessage）到 WndProc，GWLP_USERDATA 找回属主、入待发队列，
+  `pollEvent` 转 GlobalHotkey（SDL_tray 同模式）。每实例独立窗口/注册
+  表（review 修复：首版进程级静态映射在多 host 下串台；注册 id 范围检
+  查算出负数——均改为成员状态 + 预算 4096）。`createPlatformBackend`
+  平台分发替换 host 直连 X11；stub 探测的过期 Windows 提示移除。
+- 四态（如实）：接口已存在 + **编译级验证**（windows.yml cpu job 编
+  译门禁；本开发环境无 Windows）。真实按键路径（RegisterHotKey 冲突
+  码/消息泵到达到 UI 事件/多窗口隔离）待登录 Win32 会话现场验收
+  （platform-acceptance 登记）。
+- 未交付池项：macOS RegisterEventHotKey 后端（需 macOS 编译环境）。
+
 ### 阶段C 首项状态记录（2026-09-30，Grid 跨行列）
 
 - 变更（[`lumen-grid-span-design.md`](lumen-grid-span-design.md) 首版随码交付）：
