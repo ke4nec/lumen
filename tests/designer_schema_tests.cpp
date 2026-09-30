@@ -118,6 +118,13 @@ TEST_CASE("designer schema validates types, enums, ranges and structure",
         return error.code == "schema.invalid_property";
     }));
 
+    auto wrongDomain = valid.document;
+    wrongDomain.root.properties["variant"] = DesignValue{DesignValue::Variant{
+        DesignEnum{"mainAxis", "tonal"}}};
+    diagnostics = validateDesignDocument(wrongDomain);
+    REQUIRE(diagnostics.size() == 1);
+    CHECK(diagnostics.front().code == "schema.invalid_property");
+
     auto outOfRange = valid.document;
     outOfRange.root.properties["width"] =
         DesignValue{DesignValue::Variant{std::numeric_limits<double>::max()}};

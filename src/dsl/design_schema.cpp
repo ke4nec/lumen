@@ -395,6 +395,7 @@ template <typename T>
             case PropertyKind::Enum: {
                 const auto* enumeration = enumOf(value);
                 return enumeration != nullptr &&
+                       enumeration->domain == property &&
                        (values.empty() || std::find(values.begin(), values.end(),
                                                      enumeration->value) != values.end());
             }
