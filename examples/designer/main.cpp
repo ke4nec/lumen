@@ -1,4 +1,6 @@
 #include <cstdio>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -14,6 +16,7 @@ namespace {
 struct Options {
     bool headless{false};
     bool watch{false};
+    std::uint64_t maxFrames{0};
     std::string filename{};
 };
 
@@ -24,6 +27,9 @@ Options parseOptions(int argc, char** argv) {
             options.headless = true;
         } else if (std::strcmp(argv[index], "--watch") == 0) {
             options.watch = true;
+        } else if (std::strcmp(argv[index], "--max-frames") == 0 &&
+                   index + 1 < argc) {
+            options.maxFrames = std::strtoull(argv[++index], nullptr, 10);
         } else if (std::strcmp(argv[index], "--file") == 0 &&
                    index + 1 < argc) {
             options.filename = argv[++index];
@@ -75,6 +81,7 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
     runOptions.windowDesc.title = "Lumen Designer";
     runOptions.windowDesc.width = 1280;
     runOptions.windowDesc.height = 800;
+    runOptions.maxFrames = designerOptions.maxFrames;
     std::optional<FileWatcher> watcher;
     if (designerOptions.watch && !designerOptions.filename.empty()) {
         watcher.emplace(designerOptions.filename);

@@ -1078,8 +1078,8 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 当前已交付 D2 的基础出口：`DesignPreviewWorkbench` 串联 `.lumen`/设计文档读取、预览帧
 恢复、DocumentId 选择、CompileTrace 定位、大纲和只读属性投影；`lumen-designer` 示例已
 接入真实 `AppShell`，提供只读画布、大纲树、属性/诊断面板、主题/密度/交互状态预览、
-`--watch` 热重载和 `--headless` 冒烟。三桌面窗口 smoke 和完整 counter/gallery 样本覆盖
-仍待补齐。
+`--watch` 热重载、`--headless` 冒烟和 Linux/Xvfb 窗口 smoke。Windows/macOS 三桌面窗口
+现场验收和完整 counter/gallery 样本覆盖仍待补齐。
 
 ### 6.3 D3：可编辑设计器
 
@@ -1219,11 +1219,13 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   残留临时文件避让、迁移、迁移身份校验、迁移异常诊断、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `604` 个断言、`9` 个测试用例通过。
 - D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `54` 个断言、
   `4` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、解析/编译/读文件错误保留上一帧和显式会话清理。
+- D2 示例 smoke `ctest -R 'designer_(headless|window_smoke)'` 在 Debug/Release 均为 `2/2` 通过；
+  窗口用例经 `xvfb-run` 驱动 SDL 窗口并以 `--max-frames 3` 确定性退出。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `69/69` 通过，
-  另有 `designer_headless` 示例冒烟通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1033/1033`，
-  Release 配置为 `1035/1035`；
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `70/70` 通过，
+  另有 D2 headless/窗口示例 smoke 通过。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1034/1034`，
+  Release 配置为 `1036/1036`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
