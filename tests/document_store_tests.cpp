@@ -261,6 +261,30 @@ TEST_CASE("document store migration failure blocks publication",
     CHECK(result.diagnostics.front().code == "store.migration_failed");
 }
 
+TEST_CASE("document store rejects migrations that remove document identity",
+          "[designer][p5]") {
+    const fs::path dir = tempPath("migration-document-id");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const fs::path path = dir / "legacy.design";
+    const auto document = sampleDocument();
+    std::ofstream(path) << legacyVersionZero(document);
+
+    DocumentStore store;
+    store.registerMigration(0, [](DesignDocument& migrated,
+                                  std::vector<lumen::dsl::DesignError>&) {
+        migrated.documentId.clear();
+        migrated.schemaVersion = 1;
+        return true;
+    });
+    const auto result = store.load(path.string());
+    CHECK_FALSE(result.ok());
+    CHECK(result.document.root.id == 0);
+    REQUIRE_FALSE(result.diagnostics.empty());
+    CHECK(result.diagnostics.front().code == "store.document_id");
+}
+
 TEST_CASE("document store temporary names do not reuse legacy process-local paths",
           "[designer][p5]") {
     const fs::path dir = tempPath("temporary-name");

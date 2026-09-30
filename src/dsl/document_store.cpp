@@ -172,6 +172,13 @@ DocumentLoadResult DocumentStore::load(const std::string& path) const {
             valid = false;
             result.document = {};
         }
+        if (valid && result.document.documentId.empty()) {
+            result.diagnostics.push_back(errorAt(
+                "store.document_id", "<design>",
+                "migrated document must retain a documentId"));
+            valid = false;
+            result.document = {};
+        }
         if (valid) {
             const auto schemaDiagnostics = validateDesignDocument(result.document);
             result.diagnostics.insert(result.diagnostics.end(),
