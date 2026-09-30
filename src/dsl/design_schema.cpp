@@ -571,9 +571,15 @@ void addStyled(std::vector<PropertySpec>& properties) {
                                       const std::string& message,
                                       std::string path,
                                       std::string property = {}) {
-    DesignError error{code, "<design>", node.source.has_value()
-                                          ? node.source->begin
-                                          : SourcePos{},
+    SourcePos position = node.source.has_value() ? node.source->begin
+                                                  : SourcePos{};
+    if (!property.empty()) {
+        const auto source = node.propertySources.find(property);
+        if (source != node.propertySources.end()) {
+            position = source->second.begin;
+        }
+    }
+    DesignError error{code, "<design>", position,
                       message, {}, {}, node.id, std::move(path),
                       std::move(property)};
     return error;

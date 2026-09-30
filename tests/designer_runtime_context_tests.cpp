@@ -84,6 +84,8 @@ TEST_CASE("designer preview context reports missing references but keeps a frame
     REQUIRE(compiled.diagnostics.size() == 1);
     CHECK(compiled.diagnostics.front().code == "reference.missing");
     CHECK(compiled.diagnostics.front().property == "bind");
+    CHECK(compiled.diagnostics.front().pos ==
+          parsed.document.root.propertySources.at("bind").begin);
 }
 
 TEST_CASE("designer preview context rejects a wrong typed reference handle",

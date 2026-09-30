@@ -963,6 +963,13 @@ void fillTrace(const DesignNode& node, const std::string& parentIdentity,
     return std::nullopt;
 }
 
+[[nodiscard]] SourcePos referenceSourcePosition(const DesignNode& node,
+                                                const std::string& name) {
+    const auto source = node.propertySources.find(name);
+    if (source != node.propertySources.end()) return source->second.begin;
+    return node.source.has_value() ? node.source->begin : SourcePos{};
+}
+
 void validateRuntimeReferences(
     const DesignNode& node, const std::string& path,
     const DesignRuntimeContext& context, DesignRuntimeSession& session,
@@ -974,7 +981,8 @@ void validateRuntimeReferences(
             unresolved.insert(node.id);
             DesignError diagnostic = errorAt(
                 "compile.reference_kind", "<design>",
-                "reference kind '" + name + "' is not registered");
+                "reference kind '" + name + "' is not registered",
+                referenceSourcePosition(node, name));
             diagnostic.nodeId = node.id;
             diagnostic.nodePath = path;
             diagnostic.property = name;
@@ -984,7 +992,8 @@ void validateRuntimeReferences(
             unresolved.insert(node.id);
             DesignError diagnostic = errorAt(
                 "reference.unsupported", "<design>",
-                "reference kind '" + name + "' needs a component schema");
+                "reference kind '" + name + "' needs a component schema",
+                referenceSourcePosition(node, name));
             diagnostic.nodeId = node.id;
             diagnostic.nodePath = path;
             diagnostic.property = name;
@@ -995,7 +1004,8 @@ void validateRuntimeReferences(
                 unresolved.insert(node.id);
                 DesignError diagnostic = errorAt(
                     "reference.missing", "<design>",
-                    "reference '" + reference + "' was not found");
+                    "reference '" + reference + "' was not found",
+                    referenceSourcePosition(node, name));
                 diagnostic.nodeId = node.id;
                 diagnostic.nodePath = path;
                 diagnostic.property = name;
@@ -1004,7 +1014,8 @@ void validateRuntimeReferences(
                 unresolved.insert(node.id);
                 DesignError diagnostic = errorAt(
                     "reference.type", "<design>",
-                    "reference resolver returned the wrong typed handle");
+                    "reference resolver returned the wrong typed handle",
+                    referenceSourcePosition(node, name));
                 diagnostic.nodeId = node.id;
                 diagnostic.nodePath = path;
                 diagnostic.property = name;

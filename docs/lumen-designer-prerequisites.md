@@ -1195,10 +1195,10 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `85` 个断言、
   `9` 个测试用例通过，覆盖 12 个 L0 节点 round-trip、codec 扩展字段、独立 C++ builder
   Widget golden、codec 字符串边界和损坏诊断。
-- P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `2738` 个断言、
+- P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `2740` 个断言、
   `5` 个测试用例通过，覆盖 Widget 字段清单、访问器回读、registry 驱动编译、可选默认值、
   枚举 domain 和引用存储位置约束。
-- P3 专属筛选 `build-debug/tests/lumen-tests "[designer][p3]"` 为 `45` 个断言、
+- P3 专属筛选 `build-debug/tests/lumen-tests "[designer][p3]"` 为 `46` 个断言、
   `6` 个测试用例通过，覆盖类型化解析、错误引用隔离、session 关闭回调和 lease 生命周期。
 - P4 专属筛选 `build-debug/tests/lumen-tests "[designer][p4]"` 为 `62` 个断言、
   `5` 个测试用例通过，覆盖 source map、DPI/zoom/pan 变换、稳定 ID 结构编辑和布局 trace 定位。

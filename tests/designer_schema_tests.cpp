@@ -117,6 +117,13 @@ TEST_CASE("designer schema validates types, enums, ranges and structure",
     CHECK(std::all_of(diagnostics.begin(), diagnostics.end(), [](const auto& error) {
         return error.code == "schema.invalid_property";
     }));
+    const auto variantDiagnostic = std::find_if(
+        diagnostics.begin(), diagnostics.end(), [](const auto& error) {
+            return error.property == "variant";
+        });
+    REQUIRE(variantDiagnostic != diagnostics.end());
+    CHECK(variantDiagnostic->pos ==
+          valid.document.root.propertySources.at("variant").begin);
 
     auto wrongDomain = valid.document;
     wrongDomain.root.properties["variant"] = DesignValue{DesignValue::Variant{
