@@ -52,6 +52,38 @@ namespace {
     return *ids.begin();
 }
 
+[[nodiscard]] bool containsDocumentId(const DesignNode& node,
+                                      DesignNodeId id) {
+    if (node.id == id) return true;
+    for (const auto& child : node.children) {
+        if (containsDocumentId(child, id)) return true;
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            if (containsDocumentId(child, id)) return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] bool selectionMatchesDocument(
+    const DesignSelection& selection, const DesignDocument& document) {
+    for (const auto id : selection.ids) {
+        if (id == 0 || !containsDocumentId(document.root, id)) return false;
+    }
+    if (selection.primary.has_value() &&
+        !selection.ids.contains(*selection.primary)) {
+        return false;
+    }
+    if (selection.anchor.has_value() &&
+        !selection.ids.contains(*selection.anchor)) {
+        return false;
+    }
+    return !selection.captured.has_value() ||
+           selection.ids.contains(*selection.captured);
+}
+
 }  // namespace
 
 bool DesignSelectionModel::contains(const DesignNode& node, DesignNodeId id) {
@@ -219,7 +251,11 @@ bool DesignDocumentHistory::commit(
     DesignDocumentTransaction transaction) {
     if (transaction.failed() || transaction.empty() ||
         transaction.baseRevision_ != documentRevision_ ||
-        transaction.before_ != document) {
+        transaction.before_ != document ||
+        !selectionMatchesDocument(transaction.selectionBefore_,
+                                   transaction.before_) ||
+        !selectionMatchesDocument(transaction.selectionAfter_,
+                                   transaction.working_)) {
         return false;
     }
 

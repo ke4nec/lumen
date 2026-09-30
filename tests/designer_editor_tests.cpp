@@ -129,6 +129,26 @@ TEST_CASE("designer document transactions are atomic and restore selection",
     CHECK(document.pageName == "edited");
     CHECK(selection.primary == 3);
     CHECK(history.undoSize() == 1);
+
+    auto invalidSelection = history.begin(document, selection);
+    DesignDocumentCommand removeSelected;
+    removeSelected.label = "Remove selected";
+    removeSelected.affectedIds = {3};
+    removeSelected.apply = [](DesignDocument& candidate) {
+        candidate.root.children.pop_back();
+        return true;
+    };
+    removeSelected.revert = [](DesignDocument& candidate) {
+        candidate.root.children.push_back(
+            lumen::dsl::DesignNode{3, "Button"});
+        return true;
+    };
+    REQUIRE(invalidSelection.apply(std::move(removeSelected)));
+    CHECK_FALSE(history.commit(document, selection,
+                               std::move(invalidSelection)));
+    CHECK(document.root.children.size() == 2);
+    CHECK(selection.primary == 3);
+    CHECK(history.undoSize() == 1);
 }
 
 TEST_CASE("designer history merges commands and clears redo branches",
