@@ -250,8 +250,8 @@ class MenuBarController {
 - **栏 = 普通 Widget 子树**（Row + Ghost Button），参与 Tab 遍历与语义树；菜单面板 = overlay。栏不模态，菜单打开才模态。
 - 打开方式：点击栏项，或**菜单已打开时 hover 切换**相邻栏项（桌面惯例：拖过栏即切换）。
 - 菜单打开期间：Left/Right 切换顶级菜单（锚点随之移动），Esc 关闭并焦点恢复栏项。
-- Alt+mnemonic：栏拥有焦点或菜单打开时，`Alt + keyChar` 直接打开对应顶级菜单并高亮首项；mnemonic 大小写不敏感。
-- 键盘打开栏菜单的 F10/Alt 单键路径需要 `Key` 枚举扩展（当前无 F 键/Alt 键值），留开放问题（§14）。
+- Alt+mnemonic：栏拥有焦点或菜单打开时，`Alt + keyChar` 直接打开对应顶级菜单并高亮首项；mnemonic 大小写不敏感。菜单打开期间顶级优先于面板内项 mnemonic（栏拥有 Alt 命名空间；未命中字母回落面板项路径）。
+- F10（无修饰键）或裸 Alt（Alt 键自身 keyDown，事件 modifiers 恰为 Alt 位）切换菜单栏：关闭态打开首项，打开态关闭并恢复栏项焦点（2026-09-30 交付，`Key::F10`/`Key::Alt` 枚举扩展 + SDL 映射）。Shift+F10（上下文菜单惯例）与其他 Alt 和弦不在此路径；Alt+字母和弦中裸 Alt 先行开栏后由 mnemonic 路径切到目标菜单（终态一致）。空栏不消费该键。
 
 ## 8. 语义契约与键盘一致性
 
@@ -384,7 +384,7 @@ menu.open.fadeMs            = 120（对齐 tooltipFadeMs；reduceAnimation 归�
 | --- | --- | --- |
 | P1 上下文菜单 | PointerButton 穿透 + SecondaryPressSink + MenuItem/ContextMenuController（平面菜单：label/icon/checkable/shortcut/separator/disabled）+ 定位钳制 + 语义 + 测试 + settings 演示页 | 右键全链路（唤起→键盘→激活→关闭→焦点恢复）三层一致；既有哈希不变 |
 | P2 菜单栏与级联 | 子菜单懒构建与级联、MenuBarController（hover 切换/左右切换/Alt+mnemonic）、集合控件 setContextMenuProvider 便捷层 | 栏菜单与上下文菜单共享面板语义；mnemonic 键盘可达 |
-| P3 按需评估 | 触摸长按唤起、F10/Alt 单键（Key 枚举扩展）、专用滚动箭头区、mnemonic 下划线渲染 | — |
+| P3 按需评估 | 触摸长按唤起、专用滚动箭头区、mnemonic 下划线渲染 | F10/Alt 单键 2026-09-30 已交付（见 §7.2 与状态记录）；其余按需 |
 
 各阶段独立可交付；P2 依赖 P1 的面板构建与键盘状态机（`MenuPanelBuilder` 抽出为共享私有实现）。
 
@@ -398,7 +398,7 @@ menu.open.fadeMs            = 120（对齐 tooltipFadeMs；reduceAnimation 归�
 
 ## 14. 开放问题（实施前需确认）
 
-1. **F10/Alt 单键打开菜单栏**：`Key` 枚举当前无功能键与 Alt 键值；扩展枚举成本（平台映射三处）vs 收益（Windows 惯例）——建议 P3 评估，首版仅 Alt+字母。
+1. **F10/Alt 单键打开菜单栏**：✅ 已收口（2026-09-30）——`Key::F10`/`Key::Alt` 枚举扩展 + SDL 映射（`SDLK_F10`/`SDLK_LALT`/`SDLK_RALT`）+ `MenuBarController::handleKey` 切换路径。裸 Alt 取 keyDown 时刻切换（无 keyUp 公共事件，不做"释放时无其他按键才激活"的 Windows 精确语义；和弦终态一致，见 §7.2）。
 2. **mnemonic 下划线渲染**：TextStyle 无静态下划线通道（preedit underline 是 painter 专用）；选项：a) 扩展 TextStyle b) 首版不画下划线仅键盘生效。建议 b。
 3. **快捷键文本的平台书写**（Ctrl+S vs ⌘S vs Ctrl, S）：框架不做键名本地化，应用自填字符串（当前设计）；是否提供 `formatShortcut(KeyModifiers, char)` 便捷工具留按需。
 4. **触摸长按唤起**：PointerDevice::Touch + press 时长 > 500ms 判定（timestampMs 已携带）；与滚动/选区手势的冲突仲裁——建议随桌面触摸实测再定。

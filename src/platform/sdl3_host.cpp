@@ -109,6 +109,15 @@ core::Key mapSdlKey(SDL_Keycode key) {
             return core::Key::PageUp;
         case SDLK_PAGEDOWN:
             return core::Key::PageDown;
+        case SDLK_F10:
+            // 菜单 P3：F10 切换菜单栏（Shift+F10 上下文菜单惯例由应用
+            // 在 onKey 自行处理——此处只翻译键值，修饰键随事件携带）。
+            return core::Key::F10;
+        case SDLK_LALT:
+        case SDLK_RALT:
+            // 菜单 P3：Alt 键自身的 keyDown（裸 Alt 切换菜单栏）；
+            // Alt+字母和弦走 modifiers 位 + 字符键路径。
+            return core::Key::Alt;
         default:
             return core::Key::None;
     }

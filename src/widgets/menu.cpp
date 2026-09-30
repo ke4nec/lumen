@@ -1123,6 +1123,31 @@ void MenuBarController::close(app::AppShell& shell) {
 
 bool MenuBarController::handleKey(app::AppShell& shell, core::Key key,
                                   core::KeyModifiers mods, char keyChar) {
+    // 菜单 P3（menu-controls-design §7.2/§14.1 收口）：F10（无修饰键）
+    // 或裸 Alt（Alt 键自身 keyDown，事件 mods 恰为 Alt 位）切换菜单栏
+    // ——打开首项/关闭当前。Shift+F10（上下文菜单惯例）与其他 Alt 和
+    // 弦不在此路径；Alt+字母先行开栏后 mnemonic 路径把菜单切到目标项
+    //（终态与直接和弦一致）。
+    if (key == core::Key::F10 && mods == core::kModifierNone) {
+        if (menu_.isOpen()) {
+            close(shell);
+        } else if (!menus_.empty()) {
+            openMenu(shell, 0);
+        } else {
+            return false;  // 空栏：不消费，键继续走交互层。
+        }
+        return true;
+    }
+    if (key == core::Key::Alt && mods == core::kModifierAlt) {
+        if (menu_.isOpen()) {
+            close(shell);
+        } else if (!menus_.empty()) {
+            openMenu(shell, 0);
+        } else {
+            return false;
+        }
+        return true;
+    }
     if (menu_.isOpen()) {
         // 顶级菜单打开时 Left/Right = 切换顶级（子级级联交菜单面板）。
         if (menu_.levelCount() == 1 &&
@@ -1138,6 +1163,21 @@ bool MenuBarController::handleKey(app::AppShell& shell, core::Key key,
                 openMenu(shell, next);
             }
             return true;
+        }
+        // 菜单 P3（§7.2 补齐）：菜单打开时 Alt+助记字母直接切换到对应
+        // 顶级菜单（顶级优先于面板内项 mnemonic——栏拥有 Alt 命名空间；
+        // 未命中字母回落面板路径，项级 mnemonic 仍可用）。
+        if ((mods & core::kModifierAlt) != 0 && keyChar != 0) {
+            const char want = static_cast<char>(std::tolower(
+                static_cast<unsigned char>(keyChar)));
+            for (std::size_t i = 0; i < menus_.size(); ++i) {
+                if (menus_[i].mnemonic != 0 &&
+                    std::tolower(static_cast<unsigned char>(
+                        menus_[i].mnemonic)) == want) {
+                    openMenu(shell, i);
+                    return true;
+                }
+            }
         }
         return menu_.handleKey(shell, key, mods, keyChar);
     }

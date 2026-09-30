@@ -1011,6 +1011,52 @@ TEST_CASE("sdl3_host_tray_smoke_and_hotkeys_structured", "[platform][m16]") {
 // 平台不编译本组用例。
 #if defined(__linux__)
 
+// 菜单 P3（menu-controls-design §7.2）：F10/裸 Alt 的 SDL 翻译。
+TEST_CASE("sdl3_host_maps_f10_and_alt_keys", "[platform][menu]") {
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    lumen::platform::Sdl3ApplicationHost host;
+    REQUIRE(host.initialize());
+    const auto id = host.createWindow(WindowDesc{});
+    REQUIRE(id.has_value());
+    core::HostEvent event{};
+    while (host.pollEvent(event)) {
+    }
+
+    const struct {
+        SDL_Keycode keycode;
+        SDL_Keymod mods;
+        core::Key expectedKey;
+        core::KeyModifiers expectedMods;
+    } cases[] = {
+        {SDLK_F10, SDL_KMOD_NONE, core::Key::F10, core::kModifierNone},
+        {SDLK_LALT, SDL_KMOD_LALT, core::Key::Alt, core::kModifierAlt},
+        {SDLK_RALT, SDL_KMOD_RALT, core::Key::Alt, core::kModifierAlt},
+    };
+    for (const auto& item : cases) {
+        SDL_Event sdl{};
+        sdl.type = SDL_EVENT_KEY_DOWN;
+        sdl.key.windowID = static_cast<SDL_WindowID>(id->value);
+        sdl.key.key = item.keycode;
+        sdl.key.mod = item.mods;
+        REQUIRE(SDL_PushEvent(&sdl));
+        core::HostEvent out{};
+        bool seen = false;
+        while (host.pollEvent(out)) {
+            if (out.type == core::HostEventType::KeyDown) {
+                seen = true;
+                CHECK(out.keyCode == item.expectedKey);
+                CHECK(out.modifiers == item.expectedMods);
+            }
+        }
+        REQUIRE(seen);
+    }
+    host.shutdown();
+}
+
 TEST_CASE("x11_hotkey_mapping_translates_core_keys", "[platform][m16]") {
     namespace hotkeys = lumen::platform::hotkeys;
     using lumen::core::Key;

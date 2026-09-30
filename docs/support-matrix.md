@@ -94,7 +94,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | R4 桌面系统集成 | 部分接口已存在 | 全屏/置顶/OS 模态/托盘契约与 SDL 实现已有（headless 已验证）；全局快捷键 Linux X11 后端已交付（XGrabKey 独立连接，Xvfb XTEST 端到端通过；Wayland 结构化不可用；Win32/macOS 后端未实现——能力位 false + 结构化 Unavailable）；macOS 原生菜单栏/交通灯未实现 |
 | R5 文本与剪贴板深度 | headless 已验证 | G-3 剪贴板 MIME 数据层/图片与自定义格式/变更广播有 headless 断言；三桌面真实 IME 与跨应用复制粘贴待现场 |
 | R6 开发者诊断 | dump 与调试图层已交付（headless 已验证） | `dumpRenderTree`/`dumpSemanticsTree`/`dumpStyleTree` + settings/gallery 三旗标 + 帧读数 HUD + bounds/damage 调试图层（`--bounds-overlay`/`--damage-overlay`；纯绘制零额外帧）2026-09-30 交付；分配量维度未接入（renderer stats 无该维度）；inspector 交互式节点查看未做 |
-| R7 控件细节 | 按需池交付中 | 已交付 auto-hide 滚动条、Splitter 塌缩/KeepRatio、DataGrid 筛选接线、可编辑 ComboBox、DialogHost 便利层、ColorPicker、Grid 跨行列（2026-09-30）；RTL 镜像、双轴联滚、菜单 mnemonic、行内编辑等在池 |
+| R7 控件细节 | 按需池交付中 | 已交付 auto-hide 滚动条、Splitter 塌缩/KeepRatio、DataGrid 筛选接线、可编辑 ComboBox、DialogHost 便利层、ColorPicker、Grid 跨行列、菜单 F10/裸 Alt 单键切换 + 打开态 Alt+mnemonic 顶级切换（2026-09-30）；RTL 镜像、双轴联滚、行内编辑、触摸长按唤起等在池 |
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
 | R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；页面壳/状态摘要等组合组件未提取 |
 | R10 文档与证据同步 | 进行中 | 本表与待验收登记即该缺口的 2026-09-30 批次；后续状态变化须同一变更内更新 |

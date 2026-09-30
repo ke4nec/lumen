@@ -283,6 +283,26 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 - 未交付池项（更新）：inspector 交互式节点查看（选中 → 节点信息面板）、
   语义树视图、分配量统计——M18 §6 编号继续。
 
+### 菜单 F10/Alt 单批状态记录（2026-09-30，menu-controls P3 首项）
+
+- 变更（menu-controls-design §7.2/§14.1 收口）：`core::Key::F10`/`Alt`
+  枚举扩展 + SDL 映射（F10/LALT/RALT；Shift+F10 上下文菜单惯例不在该
+  路径——只翻译键值，修饰键随事件携带）；`MenuBarController::
+  handleKey` 切换路径（F10 无修饰键 / 裸 Alt keyDown 且 mods 恰为 Alt
+  位：关闭态开首项、打开态关闭恢复栏项焦点；空栏不消费）+ 打开态
+  Alt+mnemonic 顶级切换补齐（§7.2 原文"菜单打开时"语义——顶级优先于
+  面板内项 mnemonic，未命中字母回落面板路径）。
+- 边界（如实）：无 keyUp 公共事件——裸 Alt 在 keyDown 时刻切换，不做
+  Windows"释放时无其他按键才激活"的精确语义；Alt+字母和弦中裸 Alt 先
+  行开栏后 mnemonic 切到目标菜单，终态一致（单测断言）；mnemonic 下划
+  线渲染维持 §14.2 选项 b（不画，键盘生效）；触摸长按唤起维持 §14.4
+  （随桌面触摸实测再定）。
+- 测试：`menu_bar_f10_and_bare_alt_toggle`（开/关/焦点恢复、Shift+F10
+  与 Ctrl+Alt 不消费、Alt 和弦终态一致 + provider 切换断言）+
+  `sdl3_host_maps_f10_and_alt_keys`（SDL 事件推送翻译 F10/LALT/RALT
+  键值与修饰位）。Gallery/Settings 菜单栏经既有 onKey 转发自动获得该
+  行为（无需应用改动）。
+
 ### M17 进行中状态记录（2026-09-29，池式首项交付）
 
 - 完成日期：auto-hide 滚动条 2026-09-29（提交 859c58b）；其余池项未交付（见下）。

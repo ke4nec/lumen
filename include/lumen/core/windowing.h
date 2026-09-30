@@ -33,6 +33,11 @@ enum class Key : int {
     PageUp,
     PageDown,
     Backtab,  // Shift-Tab（焦点反向遍历）
+    // 菜单 P3（menu-controls-design §7.2/§14.1）：F10/裸 Alt 切换菜单
+    // 栏。Alt 为 Alt 键自身的 keyDown（事件 modifiers 此时已含 Alt 位）
+    // ——Alt+字母和弦仍是 mods 位 + 字符键，不经该值。
+    F10,
+    Alt,
 };
 
 // 稳定窗口标识。事件、资源上传、语义节点与诊断都通过它关联窗口。

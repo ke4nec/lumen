@@ -1211,3 +1211,16 @@ TEST_CASE("gallery_layout_grid_span_sample_geometry", "[gallery][span]") {
     // 声明给出，行高差额走末跨行）。
     CHECK(tall->size.height > single->size.height);
 }
+
+// 菜单 P3（menu-controls-design §7.2）：F10 经 AppShell onKey 链路切换
+// Gallery 菜单栏（宿主映射→shell.keyDown→onKey→MenuBarController）。
+TEST_CASE("gallery_menu_bar_f10_toggles", "[gallery][menu]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 900.0F});
+    (void)app.renderFrame();
+    CHECK_FALSE(app.menuBarOpen());
+    app.keyDown(Key::F10);
+    CHECK(app.menuBarOpen());
+    app.keyDown(Key::F10);
+    CHECK_FALSE(app.menuBarOpen());
+}

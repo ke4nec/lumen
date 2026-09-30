@@ -9,6 +9,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <functional>
+
 #include <string>
 #include <vector>
 
@@ -575,6 +577,71 @@ TEST_CASE("menu_bar_alt_mnemonic_opens_menu", "[widgets][menu]") {
     bar.handleKey(shell, Key::Enter);
     CHECK(fired == "new");
     CHECK(!bar.isOpen());
+}
+
+// 菜单 P3（menu-controls-design §7.2/§14.1 收口）：F10/裸 Alt 切换菜
+// 单栏；Shift+F10 与其他 Alt 和弦不在该路径；Alt 和弦先行开栏后
+// mnemonic 仍切到目标菜单（终态一致）。
+TEST_CASE("menu_bar_f10_and_bare_alt_toggle", "[widgets][menu]") {
+    app::AppShell shell{MenuApp::makeConfig()};
+    shell.setView(Size{800.0F, 600.0F});
+    MenuBarController bar;
+    bar.setMenus({{"file", "文件(F)", 'f'}, {"help", "帮助(H)", 'h'}});
+    std::string lastProviderId;
+    bar.setMenuProvider([&lastProviderId](const std::string& id) {
+        lastProviderId = id;
+        if (id == "file") {
+            return MenuItems{MenuItem{.id = "new", .label = "新建窗口"}};
+        }
+        return MenuItems{MenuItem{.id = "about", .label = "关于帮助"}};
+    });
+    bar.attach(shell);
+    shell.swapRoot(makeColumn({bar.build(shell.theme())},
+                              MainAxisAlignment::Start,
+                              CrossAxisAlignment::Start));
+    shell.rebuildIfDirty();
+
+    // F10（无修饰键）：打开首项并高亮；再按关闭、焦点恢复栏项。
+    CHECK(bar.handleKey(shell, Key::F10));
+    REQUIRE(bar.isOpen());
+    CHECK(shell.focus().focusedKey() == "menubar:m0:i0");
+    CHECK(bar.handleKey(shell, Key::F10));
+    CHECK(!bar.isOpen());
+    CHECK(shell.focus().focusedKey() == "menu:bar:file");
+
+    // 裸 Alt（Alt 键自身 keyDown，mods 恰为 Alt 位）：同路径。
+    CHECK(bar.handleKey(shell, Key::Alt, core::kModifierAlt));
+    CHECK(bar.isOpen());
+    CHECK(bar.handleKey(shell, Key::Escape));
+    CHECK(!bar.isOpen());
+
+    // Shift+F10（上下文菜单惯例）与 Ctrl+Alt 不消费、不开栏。
+    CHECK_FALSE(bar.handleKey(shell, Key::F10, core::kModifierShift));
+    CHECK_FALSE(bar.handleKey(shell, Key::Alt,
+                              core::kModifierAlt | core::kModifierCtrl));
+    CHECK(!bar.isOpen());
+
+    // Alt 和弦终态一致：裸 Alt 开栏（首项）后 Alt+H 切到 help 菜单。
+    CHECK(bar.handleKey(shell, Key::Alt, core::kModifierAlt));
+    CHECK(lastProviderId == "file");  // 裸 Alt 开首项。
+    CHECK(bar.handleKey(shell, Key::None, core::kModifierAlt, 'h'));
+    REQUIRE(bar.isOpen());
+    CHECK(lastProviderId == "help");  // Alt+H 切到 help 菜单。
+    // 面板物化 help 的项（行 key 与文本子节点都在 overlay 子树）。
+    REQUIRE(shell.overlayRoot() != nullptr);
+    std::function<bool(const RenderNode&)> hasAbout =
+        [&](const RenderNode& node) -> bool {
+        if (node.text == "关于帮助") {
+            return true;
+        }
+        for (const auto& child : node.children) {
+            if (hasAbout(child)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    CHECK(hasAbout(*shell.overlayRoot()));
 }
 
 TEST_CASE("menu_bar_hover_switches_open_top_level_menu",
