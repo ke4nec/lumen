@@ -243,6 +243,16 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 - 验证边界（双会话并行）：G-5 pinch 会话在 app_shell/interaction 上持续编辑期间，全量 ctest 无法稳定运行；本批提交均不依赖未提交代码且经 `g++ -fsyntax-only` 编译级验证；909/909 为 M17-a review 修复后、G-5 大面积展开前的完整回归时点。最终回归以并行 G-5 收口后的全量 ctest 为准。
 - 未交付池项（更新）：双轴联滚（需 ScrollView 双 offset 数据结构，超薄契约范围，维持未交付）、RTL 镜像、Grid 跨行列合并、菜单 mnemonic、Tree/List 行内编辑、DataGrid 筛选面板 UI/条件模型、inspector GUI/帧统计 overlay。
 
+### R6 首批状态记录（2026-09-30，帧读数 HUD 与样式导出）
+
+- 变更：
+  - **样式导出**（M18 §6.4 三旗标补齐）：`dumpStyleTree`（tree_dump.h；节点行 + `style:` 前缀样式行，颜色 `#rrggbbaa`，组件专有段覆盖 variant 全集）+ settings `--dump-style` + gallery `--dump-tree`/`--dump-semantics`/`--dump-style` 平价（1024x768 首帧）。
+  - **帧读数 HUD**（M18 §6.3 首版）：`AppShell::setFrameStatsCapture/frameDebugSnapshot`（采样默认关闭零开销——关闭态 frame hash 单测断言不变；开启采样 reconcile/layout 阶段耗时、fps 环（64 帧 steady_clock 环，跨度不足 1s 用平均帧率）、主树+overlay 节点计数）+ `app::makeFrameStatsOverlay`（frame_debug.h；Theme token 派生配色，全子树 excludeFromSemantics/Focus）+ `RunOptions.frameDebugOverlay`（runApp 装配非模态视觉 overlay 并每调度帧标脏刷新；settings/gallery `--frame-overlay`）。
+- 测试：dump_style 确定性/组件覆盖/行数（app_shell_tests [m18]）；采样只读（hash 不变）+ HUD 组合/语义排除 + runApp 装配/默认关闭对照（[app][r6]）；gallery 三 dump 平价（gallery_integration_tests [m18]）。全量 ctest 940/940（本批 +5）。
+- 边界（如实）：读数滞后一帧（overlay builder 重建期求值）；paint/submit/GPU wait 来自 renderer stats、reconcile/layout 为帧管线内 steady_clock 采样；分配量维度未接入（renderer stats 无该维度，M18 §6.3 的该项维持未交付）；`--frame-overlay` 开启态帧无确定性 hash（读数含真实时间），关闭态不变；HUD 与菜单/拖拽 overlay 共用视觉槽位（互斥）——菜单打开或拖放会话期间顶替 HUD，关闭后不自动恢复（重启开关恢复）。
+- 未交付池项（更新）：inspector GUI（节点选中 → bounds overlay）、bounds/damage overlay、语义树视图、分配量统计——后续增量继续走 M18 §6 编号。
+- 用法收录：`build-commands.md` §2（dump 三旗标 + `--frame-overlay` 行 + 确定性/golden 说明）。
+
 ### M15–M19 实现 review 记录（2026-09-30，逐提交复审）
 
 全量重读 M15（拖放四提交）/M16（窗口/托盘/CI）/M17（auto-hide/splitter/筛选）/

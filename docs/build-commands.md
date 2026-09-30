@@ -45,6 +45,8 @@
 | Skia 光栅 | `cmake -S . -B build-skia -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON`<br>`cmake --build build-skia --config Release`（Windows 必须 Release）<br>`ctest --test-dir build-skia -C Release`（含 CPU/Skia 一致性）<br>`./build-skia/examples/counter/lumen-counter --renderer skia` |
 | Skia GPU（Ganesh+GL） | `cmake -S . -B build-gpu -DCMAKE_BUILD_TYPE=Release -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON`<br>`cmake --build build-gpu --config Release`<br>`./build-gpu/examples/counter/lumen-counter --renderer gpu --diagnostics` |
 | headless smoke | `./build-debug/examples/counter/lumen-counter --headless`<br>`./build-debug/examples/settings/lumen-settings --headless`<br>`./build-debug/examples/gallery/lumen-gallery --headless` |
+| headless 树/语义/样式导出（R6/M18） | `./build-debug/examples/settings/lumen-settings --dump-tree`<br>`./build-debug/examples/settings/lumen-settings --dump-semantics`<br>`./build-debug/examples/settings/lumen-settings --dump-style`<br>`./build-debug/examples/gallery/lumen-gallery --dump-tree`（gallery 同三旗标；确定性文本输出到 stdout，可直接 diff 做 golden 对照，单测 `app_shell_tests`/`gallery_integration_tests` 同源断言） |
+| 帧读数 HUD（R6） | `./build-debug/examples/settings/lumen-settings --frame-overlay`<br>`./build-debug/examples/gallery/lumen-gallery --frame-overlay`（窗口模式左上角面板：reconcile/layout/paint/submit/GPU wait、fps、节点/命令数与当前 renderer；读数滞后一帧，显式开启才有额外帧与采样开销） |
 | Gallery 固定视觉样本 | `./build-debug/examples/gallery/lumen-gallery --headless --sample-route inputs --sample-key samples-Switch-card --width 600 --height 700 --font-scale 2 --dpi 1.25 --system-fonts --dump-frame build-debug/switch.rgba` |
 | 窗口 smoke（Linux） | `xvfb-run -a timeout 5 ./build-debug/examples/counter/lumen-counter \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build-debug/examples/settings/lumen-settings \|\| test $? -eq 124`<br>`xvfb-run -a timeout 5 ./build-debug/examples/gallery/lumen-gallery \|\| test $? -eq 124` |
 | 窗口 smoke（macOS 无窗口服务器） | `SDL_VIDEODRIVER=dummy ./build-debug/examples/counter/lumen-counter & pid=$!; sleep 10; kill -0 "$pid"`（见 `macos.yml`） |
@@ -68,6 +70,13 @@
   不同场景，禁止直接比较数值（见 `perf-baselines/README.md`）。
 - M7 只允许引用 `docs/perf-baselines/v0.2-cpu-scene.json` 和上表 canonical
   命令做 CPU 对比；Skia/GPU 和新增场景以各自首次归档报告为基线。
+- 三个 dump 旗标（`--dump-tree`/`--dump-semantics`/`--dump-style`）共享同一
+  先序遍历与文本格式（`include/lumen/app/tree_dump.h`）：节点行 + 样式行
+  （`style:` 前缀）、颜色为 `#rrggbbaa`；同一构建两次运行逐字节相等，格式
+  变更必须同步单测 golden。导出走首帧固定视口（settings 800x600、gallery
+  1024x768），不依赖路由参数；`--dump-frame` 像素采样（§3）是另一条链路。
+- `--frame-overlay` 仅窗口模式有意义（HUD 随每调度帧刷新）；开启后帧不再
+  具备确定性 hash（读数含真实时间），默认关闭时帧节奏与 hash 不变。
 
 ## 3. Gallery 与历史 SDL-free 兼容检查
 

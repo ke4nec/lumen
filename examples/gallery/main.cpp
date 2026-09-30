@@ -15,6 +15,7 @@
 #include "gallery_app.h"
 #include "gallery_icon.h"
 #include "lumen/app/app_shell.h"
+#include "lumen/app/tree_dump.h"
 #include "lumen/platform/sdl3_host.h"
 #include "lumen/text/system_font_manager.h"
 
@@ -26,6 +27,12 @@ struct Options {
     bool headless{false};
     bool diagnostics{false};
     std::string dumpFrame{};
+    // R6/M18：与 settings 同源的确定性导出（首帧 → stdout → 退出码 0）。
+    bool dumpTree{false};
+    bool dumpSemantics{false};
+    bool dumpStyle{false};
+    // R6：帧读数 HUD（窗口模式；runApp 装配非模态 overlay）。
+    bool frameOverlay{false};
     std::uint64_t maxFrames{0};
     std::string sampleRoute{};
     std::string sampleKey{};
@@ -46,6 +53,14 @@ Options parseOptions(int argc, char** argv) {
             options.diagnostics = true;
         } else if (flag == "--dump-frame" && i + 1 < argc) {
             options.dumpFrame = argv[++i];
+        } else if (flag == "--dump-tree") {
+            options.dumpTree = true;
+        } else if (flag == "--dump-semantics") {
+            options.dumpSemantics = true;
+        } else if (flag == "--dump-style") {
+            options.dumpStyle = true;
+        } else if (flag == "--frame-overlay") {
+            options.frameOverlay = true;
         } else if (flag == "--sample-route" && i + 1 < argc) {
             options.sampleRoute = argv[++i];
         } else if (flag == "--sample-key" && i + 1 < argc) {
@@ -424,6 +439,8 @@ int runWindowed(GalleryApp& app, const Options& options) {
     runOptions.windowDesc.transparent = true;
     runOptions.diagnostics = options.diagnostics;
     runOptions.maxFrames = options.maxFrames;
+    // R6：帧读数 HUD（显式开启；默认关闭零额外帧）。
+    runOptions.frameDebugOverlay = options.frameOverlay;
     // 窗口/任务栏图标（Core Dark 方向，design/gallery-icon.html 01 与
     // docs/lumen-gallery-icon-design.md）：按显示缩放现场光栅化任务栏
     // 主档 48——DPI>1 时直接产出更大母版（≥48 比例几何），系统不放大
@@ -489,6 +506,24 @@ int main(int argc, char** argv) {
     const Options options = parseOptions(argc, argv);
     GalleryApp app;
     try {
+        // R6/M18：确定性导出（与 settings 同链：首帧 → stdout → 退出）。
+        // 与 --dump-frame 采样路由不同，导出固定使用首帧与 1024x768 视
+        // 口——golden 对照不依赖路由参数。
+        if (options.dumpSemantics || options.dumpTree || options.dumpStyle) {
+            app.setView(lumen::core::Size{1024.0F, 768.0F});
+            (void)app.renderFrame();
+            std::string dump;
+            if (options.dumpSemantics) {
+                dump = lumen::app::dumpSemanticsTree(
+                    app.shell().buildSemanticsSnapshot());
+            } else if (options.dumpTree) {
+                dump = lumen::app::dumpRenderTree(app.root());
+            } else {
+                dump = lumen::app::dumpStyleTree(app.root());
+            }
+            std::fwrite(dump.data(), 1, dump.size(), stdout);
+            return 0;
+        }
         if (!options.sampleRoute.empty()) {
             // 采样导出是一次性动作（docs/build-commands.md 的用法均配
             // --headless）：无论成败都直接退出。旧逻辑在非 headless 时

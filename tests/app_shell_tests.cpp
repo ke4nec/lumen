@@ -17,6 +17,7 @@
 #include <string>
 
 #include "lumen/app/app_shell.h"
+#include "lumen/app/frame_debug.h"
 #include "lumen/app/tree_dump.h"
 #include "lumen/core/render_node.h"
 #include "lumen/core/state.h"
@@ -1331,4 +1332,148 @@ TEST_CASE("dump_semantics_tree_is_deterministic_and_typed",
     CHECK(first.find("label=\"OK\"") != std::string::npos);
     CHECK(first.find("actions=focus|activate") != std::string::npos);
     CHECK(first.find("children=") != std::string::npos);
+}
+
+// --- R6：ResolvedStyle 导出（dumpStyleTree；settings --dump-style 同源） ---
+
+TEST_CASE("dump_style_tree_is_deterministic_and_covers_components",
+          "[app][m18]") {
+    lumen::app::ShellConfig config;
+    config.initialView = {200.0F, 120.0F};
+    config.build = [] {
+        return lumen::core::makeColumn(
+            {lumen::core::withKey(lumen::core::makeButton("OK"), "ok-btn"),
+             lumen::core::withKey(lumen::core::makeText("label"), "t1"),
+             lumen::core::withKey(
+                 lumen::core::makeCheckbox("check", "flag"), "c1")});
+    };
+    lumen::app::AppShell shell(config);
+    (void)shell.renderFrame();
+
+    const std::string first = lumen::app::dumpStyleTree(shell.root());
+    const std::string second = lumen::app::dumpStyleTree(shell.root());
+    CHECK(first == second);  // 确定性（无指针/时间）。
+    CHECK(first.find("style=button") != std::string::npos);
+    CHECK(first.find("style=common") != std::string::npos);
+    CHECK(first.find("style=checkbox") != std::string::npos);
+    // 样式行可解析：颜色十六进制 + 组件专有字段 + 度量段。
+    CHECK(first.find("style: bg=#") != std::string::npos);
+    CHECK(first.find("checked=") != std::string::npos);
+    CHECK(first.find("indicator=") != std::string::npos);
+    CHECK(first.find(" gap=") != std::string::npos);
+    // 与 dumpRenderTree 同树同序：节点数一致（每节点一行节点 + 一行样式）。
+    const std::string tree = lumen::app::dumpRenderTree(shell.root());
+    CHECK(std::count(first.begin(), first.end(), '\n') ==
+          2 * std::count(tree.begin(), tree.end(), '\n'));
+}
+
+// --- R6：帧统计采样（默认关闭零开销；开启只读，不改变渲染输出） ---
+
+TEST_CASE("frame_stats_capture_preserves_frame_hash_when_enabled",
+          "[app][r6]") {
+    const auto makeConfig = [] {
+        lumen::app::ShellConfig config;
+        config.initialView = {200.0F, 100.0F};
+        config.build = [] {
+            return lumen::core::makeColumn(
+                {lumen::core::makeButton("OK"),
+                 lumen::core::makeText("label")});
+        };
+        return config;
+    };
+    lumen::app::AppShell plain(makeConfig());
+    const std::uint64_t hash = plain.renderFrame();
+
+    lumen::app::AppShell captured(makeConfig());
+    captured.setFrameStatsCapture(true);
+    CHECK(captured.renderFrame() == hash);  // 采样只读。
+
+    const lumen::app::FrameDebugSnapshot snapshot =
+        captured.frameDebugSnapshot();
+    CHECK(snapshot.frameIndex == 1);
+    CHECK(snapshot.nodeCount > 0);
+    CHECK(snapshot.commandCount > 0);
+    CHECK(snapshot.backendName == "cpu");
+    CHECK(snapshot.reconcileMs >= 0.0);
+    CHECK(snapshot.layoutMs >= 0.0);
+    CHECK(snapshot.paintMs >= 0.0);
+    CHECK(snapshot.fps == 0.0);  // 单帧样本不足以推导 fps。
+
+    // 未开启采样：阶段/计数字段保持 0（零开销路径不产出数据）。
+    const lumen::app::FrameDebugSnapshot idle = plain.frameDebugSnapshot();
+    CHECK(idle.frameIndex == 1);
+    CHECK(idle.nodeCount == 0);
+    CHECK(idle.reconcileMs == 0.0);
+    CHECK(idle.layoutMs == 0.0);
+}
+
+TEST_CASE("frame_stats_overlay_composes_excluded_from_semantics",
+          "[app][r6]") {
+    lumen::app::ShellConfig config;
+    config.initialView = {200.0F, 120.0F};
+    config.build = [] { return lumen::core::makeText("content"); };
+    lumen::app::AppShell shell(config);
+    (void)shell.renderFrame();
+
+    lumen::app::FrameDebugSnapshot snapshot;
+    snapshot.frameIndex = 7;
+    snapshot.fps = 60.0;
+    snapshot.nodeCount = 12;
+    snapshot.backendName = "cpu";
+    snapshot.fullFrameFallback = true;
+    snapshot.fallbackReason = "damage-invalid";
+    shell.setVisualOverlayBuilder([&snapshot] {
+        return lumen::app::makeFrameStatsOverlay(
+            snapshot,
+            lumen::app::FrameOverlayStyle::fromTheme(
+                lumen::style::Theme::dark()));
+    });
+    shell.markDirty();
+    (void)shell.renderFrame();
+
+    REQUIRE(shell.overlayRoot() != nullptr);
+    CHECK(lumen::core::findNodeByKey(*shell.overlayRoot(),
+                                     "frame-stats-panel") != nullptr);
+    CHECK(lumen::core::findNodeByKey(*shell.overlayRoot(),
+                                     "frame-stats-stages") != nullptr);
+    CHECK(lumen::core::findNodeByKey(*shell.overlayRoot(),
+                                     "frame-stats-fallback") != nullptr);
+    // 诊断图层不进语义树（excludeFromSemantics 全子树）。
+    const std::string semantics = lumen::app::dumpSemanticsTree(
+        shell.buildSemanticsSnapshot());
+    CHECK(semantics.find("lumen frame") == std::string::npos);
+    CHECK(semantics.find("content") != std::string::npos);
+}
+
+TEST_CASE("run_app_installs_frame_debug_overlay_when_enabled",
+          "[app][r6]") {
+    lumen::platform::FakeApplicationHost host;
+    lumen::app::ShellConfig config;
+    config.initialView = lumen::core::Size{200.0F, 150.0F};
+    config.build = [] { return lumen::core::Widget{}; };
+    lumen::app::AppShell shell{config};
+    REQUIRE(host.initialize());
+
+    lumen::app::RunOptions options;
+    options.maxFrames = 3;
+    options.frameDebugOverlay = true;
+    CHECK(lumen::app::runApp(shell, host, options) == 0);
+    // HUD 装配 + 采样开启：overlay 槽位被占用且面板已物化。
+    CHECK(shell.hasOverlay());
+    REQUIRE(shell.overlayRoot() != nullptr);
+    CHECK(lumen::core::findNodeByKey(*shell.overlayRoot(),
+                                     "frame-stats-panel") != nullptr);
+    const lumen::app::FrameDebugSnapshot snapshot =
+        shell.frameDebugSnapshot();
+    CHECK(snapshot.frameIndex >= 1);
+    CHECK(snapshot.nodeCount > 0);
+    // 关闭旗标（默认）不装配：独立壳 + Fake host 对照。
+    lumen::platform::FakeApplicationHost plainHost;
+    lumen::app::AppShell plainShell{config};
+    REQUIRE(plainHost.initialize());
+    lumen::app::RunOptions plainOptions;
+    plainOptions.maxFrames = 2;
+    CHECK(lumen::app::runApp(plainShell, plainHost, plainOptions) == 0);
+    CHECK_FALSE(plainShell.hasOverlay());
+    CHECK(plainShell.frameDebugSnapshot().nodeCount == 0);
 }

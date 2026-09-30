@@ -27,6 +27,10 @@ struct Options {
     bool dumpTree{false};
     // M18：语义树导出（buildSemanticsSnapshot → dumpSemanticsTree）。
     bool dumpSemantics{false};
+    // R6：ResolvedStyle 导出（dumpStyleTree；与 --dump-tree 同树同序）。
+    bool dumpStyle{false};
+    // R6：帧读数 HUD（窗口模式；runApp 装配非模态 overlay）。
+    bool frameOverlay{false};
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -41,6 +45,10 @@ Options parseOptions(int argc, char** argv) {
             options.dumpTree = true;
         } else if (flag == "--dump-semantics") {
             options.dumpSemantics = true;
+        } else if (flag == "--dump-style") {
+            options.dumpStyle = true;
+        } else if (flag == "--frame-overlay") {
+            options.frameOverlay = true;
         }
     }
     return options;
@@ -225,6 +233,8 @@ int runWindowed(SettingsApp& app, const Options& options) {
     runOptions.windowDesc.width = 800;
     runOptions.windowDesc.height = 600;
     runOptions.diagnostics = options.diagnostics;
+    // R6：帧读数 HUD（显式开启；默认关闭零额外帧）。
+    runOptions.frameDebugOverlay = options.frameOverlay;
     // G-2：崩溃兜底与持久日志（平台惯例目录；runApp 安装/清理，检测到
     // 上次崩溃时输出 [diag] last-run-crashed 行并回传摘要）。
     runOptions.diagnosticsDirectory =
@@ -288,6 +298,14 @@ int main(int argc, char** argv) {
             app.setView(lumen::core::Size{800.0F, 600.0F});
             (void)app.renderFrame();
             const std::string dump = lumen::app::dumpRenderTree(app.root());
+            std::fwrite(dump.data(), 1, dump.size(), stdout);
+            return 0;
+        }
+        if (options.dumpStyle) {
+            // R6：确定性样式导出（首帧 → stdout → 退出码 0）。
+            app.setView(lumen::core::Size{800.0F, 600.0F});
+            (void)app.renderFrame();
+            const std::string dump = lumen::app::dumpStyleTree(app.root());
             std::fwrite(dump.data(), 1, dump.size(), stdout);
             return 0;
         }

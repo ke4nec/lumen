@@ -11,6 +11,7 @@
 
 #include "gallery_app.h"
 #include "lumen/accessibility/semantics.h"
+#include "lumen/app/tree_dump.h"
 #include "lumen/core/interaction.h"
 #include "lumen/core/scrollbar.h"
 #include "lumen/core/state.h"
@@ -1155,4 +1156,30 @@ TEST_CASE("gallery_inventory_control_tiles_use_compact_tiers",
     const auto* tileStatus = findNodeByKey(app.root(), "gal-tile-sb");
     REQUIRE(tileStatus != nullptr);
     CHECK(tileStatus->size.height == Catch::Approx(24.0F).margin(0.01F));
+}
+
+// R6/M18：确定性导出平价（gallery --dump-tree/--dump-semantics/--dump-style
+// 与 settings 同链同格式；gallery_app.h 首帧同源）。
+TEST_CASE("gallery_deterministic_dumps_cover_components",
+          "[gallery][m18]") {
+    GalleryApp app;
+    app.setView({1024.0F, 768.0F});
+    (void)app.renderFrame();
+
+    const std::string tree = app::dumpRenderTree(app.root());
+    const std::string style = app::dumpStyleTree(app.root());
+    const std::string semantics =
+        app::dumpSemanticsTree(app.shell().buildSemanticsSnapshot());
+    CHECK(app::dumpStyleTree(app.root()) == style);   // 确定性。
+    CHECK(app::dumpRenderTree(app.root()) == tree);
+    CHECK(!tree.empty());
+    CHECK(!semantics.empty());
+
+    // 同树同序：样式导出的行数 = 2 × 节点数（节点行 + 样式行）。
+    CHECK(std::count(style.begin(), style.end(), '\n') ==
+          2 * std::count(tree.begin(), tree.end(), '\n'));
+    // Gallery 首页覆盖多组件样式段。
+    CHECK(style.find("style=button") != std::string::npos);
+    CHECK(style.find("style=common") != std::string::npos);
+    CHECK(semantics.find("role=window") != std::string::npos);
 }

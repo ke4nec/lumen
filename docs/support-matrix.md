@@ -93,7 +93,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | R3 OS 拖放 | 接口已存在 + headless 已验证 | OS 拖入归一化事件与应用内重排/列拖序 headless 契约通过；三桌面真实拖入 smoke 待现场（`drag_drop_os_receive` 已纳入必检清单）；拖出结构化不可用（SDL 3.2.10） |
 | R4 桌面系统集成 | 部分接口已存在 | 全屏/置顶/OS 模态/托盘契约与 SDL 实现已有（headless 已验证）；全局快捷键仅契约无平台后端；macOS 原生菜单栏/交通灯未实现 |
 | R5 文本与剪贴板深度 | headless 已验证 | G-3 剪贴板 MIME 数据层/图片与自定义格式/变更广播有 headless 断言；三桌面真实 IME 与跨应用复制粘贴待现场 |
-| R6 开发者诊断 | 部分交付 | `dumpRenderTree`/`dumpSemanticsTree` + settings `--dump-tree`/`--dump-semantics` 已有；inspector、bounds/damage overlay、帧阶段统计 overlay、`--dump-style` 未做 |
+| R6 开发者诊断 | dump 与帧读数已交付（headless 已验证） | `dumpRenderTree`/`dumpSemanticsTree`/`dumpStyleTree` + settings/gallery 三旗标 + 帧读数 HUD（`RunOptions.frameDebugOverlay`；默认关闭零额外帧）2026-09-30 交付；分配量维度未接入（renderer stats 无该维度）；inspector、bounds/damage overlay 未做 |
 | R7 控件细节 | 按需池交付中 | 已交付 auto-hide 滚动条、Splitter 塌缩/KeepRatio、DataGrid 筛选接线、可编辑 ComboBox、DialogHost 便利层、ColorPicker；RTL 镜像、双轴联滚、菜单 mnemonic、行内编辑等在池 |
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
 | R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；页面壳/状态摘要等组合组件未提取 |
@@ -188,6 +188,14 @@ Skia/GPU Release 779/779，无跳过；详见
   命中区保留——悬停重显）；reduceAnimation 不归零（可发现性行为）。
 - headless 树导出（M18 首块，2026-09-29）：`app::dumpRenderTree`（确定性）
   + settings `--dump-tree`；语义 dump/inspector/帧统计 overlay 为后续增量。
+- 帧读数 HUD 与样式导出（R6 首批，2026-09-30）：`dumpStyleTree` +
+  settings/gallery `--dump-style`（与 --dump-tree 同树同序，`style:` 前缀
+  行 + `#rrggbbaa` 颜色）；gallery 补齐 `--dump-tree`/`--dump-semantics`
+  平价；`app::makeFrameStatsOverlay` + `RunOptions.frameDebugOverlay`
+  （settings/gallery `--frame-overlay`）——reconcile/layout/paint/submit/
+  GPU wait、fps、节点/命令数与当前 renderer，读数滞后一帧，全子树排除
+  语义与焦点；默认关闭零额外帧、frame hash 不变（单测断言）。分配量
+  维度未接入；inspector 与 bounds/damage overlay 仍为后续增量。
 - 窗口与系统集成（M16 实现批次 2026-09-29）：全屏（`toggleFullscreen` +
   WindowFullscreenEntered/Exited 事件）、置顶、OS 模态（SDL_SetWindowParent
   + SetWindowModal）契约与三桌面能力位；系统托盘经 SDL_tray（菜单激活回灌

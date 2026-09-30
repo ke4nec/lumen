@@ -681,6 +681,9 @@ void AppShell::rebuildIfDirty() {
     //（plan §9）。M7：布局输入为本地完整树（Element 快照去子化——
     // widget() 只保留本节点字段，整树由 build 产出本地持有）。
     std::set<std::string> bindKeys = core::collectBindKeys(next);
+    const auto statsLayoutStart =
+        frameStatsCapture_ ? std::chrono::steady_clock::now()
+                           : std::chrono::steady_clock::time_point{};
     core::RenderNode fresh = layout::LayoutEngine::layout(
         next, core::Constraints::tight(view_),
         styleContext(), textFontSource(),
@@ -689,6 +692,12 @@ void AppShell::rebuildIfDirty() {
             const auto itemKeys = core::collectBindKeys(item);
             bindKeys.insert(itemKeys.begin(), itemKeys.end());
         });
+    if (frameStatsCapture_) {
+        frameLayoutMs_ +=
+            std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - statsLayoutStart)
+                .count();
+    }
     // 延迟首建（见构造注释）：Element 在此首次落地（update 全程 move，
     // reconcile 零 Widget 拷贝）。
     if (!element_.has_value()) {
@@ -736,9 +745,18 @@ void AppShell::rebuildIfDirty() {
         }
     }
     if (overlayTemplate_.has_value()) {
+        const auto statsOverlayStart =
+            frameStatsCapture_ ? std::chrono::steady_clock::now()
+                               : std::chrono::steady_clock::time_point{};
         core::RenderNode freshOverlay = layout::LayoutEngine::layout(
             *overlayTemplate_, core::Constraints::tight(view_),
             styleContext(), textFontSource());
+        if (frameStatsCapture_) {
+            frameLayoutMs_ +=
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - statsOverlayStart)
+                    .count();
+        }
         if (hasPreviousOverlayRoot_) {
             treeDamageValid_ =
                 treeDamageValid_ &&
@@ -777,6 +795,14 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
 }
 
 void AppShell::paintFrame(bool forceFullRepaint) {
+    // R6：帧阶段采样（默认关闭零开销）——rebuild 区段含两次
+    // rebuildIfDirty（交互快照收敛）；布局耗时在其内部按调用累计。
+    std::optional<std::chrono::steady_clock::time_point> statsRebuildStart;
+    if (frameStatsCapture_) {
+        statsRebuildStart = std::chrono::steady_clock::now();
+        frameRebuildTotalMs_ = 0.0;
+        frameLayoutMs_ = 0.0;
+    }
     // 交互快照变化 → 重建（resolved style 折算状态，diff 产生 damage，
     // visual-system §5 规则 6）。M10：变化前捕获旧样式供状态色过渡插值。
     syncInteractionSnapshot();
@@ -792,6 +818,12 @@ void AppShell::paintFrame(bool forceFullRepaint) {
         lastInteraction_ = interactionSnapshot_;
         dirty_ = true;
         rebuildIfDirty();
+    }
+    if (statsRebuildStart.has_value()) {
+        frameRebuildTotalMs_ =
+            std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - *statsRebuildStart)
+                .count();
     }
     // M10：转场 alpha 与状态混合写入重建后的树（damage 汇入 motionDamage；
     // 采样值由 tick 推进，renderFrame 不自带时钟）。M11：tooltip Hidden
@@ -888,6 +920,9 @@ void AppShell::paintFrame(bool forceFullRepaint) {
     renderer.submit(commands, info);
     frameHashValid_ = false;
     frameIndex_ += 1;
+    if (frameStatsCapture_) {
+        noteFrameSubmitted();
+    }
     element_->clearDirtyTree();
 
     // 下一帧的缓存/damage 决策记账。
@@ -905,6 +940,96 @@ void AppShell::paintFrame(bool forceFullRepaint) {
     treeDamageValid_ = true;
     // M5：绘制落地后推送语义（仅注册了桥时构建；diff 含焦点变化）。
     pushSemantics();
+}
+
+// --- R6：帧阶段统计采样（frame_debug.h；默认关闭零开销） ---
+
+namespace {
+
+// RenderNode 子树节点计数（noteFrameSubmitted 采样用）。
+std::uint64_t countRenderNodes(const core::RenderNode& node) {
+    std::uint64_t count = 1;
+    for (const auto& child : node.children) {
+        count += countRenderNodes(child);
+    }
+    return count;
+}
+
+}  // namespace
+
+void AppShell::setFrameStatsCapture(bool enabled) {
+    frameStatsCapture_ = enabled;
+    if (!enabled) {
+        frameRebuildTotalMs_ = 0.0;
+        frameLayoutMs_ = 0.0;
+        frameNodeCount_ = 0;
+        frameFpsCount_ = 0;
+        frameFpsHead_ = 0;
+    }
+}
+
+void AppShell::noteFrameSubmitted() {
+    // fps 环：steady_clock ns 时间戳（单调；环满后覆盖最旧样本）。
+    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now()
+                            .time_since_epoch())
+                        .count();
+    frameFpsRingNs_[frameFpsHead_] = static_cast<std::uint64_t>(ns);
+    frameFpsHead_ = (frameFpsHead_ + 1) % frameFpsRingNs_.size();
+    frameFpsCount_ =
+        std::min(frameFpsCount_ + 1, frameFpsRingNs_.size());
+    // 节点计数（主树 + overlay；O(n) 走树只在采样开启时发生）。
+    frameNodeCount_ = countRenderNodes(root_);
+    if (overlayRoot_.has_value()) {
+        frameNodeCount_ += countRenderNodes(*overlayRoot_);
+    }
+}
+
+FrameDebugSnapshot AppShell::frameDebugSnapshot() {
+    FrameDebugSnapshot snapshot;
+    snapshot.frameIndex = frameIndex_;
+    snapshot.reconcileMs = frameRebuildTotalMs_ - frameLayoutMs_;
+    if (snapshot.reconcileMs < 0.0) {
+        snapshot.reconcileMs = 0.0;  // 布局与区段分别取整可能引入微小负差
+    }
+    snapshot.layoutMs = frameLayoutMs_;
+    snapshot.nodeCount = frameNodeCount_;
+    const render::RenderStats stats = activeRenderer().stats();
+    snapshot.paintMs = stats.cpuBuildMs;
+    snapshot.submitMs = stats.submitMs;
+    snapshot.gpuWaitMs = stats.gpuWaitMs;
+    snapshot.commandCount = stats.commandCount;
+    snapshot.culledCommands = stats.culledCommands;
+    snapshot.fullFrameFallback = stats.fullFrameFallback;
+    snapshot.fallbackReason = stats.fallbackReason;
+    snapshot.backendName = activeRenderer().capabilities().backendName;
+    if (frameFpsCount_ >= 2) {
+        const std::size_t capacity = frameFpsRingNs_.size();
+        const std::size_t oldestIndex =
+            (frameFpsHead_ + capacity - frameFpsCount_) % capacity;
+        const std::size_t newestIndex =
+            (frameFpsHead_ + capacity - 1) % capacity;
+        const std::uint64_t oldest = frameFpsRingNs_[oldestIndex];
+        const std::uint64_t newest = frameFpsRingNs_[newestIndex];
+        const double spanSec =
+            static_cast<double>(newest - oldest) / 1.0e9;
+        if (spanSec >= 1.0) {
+            // 覆盖超过 1s：数最近 1s 窗口内的样本数。
+            const std::uint64_t cutoff = newest - 1'000'000'000ULL;
+            std::uint64_t frames = 0;
+            for (std::size_t i = 0; i < frameFpsCount_; ++i) {
+                if (frameFpsRingNs_[(oldestIndex + i) % capacity] >= cutoff) {
+                    ++frames;
+                }
+            }
+            snapshot.fps = static_cast<double>(frames);
+        } else if (spanSec > 0.0) {
+            // 样本跨度不足 1s：平均帧率（首尾间隔/间隔数）。
+            snapshot.fps =
+                static_cast<double>(frameFpsCount_ - 1) / spanSec;
+        }
+    }
+    return snapshot;
 }
 
 void AppShell::tick(std::uint64_t nowMs) {

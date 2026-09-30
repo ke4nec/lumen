@@ -343,6 +343,18 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         runtime.lastCursor = shell.pointerCursor();
         runtime.lastPollMs = clock.nowMs();
         runtime.lastDiagPrintMs = runtime.lastPollMs;
+        // R6：帧读数 HUD（显式开启才装配）——启用采样 + 安装非模态视觉
+        // overlay；主循环每调度帧标脏刷新读数（见 requestPendingFrame 前）。
+        if (runtime.app.options.frameDebugOverlay) {
+            shell.setFrameStatsCapture(true);
+            AppShell* shellPtr = runtime.app.shell;
+            shellPtr->setVisualOverlayBuilder(
+                [shellPtr]() -> std::optional<core::Widget> {
+                    return makeFrameStatsOverlay(
+                        shellPtr->frameDebugSnapshot(),
+                        FrameOverlayStyle::fromTheme(shellPtr->theme()));
+                });
+        }
         if (runtime.app.options.diagnostics) {
             printStartupDiagnostics(
                 shell.capabilities(),
@@ -741,6 +753,10 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
             syncTextInput(runtime);
             scheduler.setAnimationsActive(shell.animationsActive());
             scheduler.setAnimationDeadline(shell.animationWakeMs());
+            if (runtime.app.options.frameDebugOverlay) {
+                // R6：HUD 读数随每调度帧刷新（显式开启才有的额外帧）。
+                shell.markDirty();
+            }
             requestPendingFrame(runtime);
         }
 

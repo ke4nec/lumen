@@ -19,6 +19,7 @@
 //     窗口）；
 //   - 应用状态（StateStore/Element/交互）仍由 UI 线程拥有。
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -31,6 +32,7 @@
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/app/command_registry.h"
+#include "lumen/app/frame_debug.h"
 #include "lumen/core/damage.h"
 #include "lumen/core/element.h"
 #include "lumen/core/geometry.h"
@@ -388,6 +390,17 @@ class AppShell {
     [[nodiscard]] render::RenderStats stats() {
         return activeRenderer().stats();
     }
+    // --- R6：帧阶段统计采样（默认关闭；frame_debug.h HUD 消费） ---
+    // 开启后 paintFrame 采样 reconcile/layout 阶段耗时、fps 环（最近
+    // 64 帧的 steady_clock 时间戳）与节点计数；关闭时零采样、零帧节奏
+    // 影响（frame hash 与性能基线不变）。overlay 组合见
+    // app::makeFrameStatsOverlay（runApp 经 RunOptions.frameDebugOverlay
+    // 装配；读数滞后一帧——builder 在重建期求值）。
+    void setFrameStatsCapture(bool enabled);
+    // 当前快照（合并 renderer stats/capabilities 与采样值；未开启采样
+    // 时阶段/计数字段为 0，renderer 字段仍如实）。非 const：stats() 与
+    // capabilities() 按既有先例为非 const。
+    [[nodiscard]] FrameDebugSnapshot frameDebugSnapshot();
     [[nodiscard]] render::RendererCapabilities capabilities() {
         return activeRenderer().capabilities();
     }
@@ -553,6 +566,15 @@ class AppShell {
     float deviceScale_{1.0F};
     std::uint64_t frameIndex_{0};
     std::uint64_t lastTickMs_{0};
+    // R6：帧阶段采样（frameStatsCapture_ 关闭时所有路径零开销）。
+    bool frameStatsCapture_{false};
+    double frameRebuildTotalMs_{0.0};  // paintFrame 内 rebuild 区段总耗时
+    double frameLayoutMs_{0.0};        // rebuildIfDirty 内布局耗时（帧内累计）
+    std::uint64_t frameNodeCount_{0};
+    std::array<std::uint64_t, 64> frameFpsRingNs_{};
+    std::size_t frameFpsCount_{0};
+    std::size_t frameFpsHead_{0};
+    void noteFrameSubmitted();
     render::CpuRenderer cpuRenderer_{1.0F};
     render::Renderer* externalRenderer_{nullptr};
     // M5：语义桥（外部拥有）与上次推送树/焦点。
@@ -636,6 +658,12 @@ struct RunOptions {
     std::string diagnosticsAppName{"lumen-app"};
     std::function<void(const diagnostics::CrashSummary&)>
         onDiagnosticsStarted{};
+    // R6：帧读数 HUD（默认关闭）。开启后 runApp 启用该窗口应用壳的
+    // 帧统计采样，并安装非模态视觉 overlay（左上角面板；读数滞后一
+    // 帧），且每调度帧标脏刷新——这是显式开启才有的额外帧与采样开
+    // 销；关闭时零额外帧、frame hash 与性能基线不变。分配量维度未接
+    // 入（renderer stats 无该维度，见 support-matrix R6 登记）。
+    bool frameDebugOverlay{false};
 };
 
 // 一个宿主窗口与其应用壳的绑定。每个窗口拥有独立的 RunOptions，因而
