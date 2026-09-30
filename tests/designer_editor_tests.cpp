@@ -71,6 +71,7 @@ TEST_CASE("designer selection stays on document ids and supports modes",
     REQUIRE(model.select(2, DesignSelectionMode::Toggle, document));
     CHECK(model.state().ids == std::set<lumen::dsl::DesignNodeId>{3});
     CHECK(model.state().primary == 3);
+    CHECK(model.state().anchor == 3);
     CHECK_FALSE(model.select(99, DesignSelectionMode::Replace, document));
     CHECK(model.state().captured == 3);
     REQUIRE(model.select(3, DesignSelectionMode::Toggle, document));

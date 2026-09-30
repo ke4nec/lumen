@@ -92,11 +92,14 @@ bool DesignSelectionModel::select(DesignNodeId id, DesignSelectionMode mode,
             if (state_.ids.erase(id) == 0) {
                 state_.ids.insert(id);
                 state_.primary = id;
+                state_.anchor = id;
             } else if (state_.primary == id) {
                 state_.primary = firstId(state_.ids);
+                if (state_.anchor == id) state_.anchor = state_.primary;
+            } else if (state_.anchor == id) {
+                state_.anchor = state_.primary;
             }
             if (state_.captured == id) state_.captured.reset();
-            state_.anchor = id;
             if (state_.ids.empty()) {
                 state_.primary.reset();
                 state_.anchor.reset();
