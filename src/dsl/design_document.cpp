@@ -156,7 +156,11 @@ class JsonParser {
                 return std::nullopt;
             }
             if (c != '\\') {
-                result += c;
+                if (static_cast<unsigned char>(c) >= 0x80U) {
+                    if (!appendRawUtf8(index_ - 1, result)) return std::nullopt;
+                } else {
+                    result += c;
+                }
                 continue;
             }
             if (index_ >= source_.size()) break;
@@ -203,6 +207,44 @@ class JsonParser {
         }
         fail("codec.unterminated_string");
         return std::nullopt;
+    }
+
+    [[nodiscard]] bool appendRawUtf8(std::size_t begin, std::string& output) {
+        const auto lead = static_cast<unsigned char>(source_[begin]);
+        std::size_t length = 0;
+        if (lead >= 0xc2U && lead <= 0xdfU) {
+            length = 2;
+        } else if (lead >= 0xe0U && lead <= 0xefU) {
+            length = 3;
+        } else if (lead >= 0xf0U && lead <= 0xf4U) {
+            length = 4;
+        } else {
+            fail("codec.utf8", "invalid UTF-8 in string");
+            return false;
+        }
+        if (begin + length > source_.size()) {
+            fail("codec.utf8", "truncated UTF-8 in string");
+            return false;
+        }
+        const auto second = static_cast<unsigned char>(source_[begin + 1]);
+        if ((lead == 0xe0U && second < 0xa0U) ||
+            (lead == 0xedU && second > 0x9fU) ||
+            (lead == 0xf0U && second < 0x90U) ||
+            (lead == 0xf4U && second > 0x8fU)) {
+            fail("codec.utf8", "invalid UTF-8 code point in string");
+            return false;
+        }
+        for (std::size_t offset = 1; offset < length; ++offset) {
+            const auto continuation =
+                static_cast<unsigned char>(source_[begin + offset]);
+            if ((continuation & 0xc0U) != 0x80U) {
+                fail("codec.utf8", "invalid UTF-8 continuation byte");
+                return false;
+            }
+        }
+        output.append(source_, begin, length);
+        index_ = begin + length;
+        return true;
     }
 
     [[nodiscard]] bool parseUnicodeQuad(unsigned int& value) {

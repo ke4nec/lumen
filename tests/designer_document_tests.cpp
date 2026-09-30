@@ -322,6 +322,18 @@ TEST_CASE("designer codec decodes Unicode escapes", "[designer][p1]") {
                              "unicode-roundtrip.design")
               .ok());
 
+    std::string invalidUtf8 =
+        R"({"documentId":"doc","format":"lumen.design",
+           "pageName":")";
+    invalidUtf8.push_back(static_cast<char>(0xc3));
+    invalidUtf8 += R"(","root":{"id":"1","type":"Text","properties":{}},
+           "schemaVersion":1})";
+    const auto invalidUtf8Result =
+        readDesignDocument(invalidUtf8, "invalid-utf8.design");
+    REQUIRE_FALSE(invalidUtf8Result.ok());
+    REQUIRE(invalidUtf8Result.error.has_value());
+    CHECK(invalidUtf8Result.error->code == "codec.utf8");
+
     const auto invalidSurrogate = readDesignDocument(
         R"({"documentId":"doc","format":"lumen.design",
            "pageName":"\uDE00",
