@@ -6,6 +6,7 @@ add_library(lumen-dsl STATIC
     design_resources.cpp
     design_mapping.cpp
     design_schema.cpp
+    design_preview_frame.cpp
     document_store.cpp
     text_dsl.cpp
 )

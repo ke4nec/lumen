@@ -90,6 +90,7 @@ set(LUMEN_TEST_SOURCES
     designer_runtime_context_tests.cpp
     designer_editor_tests.cpp
     designer_preview_tests.cpp
+    designer_preview_frame_tests.cpp
     designer_resources_tests.cpp
     designer_performance_tests.cpp
     document_store_tests.cpp
