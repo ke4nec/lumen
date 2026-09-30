@@ -280,7 +280,13 @@ void DesignDocumentHistory::clear() {
 
 std::string DesignDiagnostic::key() const {
     std::ostringstream out;
-    out << code << '\n' << file << '\n' << documentId << '\n' << property;
+    out << code << '\n' << file << '\n' << documentId << '\n' << property
+        << '\n' << nodeId << '\n' << nodePath;
+    if (sourceSpan.has_value()) {
+        out << '\n' << sourceSpan->begin.line << ':'
+            << sourceSpan->begin.column << '-'
+            << sourceSpan->end.line << ':' << sourceSpan->end.column;
+    }
     return out.str();
 }
 

@@ -28,6 +28,25 @@ TEST_CASE("designer preview frame keeps a placeholder for missing references",
     CHECK(frame.session()->active());
 }
 
+TEST_CASE("designer preview frame preserves distinct reference locations",
+          "[designer][f6][diagnostic]") {
+    const auto parsed = parseLumenSource(
+        "page preview { Column { Button(\"One\", bind: missing, key: \"one\") "
+        "Button(\"Two\", bind: missing, key: \"two\") } }");
+    REQUIRE(parsed.ok());
+
+    MapDesignRuntimeContext context;
+    DesignPreviewFrame frame;
+    CHECK_FALSE(frame.update(parsed.document, context));
+    REQUIRE(frame.diagnostics().size() == 2);
+    CHECK(frame.diagnostics()[0].code == "reference.missing");
+    CHECK(frame.diagnostics()[1].code == "reference.missing");
+    CHECK(frame.diagnostics()[0].nodeId != frame.diagnostics()[1].nodeId);
+    CHECK(frame.diagnostics()[0].nodePath != frame.diagnostics()[1].nodePath);
+    CHECK(frame.diagnostics()[0].occurrences == 1);
+    CHECK(frame.diagnostics()[1].occurrences == 1);
+}
+
 TEST_CASE("designer preview frame keeps the last good compile on failure",
           "[designer][f6][diagnostic]") {
     const auto parsed = parseLumenSource(
