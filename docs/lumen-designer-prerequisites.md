@@ -1202,7 +1202,7 @@ Gallery 的完整样本覆盖仍待补齐；在 Windows/macOS 构建中，CMake 
   `design_preview.cpp`、`designer_preview_tests.cpp`，D2 headless 地基追加
   `design_workbench.h`、`design_workbench.cpp`、`designer_workbench_tests.cpp`，D2 应用出口追加
   `examples/designer/CMakeLists.txt`、`designer_app.h`、`designer_app.cpp`、`main.cpp`、
-  `gallery.lumen`；工作区另有既存的平台 host 修改，
+  `gallery.lumen`、`tests/designer_app_tests.cpp`、`tests/designer_cli_smoke.cmake`；工作区另有既存的平台 host 修改，
   未把它们作为设计器证据。
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
@@ -1220,18 +1220,19 @@ Gallery 的完整样本覆盖仍待补齐；在 Windows/macOS 构建中，CMake 
   和重复 runtime identity 诊断。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、迁移身份校验、迁移异常诊断、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `604` 个断言、`9` 个测试用例通过。
-- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `54` 个断言、
-  `4` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、解析/编译/读文件错误保留上一帧和显式会话清理。
+- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `71` 个断言、
+  `6` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、设计器应用语义壳、画布点选、
+  解析/编译/读文件错误保留上一帧和显式会话清理。
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
   `designer_window_smoke` 和 `designer_gallery_window_smoke` 四项（`4/4`）；另有
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `73/73` 通过，
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `75/75` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1037/1037`，
-  Release 配置为 `1039/1039`；
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1039/1039`，
+  Release 配置为 `1041/1041`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、

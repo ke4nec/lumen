@@ -95,6 +95,7 @@ set(LUMEN_TEST_SOURCES
     designer_accessibility_tests.cpp
     designer_resources_tests.cpp
     designer_performance_tests.cpp
+    designer_app_tests.cpp
     document_store_tests.cpp
     example_kit_tests.cpp
     damage_tests.cpp
@@ -122,6 +123,8 @@ set(LUMEN_TEST_SOURCES
 # the single third-party implementation used by tests and the export tool.
 list(APPEND LUMEN_TEST_SOURCES
     ${PROJECT_SOURCE_DIR}/examples/gallery/gallery_icon.cpp)
+list(APPEND LUMEN_TEST_SOURCES
+    ${PROJECT_SOURCE_DIR}/examples/designer/designer_app.cpp)
 
 # 移动核心配置（8E）：无 SDL/桌面平台层，跳过桌面平台与 SDL 依赖测试。
 if(LUMEN_BUILD_MOBILE_CORE)
@@ -192,6 +195,7 @@ endif()
 
 target_include_directories(lumen-tests PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/counter
+    ${PROJECT_SOURCE_DIR}/examples/designer
     ${PROJECT_SOURCE_DIR}/examples/settings
     ${PROJECT_SOURCE_DIR}/examples/gallery
     ${PROJECT_SOURCE_DIR}/examples/common
