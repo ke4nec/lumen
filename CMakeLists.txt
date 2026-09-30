@@ -201,6 +201,8 @@ if(LUMEN_BUILD_PACKAGE)
     endif()
     install(FILES examples/counter/counter.lumen
             DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)
+    install(FILES examples/designer/gallery.lumen
+            DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)
     if(UNIX AND NOT APPLE)
       # M12：Linux 桌面集成（AppImage 的 linuxdeploy 消费同一布局）。
       install(FILES assets/lumen-settings.desktop

@@ -1,0 +1,28 @@
+// D2 L0 gallery fixture. It exercises every frozen declarative node type
+// without requiring application-owned bindings or handlers.
+page gallery {
+    Column(key: "gallery-root", padding: 16, spacing: 12,
+           crossAxis: stretch) {
+        Container(key: "hero", color: #18181B) {
+            Text("Gallery preview", key: "hero-title")
+        }
+        Row(key: "controls", spacing: 8, mainAxis: spaceBetween,
+            crossAxis: center) {
+            Button("Action", key: "action", variant: tonal)
+            TextField(key: "name", placeholder: "Name", maxLines: 1)
+            Checkbox("Enabled", key: "enabled", checked: true)
+            Switch("Dark", key: "dark", checked: true)
+        }
+        Stack(key: "stack", alignment: center) {
+            Text("Overlay", key: "overlay", left: 4, top: 4)
+        }
+        ScrollView(key: "scroll") {
+            ListView(key: "list") {
+                Text("Item", key: "item")
+            }
+        }
+        FocusScope(key: "focus") {
+            Text("Keyboard", key: "focus-text")
+        }
+    }
+}
