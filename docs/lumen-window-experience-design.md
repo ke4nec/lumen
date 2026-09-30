@@ -27,4 +27,4 @@ SDL 3.2.10 无进度 API（`SDL_SetWindowProgressState/Value` 属 SDL 3.4+）；
 ## 4. 验证
 
 - headless（本提交）：Desc 位置应用 + Metrics 回读（带/不带位置两态）、单实例 Primary/Secondary/激活回调异步到达、残留 socket 恢复、Preferences 位置记忆往返。
-- 桌面 smoke（人工）：拖动窗口后重启位置保持；二次启动首窗口聚焦（模板直接可验）；Wayland 下位置语义由合成器决定（SDL 侧如实跟随）。
+- 桌面 smoke（人工）：拖动窗口后重启位置保持；二次启动首窗口聚焦（模板直接可验；单实例守卫仅接窗口路径——headless 冒烟不走单实例，并行 CI 下第二实例不会被静默退出）；Wayland 下位置语义由合成器决定（`positioned` 表示"SDL 视角可用"，跨显示器不复位属合成器行为）。

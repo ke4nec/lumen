@@ -118,29 +118,34 @@ int runWindowed(TemplateApp& app) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    // G-8：单实例——已有实例时送达激活请求后即刻退出（headless 冒烟
-    // 不受影响：socket 目录按平台惯例，冲突概率与 CI 并行度由
-    // appName 区分）。
-    switch (lumen::core::SingleInstanceGuard::acquire(
-        {.appName = "lumen-template",
-         .onActivateRequest = [] {
-             // 激活请求在后台线程到达；投递 UI 线程属应用装配（本模板
-             // 单窗口场景依赖窗口管理器聚焦，raiseWindow 经宿主调用）。
-         }})) {
-        case lumen::core::SingleInstanceGuard::Status::SecondaryActivated:
-            return 0;
-        case lumen::core::SingleInstanceGuard::Status::
-            SecondaryNotifyFailed:
-        case lumen::core::SingleInstanceGuard::Status::Unavailable:
-            // 结构化降级：允许多实例继续运行（不因助手失败丢窗口）。
-        case lumen::core::SingleInstanceGuard::Status::Primary:
-            break;
-    }
     const Options options = parseOptions(argc, argv);
     TemplateApp app{/*persistent=*/!options.headless};
     app.attach();
     try {
-        return options.headless ? runHeadless(app) : runWindowed(app);
+        if (options.headless) {
+            // headless 冒烟不走单实例（并行 CI 下第二个实例会被静默
+            // 退出、不输出帧哈希——review M-5）；也不进窗口路径。
+            return runHeadless(app);
+        }
+        // G-8：单实例（仅窗口路径）——已有实例时送达激活请求后即刻
+        // 退出。
+        switch (lumen::core::SingleInstanceGuard::acquire(
+            {.appName = "lumen-template",
+             .onActivateRequest = [] {
+                 // 激活请求在后台线程到达；投递 UI 线程属应用装配
+                 //（模板单窗口场景由窗口管理器聚焦）。
+             }})) {
+            case lumen::core::SingleInstanceGuard::Status::
+                SecondaryActivated:
+                return 0;
+            case lumen::core::SingleInstanceGuard::Status::
+                SecondaryNotifyFailed:
+            case lumen::core::SingleInstanceGuard::Status::Unavailable:
+                // 结构化降级：允许多实例继续运行（不因助手失败丢窗口）。
+            case lumen::core::SingleInstanceGuard::Status::Primary:
+                break;
+        }
+        return runWindowed(app);
     } catch (const std::exception& error) {
         std::fprintf(stderr, "fatal: %s\n", error.what());
         return 1;

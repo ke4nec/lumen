@@ -36,7 +36,7 @@
 
 ## 5. runApp 接线
 
-`RunOptions.diagnosticsDirectory` 非空（取首个配置的窗口）→ runApp 在 `host.initialize()` 后安装，退出（cleanup 后）`cleanShutdown()`；摘要回写 `RunOptions.lastRunCrashSummary`（应用据此提示"上次已崩溃，日志在 …"——提示 UI 属应用层，框架不弹窗）。应用也可不经 runApp 直接持有 `RuntimeDiagnostics`（进程级单例语义，UI 线程独占调用）。
+`RunOptions.diagnosticsDirectory` 非空（取首个配置的窗口）→ runApp 在 `host.initialize()` 后安装，退出（cleanup 后）`cleanShutdown()`；上次运行摘要经 **`RunOptions.onDiagnosticsStarted` 回调**交付（RunOptions 按值传入 runApp，字段回传无效——回调是唯一可靠通道；应用据此提示"上次已崩溃，日志在 …"，提示 UI 属应用层，框架不弹窗）。应用也可不经 runApp 直接持有 `RuntimeDiagnostics`（进程级单例语义，UI 线程独占调用）。
 
 ## 6. 平台与能力报告
 

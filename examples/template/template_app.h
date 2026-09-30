@@ -118,6 +118,17 @@ class TemplateApp {
                              });
     }
 
+    // 退出：经宿主窗口关闭请求（合成 WindowCloseRequested → runApp
+    // 统一关闭规则）。requestClose 的返回值语义是"已消费"（模态拦下），
+    // 不代表应用退出——命令路径直接调用它不会停主循环（review H-3）。
+    void quitApp() {
+        if (windowCommands_.requestClose) {
+            windowCommands_.requestClose();
+            return;
+        }
+        (void)shell_.requestClose();
+    }
+
     void toggleSidebar() {
         const bool on = shell_.state().get("sidebar") != "true";
         shell_.state().set("sidebar", on ? "true" : "false");
@@ -149,10 +160,7 @@ class TemplateApp {
             {.id = "quit",
              .label = "退出",
              .binding = app::KeyBinding::chord('q', core::kModifierCtrl),
-             .invoke = [](AppShell& shell) {
-                 while (shell.requestClose()) {
-                 }
-             }});
+             .invoke = action(&TemplateApp::quitApp)});
     }
 
     // --- UI ---

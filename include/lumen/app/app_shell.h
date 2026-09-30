@@ -628,12 +628,14 @@ struct RunOptions {
     std::shared_ptr<render::ResourceManager> resourceManager{};
     // G-2：崩溃兜底与持久日志（diagnostics::RuntimeDiagnostics 接线）。
     // directory 非空时 runApp 安装（脏标记检测/信号捕获/分级文件日志），
-    // 正常退出清理；检测到上次运行崩溃时输出既有 [diag] 行并回传摘要。
-    // 默认空 = 整个子系统关闭（零开销，现状行为）。crashSummary 在
-    // runApp 返回后仍可读（栈上对象由调用方拥有，runApp 内部拷贝）。
+    // 正常退出清理；默认空 = 整个子系统关闭（零开销，现状行为）。
+    // onDiagnosticsStarted：安装完成时同步回调（携带上次运行摘要——
+    // RunOptions 按值传入 runApp，摘要无法经本结构回传，回调是唯一
+    // 可靠通道；检测到上次崩溃时应用据此提示，log/report 路径已含）。
     std::string diagnosticsDirectory{};
     std::string diagnosticsAppName{"lumen-app"};
-    diagnostics::CrashSummary lastRunCrashSummary{};
+    std::function<void(const diagnostics::CrashSummary&)>
+        onDiagnosticsStarted{};
 };
 
 // 一个宿主窗口与其应用壳的绑定。每个窗口拥有独立的 RunOptions，因而

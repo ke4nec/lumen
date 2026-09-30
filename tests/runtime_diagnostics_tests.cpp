@@ -13,7 +13,9 @@
 
 #include <unistd.h>
 
+#include "lumen/app/app_shell.h"
 #include "lumen/diagnostics/runtime_diagnostics.h"
+#include "lumen/platform/fake_host.h"
 
 namespace fs = std::filesystem;
 using lumen::diagnostics::CrashSummary;
@@ -153,6 +155,42 @@ TEST_CASE("diagnostics_default_directory_uses_env", "[diagnostics]") {
         lumen::diagnostics::defaultDiagnosticsDirectory("lumen-test");
     CHECK_FALSE(dir.empty());
     CHECK(dir.find("lumen-test") != std::string::npos);
+}
+
+TEST_CASE("run_app_reports_diagnostics_summary_via_callback",
+          "[diagnostics][app]") {
+    // H-2 review：RunOptions 按值传入 runApp，摘要无法经字段回传——
+    // onDiagnosticsStarted 回调是唯一可靠通道。
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() /
+                         ("lumen-diag-runapp-" + std::to_string(::getpid()));
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+
+    lumen::platform::FakeApplicationHost host;
+    lumen::app::ShellConfig config;
+    config.initialView = lumen::core::Size{200.0F, 150.0F};
+    config.build = [] { return lumen::core::Widget{}; };
+    lumen::app::AppShell shell{config};
+    REQUIRE(host.initialize());
+
+    lumen::app::RunOptions options;
+    options.maxFrames = 1;
+    options.diagnosticsDirectory = dir.string();
+    options.diagnosticsAppName = "unit";
+    int reported = 0;
+    bool crashedSeen = false;
+    options.onDiagnosticsStarted =
+        [&](const lumen::diagnostics::CrashSummary& summary) {
+            ++reported;
+            crashedSeen = summary.crashed;
+        };
+    CHECK(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(reported == 1);
+    CHECK_FALSE(crashedSeen);  // 新目录：无上次崩溃
+    // 正常退出后脏标记清除（下次启动不再报告崩溃）。
+    CHECK_FALSE(fs::exists(dir / "unit.running"));
 }
 
 TEST_CASE("diagnostics_capabilities_reported_honestly", "[diagnostics]") {

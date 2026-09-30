@@ -108,8 +108,8 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
 
     // G-2：崩溃兜底与持久日志（进程级；首个配置了目录的窗口生效）。
     // start() 检测上次脏标记；正常退出在 cleanup 后 cleanShutdown（清
-    // 标记）。崩溃路径不经此（处理器直接终止）。摘要回传配置窗口的
-    // RunOptions.lastRunCrashSummary（应用据此提示"上次已崩溃"）。
+    // 标记）。崩溃路径不经此（处理器直接终止）。上次运行摘要经
+    // onDiagnosticsStarted 回调（RunOptions 按值传入，字段回传无效）。
     std::optional<diagnostics::RuntimeDiagnostics> runtimeDiagnostics;
     for (auto& window : windows) {
         if (window.options.diagnosticsDirectory.empty()) {
@@ -123,8 +123,10 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
             runtimeDiagnostics.reset();
             continue;
         }
-        window.options.lastRunCrashSummary =
-            runtimeDiagnostics->lastRunCrash();
+        if (window.options.onDiagnosticsStarted) {
+            window.options.onDiagnosticsStarted(
+                runtimeDiagnostics->lastRunCrash());
+        }
         if (window.options.diagnostics) {
             const auto& crash = runtimeDiagnostics->lastRunCrash();
             std::fprintf(stdout,
