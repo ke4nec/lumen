@@ -66,6 +66,10 @@ class ColorPickerController {
     std::string key_{};
     std::vector<std::string> palette_{};
     std::vector<std::string> handlers_{};
+    // 色板反推写通道时的派生抑制标志：三次通道写只产生一次结果通知
+    //（观察者仍收到通道变化；色板 handler 末尾单次 applyResult——
+    // review M-4：单次点击单次 onPicked）。
+    bool applyingSwatch_{false};
     core::StateStore::ObserverId observerH_{0};
     core::StateStore::ObserverId observerS_{0};
     core::StateStore::ObserverId observerV_{0};

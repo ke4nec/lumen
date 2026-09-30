@@ -224,6 +224,96 @@ TEST_CASE("dialog_host_prompt_input_flow", "[widgets][dialog-host]") {
     CHECK_FALSE(result->has_value());
 }
 
+TEST_CASE("dialog_host_chained_show_during_closing_not_dropped",
+          "[widgets][dialog-host]") {
+    // M-1 review：motion 模式下 cancel 的退出转场窗口期内，回调里
+    // 连环 showMessage 不得静默丢失（队列暂存，retire 后安装）。
+    Harness harness;
+    AppShell& shell = harness.shell;
+    DialogHost& dialogs = harness.dialogs;
+    // motion 需要 opt-in + tick 驱动（同 menu-motion 口径）。
+    // Harness 的 config 未开 motionTransitions——本用例单独构造。
+    struct MotionHarness {
+        DialogHost dialogs{};
+        AppShell shell{configFor(this)};
+        static ShellConfig configFor(MotionHarness* self) {
+            ShellConfig config;
+            config.initialView = Size{400.0F, 300.0F};
+            config.motionTransitions = true;
+            config.build = [self] {
+                lumen::core::Widget ui = Harness::basePage();
+                if (std::optional<lumen::core::Widget> dialog =
+                        self->dialogs.build(self->shell)) {
+                    ui = lumen::core::makeStack(
+                        {std::move(ui), std::move(*dialog)});
+                    ui.key = "root";
+                }
+                return ui;
+            };
+            config.onKey = [self](AppShell& shell, Key key,
+                                  lumen::core::KeyModifiers mods, char ch) {
+                return self->dialogs.handleKey(shell, key, mods, ch);
+            };
+            config.onCloseRequested = [self](AppShell& shell) {
+                return self->dialogs.handleCloseRequested(shell);
+            };
+            config.onRebuilt = [self](AppShell& shell) {
+                self->dialogs.onRebuilt(shell);
+            };
+            return config;
+        }
+    };
+    MotionHarness motion;
+    AppShell& mshell = motion.shell;
+    DialogHost& mdialogs = motion.dialogs;
+    mshell.state().set("count", "0");
+
+    int dismissedA = 0;
+    mdialogs.showMessage(mshell, "A", "first", {}, [&] {
+        ++dismissedA;
+        // 回调内连环开第二个对话框（此刻处于退出转场窗口期）。
+        mdialogs.showMessage(mshell, "B", "second");
+    });
+    mshell.markDirty();
+    mshell.rebuildIfDirty();
+    mshell.tick(0);
+    // Escape 触发取消 → 退出转场 → 回调 → B 进入队列。
+    CHECK(mdialogs.handleKey(mshell, Key::Escape));
+    CHECK(dismissedA == 1);
+    // 队列中的 B 在转场完成（retire）后安装。
+    mshell.tick(200);
+    mshell.markDirty();
+    mshell.rebuildIfDirty();
+    REQUIRE(mdialogs.busy());
+    const RenderNode* body =
+        findByKeyDeep(mshell.root(), "dialog-host-body");
+    REQUIRE(body != nullptr);
+    CHECK(body->text == "second");
+}
+
+TEST_CASE("dialog_host_prompt_enter_submits", "[widgets][dialog-host]") {
+    // L-6 review：prompt 字段聚焦时 Enter = 提交（onKey 层先行截获，
+    // 字段自身的 Enter 失焦语义不吞掉提交预期）。
+    Harness harness;
+    AppShell& shell = harness.shell;
+    DialogHost& dialogs = harness.dialogs;
+    std::optional<std::optional<std::string>> result;
+    dialogs.showPrompt(shell, "Name?", "Enter your name.", "Ada", {},
+                       [&](std::optional<std::string> value) {
+                           result = value;
+                       });
+    shell.markDirty();
+    shell.rebuildIfDirty();
+    REQUIRE(shell.controller().focusedBind() == "dialog-host:prompt");
+    shell.textInput("Lovelace");
+    // 经 shell.keyDown（onKey 路由）——与真实键盘同路径。
+    shell.keyDown(Key::Enter);
+    REQUIRE(result.has_value());
+    REQUIRE(result->has_value());
+    CHECK(**result == "AdaLovelace");
+    CHECK_FALSE(dialogs.busy());
+}
+
 TEST_CASE("dialog_host_rejects_nested_convenience", "[widgets][dialog-host]") {
     Harness harness;
     AppShell& shell = harness.shell;

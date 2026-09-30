@@ -160,6 +160,18 @@ TEST_CASE("combo_box_keyboard_navigation_and_escape", "[widgets][combo]") {
 
     // 未打开时非 Down 键不消费（交回应用路由）。
     CHECK_FALSE(harness.combo.handleKey(shell, Key::Up));
+    // L-1 review：Alt+Down 同样展开（与文档声明对齐）；Ctrl+Down 不消费。
+    const RenderNode* field2 =
+        findByKeyDeep(shell.root(), "fruit-combo:field");
+    REQUIRE(field2 != nullptr);
+    shell.controller().focusNode(*field2);
+    CHECK(harness.combo.handleKey(shell, Key::Down,
+                                  lumen::core::kModifierAlt));
+    CHECK(harness.combo.isOpen());
+    CHECK(harness.combo.handleKey(shell, Key::Escape));
+    shell.controller().focusNode(*field2);
+    CHECK_FALSE(harness.combo.handleKey(shell, Key::Down,
+                                        lumen::core::kModifierCtrl));
 }
 
 TEST_CASE("combo_box_free_text_allowed", "[widgets][combo]") {

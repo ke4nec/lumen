@@ -145,10 +145,12 @@ bool ComboBoxController::handleKey(app::AppShell& shell, core::Key key,
     if (menu_.isOpen()) {
         return menu_.handleKey(shell, key, modifiers, keyChar);
     }
-    // 字段聚焦且未开：Down / Alt+Down 展开（输入位置保留）。
+    // 字段聚焦且未开：Down / Alt+Down 展开（输入位置保留；与头文件
+    // 及设计文档声明对齐——review L-1）。
     if (key == core::Key::Down &&
+        (modifiers & (core::kModifierCtrl | core::kModifierGui)) == 0 &&
         shell.controller().focusedBind() == bind_) {
-        open(shell);
+        open(shell, /*anchorTheme=*/nullptr, /*fallbackAll=*/true);
         return true;
     }
     return false;

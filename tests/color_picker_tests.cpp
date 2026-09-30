@@ -89,7 +89,11 @@ TEST_CASE("color_picker_swatch_click_sets_result_and_sliders",
     };
     AppShell shell{config};
     std::string picked;
-    picker.onPicked = [&](const std::string& hex) { picked = hex; };
+    int pickedCount = 0;
+    picker.onPicked = [&](const std::string& hex) {
+        picked = hex;
+        ++pickedCount;
+    };
     picker.attach(shell);
     shell.rebuildIfDirty();
 
@@ -97,6 +101,8 @@ TEST_CASE("color_picker_swatch_click_sets_result_and_sliders",
     shell.handlers()["picker:swatch:5"]();
     CHECK(shell.state().get("accent-hex") == "#42A5F5");
     CHECK(picked == "#42A5F5");
+    // M-4 review：单次点击单次回调（三次通道反推只在末尾通知一次）。
+    CHECK(pickedCount == 1);
     const int h = std::atoi(shell.state().get("picker:h").c_str());
     const int s = std::atoi(shell.state().get("picker:s").c_str());
     const int v = std::atoi(shell.state().get("picker:v").c_str());
@@ -120,8 +126,10 @@ TEST_CASE("color_picker_swatch_click_sets_result_and_sliders",
     CHECK(picked == "#FF0000");
     // 同值再写：无重复回调（applyResult 幂等）。
     picked.clear();
+    const int countBefore = pickedCount;
     shell.state().set("picker:v", "100");
     CHECK(picked.empty());
+    CHECK(pickedCount == countBefore);
 }
 
 TEST_CASE("color_picker_build_renders_preview_and_palette",

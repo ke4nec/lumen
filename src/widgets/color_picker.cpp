@@ -150,9 +150,10 @@ void ColorPickerController::attach(app::AppShell& shell) {
         handlers_.push_back(swatchHandler(i));
         shell.handlers()[handlers_.back()] = [this, &shell, hex] {
             const core::Color color = colorFromHex(hex);
-            // 滑条同步反推（H ×3.6 回写，观察者对结果无环——结果 bind
-            // 与通道 bind 分离）。
             const Hsv hsv = rgbToHsv(color);
+            // 滑条同步反推（H ×3.6 回写）。反推期间抑制观察者派生——
+            // 三次通道写只在末尾产生一次结果通知（M-4）。
+            applyingSwatch_ = true;
             shell.state().set(channelBind('h'),
                               std::to_string(
                                   static_cast<int>(std::lround(hsv.h / 3.6F))));
@@ -162,12 +163,16 @@ void ColorPickerController::attach(app::AppShell& shell) {
             shell.state().set(channelBind('v'),
                               std::to_string(static_cast<int>(
                                   std::lround(hsv.v * 100.0F))));
+            applyingSwatch_ = false;
             applyResult(shell, color);
         };
     }
-    // 滑条观察：任一通道变化 → 派生 hex（三个观察共享同一派生；无变化
-    // 时 applyResult 幂等返回）。
+    // 滑条观察：任一通道变化 → 派生 hex（色板反推期间抑制；无变化时
+    // applyResult 幂等返回）。
     const auto derive = [this, &shell] {
+        if (applyingSwatch_) {
+            return;
+        }
         const int h = std::atoi(shell.state().get(channelBind('h')).c_str());
         const int s = std::atoi(shell.state().get(channelBind('s')).c_str());
         const int v = std::atoi(shell.state().get(channelBind('v')).c_str());

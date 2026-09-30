@@ -61,7 +61,10 @@ class DialogHost {
     // --- 装配点（见文件头注释） ---
     [[nodiscard]] std::optional<core::Widget> build(
         const app::AppShell& shell) const;
-    // Escape 路由（仅对话框打开时消费；settings 同款统一规则）。
+    // 键盘路由（仅对话框打开时消费）：
+    //   Escape = 取消（settings 同款统一规则）；
+    //   Enter = prompt 字段聚焦时提交（字段自身把 Enter 消费为失焦，
+    //   这里在 onKey 层先截获——键盘提交是输入对话框的基本预期）。
     bool handleKey(app::AppShell& shell, core::Key key,
                    core::KeyModifiers modifiers = core::kModifierNone,
                    char keyChar = 0);
@@ -78,8 +81,23 @@ class DialogHost {
   private:
     enum class Kind : std::uint8_t { None, Message, Confirm, Prompt };
 
-    void show(app::AppShell& shell, Kind kind, std::string title,
-              std::string body, std::string initial, Buttons buttons);
+    // 一次对话框请求（值语义；供关闭期队列暂存后原样安装）。
+    struct Request {
+        Kind kind{Kind::None};
+        std::string title{};
+        std::string body{};
+        std::string initial{};
+        Buttons buttons{};
+        std::function<void()> onDismiss{};
+        std::function<void(bool)> onConfirm{};
+        std::function<void(std::optional<std::string>)> onPrompt{};
+    };
+
+    // 忙判定分流：live（占用中）→ 丢弃（嵌套拒绝，零副作用）；
+    // closing（转场收尾窗口期）→ 暂存队列（retire 后立即安装——回调
+    // 内连环开框不再静默丢失）；空闲 → 立即安装。
+    void dispatch(app::AppShell& shell, Request&& request);
+    void install(app::AppShell& shell, Request&& request);
     void accept(app::AppShell& shell);
     void cancel(app::AppShell& shell);
     void finish(app::AppShell& shell);
@@ -97,11 +115,12 @@ class DialogHost {
     std::string initial_{};
     std::string returnFocusKey_{};
     bool focusSettlePending_{false};
-    // 回调在 finish 前拷贝触发（finish 清状态后再回调，避免回调内再开
-    // 对话框被 busy() 拒绝）。
     std::function<void()> onDismiss_{};
     std::function<void(bool)> onConfirm_{};
     std::function<void(std::optional<std::string>)> onPrompt_{};
+    // 关闭转场期的待开请求（深度 1：连环开框场景；更深的链在下一轮
+    // 关闭时继续排队）。
+    std::optional<Request> pending_{};
 };
 
 }  // namespace lumen::widgets

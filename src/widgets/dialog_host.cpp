@@ -29,27 +29,25 @@ core::Widget makeLabel(std::string text, const core::TextStyle& style,
 void DialogHost::showMessage(app::AppShell& shell, std::string title,
                              std::string body, Buttons buttons,
                              std::function<void()> onDismiss) {
-    if (busy()) {
-        return;  // busy 拒绝发生在改写任何状态/回调之前（嵌套请求无副作用）
-    }
-    onDismiss_ = std::move(onDismiss);
-    onConfirm_ = {};
-    onPrompt_ = {};
-    show(shell, Kind::Message, std::move(title), std::move(body), {},
-         std::move(buttons));
+    Request request;
+    request.kind = Kind::Message;
+    request.title = std::move(title);
+    request.body = std::move(body);
+    request.buttons = std::move(buttons);
+    request.onDismiss = std::move(onDismiss);
+    dispatch(shell, std::move(request));
 }
 
 void DialogHost::showConfirm(app::AppShell& shell, std::string title,
                              std::string body, Buttons buttons,
                              std::function<void(bool)> onResult) {
-    if (busy()) {
-        return;
-    }
-    onDismiss_ = {};
-    onPrompt_ = {};
-    onConfirm_ = std::move(onResult);
-    show(shell, Kind::Confirm, std::move(title), std::move(body), {},
-         std::move(buttons));
+    Request request;
+    request.kind = Kind::Confirm;
+    request.title = std::move(title);
+    request.body = std::move(body);
+    request.buttons = std::move(buttons);
+    request.onConfirm = std::move(onResult);
+    dispatch(shell, std::move(request));
 }
 
 void DialogHost::showPrompt(app::AppShell& shell, std::string title,
@@ -57,25 +55,39 @@ void DialogHost::showPrompt(app::AppShell& shell, std::string title,
                             Buttons buttons,
                             std::function<void(std::optional<std::string>)>
                                 onResult) {
-    if (busy()) {
-        return;
-    }
-    onDismiss_ = {};
-    onConfirm_ = {};
-    onPrompt_ = std::move(onResult);
-    show(shell, Kind::Prompt, std::move(title), std::move(body),
-         std::move(initial), std::move(buttons));
+    Request request;
+    request.kind = Kind::Prompt;
+    request.title = std::move(title);
+    request.body = std::move(body);
+    request.initial = std::move(initial);
+    request.buttons = std::move(buttons);
+    request.onPrompt = std::move(onResult);
+    dispatch(shell, std::move(request));
 }
 
-void DialogHost::show(app::AppShell& shell, Kind kind, std::string title,
-                      std::string body, std::string initial,
-                      Buttons buttons) {
-    kind_ = kind;
+void DialogHost::dispatch(app::AppShell& shell, Request&& request) {
+    if (busy()) {
+        if (closing_) {
+            // 转场收尾窗口期：暂存（回调内连环开框不静默丢失；retire
+            // 后立即安装）。深度 1——更深链式请求按先进先出逐轮排队。
+            pending_ = std::move(request);
+        }
+        // live 占用：嵌套拒绝（改写任何状态之前返回，零副作用）。
+        return;
+    }
+    install(shell, std::move(request));
+}
+
+void DialogHost::install(app::AppShell& shell, Request&& request) {
+    kind_ = request.kind;
     closing_ = false;
-    title_ = std::move(title);
-    body_ = std::move(body);
-    initial_ = std::move(initial);
-    buttons_ = std::move(buttons);
+    title_ = std::move(request.title);
+    body_ = std::move(request.body);
+    initial_ = std::move(request.initial);
+    buttons_ = std::move(request.buttons);
+    onDismiss_ = std::move(request.onDismiss);
+    onConfirm_ = std::move(request.onConfirm);
+    onPrompt_ = std::move(request.onPrompt);
     if (kind_ == Kind::Prompt) {
         shell.state().set(promptBind(), initial_);
     }
@@ -172,6 +184,13 @@ void DialogHost::finish(app::AppShell& shell) {
         focusSettlePending_ = true;
         active.markDirty();
         active.requestFullRepaint();
+        // 关闭期队列：retire 后立即安装暂存请求（进/出场转场在同一个
+        // dialog key 上顺序衔接——出场已完成，进场从终值起始）。
+        if (pending_.has_value()) {
+            Request next = std::move(*pending_);
+            pending_.reset();
+            install(active, std::move(next));
+        }
     };
     if (shell.motionEnabled()) {
         closing_ = true;
@@ -186,8 +205,19 @@ bool DialogHost::handleKey(app::AppShell& shell, core::Key key,
                            core::KeyModifiers modifiers, char keyChar) {
     (void)modifiers;
     (void)keyChar;
-    if (key == core::Key::Escape && busy() && !closing_) {
+    if (!busy() || closing_) {
+        return false;
+    }
+    if (key == core::Key::Escape) {
         cancel(shell);
+        return true;
+    }
+    // Enter = prompt 字段聚焦时提交。字段自身的 Enter 语义是失焦（在
+    // 交互层被消费），此处经 onKey 先行截获——输入对话框的键盘提交
+    // 基本预期；焦点在按钮上时不截获（按钮激活优先）。
+    if (key == core::Key::Enter && kind_ == Kind::Prompt &&
+        shell.controller().focusedBind() == promptBind()) {
+        accept(shell);
         return true;
     }
     return false;

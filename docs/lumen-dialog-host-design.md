@@ -16,12 +16,12 @@
 | `showConfirm(title, body, buttons, onResult)` | 确认 | OK → `true`；Cancel/barrier/Escape → `false` |
 | `showPrompt(title, body, initial, buttons, onResult)` | 输入 | OK → 文本；Cancel/barrier/Escape → `nullopt` |
 
-装配点：`build`（对话框子树叠加为栈层）、`config.onKey`（Escape，modal 优先）、`config.onCloseRequested`（打开时消费不退出）、`config.onRebuilt`（焦点安置/恢复）。busy() 拒绝嵌套便利对话框（嵌套场景走应用自拼）；**拒绝发生在改写任何状态/回调之前**（嵌套请求零副作用）。
+装配点：`build`（对话框子树叠加为栈层）、`config.onKey`（Escape，modal 优先）、`config.onCloseRequested`（打开时消费不退出）、`config.onRebuilt`（焦点安置/恢复）。busy() 拒绝嵌套便利对话框（嵌套场景走应用自拼）；**拒绝发生在改写任何状态/回调之前**（嵌套请求零副作用）。例外：**关闭转场窗口期（closing）的请求进深度 1 队列**，retire 后立即安装——回调内连环开框（"取消 A → 确认 B"链）不静默丢失。
 
 ## 2. 行为契约（与手拼 Dialog 一致，测试锁定）
 
 - 结构：`makeDialog(body, actions, theme, "dialog-host:dismiss", key, view)`——barrier（onClick=dismiss、semanticsRole="dialog"）+ FocusScope 内容卡（Tab 不逃逸，plan §3.4）。
-- 键盘：按钮经 HandlerRegistry（Enter/Space 激活聚焦按钮 = 点击同路径）；Escape = 取消（modal 优先于路由返回）；prompt 字段聚焦（光标置末尾），输入走标准 textInput 路径。
+- 键盘：按钮经 HandlerRegistry（Enter/Space 激活聚焦按钮 = 点击同路径）；Escape = 取消（modal 优先于路由返回）；prompt 字段聚焦（光标置末尾），输入走标准 textInput 路径；**prompt 字段聚焦时 Enter = 提交**（经 onKey 层先行截获——字段自身的 Enter 失焦语义不吞掉提交预期；焦点在按钮上时不截获，按钮激活优先）。
 - 焦点：打开 → 安置进域内（prompt 优先字段）；关闭 → 恢复唤起前焦点（消失则清焦点）。
 - 转场：motionEnabled 时 `beginDialogTransition` 进/出场；关闭转场完成后才移除子树（settings 同款 retiring 语义）。直驱（无 tick）保持即时终态。
 - 状态：prompt 值走 StateStore 独立 bind（`dialog-host:prompt`）；多次/跨实例不串值。
