@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -319,6 +320,12 @@ struct Widget {
     // Default off (visual-system §5/§6.1); opt in with withFocusRing(..., true).
     // Collection viewports forward this to generated rows (visual-system §6.1).
     bool showFocusRing{false};
+    // 阶段C（lumen-grid-span-design.md）：Grid 直接子项跨行列声明（其他
+    // 容器忽略）。uint8 通道 = M7 体积预算（占用本指针前的 2 字节填充，
+    // sizeof 不变）；构造/布局期钳制：colspan → [1, min(列数, 255)]，
+    // rowspan → [1, 255]。span=1 与 M3 基线逐字节同几何。
+    std::uint8_t gridColumnSpan{1};
+    std::uint8_t gridRowSpan{1};
     // TreeList 列向量指针（应用拥有的 std::vector<TreeListColumn>；
     // themeOverride 同模式）与表头显隐。
     const void* collectionColumns{nullptr};
@@ -588,6 +595,17 @@ inline Widget withBind(Widget child, std::string key) {
 // Attaches an identity key; used for reuse, focus tracking and press state.
 inline Widget withKey(Widget child, std::string key) {
     child.key = std::move(key);
+    return child;
+}
+
+// 阶段C：Grid 子项跨行列声明（lumen-grid-span-design.md；非 Grid 父级
+// 的直接子项上无效）。通道为 uint8：负值/0/超 255 一律钳到 [1, 255]；
+// colspan 布局期另钳到列数。
+inline Widget withGridSpan(Widget child, int columnSpan, int rowSpan) {
+    child.gridColumnSpan = static_cast<std::uint8_t>(
+        std::clamp(columnSpan, 1, 255));
+    child.gridRowSpan =
+        static_cast<std::uint8_t>(std::clamp(rowSpan, 1, 255));
     return child;
 }
 

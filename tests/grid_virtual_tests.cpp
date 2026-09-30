@@ -199,6 +199,163 @@ TEST_CASE("grid_row_height_is_max_of_row_and_honors_fixed_size", "[grid]") {
     CHECK(short_->size.height < 80.0F);
 }
 
+// --- 阶段C：Grid 跨行列（lumen-grid-span-design.md） ---
+
+TEST_CASE("grid_colspan_spans_cells_and_wraps", "[grid][span]") {
+    // 3 列 300px、无间距：单元宽 100。首项跨 2 列 → 占 col0..1（宽
+    // 200）；第二项只能落 col2；第三项换行到 row1 col0。
+    std::vector<Widget> cells;
+    cells.push_back(withGridSpan(
+        withKey(makeContainerLeaf(std::nullopt, 20.0F, {}, {}, {}, "wide"),
+                "wide"),
+        2, 1));
+    cells.push_back(
+        withKey(makeContainerLeaf(std::nullopt, 20.0F, {}, {}, {}, "b"),
+                "b"));
+    cells.push_back(
+        withKey(makeContainerLeaf(std::nullopt, 20.0F, {}, {}, {}, "c"),
+                "c"));
+    const RenderNode root = LayoutEngine::layout(
+        makeGrid(std::move(cells), 3, 0.0F, 0.0F, 0.0F, "grid"),
+        tightView(300.0F, 300.0F));
+    const RenderNode* wide = findNodeByKey(root, "wide");
+    const RenderNode* b = findNodeByKey(root, "b");
+    const RenderNode* c = findNodeByKey(root, "c");
+    REQUIRE(wide != nullptr);
+    REQUIRE(b != nullptr);
+    REQUIRE(c != nullptr);
+    CHECK(wide->offset.x == 0.0F);
+    CHECK(wide->size.width == Catch::Approx(200.0F).margin(0.01F));
+    CHECK(b->offset.x == Catch::Approx(200.0F).margin(0.01F));
+    CHECK(b->size.width == Catch::Approx(100.0F).margin(0.01F));
+    CHECK(c->offset.x == 0.0F);
+    CHECK(c->offset.y == Catch::Approx(20.0F).margin(0.01F));
+}
+
+TEST_CASE("grid_colspan_is_clamped_to_column_count", "[grid][span]") {
+    // 2 列 200px：跨 5 列声明钳到 2 → 首项占满整行，后续项换行。
+    std::vector<Widget> cells;
+    cells.push_back(withGridSpan(
+        withKey(makeContainerLeaf(std::nullopt, 16.0F, {}, {}, {}, "huge"),
+                "huge"),
+        5, 1));
+    cells.push_back(
+        withKey(makeContainerLeaf(std::nullopt, 16.0F, {}, {}, {}, "next"),
+                "next"));
+    const RenderNode root = LayoutEngine::layout(
+        makeGrid(std::move(cells), 2, 0.0F, 0.0F, 0.0F, "grid"),
+        tightView(200.0F, 200.0F));
+    const RenderNode* huge = findNodeByKey(root, "huge");
+    const RenderNode* next = findNodeByKey(root, "next");
+    REQUIRE(huge != nullptr);
+    REQUIRE(next != nullptr);
+    CHECK(huge->size.width == Catch::Approx(200.0F).margin(0.01F));
+    CHECK(next->offset.x == 0.0F);
+    CHECK(next->offset.y == Catch::Approx(16.0F).margin(0.01F));
+}
+
+TEST_CASE("grid_rowspan_deficit_grows_last_spanned_row", "[grid][span]") {
+    // 2 列无间距：c0 跨 2 行高 100，占 (0,0)(1,0)；c1 落 (0,1)；
+    // c2 的行首 (1,0) 被跨行占用 → 落 (1,1)。row0 = 20（c1）、
+    // row1 = 30（c2）；跨行覆盖 50 < 100 → 差额 50 计入最后跨行（80）。
+    std::vector<Widget> cells;
+    cells.push_back(withGridSpan(
+        withKey(makeContainerLeaf(std::nullopt, 100.0F, {}, {}, {}, "tall"),
+                "tall"),
+        1, 2));
+    cells.push_back(
+        withKey(makeContainerLeaf(std::nullopt, 20.0F, {}, {}, {}, "r0"),
+                "r0"));
+    cells.push_back(
+        withKey(makeContainerLeaf(std::nullopt, 30.0F, {}, {}, {}, "r1"),
+                "r1"));
+    const RenderNode root = LayoutEngine::layout(
+        makeGrid(std::move(cells), 2, 0.0F, 0.0F, 0.0F, "grid"),
+        Constraints{0.0F, 200.0F, 0.0F, 400.0F});
+    const RenderNode* grid = findNodeByKey(root, "grid");
+    const RenderNode* tall = findNodeByKey(root, "tall");
+    const RenderNode* r0 = findNodeByKey(root, "r0");
+    const RenderNode* r1 = findNodeByKey(root, "r1");
+    REQUIRE(grid != nullptr);
+    REQUIRE(tall != nullptr);
+    REQUIRE(r0 != nullptr);
+    REQUIRE(r1 != nullptr);
+    CHECK(tall->offset.y == 0.0F);
+    CHECK(tall->size.height == Catch::Approx(100.0F).margin(0.01F));
+    // row1 顶 = row0 高 20；网格内容高 = 20 + 80 = 100。
+    CHECK(r1->offset.y == Catch::Approx(20.0F).margin(0.01F));
+    CHECK(r1->offset.x == Catch::Approx(100.0F).margin(0.01F));
+    CHECK(r0->offset.x == Catch::Approx(100.0F).margin(0.01F));
+    CHECK(grid->size.height == Catch::Approx(100.0F).margin(0.01F));
+}
+
+TEST_CASE("grid_rowspan_counts_row_gap_in_spanned_extent", "[grid][span]") {
+    // rowGap 10：c0 跨 2 行高 60；两行各 20 → 覆盖 20+10+20 = 50，
+    // 差额 10 计入 row1（30）；内容高 = 20 + 10 + 30 = 60。
+    std::vector<Widget> cells;
+    cells.push_back(withGridSpan(
+        withKey(makeContainerLeaf(std::nullopt, 60.0F, {}, {}, {}, "tall"),
+                "tall"),
+        1, 2));
+    cells.push_back(
+        withKey(makeContainerLeaf(std::nullopt, 20.0F, {}, {}, {}, "r0"),
+                "r0"));
+    cells.push_back(
+        withKey(makeContainerLeaf(std::nullopt, 20.0F, {}, {}, {}, "r1"),
+                "r1"));
+    const RenderNode root = LayoutEngine::layout(
+        makeGrid(std::move(cells), 2, 0.0F, 0.0F, 10.0F, "grid"),
+        Constraints{0.0F, 200.0F, 0.0F, 400.0F});
+    const RenderNode* grid = findNodeByKey(root, "grid");
+    const RenderNode* r1 = findNodeByKey(root, "r1");
+    REQUIRE(grid != nullptr);
+    REQUIRE(r1 != nullptr);
+    CHECK(r1->offset.y == Catch::Approx(30.0F).margin(0.01F));
+    CHECK(grid->size.height == Catch::Approx(60.0F).margin(0.01F));
+}
+
+TEST_CASE("grid_explicit_span_one_matches_default_geometry", "[grid][span]") {
+    // 显式 withGridSpan(1,1) 与缺省 span 逐字节同几何（兼容性契约）。
+    const auto build = [](bool explicitSpan) {
+        std::vector<Widget> cells;
+        for (int i = 0; i < 7; ++i) {
+            Widget cell = withKey(makeContainerLeaf(std::nullopt,
+                                                    18.0F + i, {}, {}, {},
+                                                    "c" + std::to_string(i)),
+                                  "c" + std::to_string(i));
+            if (explicitSpan) {
+                cell = withGridSpan(std::move(cell), 1, 1);
+            }
+            cells.push_back(std::move(cell));
+        }
+        return LayoutEngine::layout(
+            makeGrid(std::move(cells), 3, 0.0F, 8.0F, 6.0F, "grid"),
+            tightView(320.0F, 600.0F));
+    };
+    CHECK(build(true) == build(false));
+}
+
+TEST_CASE("grid_spans_work_with_adaptive_column_count", "[grid][span]") {
+    // 自适应列数（300px / 最小 100px → 3 列）后跨 2 列仍按导出列宽计。
+    std::vector<Widget> cells;
+    cells.push_back(withGridSpan(
+        withKey(makeContainerLeaf(std::nullopt, 24.0F, {}, {}, {}, "wide"),
+                "wide"),
+        2, 1));
+    cells.push_back(
+        withKey(makeContainerLeaf(std::nullopt, 24.0F, {}, {}, {}, "s"),
+                "s"));
+    const RenderNode root = LayoutEngine::layout(
+        makeGrid(std::move(cells), 0, 100.0F, 0.0F, 0.0F, "grid"),
+        tightView(300.0F, 300.0F));
+    const RenderNode* wide = findNodeByKey(root, "wide");
+    const RenderNode* s = findNodeByKey(root, "s");
+    REQUIRE(wide != nullptr);
+    REQUIRE(s != nullptr);
+    CHECK(wide->size.width == Catch::Approx(200.0F).margin(0.01F));
+    CHECK(s->offset.x == Catch::Approx(200.0F).margin(0.01F));
+}
+
 // --- VirtualList ---
 
 TEST_CASE("nested_fixed_stretch_lays_out_visible_items_once", "[layout][virtual-list]") {

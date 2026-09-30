@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen Grid 跨行列设计稿 · rowspan/colspan</title>
+<meta name="description" content="Lumen Grid 布局跨行列（gridColumnSpan/gridRowSpan）的几何与视觉设计稿，配套 docs/lumen-grid-span-design.md，视觉 token 对齐 docs/lumen-visual-system-design.md。">
+<style>
+  :root {
+    color-scheme: light;
+    /* 评审板（与 design/splitter.html / gallery.html 一致的板面语言） */
+    --board-bg: #e9edf3;
+    --board-grid: rgba(42, 58, 82, .045);
+    --board-ink: #172033;
+    --board-muted: #69758b;
+    --board-line: #d8dee8;
+    --board-card: rgba(255, 255, 255, .86);
+    --board-shadow: 0 24px 70px rgba(31, 48, 77, .12);
+    --board-accent: #2864b7;
+    --board-accent-soft: #e8f0ff;
+    --radius-xl: 24px;
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+    --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    /* 拟真应用：Core Dark token 值（gallery.html 变体 01 同源） */
+    --app-bg: #18181b;
+    --app-surface: #27272e;
+    --app-surface-alt: #2e2e36;
+    --app-ink: #f1f1f4;
+    --app-muted: #a1a1aa;
+    --app-line: #3b3b45;
+    --app-line-strong: #8c8c98;
+    --app-accent: #568cf0;
+    --app-accent-content: #a8c5fa;
+    --app-accent-soft: #2e3c60;
+    --card-radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  html { min-width: 320px; background: var(--board-bg); }
+  body {
+    margin: 0; min-height: 100vh; color: var(--board-ink);
+    font-family: var(--font-ui);
+    background-color: var(--board-bg);
+    background-image: linear-gradient(var(--board-grid) 1px, transparent 1px), linear-gradient(90deg, var(--board-grid) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  .board { width: min(1120px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 48px; }
+  .board-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+  .eyebrow { display: flex; align-items: center; gap: 9px; color: var(--board-accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+  .eyebrow::before { content: ""; width: 22px; height: 2px; background: var(--board-accent); border-radius: 2px; }
+  h1 { margin: 6px 0 4px; font-size: 26px; letter-spacing: -.01em; }
+  .subheader { margin: 0; color: var(--board-muted); font-size: 13.5px; max-width: 64ch; line-height: 1.65; }
+
+  .panel { background: var(--board-card); border: 1px solid var(--board-line); border-radius: var(--radius-lg); box-shadow: var(--board-shadow); padding: 22px; margin-bottom: 20px; }
+  .panel h2 { margin: 0 0 4px; font-size: 15px; }
+  .panel p { margin: 0 0 14px; color: var(--board-muted); font-size: 13px; line-height: 1.6; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .92em; background: var(--board-accent-soft); color: #1d4d8f; border-radius: 4px; padding: 1px 5px; }
+
+  .app-frame { background: var(--app-bg); border-radius: var(--radius-md); padding: 18px; color: var(--app-ink); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .cell { background: var(--app-surface); border: 1px solid var(--app-line); border-radius: var(--card-radius); padding: 10px 12px; font-size: 12.5px; color: var(--app-ink); display: flex; align-items: flex-start; min-height: 44px; }
+  .cell .tag { color: var(--app-muted); font-size: 11px; }
+  .cell.span-col { background: var(--app-accent-soft); border-color: var(--app-accent); }
+  .cell.span-row { background: var(--app-surface-alt); border-color: var(--app-line-strong); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; color: var(--board-muted); font-size: 12.5px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--app-line); background: var(--app-surface); }
+  .swatch.col { background: var(--app-accent-soft); border-color: var(--app-accent); }
+  .swatch.row { background: var(--app-surface-alt); border-color: var(--app-line-strong); }
+  .notes { margin: 14px 0 0; padding: 0; list-style: none; color: var(--board-muted); font-size: 12.5px; line-height: 1.75; }
+  .notes li::before { content: "— "; color: var(--board-accent); }
+</style>
+</head>
+<body>
+<main class="board">
+  <header class="board-header">
+    <div>
+      <p class="eyebrow">Layout · Grid span</p>
+      <h1>Grid 跨行列（rowspan / colspan）</h1>
+      <p class="subheader">M3 流式网格的直接子项跨行列扩展：占位表流式放置、跨列宽 = 跨列格 + 其间 gap、跨行差额计入末跨行。span=1 与 M3 基线逐字节同几何。规格见 <code>docs/lumen-grid-span-design.md</code>；Gallery 样本在 Layout 页 <code>spans-grid</code>。</p>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>Gallery 样本同构（3 列 · gap 8 · Core Dark）</h2>
+    <p>声明序放置：<code>withGridSpan(wide, 2, 1)</code> 占 col0..1；常规格落 col2；<code>withGridSpan(tall, 1, 2)</code> 占 col0 与下一行 col0，后续常规格绕行。跨行项顶端对齐、不垂直拉伸。</p>
+    <div class="app-frame">
+      <div class="grid">
+        <div class="cell span-col"><span>Spans 2 columns<br><span class="tag">gridColumnSpan=2</span></span></div>
+        <div class="cell"><span>1<br><span class="tag">常规格</span></span></div>
+        <div class="cell span-row" style="grid-row: span 2;"><span>Tall: spans 2 rows<br><span class="tag">gridRowSpan=2</span></span></div>
+        <div class="cell"><span>2<br><span class="tag">绕开 (1,0)</span></span></div>
+        <div class="cell"><span>3<br><span class="tag">常规格</span></span></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="swatch"></i>常规格（单元宽 = 均分列宽）</span>
+      <span><i class="swatch col"></i>跨列格（accent 容器底示意）</span>
+      <span><i class="swatch row"></i>跨行格（抬升表面示意）</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>行高解析与钳制边界</h2>
+    <p>行高两段解析：常规项行高 = 行内最大外部高度（M3 语义）；跨行项按放置序把「实测高 − 跨行覆盖（含行间距）」的差额计入最后一个跨行。</p>
+    <ul class="notes">
+      <li>colspan 布局期钳到 [1, 列数]（列数为固定值或最小列宽自适应推导值）；rowspan 钳到 [1, 255]（uint8 通道，M7 体积预算——sizeof(Widget) 不变）。</li>
+      <li>跨行项不参与起始行的行高；底部留白不拉伸（与 M3「行高由内容决定」一致）。</li>
+      <li>node.children 按声明序输出——span=1 时与 M3 行主序一致，帧哈希不变。</li>
+      <li>identity 与 span 无关：span 变化走既有节点 diff → 局部 damage。</li>
+      <li>不做显式坐标定位（grid-area）；稀疏布局用占位子项垫位。与 DataGrid 表格控件无关。</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

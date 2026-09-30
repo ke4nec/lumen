@@ -1080,6 +1080,9 @@ RenderNode layoutScrollView(const Widget& widget,
 //（(可用宽-(列-1)*列间距)/列）；行高 = 行内子项外部高度最大值；行间用
 // gridRowGap。子项约束：宽度 ≤ 单元宽（子项自身决定填充），高度不限。
 // 窗口变化重排由约束传播自然发生（几何确定性：同约束同结果）。
+// 阶段C（lumen-grid-span-design.md）：子项可声明 gridColumnSpan/
+// gridRowSpan 跨行列——占位表流式放置 + 跨列宽度测量 + 跨行差额行高；
+// span=1 与 M3 基线逐字节同几何（子项声明序输出）。
 RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
                       const style::StyleContext& styleContext,
                       const std::string& identity) {
@@ -1115,7 +1118,77 @@ RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
     RenderNode node = makeNode(widget, Offset{0.0F, 0.0F},
                                Size{availableWidth, 0.0F}, styleContext,
                                identity);
-    // 先分单元约束布局全部子项，再按行聚合定位（行高 = 行内最大）。
+
+    // 跨行列流式放置：占位表按需扩行；光标行优先扫描首个整块空闲矩形
+    //（当前列放不下即右移，越列宽换行——空行必空闲，循环有限终止）。
+    struct Placement {
+        std::size_t row{0};
+        std::size_t column{0};
+        int columnSpan{1};
+        int rowSpan{1};
+    };
+    std::vector<std::vector<char>> occupied{};
+    const auto isFree = [&](std::size_t row, std::size_t column,
+                            int columnSpan, int rowSpan) {
+        for (std::size_t r = row;
+             r < row + static_cast<std::size_t>(rowSpan); ++r) {
+            if (r >= occupied.size()) {
+                break;  // 未分配的行必为空
+            }
+            const std::vector<char>& rowCells = occupied[r];
+            for (std::size_t c = column;
+                 c < column + static_cast<std::size_t>(columnSpan); ++c) {
+                if (c < rowCells.size() && rowCells[c] != 0) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    const auto mark = [&](std::size_t row, std::size_t column, int columnSpan,
+                          int rowSpan) {
+        for (std::size_t r = row;
+             r < row + static_cast<std::size_t>(rowSpan); ++r) {
+            if (r >= occupied.size()) {
+                occupied.resize(r + 1);
+            }
+            std::vector<char>& rowCells = occupied[r];
+            if (rowCells.size() < static_cast<std::size_t>(safeColumns)) {
+                rowCells.resize(static_cast<std::size_t>(safeColumns), 0);
+            }
+            for (std::size_t c = column;
+                 c < column + static_cast<std::size_t>(columnSpan); ++c) {
+                rowCells[c] = 1;
+            }
+        }
+    };
+
+    std::vector<Placement> placements(widget.children.size());
+    std::size_t cursorRow = 0;
+    std::size_t cursorColumn = 0;
+    for (std::size_t i = 0; i < widget.children.size(); ++i) {
+        const Widget& child = widget.children[i];
+        const int columnSpan =
+            std::clamp(static_cast<int>(child.gridColumnSpan), 1,
+                       safeColumns);
+        const int rowSpan = std::max(1, static_cast<int>(child.gridRowSpan));
+        while (cursorColumn + static_cast<std::size_t>(columnSpan) >
+                   static_cast<std::size_t>(safeColumns) ||
+               !isFree(cursorRow, cursorColumn, columnSpan, rowSpan)) {
+            ++cursorColumn;
+            if (cursorColumn >= static_cast<std::size_t>(safeColumns)) {
+                cursorColumn = 0;
+                ++cursorRow;
+            }
+        }
+        placements[i] = Placement{cursorRow, cursorColumn, columnSpan,
+                                  rowSpan};
+        mark(cursorRow, cursorColumn, columnSpan, rowSpan);
+        ++cursorColumn;
+    }
+
+    // 先按跨列宽布局全部子项（跨列宽 = 跨列格 + 其间 gap；span=1 即
+    // 单格宽，同 M3），再解析行高并定位。
     struct Cell {
         RenderNode node{};
         float outerHeight{0.0F};
@@ -1124,10 +1197,12 @@ RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
     cells.reserve(widget.children.size());
     for (std::size_t i = 0; i < widget.children.size(); ++i) {
         const Widget& child = widget.children[i];
-        // 单元宽度紧约束（网格语义：单元格均匀填满列宽；子项高度
-        // 自适应，行高 = 行内最大外部高度）。
+        const int columnSpan = placements[i].columnSpan;
+        const float spanWidth =
+            static_cast<float>(columnSpan) * cellWidth +
+            static_cast<float>(columnSpan - 1) * columnGap;
         const Constraints childConstraints{
-            cellWidth, cellWidth, 0.0F, Constraints::unbounded().maxHeight};
+            spanWidth, spanWidth, 0.0F, Constraints::unbounded().maxHeight};
         RenderNode childNode =
             layoutSingle(child, childConstraints, styleContext,
                          childIdentity(identity, child, i));
@@ -1135,35 +1210,55 @@ RenderNode layoutGrid(const Widget& widget, const Constraints& constraints,
                              childNode.size.height + child.margin.vertical()});
     }
 
-    const std::size_t rows =
-        (widget.children.size() + static_cast<std::size_t>(safeColumns) - 1) /
-        static_cast<std::size_t>(safeColumns);
+    // 行高解析：常规项（rowSpan=1）行高 = 行内最大外部高度（M3 语义）；
+    // 跨行项按放置序把实测高度差额计入最后一个跨行（确定性累积）。
+    const std::size_t rows = occupied.size();
+    std::vector<float> rowHeights(rows, 0.0F);
+    for (std::size_t i = 0; i < cells.size(); ++i) {
+        if (placements[i].rowSpan == 1) {
+            rowHeights[placements[i].row] =
+                std::max(rowHeights[placements[i].row], cells[i].outerHeight);
+        }
+    }
+    for (std::size_t i = 0; i < cells.size(); ++i) {
+        const Placement& placement = placements[i];
+        if (placement.rowSpan == 1) {
+            continue;
+        }
+        float spannedHeight =
+            static_cast<float>(placement.rowSpan - 1) * rowGap;
+        for (std::size_t r = placement.row;
+             r < placement.row + static_cast<std::size_t>(placement.rowSpan);
+             ++r) {
+            spannedHeight += rowHeights[r];
+        }
+        const float deficit = cells[i].outerHeight - spannedHeight;
+        if (deficit > 0.0F) {
+            rowHeights[placement.row +
+                       static_cast<std::size_t>(placement.rowSpan) - 1] +=
+                deficit;
+        }
+    }
+
+    // 行顶前缀和；子项按声明序输出（span=1 时声明序 = 行主序，与 M3
+    // 一致；带 span 时绘制/语义序 = 声明序）。
+    std::vector<float> rowTops(rows, 0.0F);
+    for (std::size_t row = 1; row < rows; ++row) {
+        rowTops[row] = rowTops[row - 1] + rowHeights[row - 1] + rowGap;
+    }
+    for (std::size_t i = 0; i < cells.size(); ++i) {
+        const Widget& child = widget.children[i];
+        const Placement& placement = placements[i];
+        cells[i].node.offset = Offset{
+            padding.left +
+                static_cast<float>(placement.column) * (cellWidth + columnGap) +
+                child.margin.left,
+            padding.top + rowTops[placement.row] + child.margin.top};
+        node.children.push_back(std::move(cells[i].node));
+    }
     float contentHeight = 0.0F;
-    for (std::size_t row = 0; row < rows; ++row) {
-        const std::size_t begin =
-            row * static_cast<std::size_t>(safeColumns);
-        const std::size_t end =
-            std::min(widget.children.size(),
-                     begin + static_cast<std::size_t>(safeColumns));
-        float rowHeight = 0.0F;
-        for (std::size_t i = begin; i < end; ++i) {
-            rowHeight = std::max(rowHeight, cells[i].outerHeight);
-        }
-        for (std::size_t i = begin; i < end; ++i) {
-            Cell& cell = cells[i];
-            const std::size_t column = i - begin;
-            cell.node.offset = Offset{
-                padding.left + static_cast<float>(column) *
-                                   (cellWidth + columnGap) +
-                                   widget.children[i].margin.left,
-                padding.top + contentHeight +
-                    widget.children[i].margin.top};
-            node.children.push_back(std::move(cell.node));
-        }
-        contentHeight += rowHeight;
-        if (row + 1 < rows) {
-            contentHeight += rowGap;
-        }
+    if (rows > 0) {
+        contentHeight = rowTops[rows - 1] + rowHeights[rows - 1];
     }
     contentHeight += padding.vertical();
 

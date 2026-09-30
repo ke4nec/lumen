@@ -3130,6 +3130,24 @@ class GalleryApp {
             cell.key = "adaptive-" + std::to_string(i);
             adaptiveCells.push_back(std::move(cell));
         }
+        // 阶段C（lumen-grid-span-design.md）：跨行列样本——首项跨 2 列，
+        // 第三项跨 2 行（占位流式放置，后续项绕行）。跨行不垂直拉伸，
+        // 高格用显式高度让跨度可见。
+        std::vector<core::Widget> spanCells;
+        spanCells.push_back(core::withGridSpan(
+            core::withKey(mutedLabel("Spans 2 columns", theme), "span-wide"),
+            2, 1));
+        spanCells.push_back(
+            core::withKey(mutedLabel("1", theme), "span-a"));
+        core::Widget tallCell = core::makeContainer(
+            mutedLabel("Tall: spans 2 rows", theme), std::nullopt, 64.0F,
+            core::EdgeInsets::all(8.0F), {}, theme.colors.surfaceSunken,
+            core::CornerRadius::all(4.0F), "span-tall");
+        spanCells.push_back(core::withGridSpan(std::move(tallCell), 1, 2));
+        spanCells.push_back(
+            core::withKey(mutedLabel("2", theme), "span-b"));
+        spanCells.push_back(
+            core::withKey(mutedLabel("3", theme), "span-c"));
         items.push_back(sectionCard(
             "Grid",
             {core::withKey(
@@ -3140,6 +3158,10 @@ class GalleryApp {
                  core::makeGrid(std::move(adaptiveCells), 0, 140.0F, 8.0F,
                                 8.0F, "adaptive-grid"),
                  "adaptive-grid"),
+             core::withKey(
+                 core::makeGrid(std::move(spanCells), 3, 0.0F, 8.0F, 8.0F,
+                                "spans-grid"),
+                 "spans-grid"),
              core::withKey(buttonWidget("Back", "back", "back-button",
                                         core::ButtonVariant::Outline),
                            "back-button")},

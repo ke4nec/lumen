@@ -94,7 +94,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | R4 桌面系统集成 | 部分接口已存在 | 全屏/置顶/OS 模态/托盘契约与 SDL 实现已有（headless 已验证）；全局快捷键 Linux X11 后端已交付（XGrabKey 独立连接，Xvfb XTEST 端到端通过；Wayland 结构化不可用；Win32/macOS 后端未实现——能力位 false + 结构化 Unavailable）；macOS 原生菜单栏/交通灯未实现 |
 | R5 文本与剪贴板深度 | headless 已验证 | G-3 剪贴板 MIME 数据层/图片与自定义格式/变更广播有 headless 断言；三桌面真实 IME 与跨应用复制粘贴待现场 |
 | R6 开发者诊断 | dump 与帧读数已交付（headless 已验证） | `dumpRenderTree`/`dumpSemanticsTree`/`dumpStyleTree` + settings/gallery 三旗标 + 帧读数 HUD（`RunOptions.frameDebugOverlay`；默认关闭零额外帧）2026-09-30 交付；分配量维度未接入（renderer stats 无该维度）；inspector、bounds/damage overlay 未做 |
-| R7 控件细节 | 按需池交付中 | 已交付 auto-hide 滚动条、Splitter 塌缩/KeepRatio、DataGrid 筛选接线、可编辑 ComboBox、DialogHost 便利层、ColorPicker；RTL 镜像、双轴联滚、菜单 mnemonic、行内编辑等在池 |
+| R7 控件细节 | 按需池交付中 | 已交付 auto-hide 滚动条、Splitter 塌缩/KeepRatio、DataGrid 筛选接线、可编辑 ComboBox、DialogHost 便利层、ColorPicker、Grid 跨行列（2026-09-30）；RTL 镜像、双轴联滚、菜单 mnemonic、行内编辑等在池 |
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
 | R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；页面壳/状态摘要等组合组件未提取 |
 | R10 文档与证据同步 | 进行中 | 本表与待验收登记即该缺口的 2026-09-30 批次；后续状态变化须同一变更内更新 |
@@ -166,7 +166,10 @@ Skia/GPU Release 779/779，无跳过；详见
   横纵滚动条拖动与嵌套滚轮路由已实施；同一视口双轴联滚、水平虚拟化、
   RTL 镜像和 auto-hide 未实现。Gallery 已有超宽卡片水平滚动演示区，详见
   [滚动设计](lumen-scroll-design.md)。
-- Grid 为纵向网格（无横向滚动/跨行列合并）；Image 需应用侧资源管理器
+- Grid 为纵向网格（无横向滚动）；子项可声明跨行列（`withGridSpan`，
+  阶段C 2026-09-30——占位流式放置 + 跨行差额入末跨行，span=1 与 M3
+  基线逐字节同几何，见
+  [Grid 跨行列设计](lumen-grid-span-design.md)）；Image 需应用侧资源管理器
   驱动加载（框架不管理异步资源生命周期）。
 - 平台原生无障碍 provider 已在 M13 编入三桌面目标并有 headless 回归；Linux
   AT-SPI2、macOS NSAccessibility 和 Windows UIA 的真实屏幕阅读器人工回环

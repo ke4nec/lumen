@@ -110,7 +110,7 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 | auto-hide 滚动条 | 显隐过渡（MotionTokens 驱动；reduceAnimation 直达终态） | [`lumen-scroll-design.md`](lumen-scroll-design.md) |
 | 同视口双轴联滚 | 横纵滚轮/触摸在对角输入下联滚 | [`lumen-scroll-design.md`](lumen-scroll-design.md) |
 | RTL UI 镜像 | textDirection 语义（start/end 对齐映射、滚动条/分隔线/chevron/进度方向镜像）；与 M1 bidi 文本子集协同 | [`lumen-visual-system-design.md`](lumen-visual-system-design.md) |
-| Grid 跨行列合并 | rowspan/colspan；横向网格按需评估 | 框架计划文档 |
+| Grid 跨行列合并 | rowspan/colspan；横向网格按需评估 | 已交付 2026-09-30（[`lumen-grid-span-design.md`](lumen-grid-span-design.md)）；横向网格维持按需 |
 | Splitter 窗格塌缩 | 塌缩/KeepRatio + `.lumen` 节点 | [`lumen-splitter-design.md`](lumen-splitter-design.md) |
 | 菜单增强 | mnemonic 下划线、Alt/F10 单键、触摸长按 | [`lumen-menu-controls-design.md`](lumen-menu-controls-design.md) |
 | 行内编辑 | Tree/List 行内编辑（复用 TextField 编辑事务契约） | [`lumen-collection-controls-design.md`](lumen-collection-controls-design.md) |
@@ -242,6 +242,25 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 - 未交付池项：Win32 RegisterHotKey（消息窗口）与 macOS
   RegisterEventHotKey 后端（保持结构化 Unavailable + 命名原因；按真实
   需求与编译环境启用）、托盘 submenu/checkbox、macOS 原生菜单栏/交通灯。
+
+### 阶段C 首项状态记录（2026-09-30，Grid 跨行列）
+
+- 变更（[`lumen-grid-span-design.md`](lumen-grid-span-design.md) 首版随码交付）：
+  - `Widget.gridColumnSpan/gridRowSpan` + `withGridSpan` 修饰（构造期钳
+    负值/0；colspan 布局期钳到 [1, 列数]）。
+  - `layoutGrid` 重写：占位表流式放置（光标行优先扫描整块空闲矩形）→
+    跨列宽测量（span=1 即单格宽）→ 两段行高解析（常规项行内最大 +
+    跨行差额按放置序计入末跨行）→ 行顶前缀和定位，子项按声明序输出。
+    **span=1 与 M3 基线逐字节同几何**（既有 golden/帧哈希不动）。
+  - Gallery Layout 页 `spans-grid` 样本（跨 2 列 + 定高跨 2 行 + 绕行
+    格）；mockup `design/grid-span.html`。
+- 测试：`grid_virtual_tests` 新增 6 用例 `[grid][span]`（跨列宽度/换行、
+  colspan 钳制、跨行差额入末跨行 + 占位绕行、rowGap 计入跨行覆盖、显式
+  1/1 整树相等、自适应列数协同）；gallery 集成 1 用例（样本几何）。
+  全量 ctest 通过（本批 +7；跨行列为纯 core 布局，无平台路径）。
+- 未交付池项（更新）：双轴联滚、RTL 镜像、菜单 mnemonic、Tree/List
+  行内编辑、DataGrid 筛选面板 UI/条件模型、横向网格（按需评估）、
+  inspector GUI/bounds overlay。
 
 ### M17 进行中状态记录（2026-09-29，池式首项交付）
 

@@ -1183,3 +1183,31 @@ TEST_CASE("gallery_deterministic_dumps_cover_components",
     CHECK(style.find("style=common") != std::string::npos);
     CHECK(semantics.find("role=window") != std::string::npos);
 }
+
+// 阶段C（lumen-grid-span-design.md）：Layout 页跨行列样本几何——
+// 跨 2 列格宽 ≈ 2×单元宽 + gap；跨行格落在下一行首列，绕行格在其右侧。
+TEST_CASE("gallery_layout_grid_span_sample_geometry", "[gallery][span]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 900.0F});
+    (void)app.renderFrame();
+    go(app, "nav-layout");
+
+    const RenderNode* wide = findNodeByKey(app.root(), "span-wide");
+    const RenderNode* single = findNodeByKey(app.root(), "span-a");
+    const RenderNode* tall = findNodeByKey(app.root(), "span-tall");
+    const RenderNode* beside = findNodeByKey(app.root(), "span-b");
+    REQUIRE(wide != nullptr);
+    REQUIRE(single != nullptr);
+    REQUIRE(tall != nullptr);
+    REQUIRE(beside != nullptr);
+    // 3 列 gap 8：跨 2 列宽 = 2×单元宽 + 8（比例 ≈ 2 + gap/单元宽）。
+    CHECK(wide->size.width > single->size.width * 1.9F);
+    CHECK(wide->size.width < single->size.width * 2.1F);
+    // 跨行格在第二行首列；绕行格与之同行、在其右侧。
+    CHECK(tall->offset.y > wide->offset.y);
+    CHECK(tall->offset.x < beside->offset.x);
+    CHECK(beside->offset.y == Catch::Approx(tall->offset.y).margin(0.01F));
+    // 跨行格覆盖两行：定高容器样本高于常规格（跨行不拉伸——高度由
+    // 声明给出，行高差额走末跨行）。
+    CHECK(tall->size.height > single->size.height);
+}
