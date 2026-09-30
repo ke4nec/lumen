@@ -1329,6 +1329,6 @@ TEST_CASE("dump_semantics_tree_is_deterministic_and_typed",
     CHECK(first.find("role=window") != std::string::npos);
     // 按钮语义节点：label 来自文本、可激活。
     CHECK(first.find("label=\"OK\"") != std::string::npos);
-    CHECK(first.find("actions=focus activate") != std::string::npos);
+    CHECK(first.find("actions=focus|activate") != std::string::npos);
     CHECK(first.find("children=") != std::string::npos);
 }

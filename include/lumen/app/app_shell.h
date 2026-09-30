@@ -234,6 +234,10 @@ class AppShell {
                                 std::uint32_t action,
                                 const std::string& value = {},
                                 float scrollDeltaY = 0.0F);
+    // M18：语义树快照（headless dump / 诊断；与 pushSemantics 同源构建
+    // ——焦点选项一致，overlay 活跃期含附加子树；无桥依赖，不产生 diff
+    // 副作用）。
+    [[nodiscard]] accessibility::SemanticsTree buildSemanticsSnapshot() const;
 
     // --- M11：框架级 overlay（浮动菜单等模态层） ---
     // overlay 树独立布局（紧约束视口），与主树各自拥有 identity 命名空

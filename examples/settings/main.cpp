@@ -25,6 +25,8 @@ struct Options {
     // M18：headless 树导出（首帧布局后打印 dumpRenderTree 并退出；
     // CI/脚本对照工具，见 include/lumen/app/tree_dump.h）。
     bool dumpTree{false};
+    // M18：语义树导出（buildSemanticsSnapshot → dumpSemanticsTree）。
+    bool dumpSemantics{false};
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -37,6 +39,8 @@ Options parseOptions(int argc, char** argv) {
             options.diagnostics = true;
         } else if (flag == "--dump-tree") {
             options.dumpTree = true;
+        } else if (flag == "--dump-semantics") {
+            options.dumpSemantics = true;
         }
     }
     return options;
@@ -270,6 +274,15 @@ int main(int argc, char** argv) {
     const Options options = parseOptions(argc, argv);
     SettingsApp app;
     try {
+        if (options.dumpSemantics) {
+            // M18：确定性语义树导出（首帧 → stdout → 退出码 0）。
+            app.setView(lumen::core::Size{800.0F, 600.0F});
+            (void)app.renderFrame();
+            const std::string dump = lumen::app::dumpSemanticsTree(
+                app.shell().buildSemanticsSnapshot());
+            std::fwrite(dump.data(), 1, dump.size(), stdout);
+            return 0;
+        }
         if (options.dumpTree) {
             // M18：确定性树导出（首帧 → stdout → 退出码 0）。
             app.setView(lumen::core::Size{800.0F, 600.0F});

@@ -165,6 +165,18 @@ void AppShell::noteWindowActive(bool active) {
     }
 }
 
+// M18：语义树快照（headless dump；无桥依赖、无 diff 副作用）。
+accessibility::SemanticsTree AppShell::buildSemanticsSnapshot() const {
+    accessibility::SemanticsBuildOptions options;
+    options.focus = &focus_;
+    accessibility::SemanticsTree tree =
+        accessibility::buildSemanticsTree(root_, options);
+    if (overlayRoot_.has_value()) {
+        accessibility::appendSemanticsSubtree(tree, *overlayRoot_, options);
+    }
+    return tree;
+}
+
 accessibility::SemanticsActionStatus AppShell::performAccessibilityAction(
     const std::string& nodeId, std::uint32_t action, const std::string& value,
     float scrollDeltaY) {
