@@ -573,6 +573,46 @@ TEST_CASE("gallery_treelist_header_geometry", "[gallery]") {
                                                  .margin(0.01F));
 }
 
+TEST_CASE("gallery_datagrid_workbench_routes_and_filters", "[gallery][datagrid]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 900.0F});
+    (void)app.renderFrame();
+    auto settings = app.accessibilitySettings();
+    settings.reduceAnimation = true;
+    app.setAccessibilitySettings(settings);
+    go(app, "nav-datagrid");
+
+    const RenderNode* grid = findNodeByKey(app.root(), "gallery-datagrid");
+    REQUIRE(grid != nullptr);
+    REQUIRE(findNodeByKey(app.root(), "gallery-datagrid:header") != nullptr);
+    CHECK(app.dataGrid().itemCount() == 48);
+    CHECK(findNodeByKey(app.root(), "gallery-datagrid:item:ORD-2401") != nullptr);
+
+    clickVisible(app, "grid-search-field");
+    app.textInput("ORD-2401");
+    click(app, "grid-apply-filter");
+    CHECK(app.state().get("grid-search") == "ORD-2401");
+    CHECK(app.dataGrid().itemCount() == 1);
+    CHECK(findNodeByKey(app.root(), "gallery-datagrid:item:ORD-2401") != nullptr);
+
+    clickVisible(app, "grid-clear-filter");
+    CHECK(app.state().get("grid-search").empty());
+    CHECK(app.dataGrid().itemCount() == 48);
+
+    click(app, "grid-status-filter-button");
+    CHECK(app.state().get("grid-status-filter") == "Pending");
+    CHECK(app.dataGrid().itemCount() == 12);
+    click(app, "grid-clear-filter");
+    click(app, "grid-owner-filter-button");
+    CHECK(app.state().get("grid-owner-filter") == "Maya");
+    CHECK(app.dataGrid().itemCount() == 12);
+    click(app, "grid-clear-filter");
+
+    clickScrolled(app, "gallery-datagrid:head:customer");
+    CHECK(app.dataGrid().sortColumn() == "customer");
+    CHECK(app.dataGrid().sortAscending());
+}
+
 TEST_CASE("gallery_slider_drives_progress", "[gallery]") {
     GalleryApp app;
     app.setView(Size{1024.0F, 768.0F});

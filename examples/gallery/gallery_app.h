@@ -15,6 +15,8 @@
 // Dropdown/Tabs/ProgressBar/Icon/Tooltip/Dialog、Row/Column(flex)/Stack/
 // Container/Grid、ListView/VirtualList、Theme 深浅/密度/强调色/局部
 // ThemeScope/排版/语义色板。
+// DataGrid 工作台（datagrid-design §10–§21）：订单数据、搜索/筛选状态、
+// 冻结订单列、排序、扩展选择、列宽调整、单元格编辑与校验。
 // 菜单类控件与分栏（menu/splitter-controls 设计稿 §11.3/§10.3，对齐
 // design/gallery.html 增补）：MenuBar 嵌入标题栏（File/View/Help，
 // 点击/Alt+助记打开，打开后 ←/→ 切换顶级）、主内容区右键
@@ -22,11 +24,14 @@
 // 时跟随 200/168 断点）、Menus 分区演示页与 Overview 清单新瓷砖。
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -40,6 +45,7 @@
 #include "lumen/core/scroll.h"
 #include "lumen/core/virtual_list.h"
 #include "lumen/core/state.h"
+#include "lumen/widgets/datagrid.h"
 #include "lumen/widgets/dropdown.h"
 #include "lumen/core/widget.h"
 #include "lumen/render/renderer.h"
@@ -161,6 +167,9 @@ class GalleryApp {
     }
     [[nodiscard]] widgets::TreeListController& collectionTable() {
         return collectionTable_;
+    }
+    [[nodiscard]] widgets::DataGridController& dataGrid() {
+        return dataGrid_;
     }
     // Collections 回显（测试/截图断言用）。
     [[nodiscard]] const std::string& lastActivatedKey() const {
@@ -416,6 +425,14 @@ class GalleryApp {
                                              keyChar)) {
                 return true;
             }
+            // DataGrid 键盘契约（datagrid-design §6/§13）：行导航、列焦点、
+            // Enter 编辑、Escape 取消、Tab 跨格提交以及复制/粘贴均由网格
+            // 控制器消费；仅在 DataGrid 页面且焦点位于其子树时转发。
+            if (self->navigator_.current() == "datagrid" &&
+                shell.focus().focusedKey().find("gallery-datagrid") == 0 &&
+                self->dataGrid_.handleKey(key, modifiers, keyChar)) {
+                return true;
+            }
             // 集合控件键盘契约（collection-design §6.4/§7.4）：焦点位于
             // 某集合的行内时，导航键交给该集合的控制器（Up/Down/Home/
             // End/PageUp/PageDown、树 Left/Right、Ctrl+A）。按行 key 的
@@ -532,6 +549,7 @@ class GalleryApp {
         navigationMenu_.onSelected = [this](const std::string& route) { go(route); };
         initializeVisualPreviews();
         setupCollections();
+        setupDataGrid();
         library_.setItemCount(1000);
         // M11：Tooltip hover 延迟驱动（anchor → tooltip 关联）。
         shell_.registerTooltip("tooltip-anchor-button", "showcase-tip");
@@ -561,6 +579,11 @@ class GalleryApp {
         state.set("email", "");
         state.set("notifications", "true");
         state.set("collection-focus-rings", "false");
+        state.set("grid-search-draft", "");
+        state.set("grid-search", "");
+        state.set("grid-status-filter", "All");
+        state.set("grid-owner-filter", "All");
+        refreshDataGridView();
         state.set("autosave", "false");
         state.set("plan-free", "true");
         state.set("plan-pro", "false");
@@ -576,6 +599,7 @@ class GalleryApp {
         handlers["goto-layout"] = [this] { go("layout"); };
         handlers["goto-lists"] = [this] { go("lists"); };
         handlers["goto-collections"] = [this] { go("collections"); };
+        handlers["goto-datagrid"] = [this] { go("datagrid"); };
         handlers["goto-menus"] = [this] { go("menus"); };
         handlers["goto-controls"] = [this] { go("controls"); };
         handlers["goto-feedback"] = [this] { go("feedback"); };
@@ -626,6 +650,46 @@ class GalleryApp {
             const auto mode = static_cast<unsigned>(collectionList_.selection().mode());
             collectionList_.setSelectionMode(static_cast<widgets::SelectionMode>((mode + 1) % 4));
             shell_.markDirty();
+        };
+        handlers["apply-grid-filter"] = [this] {
+            if (dataGrid_.editing() && !dataGrid_.commitEdit()) return;
+            shell_.state().set("grid-search",
+                               shell_.state().get("grid-search-draft"));
+            refreshDataGridView();
+        };
+        handlers["cycle-grid-status"] = [this] {
+            if (dataGrid_.editing() && !dataGrid_.commitEdit()) return;
+            static constexpr const char* values[] = {
+                "All", "Pending", "In progress", "Delivered", "Blocked"};
+            const std::string current = shell_.state().get("grid-status-filter");
+            std::size_t next = 0;
+            while (next < std::size(values) && values[next] != current) {
+                ++next;
+            }
+            shell_.state().set("grid-status-filter",
+                               values[(next + 1) % std::size(values)]);
+            refreshDataGridView();
+        };
+        handlers["cycle-grid-owner"] = [this] {
+            if (dataGrid_.editing() && !dataGrid_.commitEdit()) return;
+            static constexpr const char* values[] = {
+                "All", "Maya", "Noah", "Iris", "Liam"};
+            const std::string current = shell_.state().get("grid-owner-filter");
+            std::size_t next = 0;
+            while (next < std::size(values) && values[next] != current) {
+                ++next;
+            }
+            shell_.state().set("grid-owner-filter",
+                               values[(next + 1) % std::size(values)]);
+            refreshDataGridView();
+        };
+        handlers["clear-grid-filters"] = [this] {
+            if (dataGrid_.editing() && !dataGrid_.commitEdit()) return;
+            shell_.state().set("grid-search-draft", "");
+            shell_.state().set("grid-search", "");
+            shell_.state().set("grid-status-filter", "All");
+            shell_.state().set("grid-owner-filter", "All");
+            refreshDataGridView();
         };
         handlers["open-navigation"] = [this] {
             dropdown_.close(shell_);
@@ -976,6 +1040,255 @@ class GalleryApp {
         collectionTable_.attach(shell_, "collection-table");
     }
 
+    // DataGrid 模型：stable key 让排序/筛选后选择随订单保留。
+    struct DataGridRow {
+        std::string id{};
+        std::string customer{};
+        std::string project{};
+        std::string status{};
+        std::string owner{};
+        double amount{0.0};
+        int progress{0};
+        std::string due{};
+        std::string note{};
+        std::size_t sourceOrder{0};
+        bool enabled{true};
+    };
+
+    // DataGrid 工作台（datagrid-design §11–§14）：应用持有原始订单，网格
+    // 只消费当前视图的 stable key 和显示文本。筛选、排序与写回均在应用
+    // 侧完成，保持控件的组合边界。
+    void setupDataGrid() {
+        static constexpr const char* statuses[] = {
+            "Pending", "In progress", "Delivered", "Blocked"};
+        static constexpr const char* owners[] = {"Maya", "Noah", "Iris",
+                                                  "Liam"};
+        for (std::size_t i = 0; i < 48; ++i) {
+            DataGridRow row;
+            char id[32];
+            std::snprintf(id, sizeof(id), "ORD-%04zu", 2401U + i);
+            row.id = id;
+            row.customer = "Customer " + std::to_string(101 + (i % 17));
+            row.project = "Project " +
+                          std::string(1, static_cast<char>('A' + (i % 8)));
+            row.status = statuses[i % std::size(statuses)];
+            row.owner = owners[i % std::size(owners)];
+            row.amount = 12800.0 + static_cast<double>((i * 173) % 9400) +
+                         static_cast<double>(i % 4) * 0.25;
+            row.progress = row.status == "Delivered"
+                               ? 100
+                               : static_cast<int>((i * 17) % 91);
+            char due[32];
+            std::snprintf(due, sizeof(due), "2026-10-%02zu", 1U + (i % 28));
+            row.due = due;
+            row.note = (i % 3 == 0) ? "Priority delivery" : "Standard route";
+            row.sourceOrder = i;
+            row.enabled = i % 13 != 0;
+            dataGridRows_.push_back(std::move(row));
+        }
+
+        dataGrid_.setSelectionMode(widgets::SelectionMode::Extended);
+        dataGrid_.setColumns({
+            widgets::DataColumn{"id", "Order", 148.0F, true, true, false,
+                                120.0F, widgets::DataColumnAlign::Start, true,
+                                true},
+            widgets::DataColumn{"customer", "Customer", 236.0F, true, true,
+                                false, 140.0F, widgets::DataColumnAlign::Start,
+                                true, false},
+            widgets::DataColumn{"project", "Project", 148.0F, true, true,
+                                false, 112.0F, widgets::DataColumnAlign::Start,
+                                true, false},
+            widgets::DataColumn{"status", "Status", 128.0F, true, true, true,
+                                96.0F, widgets::DataColumnAlign::Start, true,
+                                false},
+            widgets::DataColumn{"owner", "Owner", 124.0F, true, true, true,
+                                96.0F, widgets::DataColumnAlign::Start, true,
+                                false},
+            widgets::DataColumn{"amount", "Amount (CNY)", 136.0F, true, true,
+                                true, 112.0F, widgets::DataColumnAlign::End,
+                                true, false},
+            widgets::DataColumn{"progress", "Progress", 116.0F, true, true,
+                                false, 96.0F, widgets::DataColumnAlign::End,
+                                true, false},
+            widgets::DataColumn{"due", "Due", 124.0F, true, true, false,
+                                96.0F, widgets::DataColumnAlign::End, true,
+                                false},
+            widgets::DataColumn{"note", "Note", 248.0F, false, false, true,
+                                160.0F, widgets::DataColumnAlign::Start, true,
+                                false},
+        });
+        dataGrid_.setKeyOf([this](std::size_t index) {
+            return dataGridRows_[dataGridVisibleRows_[index]].id;
+        });
+        dataGrid_.setRowEnabledOf([this](std::size_t index) {
+            return dataGridRows_[dataGridVisibleRows_[index]].enabled;
+        });
+        dataGrid_.setCellText([this](std::size_t index,
+                                     const std::string& column) {
+            const DataGridRow& row =
+                dataGridRows_[dataGridVisibleRows_[index]];
+            if (column == "id") return row.id;
+            if (column == "customer") return row.customer;
+            if (column == "project") return row.project;
+            if (column == "status") return row.status;
+            if (column == "owner") return row.owner;
+            if (column == "amount") {
+                char amount[32];
+                std::snprintf(amount, sizeof(amount), "%.2f", row.amount);
+                return std::string(amount);
+            }
+            if (column == "progress") {
+                return std::to_string(row.progress) + "%";
+            }
+            if (column == "due") return row.due;
+            return row.note;
+        });
+        dataGrid_.setEmptyBuilder([this] {
+            return core::makeColumn(
+                {core::makeIcon(core::IconId::Grid),
+                 core::makeText("No matching orders"),
+                 core::makeText("Clear the search or filters to restore the view.")},
+                core::MainAxisAlignment::Center,
+                core::CrossAxisAlignment::Center, 8.0F);
+        });
+        dataGrid_.setCellValidator("amount", [](const std::string& text) {
+            if (text.empty()) return std::string("Amount is required");
+            char* end = nullptr;
+            errno = 0;
+            const double value = std::strtod(text.c_str(), &end);
+            if (end == text.c_str() || *end != '\0' || errno == ERANGE ||
+                !std::isfinite(value) || value < 0.0 || value > 999999999.99) {
+                return std::string("Use a non-negative amount up to 2 decimals");
+            }
+            const auto dot = text.find('.');
+            if (dot != std::string::npos && text.size() - dot - 1 > 2) {
+                return std::string("Amount supports at most 2 decimals");
+            }
+            return std::string{};
+        });
+        dataGrid_.setCellValidator("note", [](const std::string& text) {
+            return text.size() <= 160
+                       ? std::string{}
+                       : std::string("Note is limited to 160 characters");
+        });
+        dataGrid_.onCellEdited = [this](std::size_t index,
+                                        const std::string& column,
+                                        const std::string& text) {
+            DataGridRow& row = dataGridRows_[dataGridVisibleRows_[index]];
+            if (column == "status") row.status = text;
+            else if (column == "owner") row.owner = text;
+            else if (column == "note") row.note = text;
+            else if (column == "amount") row.amount = std::strtod(text.c_str(), nullptr);
+            gridEditStatus_ = row.id + " · " + column + " updated";
+            shell_.markDirty();
+        };
+        dataGrid_.onSortRequestMulti = [this](
+            const std::vector<widgets::SortKey>& keys) {
+            sortDataGridRows(keys);
+            refreshDataGridView();
+        };
+        dataGrid_.setColumnReorderable(true);
+        dataGrid_.onFilterRequest = [this] { shell_.markDirty(); };
+        dataGrid_.attach(shell_, "gallery-datagrid");
+        refreshDataGridView();
+    }
+
+    void refreshDataGridView() {
+        const std::string query = toLower(shell_.state().get("grid-search"));
+        const std::string status = shell_.state().get("grid-status-filter");
+        const std::string owner = shell_.state().get("grid-owner-filter");
+        dataGridVisibleRows_.clear();
+        for (std::size_t i = 0; i < dataGridRows_.size(); ++i) {
+            const DataGridRow& row = dataGridRows_[i];
+            if (status != "All" && row.status != status) continue;
+            if (owner != "All" && row.owner != owner) continue;
+            if (!query.empty()) {
+                const std::string haystack =
+                    toLower(row.id + " " + row.customer + " " + row.project +
+                            " " + row.owner + " " + row.note);
+                if (haystack.find(query) == std::string::npos) continue;
+            }
+            dataGridVisibleRows_.push_back(i);
+        }
+        dataGrid_.setRowCount(dataGridVisibleRows_.size());
+        dataGrid_.setFilterActive(query.size() > 0 || status != "All" ||
+                                  owner != "All");
+        shell_.markDirty();
+    }
+
+    void sortDataGridRows(const std::vector<widgets::SortKey>& keys) {
+        if (keys.empty()) {
+            std::stable_sort(dataGridRows_.begin(), dataGridRows_.end(),
+                             [](const DataGridRow& left,
+                                const DataGridRow& right) {
+                                 return left.sourceOrder < right.sourceOrder;
+                             });
+            return;
+        }
+        auto compare = [](const DataGridRow& left, const DataGridRow& right,
+                          const widgets::SortKey& key) {
+            int result = 0;
+            if (key.columnKey == "amount") {
+                result = left.amount < right.amount ? -1
+                         : left.amount > right.amount ? 1 : 0;
+            } else if (key.columnKey == "progress") {
+                result = left.progress < right.progress ? -1
+                         : left.progress > right.progress ? 1 : 0;
+            } else {
+                auto value = [&key](const DataGridRow& row) -> const std::string& {
+                    if (key.columnKey == "id") return row.id;
+                    if (key.columnKey == "customer") return row.customer;
+                    if (key.columnKey == "project") return row.project;
+                    if (key.columnKey == "status") return row.status;
+                    if (key.columnKey == "owner") return row.owner;
+                    if (key.columnKey == "due") return row.due;
+                    return row.note;
+                };
+                result = value(left).compare(value(right));
+            }
+            return key.ascending ? result < 0 : result > 0;
+        };
+        std::stable_sort(dataGridRows_.begin(), dataGridRows_.end(),
+                         [&keys, &compare](const DataGridRow& left,
+                                           const DataGridRow& right) {
+                             for (const auto& key : keys) {
+                                 if (compare(left, right, key)) return true;
+                                 if (compare(right, left, key)) return false;
+                             }
+                             return left.sourceOrder < right.sourceOrder;
+                         });
+    }
+
+    [[nodiscard]] std::string dataGridStatus() const {
+        std::size_t selectedVisible = 0;
+        for (const std::size_t index : dataGridVisibleRows_) {
+            if (dataGrid_.selection().isSelected(dataGridRows_[index].id)) {
+                ++selectedVisible;
+            }
+        }
+        return std::to_string(dataGridVisibleRows_.size()) + " / " +
+               std::to_string(dataGridRows_.size()) + " orders · " +
+               std::to_string(selectedVisible) + " selected in view · " +
+               std::to_string(dataGrid_.selection().selectedCount()) +
+               " selected total";
+    }
+
+    [[nodiscard]] std::string dataGridFilterSummary() const {
+        std::vector<std::string> active;
+        const std::string query = shell_.state().get("grid-search");
+        const std::string status = shell_.state().get("grid-status-filter");
+        const std::string owner = shell_.state().get("grid-owner-filter");
+        if (!query.empty()) active.push_back("Search: " + query);
+        if (status != "All") active.push_back("Status: " + status);
+        if (owner != "All") active.push_back("Owner: " + owner);
+        if (active.empty()) return "No filters applied";
+        std::string summary = active.front();
+        for (std::size_t i = 1; i < active.size(); ++i) {
+            summary += "  ·  " + active[i];
+        }
+        return summary;
+    }
+
     // TreeList 排序：框架只回调与记录指示器，行序由应用重排（key 稳定
     // → 选择随行保留）。
     void sortCollectionTable(const std::string& columnId, bool descending) {
@@ -1048,6 +1361,10 @@ class GalleryApp {
 
     void go(const std::string& route) {
         if (navigator_.current() == route) {
+            return;
+        }
+        if (navigator_.current() == "datagrid" && dataGrid_.editing() &&
+            !dataGrid_.commitEdit()) {
             return;
         }
         // 路由栈保持单层：先回根再 push，保证 Back 恒回 home。
@@ -1365,6 +1682,7 @@ class GalleryApp {
             {"Layout", "layout", core::IconId::NavLayout},
             {"Lists", "lists", core::IconId::NavLists},
             {"Collections", "collections", core::IconId::NavCollections},
+            {"DataGrid", "datagrid", core::IconId::Grid},
             {"Menus", "menus", core::IconId::NavMenus},
             {"Controls", "controls", core::IconId::NavControls},
             {"Feedback", "feedback", core::IconId::NavFeedback},
@@ -1429,6 +1747,8 @@ class GalleryApp {
             items = buildListsItems(theme);
         } else if (route == "collections") {
             items = buildCollectionsItems(theme);
+        } else if (route == "datagrid") {
+            items = buildDataGridItems(theme);
         } else if (route == "menus") {
             items = buildMenusItems(theme);
         } else if (route == "controls") {
@@ -1723,6 +2043,7 @@ class GalleryApp {
         tiles.push_back(splitterTile(theme));
         tiles.push_back(listsTile(theme));
         tiles.push_back(collectionsTile(theme));
+        tiles.push_back(dataGridTile(theme));
         tiles.push_back(menusTile(theme));
         tiles.push_back(spinTile(theme));
         tiles.push_back(toolBarTile(theme));
@@ -2110,6 +2431,42 @@ class GalleryApp {
             3.0F);
         return tileShell(std::move(preview), "Collections", theme,
                          "tile-collections", "goto-collections");
+    }
+
+    // DataGrid 瓦片：冻结首列 + 表头/数据行的紧凑预览，点击进入完整工作台。
+    [[nodiscard]] core::Widget dataGridTile(const style::Theme& theme) const {
+        const auto line = [&theme](const std::string& id,
+                                   const std::string& customer,
+                                   const std::string& status) {
+            core::Widget marker = core::makeContainerLeaf(
+                3.0F, 20.0F, {}, {}, theme.colors.accent, id + "-marker");
+            core::Widget order = smallLabel(id, theme);
+            order.width = 68.0F;
+            core::Widget name = smallLabel(customer, theme);
+            name.flex = 1.0F;
+            core::Widget state = smallLabel(status, theme);
+            return core::withKey(
+                core::makeRow({std::move(marker), std::move(order),
+                               std::move(name), std::move(state)},
+                              core::MainAxisAlignment::Start,
+                              core::CrossAxisAlignment::Center, 6.0F),
+                id);
+        };
+        core::Widget header = core::makeRow(
+            {smallStrong("ORDER", theme, 600),
+             smallStrong("CUSTOMER", theme, 600),
+             smallStrong("STATUS", theme, 600)},
+            core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Center, 8.0F);
+        header.styleOverrides.foreground = theme.colors.contentSecondary;
+        return tileShell(
+            core::makeColumn(
+                {std::move(header), line("ORD-2401", "Customer 101", "Pending"),
+                 line("ORD-2402", "Customer 102", "Delivered"),
+                 line("ORD-2403", "Customer 103", "In progress")},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch, 4.0F),
+            "DataGrid", theme, "tile-datagrid", "goto-datagrid");
     }
 
     // Menus 瓦片：迷你菜单面板（label + 快捷键展示列 + 禁用行）。
@@ -3032,6 +3389,125 @@ class GalleryApp {
                                       theme),
                            "collection-table-hint")},
             theme, "collections-table-card", "deps · sortable"));
+        return items;
+    }
+
+    // DataGrid 分区（datagrid-design §11–§14）：订单工作台组合应用工具栏、
+    // 筛选状态、网格视口和汇总行；网格外壳由 Gallery 面板按视觉系统 §3.3
+    // 提供 surface、边框和圆角，DataGrid 自身只负责行列呈现。
+    [[nodiscard]] std::vector<core::Widget> buildDataGridItems(
+        const style::Theme& theme) const {
+        std::vector<core::Widget> items;
+        items.push_back(core::withKey(titleText("DataGrid", theme),
+                                      "datagrid-title"));
+        items.push_back(core::withKey(
+            mutedLabel("A dense desktop workbench for typed columns, frozen "
+                       "identity, keyboard navigation, sorting, selection "
+                       "and in-place editing.",
+                       theme),
+            "datagrid-desc"));
+
+        core::Widget search = fieldWidget(
+            "grid-search-draft", "Search orders, customers or projects",
+            "grid-search-field", false);
+        search.width = 286.0F;
+        search.flex = 1.0F;
+        core::Widget searchBox = core::makeRow(
+            {core::withKey(core::makeIcon(core::IconId::Search,
+                                          "grid-search-icon", 16.0F, 16.0F),
+                           "grid-search-icon"),
+             std::move(search)},
+            core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Center, style::spaceToken(2));
+        searchBox.flex = 1.0F;
+
+        auto actionButton = [this](const std::string& label,
+                                   const std::string& action,
+                                   const std::string& key,
+                                   core::IconId icon,
+                                   core::ButtonVariant variant) {
+            core::Widget button = buttonWidget(label, action, key, variant);
+            return core::withLeadingIcon(std::move(button), icon);
+        };
+        core::Widget toolbar = core::makeRow(
+            {std::move(searchBox),
+             actionButton("Apply", "apply-grid-filter", "grid-apply-filter",
+                          core::IconId::Check, core::ButtonVariant::Tonal),
+             actionButton("Status: " + shell_.state().get("grid-status-filter"),
+                          "cycle-grid-status", "grid-status-filter-button",
+                          core::IconId::ChevronDown,
+                          core::ButtonVariant::Outline),
+             actionButton("Owner: " + shell_.state().get("grid-owner-filter"),
+                          "cycle-grid-owner", "grid-owner-filter-button",
+                          core::IconId::ChevronDown,
+                          core::ButtonVariant::Outline),
+             actionButton("Clear", "clear-grid-filters", "grid-clear-filter",
+                          core::IconId::Close, core::ButtonVariant::Ghost)},
+            core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Center, style::spaceToken(2));
+        toolbar.key = "datagrid-toolbar";
+
+        core::Widget summary = core::makeRow(
+            {core::withKey(smallLabel(dataGridFilterSummary(), theme),
+                           "datagrid-filter-summary"),
+             core::makeContainerLeaf(std::nullopt, 1.0F, {}, {},
+                                     core::Color::transparent(),
+                                     "datagrid-summary-spacer"),
+             core::withKey(smallLabel(dataGridStatus(), theme),
+                           "datagrid-status")},
+            core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Center, style::spaceToken(2));
+        summary.key = "datagrid-summary-row";
+
+        core::Widget grid = dataGrid_.build();
+        grid.height = 388.0F;
+        grid.key = "gallery-datagrid";
+        core::StyleOverrides gridSurface;
+        gridSurface.background = theme.colors.surface;
+        gridSurface.border = theme.colors.borderDefault;
+        gridSurface.borderWidth = 1.0F;
+        gridSurface.radius = core::CornerRadius::all(theme.metrics.cardRadius);
+        grid = core::withStyleOverrides(std::move(grid),
+                                        std::move(gridSurface));
+
+        items.push_back(sectionCard(
+            "Orders workbench", {std::move(toolbar), std::move(summary),
+                                  std::move(grid),
+                                  core::withKey(
+                                      mutedLabel(
+                                          "Click a row to select. Use Shift for a range, "
+                                          "Enter to edit, Left/Right to move across columns, "
+                                          "and drag a header edge to resize.",
+                                          theme),
+                                      "datagrid-hint")},
+            theme, "datagrid-workbench-card", "48 local rows · virtualized"));
+
+        items.push_back(sectionCard(
+            "DataGrid contracts",
+            {core::withKey(mutedLabel(
+                               "Order is pinned while the remaining columns "
+                               "share one horizontal viewport. Sort state is "
+                               "owned by the controller; data order is applied "
+                               "by Gallery.",
+                               theme),
+                           "datagrid-contracts-copy"),
+             core::withKey(mutedLabel(
+                               "Editable fields: status, owner, amount and "
+                               "note. Amount validation keeps the draft in "
+                               "place when a value is invalid.",
+                               theme),
+                           "datagrid-edit-copy"),
+             core::withKey(mutedLabel(
+                               "Last edit: " +
+                                   (gridEditStatus_.empty()
+                                        ? std::string("none")
+                                        : gridEditStatus_),
+                               theme),
+                           "datagrid-edit-status"),
+             core::withKey(buttonWidget("Back", "back", "back-button",
+                                        core::ButtonVariant::Outline),
+                           "back-button")},
+            theme, "datagrid-contracts-card", "Theme.dataGrid tokens"));
         return items;
     }
 
@@ -3979,6 +4455,9 @@ class GalleryApp {
         if (route == "home") {
             return "Overview";
         }
+        if (route == "datagrid") {
+            return "DataGrid";
+        }
         if (route.empty()) {
             return route;
         }
@@ -3990,6 +4469,12 @@ class GalleryApp {
     [[nodiscard]] static std::string toUpper(std::string text) {
         for (char& c : text) {
             c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        }
+        return text;
+    }
+    [[nodiscard]] static std::string toLower(std::string text) {
+        for (char& c : text) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
         return text;
     }
@@ -4197,13 +4682,18 @@ class GalleryApp {
     widgets::TreeController collectionTree_{};
     widgets::TreeController collectionEmptyTree_{};
     widgets::TreeListController collectionTable_{};
+    widgets::DataGridController dataGrid_{};
+    std::vector<DataGridRow> dataGridRows_{};
+    std::vector<std::size_t> dataGridVisibleRows_{};
+    std::string gridEditStatus_{};
     std::string lastActivatedKey_{};
     std::string lastSortColumn_{};
     bool lastSortDescending_{false};
     // M11：下拉浮动菜单控制器（选项 + 当前值；选中回调写状态）。
     widgets::DropdownController navigationMenu_{{{"home", "Overview"}, {"buttons", "Buttons"},
         {"inputs", "Inputs"}, {"layout", "Layout"}, {"lists", "Lists"},
-        {"collections", "Collections"}, {"menus", "Menus"}, {"controls", "Controls"},
+        {"collections", "Collections"}, {"datagrid", "DataGrid"},
+        {"menus", "Menus"}, {"controls", "Controls"},
         {"feedback", "Feedback"},
         {"theme", "Theme"}}, "home"};
     // 菜单类控件（menu-controls-design §11.3）：chrome 菜单栏（File/
