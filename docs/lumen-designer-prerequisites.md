@@ -1188,7 +1188,8 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `263` 个断言、
   `21` 个测试用例通过；标准 `ctest -R 'designer|document_store'` 为 `36/36` 通过。
-  本阶段未宣称未筛选的全量结果；移动端和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1004/1004`；
+  移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
   controller/resource 引用注入、真实资源加载和真实编辑流程仍留在 F6；L1–L3 节点 schema 仍未登记。
