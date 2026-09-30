@@ -75,3 +75,19 @@ TEST_CASE("designer preview rejects values for deleted or invalid nodes",
     CHECK_FALSE(preview.value(999, "text", document).has_value());
     CHECK_FALSE(preview.bindingSnapshot("missing").has_value());
 }
+
+TEST_CASE("designer preview-only properties cannot enter the document",
+          "[designer][f6][preview]") {
+    auto parsed = parseLumenSource(
+        "page preview { ScrollView { Text(\"body\") } }");
+    REQUIRE(parsed.ok());
+    parsed.document.root.properties["scrollOffset"] =
+        DesignValue{DesignValue::Variant{12.0}};
+
+    const auto compiled = lumen::dsl::compileDesignDocument(parsed.document);
+    REQUIRE_FALSE(compiled.ok());
+    REQUIRE(compiled.diagnostics.size() == 1);
+    CHECK(compiled.diagnostics.front().code ==
+          "schema.non_persistent_property");
+    CHECK(compiled.diagnostics.front().property == "scrollOffset");
+}

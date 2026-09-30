@@ -563,6 +563,14 @@ void validateNode(const DesignNode& node, const std::string& path, bool root,
                 path, name));
             continue;
         }
+        if (property->persistence == PropertyPersistence::PreviewOnly ||
+            property->persistence == PropertyPersistence::Derived) {
+            diagnostics.push_back(schemaError(
+                "schema.non_persistent_property", node,
+                "property '" + name + "' is runtime-only and cannot be stored",
+                path, name));
+            continue;
+        }
         if (property->validate && !property->validate(value)) {
             diagnostics.push_back(schemaError(
                 "schema.invalid_property", node,

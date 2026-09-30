@@ -1020,13 +1020,13 @@ D3 可编辑设计器
 
 F0 是源码边界核对；F1/P1 已完成 L0 语义 DOM、`.lumen` 导入、规范化设计文档 codec 和
 DOM→Widget 编译入口；F2/P2 已完成 L0 `NodeSchema`/`PropertySpec` 显式注册表，并由编译
-入口执行类型、枚举、范围和子节点约束；F3/P3 已完成类型化 `DesignRuntimeContext`、
+入口执行类型、枚举、范围、子节点和不可持久化预览属性约束；F3/P3 已完成类型化 `DesignRuntimeContext`、
 离线 map context、引用诊断和带代数、可取消关闭回调及引用 lease 保活的
 `DesignRuntimeSession`。
 `designer_document_tests.cpp`
 覆盖 DOM round-trip、C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和
 P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 12 节点注册、访问器、非法属性和
-结构诊断；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留、
+结构诊断和 `PreviewOnly` 字段拒绝；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留、
 session 关闭回调和引用 lease 在关闭时释放。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
 和命名 slot，并在插入/复制时清除外来 source span、分配新 ID、在重排时保持原 ID；编译结果
@@ -1041,7 +1041,8 @@ span、恢复策略和稳定去重。F6
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
 真实 D3 应用出口尚未完成。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
-visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化。
+visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
+`PreviewOnly`/`Derived` 属性进入可保存文档。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1186,9 +1187,9 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `263` 个断言、
-  `21` 个测试用例通过；标准 `ctest -R 'designer|document_store'` 为 `36/36` 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1004/1004`；
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `268` 个断言、
+  `22` 个测试用例通过；标准 `ctest -R 'designer|document_store'` 为 `37/37` 通过。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1005/1005`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
@@ -1212,7 +1213,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - F6 无障碍基线：`designer_accessibility_tests.cpp` 从 L0 设计文档编译并布局语义树，验证
   稳定的 role/label/value、bounds、Button 激活动作和重复布局确定性；三桌面读屏和真正的
   设计器面板键盘流程仍属于 D2/D3 应用出口。
-- 未核对项：方案 A/B、DP-2–DP-8 尚未作产品决策；没有把现有 957 项测试误记为设计器
+- 未核对项：方案 A/B、DP-2–DP-8 尚未作产品决策；没有把现有完整 CTest 结果误记为设计器
   round-trip、schema、DocumentId、RuntimeContext 或三桌面窗口验收。
 
 ### 10.4 进入实施前的评审问题
