@@ -500,6 +500,19 @@ class JsonParser {
         }
         return values;
     }());
+    object["propertySources"] = jsonObject([&] {
+        std::map<std::string, JsonValue> values;
+        for (const auto& [name, span] : node.propertySources) {
+            values[name] = jsonObject({
+                {"begin", jsonObject({
+                    {"column", jsonNumberValue(span.begin.column)},
+                    {"line", jsonNumberValue(span.begin.line)}})},
+                {"end", jsonObject({
+                    {"column", jsonNumberValue(span.end.column)},
+                    {"line", jsonNumberValue(span.end.line)}})}});
+        }
+        return values;
+    }());
     object["references"] = jsonObject([&] {
         std::map<std::string, JsonValue> values;
         for (const auto& [name, value] : node.references) {
@@ -592,6 +605,42 @@ class JsonParser {
         if (!decoded.has_value()) return std::nullopt;
         node.properties[name] = std::move(*decoded);
     }
+    if (const auto* propertySources = member(value, "propertySources");
+        propertySources != nullptr) {
+        if (propertySources->kind != JsonValue::Kind::Object) {
+            error = errorAt("codec.property_sources", file,
+                            "property source map object expected");
+            return std::nullopt;
+        }
+        for (const auto& [name, rawSpan] : propertySources->object) {
+            const auto* begin = member(rawSpan, "begin");
+            const auto* end = member(rawSpan, "end");
+            double beginLine = 0.0;
+            double beginColumn = 0.0;
+            double endLine = 0.0;
+            double endColumn = 0.0;
+            if (begin == nullptr || end == nullptr ||
+                !numberValue(member(*begin, "line"), beginLine) ||
+                !numberValue(member(*begin, "column"), beginColumn) ||
+                !numberValue(member(*end, "line"), endLine) ||
+                !numberValue(member(*end, "column"), endColumn) ||
+                beginLine < 1.0 || beginColumn < 1.0 || endLine < 1.0 ||
+                endColumn < 1.0 || std::floor(beginLine) != beginLine ||
+                std::floor(beginColumn) != beginColumn ||
+                std::floor(endLine) != endLine ||
+                std::floor(endColumn) != endColumn || endLine < beginLine ||
+                (endLine == beginLine && endColumn < beginColumn)) {
+                error = errorAt("codec.property_sources", file,
+                                "invalid property source span");
+                return std::nullopt;
+            }
+            node.propertySources[name] = DesignSourceSpan{
+                SourcePos{static_cast<std::size_t>(beginLine),
+                          static_cast<std::size_t>(beginColumn)},
+                SourcePos{static_cast<std::size_t>(endLine),
+                          static_cast<std::size_t>(endColumn)}};
+        }
+    }
     if (const auto* references = member(value, "references");
         references != nullptr && !readStringMap(references, node.references)) {
         error = errorAt("codec.references", file, "reference values must be strings");
@@ -645,7 +694,9 @@ class JsonParser {
             beginLine < 1 || beginColumn < 1 || endLine < 1 || endColumn < 1 ||
             std::floor(beginLine) != beginLine ||
             std::floor(beginColumn) != beginColumn ||
-            std::floor(endLine) != endLine || std::floor(endColumn) != endColumn) {
+            std::floor(endLine) != endLine || std::floor(endColumn) != endColumn ||
+            endLine < beginLine ||
+            (endLine == beginLine && endColumn < beginColumn)) {
             error = errorAt("codec.source_span", file, "invalid source span");
             return std::nullopt;
         }
@@ -656,8 +707,8 @@ class JsonParser {
                       static_cast<std::size_t>(endColumn)}};
     }
     static const std::set<std::string> knownFields = {
-        "children", "id", "properties", "references", "slots", "source",
-        "type", "unknownFields"};
+        "children", "id", "properties", "propertySources", "references",
+        "slots", "source", "type", "unknownFields"};
     for (const auto& [name, raw] : value.object) {
         if (knownFields.find(name) == knownFields.end()) {
             node.unknownFields[name] = jsonValue(raw);
@@ -1027,6 +1078,7 @@ DesignReadResult readDesignDocument(const std::string& source,
 DesignCompileResult compileDesignDocument(const DesignDocument& document,
                                           DesignRuntimeContext& context) {
     DesignCompileResult result;
+    result.sourceMap = DesignSourceMap::fromDocument(document);
     result.session = std::make_shared<DesignRuntimeSession>();
     if (document.schemaVersion != 1) {
         result.diagnostics.push_back(errorAt(

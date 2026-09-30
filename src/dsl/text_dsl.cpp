@@ -338,6 +338,7 @@ struct AstNode {
     std::string name{};
     std::string pageName{};
     SourcePos pos{};
+    SourcePos end{};
     std::optional<Token> positional{};
     std::vector<AstAttr> attrs{};
     std::vector<AstNode> children{};
@@ -403,6 +404,7 @@ class Parser {
 
     void advance() {
         if (index_ + 1 < tokens_.size()) {
+            previousPos_ = cur().pos;
             ++index_;
         }
     }
@@ -436,6 +438,7 @@ class Parser {
 
     [[nodiscard]] std::optional<DslError> parseNode(AstNode& out) {
         out.pos = cur().pos;
+        out.end = out.pos;
         out.name = cur().text;
         advance();
         if (cur().type == Tok::LParen) {
@@ -443,15 +446,18 @@ class Parser {
             if (const auto failure = parseAttrs(out)) {
                 return failure;
             }
+            out.end = previousPos_;
         }
         if (cur().type == Tok::LBrace) {
             advance();
             if (const auto failure = parseNodeList(out.children)) {
                 return failure;
             }
+            const SourcePos closingBrace = cur().pos;
             if (const auto failure = expect(Tok::RBrace)) {
                 return failure;
             }
+            out.end = closingBrace;
         }
         return std::nullopt;
     }
@@ -510,6 +516,7 @@ class Parser {
     std::vector<Token> tokens_;
     std::string file_;
     std::size_t index_{0};
+    SourcePos previousPos_{};
 };
 
 // --- AST -> Widget conversion ----------------------------------------------
@@ -1183,19 +1190,25 @@ void appendDesignNode(const AstNode& ast, DesignNode& out,
                       DesignNodeId& nextId) {
     out.id = nextId++;
     out.type = ast.name;
-    out.source = DesignSourceSpan{ast.pos, ast.pos};
+    out.source = DesignSourceSpan{ast.pos, ast.end};
     if (ast.positional.has_value()) {
         out.properties["text"] =
             designValueFromToken(*ast.positional, "text");
+        out.propertySources["text"] = DesignSourceSpan{
+            ast.pos, ast.positional->pos};
     }
     for (const auto& attr : ast.attrs) {
         if (attr.name == "bind" || attr.name == "onClick") {
             if (attr.value.type == Tok::Ident) {
                 out.references[attr.name] = attr.value.text;
+                out.propertySources[attr.name] =
+                    DesignSourceSpan{attr.pos, attr.value.pos};
             }
             continue;
         }
         out.properties[attr.name] = designValueFromToken(attr.value, attr.name);
+        out.propertySources[attr.name] =
+            DesignSourceSpan{attr.pos, attr.value.pos};
     }
     out.children.reserve(ast.children.size());
     for (const auto& child : ast.children) {

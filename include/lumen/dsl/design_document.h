@@ -41,6 +41,7 @@ struct DesignNode {
     DesignNodeId id{0};
     std::string type{};
     std::map<std::string, DesignValue> properties{};
+    std::map<std::string, DesignSourceSpan> propertySources{};
     std::map<std::string, std::string> references{};
     std::vector<DesignNode> children{};
     std::map<std::string, std::vector<DesignNode>> slots{};

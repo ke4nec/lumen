@@ -8,6 +8,7 @@
 
 #include "lumen/core/widget.h"
 #include "lumen/dsl/design_document.h"
+#include "lumen/dsl/design_mapping.h"
 #include "lumen/dsl/runtime_context.h"
 
 namespace lumen::dsl {
@@ -58,6 +59,7 @@ struct CompileTrace {
 struct DesignCompileResult {
     core::Widget root{};
     CompileTrace trace{};
+    DesignSourceMap sourceMap{};
     std::vector<DesignError> diagnostics{};
     std::shared_ptr<DesignRuntimeSession> session{};
 
