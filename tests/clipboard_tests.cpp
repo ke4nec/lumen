@@ -125,6 +125,21 @@ TEST_CASE("fake_clipboard_failure_injection", "[clipboard]") {
     CHECK(clipboard.hasText());
 }
 
+TEST_CASE("fake_clipboard_set_text_replaces_mime_entries",
+          "[clipboard]") {
+    // M-3 review：setText 是整体替换（SDL 语义）——旧 MIME 条目不可读。
+    FakeClipboard clipboard;
+    REQUIRE(clipboard.setFormats(
+        {{ClipboardProvider::kMimePng, {1, 2, 3}}}));
+    CHECK(clipboard.hasImage());
+    REQUIRE(clipboard.setText("plain"));
+    CHECK_FALSE(clipboard.hasImage());
+    CHECK(clipboard.data(ClipboardProvider::kMimePng).empty());
+    const auto formats = clipboard.formats();
+    REQUIRE(formats.size() == 1);
+    CHECK(formats[0] == ClipboardProvider::kMimeText);
+}
+
 TEST_CASE("clipboard_changed_event_broadcasts_to_on_event",
           "[clipboard][app]") {
     FakeApplicationHost host;

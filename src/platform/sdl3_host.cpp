@@ -213,9 +213,13 @@ class Sdl3ApplicationHost::Sdl3Clipboard final : public Clipboard {
         if (entries.empty()) {
             return SDL_ClearClipboardData();
         }
+        // 结构化拒绝超限（而非静默截断——review L-5）：应用拆批或减项。
+        if (entries.size() > 16) {
+            return false;
+        }
         auto* payload = new std::vector<Entry>(entries);
         const char* mimeTypes[16] = {};
-        const std::size_t count = entries.size() < 16 ? entries.size() : 16;
+        const std::size_t count = entries.size();
         for (std::size_t i = 0; i < count; ++i) {
             mimeTypes[i] = (*payload)[i].mimeType.c_str();
         }
@@ -252,7 +256,12 @@ class Sdl3ApplicationHost::Sdl3Clipboard final : public Clipboard {
             return result;
         }
         for (std::size_t i = 0; i < count; ++i) {
-            if (mimeTypes[i] != nullptr) {
+            if (mimeTypes[i] == nullptr) {
+                continue;
+            }
+            // 去重（SDL 枚举可能含 text/plain 变体/重复项——review L-5）。
+            if (std::find(result.begin(), result.end(),
+                          std::string(mimeTypes[i])) == result.end()) {
                 result.emplace_back(mimeTypes[i]);
             }
         }
@@ -1138,7 +1147,10 @@ std::optional<core::WindowMetrics> Sdl3ApplicationHost::windowMetrics(
     // review 修复——此前 metrics.fullscreen 恒为默认 false，消费方读到
     // 与真实状态漂移的值）。
     metrics.fullscreen = it->second.fullscreen;
-    // G-8：屏幕位置（物理像素；位置记忆回读）。
+    // G-8：屏幕位置（物理像素；位置记忆回读）。Wayland 无全局位置
+    // 语义——SDL 返回最近设置值（SetWindowPosition 的回声），positioned
+    // 恒 true 表示"SDL 视角可用"；记忆回放照常、跨显示器不复位属
+    // 合成器行为（window-experience-design §1）。
     int px = 0;
     int py = 0;
     SDL_GetWindowPosition(

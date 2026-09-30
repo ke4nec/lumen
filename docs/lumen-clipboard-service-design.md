@@ -19,6 +19,7 @@
 
 ## 2. SDL3 实现
 
+- 语义对齐：`setText`/`setFormats` 均为**整体替换**（Fake 实现同步：纯文本写入清除全部 MIME 条目）。`setFormats` 条目 >16 结构化拒绝（不静默截断）；`formats()` 去重。
 - 读：`SDL_GetClipboardData(mime, &size)`（X11/Wayland 任意 MIME；`text/plain` 走既有 `SDL_GetClipboardText` 保持现状语义）。
 - 写：`SDL_SetClipboardData(callback, cleanup, payload, mimes, n)`——字节所有权交 SDL，其他进程粘贴时按需取数（不复制整块进系统直到被请求）；失败（`SDL_SetClipboardData` false）时释放 payload 返回 false。空列表 = `SDL_ClearClipboardData`。
 - 枚举：`SDL_GetClipboardMimeTypes`（并入 text 视图）。

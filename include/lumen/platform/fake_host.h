@@ -40,7 +40,10 @@ class FakeClipboard final : public Clipboard {
         if (!available_) {
             return false;  // 与 SDL 语义一致：失败不落账
         }
+        // 整体替换：纯文本写入清除全部 MIME 条目（SDL_SetClipboardText
+        // 替换整个剪贴板——与真实语义对齐，review M-3）。
         text_ = value;
+        entries_.clear();
         return true;
     }
     void clear() override {
