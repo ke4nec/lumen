@@ -186,12 +186,20 @@ template <typename T>
         return true;
     }
     if (name == "width") {
+        if (std::holds_alternative<std::monostate>(value.value)) {
+            widget.width.reset();
+            return true;
+        }
         float number = 0.0F;
         if (!assignNumber(value, number)) return false;
         widget.width = number;
         return true;
     }
     if (name == "height") {
+        if (std::holds_alternative<std::monostate>(value.value)) {
+            widget.height.reset();
+            return true;
+        }
         float number = 0.0F;
         if (!assignNumber(value, number)) return false;
         widget.height = number;
@@ -364,6 +372,11 @@ template <typename T>
         }
         return false;
     };
+    if (persistence == PropertyPersistence::RuntimeReference) {
+        // References are stored in DesignNode::references and resolved by
+        // RuntimeContext; no Widget field can safely own these names.
+        return result;
+    }
     result.get = [property](const Widget& widget) {
         return readProperty(widget, property);
     };
@@ -563,6 +576,14 @@ void validateNode(const DesignNode& node, const std::string& path, bool root,
                 path, name));
             continue;
         }
+        if (property->persistence == PropertyPersistence::RuntimeReference) {
+            diagnostics.push_back(schemaError(
+                "schema.reference_location", node,
+                "runtime reference '" + name +
+                    "' must be stored in the references map",
+                path, name));
+            continue;
+        }
         if (property->persistence == PropertyPersistence::PreviewOnly ||
             property->persistence == PropertyPersistence::Derived) {
             diagnostics.push_back(schemaError(
@@ -601,6 +622,96 @@ void validateNode(const DesignNode& node, const std::string& path, bool root,
 }
 
 }  // namespace
+
+const WidgetFieldInventory& widgetFieldInventory() {
+    static const WidgetFieldInventory inventory = {
+        {"type", "", WidgetFieldCategory::Structural},
+        {"key", "key", WidgetFieldCategory::Declaration},
+        {"width", "width", WidgetFieldCategory::Declaration},
+        {"height", "height", WidgetFieldCategory::Declaration},
+        {"flex", "flex", WidgetFieldCategory::Declaration},
+        {"shrinkWrap", "", WidgetFieldCategory::Declaration},
+        {"alignContentStart", "", WidgetFieldCategory::Declaration},
+        {"reserveIconSpace", "", WidgetFieldCategory::Declaration},
+        {"windowDrag", "", WidgetFieldCategory::Declaration},
+        {"scrollAxis", "", WidgetFieldCategory::Declaration},
+        {"padding", "padding", WidgetFieldCategory::Declaration},
+        {"margin", "margin", WidgetFieldCategory::Declaration},
+        {"color", "color", WidgetFieldCategory::Declaration},
+        {"radius", "radius", WidgetFieldCategory::Declaration},
+        {"mainAxis", "mainAxis", WidgetFieldCategory::Declaration},
+        {"crossAxis", "crossAxis", WidgetFieldCategory::Declaration},
+        {"spacing", "spacing", WidgetFieldCategory::Declaration},
+        {"stackAlignment", "alignment", WidgetFieldCategory::Declaration},
+        {"text", "text", WidgetFieldCategory::Declaration},
+        {"textStyle", "", WidgetFieldCategory::Declaration},
+        {"textStyle.fontSize", "fontSize", WidgetFieldCategory::Declaration},
+        {"textStyle.bold", "bold", WidgetFieldCategory::Declaration},
+        {"textStyle.family", "family", WidgetFieldCategory::Declaration},
+        {"textStyle.weight", "weight", WidgetFieldCategory::Declaration},
+        {"textStyle.italic", "italic", WidgetFieldCategory::Declaration},
+        {"textStyle.letterSpacing", "letterSpacing", WidgetFieldCategory::Declaration},
+        {"textStyle.lineHeight", "lineHeight", WidgetFieldCategory::Declaration},
+        {"textStyle.maxLines", "maxLines", WidgetFieldCategory::Declaration},
+        {"textStyle.overflow", "overflow", WidgetFieldCategory::Declaration},
+        {"placeholder", "placeholder", WidgetFieldCategory::Declaration},
+        {"obscure", "obscure", WidgetFieldCategory::Declaration},
+        {"readOnly", "readOnly", WidgetFieldCategory::Declaration},
+        {"multiline", "multiline", WidgetFieldCategory::Declaration},
+        {"semanticsLabel", "", WidgetFieldCategory::Declaration},
+        {"semanticsValue", "", WidgetFieldCategory::Declaration},
+        {"semanticsRole", "", WidgetFieldCategory::Declaration},
+        {"semanticsActions", "", WidgetFieldCategory::Declaration},
+        {"checked", "checked", WidgetFieldCategory::Declaration},
+        {"indeterminate", "", WidgetFieldCategory::Declaration},
+        {"scrollOffset", "scrollOffset", WidgetFieldCategory::PreviewOnly},
+        {"gridColumnCount", "", WidgetFieldCategory::Declaration},
+        {"gridMinColumnWidth", "", WidgetFieldCategory::Declaration},
+        {"gridColumnGap", "", WidgetFieldCategory::Declaration},
+        {"gridRowGap", "", WidgetFieldCategory::Declaration},
+        {"imageId", "", WidgetFieldCategory::Derived},
+        {"imageSource", "image", WidgetFieldCategory::RuntimeReference},
+        {"themeOverride", "theme", WidgetFieldCategory::RuntimeReference},
+        {"virtualSource", "virtualSource", WidgetFieldCategory::RuntimeReference},
+        {"virtualCacheExtent", "", WidgetFieldCategory::Declaration},
+        {"collectionSelectionMode", "", WidgetFieldCategory::Declaration},
+        {"showFocusRing", "showFocusRing", WidgetFieldCategory::Declaration},
+        {"gridColumnSpan", "", WidgetFieldCategory::Declaration},
+        {"gridRowSpan", "", WidgetFieldCategory::Declaration},
+        {"collectionColumns", "component", WidgetFieldCategory::RuntimeReference},
+        {"collectionRow", "", WidgetFieldCategory::Derived},
+        {"collectionShowHeader", "", WidgetFieldCategory::Declaration},
+        {"listPart", "", WidgetFieldCategory::Derived},
+        {"treePart", "", WidgetFieldCategory::Derived},
+        {"treeDepth", "", WidgetFieldCategory::Derived},
+        {"splitterSource", "splitterSource", WidgetFieldCategory::RuntimeReference},
+        {"splitterHorizontal", "", WidgetFieldCategory::Declaration},
+        {"buttonVariant", "variant", WidgetFieldCategory::Declaration},
+        {"controlSize", "size", WidgetFieldCategory::Declaration},
+        {"enabled", "enabled", WidgetFieldCategory::Declaration},
+        {"invalid", "invalid", WidgetFieldCategory::Declaration},
+        {"selected", "selected", WidgetFieldCategory::Declaration},
+        {"showScrollbar", "", WidgetFieldCategory::Declaration},
+        {"scrollbarAutoHide", "", WidgetFieldCategory::Declaration},
+        {"icon", "", WidgetFieldCategory::Declaration},
+        {"elevation", "", WidgetFieldCategory::Declaration},
+        {"transitionAlpha", "", WidgetFieldCategory::PreviewOnly},
+        {"styleOverrides", "", WidgetFieldCategory::Declaration},
+        {"progressIndeterminate", "", WidgetFieldCategory::Declaration},
+        {"iconRotation", "", WidgetFieldCategory::PreviewOnly},
+        {"iconLeading", "", WidgetFieldCategory::Declaration},
+        {"clipRounded", "", WidgetFieldCategory::Declaration},
+        {"excludeFromSemantics", "", WidgetFieldCategory::Declaration},
+        {"excludeFromFocus", "", WidgetFieldCategory::Declaration},
+        {"bind", "bind", WidgetFieldCategory::RuntimeReference},
+        {"bindPrefix", "", WidgetFieldCategory::Derived},
+        {"onClick", "onClick", WidgetFieldCategory::RuntimeReference},
+        {"stackPosition.x", "left", WidgetFieldCategory::Declaration},
+        {"stackPosition.y", "top", WidgetFieldCategory::Declaration},
+        {"children", "", WidgetFieldCategory::Structural},
+    };
+    return inventory;
+}
 
 const std::vector<NodeSchema>& nodeSchemaRegistry() {
     static const std::vector<NodeSchema> registry = [] {

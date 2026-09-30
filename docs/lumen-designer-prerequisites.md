@@ -686,9 +686,9 @@ struct NodeSchema {
 - 适用控件错误、枚举错误、范围错误和复合值错误返回稳定诊断；
 - registry 中所有 L0 属性都能被 `serializeDesignDocument` 消费；
 - 新增 Widget 字段未登记时守护测试失败。C++20 没有标准字段反射，不能把“字段计数对照”
-  写成自动发现；应维护一份明确的 `WidgetFieldInventory`（把声明、运行时引用、预览和
-  派生字段分栏），并让测试逐项核对注册表/编译器/序列化器。若采用 clang 工具生成清单，
-  生成器版本和生成文件也必须纳入构建证据；
+  写成自动发现；`widgetFieldInventory()` 维护明确的 `WidgetFieldInventory`（把结构、声明、
+  运行时引用、预览和派生字段分栏），测试逐项核对注册表的文档别名与持久化分类。若采用
+  clang 工具生成清单，生成器版本和生成文件也必须纳入构建证据；
 - 现有 43 项 P1 边界回归和完整 DSL 测试保持通过。
 
 P2 未完成前，属性面板只能使用只读 `RenderNode` 摘要，不能宣称支持通用属性编辑。
@@ -1020,13 +1020,14 @@ D3 可编辑设计器
 
 F0 是源码边界核对；F1/P1 已完成 L0 语义 DOM、`.lumen` 导入、规范化设计文档 codec 和
 DOM→Widget 编译入口；F2/P2 已完成 L0 `NodeSchema`/`PropertySpec` 显式注册表，并由编译
-入口执行类型、枚举、范围、子节点和不可持久化预览属性约束；F3/P3 已完成类型化 `DesignRuntimeContext`、
+入口执行类型、枚举、范围、子节点、引用存储位置和不可持久化预览属性约束，并以
+`widgetFieldInventory()` 守护 Widget 字段分类；F3/P3 已完成类型化 `DesignRuntimeContext`、
 离线 map context、引用诊断和带代数、可取消关闭回调及引用 lease 保活的
 `DesignRuntimeSession`。
 `designer_document_tests.cpp`
 覆盖 DOM round-trip、C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和
 P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 12 节点注册、访问器、非法属性和
-结构诊断和 `PreviewOnly` 字段拒绝；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留、
+结构诊断、引用错误存储位置和 `PreviewOnly` 字段拒绝；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留、
 session 关闭回调和引用 lease 在关闭时释放。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
 和命名 slot，并在插入/复制时清除外来 source span、分配新 ID、在重排时保持原 ID；编译结果
@@ -1187,9 +1188,11 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
+- P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `2235` 个断言、
+  `4` 个测试用例通过，覆盖 Widget 字段清单、访问器回读和引用存储位置约束。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `268` 个断言、
-  `22` 个测试用例通过；标准 `ctest -R 'designer|document_store'` 为 `37/37` 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1005/1005`；
+  `22` 个测试用例通过；标准 `ctest -R 'designer|document_store'` 为 `39/39` 通过。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1007/1007`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、

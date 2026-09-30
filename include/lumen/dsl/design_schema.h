@@ -28,6 +28,25 @@ enum class PropertyPersistence {
     Derived,
 };
 
+// Explicit inventory for Widget fields and their document-facing aliases.
+// C++20 has no standard field reflection, so additions to Widget must update
+// this list and the registry coverage test together.
+enum class WidgetFieldCategory {
+    Structural,
+    Declaration,
+    RuntimeReference,
+    PreviewOnly,
+    Derived,
+};
+
+struct WidgetFieldSpec {
+    std::string name{};
+    std::string schemaName{};
+    WidgetFieldCategory category{WidgetFieldCategory::Structural};
+};
+
+using WidgetFieldInventory = std::vector<WidgetFieldSpec>;
+
 struct PropertySpec {
     std::string name{};
     PropertyKind kind{PropertyKind::String};
@@ -49,6 +68,7 @@ struct NodeSchema {
     std::function<core::Widget()> makeDefault{};
 };
 
+[[nodiscard]] const WidgetFieldInventory& widgetFieldInventory();
 [[nodiscard]] const std::vector<NodeSchema>& nodeSchemaRegistry();
 
 [[nodiscard]] const NodeSchema* findNodeSchema(std::string_view type);
