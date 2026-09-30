@@ -88,6 +88,7 @@ set(LUMEN_TEST_SOURCES
     designer_mapping_tests.cpp
     designer_schema_tests.cpp
     designer_runtime_context_tests.cpp
+    designer_editor_tests.cpp
     document_store_tests.cpp
     damage_tests.cpp
     tween_tests.cpp
