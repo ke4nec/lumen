@@ -75,3 +75,20 @@ TEST_CASE("designer preview context rejects a wrong typed reference handle",
     CHECK(compiled.diagnostics.front().code == "reference.type");
     CHECK(compiled.diagnostics.front().property == "bind");
 }
+
+TEST_CASE("designer runtime session cancels close callbacks exactly once",
+          "[designer][p3]") {
+    lumen::dsl::DesignRuntimeSession session;
+    int cancelled = 0;
+    session.onClose([&cancelled] { ++cancelled; });
+
+    session.close();
+    session.close();
+    CHECK(cancelled == 1);
+    CHECK_FALSE(session.active());
+
+    bool lateCallbackCalled = false;
+    session.onClose([&lateCallbackCalled] { lateCallbackCalled = true; });
+    CHECK(lateCallbackCalled);
+    CHECK(cancelled == 1);
+}

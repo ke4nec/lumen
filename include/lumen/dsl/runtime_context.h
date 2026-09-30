@@ -2,9 +2,11 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace lumen::dsl {
 
@@ -80,13 +82,32 @@ class MapDesignRuntimeContext final : public DesignRuntimeContext {
 
 class DesignRuntimeSession {
   public:
+    using CloseCallback = std::function<void()>;
+
     DesignRuntimeSession()
         : generation_(nextGeneration().fetch_add(1, std::memory_order_relaxed) +
                       1) {}
 
     [[nodiscard]] std::uint64_t generation() const { return generation_; }
     [[nodiscard]] bool active() const { return active_; }
-    void close() { active_ = false; }
+
+    // Preview resources register cancellation here. Closing a session is
+    // idempotent and drains callbacks before close() returns.
+    void onClose(CloseCallback callback) {
+        if (!callback) return;
+        if (!active_) {
+            callback();
+            return;
+        }
+        closeCallbacks_.push_back(std::move(callback));
+    }
+
+    void close() {
+        if (!active_) return;
+        active_ = false;
+        auto callbacks = std::move(closeCallbacks_);
+        for (auto& callback : callbacks) callback();
+    }
 
   private:
     static std::atomic<std::uint64_t>& nextGeneration() {
@@ -96,6 +117,7 @@ class DesignRuntimeSession {
 
     std::uint64_t generation_{0};
     bool active_{true};
+    std::vector<CloseCallback> closeCallbacks_{};
 };
 
 }  // namespace lumen::dsl

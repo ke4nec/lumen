@@ -87,6 +87,8 @@ TEST_CASE("designer preview frame closes replaced sessions and advances generati
     const auto firstGeneration = frame.generation();
     const auto firstSession = frame.session();
     REQUIRE(firstSession);
+    int cancelled = 0;
+    firstSession->onClose([&cancelled] { ++cancelled; });
 
     auto changed = parsed.document;
     changed.root.properties["text"] =
@@ -95,6 +97,7 @@ TEST_CASE("designer preview frame closes replaced sessions and advances generati
     REQUIRE(frame.update(changed));
     CHECK(frame.generation() == firstGeneration + 1);
     CHECK_FALSE(firstSession->active());
+    CHECK(cancelled == 1);
     REQUIRE(frame.session());
     CHECK(frame.session()->active());
     CHECK(frame.diagnostics().empty());

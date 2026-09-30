@@ -1020,11 +1020,12 @@ D3 可编辑设计器
 F0 是源码边界核对；F1/P1 已完成 L0 语义 DOM、`.lumen` 导入、规范化设计文档 codec 和
 DOM→Widget 编译入口；F2/P2 已完成 L0 `NodeSchema`/`PropertySpec` 显式注册表，并由编译
 入口执行类型、枚举、范围和子节点约束；F3/P3 已完成类型化 `DesignRuntimeContext`、
-离线 map context、引用诊断和带代数的 `DesignRuntimeSession`。`designer_document_tests.cpp`
+离线 map context、引用诊断和带代数、可取消关闭回调的 `DesignRuntimeSession`。
+`designer_document_tests.cpp`
 覆盖 DOM round-trip、C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和
 P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 12 节点注册、访问器、非法属性和
 结构诊断；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留和
-session 关闭。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
+session 关闭回调。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
 和命名 slot，并在复制时分配新 ID、在重排时保持原 ID；编译结果同时返回 SourceMap 和
 CompileTrace。P2 registry 仍只覆盖 L0，P3 尚未构造 controller 或资源裸指针；F5 的
@@ -1180,11 +1181,11 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `246` 个断言、
-  `20` 个测试用例通过；`ctest -R 'designer|document_store'` 为 `32/32` 通过。此前未受
-  工作区 app shell 变更影响的全量基线为 `972/972`；当前未提交的 app shell/bounds overlay
-  变更使全量总数变为 978，并在 `debug_overlays_draw_only_when_enabled` 处失败，后续权限错误
-  是同一测试目标被中断后的级联，不归因于本阶段 DSL 改动。
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `247` 个断言、
+  `20` 个测试用例通过；现有可执行文件运行的 `ctest -R 'designer|document_store'` 为
+  `33/33` 通过。标准 `lumen-tests` 重建目前被工作区 app shell 修改阻塞：
+  `tests/app_shell_tests.cpp:1582` 在声明前使用 `pixelAt`；该错误不涉及本阶段 DSL 改动。
+  此前未受工作区 app shell 变更影响的全量基线为 `972/972`，本阶段未宣称新的全量结果。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
   controller/resource 引用注入、真实资源加载和真实编辑流程仍留在 F6；L1–L3 节点 schema 仍未登记。
