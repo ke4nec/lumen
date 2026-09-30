@@ -30,6 +30,12 @@ if(LUMEN_BUILD_TESTS)
       COMMAND lumen-designer --headless
           --file ${PROJECT_SOURCE_DIR}/examples/designer/gallery.lumen)
   set_tests_properties(designer_gallery_headless PROPERTIES TIMEOUT 20)
+  add_test(NAME designer_cli_rejects_invalid_max_frames
+      COMMAND ${CMAKE_COMMAND}
+          -DDESIGNER=$<TARGET_FILE:lumen-designer>
+          -P ${PROJECT_SOURCE_DIR}/tests/designer_cli_smoke.cmake)
+  set_tests_properties(designer_cli_rejects_invalid_max_frames PROPERTIES
+      TIMEOUT 20)
   find_program(LUMEN_XVFB_RUN xvfb-run)
   if(LUMEN_XVFB_RUN)
     add_test(NAME designer_window_smoke

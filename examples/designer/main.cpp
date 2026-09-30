@@ -1,11 +1,12 @@
 #include <cstdio>
+#include <charconv>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <utility>
 
 #include "designer_app.h"
@@ -18,6 +19,7 @@ struct Options {
     bool watch{false};
     std::uint64_t maxFrames{0};
     std::string filename{};
+    std::string error{};
 };
 
 Options parseOptions(int argc, char** argv) {
@@ -29,7 +31,17 @@ Options parseOptions(int argc, char** argv) {
             options.watch = true;
         } else if (std::strcmp(argv[index], "--max-frames") == 0 &&
                    index + 1 < argc) {
-            options.maxFrames = std::strtoull(argv[++index], nullptr, 10);
+            const char* begin = argv[++index];
+            const char* end = begin + std::strlen(begin);
+            const auto parsed = std::from_chars(begin, end, options.maxFrames,
+                                                10);
+            if (parsed.ec != std::errc{} || parsed.ptr != end) {
+                options.error = "--max-frames expects an unsigned integer";
+                break;
+            }
+        } else if (std::strcmp(argv[index], "--max-frames") == 0) {
+            options.error = "--max-frames requires a value";
+            break;
         } else if (std::strcmp(argv[index], "--file") == 0 &&
                    index + 1 < argc) {
             options.filename = argv[++index];
@@ -100,6 +112,10 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
 
 int main(int argc, char** argv) {
     const Options options = parseOptions(argc, argv);
+    if (!options.error.empty()) {
+        std::fprintf(stderr, "usage error: %s\n", options.error.c_str());
+        return 2;
+    }
     lumen::designer_app::DesignerApp app;
     app.attach();
     if (!options.filename.empty()) {
