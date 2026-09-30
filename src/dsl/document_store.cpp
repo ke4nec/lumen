@@ -2,6 +2,7 @@
 #include "lumen/dsl/design_schema.h"
 
 #include <atomic>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -139,7 +140,20 @@ bool DocumentStore::migrate(DesignDocument& document,
             return false;
         }
         const std::uint32_t sourceVersion = document.schemaVersion;
-        if (!found->second(document, diagnostics)) return false;
+        try {
+            if (!found->second(document, diagnostics)) return false;
+        } catch (const std::exception& exception) {
+            diagnostics.push_back(errorAt(
+                "store.migration_exception", "<design>",
+                "migration threw an exception: " +
+                    std::string{exception.what()}));
+            return false;
+        } catch (...) {
+            diagnostics.push_back(errorAt(
+                "store.migration_exception", "<design>",
+                "migration threw an unknown exception"));
+            return false;
+        }
         if (document.schemaVersion != sourceVersion + 1) {
             diagnostics.push_back(errorAt(
                 "store.migration_version", "<design>",

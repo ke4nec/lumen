@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 
@@ -263,6 +264,36 @@ TEST_CASE("document store migration failure blocks publication",
     CHECK(result.document.root.id == 0);
     REQUIRE_FALSE(result.diagnostics.empty());
     CHECK(result.diagnostics.front().code == "store.migration_failed");
+}
+
+TEST_CASE("document store converts throwing migrations to diagnostics",
+          "[designer][p5]") {
+    const fs::path dir = tempPath("migration-exception");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const fs::path path = dir / "legacy.design";
+    const auto document = sampleDocument();
+    const auto source = legacyVersionZero(document);
+    std::ofstream(path) << source;
+
+    DocumentStore store;
+    store.registerMigration(0, [](DesignDocument&,
+                                  std::vector<lumen::dsl::DesignError>&) -> bool {
+        throw std::runtime_error("injected migration exception");
+    });
+    const auto result = store.load(path.string());
+    CHECK_FALSE(result.ok());
+    CHECK(result.document.root.id == 0);
+    REQUIRE(result.diagnostics.size() == 1);
+    CHECK(result.diagnostics.front().code == "store.migration_exception");
+    CHECK(result.diagnostics.front().message.find("injected migration exception") !=
+          std::string::npos);
+
+    std::ifstream input(path);
+    const std::string unchanged((std::istreambuf_iterator<char>(input)),
+                                std::istreambuf_iterator<char>());
+    CHECK(unchanged == source);
 }
 
 TEST_CASE("document store rejects migrations that remove document identity",
