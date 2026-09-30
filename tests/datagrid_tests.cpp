@@ -1770,3 +1770,72 @@ TEST_CASE("datagrid_cell_padding_follows_density", "[widgets][datagrid]") {
     fx.shell.setTheme(style::Theme::dark(style::ControlDensity::Touch));
     CHECK(cellPad(fx.grid.buildItem(0)) == Catch::Approx(16.0F));
 }
+
+// --- M17：筛选接线薄契约（design §10.2/§14 缺口收口） ---
+
+TEST_CASE("datagrid_request_filter_commits_edit_and_fires_callback",
+          "[widgets][datagrid][m17]") {
+    GridFixture fx;
+    fx.grid.setColumns({DataColumn{"name", "Name", 120.0F, true, false, true},
+                        DataColumn{"qty", "Qty", 80.0F, true, false, true}});
+    fx.grid.setRowCount(3);
+    fx.grid.setCellText([](std::size_t row, const std::string&) {
+        return "cell" + std::to_string(row);
+    });
+    fx.render();
+
+    int filterCalls = 0;
+    std::string filterColumn;
+    fx.grid.onFilterRequest = [&] { ++filterCalls; };
+    fx.grid.setColumnReorderable(false);  // 不影响本用例路径。
+
+    // 编辑中触发筛选：草稿先提交（§13.1 视图变化守卫），成功后回调。
+    fx.grid.selection().setCurrent("r0");
+    CHECK(fx.grid.beginEdit(0, "name"));
+    CHECK(fx.grid.editing());
+    CHECK(fx.grid.requestFilter("name"));
+    CHECK_FALSE(fx.grid.editing());  // 提交完成。
+    CHECK(filterCalls == 1);
+
+    // 校验失败：筛选入口中止（回调不触发）。
+    fx.grid.setCellValidator("qty", [](const std::string&) {
+        return "bad";
+    });
+    CHECK(fx.grid.beginEdit(0, "qty"));
+    // 写入非法草稿后 requestFilter 提交失败。
+    fx.shell.state().set("grid:edit", "!!!");
+    CHECK_FALSE(fx.grid.requestFilter("qty"));
+    CHECK(fx.grid.editing());   // 编辑态保留。
+    CHECK(filterCalls == 1);    // 回调未触发。
+    fx.grid.cancelEdit();
+}
+
+TEST_CASE("datagrid_filter_active_switches_empty_state_text",
+          "[widgets][datagrid][m17]") {
+    GridFixture fx;
+    fx.grid.setColumns({DataColumn{"name", "Name", 120.0F}});
+    fx.grid.setRowCount(0);
+    fx.render();
+
+    // 无数据：默认 "No rows"。
+    const core::RenderNode* empty = core::findNodeByKey(fx.shell.root(), "grid:empty");
+    REQUIRE(empty != nullptr);
+    CHECK(empty->children.front().text == "No rows");
+
+    // 筛选生效：应用过滤后回写标志 → "No matching rows"（无结果 ≠ 无
+    // 数据，§14）。
+    fx.grid.setFilterActive(true);
+    fx.render();
+    empty = core::findNodeByKey(fx.shell.root(), "grid:empty");
+    REQUIRE(empty != nullptr);
+    CHECK(empty->children.front().text == "No matching rows");
+    CHECK(fx.grid.filterActive());
+
+    // 清除恢复；filterColumn 随标志清空。
+    fx.grid.setFilterActive(false);
+    fx.render();
+    empty = core::findNodeByKey(fx.shell.root(), "grid:empty");
+    REQUIRE(empty != nullptr);
+    CHECK(empty->children.front().text == "No rows");
+    CHECK(fx.grid.filterColumn().empty());
+}

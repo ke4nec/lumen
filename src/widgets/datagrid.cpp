@@ -1035,6 +1035,31 @@ bool DataGridController::indexOfKey(const std::string& key,
         [this](std::size_t i) { return keyOf(i); }, key, index);
 }
 
+// --- M17：筛选接线薄契约（design §10.2/§14） ---
+
+bool DataGridController::requestFilter(const std::string& columnKey) {
+    // §13.1 视图变化守卫：编辑先提交，失败中止筛选入口。
+    if (!commitPendingEdit()) {
+        return false;
+    }
+    filterColumn_ = columnKey;
+    if (onFilterRequest != nullptr) {
+        onFilterRequest();
+    }
+    return true;
+}
+
+void DataGridController::setFilterActive(bool active) {
+    if (filterActive_ == active) {
+        return;
+    }
+    filterActive_ = active;
+    if (!active) {
+        filterColumn_.clear();
+    }
+    requestRebuild();
+}
+
 core::Widget DataGridController::buildEmpty() const {
     core::Widget empty;
     if (emptyBuilder_) {
@@ -1042,7 +1067,10 @@ core::Widget DataGridController::buildEmpty() const {
         // 空/EmptyText 语义与节点身份由网格补写。
         empty = emptyBuilder_();
     } else {
-        auto text = core::makeText("No rows");
+        // M17：无结果 ≠ 无数据（§14 数据状态）——筛选生效时默认文案
+        // 切换，应用可用 setEmptyBuilder 完全接管。
+        auto text = core::makeText(filterActive_ ? "No matching rows"
+                                                 : "No rows");
         text.listPart = core::ListPart::EmptyText;
         empty = core::makeColumn({std::move(text)},
             core::MainAxisAlignment::Center, core::CrossAxisAlignment::Center);

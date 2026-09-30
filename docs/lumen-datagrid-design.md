@@ -147,7 +147,7 @@ None/Single/Multiple/Extended；Ctrl+单击切换、Shift+单击/移动区间；
 | 组合 / 大行数 | Column[header, List]、VirtualListSource 行虚拟化、stable key、scrollToKey | 未内建双轴视口、列虚拟化与冻结列；HTML 小样本不证明性能 |
 | 列模型 | key/header/width/resizable/sortable/editable，宽度 ≥40；columnWidths 可读回 | resizeColumn 是 API，表头未提供拖动手柄；无显隐、重排、冻结状态模型 |
 | 排序 | 单列升/降状态、按钮化表头、onSortRequest | 不重排应用数据，无清除排序、多列排序与数据类型比较器 |
-| 筛选 | onFilterRequest 回调声明 | 实现内无调用入口或筛选面板；搜索、条件模型、无结果状态待补 |
+| 筛选 | onFilterRequest 回调 + requestFilter 触发入口 + filterActive 无结果态（M17 2026-09-29） | 筛选面板/搜索框 UI 与条件模型仍由应用提供（契约见 §14 追记）；无结果空态已框架化 |
 | 选择 | SelectionModel 四模式；current / selected 分离；键盘范围选择 | attach 中行点击 sink 调用 rowClicked(key, false, false)，鼠标 Ctrl/Shift 未透传；无复选框 UI |
 | 列焦点 | Left/Right 修改 currentColumn | 文本单元格无独立点击身份或可见当前格样式，鼠标点击不能定位编辑列 |
 | 编辑 | 树内 TextField、beginEdit、commitEdit、cancelEdit、同步 validator、回调 | beginEdit 仅重建编辑器，未显式转移焦点；编辑态 Enter 返回 false，由字段/应用消费，不等同于网格提交 |
@@ -889,3 +889,15 @@ onKey_wired` 在真实接线方式下锁定步进可达 + 列焦点/行不被抢
 - 已知限制：触摸行/列拖拽不认领（触摸拖动保持滚动）；列拖拽目标解析
   依赖表头物化（水平虚拟化窗口外列为 sticky 上次目标）；跨列拖拽期间
   无自动横向滚动。
+
+## 24. 2026-09-29 M17 筛选接线薄契约（requestFilter + 无结果空态）
+
+- 变更：`DataGridController::requestFilter(columnKey)`（先提交编辑——
+  §13.1 视口变化守卫，失败中止返回 false 不触发回调；成功记录
+  filterColumn 并触发 `onFilterRequest`）；`setFilterActive(bool)`（应用
+  过滤数据并 setRowCount 后回写；false 清空 filterColumn）——默认空态
+  文案切换 "No rows" → "No matching rows"（无结果 ≠ 无数据，§14 数据
+  状态口径）。筛选面板/搜索框 UI 与条件模型仍由应用提供（网格只约定
+  回调与刷新路径，§11.2 边界不变）。
+- 测试：`tests/datagrid_tests.cpp` 2 用例（编辑提交成功触发回调/校验
+  失败中止保留编辑态；filterActive 空态文案切换与 filterColumn 清空）。

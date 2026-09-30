@@ -164,6 +164,18 @@ class DataGridController final : public core::VirtualListSource {
     // 筛选回调契约：应用提供过滤入口（工具栏/表头上下文均可），网格只
     // 约定回调与刷新路径，不内置过滤 UI。
     std::function<void()> onFilterRequest{};
+    // --- M17：筛选接线薄契约（design §10.2/§14 缺口收口） ---
+    // 触发筛选（应用工具栏/快捷键/表头命令调用）：先提交编辑（§13.1，
+    // 失败中止返回 false），再触发 onFilterRequest（columnKey 供应用定
+    // 位筛选上下文）。筛选面板 UI 仍由应用提供。
+    bool requestFilter(const std::string& columnKey = {});
+    // 筛选生效标志（应用在过滤数据并 setRowCount 后回写）：默认空态
+    // 文案切换 "No rows" → "No matching rows"（无结果 ≠ 无数据，§14）。
+    void setFilterActive(bool active);
+    [[nodiscard]] bool filterActive() const { return filterActive_; }
+    [[nodiscard]] const std::string& filterColumn() const {
+        return filterColumn_;
+    }
 
     // --- 选择（共享 SelectionModel；语义同 List §6.5） ---
     void setSelectionMode(SelectionMode mode);
@@ -511,6 +523,9 @@ class DataGridController final : public core::VirtualListSource {
     // 多列排序状态（front = 主排序；表头指示器/回调同源）。
     std::vector<SortKey> sortKeys_{};
     std::string currentColumn_{};
+    // M17：筛选状态（requestFilter 触发上下文 + 应用回写的生效标志）。
+    std::string filterColumn_{};
+    bool filterActive_{false};
     // 可用行 key 缓存（表头全选态/全选切换；setRowCount/setKeyOf/
     // setRowEnabledOf 失效）。
     mutable std::vector<std::string> selectableKeysCache_{};
