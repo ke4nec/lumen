@@ -300,8 +300,21 @@ bool DocumentStore::save(const std::string& path,
         return false;
     }
     if (hasPrimary) {
-        if (!fs::copy_file(path, backupPath(path),
-                           fs::copy_options::overwrite_existing, ec) || ec) {
+        // A recovered load can leave an invalid primary beside a valid .bak.
+        // Never replace that last good recovery copy with the invalid primary.
+        auto primary = readFile(path);
+        bool primaryIsValid = primary.ok();
+        if (primaryIsValid) {
+            std::vector<DesignError> primaryDiagnostics;
+            primaryIsValid = migrate(primary.document, primaryDiagnostics);
+            if (primaryIsValid) {
+                primaryIsValid =
+                    validateDesignDocument(primary.document).empty();
+            }
+        }
+        if (primaryIsValid &&
+            (!fs::copy_file(path, backupPath(path),
+                            fs::copy_options::overwrite_existing, ec) || ec)) {
             std::error_code cleanupError;
             fs::remove(temporary, cleanupError);
             diagnostics.push_back(

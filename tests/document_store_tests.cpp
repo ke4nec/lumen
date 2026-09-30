@@ -143,6 +143,45 @@ TEST_CASE("document store recovers the last valid backup after corruption",
     CHECK(failed.document.root.id == 0);
 }
 
+TEST_CASE("document store preserves the valid backup after saving recovery",
+          "[designer][p5]") {
+    const fs::path dir = tempPath("recovery-save");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const fs::path path = dir / "page.design";
+
+    auto first = sampleDocument();
+    first.pageName = "first";
+    auto second = first;
+    second.pageName = "second";
+    DocumentStore store;
+    std::vector<lumen::dsl::DesignError> diagnostics;
+    REQUIRE(store.save(path.string(), first, diagnostics));
+    REQUIRE(store.save(path.string(), second, diagnostics));
+
+    std::ofstream(path, std::ios::trunc) << "{\"truncated\":";
+    const auto recovered = store.load(path.string());
+    REQUIRE(recovered.ok());
+    REQUIRE(recovered.recovered);
+    CHECK(recovered.document.pageName == "first");
+
+    auto replacement = recovered.document;
+    replacement.pageName = "recovered-edit";
+    REQUIRE(store.save(path.string(), replacement, diagnostics,
+                       recovered.revision));
+    const auto saved = store.load(path.string());
+    REQUIRE(saved.ok());
+    CHECK_FALSE(saved.recovered);
+    CHECK(saved.document.pageName == "recovered-edit");
+
+    std::ofstream(path, std::ios::trunc) << "{\"truncated\":";
+    const auto recoveredAgain = store.load(path.string());
+    REQUIRE(recoveredAgain.ok());
+    REQUIRE(recoveredAgain.recovered);
+    CHECK(recoveredAgain.document.pageName == "first");
+}
+
 TEST_CASE("document store rejects invalid saves without touching the file",
           "[designer][p5]") {
     const fs::path dir = tempPath("validation");
