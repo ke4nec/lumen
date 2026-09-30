@@ -36,13 +36,16 @@ using core::Preferences;
 // 应用主体：控制器声明在 shell_ 之前（构造期 build 即可读取）。
 class TemplateApp {
   public:
-    TemplateApp() {
+    explicit TemplateApp(bool persistent = true) {
+        persistent_ = persistent;
         loadState();
     }
 
     [[nodiscard]] app::AppShell& shell() { return shell_; }
     // headless 冒烟查询：便利对话框是否打开。
     [[nodiscard]] bool dialogsBusy() const { return dialogs_.busy(); }
+    // headless 冒烟关闭持久化（帧哈希确定性；真窗口路径不受影响）。
+    void setPersistent(bool enabled) { persistent_ = enabled; }
 
     // 窗口命令（自定义标题栏 → 宿主；main.cpp 注入平台回调）。
     struct WindowCommands {
@@ -60,6 +63,9 @@ class TemplateApp {
   private:
     // --- 持久化（G-7：变更即保存；损坏降级为空表重建） ---
     void loadState() {
+        if (!persistent_) {
+            return;
+        }
         const std::string dir =
             diagnostics::defaultDiagnosticsDirectory("lumen-template");
         if (dir.empty()) {
@@ -76,6 +82,9 @@ class TemplateApp {
     }
 
     void persist() const {
+        if (!persistent_) {
+            return;
+        }
         const std::string dir =
             diagnostics::defaultDiagnosticsDirectory("lumen-template");
         if (dir.empty()) {
@@ -348,6 +357,7 @@ class TemplateApp {
     widgets::DialogHost dialogs_{};
     WindowCommands windowCommands_{};
     bool maximized_{false};
+    bool persistent_{true};
 };
 
 }  // namespace lumen::template_app

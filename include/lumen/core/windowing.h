@@ -61,6 +61,11 @@ struct WindowMetrics {
     // M16：全屏状态（toggleFullscreen/系统途径进入后为 true；事件见
     // WindowFullscreenEntered/Exited）。
     bool fullscreen{false};
+    // G-8：屏幕位置（物理像素；positioned=false = 平台未提供位置查询
+    // ——位置记忆应用只回读 positioned 的快照）。
+    int x{0};
+    int y{0};
+    bool positioned{false};
 
     [[nodiscard]] bool operator==(const WindowMetrics&) const = default;
 };

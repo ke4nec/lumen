@@ -4,7 +4,12 @@
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <string>
+#include <system_error>
+
+#include "lumen/core/preferences.h"
+#include "lumen/core/single_instance.h";
 
 #include "lumen/platform/sdl3_host.h"
 #include "template_app.h"
@@ -50,6 +55,20 @@ int runWindowed(TemplateApp& app) {
     runOptions.windowDesc.title = "Lumen Template";
     runOptions.windowDesc.width = 800;
     runOptions.windowDesc.height = 560;
+    // G-8：位置记忆回放（上次窗口位置；无记录 = 系统默认）。
+    {
+        lumen::core::Preferences prefs;
+        const std::string dir = lumen::diagnostics::
+            defaultDiagnosticsDirectory("lumen-template");
+        if (!dir.empty() &&
+            prefs.load((std::filesystem::path(dir) / "window.dat")
+                           .string())) {
+            runOptions.windowDesc.x =
+                static_cast<int>(prefs.getInt("window.x", -1));
+            runOptions.windowDesc.y =
+                static_cast<int>(prefs.getInt("window.y", -1));
+        }
+    }
     // 自定义标题栏：无边框窗口 + 拖拽区谓词（runApp 自动接线）。
     runOptions.windowDesc.customTitleBar = true;
     // G-2：崩溃兜底与持久日志（平台惯例目录）。
@@ -74,14 +93,51 @@ int runWindowed(TemplateApp& app) {
     };
     windowCommands.requestClose = [&host] { host.requestWindowClose({}); };
     app.setWindowCommands(std::move(windowCommands));
-    return lumen::app::runApp(app.shell(), host, runOptions);
+    const int exitCode = lumen::app::runApp(app.shell(), host, runOptions);
+    // G-8：退出时记录最后窗口位置（下次启动回放）。
+    if (!host.windowIds().empty()) {
+        const auto metrics = host.windowMetrics(host.windowIds().front());
+        if (metrics.has_value() && metrics->positioned) {
+            const std::string dir = lumen::diagnostics::
+                defaultDiagnosticsDirectory("lumen-template");
+            if (!dir.empty()) {
+                std::error_code ec;
+                std::filesystem::create_directories(dir, ec);
+                lumen::core::Preferences prefs;
+                prefs.setInt("window.x", metrics->x);
+                prefs.setInt("window.y", metrics->y);
+                (void)prefs.save((std::filesystem::path(dir) /
+                                  "window.dat")
+                                     .string());
+            }
+        }
+    }
+    return exitCode;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
+    // G-8：单实例——已有实例时送达激活请求后即刻退出（headless 冒烟
+    // 不受影响：socket 目录按平台惯例，冲突概率与 CI 并行度由
+    // appName 区分）。
+    switch (lumen::core::SingleInstanceGuard::acquire(
+        {.appName = "lumen-template",
+         .onActivateRequest = [] {
+             // 激活请求在后台线程到达；投递 UI 线程属应用装配（本模板
+             // 单窗口场景依赖窗口管理器聚焦，raiseWindow 经宿主调用）。
+         }})) {
+        case lumen::core::SingleInstanceGuard::Status::SecondaryActivated:
+            return 0;
+        case lumen::core::SingleInstanceGuard::Status::
+            SecondaryNotifyFailed:
+        case lumen::core::SingleInstanceGuard::Status::Unavailable:
+            // 结构化降级：允许多实例继续运行（不因助手失败丢窗口）。
+        case lumen::core::SingleInstanceGuard::Status::Primary:
+            break;
+    }
     const Options options = parseOptions(argc, argv);
-    TemplateApp app;
+    TemplateApp app{/*persistent=*/!options.headless};
     app.attach();
     try {
         return options.headless ? runHeadless(app) : runWindowed(app);

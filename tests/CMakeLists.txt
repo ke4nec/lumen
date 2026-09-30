@@ -43,6 +43,9 @@ set(LUMEN_TEST_SOURCES
     # G-7：轻量持久化助手（docs/lumen-preferences-design.md）——原子写/
     # 损坏降级/类型转换/变更通知。
     preferences_tests.cpp
+    # G-8：窗口体验（docs/lumen-window-experience-design.md）——位置记
+    # 忆契约与单实例助手（Primary/Secondary/残留恢复）。
+    window_experience_tests.cpp
     # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
     grid_virtual_tests.cpp
     # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、

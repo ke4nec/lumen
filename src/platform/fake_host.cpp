@@ -63,6 +63,12 @@ std::optional<core::WindowId> FakeApplicationHost::createWindow(
                    static_cast<float>(desc.height)};
     entry.metrics.drawableSize = entry.metrics.logicalSize;
     entry.metrics.deviceScale = 1.0F;
+    // G-8：初始位置确定性回读（desc 给定即 positioned）。
+    if (desc.x.has_value() && desc.y.has_value()) {
+        entry.metrics.x = *desc.x;
+        entry.metrics.y = *desc.y;
+        entry.metrics.positioned = true;
+    }
     entry.focused = true;
     windows_.emplace(id, std::move(entry));
     return id;

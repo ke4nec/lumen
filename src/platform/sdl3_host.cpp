@@ -393,6 +393,8 @@ bool Sdl3ApplicationHost::initialize() {
     capabilities_.windowFullscreen = true;
     capabilities_.windowAlwaysOnTop = true;
     capabilities_.windowModal = true;
+    // G-8：窗口位置记忆（SDL_SetWindowPosition/GetWindowPosition 三桌面）。
+    capabilities_.windowPosition = true;
     // M16：系统托盘（SDL_tray 跨平台）；全局快捷键无平台后端（降级）。
     capabilities_.systemTray = true;
     capabilities_.globalHotkeys = false;
@@ -1069,6 +1071,11 @@ std::optional<core::WindowId> Sdl3ApplicationHost::createWindow(
     }
     const NativeSurfaceHandle surface = window->nativeSurface();
     auto* sdlWindow = static_cast<SDL_Window*>(surface.nativeWindow);
+    // G-8：初始屏幕位置（nullopt = 系统默认；创建后设置覆盖
+    // SDL_WINDOWPOS_UNDEFINED）。
+    if (desc.x.has_value() && desc.y.has_value()) {
+        SDL_SetWindowPosition(sdlWindow, *desc.x, *desc.y);
+    }
     const core::WindowId id{SDL_GetWindowID(sdlWindow)};
     WindowEntry entry;
     entry.window = std::move(window);
@@ -1125,6 +1132,15 @@ std::optional<core::WindowMetrics> Sdl3ApplicationHost::windowMetrics(
         (SDL_GetWindowFlags(static_cast<SDL_Window*>(
              window.nativeSurface().nativeWindow)) &
          SDL_WINDOW_MAXIMIZED) != 0;
+    // G-8：屏幕位置（物理像素；位置记忆回读）。
+    int px = 0;
+    int py = 0;
+    SDL_GetWindowPosition(
+        static_cast<SDL_Window*>(window.nativeSurface().nativeWindow), &px,
+        &py);
+    metrics.x = px;
+    metrics.y = py;
+    metrics.positioned = true;
     return metrics;
 }
 

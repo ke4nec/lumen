@@ -26,6 +26,10 @@ struct WindowDesc {
     std::string title{"Lumen"};
     int width{800};
     int height{600};
+    // G-8：初始屏幕位置（物理像素；nullopt = 系统默认位置——位置记忆
+    // 应用经 Preferences 回放上次值，docs/lumen-window-experience-design.md）。
+    std::optional<int> x{std::nullopt};
+    std::optional<int> y{std::nullopt};
     bool resizable{true};
     // 跟随系统缩放，使 drawable 像素跟踪逻辑尺寸（plan §2）。
     bool highPixelDensity{true};
@@ -207,6 +211,8 @@ struct PlatformCapabilities {
     bool windowFullscreen{false};
     bool windowAlwaysOnTop{false};
     bool windowModal{false};
+    // G-8：窗口位置记忆（WindowDesc.x/y 应用 + metrics 位置回读）。
+    bool windowPosition{false};
     // M16：系统托盘（SDL_tray，三桌面）。globalHotkeys = 系统级快捷键
     // 注册（当前固定无平台后端——契约/结构化降级就绪，Win32/X11/macOS
     // seam 为后续增量；窗口内命令分发属命令注册表，不在此位）。

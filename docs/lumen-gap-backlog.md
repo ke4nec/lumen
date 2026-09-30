@@ -109,4 +109,4 @@
 | G-5 | 已完成（2026-09-30） | pinch 手势落地：[`lumen-pinch-gesture-design.md`](lumen-pinch-gesture-design.md)——多指 FINGER 流合成（SDL3 无原生 pinch 事件）、M15 仲裁表 pinch 位、键盘等价经 G-1 命令层 |
 | G-6 | 已完成（2026-09-30） | 脚手架落地：`examples/template/`（纳入主构建 CI 冒烟）+ 入门文档 [`lumen-getting-started.md`](lumen-getting-started.md)（README 已链接）；模板为 G-7 持久化首个消费者 |
 | G-7 | 已完成（2026-09-30） | 持久化助手落地：[`lumen-preferences-design.md`](lumen-preferences-design.md)、`include/lumen/core/preferences.h`（原子写/损坏降级/版本字段/变更通知）；G-6 模板为其首个消费者 |
-| G-8 | 待处理 | M16 之后 |
+| G-8 | 部分完成（2026-09-30） | 位置记忆（WindowDesc/Metrics + Preferences）与单实例（core::SingleInstanceGuard，POSIX）落地：[`lumen-window-experience-design.md`](lumen-window-experience-design.md)；任务栏进度留三平台原生 seam 按需池（SDL 3.2 无 API） |

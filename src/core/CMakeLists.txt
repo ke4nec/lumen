@@ -15,6 +15,8 @@ add_library(lumen-core STATIC
     windowing.cpp
     # G-7：轻量持久化助手（preferences-design；纯 core 无 UI 依赖）。
     preferences.cpp
+    # G-8：单实例激活助手（window-experience-design；POSIX unix socket）。
+    single_instance.cpp
 )
 
 target_include_directories(lumen-core PUBLIC
