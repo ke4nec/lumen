@@ -1015,10 +1015,13 @@ D3 可编辑设计器
 
 F0 是源码边界核对；F1/P1 已完成 L0 语义 DOM、`.lumen` 导入、规范化设计文档 codec 和
 DOM→Widget 编译入口；F2/P2 已完成 L0 `NodeSchema`/`PropertySpec` 显式注册表，并由编译
-入口执行类型、枚举、范围和子节点约束。`designer_document_tests.cpp` 覆盖 DOM round-trip、
-C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和 P1 运行时引用拒绝；
-`designer_schema_tests.cpp` 覆盖 12 节点注册、访问器、非法属性和结构诊断。F3–F5 的 API
-形状已细化；P2 的 registry 仍只覆盖 L0，不代表全控件 schema 已完成。
+入口执行类型、枚举、范围和子节点约束；F3/P3 已完成类型化 `DesignRuntimeContext`、
+离线 map context、引用诊断和带代数的 `DesignRuntimeSession`。`designer_document_tests.cpp`
+覆盖 DOM round-trip、C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和
+P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 12 节点注册、访问器、非法属性和
+结构诊断；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、frame 保留和
+session 关闭。F4–F5 的 API 形状已细化；P2 registry 仍只覆盖 L0，P3 尚未构造 controller
+或资源裸指针。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1150,14 +1153,15 @@ C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 
 
 - 规划基线：`e2c61ef`；F1/P1 实现新增 `design_document.h`、`design_codec.h`、
   `design_document.cpp`、`designer_document_tests.cpp`，F2/P2 追加 `design_schema.h`、
-  `design_schema.cpp`、`designer_schema_tests.cpp`；工作区另有既存的平台 host 修改，
+  `design_schema.cpp`、`designer_schema_tests.cpp`，F3/P3 追加 `runtime_context.h`、
+  `designer_runtime_context_tests.cpp`；工作区另有既存的平台 host 修改，
   未把它们作为设计器证据。
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：`948/948` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个和
-  P2 的 2 个测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器或 D2/D3
-  功能状态。
+- 结果：`950/950` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个、
+  P2 的 2 个和 P3 的 2 个测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器
+  或 D2/D3 功能状态。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
   RuntimeContext 引用注入、DocumentStore 迁移和编辑事务留在 F3–F6；L1–L3 节点 schema

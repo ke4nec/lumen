@@ -394,6 +394,12 @@ void addCommon(std::vector<PropertySpec>& properties, bool styled) {
                                PropertyPersistence::RuntimeReference, stringValue("")));
     properties.push_back(spec("onClick", PropertyKind::Reference,
                                PropertyPersistence::RuntimeReference, stringValue("")));
+    for (const char* name : {"theme", "image", "virtualSource",
+                             "splitterSource", "component"}) {
+        properties.push_back(spec(name, PropertyKind::Reference,
+                                  PropertyPersistence::RuntimeReference,
+                                  stringValue("")));
+    }
     properties.push_back(spec("left", PropertyKind::Number,
                                PropertyPersistence::Declaration, numberValue(0)));
     properties.push_back(spec("top", PropertyKind::Number,

@@ -1,12 +1,14 @@
 #pragma once
 
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "lumen/core/widget.h"
 #include "lumen/dsl/design_document.h"
+#include "lumen/dsl/runtime_context.h"
 
 namespace lumen::dsl {
 
@@ -38,13 +40,6 @@ struct DesignReadResult {
     [[nodiscard]] bool ok() const { return !error.has_value(); }
 };
 
-// Reserved for P3. P1 has no runtime references to resolve; the type keeps
-// the compiler entry point stable while the preview context is added later.
-class DesignRuntimeContext {
-  public:
-    virtual ~DesignRuntimeContext() = default;
-};
-
 struct CompiledNodeRef {
     DesignNodeId documentId{0};
     std::string runtimeIdentity{};
@@ -64,6 +59,7 @@ struct DesignCompileResult {
     core::Widget root{};
     CompileTrace trace{};
     std::vector<DesignError> diagnostics{};
+    std::shared_ptr<DesignRuntimeSession> session{};
 
     [[nodiscard]] bool ok() const { return diagnostics.empty(); }
 };

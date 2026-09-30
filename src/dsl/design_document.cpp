@@ -806,16 +806,7 @@ class JsonParser {
         }
     }
     for (const auto& [name, reference] : node.references) {
-        if (name != "bind" && name != "onClick") {
-            DesignError diagnostic = errorAt(
-                "compile.reference_kind", "<design>",
-                "reference kind '" + name + "' requires P3 RuntimeContext");
-            diagnostic.nodeId = node.id;
-            diagnostic.nodePath = path;
-            diagnostic.property = name;
-            error = std::move(diagnostic);
-            return std::nullopt;
-        }
+        if (name != "bind" && name != "onClick") continue;
         if (!validIdentifier(reference)) {
             DesignError diagnostic = errorAt(
                 "compile.reference_name", "<design>",
@@ -868,6 +859,68 @@ void fillTrace(const DesignNode& node, const std::string& path,
     for (std::size_t i = 0; i < node.children.size(); ++i) {
         fillTrace(node.children[i], path + ".children[" + std::to_string(i) + "]",
                   trace);
+    }
+}
+
+[[nodiscard]] std::optional<DesignReferenceKind> referenceKind(
+    const std::string& name) {
+    if (name == "bind") return DesignReferenceKind::Binding;
+    if (name == "onClick") return DesignReferenceKind::Handler;
+    if (name == "theme") return DesignReferenceKind::Theme;
+    if (name == "image") return DesignReferenceKind::Image;
+    if (name == "virtualSource") return DesignReferenceKind::VirtualSource;
+    if (name == "splitterSource") return DesignReferenceKind::SplitterSource;
+    if (name == "component") return DesignReferenceKind::Component;
+    return std::nullopt;
+}
+
+void validateRuntimeReferences(const DesignNode& node, const std::string& path,
+                              const DesignRuntimeContext& context,
+                              std::vector<DesignError>& diagnostics) {
+    for (const auto& [name, reference] : node.references) {
+        const auto kind = referenceKind(name);
+        if (!kind.has_value()) {
+            DesignError diagnostic = errorAt(
+                "compile.reference_kind", "<design>",
+                "reference kind '" + name + "' is not registered");
+            diagnostic.nodeId = node.id;
+            diagnostic.nodePath = path;
+            diagnostic.property = name;
+            diagnostics.push_back(std::move(diagnostic));
+        } else if (*kind != DesignReferenceKind::Binding &&
+                   *kind != DesignReferenceKind::Handler) {
+            DesignError diagnostic = errorAt(
+                "reference.unsupported", "<design>",
+                "reference kind '" + name + "' needs a component schema");
+            diagnostic.nodeId = node.id;
+            diagnostic.nodePath = path;
+            diagnostic.property = name;
+            diagnostics.push_back(std::move(diagnostic));
+        } else if (context.validatesReferences()) {
+            DesignReference resolved;
+            if (!context.resolveReference(*kind, reference, resolved)) {
+                DesignError diagnostic = errorAt(
+                    "reference.missing", "<design>",
+                    "reference '" + reference + "' was not found");
+                diagnostic.nodeId = node.id;
+                diagnostic.nodePath = path;
+                diagnostic.property = name;
+                diagnostics.push_back(std::move(diagnostic));
+            } else if (resolved.kind != *kind || resolved.stableName != reference) {
+                DesignError diagnostic = errorAt(
+                    "reference.type", "<design>",
+                    "reference resolver returned the wrong typed handle");
+                diagnostic.nodeId = node.id;
+                diagnostic.nodePath = path;
+                diagnostic.property = name;
+                diagnostics.push_back(std::move(diagnostic));
+            }
+        }
+    }
+    for (std::size_t i = 0; i < node.children.size(); ++i) {
+        validateRuntimeReferences(
+            node.children[i], path + ".children[" + std::to_string(i) + "]",
+            context, diagnostics);
     }
 }
 
@@ -973,8 +1026,8 @@ DesignReadResult readDesignDocument(const std::string& source,
 
 DesignCompileResult compileDesignDocument(const DesignDocument& document,
                                           DesignRuntimeContext& context) {
-    (void)context;
     DesignCompileResult result;
+    result.session = std::make_shared<DesignRuntimeSession>();
     if (document.schemaVersion != 1) {
         result.diagnostics.push_back(errorAt(
             "compile.schema_version", "<design>",
@@ -996,6 +1049,8 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
         result.diagnostics.push_back(std::move(diagnostic));
     }
     if (!result.diagnostics.empty()) return result;
+    validateRuntimeReferences(document.root, "root", context,
+                              result.diagnostics);
     std::set<DesignNodeId> ids;
     std::optional<DesignError> error;
     const auto emitted = emitNode(document.root, ids, "root", error);

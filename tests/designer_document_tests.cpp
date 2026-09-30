@@ -9,6 +9,8 @@ using lumen::dsl::DesignDocument;
 using lumen::dsl::DesignNode;
 using lumen::dsl::DesignRuntimeContext;
 using lumen::dsl::DesignValue;
+using lumen::dsl::DesignReferenceKind;
+using lumen::dsl::MapDesignRuntimeContext;
 using lumen::dsl::compileDesignDocument;
 using lumen::dsl::parseLumen;
 using lumen::dsl::parseLumenSource;
@@ -55,7 +57,9 @@ TEST_CASE("designer document compiles to the existing widget golden",
     const auto document = parseLumenSource(source);
     REQUIRE(document.ok());
 
-    DesignRuntimeContext context;
+    MapDesignRuntimeContext context;
+    context.registerReference(DesignReferenceKind::Binding, "count");
+    context.registerReference(DesignReferenceKind::Handler, "increment");
     const auto compiled = compileDesignDocument(document.document, context);
     REQUIRE(compiled.ok());
     const auto expected = parseLumen(source);
@@ -114,5 +118,5 @@ TEST_CASE("designer document does not accept a runtime-only reference in P1",
     document.root.references["image"] = "logo";
     const auto compiled = compileDesignDocument(document);
     REQUIRE_FALSE(compiled.ok());
-    CHECK(compiled.diagnostics.front().code == "compile.reference_kind");
+    CHECK(compiled.diagnostics.front().code == "reference.unsupported");
 }
