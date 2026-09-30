@@ -1024,7 +1024,8 @@ session 关闭。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform`
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
 和命名 slot，并在复制时分配新 ID、在重排时保持原 ID；编译结果同时返回 SourceMap 和
 CompileTrace。P2 registry 仍只覆盖 L0，P3 尚未构造 controller 或资源裸指针；F5 的
-DocumentStore、迁移和恢复仍未实现。
+DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢复已完成；F6 仍负责设计器
+应用层的事务、undo/redo 和资源授权。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1158,24 +1159,25 @@ DocumentStore、迁移和恢复仍未实现。
   `design_document.cpp`、`designer_document_tests.cpp`，F2/P2 追加 `design_schema.h`、
   `design_schema.cpp`、`designer_schema_tests.cpp`，F3/P3 追加 `runtime_context.h`、
   `designer_runtime_context_tests.cpp`，F4/P4 追加 `design_mapping.h`、
-  `design_mapping.cpp`、`designer_mapping_tests.cpp`；工作区另有既存的平台 host 修改，
+  `design_mapping.cpp`、`designer_mapping_tests.cpp`，F5 追加 `document_store.h`、
+  `document_store.cpp`、`document_store_tests.cpp`；工作区另有既存的平台 host 修改，
   未把它们作为设计器证据。
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：`953/953` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个、
-  P2 的 2 个、P3 的 2 个和 P4 的 3 个测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器
+- 结果：`957/957` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个、
+  P2 的 2 个、P3 的 2 个、P4 的 3 个和 P5 的 4 个测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器
   或 D2/D3 功能状态。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
-  RuntimeContext 引用注入、DocumentStore 迁移和编辑事务留在 F3–F6；L1–L3 节点 schema
-  仍未登记。
+  controller/resource 引用注入和编辑事务仍留在 F6；L1–L3 节点 schema 仍未登记。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
   代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译不写入这些运行时
   字段；P4 的 SourceMap 只保存节点/属性 span，坐标变换只在画布交互层使用，编辑器操作不
-  把 runtime identity 写回文档。
-- 未核对项：方案 A/B、DP-2–DP-8 尚未作产品决策；没有把现有 946 项测试误记为设计器
+  把 runtime identity 写回文档；P5 保存先校验 DOM，再写唯一临时文件、保留 `.bak` 并
+  原子替换，主文件损坏时只从有效恢复副本返回文档。
+- 未核对项：方案 A/B、DP-2–DP-8 尚未作产品决策；没有把现有 957 项测试误记为设计器
   round-trip、schema、DocumentId、RuntimeContext 或三桌面窗口验收。
 
 ### 10.4 进入实施前的评审问题

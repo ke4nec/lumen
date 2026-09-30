@@ -1034,7 +1034,7 @@ DesignReadResult readDesignDocument(const std::string& source,
                                       "format, schemaVersion, documentId and pageName are required")};
     }
     std::uint64_t schemaInteger = 0;
-    if (!integerInRange(schema, schemaInteger) || schemaInteger != 1) {
+    if (!integerInRange(schema, schemaInteger) || schemaInteger > 1) {
         return DesignReadResult{
             DesignDocument{}, errorAt("codec.schema_version", filename,
                                       "unsupported design document schemaVersion")};
