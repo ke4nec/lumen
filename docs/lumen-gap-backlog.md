@@ -108,5 +108,5 @@
 | G-4 | 已完成（2026-09-30；DatePicker 留按需池） | DialogHost（[`lumen-dialog-host-design.md`](lumen-dialog-host-design.md)）、编辑 ComboBox（[`lumen-combo-box-design.md`](lumen-combo-box-design.md)）、ColorPicker（[`lumen-color-picker-design.md`](lumen-color-picker-design.md)）三批交付 |
 | G-5 | 已完成（2026-09-30） | pinch 手势落地：[`lumen-pinch-gesture-design.md`](lumen-pinch-gesture-design.md)——多指 FINGER 流合成（SDL3 无原生 pinch 事件）、M15 仲裁表 pinch 位、键盘等价经 G-1 命令层 |
 | G-6 | 待处理 | 随时可做 |
-| G-7 | 待处理 | 按需，建议与 G-6 组合 |
+| G-7 | 已完成（2026-09-30） | 持久化助手落地：[`lumen-preferences-design.md`](lumen-preferences-design.md)、`include/lumen/core/preferences.h`（原子写/损坏降级/版本字段/变更通知）；G-6 模板为其首个消费者 |
 | G-8 | 待处理 | M16 之后 |

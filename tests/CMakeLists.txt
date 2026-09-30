@@ -40,6 +40,9 @@ set(LUMEN_TEST_SOURCES
     # G-5：pinch 手势（docs/lumen-pinch-gesture-design.md）——两指合成
     # 状态机、仲裁（取消单指/字段优先）与 pointerId 透传。
     pinch_tests.cpp
+    # G-7：轻量持久化助手（docs/lumen-preferences-design.md）——原子写/
+    # 损坏降级/类型转换/变更通知。
+    preferences_tests.cpp
     # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
     grid_virtual_tests.cpp
     # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、
