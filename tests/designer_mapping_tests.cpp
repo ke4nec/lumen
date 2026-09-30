@@ -108,3 +108,25 @@ TEST_CASE("designer structural edits preserve stable ids and validate",
     CHECK(editor.document().root.children.front().id == insertedId);
     CHECK(validateDesignDocument(editor.document()).empty());
 }
+
+TEST_CASE("designer duplicate nodes do not reuse source spans",
+          "[designer][p4]") {
+    const auto parsed = parseLumenSource(
+        "page mapping { Column { Text(\"Original\", key: \"original\") } }");
+    REQUIRE(parsed.ok());
+    const auto originalId = parsed.document.root.children.front().id;
+    REQUIRE(parsed.document.root.children.front().source.has_value());
+
+    DesignDocumentEditor editor{parsed.document};
+    const auto duplicate = editor.duplicateNode(
+        originalId, editor.document().root.id, 1);
+    REQUIRE(duplicate.has_value());
+    REQUIRE(editor.document().root.children.size() == 2);
+    CHECK(editor.document().root.children.front().id == originalId);
+    CHECK(editor.document().root.children[1].id == *duplicate);
+
+    const auto sourceMap = DesignSourceMap::fromDocument(editor.document());
+    CHECK(sourceMap.nodeSpan(originalId).has_value());
+    CHECK_FALSE(sourceMap.nodeSpan(*duplicate).has_value());
+    CHECK_FALSE(sourceMap.propertySpan(*duplicate, "text").has_value());
+}

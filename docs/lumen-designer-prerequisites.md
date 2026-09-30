@@ -1028,8 +1028,8 @@ P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 12 节点注册、
 结构诊断；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留、
 session 关闭回调和引用 lease 在关闭时释放。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
-和命名 slot，并在复制时分配新 ID、在重排时保持原 ID；编译结果同时返回 SourceMap 和
-CompileTrace。P2 registry 仍只覆盖 L0，P3 尚未构造 controller 或资源裸指针；F5 的
+和命名 slot，并在复制时分配新 ID、清除复制副本的旧 source span、在重排时保持原 ID；编译结果
+同时返回 SourceMap 和 CompileTrace。P2 registry 仍只覆盖 L0，P3 尚未构造 controller 或资源裸指针；F5 的
 DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢复已完成。F6 已增加设计器
 应用层的 `DesignDocumentTransaction`/`DesignDocumentHistory`、会话级 `DesignSelectionModel`
 和统一 `DesignDiagnostic` 基础契约；事务覆盖副本提交、失败回滚、mergeKey、undo/redo、

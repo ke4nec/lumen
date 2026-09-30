@@ -6,6 +6,20 @@
 
 namespace lumen::dsl {
 
+namespace {
+
+void clearSourceSpans(DesignNode& node) {
+    node.source.reset();
+    node.propertySources.clear();
+    for (auto& child : node.children) clearSourceSpans(child);
+    for (auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (auto& child : children) clearSourceSpans(child);
+    }
+}
+
+}  // namespace
+
 DesignSourceMap DesignSourceMap::fromDocument(const DesignDocument& document) {
     DesignSourceMap result;
     std::function<void(const DesignNode&)> visit = [&](const DesignNode& node) {
@@ -295,6 +309,7 @@ std::optional<DesignNodeId> DesignDocumentEditor::duplicateNode(
     const auto* source = findNode(document_.root, id);
     if (source == nullptr) return std::nullopt;
     DesignNode copy = *source;
+    clearSourceSpans(copy);
     std::map<DesignNodeId, bool> used;
     collectIds(document_.root, used);
     if (!normalizeIds(copy, used)) return std::nullopt;
