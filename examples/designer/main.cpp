@@ -1,8 +1,10 @@
 #include <cstdio>
 #include <cstring>
 #include <exception>
-#include <fstream>
+#include <filesystem>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "designer_app.h"
 #include "lumen/platform/sdl3_host.h"
@@ -11,6 +13,7 @@ namespace {
 
 struct Options {
     bool headless{false};
+    bool watch{false};
     std::string filename{};
 };
 
@@ -19,6 +22,8 @@ Options parseOptions(int argc, char** argv) {
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--headless") == 0) {
             options.headless = true;
+        } else if (std::strcmp(argv[index], "--watch") == 0) {
+            options.watch = true;
         } else if (std::strcmp(argv[index], "--file") == 0 &&
                    index + 1 < argc) {
             options.filename = argv[++index];
@@ -26,6 +31,32 @@ Options parseOptions(int argc, char** argv) {
     }
     return options;
 }
+
+class FileWatcher {
+  public:
+    explicit FileWatcher(std::string filename)
+        : filename_(std::move(filename)) {
+        refreshStamp();
+    }
+
+    [[nodiscard]] bool poll(lumen::designer_app::DesignerApp& app) {
+        std::error_code error;
+        const auto stamp = std::filesystem::last_write_time(filename_, error);
+        if (error || stamp == stamp_) return false;
+        stamp_ = stamp;
+        (void)app.loadFile(filename_);
+        return true;
+    }
+
+  private:
+    void refreshStamp() {
+        std::error_code error;
+        stamp_ = std::filesystem::last_write_time(filename_, error);
+    }
+
+    std::string filename_{};
+    std::filesystem::file_time_type stamp_{};
+};
 
 int runHeadless(lumen::designer_app::DesignerApp& app) {
     app.shell().setView(lumen::core::Size{1280.0F, 800.0F});
@@ -37,13 +68,25 @@ int runHeadless(lumen::designer_app::DesignerApp& app) {
     return app.workbench().frame().hasFrame() ? 0 : 1;
 }
 
-int runWindowed(lumen::designer_app::DesignerApp& app) {
+int runWindowed(lumen::designer_app::DesignerApp& app,
+                const Options& designerOptions) {
     lumen::platform::Sdl3ApplicationHost host;
-    lumen::app::RunOptions options;
-    options.windowDesc.title = "Lumen Designer";
-    options.windowDesc.width = 1280;
-    options.windowDesc.height = 800;
-    return lumen::app::runApp(app.shell(), host, options);
+    lumen::app::RunOptions runOptions;
+    runOptions.windowDesc.title = "Lumen Designer";
+    runOptions.windowDesc.width = 1280;
+    runOptions.windowDesc.height = 800;
+    std::optional<FileWatcher> watcher;
+    if (designerOptions.watch && !designerOptions.filename.empty()) {
+        watcher.emplace(designerOptions.filename);
+        std::printf("watching %s for changes\n",
+                    designerOptions.filename.c_str());
+        runOptions.poll = [&watcher, &app](lumen::app::AppShell&,
+                                           std::uint64_t /*nowMs*/) {
+            if (!watcher.has_value()) return false;
+            return watcher->poll(app);
+        };
+    }
+    return lumen::app::runApp(app.shell(), host, runOptions);
 }
 
 }  // namespace
@@ -56,7 +99,7 @@ int main(int argc, char** argv) {
         (void)app.loadFile(options.filename);
     }
     try {
-        return options.headless ? runHeadless(app) : runWindowed(app);
+        return options.headless ? runHeadless(app) : runWindowed(app, options);
     } catch (const std::exception& error) {
         std::fprintf(stderr, "fatal: %s\n", error.what());
         return 1;

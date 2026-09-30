@@ -1077,8 +1077,9 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 
 当前已交付 D2 的基础出口：`DesignPreviewWorkbench` 串联 `.lumen`/设计文档读取、预览帧
 恢复、DocumentId 选择、CompileTrace 定位、大纲和只读属性投影；`lumen-designer` 示例已
-接入真实 `AppShell`，提供只读画布、大纲树、属性/诊断面板、主题/密度/交互状态预览和
-`--headless` 冒烟。三桌面窗口 smoke、watch 热重载和完整 counter/gallery 样本覆盖仍待补齐。
+接入真实 `AppShell`，提供只读画布、大纲树、属性/诊断面板、主题/密度/交互状态预览、
+`--watch` 热重载和 `--headless` 冒烟。三桌面窗口 smoke 和完整 counter/gallery 样本覆盖
+仍待补齐。
 
 ### 6.3 D3：可编辑设计器
 
