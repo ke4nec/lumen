@@ -272,6 +272,31 @@ inline core::Widget makeList(const core::VirtualListSource* source,
   （框架登记起滑的源控制器）。
 - 框架滚动经 `setRebuildRequest`（AppShell 注入 `markDirty`）请求重建。
 
+### 6.6 行内编辑（List/Tree，2026-09-30）
+
+复用 DataGrid 编辑契约（datagrid-design §13.1 同源）与 TextField 编辑
+事务（EditingHistory——编辑器即普通字段，撤销/重做随字段走）：
+
+- **API**（ListController/TreeController 对称）：`beginEdit(key)` /
+  `commitEdit()` / `cancelEdit()` / `editing()` / `editingKey()` +
+  `editValueOf(key)`（初始值，默认空串）+ `onItemEdited(key, value)`。
+  Tree 的行 key = 模型 key；折叠/滚动外的行 `beginEdit` 先滚动到位
+  （`ScrollAlignment::Center`），编辑器随同一次重建物化。
+- **编辑器物化**：编辑行的内容被行内 TextField 替换（绑定
+  `owner+":edit"` state，key = `owner+":editor"`，flex 填满行宽）；程序
+  化字段焦点经 `requestFieldFocus`——无需先点击（文本输入/IME 直接路
+  由到编辑器）。
+- **键位**：编辑器持有焦点——Enter 提交（IME composing 期间留给输入
+  法）、Escape 取消；其余键（文本/方向/剪贴板）由编辑器消费，控制器
+  不抢（`handleKey` 编辑态优先分支返回 false 放行）。
+- **提交语义**：`commitEdit` 读 state 值 → 回调 `onItemEdited` → 焦点
+  回行节点（`owner+":item:"+key`）→ 重建。应用在回调内更新数据并重
+  建（控制器不改应用数据）。不同行 `beginEdit` 先提交旧行（失败保留
+  旧编辑与草稿）；源行消失（数据收缩/折叠）时提交 = 取消、不回调。
+- **已知限制**：无验证器通道（DataGrid 的 setCellValidator 为表格专
+  有；列表级校验由应用在 onItemEdited 内做，失败可再 beginEdit 回炉）；
+  无 Tab 跨行移动（列表无 DataGrid 的可编辑格矩阵语义）。
+
 ## 7. Tree 控件
 
 ### 7.1 TreeModel（应用侧数据适配器）

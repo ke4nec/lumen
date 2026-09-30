@@ -83,6 +83,22 @@ class TreeController : public core::VirtualListSource {
     }
     std::function<void(const std::string& key)> onActivated{};
 
+    // --- 行内编辑（collection-controls-design §6.8；ListController 同
+    // 契约：Enter 提交、Escape 取消、IME composing 期间 Enter 留给输入
+    // 法；编辑器 = 行内 TextField，程序化字段焦点）。树行 key 即模型
+    // key；折叠导致行不可见时滚动到位（展开态行）。 ---
+    bool beginEdit(const std::string& key);
+    bool commitEdit();
+    void cancelEdit();
+    [[nodiscard]] bool editing() const { return !editingKey_.empty(); }
+    [[nodiscard]] const std::string& editingKey() const {
+        return editingKey_;
+    }
+    std::function<std::string(const std::string& key)> editValueOf{};
+    std::function<void(const std::string& key,
+                       const std::string& value)>
+        onItemEdited{};
+
     // --- shell 接线（ownerKey 与 makeTree/makeTreeList 的 key 一致） ---
     void attach(app::AppShell& shell, std::string ownerKey);
 
@@ -154,6 +170,8 @@ class TreeController : public core::VirtualListSource {
     SelectionModel selection_{};
     app::AppShell* shell_{nullptr};
     std::string owner_{"tree"};
+    // 行内编辑：编辑行 key（空 = 未编辑）。
+    std::string editingKey_{};
 
   private:
     [[nodiscard]] float extentOfKey(const std::string& key) const;

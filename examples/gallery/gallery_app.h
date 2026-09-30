@@ -905,17 +905,23 @@ class GalleryApp {
     // → markDirty、区间选择的行序序列。
     void setupCollections() {
         // --- List：200 行资产清单（Extended 选择 + 激活回显） ---
+        collectionNames_.clear();
+        collectionNames_.reserve(200);
+        for (std::size_t i = 0; i < 200; ++i) {
+            char number[8];
+            std::snprintf(number, sizeof(number), "%03zu", i);
+            collectionNames_.push_back(std::string("asset-") + number +
+                                       ".png");
+        }
         collectionList_.setItemCount(200);
         collectionList_.setSelectionMode(widgets::SelectionMode::Extended);
         collectionList_.setEnabledOf([](std::size_t index) { return index % 7 != 6; });
         collectionList_.setItemBuilder([this](std::size_t index) {
-            char number[8];
-            std::snprintf(number, sizeof(number), "%03zu", index);
             char size[24];
             std::snprintf(size, sizeof(size), "%.1f KB",
                           4.0F + static_cast<float>(index) * 1.5F);
             core::Widget name = core::makeText(
-                std::string("asset-") + number + ".png",
+                collectionNames_[index],
                 shell_.theme().typography.body);
             name.flex = 1.0F;
             name.textStyle.maxLines = 1;
@@ -941,9 +947,27 @@ class GalleryApp {
                 core::CrossAxisAlignment::Center,
                 shell_.theme().metrics.controlGap[shell_.theme().metrics.baseIndex]);
         });
+        // 双击 = 行内重命名（§6.8：Enter 提交 / Escape 取消）。
         collectionList_.onActivated = [this](const std::string& key) {
             lastActivatedKey_ = key;
+            (void)collectionList_.beginEdit(key);
             shell_.markDirty();
+        };
+        collectionList_.editValueOf = [this](const std::string& key) {
+            std::size_t index = 0;
+            if (collectionList_.indexOfKey(key, index) &&
+                index < collectionNames_.size()) {
+                return collectionNames_[index];
+            }
+            return std::string{};
+        };
+        collectionList_.onItemEdited = [this](const std::string& key,
+                                             const std::string& value) {
+            std::size_t index = 0;
+            if (!value.empty() && collectionList_.indexOfKey(key, index) &&
+                index < collectionNames_.size()) {
+                collectionNames_[index] = value;
+            }
         };
         collectionList_.attach(shell_, "collection-list");
         collectionEmptyList_.attach(shell_, "collection-empty-list");
@@ -3305,8 +3329,9 @@ class GalleryApp {
                            "collection-list-mode"),
              core::withKey(std::move(listWidget), "collection-list"),
              core::withKey(mutedLabel("Click selects; Ctrl+click toggles; "
-                                      "Shift+click extends; double-click or "
-                                      "Enter activates; Ctrl+A selects all.",
+                                      "Shift+click extends; double-click "
+                                      "renames inline (Enter commits, "
+                                      "Escape cancels); Ctrl+A selects all.",
                                       theme),
                            "collection-list-hint")},
             theme, "collections-list-card", "200 rows · every seventh row disabled"));
@@ -4700,6 +4725,8 @@ class GalleryApp {
     CollectionTreeModel collectionTreeModel_{this};
     CollectionTableModel collectionTableModel_{this};
     widgets::ListController collectionList_{};
+    // 行内编辑样本数据（§6.8：双击重命名，onItemEdited 写回）。
+    std::vector<std::string> collectionNames_{};
     widgets::ListController collectionEmptyList_{};
     widgets::TreeController collectionTree_{};
     widgets::TreeController collectionEmptyTree_{};

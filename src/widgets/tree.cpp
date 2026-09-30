@@ -317,6 +317,21 @@ bool TreeController::handleKey(core::Key key, core::KeyModifiers modifiers,
         const auto* view = core::findNodeByKey(shell_->root(), owner_);
         if (view != nullptr && !view->enabled) return false;
     }
+    // 行内编辑态：Escape 取消；Enter 提交（composing 留给输入法）；
+    // 其余键由编辑器消费（ListController 同口径）。
+    if (editing()) {
+        if (key == core::Key::Escape) {
+            cancelEdit();
+            return true;
+        }
+        if (key == core::Key::Enter &&
+            (shell_ == nullptr ||
+             !shell_->controller().composingActive())) {
+            (void)commitEdit();
+            return true;
+        }
+        return false;
+    }
     rebuildRows();
     // 共享键位（Ctrl+A / Up / Down / Home / End / PageUp / PageDown）。
     if (detail::handleCollectionKeys(
@@ -471,10 +486,19 @@ core::Widget TreeController::buildItem(std::size_t index) const {
         return {};
     };
     const std::string label = labelOf(labelOf, content);
-    if (content.enabled) contentEnabled_.erase(row.key);
-    else contentEnabled_[row.key] = false;
-    content.flex = 1.0F;
-    cells.push_back(std::move(content));
+    if (editingKey_ == row.key) {
+        // 行内编辑器（ListController 同源）：绑定 state，commitEdit 读取。
+        auto editor = core::makeTextField({}, "edit");
+        editor.bind = owner_ + ":edit";
+        editor.key = owner_ + ":editor";
+        editor.flex = 1.0F;
+        cells.push_back(std::move(editor));
+    } else {
+        if (content.enabled) contentEnabled_.erase(row.key);
+        else contentEnabled_[row.key] = false;
+        content.flex = 1.0F;
+        cells.push_back(std::move(content));
+    }
 
     core::Widget widget;
     detail::applyCollectionRowShell(widget, owner_, row.key,
@@ -548,6 +572,89 @@ void TreeController::activate(const std::string& key) {
     if (onActivated && indexOfKey(key, index) && itemEnabled(index)) {
         onActivated(key);
     }
+}
+
+// --- 行内编辑（ListController 同契约；行 key = 模型 key） ---
+
+bool TreeController::beginEdit(const std::string& key) {
+    if (shell_ == nullptr || model_ == nullptr) {
+        return false;
+    }
+    rebuildRows();
+    std::size_t index = 0;
+    bool found = false;
+    for (std::size_t i = 0; i < rows_.size(); ++i) {
+        if (rows_[i].key == key) {
+            index = i;
+            found = true;
+            break;
+        }
+    }
+    if (!found || !itemEnabled(index)) {
+        return false;
+    }
+    if (editing()) {
+        if (editingKey_ == key) {
+            return true;
+        }
+        if (!commitEdit()) {
+            return false;
+        }
+    }
+    editingKey_ = key;
+    shell_->state().set(
+        owner_ + ":edit",
+        editValueOf ? editValueOf(key) : std::string{});
+    // 行未物化（折叠/滚动外）时滚动到位——编辑器随同一次重建物化。
+    if (core::findNodeByKey(shell_->root(), owner_ + ":item:" + key) ==
+        nullptr) {
+        scrollToKey(key, ScrollAlignment::Center);
+    }
+    shell_->focus().setFocus(owner_ + ":editor");
+    shell_->controller().requestFieldFocus(owner_ + ":edit");
+    requestRebuild();
+    return true;
+}
+
+bool TreeController::commitEdit() {
+    if (!editing() || shell_ == nullptr) {
+        return false;
+    }
+    const std::string key = editingKey_;
+    rebuildRows();
+    bool stillVisible = false;
+    for (const auto& row : rows_) {
+        if (row.key == key) {
+            stillVisible = true;
+            break;
+        }
+    }
+    if (!stillVisible) {
+        cancelEdit();
+        return false;
+    }
+    const std::string value = shell_->state().get(owner_ + ":edit");
+    editingKey_.clear();
+    shell_->controller().releaseFieldFocus();
+    if (onItemEdited) {
+        onItemEdited(key, value);
+    }
+    shell_->focus().setFocus(owner_ + ":item:" + key);
+    requestRebuild();
+    return true;
+}
+
+void TreeController::cancelEdit() {
+    if (!editing()) {
+        return;
+    }
+    const std::string key = editingKey_;
+    editingKey_.clear();
+    if (shell_ != nullptr) {
+        shell_->controller().releaseFieldFocus();
+        shell_->focus().setFocus(owner_ + ":item:" + key);
+    }
+    requestRebuild();
 }
 
 void TreeController::requestRebuild() {

@@ -7,6 +7,7 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
+#include <functional>
 #include <string>
 
 #include "gallery_app.h"
@@ -1223,4 +1224,56 @@ TEST_CASE("gallery_menu_bar_f10_toggles", "[gallery][menu]") {
     CHECK(app.menuBarOpen());
     app.keyDown(Key::F10);
     CHECK_FALSE(app.menuBarOpen());
+}
+
+// 行内编辑（collection-controls-design §6.8）：Gallery 集合列表双击进入
+// 行内编辑，Enter 提交写回数据并重建。
+TEST_CASE("gallery_collection_list_double_click_renames_inline",
+          "[gallery][collection]") {
+    GalleryApp app;
+    app.setView(Size{1280.0F, 900.0F});
+    (void)app.renderFrame();
+    go(app, "nav-collections");
+
+    const RenderNode* list = findNodeByKey(app.root(), "collection-list");
+    REQUIRE(list != nullptr);
+    REQUIRE(list->children.size() > 2);
+    // 第二行中心（绝对坐标；行 key = 列表 owner:item:<行 key>）。
+    const RenderNode* rowNode =
+        findNodeByKey(app.root(), "collection-list:item:i1");
+    REQUIRE(rowNode != nullptr);
+    const Offset rowOrigin = absoluteOffset(app.root(), "collection-list:item:i1");
+    const Offset center{rowOrigin.x + rowNode->size.width * 0.5F,
+                        rowOrigin.y + rowNode->size.height * 0.5F};
+
+    // 双击同一行（400ms 内两次点击）→ 激活 → beginEdit。
+    app.pointerDown(center);
+    app.pointerUp(center);
+    app.pointerDown(center);
+    app.pointerUp(center);
+    (void)app.renderFrame();
+    CHECK(app.collectionList().editing());
+    REQUIRE(app.shell().overlayRoot() == nullptr);  // 编辑器在行内。
+    const RenderNode* editor = findNodeByKey(app.root(), "collection-list:editor");
+    REQUIRE(editor != nullptr);
+
+    // 全选替换 + Enter 提交：列表首屏重建后显示新名字。
+    app.keyDown(Key::None, kModifierCtrl, 'a');
+    app.textInput("renamed-asset");
+    CHECK(app.collectionList().handleKey(Key::Enter, kModifierNone));
+    (void)app.renderFrame();
+    CHECK_FALSE(app.collectionList().editing());
+    bool foundRenamed = false;
+    const std::function<bool(const RenderNode&)> hasText =
+        [&](const RenderNode& node) -> bool {
+        if (node.text == "renamed-asset") return true;
+        for (const auto& child : node.children) {
+            if (hasText(child)) return true;
+        }
+        return false;
+    };
+    list = findNodeByKey(app.root(), "collection-list");
+    REQUIRE(list != nullptr);
+    foundRenamed = hasText(*list);
+    CHECK(foundRenamed);
 }

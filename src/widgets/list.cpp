@@ -153,6 +153,22 @@ bool ListController::handleKey(core::Key key, core::KeyModifiers modifiers,
         const auto* view = core::findNodeByKey(shell_->root(), owner_);
         if (view != nullptr && !view->enabled) return false;
     }
+    // 行内编辑态：编辑器持有焦点——Escape 取消；Enter 提交（IME
+    // composing 期间留给输入法，DataGrid §13.1 同口径）；其余键（文本/
+    // 方向/剪贴板）由编辑器消费，不抢。
+    if (editing()) {
+        if (key == core::Key::Escape) {
+            cancelEdit();
+            return true;
+        }
+        if (key == core::Key::Enter &&
+            (shell_ == nullptr ||
+             !shell_->controller().composingActive())) {
+            (void)commitEdit();
+            return true;
+        }
+        return false;
+    }
     return detail::handleCollectionKeys(
         shell_, owner_, selection_, *this,
         [this](std::size_t i) { return keyOf(i); }, key, modifiers, keyChar,
@@ -221,6 +237,77 @@ void ListController::requestRebuild() {
     }
 }
 
+// --- 行内编辑（collection-controls-design §6.8；DataGrid 契约同源） ---
+
+bool ListController::beginEdit(const std::string& key) {
+    if (shell_ == nullptr) {
+        return false;
+    }
+    std::size_t index = 0;
+    if (!indexOfKey(key, index) || !itemEnabled(index)) {
+        return false;
+    }
+    if (editing()) {
+        // 同行重复进入 = no-op；不同行先提交，失败保留旧编辑与草稿。
+        if (editingKey_ == key) {
+            return true;
+        }
+        if (!commitEdit()) {
+            return false;
+        }
+    }
+    editingKey_ = key;
+    shell_->state().set(
+        owner_ + ":edit",
+        editValueOf ? editValueOf(key) : std::string{});
+    // 行不在视口（未物化）时先滚动到位——编辑器随同一次重建物化，
+    // 程序化字段焦点（focusedBind）在 applyPendingFieldFocus 消费。
+    if (core::findNodeByKey(shell_->root(), owner_ + ":item:" + key) ==
+        nullptr) {
+        scrollToKey(key, ScrollAlignment::Center);
+    }
+    shell_->focus().setFocus(owner_ + ":editor");
+    shell_->controller().requestFieldFocus(owner_ + ":edit");
+    requestRebuild();
+    return true;
+}
+
+bool ListController::commitEdit() {
+    if (!editing() || shell_ == nullptr) {
+        return false;
+    }
+    const std::string key = editingKey_;
+    std::size_t index = 0;
+    if (!indexOfKey(key, index)) {
+        // 源行消失（数据变更）：取消，不触发回调。
+        cancelEdit();
+        return false;
+    }
+    const std::string value = shell_->state().get(owner_ + ":edit");
+    editingKey_.clear();
+    shell_->controller().releaseFieldFocus();
+    if (onItemEdited) {
+        onItemEdited(key, value);
+    }
+    shell_->focus().setFocus(owner_ + ":item:" + key);
+    requestRebuild();
+    return true;
+}
+
+void ListController::cancelEdit() {
+    if (!editing()) {
+        return;
+    }
+    const std::string key = editingKey_;
+    editingKey_.clear();
+    if (shell_ != nullptr) {
+        shell_->controller().releaseFieldFocus();
+        shell_->focus().setFocus(owner_ + ":item:" + key);
+    }
+    requestRebuild();
+}
+
+// --- M15：行拖拽重排 ---
 // --- M15：行拖拽重排 ---
 
 void ListController::setReorderable(bool enabled) {
@@ -439,7 +526,17 @@ core::Widget ListController::buildItem(std::size_t index) const {
                                     "listItem");
     row.padding = {};
     row.listPart = index + 1 == itemCount() ? core::ListPart::LastRow : core::ListPart::Row;
-    auto content = itemBuilder_(index);
+    core::Widget content;
+    if (editingKey_ == key) {
+        // 行内编辑器：绑定 state（commitEdit 读取）；flex 1 填满行宽。
+        auto editor = core::makeTextField({}, "edit");
+        editor.bind = owner_ + ":edit";
+        editor.key = owner_ + ":editor";
+        editor.flex = 1.0F;
+        content = std::move(editor);
+    } else {
+        content = itemBuilder_(index);
+    }
     if (content.enabled) contentEnabled_.erase(key);
     else contentEnabled_[key] = false;
     row.enabled = itemEnabled(index);

@@ -59,6 +59,26 @@ class ListController final : public core::VirtualListSource {
     // 激活（双击 / Enter / 语义 Activate 同路径）。
     std::function<void(const std::string& key)> onActivated{};
 
+    // --- 行内编辑（collection-controls-design §6.8；DataGrid 编辑契约
+    // 同源：Enter 提交、Escape 取消，IME composing 期间 Enter 留给输入
+    // 法）。触发方式由应用决定（双击经 onActivated 调 beginEdit / 菜单
+    // 命令等）。编辑器 = 行内 TextField（绑定 state，重建物化；程序化
+    // 字段焦点经 requestFieldFocus——无需先点击）。行不在视口时先滚动
+    // 到位，编辑器随滚动重建物化。 ---
+    bool beginEdit(const std::string& key);
+    bool commitEdit();
+    void cancelEdit();
+    [[nodiscard]] bool editing() const { return !editingKey_.empty(); }
+    [[nodiscard]] const std::string& editingKey() const {
+        return editingKey_;
+    }
+    // 编辑初始值（默认空串；应用通常返回当前行文本）。
+    std::function<std::string(const std::string& key)> editValueOf{};
+    // 提交回调（commitEdit 成功即触发；应用更新数据并重建）。
+    std::function<void(const std::string& key,
+                       const std::string& value)>
+        onItemEdited{};
+
     // --- M15：行拖拽重排（lumen-drag-drop-design §4） ---
     // 启用后 attach 注册的 arm/session sink 生效：行整体按下拖动越过
     // 启动阈值开会话（触摸不认领——列表触摸拖动保持滚动语义）；ghost
@@ -151,6 +171,8 @@ class ListController final : public core::VirtualListSource {
     std::size_t dragFromIndex_{0};
     std::size_t dragInsertIndex_{0};
     core::Offset dragPointer_{};
+    // 行内编辑：编辑行 key（空 = 未编辑）。
+    std::string editingKey_{};
 };
 
 }  // namespace lumen::widgets

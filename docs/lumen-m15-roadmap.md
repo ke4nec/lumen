@@ -113,7 +113,7 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 | Grid 跨行列合并 | rowspan/colspan；横向网格按需评估 | 已交付 2026-09-30（[`lumen-grid-span-design.md`](lumen-grid-span-design.md)）；横向网格维持按需 |
 | Splitter 窗格塌缩 | 塌缩/KeepRatio + `.lumen` 节点 | [`lumen-splitter-design.md`](lumen-splitter-design.md) |
 | 菜单增强 | mnemonic 下划线、Alt/F10 单键、触摸长按 | [`lumen-menu-controls-design.md`](lumen-menu-controls-design.md) |
-| 行内编辑 | Tree/List 行内编辑（复用 TextField 编辑事务契约） | [`lumen-collection-controls-design.md`](lumen-collection-controls-design.md) |
+| 行内编辑 | Tree/List 行内编辑（复用 TextField 编辑事务契约） | 已交付 2026-09-30（collection-design §6.6） |
 | DataGrid 增量 | 筛选面板与搜索（`onFilterRequest` 接线/条件模型/无结果状态，设计 §11.2）；异步提交 draft+saveError 契约（§13.1）；表头 hover 前景与多列优先级角标（Button 内容通道扩展）；Grid/Table 专属语义 role 与单元格级焦点导航（§8） | [`lumen-datagrid-design.md`](lumen-datagrid-design.md) |
 | DSL/基准补齐 | 上述新能力与既有 Spin/Toolbar/StatusBar/Splitter 的 `.lumen` 节点与基准场景 | DSL 文档 |
 
@@ -302,6 +302,30 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
   `sdl3_host_maps_f10_and_alt_keys`（SDL 事件推送翻译 F10/LALT/RALT
   键值与修饰位）。Gallery/Settings 菜单栏经既有 onKey 转发自动获得该
   行为（无需应用改动）。
+
+### List/Tree 行内编辑状态记录（2026-09-30，阶段C 池项）
+
+- 变更（collection-controls-design §6.6 首版随码交付）：
+  `ListController`/`TreeController` 对称 API——`beginEdit(key)`/
+  `commitEdit()`/`cancelEdit()`/`editing()`/`editingKey()` +
+  `editValueOf`（初始值）+ `onItemEdited`（提交回调）。编辑器 = 行内
+  TextField（绑定 `owner:edit` state，`requestFieldFocus` 程序化焦点
+  ——无需先点击）；Enter 提交（IME composing 留给输入法）、Escape 取
+  消；行未物化时 `beginEdit` 先滚动到位（Center 对齐）。DataGrid 编辑
+  契约同源（§13.1）；控制器不改应用数据——`onItemEdited` 内应用更新
+  并重建。Tree 行 key = 模型 key（折叠行滚动展开态路径）。
+- 样本：Gallery 集合页列表双击重命名（`onActivated → beginEdit`，
+  名字向量写回）；用法说明同步。
+- 测试：List 提交/取消/同行 no-op/未知 key 拒绝/编辑态导航键放行/
+  不同行先提交/源行消失取消（7 组断言）；Tree 根行/子行（先展开）/
+  Escape；Gallery 端到端（双击 → 编辑器物化 → Ctrl+A 替换 → Enter →
+  列表显示新名）。
+- 已知限制（§6.6 如实登记）：无验证器通道（应用在 onItemEdited 校
+  验，失败可再 beginEdit 回炉）；无 Tab 跨行移动（列表无可编辑格矩阵
+  语义）。
+- 未交付池项（更新）：inspector 交互式节点查看、语义树视图、分配量统
+  计、双轴联滚、RTL 镜像、触摸长按唤起、横向网格——按需继续。
+
 
 ### M17 进行中状态记录（2026-09-29，池式首项交付）
 

@@ -382,6 +382,99 @@ TEST_CASE("list_ctrl_a_selects_all_in_extended_mode", "[collection]") {
     CHECK(app.list.selection().selectedCount() == 5);
 }
 
+// --- 行内编辑（collection-controls-design §6.8；DataGrid 契约同源） ---
+
+TEST_CASE("list_inline_edit_commits_and_cancels", "[collection]") {
+    ListApp app;
+    app.list.setItemCount(10);
+    app.build();
+
+    std::string editedKey;
+    std::string editedValue;
+    int edits = 0;
+    app.list.editValueOf = [](const std::string& key) {
+        return "Item " + key.substr(1);
+    };
+    app.list.onItemEdited = [&](const std::string& key,
+                                const std::string& value) {
+        ++edits;
+        editedKey = key;
+        editedValue = value;
+    };
+
+    // 进入编辑：编辑器物化（行内 TextField 绑定 state）+ 程序化字段
+    // 焦点（无需点击）。
+    REQUIRE(app.list.beginEdit("i1"));
+    CHECK(app.list.editing());
+    CHECK(app.list.editingKey() == "i1");
+    (void)app.shell.renderFrame();  // 重建物化编辑器。
+    const RenderNode* editor = findNodeByKey(app.shell.root(), "files:editor");
+    REQUIRE(editor != nullptr);
+    CHECK(editor->type == WidgetType::TextField);
+    CHECK(editor->bind == "files:edit");
+    CHECK(app.shell.focus().focusedKey() == "files:editor");
+
+    // 同行重复进入 = no-op；未知 key 拒绝。
+    CHECK(app.list.beginEdit("i1"));
+    CHECK(app.list.editingKey() == "i1");
+    CHECK_FALSE(app.list.beginEdit("i99"));
+
+    // 编辑态导航键不抢（编辑器持有方向键）。
+    CHECK_FALSE(app.list.handleKey(Key::Down, kModifierNone));
+
+    // 编辑器初始值来自 editValueOf（state 通道）。
+    CHECK(app.shell.state().get("files:edit") == "Item 1");
+    // 全选替换（Ctrl+A → 输入覆盖选区——真实用户编辑路径）。
+    app.shell.keyDown(Key::None, kModifierCtrl, 'a');
+    app.shell.textInput("Renamed");
+    CHECK(app.list.handleKey(Key::Enter, kModifierNone));
+    CHECK_FALSE(app.list.editing());
+    CHECK(edits == 1);
+    CHECK(editedKey == "i1");
+    CHECK(editedValue == "Renamed");
+    CHECK(app.shell.focus().focusedKey() == "files:item:i1");
+
+    // Escape 取消：不触发回调，焦点回行。
+    REQUIRE(app.list.beginEdit("i2"));
+    (void)app.shell.renderFrame();
+    app.shell.textInput("Discard");
+    CHECK(app.list.handleKey(Key::Escape, kModifierNone));
+    CHECK_FALSE(app.list.editing());
+    CHECK(edits == 1);
+    CHECK(app.shell.focus().focusedKey() == "files:item:i2");
+
+    // 不同行进入：先提交旧行（失败拦截保留），再开新行。
+    REQUIRE(app.list.beginEdit("i0"));
+    (void)app.shell.renderFrame();
+    app.shell.keyDown(Key::None, kModifierCtrl, 'a');
+    app.shell.textInput("First");
+    REQUIRE(app.list.beginEdit("i1"));
+    CHECK(edits == 2);
+    CHECK(editedKey == "i0");
+    CHECK(editedValue == "First");
+    CHECK(app.list.editingKey() == "i1");
+
+    // 源行消失（数据收缩）后提交：取消、不触发回调。
+    app.list.setItemCount(0);
+    CHECK_FALSE(app.list.commitEdit());
+    CHECK_FALSE(app.list.editing());
+    CHECK(edits == 2);
+}
+
+TEST_CASE("list_inline_edit_scrolls_offscreen_row_into_view",
+          "[collection]") {
+    ListApp app;
+    app.list.setItemCount(100);
+    app.build();
+    // i90 远在视口外：beginEdit 滚动到位，编辑器随重建物化。
+    const float before = app.list.scroll().offset();
+    REQUIRE(app.list.beginEdit("i90"));
+    CHECK(app.list.scroll().offset() > before);
+    (void)app.shell.renderFrame();
+    REQUIRE(findNodeByKey(app.shell.root(), "files:editor") != nullptr);
+    CHECK(findNodeByKey(app.shell.root(), "files:item:i90") != nullptr);
+}
+
 TEST_CASE("list_scroll_alignment_positions_row", "[collection]") {
     ListApp app;
     app.list.setItemCount(100);
@@ -400,6 +493,62 @@ TEST_CASE("list_scroll_alignment_positions_row", "[collection]") {
 }
 
 // --- TreeController ---
+
+// --- Tree 行内编辑（collection-controls-design §6.8；List 同契约） ---
+
+TEST_CASE("tree_inline_edit_commits_and_cancels", "[collection]") {
+    TreeApp app;
+    app.build();
+
+    std::string editedKey;
+    std::string editedValue;
+    int edits = 0;
+    app.tree.editValueOf = [](const std::string& key) { return key; };
+    app.tree.onItemEdited = [&](const std::string& key,
+                                const std::string& value) {
+        ++edits;
+        editedKey = key;
+        editedValue = value;
+    };
+
+    // 根行进入编辑：编辑器物化 + 程序化焦点。
+    REQUIRE(app.tree.beginEdit("root1"));
+    CHECK(app.tree.editingKey() == "root1");
+    (void)app.shell.renderFrame();
+    const RenderNode* editor = findNodeByKey(app.shell.root(), "tree:editor");
+    REQUIRE(editor != nullptr);
+    CHECK(editor->type == WidgetType::TextField);
+    CHECK(app.shell.focus().focusedKey() == "tree:editor");
+    CHECK(app.shell.state().get("tree:edit") == "root1");
+
+    // 全选替换 + Enter 提交：回调与焦点恢复。
+    app.shell.keyDown(Key::None, kModifierCtrl, 'a');
+    app.shell.textInput("Renamed root");
+    CHECK(app.tree.handleKey(Key::Enter, kModifierNone));
+    CHECK_FALSE(app.tree.editing());
+    CHECK(edits == 1);
+    CHECK(editedKey == "root1");
+    CHECK(editedValue == "Renamed root");
+    CHECK(app.shell.focus().focusedKey() == "tree:item:root1");
+
+    // 折叠/未知行拒绝；Escape 取消不触发回调。
+    CHECK_FALSE(app.tree.beginEdit("missing"));
+    REQUIRE(app.tree.beginEdit("root2"));
+    (void)app.shell.renderFrame();
+    app.shell.keyDown(Key::None, kModifierCtrl, 'a');
+    app.shell.textInput("Discarded");
+    CHECK(app.tree.handleKey(Key::Escape, kModifierNone));
+    CHECK_FALSE(app.tree.editing());
+    CHECK(edits == 1);
+    CHECK(app.shell.focus().focusedKey() == "tree:item:root2");
+
+    // 子行（展开态）可编辑：先展开父行，再进入子行编辑。
+    app.tree.expand("root1");
+    (void)app.shell.renderFrame();
+    REQUIRE(app.tree.beginEdit("a"));
+    (void)app.shell.renderFrame();
+    CHECK(findNodeByKey(app.shell.root(), "tree:editor") != nullptr);
+}
 
 TEST_CASE("tree_flattens_visible_rows_and_respects_expansion",
           "[collection]") {
