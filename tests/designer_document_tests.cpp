@@ -83,6 +83,8 @@ TEST_CASE("designer document diagnostics reject unsupported and damaged input",
     const auto damaged = readDesignDocument("{", "broken.design");
     REQUIRE_FALSE(damaged.ok());
     CHECK(damaged.error->file == "broken.design");
+    CHECK(damaged.error->pos.line == 1);
+    CHECK(damaged.error->pos.column == 2);
 
     const auto badDsl = parseLumenSource("page preview { Unknown {} }");
     REQUIRE_FALSE(badDsl.ok());

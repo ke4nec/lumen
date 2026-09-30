@@ -66,12 +66,27 @@ class JsonParser {
         }
     }
 
+    [[nodiscard]] SourcePos currentPosition() const {
+        SourcePos position{1, 1};
+        const auto end = std::min(index_, source_.size());
+        for (std::size_t i = 0; i < end; ++i) {
+            const auto byte = static_cast<unsigned char>(source_[i]);
+            if (source_[i] == '\n') {
+                ++position.line;
+                position.column = 1;
+            } else if ((byte & 0xc0U) != 0x80U) {
+                ++position.column;
+            }
+        }
+        return position;
+    }
+
     void fail(const std::string& code, const std::string& message = {}) {
         if (error_.has_value()) {
             return;
         }
         const std::string detail = message.empty() ? code : message;
-        error_ = errorAt(code, filename_, detail);
+        error_ = errorAt(code, filename_, detail, currentPosition());
     }
 
     [[nodiscard]] bool consume(char expected) {
