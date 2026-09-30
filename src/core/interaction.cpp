@@ -309,7 +309,42 @@ void InteractionController::pointerDown(const RenderNode& root,
                                         std::uint64_t timestampMs,
                                         KeyModifiers modifiers,
                                         PointerButton button,
-                                        PointerDevice device) {
+                                        PointerDevice device,
+                                        std::uint32_t pointerId) {
+    // G-5：触摸多指判定（先于单指路径——第二指不走按压/点击语义）。
+    // pointerId 0 = 未携带标识（既有调用/鼠标），保持单指针语义。
+    if (device == PointerDevice::Touch && pointerId != 0 &&
+        !touchPointers_.empty()) {
+        // 第二指落下：仲裁（lumen-pinch-gesture-design §3）——取消主指
+        // 单指手势（按压/滚动拖动/拖放/滑块，不触发点击），登记新指并
+        // 武装 pinch（起始中点在字段上不武装：字段选区优先）。先移出
+        // 多指表再取消（pointerCancel 清表是窗口级语义，不抹本次会话）。
+        auto saved = std::move(touchPointers_);
+        touchPointers_.clear();
+        pointerCancel();
+        touchPointers_ = std::move(saved);
+        touchPointers_[pointerId] = position;
+        if (touchPointers_.size() == 2) {
+            auto it = touchPointers_.begin();
+            const Offset a = it->second;
+            const Offset b = std::next(it)->second;
+            pinchStartDist_ =
+                std::sqrt((a.x - b.x) * (a.x - b.x) +
+                          (a.y - b.y) * (a.y - b.y));
+            pinchStartCenter_ = Offset{(a.x + b.x) * 0.5F,
+                                       (a.y + b.y) * 0.5F};
+            std::vector<const RenderNode*> centerChain;
+            const RenderNode* centerTarget =
+                hitTestChain(root, pinchStartCenter_, centerChain);
+            const bool overField =
+                centerTarget != nullptr && !centerTarget->bind.empty();
+            pinchArmed_ = pinchStartDist_ > 0.0F && !overField;
+        }
+        return;
+    }
+    if (device == PointerDevice::Touch && pointerId != 0) {
+        touchPointers_[pointerId] = position;
+    }
     std::vector<const RenderNode*> chain;
     const RenderNode* target = hitTestChain(root, position, chain);
     updatePointerHover(root, position);
@@ -615,7 +650,51 @@ bool InteractionController::setSplitterValue(const RenderNode& node,
 
 void InteractionController::pointerMove(const RenderNode& root,
                                         Offset position,
-                                        std::uint64_t timestampMs) {
+                                        std::uint64_t timestampMs,
+                                        std::uint32_t pointerId) {
+    // G-5：pinch 推进（多指 Move 路径先于单指 hover/按压——pinch 会话
+    // 中主指按压已被取消）。 armed → 距离变化越过 8px 启动（Begin）；
+    // active → 每拍 Update（scale = dist/startDist，center = 中点）。
+    if (pointerId != 0) {
+        const auto touched = touchPointers_.find(pointerId);
+        if (touched != touchPointers_.end()) {
+            touched->second = position;
+            if (pinchArmed_ || pinchActive_) {
+                if (touchPointers_.size() >= 2) {
+                    auto it = touchPointers_.begin();
+                    const Offset a = it->second;
+                    const Offset b = std::next(it)->second;
+                    const float dist =
+                        std::sqrt((a.x - b.x) * (a.x - b.x) +
+                                  (a.y - b.y) * (a.y - b.y));
+                    const Offset center{(a.x + b.x) * 0.5F,
+                                        (a.y + b.y) * 0.5F};
+                    if (pinchArmed_ &&
+                        std::fabs(dist - pinchStartDist_) > 8.0F) {
+                        pinchArmed_ = false;
+                        pinchActive_ = true;
+                        if (pinchSink_) {
+                            (void)pinchSink_(root, center,
+                                             dist / pinchStartDist_,
+                                             PinchPhase::Begin);
+                        }
+                        return;
+                    }
+                    if (pinchActive_ && pinchSink_) {
+                        (void)pinchSink_(root, center,
+                                         dist / pinchStartDist_,
+                                         PinchPhase::Update);
+                    }
+                }
+            }
+            if (!pinchArmed_ && !pinchActive_) {
+                return;  // 非首指且未武装：无单指语义（hover 也不更新）
+            }
+            if (pinchArmed_ || pinchActive_) {
+                return;
+            }
+        }
+    }
     updatePointerHover(root, position);
     if (!pressActive_) {
         return;
@@ -770,7 +849,39 @@ void InteractionController::pointerMove(const RenderNode& root,
 void InteractionController::pointerUp(const RenderNode& root,
                                       Offset position,
                                       std::uint64_t timestampMs,
-                                      PointerButton button) {
+                                      PointerButton button,
+                                      std::uint32_t pointerId) {
+    // G-5：多指释放——pinch 会话收尾（End），绝不产生单指点击语义。
+    if (pointerId != 0) {
+        const auto touched = touchPointers_.find(pointerId);
+        if (touched != touchPointers_.end()) {
+            touched->second = position;
+            touchPointers_.erase(touched);
+            const bool wasActive = pinchActive_;
+            pinchArmed_ = false;
+            pinchActive_ = false;
+            if (wasActive && pinchSink_) {
+                // End 以释放时刻的两指状态回执（剩余指针若已空则用释放
+                // 位置与当前 scale 快照——应用以 Begin/Update 序列为准）。
+                auto it = touchPointers_.begin();
+                const Offset remaining =
+                    it != touchPointers_.end() ? it->second : position;
+                const Offset a = it != touchPointers_.end() ? it->second
+                                                            : position;
+                const float dist =
+                    std::sqrt((a.x - position.x) * (a.x - position.x) +
+                              (a.y - position.y) * (a.y - position.y));
+                (void)pinchSink_(root, Offset{(a.x + position.x) * 0.5F,
+                                              (a.y + position.y) * 0.5F},
+                                 dist > 0.0F ? dist / pinchStartDist_
+                                             : 1.0F,
+                                 PinchPhase::End);
+                (void)remaining;
+            }
+            touchPointers_.clear();
+            return;
+        }
+    }
     // 非主键释放：无点击/拖动语义，也不影响进行中的主键手势（与
     // pointerDown 的 Secondary 隔离对称；menu-controls-design §6.2）。
     if (button != PointerButton::Primary) {
@@ -1008,6 +1119,11 @@ void InteractionController::pointerCancel() {
                             ScrollDragPhase::Cancel, 0);
         }
     }
+    // G-5：pinch 静默清理（窗口失焦/系统取消；无 root 可回执 End——
+    // sink 按 scale 值流消费，无状态残留，设计文档 §3）。
+    pinchArmed_ = false;
+    pinchActive_ = false;
+    touchPointers_.clear();
 }
 
 // --- 文本输入与 IME ---
@@ -1570,6 +1686,10 @@ void InteractionController::setWheelSink(WheelSink sink) {
 
 void InteractionController::setScrollDragSink(ScrollDragSink sink) {
     scrollDragSink_ = std::move(sink);
+}
+
+void InteractionController::setPinchSink(PinchSink sink) {
+    pinchSink_ = std::move(sink);
 }
 
 void InteractionController::addRowActivateSink(RowActivateSink sink) {

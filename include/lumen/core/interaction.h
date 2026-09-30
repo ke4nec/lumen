@@ -50,6 +50,10 @@ class FocusManager {
 // Cancel = 取消只停惯性）。AppShell 的同形 sink 别名复用此类型。
 enum class ScrollDragPhase { Begin, Update, End, Cancel };
 
+// G-5：pinch 会话阶段（两指合成；Begin = 距离变化越过启动阈值，Update =
+// 每拍，End = 任一指抬起/取消）。scale = 当前指距 / 起始指距。
+enum class PinchPhase : std::uint8_t { Begin, Update, End };
+
 // 指针悬停期望的系统光标形状（core 语义层；平台适配层映射
 // platform::SystemCursor 并调用 ApplicationHost::setCursor——core 不含
 // 平台类型）。分隔条与滚动条声明特殊形状；默认 Arrow。
@@ -91,17 +95,21 @@ class InteractionController {
     // button 为归一化主键——Secondary（右键）不进入点击/按压/拖动/聚焦
     // 路径，只咨询 SecondaryPressSink（菜单类控件，menu-controls-design
     // §6.2），也不干扰进行中的主键手势状态；缺省 Primary 保持既有调用
-    // 与帧哈希不变） ---
+    // 与帧哈希不变；pointerId 缺省 0 = 单指针（既有调用零改动）——触摸
+    // 多指经 pointerId 区分，第二指进入 pinch 判定（G-5）） ---
     void pointerDown(const RenderNode& root, Offset position,
                      std::uint64_t timestampMs = 0,
                      KeyModifiers modifiers = kModifierNone,
                      PointerButton button = PointerButton::Primary,
-                     PointerDevice device = PointerDevice::Mouse);
+                     PointerDevice device = PointerDevice::Mouse,
+                     std::uint32_t pointerId = 0);
     void pointerMove(const RenderNode& root, Offset position,
-                     std::uint64_t timestampMs = 0);
+                     std::uint64_t timestampMs = 0,
+                     std::uint32_t pointerId = 0);
     void pointerUp(const RenderNode& root, Offset position,
                    std::uint64_t timestampMs = 0,
-                   PointerButton button = PointerButton::Primary);
+                   PointerButton button = PointerButton::Primary,
+                   std::uint32_t pointerId = 0);
     // 取消活动指针（触摸取消/窗口失焦）：解除按压与拖动，不触发点击，
     // 选区保留。
     void pointerCancel();
@@ -109,6 +117,23 @@ class InteractionController {
     // 集合行 handler 在点击触发期间经此读取 Ctrl/Shift。
     [[nodiscard]] KeyModifiers pointerModifiers() const {
         return pointerModifiers_;
+    }
+
+    // --- G-5：pinch 手势（触控板/触屏两指；SDL 无原生 pinch 事件，由
+    // 多指 FINGER 流合成——sdl3_host 归一化 Touch Pointer* 事件后在此
+    // 状态机合成）。仲裁（lumen-pinch-gesture-design §3）：第二指落下时
+    // 取消主指单指手势（按压/滚动拖动/拖放，不触发点击）→ 两指均按下
+    // 且起始中点不在 TextField 上时武装；距离变化越过 8px 启动。键盘
+    // 等价（Ctrl+= / Ctrl+-）属 G-1 命令层（应用注册 zoom 命令）。
+    // sink 返回 true = 已消费（语义回执纪律）。
+    using PinchSink = std::function<bool(const RenderNode& root,
+                                         Offset center, float scale,
+                                         PinchPhase phase)>;
+    void setPinchSink(PinchSink sink);
+    [[nodiscard]] bool pinchActive() const { return pinchActive_; }
+    // 当前活跃触摸指针数（测试/诊断查询）。
+    [[nodiscard]] std::size_t touchPointerCount() const {
+        return touchPointers_.size();
     }
 
     // --- 文本输入与 IME ---
@@ -421,6 +446,15 @@ class InteractionController {
     // M15：拖放会话（arm 认领 → 阈值启动 → Move → Drop/Cancel）。
     std::vector<DragArmSink> dragArmSinks_{};
     std::vector<DragSessionSink> dragSessionSinks_{};
+    // G-5：pinch 会话（多指追踪 + 距离状态机）。pointerId → 位置；0 号
+    // pointerId 不入表（单指语义 = 既有路径）。起始中点在 TextField 上
+    // 不武装（字段选区仲裁）。
+    PinchSink pinchSink_{};
+    std::map<std::uint32_t, Offset> touchPointers_{};
+    bool pinchArmed_{false};
+    bool pinchActive_{false};
+    float pinchStartDist_{0.0F};
+    Offset pinchStartCenter_{};
     bool dragArmedActive_{false};
     bool dragArmTouchAllowed_{false};
     PointerDevice dragArmDevice_{PointerDevice::Mouse};

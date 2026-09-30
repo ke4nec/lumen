@@ -106,7 +106,7 @@
 | G-2 | 已完成（2026-09-29） | 崩溃兜底与持久日志落地：[`lumen-runtime-diagnostics-design.md`](lumen-runtime-diagnostics-design.md)、`include/lumen/diagnostics/runtime_diagnostics.h`（新模块 lumen-diagnostics）+ 注入进程冒烟；runApp 可选接线默认零开销 |
 | G-3 | 已完成（2026-09-30） | 剪贴板深度落地：[`lumen-clipboard-service-design.md`](lumen-clipboard-service-design.md)、core MIME 数据层（默认实现降级）+ SDL data API + ClipboardChanged 广播；Windows/macOS 图片位如实 false（原生 seam 遗留） |
 | G-4 | 已完成（2026-09-30；DatePicker 留按需池） | DialogHost（[`lumen-dialog-host-design.md`](lumen-dialog-host-design.md)）、编辑 ComboBox（[`lumen-combo-box-design.md`](lumen-combo-box-design.md)）、ColorPicker（[`lumen-color-picker-design.md`](lumen-color-picker-design.md)）三批交付 |
-| G-5 | 待处理 | 建议 M15 后或随 M17 |
+| G-5 | 已完成（2026-09-30） | pinch 手势落地：[`lumen-pinch-gesture-design.md`](lumen-pinch-gesture-design.md)——多指 FINGER 流合成（SDL3 无原生 pinch 事件）、M15 仲裁表 pinch 位、键盘等价经 G-1 命令层 |
 | G-6 | 待处理 | 随时可做 |
 | G-7 | 待处理 | 按需，建议与 G-6 组合 |
 | G-8 | 待处理 | M16 之后 |

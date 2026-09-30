@@ -636,7 +636,8 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                     break;
                 case HostEventType::PointerDown:
                     shell.pointerDown(event.position, event.modifiers,
-                                      event.button, event.device);
+                                      event.button, event.device,
+                                      event.pointerId);
                     if (event.device != core::PointerDevice::Touch) {
                         syncPointerCursor(*runtime);
                     }
@@ -644,7 +645,7 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                                            runtime->id);
                     break;
                 case HostEventType::PointerMove:
-                    shell.pointerMove(event.position);
+                    shell.pointerMove(event.position, event.pointerId);
                     if (event.device != core::PointerDevice::Touch) {
                         syncPointerCursor(*runtime);
                     }
@@ -652,7 +653,8 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                                            runtime->id);
                     break;
                 case HostEventType::PointerUp:
-                    shell.pointerUp(event.position, event.button);
+                    shell.pointerUp(event.position, event.button,
+                                    event.pointerId);
                     if (event.device != core::PointerDevice::Touch) {
                         syncPointerCursor(*runtime);
                     }

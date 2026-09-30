@@ -88,6 +88,14 @@ struct ShellConfig {
     // M10：视口拖动滚动 sink（触摸/指针拖动 → ScrollController 拖动与
     // 惯性）；为空时拖动不路由滚动（文本选区拖动不受影响）。
     ScrollDragSink onScrollDrag{};
+    // G-5：pinch 手势 sink（lumen-pinch-gesture-design §4）：两指合成，
+    // center = 中点（窗口逻辑坐标）、scale = 指距比、phase = Begin/
+    // Update/End。返回 true = 已消费；应用改状态后自行 markDirty。为空
+    // 时 pinch 只做手势仲裁（不投递）。键盘等价（Ctrl+= / Ctrl+-）经
+    // G-1 命令层由应用注册。
+    std::function<bool(class AppShell&, const core::RenderNode&,
+                       core::Offset, float, core::PinchPhase)>
+        onPinch{};
     // 重建后钩子（modal 焦点规则等）：新树已落地，root()/focus() 可查。
     std::function<void(class AppShell&)> onRebuilt{};
     // 关闭请求（窗口 X / WindowCloseRequested）：返回 true = 已消费
@@ -277,10 +285,12 @@ class AppShell {
     void pointerDown(core::Offset position,
                      core::KeyModifiers modifiers = core::kModifierNone,
                      core::PointerButton button = core::PointerButton::Primary,
-                     core::PointerDevice device = core::PointerDevice::Mouse);
-    void pointerMove(core::Offset position);
+                     core::PointerDevice device = core::PointerDevice::Mouse,
+                     std::uint32_t pointerId = 0);
+    void pointerMove(core::Offset position, std::uint32_t pointerId = 0);
     void pointerUp(core::Offset position,
-                   core::PointerButton button = core::PointerButton::Primary);
+                   core::PointerButton button = core::PointerButton::Primary,
+                   std::uint32_t pointerId = 0);
     void pointerCancel();
     // 返回 sink 消费状态（M5 收口：语义滚动回执同源）。modifiers 参与
     // Shift+纵轮 → 水平视口投影（lumen-scroll-design §4；默认无修饰键）。

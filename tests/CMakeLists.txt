@@ -37,6 +37,9 @@ set(LUMEN_TEST_SOURCES
     # G-4：ColorPicker（docs/lumen-color-picker-design.md）——HSV 派生/
     # 色板反推/hex 降级。
     color_picker_tests.cpp
+    # G-5：pinch 手势（docs/lumen-pinch-gesture-design.md）——两指合成
+    # 状态机、仲裁（取消单指/字段优先）与 pointerId 透传。
+    pinch_tests.cpp
     # M3：Grid/Image/VirtualList（几何稳定、可见区物化、锚点/damage）。
     grid_virtual_tests.cpp
     # 集合控件（list/tree/treelist）：SelectionModel、控制器、扁平化、

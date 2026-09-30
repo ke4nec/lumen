@@ -115,6 +115,15 @@ AppShell::AppShell(ShellConfig config) : config_(std::move(config)) {
             const auto& sink = overlayRoot_ ? overlayDrag_ : config_.onScrollDrag;
             return sink ? sink(root, viewport, position, delta, phase, timestampMs) : false;
         });
+    // G-5：pinch 手势（两指合成；应用 sink 消费 zoom 语义，返回 true =
+    // 已消费并自行 markDirty）。
+    controller_.setPinchSink(
+        [this](const core::RenderNode& root, core::Offset center, float scale,
+               core::PinchPhase phase) {
+            return config_.onPinch ? config_.onPinch(*this, root, center,
+                                                     scale, phase)
+                                   : false;
+        });
     // 集合控件：框架级源视口滚动（滚轮/拖动/惯性）变更内容后请求重建
     //（与 sink 路径里应用自调 markDirty 等价）。
     controller_.setRebuildRequest([this] { markDirty(); });
@@ -462,23 +471,27 @@ void AppShell::clearVisualOverlay() {
 void AppShell::pointerDown(core::Offset position,
                            core::KeyModifiers modifiers,
                            core::PointerButton button,
-                           core::PointerDevice device) {
+                           core::PointerDevice device,
+                           std::uint32_t pointerId) {
     dismissTooltips();
     rebuildIfDirty();
     controller_.pointerDown(eventTree(), position, lastTickMs_, modifiers,
-                            button, device);
+                            button, device, pointerId);
 }
 
-void AppShell::pointerMove(core::Offset position) {
+void AppShell::pointerMove(core::Offset position, std::uint32_t pointerId) {
     rebuildIfDirty();
-    controller_.pointerMove(eventTree(), position, lastTickMs_);
-    controller_.notifyPointerMove(root_, position);
+    controller_.pointerMove(eventTree(), position, lastTickMs_, pointerId);
+    if (pointerId == 0) {
+        controller_.notifyPointerMove(root_, position);
+    }
 }
 
-void AppShell::pointerUp(core::Offset position,
-                         core::PointerButton button) {
+void AppShell::pointerUp(core::Offset position, core::PointerButton button,
+                         std::uint32_t pointerId) {
     rebuildIfDirty();
-    controller_.pointerUp(eventTree(), position, lastTickMs_, button);
+    controller_.pointerUp(eventTree(), position, lastTickMs_, button,
+                          pointerId);
 }
 
 void AppShell::pointerCancel() {
