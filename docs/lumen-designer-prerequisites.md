@@ -1023,7 +1023,7 @@ DOM→Widget 编译入口；F2/P2 已完成 L0 `NodeSchema`/`PropertySpec` 显�
 离线 map context、引用诊断和带代数的 `DesignRuntimeSession`。`designer_document_tests.cpp`
 覆盖 DOM round-trip、C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和
 P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 12 节点注册、访问器、非法属性和
-结构诊断；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、frame 保留和
+结构诊断；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留和
 session 关闭。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
 和命名 slot，并在复制时分配新 ID、在重排时保持原 ID；编译结果同时返回 SourceMap 和
@@ -1181,7 +1181,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `237` 个断言、
-  `19` 个测试用例通过；`ctest -R 'designer|document_store'` 为 `30/30` 通过。此前未受
+  `19` 个测试用例通过；`ctest -R 'designer|document_store'` 为 `31/31` 通过。此前未受
   工作区 app shell 变更影响的全量基线为 `972/972`；当前未提交的 app shell/bounds overlay
   变更使全量总数变为 978，并在 `debug_overlays_draw_only_when_enabled` 处失败，后续权限错误
   是同一测试目标被中断后的级联，不归因于本阶段 DSL 改动。
