@@ -120,6 +120,9 @@ TEST_CASE("designer preview generations discard late results and closed sessions
     REQUIRE(generation.accepts(third, session));
     session.close();
     CHECK_FALSE(generation.accepts(third, session));
+    const auto closedGeneration = generation.compileGeneration();
     generation.close();
+    generation.close();
+    CHECK(generation.compileGeneration() == closedGeneration + 1);
     CHECK_FALSE(generation.accepts(generation.beginCompile(), session));
 }

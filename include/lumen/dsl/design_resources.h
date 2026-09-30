@@ -100,6 +100,7 @@ class DesignPreviewGeneration {
                                const DesignRuntimeSession& session) const;
     void invalidate() { ++compileGeneration_; }
     void close() {
+        if (!active_) return;
         active_ = false;
         ++compileGeneration_;
     }
