@@ -38,6 +38,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/example_kit.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/app/app_shell.h"
 #include "lumen/core/interaction.h"
@@ -4384,13 +4385,6 @@ class GalleryApp {
         std::string text, const style::Theme& theme) {
         return core::makeText(std::move(text), theme.typography.title);
     }
-    [[nodiscard]] static core::Widget mutedLabel(
-        std::string text, const style::Theme& theme) {
-        core::StyleOverrides overrides;
-        overrides.foreground = theme.colors.contentSecondary;
-        return core::withStyleOverrides(core::makeText(std::move(text)),
-                                        std::move(overrides));
-    }
 
     // --- 排版辅助（design v1 2026-09 优化尺度：正文/标签 14px、辅助说明
     // 与代码 12px、hero 32px/600、指标值 28px/650；随 fontScale 同步缩放） ---
@@ -4524,14 +4518,6 @@ class GalleryApp {
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
         return text;
-    }
-    [[nodiscard]] static core::Widget errorText(
-        std::string text, const style::Theme& theme) {
-        core::StyleOverrides overrides;
-        overrides.foreground = theme.colors.errorContent;
-        overrides.text = theme.typography.caption;
-        return core::withStyleOverrides(core::makeText(std::move(text)),
-                                        std::move(overrides));
     }
     [[nodiscard]] static core::Widget fieldWidget(std::string bind,
                                                   std::string placeholder,

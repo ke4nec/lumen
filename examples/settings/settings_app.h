@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/example_kit.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/app/app_shell.h"
 #include "lumen/core/damage.h"
@@ -210,13 +211,12 @@ class SettingsApp {
             items.push_back(
                 core::withKey(titleText("Widgets", theme), "widgets-title"));
             items.push_back(core::withKey(
-                mutedLabel("Volume: " + shell_.state().get("volume"),
-                           theme),
+                statusLine("Volume", shell_.state().get("volume"), theme),
                 "volume-label"));
             items.push_back(
                 core::withKey(core::makeSlider("volume"), "volume-slider"));
             items.push_back(core::withKey(
-                mutedLabel("Progress: " + shell_.state().get("progress"),
+                statusLine("Progress", shell_.state().get("progress"),
                            theme),
                 "progress-label"));
             items.push_back(core::withKey(
@@ -1284,21 +1284,6 @@ class SettingsApp {
     [[nodiscard]] static core::Widget titleText(std::string text,
                                                 const style::Theme& theme) {
         return core::makeText(std::move(text), theme.typography.title);
-    }
-    [[nodiscard]] static core::Widget mutedLabel(
-        std::string text, const style::Theme& theme) {
-        core::StyleOverrides overrides;
-        overrides.foreground = theme.colors.contentSecondary;
-        return core::withStyleOverrides(core::makeText(std::move(text)),
-                                        std::move(overrides));
-    }
-    [[nodiscard]] static core::Widget errorText(
-        std::string text, const style::Theme& theme) {
-        core::StyleOverrides overrides;
-        overrides.foreground = theme.colors.errorContent;
-        overrides.text = theme.typography.caption;
-        return core::withStyleOverrides(core::makeText(std::move(text)),
-                                        std::move(overrides));
     }
     [[nodiscard]] static core::Widget fieldWidget(std::string bind,
                                                   std::string placeholder,

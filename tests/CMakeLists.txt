@@ -95,6 +95,7 @@ set(LUMEN_TEST_SOURCES
     designer_resources_tests.cpp
     designer_performance_tests.cpp
     document_store_tests.cpp
+    example_kit_tests.cpp
     damage_tests.cpp
     tween_tests.cpp
     platform_smoke_tests.cpp
@@ -192,6 +193,7 @@ target_include_directories(lumen-tests PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/counter
     ${PROJECT_SOURCE_DIR}/examples/settings
     ${PROJECT_SOURCE_DIR}/examples/gallery
+    ${PROJECT_SOURCE_DIR}/examples/common
     ${stb_SOURCE_DIR}
 )
 

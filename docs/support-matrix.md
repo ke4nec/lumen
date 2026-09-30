@@ -96,7 +96,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | R6 开发者诊断 | dump 与调试图层已交付（headless 已验证） | `dumpRenderTree`/`dumpSemanticsTree`/`dumpStyleTree` + settings/gallery 三旗标 + 帧读数 HUD + bounds/damage 调试图层 + inspector 悬停检视图层（`--inspector`；信息面板 + 命中高亮；同日修复 HUD 经 overlay 槽位吞输入的缺陷——全部纯绘制层）2026-09-30 交付；分配量维度未接入；inspector 钉住态与样式明细已交付（点击钉住/Esc 解钉，主键捕获为调试契约） |
 | R7 控件细节 | 按需池交付中 | 已交付 auto-hide 滚动条、Splitter 塌缩/KeepRatio、DataGrid 筛选接线、可编辑 ComboBox、DialogHost 便利层、ColorPicker、Grid 跨行列、菜单 F10/裸 Alt 单键切换 + 打开态 Alt+mnemonic 顶级切换、List/Tree 行内编辑（2026-09-30）；RTL 镜像、双轴联滚、触摸长按唤起等在池 |
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
-| R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；页面壳/状态摘要等组合组件未提取 |
+| R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；`examples/common/example_kit.h` 首批提取 mutedLabel/errorText/statusLine（2026-09-30，两应用逐字节重复收敛为单点）；页面壳（sectionCard 级）仍按需 |
 | R10 文档与证据同步 | 进行中 | 本表与待验收登记即该缺口的 2026-09-30 批次；后续状态变化须同一变更内更新 |
 
 ### 预乘 alpha 联调历史记录（2026-09-20）
@@ -199,6 +199,13 @@ Skia/GPU Release 779/779，无跳过；详见
   GPU wait、fps、节点/命令数与当前 renderer，读数滞后一帧，全子树排除
   语义与焦点；默认关闭零额外帧、frame hash 不变（单测断言）。分配量
   维度未接入；inspector 与 bounds/damage overlay 仍为后续增量。
+- 示例组件 kit 首批（R9，2026-09-30）：`examples/common/example_kit.h`
+  ——Gallery/Settings 逐字节重复的 `mutedLabel`/`errorText` 收敛为单点
+  （相对包含，调用点零改动、输出不变——既有示例测试全绿即回归证据）；
+  新增 `statusLine`（"Label: value" 状态摘要，空值占位 "-"）并接入
+  settings 的 Volume/Progress 行；契约测试 2 例（Theme token 覆盖/格式
+  与占位）。页面壳（gallery 的 sectionCard/panelCard 语言）为应用视觉
+  专属，保持应用内——框架级组合组件按需再评估。
 - 帧读数 HUD 修复与 inspector 悬停检视（R6 二批，2026-09-30）：HUD 早
   前经视觉 overlay 槽位承载——`eventTree()` 在 overlay 活跃期整体切换，
   非交互 HUD 会吞掉全部应用输入（阶段2缺陷，本批发现并修复：HUD 改
