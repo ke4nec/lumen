@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 #include "lumen/dsl/design_codec.h"
@@ -45,6 +46,17 @@ class LeasedContext final : public DesignRuntimeContext {
 
   private:
     std::shared_ptr<int> lease_{};
+};
+
+class ThrowingContext final : public DesignRuntimeContext {
+  public:
+    [[nodiscard]] bool validatesReferences() const override { return true; }
+
+    [[nodiscard]] bool resolveReference(DesignReferenceKind,
+                                        const std::string&,
+                                        DesignReference&) const override {
+        throw std::runtime_error("injected resolver failure");
+    }
 };
 
 }  // namespace
@@ -101,6 +113,25 @@ TEST_CASE("designer preview context rejects a wrong typed reference handle",
     CHECK(compiled.diagnostics.front().property == "bind");
     CHECK_FALSE(compiled.root.enabled);
     CHECK(compiled.root.invalid);
+}
+
+TEST_CASE("designer preview context converts resolver exceptions to diagnostics",
+          "[designer][p3]") {
+    const auto parsed = parseLumenSource(
+        "page preview { Button(\"Save\", bind: enabled) }");
+    REQUIRE(parsed.ok());
+
+    ThrowingContext context;
+    const auto compiled = compileDesignDocument(parsed.document, context);
+    REQUIRE_FALSE(compiled.ok());
+    REQUIRE(compiled.diagnostics.size() == 1);
+    CHECK(compiled.diagnostics.front().code == "reference.exception");
+    CHECK(compiled.diagnostics.front().property == "bind");
+    CHECK(compiled.diagnostics.front().message.find("injected resolver failure") !=
+          std::string::npos);
+    CHECK_FALSE(compiled.root.enabled);
+    CHECK(compiled.root.invalid);
+    CHECK(compiled.root.bind.empty());
 }
 
 TEST_CASE("designer unresolved references disable only their source node",

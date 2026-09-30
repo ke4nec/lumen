@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <iomanip>
 #include <limits>
 #include <set>
@@ -1040,30 +1041,83 @@ void validateRuntimeReferences(
             diagnostic.nodePath = path;
             diagnostic.property = name;
             diagnostics.push_back(std::move(diagnostic));
-        } else if (context.validatesReferences()) {
-            DesignReference resolved;
-            if (!context.resolveReference(*kind, reference, resolved)) {
+        } else {
+            bool validates = false;
+            try {
+                validates = context.validatesReferences();
+            } catch (const std::exception& exception) {
                 unresolved.insert(node.id);
                 DesignError diagnostic = errorAt(
-                    "reference.missing", "<design>",
-                    "reference '" + reference + "' was not found",
+                    "reference.exception", "<design>",
+                    "reference validation threw an exception: " +
+                        std::string{exception.what()},
                     referenceSourcePosition(node, name));
                 diagnostic.nodeId = node.id;
                 diagnostic.nodePath = path;
                 diagnostic.property = name;
                 diagnostics.push_back(std::move(diagnostic));
-            } else if (resolved.kind != *kind || resolved.stableName != reference) {
+                continue;
+            } catch (...) {
                 unresolved.insert(node.id);
                 DesignError diagnostic = errorAt(
-                    "reference.type", "<design>",
-                    "reference resolver returned the wrong typed handle",
+                    "reference.exception", "<design>",
+                    "reference validation threw an unknown exception",
                     referenceSourcePosition(node, name));
                 diagnostic.nodeId = node.id;
                 diagnostic.nodePath = path;
                 diagnostic.property = name;
                 diagnostics.push_back(std::move(diagnostic));
-            } else {
-                session.retain(std::move(resolved.lifetimeToken));
+                continue;
+            }
+            if (validates) {
+                DesignReference resolved;
+                try {
+                    if (!context.resolveReference(*kind, reference, resolved)) {
+                        unresolved.insert(node.id);
+                        DesignError diagnostic = errorAt(
+                            "reference.missing", "<design>",
+                            "reference '" + reference + "' was not found",
+                            referenceSourcePosition(node, name));
+                        diagnostic.nodeId = node.id;
+                        diagnostic.nodePath = path;
+                        diagnostic.property = name;
+                        diagnostics.push_back(std::move(diagnostic));
+                    } else if (resolved.kind != *kind ||
+                               resolved.stableName != reference) {
+                        unresolved.insert(node.id);
+                        DesignError diagnostic = errorAt(
+                            "reference.type", "<design>",
+                            "reference resolver returned the wrong typed handle",
+                            referenceSourcePosition(node, name));
+                        diagnostic.nodeId = node.id;
+                        diagnostic.nodePath = path;
+                        diagnostic.property = name;
+                        diagnostics.push_back(std::move(diagnostic));
+                    } else {
+                        session.retain(std::move(resolved.lifetimeToken));
+                    }
+                } catch (const std::exception& exception) {
+                    unresolved.insert(node.id);
+                    DesignError diagnostic = errorAt(
+                        "reference.exception", "<design>",
+                        "reference resolver threw an exception: " +
+                            std::string{exception.what()},
+                        referenceSourcePosition(node, name));
+                    diagnostic.nodeId = node.id;
+                    diagnostic.nodePath = path;
+                    diagnostic.property = name;
+                    diagnostics.push_back(std::move(diagnostic));
+                } catch (...) {
+                    unresolved.insert(node.id);
+                    DesignError diagnostic = errorAt(
+                        "reference.exception", "<design>",
+                        "reference resolver threw an unknown exception",
+                        referenceSourcePosition(node, name));
+                    diagnostic.nodeId = node.id;
+                    diagnostic.nodePath = path;
+                    diagnostic.property = name;
+                    diagnostics.push_back(std::move(diagnostic));
+                }
             }
         }
     }
