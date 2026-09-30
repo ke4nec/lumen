@@ -106,6 +106,27 @@ TEST_CASE("designer document diagnostics reject unsupported and damaged input",
     CHECK(futureRoundTrip.document.unknownFields ==
           future.document.unknownFields);
 
+    const auto duplicateDocumentUnknown = readDesignDocument(
+        R"({"documentId":"doc","format":"lumen.design","pageName":"p",
+           "root":{"id":"1","type":"Text","properties":{}},
+           "unknownFields":{"future":true},"future":false,
+           "schemaVersion":1})",
+        "duplicate-document-unknown.design");
+    REQUIRE_FALSE(duplicateDocumentUnknown.ok());
+    REQUIRE(duplicateDocumentUnknown.error.has_value());
+    CHECK(duplicateDocumentUnknown.error->code ==
+          "codec.duplicate_unknown_field");
+
+    const auto duplicateNodeUnknown = readDesignDocument(
+        R"({"documentId":"doc","format":"lumen.design","pageName":"p",
+           "root":{"id":"1","type":"Text","properties":{},
+                   "unknownFields":{"future":true},"future":false},
+           "schemaVersion":1})",
+        "duplicate-node-unknown.design");
+    REQUIRE_FALSE(duplicateNodeUnknown.ok());
+    REQUIRE(duplicateNodeUnknown.error.has_value());
+    CHECK(duplicateNodeUnknown.error->code == "codec.duplicate_unknown_field");
+
     const auto duplicate = readDesignDocument(
         R"({"documentId":"doc","format":"lumen.design","pageName":"p",
            "root":{"id":"1","type":"Column","properties":{},

@@ -838,7 +838,12 @@ template <typename Integer>
         "slots", "source", "type", "unknownFields"};
     for (const auto& [name, raw] : value.object) {
         if (knownFields.find(name) == knownFields.end()) {
-            node.unknownFields[name] = jsonValue(raw);
+            if (node.unknownFields.contains(name)) {
+                error = errorAt("codec.duplicate_unknown_field", file,
+                                "unknown field is declared twice");
+                return std::nullopt;
+            }
+            node.unknownFields.emplace(name, jsonValue(raw));
         }
     }
     return node;
@@ -1222,7 +1227,13 @@ DesignReadResult readDesignDocument(const std::string& source,
         "unknownFields"};
     for (const auto& [name, raw] : value->object) {
         if (knownFields.find(name) == knownFields.end()) {
-            document.unknownFields[name] = jsonValue(raw);
+            if (document.unknownFields.contains(name)) {
+                return DesignReadResult{
+                    DesignDocument{}, errorAt("codec.duplicate_unknown_field",
+                                              filename,
+                                              "unknown field is declared twice")};
+            }
+            document.unknownFields.emplace(name, jsonValue(raw));
         }
     }
     return DesignReadResult{std::move(document), std::nullopt};

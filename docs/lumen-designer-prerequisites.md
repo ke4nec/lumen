@@ -240,7 +240,8 @@ source 注册表），未解析引用必须产生结构化诊断而不是写入�
   `scrollOffset`、hover/press/focus、虚拟列表窗口、`transitionAlpha` 默认不存；
   `imageId` 存 `imageSource`/稳定资源名，加载时重新注册资源。
 - **未知字段和未知节点策略**：设计器文档必须选择“保留并原样写回”或“拒绝保存”之一；
-  不能在打开后静默丢失未来版本字段。
+  不能在打开后静默丢失未来版本字段。当前 codec 对显式 `unknownFields` 容器与同级
+  扩展字段的同名冲突直接拒绝，避免两个输入字段合并时静默覆盖。
 - **源代码边界**：设计器只能逆向 DOM/Widget 声明树，不能从任意 C++ builder、lambda、
   controller 闭包或已展开的 RenderNode 可靠生成原始应用代码。
 - **依赖注（仅 B）**：引入 JSON 解析需走 FetchContent 并 pin 修订（AGENTS.md 规则），
@@ -1191,7 +1192,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `69` 个断言、
+- P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `75` 个断言、
   `7` 个测试用例通过，覆盖 L0 DOM 导入、codec round-trip、Widget golden 和损坏诊断。
 - P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `2235` 个断言、
   `4` 个测试用例通过，覆盖 Widget 字段清单、访问器回读和引用存储位置约束。
