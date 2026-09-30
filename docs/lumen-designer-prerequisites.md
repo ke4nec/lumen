@@ -1028,8 +1028,9 @@ DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢�
 应用层的 `DesignDocumentTransaction`/`DesignDocumentHistory`、会话级 `DesignSelectionModel`
 和统一 `DesignDiagnostic` 基础契约；事务覆盖副本提交、失败回滚、mergeKey、undo/redo、
 选择恢复及 document/saved revision，诊断覆盖阶段、source span、恢复策略和稳定去重。F6
-仍负责把这些契约接入工具箱、属性面板、结构编辑流程及资源授权，G-D16 和真实 D3 应用出口
-尚未完成。
+又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
+compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
+真实 D3 应用出口尚未完成。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1154,6 +1155,7 @@ DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢�
 | `diagnostic_recovery` | 解析/迁移/schema/ref/compile/save 错误 | code/stage/span/recoverability 稳定；旧画面和原文件按矩阵保留 |
 | `document_transaction` | 属性、多选、拖动、粘贴、undo/redo、mergeKey | 一次用户意图一个事务；失败全回滚；dirty/saved revision 正确 |
 | `document_store_faults` | 截断、未知字段、保存中断、外部修改 | 原文件不变；恢复副本可识别；禁止静默覆盖 |
+| `resource_policy_lifecycle` | scheme/根目录授权、符号链接、异步代数、session 关闭 | 非法资源有稳定诊断；绝对路径不进入文档；过期结果被丢弃 |
 | `designer_accessibility` | 语义树、键盘、IME、高对比、字体缩放 | 无颜色唯一信息；键盘完成同等流程；preedit 不进 DOM |
 | `preview_determinism` | 固定 context、连续编译、异步结果乱序 | DOM/诊断/frame hash 按声明稳定；旧代数结果被丢弃 |
 
@@ -1165,17 +1167,18 @@ DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢�
   `designer_runtime_context_tests.cpp`，F4/P4 追加 `design_mapping.h`、
   `design_mapping.cpp`、`designer_mapping_tests.cpp`，F5 追加 `document_store.h`、
   `document_store.cpp`、`document_store_tests.cpp`，F6 基础契约追加 `design_editor.h`、
-  `design_editor.cpp`、`designer_editor_tests.cpp`；工作区另有既存的平台 host 修改，
+  `design_editor.cpp`、`designer_editor_tests.cpp`，以及资源边界的 `design_resources.h`、
+  `design_resources.cpp`、`designer_resources_tests.cpp`；工作区另有既存的平台 host 修改，
   未把它们作为设计器证据。
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
   `ctest --test-dir build-debug --output-on-failure -C Debug`。
-- 结果：`968/968` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个、
-  P2 的 2 个、P3 的 2 个、P4 的 3 个、P5 的 4 个和 F6 基础契约的 4 个测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器
+- 结果：`972/972` 通过；这是当前 Linux Debug 构建树的 headless 证据，包含 P1 的 4 个、
+  P2 的 2 个、P3 的 2 个、P4 的 3 个、P5 的 4 个和 F6 基础契约的 8 个测试用例，不提升 Windows/macOS、Skia/GPU、真实 IME、屏幕阅读器
   或 D2/D3 功能状态。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
-  controller/resource 引用注入、资源授权和真实编辑流程仍留在 F6；L1–L3 节点 schema 仍未登记。
+  controller/resource 引用注入、真实资源加载和真实编辑流程仍留在 F6；L1–L3 节点 schema 仍未登记。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
   代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译不写入这些运行时
