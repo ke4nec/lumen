@@ -9,6 +9,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
 
 namespace lumen::dsl {
@@ -58,7 +60,14 @@ bool atomicReplace(const std::string& temporary, const std::string& path,
 
 [[nodiscard]] std::string temporaryPath(const std::string& path) {
     const auto serial = gTemporaryFileId.fetch_add(1);
-    return path + ".tmp-" + std::to_string(serial);
+#ifdef _WIN32
+    const auto process =
+        static_cast<unsigned long long>(GetCurrentProcessId());
+#else
+    const auto process = static_cast<unsigned long long>(::getpid());
+#endif
+    return path + ".tmp-" + std::to_string(process) + "-" +
+           std::to_string(serial);
 }
 
 [[nodiscard]] DesignError storeError(const std::string& code,

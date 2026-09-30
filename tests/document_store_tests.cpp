@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <system_error>
 
@@ -179,4 +180,30 @@ TEST_CASE("document store migration failure blocks publication",
     CHECK(result.document.root.id == 0);
     REQUIRE_FALSE(result.diagnostics.empty());
     CHECK(result.diagnostics.front().code == "store.migration_failed");
+}
+
+TEST_CASE("document store temporary names do not reuse legacy process-local paths",
+          "[designer][p5]") {
+    const fs::path dir = tempPath("temporary-name");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    const fs::path path = dir / "page.design";
+
+    for (int serial = 1; serial <= 128; ++serial) {
+        std::ofstream(path.string() + ".tmp-" + std::to_string(serial))
+            << "stale-" << serial;
+    }
+
+    DocumentStore store;
+    std::vector<lumen::dsl::DesignError> diagnostics;
+    REQUIRE(store.save(path.string(), sampleDocument(), diagnostics));
+
+    for (int serial = 1; serial <= 128; ++serial) {
+        std::ifstream input(path.string() + ".tmp-" + std::to_string(serial));
+        REQUIRE(input);
+        const std::string contents((std::istreambuf_iterator<char>(input)),
+                                   std::istreambuf_iterator<char>());
+        CHECK(contents == "stale-" + std::to_string(serial));
+    }
 }
