@@ -227,10 +227,14 @@ TEST_CASE("document store rejects invalid saves without touching the file",
     CHECK(afterMissingIdentity.document == valid);
 
     auto invalidExtension = valid;
+    invalidExtension.unknownFields["alsoFuture"] = "[";
     invalidExtension.unknownFields["future"] = "{\"enabled\":";
     CHECK_FALSE(store.save(path.string(), invalidExtension, diagnostics));
-    REQUIRE_FALSE(diagnostics.empty());
-    CHECK(diagnostics.front().code == "schema.invalid_unknown_field");
+    REQUIRE(diagnostics.size() == 2);
+    CHECK(diagnostics[0].code == "schema.invalid_unknown_field");
+    CHECK(diagnostics[0].property == "alsoFuture");
+    CHECK(diagnostics[1].code == "schema.invalid_unknown_field");
+    CHECK(diagnostics[1].property == "future");
     const auto afterInvalidExtension = store.load(path.string());
     REQUIRE(afterInvalidExtension.ok());
     CHECK(afterInvalidExtension.document == valid);

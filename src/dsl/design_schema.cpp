@@ -813,9 +813,11 @@ std::vector<DesignError> validateDesignDocument(const DesignDocument& document) 
     }
     for (const auto& [name, raw] : document.unknownFields) {
         if (!isValidDesignJsonValue(raw)) {
-            diagnostics.push_back(errorAt(
+            auto diagnostic = errorAt(
                 "schema.invalid_unknown_field", "<design>",
-                "unknown field '" + name + "' must contain a JSON value"));
+                "unknown field '" + name + "' must contain a JSON value");
+            diagnostic.property = name;
+            diagnostics.push_back(std::move(diagnostic));
         }
     }
     std::set<DesignNodeId> ids;

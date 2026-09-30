@@ -1203,7 +1203,7 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 - P4 专属筛选 `build-debug/tests/lumen-tests "[designer][p4]"` 为 `62` 个断言、
   `5` 个测试用例通过，覆盖 source map、DPI/zoom/pan 变换、稳定 ID 结构编辑和布局 trace 定位。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
-  残留临时文件避让、迁移、迁移身份校验、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段和恢复副本失败清理，为 `595` 个断言、`8` 个测试用例通过。
+  残留临时文件避让、迁移、迁移身份校验、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `598` 个断言、`8` 个测试用例通过。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `335` 个断言、
   `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `59/59` 通过。
   未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1024/1024`；
