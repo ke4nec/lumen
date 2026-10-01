@@ -6,12 +6,14 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <type_traits>
 #include <utility>
 
 #include "lumen/dsl/design_schema.h"
+#include "lumen/dsl/design_codec.h"
 #include "lumen/core/icon_id.h"
 
 namespace lumen::designer_app {
@@ -52,6 +54,15 @@ bool isDesignFile(const std::string& filename) {
                        return static_cast<char>(std::tolower(value));
                    });
     return extension == ".design";
+}
+
+std::optional<std::string> readSourceFile(const std::string& filename) {
+    std::ifstream input(filename, std::ios::binary);
+    if (!input.good()) return std::nullopt;
+    std::ostringstream content;
+    content << input.rdbuf();
+    if (!input.good() && !input.eof()) return std::nullopt;
+    return content.str();
 }
 
 std::string propertyStateValue(const dsl::DesignValue& value) {
@@ -413,6 +424,10 @@ void DesignerApp::attach() {
         centerTab_ = CenterTab::Canvas;
         shell_.markDirty();
     };
+    shell_.handlers()["designer:tab-source"] = [this] {
+        centerTab_ = CenterTab::Source;
+        shell_.markDirty();
+    };
     shell_.handlers()["designer:tab-references"] = [this] {
         centerTab_ = CenterTab::References;
         shell_.markDirty();
@@ -527,6 +542,11 @@ bool DesignerApp::loadDesignFile(const std::string& filename) {
     sourceFile_ = filename;
     const bool loaded = workbench_.openDesignFile(filename);
     if (loaded) {
+        sourceSnapshot_ = workbench_.document().has_value()
+                              ? dsl::serializeDesignDocument(
+                                    *workbench_.document())
+                              : std::string{};
+        sourceFocusLine_ = 0;
         resetPreviewState();
         refreshDocumentUi();
     }
@@ -538,6 +558,10 @@ bool DesignerApp::saveDesignFile(const std::string& filename) {
     const bool saved = workbench_.saveDesignFile(filename);
     if (saved) {
         sourceFile_ = filename;
+        sourceSnapshot_ = workbench_.document().has_value()
+                              ? dsl::serializeDesignDocument(
+                                    *workbench_.document())
+                              : std::string{};
         shell_.markDirty();
     }
     return saved;
@@ -548,6 +572,11 @@ bool DesignerApp::loadFile(const std::string& filename) {
     sourceFile_ = filename;
     const bool loaded = workbench_.openLumenFile(filename);
     if (loaded) {
+        sourceSnapshot_ = readSourceFile(filename).value_or(
+            workbench_.document().has_value()
+                ? dsl::serializeDesignDocument(*workbench_.document())
+                : std::string{});
+        sourceFocusLine_ = 0;
         resetPreviewState();
         refreshDocumentUi();
     }
@@ -560,11 +589,20 @@ bool DesignerApp::loadSource(const std::string& source, std::string filename) {
     sourceFile_ = filename.empty() ? "<memory>" : filename;
     const bool loaded = workbench_.openLumenSource(source, filename);
     if (loaded) {
+        sourceSnapshot_ = source;
+        sourceFocusLine_ = 0;
         resetPreviewState();
         refreshDocumentUi();
     }
     shell_.markDirty();
     return loaded;
+}
+
+std::string DesignerApp::currentSourceText() const {
+    if (workbench_.dirty() && workbench_.document().has_value()) {
+        return dsl::serializeDesignDocument(*workbench_.document());
+    }
+    return sourceSnapshot_;
 }
 
 void DesignerApp::rebuildOutline() {
@@ -694,6 +732,14 @@ std::optional<dsl::DesignNodeId> DesignerApp::diagnosticTarget(
 void DesignerApp::activateDiagnostic(std::size_t index) {
     if (const auto id = diagnosticTarget(index); id.has_value()) {
         selectNode(*id);
+    }
+    if (index < workbench_.diagnostics().size()) {
+        const auto& diagnostic = workbench_.diagnostics()[index];
+        if (diagnostic.sourceSpan.has_value()) {
+            centerTab_ = CenterTab::Source;
+            sourceFocusLine_ = diagnostic.sourceSpan->begin.line;
+            shell_.markDirty();
+        }
     }
 }
 
@@ -1458,6 +1504,68 @@ core::Widget DesignerApp::buildCanvasPanel() {
     return panel;
 }
 
+core::Widget DesignerApp::buildSourcePanel() {
+    const auto& theme = shell_.theme();
+    const std::string source = currentSourceText();
+    std::vector<core::Widget> lines;
+    std::size_t lineNumber = 1;
+    std::size_t begin = 0;
+    while (begin <= source.size()) {
+        const std::size_t end = source.find('\n', begin);
+        const std::string line = source.substr(
+            begin, end == std::string::npos ? std::string::npos : end - begin);
+        auto number = core::makeText(std::to_string(lineNumber),
+                                     theme.typography.caption, {}, 0.0F,
+                                     "designer-source-line-number:" +
+                                         std::to_string(lineNumber));
+        number.width = 40.0F;
+        auto content = core::makeText(
+            line.empty() ? " " : line, theme.typography.caption, {}, 1.0F,
+            "designer-source-line-content:" + std::to_string(lineNumber));
+        auto row = core::makeRow(
+            {std::move(number), std::move(content)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Start,
+            8.0F, {}, {}, "designer-source-line:" +
+                              std::to_string(lineNumber));
+        if (sourceFocusLine_ == lineNumber) {
+            row.styleOverrides.background = theme.colors.selectionBackground;
+        }
+        lines.push_back(std::move(row));
+        if (end == std::string::npos) break;
+        begin = end + 1;
+        ++lineNumber;
+    }
+    if (lines.empty()) {
+        lines.push_back(core::makeText("No source snapshot",
+                                       theme.typography.body,
+                                       {}, 0.0F, "designer-source-empty"));
+    }
+    auto sourceBody = core::makeColumn(
+        std::move(lines), core::MainAxisAlignment::Start,
+        core::CrossAxisAlignment::Stretch, 2.0F, {}, {},
+        "designer-source-lines");
+    auto scroll = core::makeScrollView(
+        std::move(sourceBody), "designer-source-scroll", std::nullopt,
+        std::nullopt, core::EdgeInsets::symmetric(12.0F, 8.0F));
+    scroll.scrollAxis = core::ScrollAxis::Vertical;
+    scroll.showScrollbar = true;
+    scroll.flex = 1.0F;
+    auto heading = core::makeRow(
+        {core::makeText("Source", theme.typography.label, {}, 0.0F,
+                        "designer-source-heading"),
+         core::makeText("read-only  /  " + sourceFile_,
+                        theme.typography.caption, {}, 1.0F,
+                        "designer-source-status")},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 8.0F);
+    auto panel = core::makeColumn(
+        {std::move(heading), std::move(scroll)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+        8.0F, core::EdgeInsets::all(12.0F), {}, "designer-source-panel");
+    panel.flex = 1.0F;
+    panel.color = theme.colors.surface;
+    return panel;
+}
+
 core::Widget DesignerApp::buildReferencesPanel() {
     const auto& theme = shell_.theme();
     std::size_t missing = 0;
@@ -1492,9 +1600,8 @@ core::Widget DesignerApp::buildPreviewPanel() {
     canvasTab.selected = centerTab_ == CenterTab::Canvas;
     auto sourceTab = core::makeButton(
         "Source", theme.typography.label, {}, 0.0F, "designer-tab-source",
-        96.0F, std::nullopt);
-    sourceTab.enabled = false;
-    sourceTab.semanticsLabel = "Source editor pending";
+        96.0F, std::nullopt, "designer:tab-source");
+    sourceTab.selected = centerTab_ == CenterTab::Source;
     auto referencesTab = core::makeButton(
         "References", theme.typography.label, {}, 0.0F,
         "designer-tab-references", 112.0F, std::nullopt,
@@ -1507,6 +1614,8 @@ core::Widget DesignerApp::buildPreviewPanel() {
     core::Widget content;
     if (centerTab_ == CenterTab::References) {
         content = buildReferencesPanel();
+    } else if (centerTab_ == CenterTab::Source) {
+        content = buildSourcePanel();
     } else {
         content = buildCanvasPanel();
     }

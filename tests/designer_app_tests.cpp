@@ -511,7 +511,17 @@ TEST_CASE("designer app exposes named references in the center panel",
     const auto sourceTab =
         findNodeByKey(app.shell().root(), "designer-tab-source");
     REQUIRE(sourceTab != nullptr);
-    CHECK_FALSE(sourceTab->enabled);
+    CHECK(sourceTab->enabled);
+
+    app.shell().handlers().at("designer:tab-source")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-source-panel") !=
+            nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-source-line-content:1") != nullptr);
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-source-line-content:1")
+              ->text.find("Button") != std::string::npos);
 
     app.shell().handlers().at("designer:tab-references")();
     (void)app.shell().renderFrame();
@@ -737,6 +747,10 @@ TEST_CASE("designer app navigates actionable diagnostics to their node",
 
     REQUIRE(app.workbench().selection().primary.has_value());
     CHECK(*app.workbench().selection().primary == childId);
+    CHECK(findNodeByKey(app.shell().root(), "designer-source-panel") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-source-line:1") !=
+          nullptr);
 }
 
 TEST_CASE("designer app reopens private design files",

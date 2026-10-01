@@ -84,6 +84,7 @@ class DesignerApp {
     [[nodiscard]] core::Widget buildOutlinePanel();
     [[nodiscard]] core::Widget buildPreviewPanel();
     [[nodiscard]] core::Widget buildCanvasPanel();
+    [[nodiscard]] core::Widget buildSourcePanel();
     [[nodiscard]] core::Widget buildReferencesPanel();
     [[nodiscard]] core::Widget buildPropertiesPanel();
     [[nodiscard]] core::Widget buildDiagnosticsPanel();
@@ -165,6 +166,7 @@ class DesignerApp {
     [[nodiscard]] static std::string formatValue(
         const std::optional<dsl::DesignValue>& value,
         const std::optional<std::string>& reference);
+    [[nodiscard]] std::string currentSourceText() const;
     [[nodiscard]] static std::string formatDiagnostic(
         const dsl::DesignDiagnostic& diagnostic);
 
@@ -175,6 +177,8 @@ class DesignerApp {
     core::VirtualListController diagnosticsController_{};
     std::vector<ReferenceEntry> referenceRows_{};
     CenterTab centerTab_{CenterTab::Canvas};
+    std::string sourceSnapshot_{};
+    std::size_t sourceFocusLine_{0};
     std::string sourceFile_{"<sample>"};
     std::string statusMessage_{};
     FileDialogRequester fileDialogRequester_{};

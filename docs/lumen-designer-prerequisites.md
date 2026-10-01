@@ -1061,6 +1061,8 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 `PreviewOnly`/`Derived` 属性进入可保存文档。
 引用面板现已接入中心页签：DataGrid 展示当前文档的命名引用、引用类型、节点位置和离线 `Stub`/
 `Missing` 状态，激活行可定位大纲节点；该面板不改变运行时引用解析或保存格式。
+D2 Source 页签现已提供只读源快照、行号和诊断行定位；文档编辑后展示当前规范化
+`DesignDocument` 输出，未改变 DP-5 的持久化决策。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1242,7 +1244,7 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   键盘/语义激活、主题/密度/DPI/字体缩放/高对比环境预览、按 key 或私有稳定 key 的
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation 以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `227` 个断言、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `232` 个断言、
   `14` 个测试用例通过，覆盖 L0 声明属性编辑、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，12 个 L0 工具箱按钮，以及插入/复制/删除/上移/下移命令的
