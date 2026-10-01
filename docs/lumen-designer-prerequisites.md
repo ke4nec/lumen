@@ -1068,7 +1068,7 @@ SourceMap 的根锚点。
 compile 三元代数校验；F6 资源阶段现已把图片声明接入设计器应用的显式 `project://` 授权根、
 异步 `ResourceManager` 和占位替换，资源句柄随文档资源集合变化释放，未授权 URI 进入可定位诊断；
 真实 D3 应用出口当前已接通 L0 属性面板编辑、命名引用管理、文档级撤销/重做、结构插入/复制/删除/重排、
-由 27 个非组件 schema 驱动的 L0–L2 工具箱，并增加首批 L3 `DataGrid`/`ToolBar`/`StatusBar` 专用入口、第二批 `ComboBox`/`ColorPicker`/`Spin` 专用入口（组件预览、稳定 key 前缀、Spin 键盘/滚轮/自动步进接线）和第三批 `Menu`/`DialogHost`/`Navigator`/`Form` 专用入口（菜单栏键盘路径、对话框生命周期、路由返回、表单校验），打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1/L2/L3 schema 已可被私有设计文档编译，剩余 L3 组合件仍由应用注册 builder，专用工具箱和其余资源类型按组件逐步补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
+由 27 个非组件 schema 驱动的 L0–L2 工具箱，并增加首批 L3 `DataGrid`/`ToolBar`/`StatusBar` 专用入口、第二批 `ComboBox`/`ColorPicker`/`Spin` 专用入口（组件预览、稳定 key 前缀、Spin 键盘/滚轮/自动步进接线）和第三批 `Menu`/`DialogHost`/`Navigator`/`Form` 专用入口（菜单栏键盘路径、对话框生命周期、路由返回、表单校验），打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1/L2/L3 schema 已可被私有设计文档编译，L3 组合件均由应用注册 builder，专用工具箱和其余资源类型按组件逐步补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
 visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
 `PreviewOnly`/`Derived` 属性进入可保存文档。
 引用面板现已接入中心页签：DataGrid 展示当前文档的命名引用、引用类型、节点位置和离线 `Stub`/
