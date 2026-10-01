@@ -1223,7 +1223,7 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 1. 本文：对应 DP 状态从「待决策」改为决策结论与日期；本次已同步 DP-1–DP-9，并更新 P1–P5、G-D13–G-D16 和四态证据；
 2. [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md)：D2/D3 已立项，缺口矩阵以
    R11 登记；方案 B 需在 §6 排除项处补「数据序列化 ≠ 可编程化」
-   的边界注记（或确认无需改写）；R6 只保留 Inspector/bounds/damage 未交付项；
+   的边界注记（或确认无需改写）；R6 保留调试层已交付记录和三桌面现场 smoke 待验收项；
 3. [`lumen-gui-framework-plan.md`](lumen-gui-framework-plan.md) §6.2：方案 B 登记
    设计器文档格式的存在与边界；方案 A 则改写冻结策略并同步各控件设计文档「已知限制」；
 4. [`support-matrix.md`](support-matrix.md)：P1–P5/D1–D3 各交付批次按四态登记，区分
