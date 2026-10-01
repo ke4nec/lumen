@@ -23,11 +23,11 @@
 
 | 形态 | 定义 | 对 UI 文档的权限 | 前置条件 |
 | --- | --- | --- | --- |
-| D1 检查器 | 运行中应用的只读诊断：树可视化、bounds/damage overlay、帧统计 | 无（观测运行时树） | tree/style dump 与帧统计已有；Inspector、节点选择和 bounds/damage overlay 仍属 R6 |
+| D1 检查器 | 运行中应用的只读诊断：树可视化、bounds/damage overlay、帧统计 | 无（观测运行时树） | tree/style dump、Inspector、bounds/damage overlay 和帧统计已有；三桌面现场证据仍待补齐 |
 | D2 预览工作台 | 打开 `.lumen`/应用提供的示例，画布渲染 + 结构浏览 + 环境/状态预览 | 只读 | 基础运行时预览可独立交付；文档定位版需要 P1 读取/编译子集、P3 预览适配与 P4 映射 |
 | D3 可编辑设计器 | 文档编辑：工具箱拖入、属性就地编辑、结构重排、保存/导出 | 读写 | DP-1–DP-9 已决定 + P1–P5 + 编辑命令栈 |
 
-与既有规划的关系：D1 的范围与 R6（开发者诊断）的未交付项重合，属
+与既有规划的关系：D1 的范围与 R6（开发者诊断）的已交付调试层重合，属
 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 阶段 D 的收口，不需要新编号；
 D2/D3 已立项，完成计划缺口矩阵和支持矩阵分别以 R11 登记 D3 L0 的四态；DP-2、DP-5–DP-8 已冻结方案，按实现证据和平台范围管理。
 
@@ -126,16 +126,16 @@ flowchart LR
 
 | 消费能力 | 当前状态 | D1/D2/D3 可直接依赖的部分 | 仍需补的证据或契约 |
 | --- | --- | --- | --- |
-| Render/style/semantics dump | 接口已存在 + headless 已验证 | 只读树、样式和语义对照、CI 诊断 | D1 的节点选择、bounds/damage overlay、三桌面 inspector smoke |
+| Render/style/semantics dump | 接口已存在 + headless 已验证 | 只读树、样式和语义对照、CI 诊断 | 三桌面 inspector smoke、平台现场辅助技术验收 |
 | CPU 离屏画布与 frame hash | headless 已验证 | 像素输出、固定环境的 golden 对照 | 失败保留旧帧的会话管理、文档映射、zoom/DPI 交互和像素 alpha 模式适配 |
-| 命中测试与 overlay | 接口已存在 | 最深命中链、非模态辅助层、拖拽 ghost；画布根节点框选和大纲多选已接通 | 动态节点选择策略、zoom/pan 与 DPI 下的坐标变换契约 |
+| 命中测试与 overlay | 接口已存在 + headless 已验证 | 最深命中链、Inspector 钉住、bounds/damage 调试层、非模态辅助层、拖拽 ghost；画布根节点框选和大纲多选已接通 | 动态节点选择策略、zoom/pan 与 DPI 下的坐标变换契约 |
 | Theme/状态/DPI 预览 | 接口已存在 + headless 已验证 | 只读环境切换、视觉状态覆盖 | 预览值与声明值分栏显示、切换不污染 dirty/undo 的验收 |
 | 拖放与命令分发 | 接口已存在 + headless 已验证 | 应用内工具箱拖入和结构重排的输入基础 | 设计器文档命令的原子事务、失败回滚和多选语义 |
 | StateStore/HandlerRegistry | 接口已存在 + headless 已验证 | 应用运行时绑定和事件名称解析 | 设计器的 preview context、引用类型校验、缺失引用占位策略 |
 | Preferences/原子写先例 | headless 已验证 | DocumentStore 的实现参考 | 文档 schema 版本、迁移、未知字段和恢复副本 |
 | 真实平台窗口/IME/辅助技术 | 部分真实平台证据 | 设计器 UI 可沿用 AppShell/IME/语义接口 | 三桌面窗口 smoke、屏幕阅读器和高 DPI 现场验收 |
 
-因此，D1 可以随 R6 收口；D2 的文档定位版需 P1/P4 才能把选择指回文档；D3 必须等 P1–P5
+因此，D1 随 R6 调试层实现收口；D2 的文档定位版需 P1/P4 才能把选择指回文档；D3 必须等 P1–P5
 和文档命令事务完成。这个划分避免把已有的 `dump` 或 HUD 误写成设计器已经可用。
 
 ## 3. 缺口总览
@@ -1034,7 +1034,7 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
 ## 6. 分阶段路线与依赖
 
 ```text
-R6 未交付项（inspector GUI / 节点选择 / bounds·damage overlay）
+R6 开发者诊断（dump / HUD / inspector / bounds·damage overlay，headless 已验证）
         ↓                                      ←—— D1：并入 R6 执行，无需前置工程
 D1 检查器（只读诊断）
         ↓（选择/大纲/overlay 地基）
@@ -1116,12 +1116,12 @@ Guides 即可生成定位层。手柄拖动使用独立拖放源，会话中只�
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
-- **范围**：运行时 Widget/Element 树可视化（选中 → bounds/damage overlay）；
-  `--dump-tree`/`--dump-style`/`--dump-semantics` 和帧统计 HUD 已交付，作为定位后端。
+- **范围**：运行时 Widget/Element 树可视化（悬停/钉住 → bounds/damage overlay）；
+  `--dump-tree`/`--dump-style`/`--dump-semantics`、Inspector 和帧统计 HUD 已交付，作为定位后端。
   约束沿用 M18：默认关闭零开销
   （关闭态 frame hash 与性能基线不变，CI 断言）。
 - **不依赖**：P1/P2/任何文档格式。
-- **出口条件**：R6 在支持矩阵的四态推进；inspector 三桌面窗口 smoke。
+- **出口条件**：R6 在支持矩阵的四态推进；Linux/Xvfb headless 已验证，inspector 三桌面窗口现场 smoke 仍待补齐。
 
 ### 6.2 D2：预览工作台（只读）
 
@@ -1337,8 +1337,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   Tabs/ThemeScope 子树、集合声明属性、Splitter 双子节点约束和 L3 builder/占位路径的编译 golden；真实图片资源和全部 L3 组合件
   已由设计器应用适配层接入，组件交互、资源授权和异步预览均有 headless 覆盖。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
-  字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
-  代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译按 L0 schema
+  字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD、Inspector
+  节点命中、bounds/damage overlay 已有代码入口并由 headless 测试覆盖；P1 编译按 L0 schema
   直接创建 Widget，不写入这些运行时字段；P4 的 SourceMap 只保存节点/属性 span，坐标
   变换只在画布交互层使用，编辑器操作不把 runtime identity 写回文档；P5 保存先校验 DOM
   和 expected revision，再写唯一临时文件，
