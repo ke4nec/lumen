@@ -1242,8 +1242,8 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   键盘/语义激活、主题/密度/DPI/字体缩放/高对比环境预览、按 key 或私有稳定 key 的
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation 以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `214` 个断言、
-  `13` 个测试用例通过，覆盖 L0 声明属性编辑、命名引用编辑、schema 拒绝运行时属性、事务 dirty/revision、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `227` 个断言、
+  `14` 个测试用例通过，覆盖 L0 声明属性编辑、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，12 个 L0 工具箱按钮，以及插入/复制/删除/上移/下移命令的
   语义激活、键盘等价路径、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开和文件对话框结果回传。
@@ -1253,10 +1253,10 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `93/93` 通过，
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `94/94` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1057/1057`，
-  Release 配置为 `1059/1059`；
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1058/1058`，
+  Release 配置为 `1060/1060`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
