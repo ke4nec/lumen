@@ -1,6 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <string>
+
 #include "designer_app.h"
+#include "file_watcher.h"
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/render_node.h"
@@ -13,6 +20,7 @@ using lumen::core::Size;
 using lumen::core::absoluteOffset;
 using lumen::core::findNodeByKey;
 using lumen::designer_app::DesignerApp;
+using lumen::designer_app::FileWatcher;
 
 TEST_CASE("designer app exposes the D2 shell and semantic controls",
           "[designer][d2][app]") {
@@ -162,4 +170,61 @@ TEST_CASE("designer app previews theme density dpi and accessibility inputs",
           "Font 125%");
     CHECK(findNodeByKey(app.shell().root(), "designer-contrast")->text ==
           "Contrast on");
+}
+
+TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
+          "[designer][d2][watch]") {
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-watch-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()) +
+                       ".lumen");
+    const auto removeFile = [&path] {
+        std::error_code error;
+        std::filesystem::remove(path, error);
+    };
+    struct Cleanup {
+        const std::function<void()> remove;
+        ~Cleanup() { remove(); }
+    } cleanup{removeFile};
+
+    const auto write = [&path](const std::string& source) {
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(file.good());
+        file << source;
+        REQUIRE(file.good());
+    };
+    const auto stamp = [&path](auto offset) {
+        std::error_code error;
+        const auto current = std::filesystem::last_write_time(path, error);
+        REQUIRE_FALSE(error);
+        std::filesystem::last_write_time(path, current + offset, error);
+        REQUIRE_FALSE(error);
+    };
+
+    write("page watch { Text(\"First\", key: \"title\") }");
+    FileWatcher watcher(path.string());
+    DesignerApp app;
+    app.attach();
+    REQUIRE(app.loadFile(path.string()));
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    const auto firstGeneration = app.workbench().frame().generation();
+    CHECK_FALSE(watcher.poll());
+
+    write("page watch { Text(\"Second\", key: \"title\") }");
+    stamp(std::chrono::seconds{1});
+    CHECK(watcher.poll());
+    REQUIRE(app.loadFile(path.string()));
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().frame().generation() > firstGeneration);
+
+    const auto goodGeneration = app.workbench().frame().generation();
+    write("page watch {");
+    stamp(std::chrono::seconds{2});
+    CHECK(watcher.poll());
+    CHECK_FALSE(app.loadFile(path.string()));
+    CHECK(app.workbench().frame().generation() == goodGeneration);
+    REQUIRE(app.workbench().diagnostics().size() == 1);
 }

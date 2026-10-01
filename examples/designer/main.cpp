@@ -3,13 +3,12 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
-#include <filesystem>
 #include <optional>
 #include <string>
-#include <system_error>
 #include <utility>
 
 #include "designer_app.h"
+#include "file_watcher.h"
 #include "lumen/platform/sdl3_host.h"
 
 namespace {
@@ -50,32 +49,6 @@ Options parseOptions(int argc, char** argv) {
     return options;
 }
 
-class FileWatcher {
-  public:
-    explicit FileWatcher(std::string filename)
-        : filename_(std::move(filename)) {
-        refreshStamp();
-    }
-
-    [[nodiscard]] bool poll(lumen::designer_app::DesignerApp& app) {
-        std::error_code error;
-        const auto stamp = std::filesystem::last_write_time(filename_, error);
-        if (error || stamp == stamp_) return false;
-        stamp_ = stamp;
-        (void)app.loadFile(filename_);
-        return true;
-    }
-
-  private:
-    void refreshStamp() {
-        std::error_code error;
-        stamp_ = std::filesystem::last_write_time(filename_, error);
-    }
-
-    std::string filename_{};
-    std::filesystem::file_time_type stamp_{};
-};
-
 int runHeadless(lumen::designer_app::DesignerApp& app) {
     app.shell().setView(lumen::core::Size{1280.0F, 800.0F});
     const auto frame = app.shell().renderFrame();
@@ -94,7 +67,7 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
     runOptions.windowDesc.width = 1280;
     runOptions.windowDesc.height = 800;
     runOptions.maxFrames = designerOptions.maxFrames;
-    std::optional<FileWatcher> watcher;
+    std::optional<lumen::designer_app::FileWatcher> watcher;
     if (designerOptions.watch && !designerOptions.filename.empty()) {
         watcher.emplace(designerOptions.filename);
         std::printf("watching %s for changes\n",
@@ -102,7 +75,11 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
         runOptions.poll = [&watcher, &app](lumen::app::AppShell&,
                                            std::uint64_t /*nowMs*/) {
             if (!watcher.has_value()) return false;
-            return watcher->poll(app);
+            if (!watcher->poll()) return false;
+            const bool loaded = app.loadFile(watcher->filename());
+            std::printf(loaded ? "ui reloaded\n"
+                               : "ui reload failed (kept previous UI)\n");
+            return true;
         };
     }
     return lumen::app::runApp(app.shell(), host, runOptions);

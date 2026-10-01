@@ -124,7 +124,8 @@ set(LUMEN_TEST_SOURCES
 list(APPEND LUMEN_TEST_SOURCES
     ${PROJECT_SOURCE_DIR}/examples/gallery/gallery_icon.cpp)
 list(APPEND LUMEN_TEST_SOURCES
-    ${PROJECT_SOURCE_DIR}/examples/designer/designer_app.cpp)
+    ${PROJECT_SOURCE_DIR}/examples/designer/designer_app.cpp
+    ${PROJECT_SOURCE_DIR}/examples/designer/file_watcher.cpp)
 
 # 移动核心配置（8E）：无 SDL/桌面平台层，跳过桌面平台与 SDL 依赖测试。
 if(LUMEN_BUILD_MOBILE_CORE)

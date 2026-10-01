@@ -1,4 +1,4 @@
-add_executable(lumen-designer main.cpp designer_app.cpp)
+add_executable(lumen-designer main.cpp designer_app.cpp file_watcher.cpp)
 
 target_compile_features(lumen-designer PRIVATE cxx_std_20)
 target_link_libraries(lumen-designer PRIVATE
