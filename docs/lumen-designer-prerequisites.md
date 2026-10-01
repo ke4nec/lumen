@@ -128,7 +128,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Render/style/semantics dump | 接口已存在 + headless 已验证 | 只读树、样式和语义对照、CI 诊断 | D1 的节点选择、bounds/damage overlay、三桌面 inspector smoke |
 | CPU 离屏画布与 frame hash | headless 已验证 | 像素输出、固定环境的 golden 对照 | 失败保留旧帧的会话管理、文档映射、zoom/DPI 交互和像素 alpha 模式适配 |
-| 命中测试与 overlay | 接口已存在 | 最深命中链、非模态辅助层、拖拽 ghost | 多选/框选、动态节点选择策略、overlay 的坐标变换契约 |
+| 命中测试与 overlay | 接口已存在 | 最深命中链、非模态辅助层、拖拽 ghost；画布根节点框选和大纲多选已接通 | 动态节点选择策略、zoom/pan 与 DPI 下的坐标变换契约 |
 | Theme/状态/DPI 预览 | 接口已存在 + headless 已验证 | 只读环境切换、视觉状态覆盖 | 预览值与声明值分栏显示、切换不污染 dirty/undo 的验收 |
 | 拖放与命令分发 | 接口已存在 + headless 已验证 | 应用内工具箱拖入和结构重排的输入基础 | 设计器文档命令的原子事务、失败回滚和多选语义 |
 | StateStore/HandlerRegistry | 接口已存在 + headless 已验证 | 应用运行时绑定和事件名称解析 | 设计器的 preview context、引用类型校验、缺失引用占位策略 |
@@ -924,6 +924,9 @@ RTL/方向设置不能通过“看起来相同”的屏幕像素值回写文档�
 批量写入并只产生一个事务，属性类型或 schema 不兼容时整体拒绝。多选 Duplicate 在同一
 兄弟列表中批量插入并规范化 key；跨父节点/slot 的 Duplicate 明确拒绝。Escape 会通过统一的
 `pointerCancel` 路径取消大纲、工具箱或画布手柄拖拽，保留事务开始时的 DOM 和选择状态。
+画布空白区域支持拖拽框选根节点的直接子项和直接 slot 子项，使用同一逻辑坐标空间中的
+`RenderNode` bounds 相交测试；Drop 以一次选择更新同步 `DesignSelection` 和大纲，空框清空
+选区。动态物化节点仍按上面的 `CompileTrace` 规则过滤，不进入文档选择集合。
 
 ### 4.16 G-D15：统一诊断和恢复模型
 
@@ -1294,8 +1297,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
   AppShell 状态镜像、画布辅助层开关以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `743` 个断言、
-  `37` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `754` 个断言、
+  `38` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y、Ctrl/Cmd+C/V 结构化节点复制粘贴（含多选跨父节点批量粘贴），多选 Delete/上移/下移，L0–L2 工具箱按钮，以及插入/复制/删除/上移/下移命令的
   语义激活、键盘等价路径、Shift 区间/Ctrl-Cmd 切换多选、画布多选标记、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开、文件对话框结果回传和从当前文档新建工程。
@@ -1308,10 +1311,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `374` 个断言、
-  `30` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `132/132` 通过，
+  `30` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `133/133` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1100/1100`，
-  Release 配置为 `1102/1102`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1101/1101`，
+  Release 配置为 `1103/1103`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、

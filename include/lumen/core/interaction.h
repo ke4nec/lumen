@@ -373,6 +373,7 @@ class InteractionController {
     [[nodiscard]] Offset dragDelta() const {
         return dragCurrent_ - dragAnchor_;
     }
+    [[nodiscard]] Offset dragAnchor() const { return dragAnchor_; }
     // 光标（grapheme cluster 索引）——焦点字段 selection.extent。
     [[nodiscard]] std::size_t caretGraphemes() const {
         return selection_.extent;

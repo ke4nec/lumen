@@ -129,6 +129,7 @@ class DesignPreviewWorkbench {
     [[nodiscard]] bool selectNode(
         DesignNodeId id,
         DesignSelectionMode mode = DesignSelectionMode::Replace);
+    void clearSelection() { selection_.clear(); }
     [[nodiscard]] bool selectRuntimeIdentity(
         std::string_view identity,
         DesignSelectionMode mode = DesignSelectionMode::Replace);

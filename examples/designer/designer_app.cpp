@@ -204,6 +204,17 @@ void collectDesignKeys(const dsl::DesignNode& node,
     }
 }
 
+std::string previewKeyForDesignNode(const dsl::DesignNode& node) {
+    const auto found = node.properties.find("key");
+    if (found != node.properties.end()) {
+        if (const auto* key = std::get_if<std::string>(&found->second.value);
+            key != nullptr && !key->empty()) {
+            return *key;
+        }
+    }
+    return previewKeyForNode(node.id);
+}
+
 void makePastedKeysUnique(dsl::DesignNode& node,
                           std::set<std::string>& usedKeys) {
     const auto found = node.properties.find("key");
@@ -901,6 +912,20 @@ void DesignerApp::attach() {
                 claim.touchAllowed = false;
                 return workbench_.document().has_value();
             }
+            bool overCanvas = false;
+            for (const auto* node : chain) {
+                if (node == nullptr) continue;
+                if (node->key == "designer-canvas") overCanvas = true;
+                if (node->onClick.rfind("designer:select:", 0) == 0) {
+                    return false;
+                }
+            }
+            if (overCanvas && workbench_.document().has_value()) {
+                claim.key = "designer-canvas-selection";
+                claim.identity = "designer-canvas-selection";
+                claim.touchAllowed = true;
+                return true;
+            }
             return false;
         });
     shell_.controller().addDragSessionSink(
@@ -909,6 +934,7 @@ void DesignerApp::attach() {
                const std::string& sourceKey, const std::string&) {
             canvasResizeSession(phase, position, sourceKey);
             outlineDragSession(phase, position, sourceKey);
+            canvasSelectionSession(phase, position, sourceKey);
             toolboxDragSession(phase, position, sourceKey);
         });
     shell_.handlers()["designer:theme"] = [this] { toggleTheme(); };
@@ -2020,6 +2046,134 @@ void DesignerApp::endOutlineDragSession() {
     outlineDragSlot_.clear();
     outlineDragPointer_ = {};
     shell_.clearVisualOverlay();
+}
+
+void DesignerApp::canvasSelectionSession(core::DragPhase phase,
+                                         core::Offset position,
+                                         const std::string& sourceKey) {
+    if (sourceKey != "designer-canvas-selection") return;
+    if (phase == core::DragPhase::Cancel) {
+        endCanvasSelectionSession();
+        shell_.markDirty();
+        return;
+    }
+    if (phase == core::DragPhase::Start) {
+        if (!workbench_.document().has_value()) return;
+        canvasSelectionActive_ = true;
+        canvasSelectionStart_ = shell_.controller().dragAnchor();
+        canvasSelectionPointer_ = position;
+        shell_.setVisualOverlayBuilder([this]()
+                                            -> std::optional<core::Widget> {
+            if (!canvasSelectionActive_) return std::nullopt;
+            return buildCanvasSelectionOverlay();
+        });
+        return;
+    }
+    if (!canvasSelectionActive_) return;
+    canvasSelectionPointer_ = position;
+    if (phase == core::DragPhase::Move) {
+        shell_.markDirty();
+        return;
+    }
+    if (phase != core::DragPhase::Drop) return;
+    const auto start = canvasSelectionStart_;
+    const auto end = canvasSelectionPointer_;
+    endCanvasSelectionSession();
+    selectCanvasNodesInRect(core::Rect::fromXYWH(
+        std::min(start.x, end.x), std::min(start.y, end.y),
+        std::abs(end.x - start.x), std::abs(end.y - start.y)));
+}
+
+void DesignerApp::endCanvasSelectionSession() {
+    canvasSelectionActive_ = false;
+    canvasSelectionStart_ = {};
+    canvasSelectionPointer_ = {};
+    shell_.clearVisualOverlay();
+}
+
+void DesignerApp::selectCanvasNodesInRect(core::Rect selection) {
+    if (!workbench_.document().has_value()) return;
+    const auto& root = workbench_.document()->root;
+    std::vector<dsl::DesignNodeId> selected;
+    const auto consider = [this, &selection, &selected](
+                              const dsl::DesignNode& node) {
+        const auto key = previewKeyForDesignNode(node);
+        const auto* render = core::findNodeByKey(shell_.root(), key);
+        if (render == nullptr) return;
+        const auto origin = core::absoluteOffset(shell_.root(), key);
+        if (selection.intersects(core::Rect{origin, render->size})) {
+            selected.push_back(node.id);
+        }
+    };
+    for (const auto& child : root.children) consider(child);
+    for (const auto& [slot, children] : root.slots) {
+        (void)slot;
+        for (const auto& child : children) consider(child);
+    }
+    if (selected.empty()) {
+        statusMessage_ = "Cleared selection";
+        workbench_.clearSelection();
+        outlineController_.selection().clear();
+        resetPreviewState();
+        shell_.markDirty();
+        return;
+    }
+    for (std::size_t index = 0; index < selected.size(); ++index) {
+        (void)workbench_.selectNode(
+            selected[index], index == 0 ? dsl::DesignSelectionMode::Replace
+                                        : dsl::DesignSelectionMode::Add);
+    }
+    statusMessage_ = "Selected " + std::to_string(selected.size()) +
+                     (selected.size() == 1 ? " node" : " nodes");
+    if (const auto outline = workbench_.outline(); outline.has_value()) {
+        std::vector<std::string> paths;
+        paths.reserve(selected.size());
+        for (const auto id : selected) {
+            if (const auto path = outlinePathForNode(*outline, id);
+                path.has_value()) {
+                paths.push_back(*path);
+            }
+        }
+        outlineController_.selection().setSelected(std::move(paths));
+        if (const auto primary = workbench_.selection().primary;
+            primary.has_value()) {
+            if (const auto path = outlinePathForNode(*outline, *primary);
+                path.has_value()) {
+                outlineController_.selection().setCurrent(*path);
+            }
+        }
+    }
+    applyPreviewState();
+    shell_.markDirty();
+}
+
+core::Widget DesignerApp::buildCanvasSelectionOverlay() const {
+    const auto& theme = shell_.theme();
+    const auto& tokens = theme.designerCanvas;
+    const float left = std::min(canvasSelectionStart_.x,
+                                canvasSelectionPointer_.x);
+    const float top = std::min(canvasSelectionStart_.y,
+                               canvasSelectionPointer_.y);
+    const float width = std::max(1.0F, std::abs(canvasSelectionPointer_.x -
+                                               canvasSelectionStart_.x));
+    const float height = std::max(1.0F, std::abs(canvasSelectionPointer_.y -
+                                                canvasSelectionStart_.y));
+    auto fill = tokens.guide;
+    fill.a = 40;
+    auto rectangle = core::makeContainerLeaf(
+        width, height, {}, {}, fill, "designer-canvas-selection-rect");
+    rectangle.styleOverrides.border = tokens.guide;
+    rectangle.styleOverrides.borderWidth = tokens.guideThickness;
+    rectangle.excludeFromSemantics = true;
+    rectangle.excludeFromFocus = true;
+    rectangle = core::withStackPosition(std::move(rectangle),
+                                        core::Offset{left, top});
+    auto overlay = core::makeStack({std::move(rectangle)},
+                                   core::StackAlignment::TopLeft);
+    overlay.key = "designer-canvas-selection-overlay";
+    overlay.width = shell_.view().width;
+    overlay.height = shell_.view().height;
+    return overlay;
 }
 
 float DesignerApp::snapCanvasCoordinate(float value, float maximum,

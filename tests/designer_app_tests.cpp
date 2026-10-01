@@ -444,6 +444,47 @@ TEST_CASE("designer app renders canvas alignment guides for the selection",
                         "designer-canvas-guide-frame") != nullptr);
 }
 
+TEST_CASE("designer app frame-selects canvas siblings",
+          "[designer][d3][app][selection]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() >= 2);
+    const auto firstId = outline->children[0].id;
+    const auto secondId = outline->children[1].id;
+    const auto* first = findNodeByKey(app.shell().root(), "title");
+    const auto* second = findNodeByKey(app.shell().root(), "save");
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    REQUIRE(first != nullptr);
+    REQUIRE(second != nullptr);
+    REQUIRE(canvas != nullptr);
+    const auto canvasOrigin = absoluteOffset(app.shell().root(), canvas->key);
+    const auto secondOrigin = absoluteOffset(app.shell().root(), second->key);
+    const Offset start = canvasOrigin + Offset{4.0F, 4.0F};
+    const Offset end = secondOrigin +
+                       Offset{std::max(1.0F, second->size.width - 1.0F),
+                              std::max(1.0F, second->size.height - 1.0F)};
+
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    REQUIRE(app.shell().overlayRoot() != nullptr);
+    REQUIRE(findNodeByKey(*app.shell().overlayRoot(),
+                          "designer-canvas-selection-rect") != nullptr);
+    app.shell().pointerUp(end);
+    (void)app.shell().renderFrame();
+
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+    CHECK(app.workbench().selection().primary == secondId);
+    CHECK(app.shell().overlayRoot() == nullptr);
+}
+
 TEST_CASE("designer app resizes a selected node with one snapped transaction",
           "[designer][d3][app]") {
     DesignerApp app;

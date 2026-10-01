@@ -193,6 +193,11 @@ class DesignerApp {
                             const std::string& sourceKey);
     void endOutlineDragSession();
     [[nodiscard]] core::Widget buildOutlineDragOverlay() const;
+    void canvasSelectionSession(core::DragPhase phase, core::Offset position,
+                                const std::string& sourceKey);
+    void endCanvasSelectionSession();
+    void selectCanvasNodesInRect(core::Rect selection);
+    [[nodiscard]] core::Widget buildCanvasSelectionOverlay() const;
     void toolboxDragSession(core::DragPhase phase, core::Offset position,
                             const std::string& sourceKey);
     void endToolboxDragSession();
@@ -319,6 +324,9 @@ class DesignerApp {
     std::size_t outlineDragInsertIndex_{0};
     std::string outlineDragSlot_{};
     core::Offset outlineDragPointer_{};
+    bool canvasSelectionActive_{false};
+    core::Offset canvasSelectionStart_{};
+    core::Offset canvasSelectionPointer_{};
     bool toolboxDragActive_{false};
     std::string toolboxDragType_{};
     core::Offset toolboxDragPointer_{};
