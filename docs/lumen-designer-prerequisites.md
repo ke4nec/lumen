@@ -988,12 +988,12 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   关闭态不得改变既有 frame hash 或性能基线。
 - 性能门槛先用代表性 fixture 建立基线：L0 12 节点、100 节点编辑页、1000 节点大纲和
   含虚拟列表/组合件的预览各一份，分别记录 parse/schema/compile/layout/paint 总耗时、
-  峰值内存和重建次数。目标数值由 DP-8 决定；在决定前只能要求“相对基线不回退”，不能
-  虚构固定毫秒数。当前先交付 headless 的 12/100/1000 L0 fixture，覆盖规范化
+  峰值内存和重建次数。DP-8 选择四类 fixture 的相对基线门禁，不冻结跨机器的绝对毫秒数。
+  当前先交付 headless 的 12/100/1000 L0 fixture，覆盖规范化
   serialize/read、schema、compile、layout 和 CPU paint；它记录阶段耗时并断言重复运行的
   DOM、RenderNode 和 frame hash 一致。当前另有运行时 Widget 虚拟列表 fixture，验证大列表
   只物化可见窗口；L2 DesignDocument 虚拟列表/组合件 schema、峰值内存和真实重建次数仍待
-  D3 预览容器与 DP-8 决策后补齐。
+  D3 预览容器按 DP-8 的四类 fixture 基线补齐相对门禁。
 
 **验收**：键盘和辅助技术可以完成 D2 的选择/定位与 D3 的属性编辑/保存；高 DPI、高对比
 和字体缩放下布局、命中和语义仍一致；相同输入重复运行产生相同规范化文档和诊断排序。
@@ -1284,14 +1284,14 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
   AppShell 状态镜像、画布辅助层开关以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `512` 个断言、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `514` 个断言、
   `24` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，L0–L2 工具箱按钮，以及插入/复制/删除/上移/下移命令的
   语义激活、键盘等价路径、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开和文件对话框结果回传。
-- DP-9 专属筛选 `build-debug/tests/lumen-tests "[designer][dp9]"` 为 `63` 个断言、`6` 个测试用例通过，
+- DP-9 专属筛选 `build-debug/tests/lumen-tests "[designer][dp9]"` 为 `65` 个断言、`6` 个测试用例通过，
   覆盖 manifest round-trip、未知字段、schema 迁移、revision 冲突、跨文档引用端点、损坏恢复，以及
-  `DesignerApp` 的工程打开、页面切换、工程页列表、工程保存和工程诊断跨文档跳转。
+  `DesignerApp` 的工程打开、页面切换、工程页列表、资源清单、工程保存和工程诊断跨文档跳转。
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
   `designer_window_smoke` 和 `designer_gallery_window_smoke` 四项（`4/4`）；另有
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
