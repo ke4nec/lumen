@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <utility>
@@ -63,16 +64,6 @@ std::optional<ParentLocation> locateNode(const DesignNode& parent,
         }
     }
     return std::nullopt;
-}
-
-bool selectionHasMissingNode(const DesignSelection& selection,
-                             const DesignDocument& document) {
-    for (const auto id : selection.ids) {
-        if (findNode(document.root, id) == nullptr) {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool recoverablePreviewFailure(
@@ -295,28 +286,77 @@ std::vector<DesignNodeId> DesignPreviewWorkbench::insertNodes(
 }
 
 bool DesignPreviewWorkbench::removeNode(DesignNodeId id) {
-    if (!document_.has_value() || id == document_->root.id) {
+    return removeNodes({id});
+}
+
+bool DesignPreviewWorkbench::removeNodes(std::vector<DesignNodeId> ids) {
+    if (!document_.has_value() || ids.empty()) return false;
+
+    std::set<DesignNodeId> selected(ids.begin(), ids.end());
+    if (selected.contains(document_->root.id)) {
         setEditError("the root node cannot be removed");
         return false;
     }
-    const auto location = locateNode(document_->root, id);
+    for (const auto id : selected) {
+        if (findNode(document_->root, id) == nullptr) {
+            setEditError("node is not present in the document");
+            return false;
+        }
+    }
+
+    std::vector<DesignNodeId> roots;
+    std::function<void(const DesignNode&, bool)> collectRoots =
+        [&](const DesignNode& node, bool selectedAncestor) {
+            const bool isSelected = selected.contains(node.id);
+            if (isSelected && !selectedAncestor) {
+                roots.push_back(node.id);
+                return;
+            }
+            for (const auto& child : node.children) {
+                collectRoots(child, selectedAncestor || isSelected);
+            }
+            for (const auto& [slot, children] : node.slots) {
+                (void)slot;
+                for (const auto& child : children) {
+                    collectRoots(child, selectedAncestor || isSelected);
+                }
+            }
+        };
+    collectRoots(document_->root, false);
+    if (roots.empty()) {
+        setEditError("node is not present in the document");
+        return false;
+    }
+
+    const auto primary = selection_.state().primary;
+    const auto primaryRoot =
+        primary.has_value() && std::find(roots.begin(), roots.end(), *primary) !=
+                                   roots.end()
+            ? *primary
+            : roots.front();
+    const auto location = locateNode(document_->root, primaryRoot);
     if (!location.has_value()) {
         setEditError("node is not present in the document");
         return false;
     }
+    const auto fallbackParent = location->parent;
     return applyEdit(
-        "Remove node", {id, location->parent},
-        [id](DesignDocumentEditor& editor) {
-            return editor.removeNode(id).has_value();
+        "Remove nodes", std::set<DesignNodeId>(roots.begin(), roots.end()),
+        [roots = std::move(roots)](DesignDocumentEditor& editor) {
+            for (const auto id : roots) {
+                if (!editor.removeNode(id).has_value()) return false;
+            }
+            return true;
         },
-        [parentId = location->parent](const DesignDocument& after,
-                                      const DesignSelection& before) {
-            if (!selectionHasMissingNode(before, after)) return before;
-            auto selection = before;
-            selection.ids = {parentId};
-            selection.primary = parentId;
-            selection.anchor = parentId;
-            selection.captured.reset();
+        [fallbackParent](const DesignDocument& after,
+                         const DesignSelection&) {
+            DesignSelection selection;
+            const auto selectedParent = findNode(after.root, fallbackParent);
+            const auto id = selectedParent == nullptr ? after.root.id
+                                                      : fallbackParent;
+            selection.ids = {id};
+            selection.primary = id;
+            selection.anchor = id;
             return selection;
         });
 }

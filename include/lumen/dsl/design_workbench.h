@@ -84,6 +84,8 @@ class DesignPreviewWorkbench {
         DesignNodeId parentId, std::size_t index,
         std::vector<DesignNode> nodes, std::string slot = {});
     [[nodiscard]] bool removeNode(DesignNodeId id);
+    // Removes a set of top-level selected nodes as one undoable transaction.
+    [[nodiscard]] bool removeNodes(std::vector<DesignNodeId> ids);
     [[nodiscard]] bool moveNode(DesignNodeId id, DesignNodeId newParentId,
                                 std::size_t index, std::string slot = {});
     [[nodiscard]] bool moveNodeRelative(DesignNodeId id, int offset);

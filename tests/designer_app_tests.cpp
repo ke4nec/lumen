@@ -1151,6 +1151,71 @@ TEST_CASE("designer app copies multi-selection across parents as one transaction
           std::set<lumen::dsl::DesignNodeId>{pastedFirstId, pastedSecondId});
 }
 
+TEST_CASE("designer app deletes multi-selection as one transaction",
+          "[designer][d3][app][selection]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { Text(\"A\", key: \"a\") "
+        "Button(\"B\", key: \"b\") Text(\"C\", key: \"c\") } }",
+        "multi-delete.lumen"));
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().document().has_value());
+    const auto& children = app.workbench().document()->root.children;
+    REQUIRE(children.size() == 3);
+    const auto firstId = children[0].id;
+    const auto secondId = children[1].id;
+    const auto rootId = app.workbench().document()->root.id;
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    const auto* firstOutline = findOutlineNodeById(*outline, firstId);
+    const auto* secondOutline = findOutlineNodeById(*outline, secondId);
+    REQUIRE(firstOutline != nullptr);
+    REQUIRE(secondOutline != nullptr);
+    const auto* firstRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + firstOutline->path);
+    const auto* secondRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + secondOutline->path);
+    REQUIRE(firstRow != nullptr);
+    REQUIRE(secondRow != nullptr);
+    const auto firstOrigin = absoluteOffset(app.shell().root(), firstRow->key);
+    const auto secondOrigin = absoluteOffset(app.shell().root(), secondRow->key);
+    const Offset firstPoint =
+        firstOrigin + Offset{firstRow->size.width * 0.5F,
+                             firstRow->size.height * 0.5F};
+    const Offset secondPoint =
+        secondOrigin + Offset{secondRow->size.width * 0.5F,
+                              secondRow->size.height * 0.5F};
+    app.shell().pointerDown(firstPoint);
+    app.shell().pointerUp(firstPoint);
+    app.shell().pointerDown(secondPoint, lumen::core::kModifierShift);
+    app.shell().pointerUp(secondPoint);
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+
+    app.shell().keyDown(Key::Delete);
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Removed 2 nodes");
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.size() == 1);
+    CHECK(app.workbench().document()->root.children.front().id != firstId);
+    CHECK(app.workbench().selection().primary == rootId);
+
+    REQUIRE(app.undo());
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.size() == 3);
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+    REQUIRE(app.redo());
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.size() == 1);
+    CHECK(app.workbench().selection().primary == rootId);
+}
+
 TEST_CASE("designer app creates L1 and L2 toolbox nodes with schema defaults",
           "[designer][d3][app]") {
     DesignerApp app;

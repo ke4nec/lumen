@@ -1848,8 +1848,17 @@ void DesignerApp::pasteCopiedNode() {
 }
 
 void DesignerApp::removeSelectedNode() {
-    const auto selected = workbench_.selection().primary;
-    if (!selected || !workbench_.removeNode(*selected)) return;
+    const auto& selected = workbench_.selection().ids;
+    if (selected.empty()) return;
+    const auto selectedCount = selected.size();
+    if (!workbench_.removeNodes(
+            std::vector<dsl::DesignNodeId>(selected.begin(), selected.end()))) {
+        return;
+    }
+    if (selectedCount > 1) {
+        statusMessage_ = "Removed " + std::to_string(selectedCount) +
+                         " nodes";
+    }
     refreshDocumentUi();
     shell_.markDirty();
 }

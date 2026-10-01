@@ -240,3 +240,23 @@ TEST_CASE("designer D3 workbench applies structural edits with selection history
     CHECK(workbench.canRedo());
     CHECK(workbench.document()->root.children.front().id == titleId);
 }
+
+TEST_CASE("designer D3 workbench rejects a stale batch removal atomically",
+          "[designer][d3]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page preview { Column(key: \"root\") {"
+        " Text(\"A\", key: \"a\") Button(\"B\", key: \"b\") } }"));
+    REQUIRE(workbench.document().has_value());
+    const auto before = *workbench.document();
+    const auto outline = workbench.outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() == 2);
+    const auto staleId = static_cast<lumen::dsl::DesignNodeId>(999999);
+    CHECK_FALSE(workbench.removeNodes(
+        {outline->children.front().id, staleId}));
+    CHECK(workbench.document() == before);
+    CHECK_FALSE(workbench.dirty());
+    REQUIRE(workbench.diagnostics().size() == 1);
+    CHECK(workbench.diagnostics().front().code == "editor.rejected");
+}

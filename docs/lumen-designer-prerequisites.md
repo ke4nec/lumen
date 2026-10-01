@@ -918,7 +918,8 @@ RTL/方向设置不能通过“看起来相同”的屏幕像素值回写文档�
 
 当前 D3 应用出口已将多选剪贴板实现为会话内节点副本：按文档遍历顺序复制顶层选中节点，
 选区中的后代不会重复复制；粘贴到另一父节点时批量插入并只产生一个 undo 事务，重新分配
-节点 ID、规范化冲突 key，并在 undo/redo 中恢复整组选区。
+节点 ID、规范化冲突 key，并在 undo/redo 中恢复整组选区。多选 Delete 同样以一个事务
+删除顶层选中节点；选区包含过期 ID 时整体拒绝，不会部分修改文档。
 
 ### 4.16 G-D15：统一诊断和恢复模型
 
@@ -1289,10 +1290,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
   AppShell 状态镜像、画布辅助层开关以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `603` 个断言、
-  `28` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `634` 个断言、
+  `30` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
-  绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y、Ctrl/Cmd+C/V 结构化节点复制粘贴（含多选跨父节点批量粘贴），L0–L2 工具箱按钮，以及插入/复制/删除/上移/下移命令的
+  绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y、Ctrl/Cmd+C/V 结构化节点复制粘贴（含多选跨父节点批量粘贴），多选 Delete，L0–L2 工具箱按钮，以及插入/复制/删除/上移/下移命令的
   语义激活、键盘等价路径、Shift 区间/Ctrl-Cmd 切换多选、画布多选标记、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开、文件对话框结果回传和从当前文档新建工程。
 - DP-9 专属筛选 `build-debug/tests/lumen-tests "[designer][dp9]"` 为 `77` 个断言、`7` 个测试用例通过，
   覆盖 manifest round-trip、未知字段、schema 迁移、revision 冲突、跨文档引用端点、损坏恢复，以及
@@ -1303,10 +1304,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `374` 个断言、
-  `30` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `123/123` 通过，
+  `30` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `125/125` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1091/1091`，
-  Release 配置为 `1093/1093`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1093/1093`，
+  Release 配置为 `1095/1095`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、
