@@ -16,6 +16,7 @@ TEST_CASE("designer preview frame keeps a placeholder for missing references",
     MapDesignRuntimeContext context;
     DesignPreviewFrame frame;
     CHECK_FALSE(frame.update(parsed.document, context));
+    CHECK(frame.rebuildCount() == 1);
     CHECK(frame.hasFrame());
     CHECK(frame.widget().type == lumen::core::WidgetType::Button);
     CHECK(frame.trace().nodes.size() == 1);
@@ -56,6 +57,7 @@ TEST_CASE("designer preview frame keeps the last good compile on failure",
     MapDesignRuntimeContext context;
     DesignPreviewFrame frame;
     REQUIRE(frame.update(parsed.document, context));
+    CHECK(frame.rebuildCount() == 1);
     REQUIRE(frame.hasFrame());
     const auto previousWidget = frame.widget();
     const auto previousGeneration = frame.generation();
@@ -65,6 +67,7 @@ TEST_CASE("designer preview frame keeps the last good compile on failure",
     auto broken = parsed.document;
     broken.root.type = "Unknown";
     CHECK_FALSE(frame.update(broken, context));
+    CHECK(frame.rebuildCount() == 2);
     CHECK(frame.hasFrame());
     CHECK(frame.widget() == previousWidget);
     CHECK(frame.generation() == previousGeneration);
@@ -84,6 +87,7 @@ TEST_CASE("designer preview frame closes replaced sessions and advances generati
 
     DesignPreviewFrame frame;
     REQUIRE(frame.update(parsed.document));
+    CHECK(frame.rebuildCount() == 1);
     const auto firstGeneration = frame.generation();
     const auto firstSession = frame.session();
     REQUIRE(firstSession);
@@ -95,6 +99,7 @@ TEST_CASE("designer preview frame closes replaced sessions and advances generati
         lumen::dsl::DesignValue{
             lumen::dsl::DesignValue::Variant{std::string{"after"}}};
     REQUIRE(frame.update(changed));
+    CHECK(frame.rebuildCount() == 2);
     CHECK(frame.generation() == firstGeneration + 1);
     CHECK_FALSE(firstSession->active());
     CHECK(cancelled == 1);

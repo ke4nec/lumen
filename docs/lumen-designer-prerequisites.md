@@ -1014,6 +1014,8 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   DOM、RenderNode 和 frame hash 一致。当前另有运行时 Widget 虚拟列表 fixture，验证大列表
   只物化可见窗口；L2 DesignDocument 虚拟列表/组合件 schema 已登记，峰值内存和真实重建次数仍待
   D3 预览容器补齐。100 节点文档事务和 1000 节点大纲投影的 headless 基线已具备；
+  `DesignPreviewFrame::rebuildCount()` 现已记录每次预览编译尝试（含可恢复失败），并由 D3
+  测试验证成功、占位失败和保留上一帧失败的计数；L2 物化树的峰值内存仍待预览容器补齐。
   四类 fixture 的性能门禁仍只比较同一环境下的相对基线，不冻结跨机器绝对阈值。
 
 **验收**：键盘和辅助技术可以完成 D2 的选择/定位与 D3 的属性编辑/保存；高 DPI、高对比

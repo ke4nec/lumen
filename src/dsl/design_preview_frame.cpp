@@ -23,6 +23,7 @@ void DesignPreviewFrame::setDiagnostics(
 
 bool DesignPreviewFrame::update(const DesignDocument& document,
                                 DesignRuntimeContext& context) {
+    ++rebuildCount_;
     const auto compiled = compileDesignDocument(document, context);
     setDiagnostics(compiled.diagnostics, document.documentId);
     if (!compiled.ok()) {

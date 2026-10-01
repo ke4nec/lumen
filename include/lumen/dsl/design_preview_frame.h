@@ -24,6 +24,12 @@ class DesignPreviewFrame {
 
     [[nodiscard]] bool hasFrame() const { return hasFrame_; }
     [[nodiscard]] std::uint64_t generation() const { return generation_; }
+    // Number of preview compilation attempts, including recoverable failures.
+    // Unlike generation(), this also exposes failed rebuild work to the
+    // designer's performance diagnostics.
+    [[nodiscard]] std::uint64_t rebuildCount() const {
+        return rebuildCount_;
+    }
     [[nodiscard]] const std::string& documentId() const { return documentId_; }
     [[nodiscard]] const core::Widget& widget() const { return widget_; }
     [[nodiscard]] const CompileTrace& trace() const { return trace_; }
@@ -49,6 +55,7 @@ class DesignPreviewFrame {
     std::vector<DesignDiagnostic> diagnostics_{};
     std::string documentId_{};
     std::uint64_t generation_{0};
+    std::uint64_t rebuildCount_{0};
     bool hasFrame_{false};
 };
 
