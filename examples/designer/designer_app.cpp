@@ -96,6 +96,7 @@ void DesignerApp::attach() {
         const auto id = outlineModel_.idForKey(key);
         if (id.has_value()) {
             (void)workbench_.selectNode(*id);
+            applyPreviewState();
             shell_.markDirty();
         }
     };
@@ -105,7 +106,7 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:font-scale"] = [this] { cycleFontScale(); };
     shell_.handlers()["designer:contrast"] = [this] { toggleHighContrast(); };
     shell_.handlers()["designer:preview-state"] =
-        [this] { togglePreviewState(); };
+        [this] { cyclePreviewState(); };
     (void)loadSource(kSampleSource, "sample.lumen");
 }
 
@@ -113,6 +114,7 @@ bool DesignerApp::loadFile(const std::string& filename) {
     sourceFile_ = filename;
     const bool loaded = workbench_.openLumenFile(filename);
     if (loaded) {
+        resetPreviewState();
         rebuildOutline();
         registerSelectionHandlers(workbench_.document()->root);
     }
@@ -124,6 +126,7 @@ bool DesignerApp::loadSource(const std::string& source, std::string filename) {
     sourceFile_ = filename.empty() ? "<memory>" : filename;
     const bool loaded = workbench_.openLumenSource(source, filename);
     if (loaded) {
+        resetPreviewState();
         rebuildOutline();
         registerSelectionHandlers(workbench_.document()->root);
     }
@@ -149,6 +152,7 @@ void DesignerApp::registerSelectionHandlers(const dsl::DesignNode& node) {
     const std::string handler = "designer:select:" + std::to_string(node.id);
     shell_.handlers()[handler] = [this, id = node.id] {
         if (!workbench_.selectNode(id)) return;
+        applyPreviewState();
         if (const auto outline = workbench_.outline(); outline.has_value()) {
             std::function<std::optional<std::string>(
                 const dsl::DesignPreviewOutlineNode&)>
@@ -180,6 +184,7 @@ void DesignerApp::syncSelectionFromOutline() {
     const auto id = outlineModel_.idForKey(key);
     if (!id.has_value() || workbench_.selection().primary == id) return;
     (void)workbench_.selectNode(*id);
+    applyPreviewState();
 }
 
 void DesignerApp::applyEnvironmentTheme() {
@@ -246,20 +251,84 @@ void DesignerApp::toggleHighContrast() {
     applyEnvironmentTheme();
 }
 
-void DesignerApp::togglePreviewState() {
-    if (!previewStateIdentity_.empty()) {
-        shell_.setVisualPreviewState(previewStateIdentity_, {});
+void DesignerApp::resetPreviewState() {
+    if (!previewStateKey_.empty()) {
+        shell_.setVisualPreviewState(previewStateKey_, {});
     }
-    previewStateIdentity_.clear();
-    previewStateActive_ = !previewStateActive_;
-    if (!previewStateActive_) return;
+    previewStateKey_.clear();
+    previewStateMode_ = PreviewStateMode::None;
+}
+
+void DesignerApp::applyPreviewState() {
+    if (!previewStateKey_.empty()) {
+        shell_.setVisualPreviewState(previewStateKey_, {});
+    }
+    previewStateKey_.clear();
+    if (previewStateMode_ == PreviewStateMode::None) return;
     const auto primary = workbench_.selection().primary;
-    if (!primary.has_value()) return;
-    const auto identity = workbench_.runtimeIdentity(*primary);
-    if (!identity.has_value()) return;
-    previewStateIdentity_ = *identity;
-    shell_.setVisualPreviewState(previewStateIdentity_,
-                                 style::WidgetState{.hovered = true});
+    if (!primary.has_value()) {
+        previewStateMode_ = PreviewStateMode::None;
+        return;
+    }
+    const auto outline = workbench_.outline();
+    if (!outline.has_value()) {
+        previewStateMode_ = PreviewStateMode::None;
+        return;
+    }
+    // AppShell resolves visual overrides by Widget::key; the workbench trace
+    // identity is a layout path and cannot be used for this lookup.
+    std::function<std::optional<std::string>(
+        const dsl::DesignPreviewOutlineNode&)> findKey =
+        [&](const dsl::DesignPreviewOutlineNode& node)
+        -> std::optional<std::string> {
+        if (node.id == *primary) {
+            if (node.key.empty()) return std::nullopt;
+            return node.key;
+        }
+        for (const auto& child : node.children) {
+            if (const auto key = findKey(child); key.has_value()) return key;
+        }
+        return std::nullopt;
+    };
+    const auto key = findKey(*outline);
+    if (!key.has_value()) {
+        previewStateMode_ = PreviewStateMode::None;
+        return;
+    }
+    previewStateKey_ = *key;
+    style::WidgetState state;
+    switch (previewStateMode_) {
+        case PreviewStateMode::None:
+            break;
+        case PreviewStateMode::Hovered:
+            state.hovered = true;
+            break;
+        case PreviewStateMode::Pressed:
+            state.pressed = true;
+            break;
+        case PreviewStateMode::Focused:
+            state.focused = true;
+            break;
+    }
+    shell_.setVisualPreviewState(previewStateKey_, state);
+}
+
+void DesignerApp::cyclePreviewState() {
+    switch (previewStateMode_) {
+        case PreviewStateMode::None:
+            previewStateMode_ = PreviewStateMode::Hovered;
+            break;
+        case PreviewStateMode::Hovered:
+            previewStateMode_ = PreviewStateMode::Pressed;
+            break;
+        case PreviewStateMode::Pressed:
+            previewStateMode_ = PreviewStateMode::Focused;
+            break;
+        case PreviewStateMode::Focused:
+            previewStateMode_ = PreviewStateMode::None;
+            break;
+    }
+    applyPreviewState();
 }
 
 core::Widget DesignerApp::decoratePreview(
@@ -352,7 +421,19 @@ core::Widget DesignerApp::buildToolbar() {
         {}, 0.0F, "designer-contrast", 112.0F, std::nullopt,
         "designer:contrast");
     auto previewButton = core::makeButton(
-        previewStateActive_ ? "Clear state" : "Hover state",
+        [&] {
+            switch (previewStateMode_) {
+                case PreviewStateMode::None:
+                    return "Hover state";
+                case PreviewStateMode::Hovered:
+                    return "Press state";
+                case PreviewStateMode::Pressed:
+                    return "Focus state";
+                case PreviewStateMode::Focused:
+                    return "Clear state";
+            }
+            return "Hover state";
+        }(),
         theme.typography.label, {}, 0.0F, "designer-preview-state", 128.0F,
         std::nullopt, "designer:preview-state");
     auto title = core::makeText("Lumen Designer  /  D2 Preview",

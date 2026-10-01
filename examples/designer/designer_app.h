@@ -76,7 +76,16 @@ class DesignerApp {
     void cycleDpi();
     void cycleFontScale();
     void toggleHighContrast();
-    void togglePreviewState();
+    void cyclePreviewState();
+    void applyPreviewState();
+    void resetPreviewState();
+
+    enum class PreviewStateMode {
+        None,
+        Hovered,
+        Pressed,
+        Focused,
+    };
 
     [[nodiscard]] core::Widget decoratePreview(
         core::Widget widget, const dsl::DesignNode& node,
@@ -96,8 +105,8 @@ class DesignerApp {
     float deviceScale_{1.0F};
     float fontScale_{1.0F};
     bool highContrast_{false};
-    bool previewStateActive_{false};
-    std::string previewStateIdentity_{};
+    PreviewStateMode previewStateMode_{PreviewStateMode::None};
+    std::string previewStateKey_{};
     app::AppShell shell_;
 };
 

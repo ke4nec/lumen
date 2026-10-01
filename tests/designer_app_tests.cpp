@@ -11,6 +11,7 @@
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/render_node.h"
+#include "lumen/style/state.h"
 
 using lumen::accessibility::kActionActivate;
 using lumen::accessibility::SemanticsRole;
@@ -170,6 +171,75 @@ TEST_CASE("designer app previews theme density dpi and accessibility inputs",
           "Font 125%");
     CHECK(findNodeByKey(app.shell().root(), "designer-contrast")->text ==
           "Contrast on");
+}
+
+TEST_CASE("designer app cycles keyed interaction state previews",
+          "[designer][d2][app]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { Text(\"Title\", key: \"title\") "
+        "Button(\"Save\", key: \"save\", showFocusRing: true) } }",
+        "state-preview.lumen"));
+    (void)app.shell().renderFrame();
+
+    const auto activatePreview = [&] {
+        const auto* button =
+            findNodeByKey(app.shell().root(), "designer-preview-state");
+        REQUIRE(button != nullptr);
+        CHECK(app.shell().performAccessibilityAction(
+                  button->identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+        (void)app.shell().renderFrame();
+    };
+    const auto checkState = [&](const char* label, const char* key,
+                                lumen::style::WidgetState expected) {
+        const auto* button =
+            findNodeByKey(app.shell().root(), "designer-preview-state");
+        REQUIRE(button != nullptr);
+        CHECK(button->text == label);
+        const auto context = app.shell().styleContext();
+        REQUIRE(context.previewStates != nullptr);
+        const auto found = context.previewStates->find(key);
+        REQUIRE(found != context.previewStates->end());
+        CHECK(found->second == expected);
+    };
+
+    const auto* initialPreview =
+        findNodeByKey(app.shell().root(), "designer-preview-state");
+    REQUIRE(initialPreview != nullptr);
+    CHECK(initialPreview->text == "Hover state");
+    activatePreview();
+    checkState("Press state", "root",
+               lumen::style::WidgetState{.hovered = true});
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() >= 2);
+    const auto saveId = outline->children[1].id;
+    const auto saveHandler =
+        app.shell().handlers().find("designer:select:" +
+                                    std::to_string(saveId));
+    REQUIRE(saveHandler != app.shell().handlers().end());
+    saveHandler->second();
+    (void)app.shell().renderFrame();
+    checkState("Press state", "save",
+               lumen::style::WidgetState{.hovered = true});
+
+    activatePreview();
+    checkState("Focus state", "save",
+               lumen::style::WidgetState{.pressed = true});
+    activatePreview();
+    checkState("Clear state", "save",
+               lumen::style::WidgetState{.focused = true});
+    const auto* focusedSave = findNodeByKey(app.shell().root(), "save");
+    REQUIRE(focusedSave != nullptr);
+    CHECK(focusedSave->commonStyle().focusWidth > 0.0F);
+    activatePreview();
+    checkState("Hover state", "save", lumen::style::WidgetState{});
 }
 
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
