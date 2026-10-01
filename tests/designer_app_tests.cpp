@@ -185,6 +185,7 @@ TEST_CASE("designer app cycles keyed interaction state previews",
         "Button(\"Save\", key: \"save\", showFocusRing: true) } }",
         "state-preview.lumen"));
     (void)app.shell().renderFrame();
+    const auto frameGeneration = app.workbench().frame().generation();
 
     const auto activatePreview = [&] {
         const auto* button =
@@ -206,6 +207,7 @@ TEST_CASE("designer app cycles keyed interaction state previews",
         const auto found = context.previewStates->find(key);
         REQUIRE(found != context.previewStates->end());
         CHECK(found->second == expected);
+        CHECK(app.workbench().frame().generation() == frameGeneration);
     };
 
     const auto* initialPreview =
