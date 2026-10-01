@@ -10,6 +10,7 @@
 
 #include "lumen/dsl/design_codec.h"
 #include "lumen/dsl/design_schema.h"
+#include "lumen/dsl/design_workbench.h"
 #include "lumen/core/virtual_list.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
@@ -20,6 +21,8 @@ using lumen::core::Constraints;
 using lumen::core::Size;
 using lumen::dsl::DesignDocument;
 using lumen::dsl::DesignNode;
+using lumen::dsl::DesignPreviewOutlineNode;
+using lumen::dsl::DesignPreviewWorkbench;
 using lumen::dsl::DesignValue;
 using lumen::dsl::compileDesignDocument;
 using lumen::dsl::parseLumenSource;
@@ -96,6 +99,14 @@ std::size_t nodeCount(const DesignNode& node) {
 std::size_t nodeCount(const lumen::core::RenderNode& node) {
     std::size_t count = 1;
     for (const auto& child : node.children) count += nodeCount(child);
+    return count;
+}
+
+std::size_t outlineNodeCount(const DesignPreviewOutlineNode& node) {
+    std::size_t count = 1;
+    for (const auto& child : node.children) {
+        count += outlineNodeCount(child);
+    }
     return count;
 }
 
@@ -190,6 +201,41 @@ TEST_CASE("designer performance baseline imports the twelve node L0 source",
     INFO("12 node source parse_us=" << parseTime.count());
     INFO(timingSummary("12 node source", fixture));
     CHECK(fixture.frameHash != 0);
+}
+
+TEST_CASE("designer performance covers edit and outline fixtures",
+          "[designer][f6][performance]") {
+    DesignPreviewWorkbench editor;
+    REQUIRE(editor.openDocument(makeDocument(100)));
+    const auto beforeRevision = editor.documentRevision();
+    const auto editBegin = Clock::now();
+    REQUIRE(editor.setProperty(
+        2, "text", stringValue("Designer edited fixture node")));
+    const auto editTime = std::chrono::duration_cast<std::chrono::microseconds>(
+        Clock::now() - editBegin);
+    REQUIRE(editor.document().has_value());
+    CHECK(editor.document()->root.children.size() == 99);
+    CHECK(editor.dirty());
+    CHECK(editor.documentRevision() > beforeRevision);
+    CHECK(editor.frame().hasFrame());
+    REQUIRE(editor.undo());
+    CHECK_FALSE(editor.dirty());
+    CHECK(editor.documentRevision() == beforeRevision);
+
+    DesignPreviewWorkbench outlineWorkbench;
+    REQUIRE(outlineWorkbench.openDocument(makeDocument(1000)));
+    const auto outlineBegin = Clock::now();
+    const auto firstOutline = outlineWorkbench.outline();
+    const auto outlineTime =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            Clock::now() - outlineBegin);
+    REQUIRE(firstOutline.has_value());
+    REQUIRE(outlineNodeCount(*firstOutline) == 1000);
+    const auto secondOutline = outlineWorkbench.outline();
+    REQUIRE(secondOutline.has_value());
+    CHECK(*firstOutline == *secondOutline);
+    INFO("100 node edit_us=" << editTime.count());
+    INFO("1000 node outline_us=" << outlineTime.count());
 }
 
 TEST_CASE("designer runtime preview virtualizes a large list deterministically",

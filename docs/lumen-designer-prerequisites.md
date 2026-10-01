@@ -993,7 +993,8 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   serialize/read、schema、compile、layout 和 CPU paint；它记录阶段耗时并断言重复运行的
   DOM、RenderNode 和 frame hash 一致。当前另有运行时 Widget 虚拟列表 fixture，验证大列表
   只物化可见窗口；L2 DesignDocument 虚拟列表/组合件 schema、峰值内存和真实重建次数仍待
-  D3 预览容器按 DP-8 的四类 fixture 基线补齐相对门禁。
+  D3 预览容器已补齐 100 节点文档事务和 1000 节点大纲投影的 headless 基线；
+  四类 fixture 的性能门禁仍只比较同一环境下的相对基线，不冻结跨机器绝对阈值。
 
 **验收**：键盘和辅助技术可以完成 D2 的选择/定位与 D3 的属性编辑/保存；高 DPI、高对比
 和字体缩放下布局、命中和语义仍一致；相同输入重复运行产生相同规范化文档和诊断排序。
@@ -1297,11 +1298,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `378` 个断言、
-  `30` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `121/121` 通过，
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `374` 个断言、
+  `30` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `122/122` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1089/1089`，
-  Release 配置为 `1091/1091`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1090/1090`，
+  Release 配置为 `1092/1092`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、
@@ -1316,11 +1317,12 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   并在写入及恢复副本生成后再次检查 revision，保留 `.bak` 后原子替换；主文件损坏时只从
   有效恢复副本返回文档。
 - F6 性能基线：`designer_performance_tests.cpp` 覆盖 12、100、1000 节点的规范化读回、
-  schema、compile、layout、CPU paint 和重复运行确定性；另有 12 节点 `.lumen` 导入 fixture。
-  同一 fixture 还覆盖 1000 项运行时 VirtualList 的窗口物化与 frame hash；测试只输出阶段
-  耗时作为 DP-8 的相对基线输入，不冻结跨机器的绝对毫秒门槛。L2 设计文档节点已登记 schema，
-  真实 controller 资源和具体 widgets controller builder 仍由应用适配层按需接入；headless
-  组合件占位和 lease 路径已接入。
+  schema、compile、layout、CPU paint 和重复运行确定性；100 节点额外验证文档属性事务/
+  undo，1000 节点额外验证大纲投影重复输出；另有 12 节点 `.lumen` 导入 fixture 和
+  1000 项运行时 VirtualList 窗口物化与 frame hash。测试只输出阶段耗时作为 DP-8 的相对
+  基线输入，不冻结跨机器的绝对毫秒门槛。L2 设计文档节点已登记 schema，真实 controller
+  资源和具体 widgets controller builder 仍由应用适配层按需接入；headless 组合件占位和
+  lease 路径已接入。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。
