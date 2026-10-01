@@ -111,6 +111,8 @@ class DesignerApp {
     void requestOpenFile();
     void requestSaveFile();
     void requestSaveAsFile();
+    [[nodiscard]] bool startPreview(bool debug);
+    void stopPreview();
     void insertNodeType(std::string type);
     void insertTextNode();
     void duplicateSelectedNode();
@@ -150,6 +152,12 @@ class DesignerApp {
         References,
     };
 
+    enum class PreviewSessionMode {
+        Stopped,
+        Running,
+        Debugging,
+    };
+
     struct ReferenceEntry {
         dsl::DesignNodeId nodeId{0};
         std::string property{};
@@ -177,6 +185,7 @@ class DesignerApp {
     core::VirtualListController diagnosticsController_{};
     std::vector<ReferenceEntry> referenceRows_{};
     CenterTab centerTab_{CenterTab::Canvas};
+    PreviewSessionMode previewSessionMode_{PreviewSessionMode::Stopped};
     std::string sourceSnapshot_{};
     std::size_t sourceFocusLine_{0};
     std::string sourceFile_{"<sample>"};

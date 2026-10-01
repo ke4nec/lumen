@@ -112,6 +112,12 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     CHECK(app.shell().focus().focusedKey() == "designer-contrast");
     app.shell().keyDown(Key::Tab);
     CHECK(app.shell().focus().focusedKey() == "designer-preview-state");
+    const std::vector<std::string> previewKeys = {"designer-run",
+                                                  "designer-debug"};
+    for (const auto& key : previewKeys) {
+        app.shell().keyDown(Key::Tab);
+        CHECK(app.shell().focus().focusedKey() == key);
+    }
     const std::vector<std::string> structureKeys = {
         "designer-add-text", "designer-duplicate", "designer-remove",
         "designer-move-up", "designer-move-down"};
@@ -196,6 +202,40 @@ TEST_CASE("designer app previews theme density dpi and accessibility inputs",
           "Font 125%");
     CHECK(findNodeByKey(app.shell().root(), "designer-contrast")->text ==
           "Contrast on");
+}
+
+TEST_CASE("designer app runs and stops the current preview session",
+          "[designer][d2][app]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto activate = [&](const char* key) {
+        const auto* button = findNodeByKey(app.shell().root(), key);
+        REQUIRE(button != nullptr);
+        CHECK(app.shell().performAccessibilityAction(
+                  button->identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+        (void)app.shell().renderFrame();
+    };
+
+    activate("designer-run");
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Preview running  /  current session");
+    CHECK(findNodeByKey(app.shell().root(), "designer-stop")->enabled);
+
+    activate("designer-debug");
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Debug preview running  /  current session");
+    CHECK(app.shell().frameDebugSnapshot().nodeCount > 0);
+
+    activate("designer-stop");
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Preview stopped");
+    CHECK_FALSE(findNodeByKey(app.shell().root(), "designer-stop")->enabled);
 }
 
 TEST_CASE("designer app cycles keyed interaction state previews",

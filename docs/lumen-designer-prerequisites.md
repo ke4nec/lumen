@@ -1063,6 +1063,8 @@ visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或
 `Missing` 状态，激活行可定位大纲节点；该面板不改变运行时引用解析或保存格式。
 D2 Source 页签现已提供只读源快照、行号和诊断行定位；文档编辑后展示当前规范化
 `DesignDocument` 输出，未改变 DP-5 的持久化决策。
+运行/调试/停止命令现已接通当前 `DesignerApp` 会话的编译刷新与 R6 帧 HUD/bounds
+调试层；编译失败保留上一份有效画面并报告状态，独立 `runApp` 多窗口预览仍属目标态。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1239,11 +1241,11 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   和重复 runtime identity 诊断。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、迁移身份校验、迁移异常诊断、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `604` 个断言、`9` 个测试用例通过。
-- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `214` 个断言、
-  `11` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、设计器应用语义壳、画布点选、
+- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `228` 个断言、
+  `12` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、设计器应用语义壳、画布点选、
   键盘/语义激活、主题/密度/DPI/字体缩放/高对比环境预览、按 key 或私有稳定 key 的
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
-  有效重载和错误恢复、预览切换保持工作台 frame generation 以及显式会话清理。
+  有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令以及显式会话清理。
 - D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `232` 个断言、
   `14` 个测试用例通过，覆盖 L0 声明属性编辑、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
@@ -1257,8 +1259,8 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
   `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `94/94` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1058/1058`，
-  Release 配置为 `1060/1060`；
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1059/1059`，
+  Release 配置为 `1061/1061`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、

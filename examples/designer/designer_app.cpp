@@ -297,6 +297,14 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                 }
                 return true;
             }
+            if (!editingProperty && lower == 'r') {
+                (void)self->startPreview(false);
+                return true;
+            }
+            if (!editingProperty && lower == 'd') {
+                (void)self->startPreview(true);
+                return true;
+            }
             if (!editingProperty && key == core::Key::Up) {
                 self->moveSelectedNode(-1);
                 return true;
@@ -420,6 +428,13 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:save"] = [this] { requestSaveFile(); };
     shell_.handlers()["designer:save-as"] =
         [this] { requestSaveAsFile(); };
+    shell_.handlers()["designer:run"] = [this] {
+        (void)startPreview(false);
+    };
+    shell_.handlers()["designer:debug"] = [this] {
+        (void)startPreview(true);
+    };
+    shell_.handlers()["designer:stop"] = [this] { stopPreview(); };
     shell_.handlers()["designer:tab-canvas"] = [this] {
         centerTab_ = CenterTab::Canvas;
         shell_.markDirty();
@@ -470,6 +485,38 @@ void DesignerApp::requestOpenFile() {
     } else {
         statusMessage_ = "Opening document...";
     }
+    shell_.markDirty();
+}
+
+bool DesignerApp::startPreview(bool debug) {
+    if (!workbench_.document().has_value() || !workbench_.refresh()) {
+        previewSessionMode_ = PreviewSessionMode::Stopped;
+        shell_.setFrameStatsCapture(false);
+        shell_.setDebugFrameStats(false);
+        shell_.setDebugBoundsOverlay(false);
+        statusMessage_ = "Run failed  /  kept previous preview";
+        shell_.markDirty();
+        return false;
+    }
+
+    previewSessionMode_ = debug ? PreviewSessionMode::Debugging
+                                : PreviewSessionMode::Running;
+    shell_.setFrameStatsCapture(debug);
+    shell_.setDebugFrameStats(debug);
+    shell_.setDebugBoundsOverlay(debug);
+    statusMessage_ = debug ? "Debug preview running  /  current session"
+                           : "Preview running  /  current session";
+    shell_.markDirty();
+    return true;
+}
+
+void DesignerApp::stopPreview() {
+    if (previewSessionMode_ == PreviewSessionMode::Stopped) return;
+    previewSessionMode_ = PreviewSessionMode::Stopped;
+    shell_.setFrameStatsCapture(false);
+    shell_.setDebugFrameStats(false);
+    shell_.setDebugBoundsOverlay(false);
+    statusMessage_ = "Preview stopped";
     shell_.markDirty();
 }
 
@@ -1385,6 +1432,23 @@ core::Widget DesignerApp::buildToolbar() {
         }(),
         theme.typography.label, {}, 0.0F, "designer-preview-state", 128.0F,
         std::nullopt, "designer:preview-state");
+    auto runButton = core::withLeadingIcon(
+        core::makeButton("Run", theme.typography.label, {}, 0.0F,
+                         "designer-run", 72.0F, std::nullopt,
+                         "designer:run"),
+        core::IconId::Play);
+    auto debugButton = core::withLeadingIcon(
+        core::makeButton("Debug", theme.typography.label, {}, 0.0F,
+                         "designer-debug", 88.0F, std::nullopt,
+                         "designer:debug"),
+        core::IconId::Grid);
+    auto stopButton = core::makeButton(
+        "Stop", theme.typography.label, {}, 0.0F, "designer-stop", 72.0F,
+        std::nullopt, "designer:stop");
+    runButton.selected = previewSessionMode_ == PreviewSessionMode::Running;
+    debugButton.selected =
+        previewSessionMode_ == PreviewSessionMode::Debugging;
+    stopButton.enabled = previewSessionMode_ != PreviewSessionMode::Stopped;
     auto addTextButton = core::makeButton(
         "Add Text", theme.typography.label, {}, 0.0F, "designer-add-text",
         96.0F, std::nullopt, "designer:add-text");
@@ -1422,6 +1486,7 @@ core::Widget DesignerApp::buildToolbar() {
         {std::move(title), std::move(themeButton), std::move(densityButton),
          std::move(dpiButton), std::move(fontButton),
          std::move(contrastButton), std::move(previewButton),
+         std::move(runButton), std::move(debugButton), std::move(stopButton),
          std::move(addTextButton), std::move(duplicateButton),
          std::move(removeButton), std::move(moveUpButton),
          std::move(moveDownButton), std::move(openButton),
