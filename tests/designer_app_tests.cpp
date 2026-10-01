@@ -245,7 +245,8 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
         CHECK(app.shell().focus().focusedKey() == key);
     }
     const std::vector<std::string> fileKeys = {
-        "designer-open", "designer-save", "designer-save-as"};
+        "designer-new-project", "designer-open", "designer-save",
+        "designer-save-as"};
     for (const auto& key : fileKeys) {
         app.shell().keyDown(Key::Tab);
         CHECK(app.shell().focus().focusedKey() == key);
