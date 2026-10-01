@@ -129,6 +129,54 @@ bool isEditableProperty(const dsl::DesignValue& value) {
            std::holds_alternative<dsl::DesignEnum>(value.value);
 }
 
+struct DesignNodeLocation {
+    dsl::DesignNodeId parent{0};
+    std::size_t index{0};
+    std::string slot{};
+};
+
+std::optional<DesignNodeLocation> locateDesignNode(
+    const dsl::DesignNode& parent, dsl::DesignNodeId id) {
+    for (std::size_t index = 0; index < parent.children.size(); ++index) {
+        if (parent.children[index].id == id) {
+            return DesignNodeLocation{parent.id, index, {}};
+        }
+    }
+    for (const auto& [slot, children] : parent.slots) {
+        for (std::size_t index = 0; index < children.size(); ++index) {
+            if (children[index].id == id) {
+                return DesignNodeLocation{parent.id, index, slot};
+            }
+        }
+    }
+    for (const auto& child : parent.children) {
+        if (const auto found = locateDesignNode(child, id); found.has_value()) {
+            return found;
+        }
+    }
+    for (const auto& [slot, children] : parent.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            if (const auto found = locateDesignNode(child, id);
+                found.has_value()) {
+                return found;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+const dsl::DesignPreviewOutlineNode* findOutlineNode(
+    const dsl::DesignPreviewOutlineNode& node, dsl::DesignNodeId id) {
+    if (node.id == id) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = findOutlineNode(child, id); found != nullptr) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 }  // namespace
 
 void DesignerApp::OutlineModel::setRoot(
@@ -238,6 +286,35 @@ void DesignerApp::attach() {
             shell_.markDirty();
         }
     };
+    shell_.controller().addDragArmSink(
+        [this](const std::vector<const core::RenderNode*>& chain,
+               core::PointerDevice, core::DragSourceClaim& claim) {
+            constexpr std::string_view kRowPrefix =
+                "tree:designer-outline:";
+            for (const auto* node : chain) {
+                if (node == nullptr || node->onClick.rfind(kRowPrefix, 0) !=
+                                             0) {
+                    continue;
+                }
+                const auto id = outlineModel_.idForKey(
+                    node->onClick.substr(kRowPrefix.size()));
+                if (!id.has_value() || !workbench_.document().has_value()) {
+                    return false;
+                }
+                claim.key = node->key;
+                claim.identity = node->identity;
+                claim.touchAllowed = false;
+                return locateDesignNode(workbench_.document()->root, *id)
+                    .has_value();
+            }
+            return false;
+        });
+    shell_.controller().addDragSessionSink(
+        [this](core::DragPhase phase, core::Offset position,
+               const std::vector<const core::RenderNode*>&,
+               const std::string& sourceKey, const std::string&) {
+            outlineDragSession(phase, position, sourceKey);
+        });
     shell_.handlers()["designer:theme"] = [this] { toggleTheme(); };
     shell_.handlers()["designer:density"] = [this] { cycleDensity(); };
     shell_.handlers()["designer:dpi"] = [this] { cycleDpi(); };
@@ -424,6 +501,161 @@ void DesignerApp::moveSelectedNode(int offset) {
     if (!selected || !workbench_.moveNodeRelative(*selected, offset)) return;
     refreshDocumentUi();
     shell_.markDirty();
+}
+
+void DesignerApp::outlineDragSession(core::DragPhase phase,
+                                     core::Offset position,
+                                     const std::string& sourceKey) {
+    constexpr std::string_view kSourcePrefix = "designer-outline:item:";
+    if (sourceKey.rfind(kSourcePrefix, 0) != 0) return;
+    const auto sourceId = outlineModel_.idForKey(
+        sourceKey.substr(kSourcePrefix.size()));
+    if (!sourceId.has_value() || !workbench_.document().has_value()) {
+        if (phase == core::DragPhase::Cancel || phase == core::DragPhase::Drop) {
+            endOutlineDragSession();
+        }
+        return;
+    }
+
+    if (phase == core::DragPhase::Cancel) {
+        endOutlineDragSession();
+        return;
+    }
+    if (phase == core::DragPhase::Start) {
+        const auto location =
+            locateDesignNode(workbench_.document()->root, *sourceId);
+        if (!location.has_value()) return;
+        outlineDragActive_ = true;
+        outlineDragId_ = *sourceId;
+        outlineDragParentId_ = location->parent;
+        outlineDragIndex_ = location->index;
+        outlineDragInsertIndex_ = location->index;
+        outlineDragSlot_ = location->slot;
+        outlineDragPointer_ = position;
+        (void)workbench_.selectNode(*sourceId);
+        const std::string path = sourceKey.substr(kSourcePrefix.size());
+        outlineController_.selection().setCurrent(path);
+        outlineController_.selection().setSelected({path});
+        shell_.setVisualOverlayBuilder([this]()
+                                            -> std::optional<core::Widget> {
+            if (!outlineDragActive_) return std::nullopt;
+            return buildOutlineDragOverlay();
+        });
+        return;
+    }
+    if (!outlineDragActive_) return;
+    outlineDragPointer_ = position;
+
+    if (phase == core::DragPhase::Move) {
+        std::vector<const core::RenderNode*> chain;
+        (void)core::hitTestChain(shell_.root(), position, chain);
+        constexpr std::string_view kRowPrefix = "tree:designer-outline:";
+        for (const auto* node : chain) {
+            if (node == nullptr || node->onClick.rfind(kRowPrefix, 0) != 0) {
+                continue;
+            }
+            const auto targetId = outlineModel_.idForKey(
+                node->onClick.substr(kRowPrefix.size()));
+            if (!targetId.has_value()) break;
+            const auto target =
+                locateDesignNode(workbench_.document()->root, *targetId);
+            if (!target.has_value() ||
+                target->parent != outlineDragParentId_ ||
+                target->slot != outlineDragSlot_) {
+                break;
+            }
+            if (*targetId == outlineDragId_) {
+                outlineDragInsertIndex_ = outlineDragIndex_;
+                break;
+            }
+            const core::Offset origin =
+                core::absoluteOffset(shell_.root(), node->key);
+            const bool belowMiddle =
+                position.y > origin.y + node->size.height * 0.5F;
+            outlineDragInsertIndex_ =
+                target->index + (belowMiddle ? std::size_t{1} : 0U);
+            break;
+        }
+        shell_.markDirty();
+        return;
+    }
+    if (phase != core::DragPhase::Drop) return;
+
+    const auto id = outlineDragId_;
+    const auto parent = outlineDragParentId_;
+    const auto index = outlineDragInsertIndex_;
+    const auto sourceIndex = outlineDragIndex_;
+    const auto slot = outlineDragSlot_;
+    endOutlineDragSession();
+    if (index == sourceIndex ||
+        !workbench_.moveNode(id, parent, index, slot)) {
+        return;
+    }
+    refreshDocumentUi();
+    shell_.markDirty();
+}
+
+void DesignerApp::endOutlineDragSession() {
+    outlineDragActive_ = false;
+    outlineDragId_ = 0;
+    outlineDragParentId_ = 0;
+    outlineDragIndex_ = 0;
+    outlineDragInsertIndex_ = 0;
+    outlineDragSlot_.clear();
+    outlineDragPointer_ = {};
+    shell_.clearVisualOverlay();
+}
+
+core::Widget DesignerApp::buildOutlineDragOverlay() const {
+    const auto& theme = shell_.theme();
+    const auto& tokens = theme.dragDrop;
+    const auto view = shell_.view();
+    std::string label = "Move node";
+    if (const auto outline = workbench_.outline(); outline.has_value()) {
+        if (const auto* node = findOutlineNode(*outline, outlineDragId_);
+            node != nullptr) {
+            label = nodeLabel(*node);
+        }
+    }
+    auto content = core::makeText(label, theme.typography.caption);
+    core::Widget ghost;
+    ghost.type = core::WidgetType::Container;
+    ghost.color = tokens.ghostSurface;
+    ghost.radius = core::CornerRadius::all(theme.metrics.cardRadius);
+    ghost.elevation = 2.0F;
+    ghost.styleOverrides.border = tokens.ghostBorder;
+    ghost.styleOverrides.borderWidth = theme.metrics.controlBorderWidth;
+    ghost.padding = core::EdgeInsets::symmetric(8.0F, 4.0F);
+    ghost.children.push_back(std::move(content));
+    ghost = core::withStackPosition(
+        std::move(ghost),
+        core::Offset{outlineDragPointer_.x + tokens.ghostGrabOffsetX,
+                     outlineDragPointer_.y - tokens.ghostGrabOffsetY});
+    ghost.key = "designer:outline-drag-ghost";
+
+    core::Widget indicator;
+    indicator.type = core::WidgetType::Container;
+    indicator.color = tokens.dropIndicator;
+    indicator.height = tokens.indicatorThickness;
+    if (const auto* viewport =
+            core::findNodeByKey(shell_.root(), "designer-outline-view")) {
+        indicator.width = viewport->size.width;
+        const auto origin =
+            core::absoluteOffset(shell_.root(), "designer-outline-view");
+        const auto gap = std::min(outlineDragInsertIndex_,
+                                  outlineController_.itemCount());
+        const float boundaryY = origin.y + outlineController_.offsetOfIndex(gap) -
+                                outlineController_.scrollOffset();
+        indicator = core::withStackPosition(
+            std::move(indicator), core::Offset{origin.x, boundaryY});
+    }
+    indicator.key = "designer:outline-drag-indicator";
+    auto overlay = core::makeStack(
+        {std::move(indicator), std::move(ghost)}, core::StackAlignment::TopLeft);
+    overlay.key = "designer:outline-drag-overlay";
+    overlay.width = view.width;
+    overlay.height = view.height;
+    return overlay;
 }
 
 void DesignerApp::syncSelectionFromOutline() {

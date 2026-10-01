@@ -563,6 +563,52 @@ TEST_CASE("designer app clears preview state across structural edits",
           lumen::style::WidgetState{});
 }
 
+TEST_CASE("designer app reorders outline rows by pointer drag",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    REQUIRE(initial->children.size() >= 2);
+    const auto titleId = initial->children.front().id;
+    const auto saveId = initial->children[1].id;
+    const auto* titleRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + initial->children.front().path);
+    const auto* saveRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + initial->children[1].path);
+    REQUIRE(titleRow != nullptr);
+    REQUIRE(saveRow != nullptr);
+    const auto titleOrigin = absoluteOffset(app.shell().root(), titleRow->key);
+    const auto saveOrigin = absoluteOffset(app.shell().root(), saveRow->key);
+    const Offset titlePoint =
+        titleOrigin + Offset{titleRow->size.width * 0.5F,
+                             titleRow->size.height * 0.5F};
+    const Offset savePoint =
+        saveOrigin + Offset{saveRow->size.width * 0.5F,
+                            saveRow->size.height * 0.25F};
+
+    app.shell().pointerDown(titlePoint);
+    (void)app.shell().renderFrame();
+    app.shell().pointerMove(savePoint);
+    (void)app.shell().renderFrame();
+    CHECK(app.shell().controller().dragSessionActive());
+    app.shell().pointerUp(savePoint);
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().outline().has_value());
+    CHECK(app.workbench().outline()->children[0].id == saveId);
+    CHECK(app.workbench().outline()->children[1].id == titleId);
+    CHECK(app.workbench().selection().primary == titleId);
+
+    REQUIRE(app.undo());
+    CHECK(app.workbench().outline()->children[0].id == titleId);
+    CHECK(app.workbench().outline()->children[1].id == saveId);
+    CHECK(app.workbench().selection().primary == titleId);
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /

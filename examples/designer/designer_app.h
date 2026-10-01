@@ -90,6 +90,10 @@ class DesignerApp {
     void duplicateSelectedNode();
     void removeSelectedNode();
     void moveSelectedNode(int offset);
+    void outlineDragSession(core::DragPhase phase, core::Offset position,
+                            const std::string& sourceKey);
+    void endOutlineDragSession();
+    [[nodiscard]] core::Widget buildOutlineDragOverlay() const;
     void refreshDocumentUi();
     void clearPropertyObservers();
     void registerPropertyBinding(dsl::DesignNodeId id,
@@ -124,6 +128,13 @@ class DesignerApp {
     bool highContrast_{false};
     PreviewStateMode previewStateMode_{PreviewStateMode::None};
     std::string previewStateKey_{};
+    bool outlineDragActive_{false};
+    dsl::DesignNodeId outlineDragId_{0};
+    dsl::DesignNodeId outlineDragParentId_{0};
+    std::size_t outlineDragIndex_{0};
+    std::size_t outlineDragInsertIndex_{0};
+    std::string outlineDragSlot_{};
+    core::Offset outlineDragPointer_{};
     std::map<std::string, core::StateStore::ObserverId> propertyObservers_{};
     bool syncingPropertyState_{false};
     app::AppShell shell_;
