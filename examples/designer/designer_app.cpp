@@ -1,6 +1,7 @@
 #include "designer_app.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -35,7 +36,8 @@ std::vector<const dsl::NodeSchema*> designerToolboxSchemas() {
         if (!schema.isComponent || schema.type == "ComboBox" ||
             schema.type == "ColorPicker" || schema.type == "Spin" ||
             schema.type == "DataGrid" || schema.type == "ToolBar" ||
-            schema.type == "StatusBar") {
+            schema.type == "StatusBar" || schema.type == "Menu" ||
+            schema.type == "Navigator" || schema.type == "Form") {
             result.push_back(&schema);
         }
     }
@@ -276,7 +278,9 @@ dsl::DesignComponentResult DesignerApp::OfflineRuntimeContext::buildComponent(
     if (owner_ == nullptr ||
         (node.type != "ComboBox" && node.type != "ColorPicker" &&
          node.type != "Spin" && node.type != "DataGrid" &&
-         node.type != "ToolBar" && node.type != "StatusBar")) {
+         node.type != "ToolBar" && node.type != "StatusBar" &&
+         node.type != "Menu" && node.type != "Navigator" &&
+         node.type != "Form")) {
         return dsl::DesignComponentResult{
             std::nullopt, {}, "component.missing",
             "no component builder is registered for this node type"};
@@ -296,9 +300,102 @@ dsl::DesignComponentResult DesignerApp::OfflineRuntimeContext::buildComponent(
     } else if (node.type == "ToolBar") {
         result.widget = owner_->toolBarPreviewController_.build(
             owner_->shell_, owner_->shell_.theme());
-    } else {
+    } else if (node.type == "StatusBar") {
         result.widget = owner_->statusBarPreviewController_.build(
             owner_->shell_.theme());
+    } else if (node.type == "Menu") {
+        result.widget = owner_->menuPreviewController_.build(
+            owner_->shell_.theme());
+    } else if (node.type == "Navigator") {
+        const std::string prefix =
+            "designer:component:Navigator:" + std::to_string(node.id) + ":";
+        const auto& theme = owner_->shell_.theme();
+        std::vector<core::Widget> routes;
+        routes.push_back(core::makeText(
+            "Route: " + owner_->navigatorPreviewController_.current(),
+            theme.typography.label, {}, 0.0F, "navigator-route"));
+        const std::array<std::pair<const char*, const char*>, 3> routeItems{{
+            {"home", "Home"}, {"details", "Details"},
+            {"settings", "Settings"}}};
+        for (const auto& [route, label] : routeItems) {
+            const std::string handler = prefix + "route:" + route;
+            owner_->shell_.handlers()[handler] =
+                [owner = owner_, route = std::string{route}] {
+                    if (route == "home") {
+                        owner->navigatorPreviewController_.popToRoot();
+                    } else {
+                        owner->navigatorPreviewController_.push(route);
+                    }
+                    owner->statusMessage_ =
+                        "Route: " + owner->navigatorPreviewController_.current();
+                    owner->refreshDocumentUi();
+                    owner->shell_.markDirty();
+                };
+            auto button = core::makeButton(
+                label, theme.typography.body, {}, 0.0F,
+                "navigator-button:" + std::string{route}, std::nullopt,
+                std::nullopt, handler);
+            button.buttonVariant = core::ButtonVariant::Outline;
+            routes.push_back(std::move(button));
+        }
+        result.widget = core::makeColumn(
+            std::move(routes), core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Stretch, 8.0F, {}, {},
+            "navigator-preview");
+    } else {
+        const std::string prefix =
+            "designer:component:Form:" + std::to_string(node.id) + ":";
+        const auto& theme = owner_->shell_.theme();
+        const std::string nameBind = prefix + "name";
+        const std::string emailBind = prefix + "email";
+        owner_->formPreviewController_.registerField(
+            nameBind, widgets::FormController::nonEmpty("Name is required"));
+        owner_->formPreviewController_.registerField(
+            emailBind,
+            widgets::FormController::minLength(
+                5, "Email must have at least 5 characters"));
+        const auto& errors = owner_->formPreviewController_.errors();
+        const auto invalid = [&errors](const std::string& key) {
+            return errors.find(key) != errors.end();
+        };
+        auto nameField = core::makeTextField(
+            owner_->shell_.state().get(nameBind), "Name", theme.typography.body,
+            {}, 0.0F, "name-field", std::nullopt, std::nullopt,
+            nameBind);
+        nameField.invalid = invalid(nameBind);
+        auto emailField = core::makeTextField(
+            owner_->shell_.state().get(emailBind), "name@example.com",
+            theme.typography.body, {}, 0.0F, "email-field",
+            std::nullopt, std::nullopt, emailBind);
+        emailField.invalid = invalid(emailBind);
+        const std::string submitHandler = prefix + "submit";
+        owner_->shell_.handlers()[submitHandler] =
+            [owner = owner_] {
+                const bool valid =
+                    owner->formPreviewController_.validate(owner->shell_.state());
+                owner->statusMessage_ = valid ? "Form valid" : "Form has errors";
+                owner->refreshDocumentUi();
+                owner->shell_.markDirty();
+            };
+        auto submit = core::makeButton(
+            "Validate", theme.typography.body, {}, 0.0F,
+            "submit-button", std::nullopt, std::nullopt,
+            submitHandler);
+        submit.buttonVariant = core::ButtonVariant::Filled;
+        result.widget = core::makeColumn(
+            {core::makeText("Profile", theme.typography.label, {}, 0.0F,
+                            "form-title"),
+             widgets::makeFormField(
+                 "Name", std::move(nameField),
+                 errors.contains(nameBind) ? errors.at(nameBind) : "", theme,
+                 "form-name"),
+             widgets::makeFormField(
+                 "Email", std::move(emailField),
+                 errors.contains(emailBind) ? errors.at(emailBind) : "", theme,
+                 "form-email"),
+             std::move(submit)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+            8.0F, {}, {}, "form-preview");
     }
     prefixWidgetKeys(*result.widget,
                      "designer:component:" + node.type + ":" +
@@ -409,6 +506,45 @@ DesignerApp::DesignerApp()
     });
     statusBarPreviewController_.setProgress(68.0F);
     statusBarPreviewController_.setSemanticsLabel("Designer component status");
+    menuPreviewController_.setMenus({{"file", "File", 'f'},
+                                      {"view", "View", 'v'},
+                                      {"help", "Help", 'h'}});
+    menuPreviewController_.setMenuProvider([this](const std::string& id) {
+        widgets::MenuItems items;
+        if (id == "file") {
+            items.push_back({.id = "open", .label = "Open",
+                             .shortcut = "Ctrl+O"});
+            items.push_back({.id = "save", .label = "Save",
+                             .shortcut = "Ctrl+S"});
+            items.push_back({.id = "sep", .separator = true});
+            items.push_back({.id = "close", .label = "Close",
+                             .enabled = false});
+        } else if (id == "view") {
+            items.push_back({.id = "density", .label = "Density",
+                             .hasSubmenu = true});
+            items.push_back({.id = "guides", .label = "Canvas guides",
+                             .checkable = true,
+                             .checked = canvasGuidesEnabled_});
+        } else if (id == "help") {
+            items.push_back({.id = "about", .label = "About Lumen"});
+        }
+        return items;
+    });
+    menuPreviewController_.setSubmenuProvider([this](const std::string& id) {
+        if (id != "density") return widgets::MenuItems{};
+        return widgets::MenuItems{
+            {.id = "comfortable", .label = "Comfortable", .checkable = true,
+             .checked = density_ == style::ControlDensity::Comfortable},
+            {.id = "compact", .label = "Compact", .checkable = true,
+             .checked = density_ == style::ControlDensity::Compact},
+            {.id = "touch", .label = "Touch", .checkable = true,
+             .checked = density_ == style::ControlDensity::Touch}};
+    });
+    menuPreviewController_.onCommand = [this](const std::string& id) {
+        statusMessage_ = "Menu command: " + id;
+        if (id == "guides") toggleCanvasGuides();
+        shell_.markDirty();
+    };
 }
 
 void DesignerApp::setResourceRoot(std::filesystem::path root) {
@@ -444,6 +580,17 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
         }
         if (self->spinPreviewController_.handleKey(shell, key, modifiers,
                                                     keyChar)) {
+            return true;
+        }
+        if (self->menuPreviewController_.handleKey(shell, key, modifiers,
+                                                   keyChar)) {
+            return true;
+        }
+        if (key == core::Key::Escape &&
+            self->navigatorPreviewController_.handleBack(false)) {
+            self->statusMessage_ =
+                "Route: " + self->navigatorPreviewController_.current();
+            shell.markDirty();
             return true;
         }
         if (ctrlLike && (modifiers & core::kModifierAlt) == 0) {
@@ -560,6 +707,7 @@ void DesignerApp::attach() {
     comboPreviewController_.attach(shell_);
     colorPickerPreviewController_.attach(shell_);
     spinPreviewController_.attach(shell_);
+    menuPreviewController_.attach(shell_);
     dataGridPreviewController_.attach(shell_, "designer-component-datagrid");
     toolBarPreviewController_.attach(shell_);
     statusBarPreviewController_.attach(shell_);

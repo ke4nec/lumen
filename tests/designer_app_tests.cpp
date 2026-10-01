@@ -266,7 +266,8 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
         "designer-toolbox:Splitter",  "designer-toolbox:ComboBox",
         "designer-toolbox:ColorPicker", "designer-toolbox:Spin",
         "designer-toolbox:ToolBar", "designer-toolbox:StatusBar",
-        "designer-toolbox:DataGrid"};
+        "designer-toolbox:Menu", "designer-toolbox:Navigator",
+        "designer-toolbox:Form", "designer-toolbox:DataGrid"};
     for (const auto& key : toolboxKeys) {
         app.shell().keyDown(Key::Tab);
         CHECK(app.shell().focus().focusedKey() == key);
@@ -806,7 +807,8 @@ TEST_CASE("designer app routes L0 structure commands",
         "ProgressBar", "Radio",    "Tooltip",   "Dropdown",
         "Tabs",      "ThemeScope", "VirtualList", "List",
         "Tree",      "TreeList",   "Splitter", "ComboBox", "ColorPicker",
-        "Spin",      "ToolBar",    "StatusBar", "DataGrid"};
+        "Spin",      "ToolBar",    "StatusBar", "Menu", "Navigator",
+        "Form",      "DataGrid"};
 
     const auto activate = [&](const char* key) {
         const auto* button = findNodeByKey(app.shell().root(), key);
@@ -1122,6 +1124,78 @@ TEST_CASE("designer app previews input component adapters",
         REQUIRE(!app.workbench().frame().widget().children.empty());
         CHECK(app.workbench().frame().widget().children.back().key.starts_with(
             "designer:component:" + type + ":"));
+
+        CHECK(app.undo());
+        REQUIRE(app.workbench().outline().has_value());
+        CHECK(app.workbench().outline()->children.back().type == "Row");
+    }
+}
+
+TEST_CASE("designer app previews menu navigator and form adapters",
+          "[designer][d3][app][designer-l3]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    const auto rootHandler = app.shell().handlers().find(
+        "designer:select:" + std::to_string(initial->id));
+    REQUIRE(rootHandler != app.shell().handlers().end());
+    rootHandler->second();
+    app.shell().markDirty();
+    (void)app.shell().renderFrame();
+
+    for (const std::string type : {"Menu", "Navigator", "Form"}) {
+        const auto* button = findNodeByKey(
+            app.shell().root(), "designer-toolbox:" + type);
+        REQUIRE(button != nullptr);
+        CHECK(app.shell().performAccessibilityAction(
+                  button->identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+        (void)app.shell().renderFrame();
+
+        const auto outline = app.workbench().outline();
+        REQUIRE(outline.has_value());
+        REQUIRE(!outline->children.empty());
+        const auto id = outline->children.back().id;
+        CHECK(outline->children.back().type == type);
+        CHECK(app.workbench().diagnostics().empty());
+        REQUIRE(app.workbench().frame().hasFrame());
+        REQUIRE(!app.workbench().frame().widget().children.empty());
+        const std::string prefix =
+            "designer:component:" + type + ":" + std::to_string(id) + ":";
+        CHECK(app.workbench().frame().widget().children.back().key.starts_with(
+            prefix));
+
+        if (type == "Navigator") {
+            const auto* routeButton = findNodeByKey(
+                app.shell().root(), prefix + "navigator-button:details");
+            REQUIRE(routeButton != nullptr);
+            CHECK(app.shell().performAccessibilityAction(
+                      routeButton->identity, kActionActivate) ==
+                  lumen::accessibility::SemanticsActionStatus::Handled);
+            (void)app.shell().renderFrame();
+            const auto* routeLabel =
+                findNodeByKey(app.shell().root(), prefix + "navigator-route");
+            REQUIRE(routeLabel != nullptr);
+            CHECK(routeLabel->text == "Route: details");
+        } else if (type == "Form") {
+            const auto* submit =
+                findNodeByKey(app.shell().root(), prefix + "submit-button");
+            REQUIRE(submit != nullptr);
+            CHECK(app.shell().performAccessibilityAction(
+                      submit->identity, kActionActivate) ==
+                  lumen::accessibility::SemanticsActionStatus::Handled);
+            (void)app.shell().renderFrame();
+            const auto* error =
+                findNodeByKey(app.shell().root(), prefix + "form-name-error");
+            REQUIRE(error != nullptr);
+            CHECK(error->text == "Name is required");
+        }
 
         CHECK(app.undo());
         REQUIRE(app.workbench().outline().has_value());

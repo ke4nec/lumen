@@ -19,6 +19,9 @@
 #include "lumen/widgets/color_picker.h"
 #include "lumen/widgets/combo_box.h"
 #include "lumen/widgets/datagrid.h"
+#include "lumen/widgets/form.h"
+#include "lumen/widgets/menu.h"
+#include "lumen/widgets/navigator.h"
 #include "lumen/widgets/spin.h"
 #include "lumen/widgets/statusbar.h"
 #include "lumen/widgets/toolbar.h"
@@ -252,6 +255,9 @@ class DesignerApp {
         "designer-component-color-value", "designer-component-color"};
     widgets::SpinController spinPreviewController_{
         42.0, "designer-component-spin"};
+    widgets::MenuBarController menuPreviewController_{};
+    widgets::NavigatorController navigatorPreviewController_{"home"};
+    widgets::FormController formPreviewController_{};
     widgets::DataGridController dataGridPreviewController_{};
     widgets::ToolBarController toolBarPreviewController_{
         "designer-component-toolbar"};
