@@ -9,6 +9,7 @@ add_library(lumen-dsl STATIC
     design_preview_frame.cpp
     design_workbench.cpp
     document_store.cpp
+    project_store.cpp
     runtime_context.cpp
     text_dsl.cpp
 )
