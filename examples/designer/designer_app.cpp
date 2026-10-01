@@ -26,11 +26,25 @@ constexpr char kSampleSource[] =
     " Row(key: \"status\") { Text(\"Ready\", key: \"message\") }"
     " } }";
 
-constexpr const char* kDesignerToolboxTypes[] = {
-    "Container", "Row",       "Column",    "Stack",     "Text",
-    "Button",    "TextField", "ScrollView", "ListView",  "Checkbox",
-    "Switch",    "FocusScope",
-};
+std::vector<const dsl::NodeSchema*> designerToolboxSchemas() {
+    std::vector<const dsl::NodeSchema*> result;
+    for (const auto& schema : dsl::nodeSchemaRegistry()) {
+        // L3 component nodes need an application-provided builder. Keep them
+        // out of the generic toolbox until the designer owns that adapter.
+        if (!schema.isComponent) result.push_back(&schema);
+    }
+    return result;
+}
+
+bool isL0ToolboxType(std::string_view type) {
+    for (const auto* candidate : {"Container", "Row", "Column", "Stack",
+                                  "Text", "Button", "TextField", "ScrollView",
+                                  "ListView", "Checkbox", "Switch",
+                                  "FocusScope"}) {
+        if (type == candidate) return true;
+    }
+    return false;
+}
 
 std::string nodeLabel(const dsl::DesignPreviewOutlineNode& node) {
     if (node.key.empty()) return node.type;
@@ -477,9 +491,9 @@ void DesignerApp::attach() {
         centerTab_ = CenterTab::References;
         shell_.markDirty();
     };
-    for (const char* type : kDesignerToolboxTypes) {
-        shell_.handlers()["designer:toolbox:" + std::string{type}] =
-            [this, type = std::string{type}] { insertNodeType(type); };
+    for (const auto* schema : designerToolboxSchemas()) {
+        shell_.handlers()["designer:toolbox:" + schema->type] =
+            [this, type = schema->type] { insertNodeType(type); };
     }
     (void)loadSource(kSampleSource, "sample.lumen");
 }
@@ -881,6 +895,16 @@ void DesignerApp::insertNodeType(std::string type) {
     } else if (node.type == "Button") {
         node.properties["text"] = dsl::DesignValue{
             dsl::DesignValue::Variant{std::string{"Button"}}};
+    }
+    if (const auto* schema = dsl::findNodeSchema(node.type);
+        schema != nullptr && schema->minChildren != 0) {
+        // Splitter is the only current non-component schema with a required
+        // child count. Seed valid structural children so insertion is atomic.
+        while (node.children.size() < schema->minChildren) {
+            dsl::DesignNode child;
+            child.type = "Container";
+            node.children.push_back(std::move(child));
+        }
     }
     if (workbench_.insertNode(*parentId, parent->children.size(),
                               std::move(node))) {
@@ -1417,8 +1441,9 @@ void DesignerApp::registerPropertyBinding(
     syncingPropertyState_ = false;
     if (propertyObservers_.contains(bind)) return;
 
+    const dsl::DesignValue prototype = *property.value;
     propertyObservers_[bind] = shell_.state().subscribe(
-        bind, [this, id, name = property.name, bind] {
+        bind, [this, id, name = property.name, bind, prototype] {
             if (syncingPropertyState_ || !workbench_.document().has_value()) {
                 return;
             }
@@ -1426,13 +1451,15 @@ void DesignerApp::registerPropertyBinding(
                 findDesignNode(workbench_.document()->root, id);
             if (node == nullptr) return;
             const auto propertyIt = node->properties.find(name);
-            if (propertyIt == node->properties.end()) return;
+            const auto& current = propertyIt == node->properties.end()
+                                      ? prototype
+                                      : propertyIt->second;
             const auto parsed =
-                parsePropertyState(propertyIt->second, shell_.state().get(bind));
+                parsePropertyState(current, shell_.state().get(bind));
             if (!parsed.has_value() || !workbench_.setProperty(
                                            id, name, *parsed)) {
                 syncingPropertyState_ = true;
-                shell_.state().set(bind, propertyStateValue(propertyIt->second));
+                shell_.state().set(bind, propertyStateValue(current));
                 syncingPropertyState_ = false;
                 return;
             }
@@ -1731,18 +1758,18 @@ core::Widget DesignerApp::buildToolbar() {
 
 core::Widget DesignerApp::buildToolboxPanel() {
     const auto& theme = shell_.theme();
+    const auto schemas = designerToolboxSchemas();
     std::vector<core::Widget> rows;
-    for (std::size_t index = 0;
-         index < std::size(kDesignerToolboxTypes); index += 3) {
+    for (std::size_t index = 0; index < schemas.size(); index += 3) {
         std::vector<core::Widget> buttons;
         for (std::size_t offset = 0;
-             offset < 3 && index + offset < std::size(kDesignerToolboxTypes);
+             offset < 3 && index + offset < schemas.size();
              ++offset) {
-            const char* type = kDesignerToolboxTypes[index + offset];
+            const auto* schema = schemas[index + offset];
             buttons.push_back(core::makeButton(
-                type, theme.typography.caption, {}, 1.0F,
-                "designer-toolbox:" + std::string{type}, std::nullopt,
-                std::nullopt, "designer:toolbox:" + std::string{type}));
+                schema->type, theme.typography.caption, {}, 1.0F,
+                "designer-toolbox:" + schema->type, std::nullopt,
+                std::nullopt, "designer:toolbox:" + schema->type));
         }
         rows.push_back(core::makeRow(
             std::move(buttons), core::MainAxisAlignment::Start,
@@ -2159,7 +2186,35 @@ core::Widget DesignerApp::buildPropertiesPanel() {
                                   "designer-properties-heading"));
     const auto selected = workbench_.selection().primary;
     if (selected.has_value()) {
-        for (const auto& property : workbench_.properties(*selected)) {
+        auto properties = workbench_.properties(*selected);
+        if (workbench_.document().has_value()) {
+            const auto* node = findDesignNode(workbench_.document()->root,
+                                               *selected);
+            const auto* schema = node == nullptr
+                                     ? nullptr
+                                     : dsl::findNodeSchema(node->type);
+            if (schema != nullptr && !schema->isComponent &&
+                !isL0ToolboxType(node->type)) {
+                // L1/L2 nodes can be created from the schema registry. Show
+                // their declaration defaults even before the user overrides
+                // a field, while keeping the L0 property API unchanged.
+                for (const auto& spec : schema->properties) {
+                    if (spec.persistence !=
+                            dsl::PropertyPersistence::Declaration ||
+                        !isEditableProperty(spec.defaultValue) ||
+                        std::any_of(properties.begin(), properties.end(),
+                                    [&spec](const auto& property) {
+                                        return property.name == spec.name;
+                                    })) {
+                        continue;
+                    }
+                    properties.push_back(
+                        dsl::DesignPreviewProperty{spec.name, spec.defaultValue,
+                                                    std::nullopt});
+                }
+            }
+        }
+        for (const auto& property : properties) {
             if (property.reference.has_value()) {
                 registerReferenceBinding(*selected, property);
                 const std::string bind =
@@ -2213,8 +2268,17 @@ core::Widget DesignerApp::buildPropertiesPanel() {
     } else {
         rows.push_back(core::makeText("Select a node", theme.typography.body));
     }
-    auto panel = core::makeColumn(
+    auto propertyBody = core::makeColumn(
         std::move(rows), core::MainAxisAlignment::Start,
+        core::CrossAxisAlignment::Stretch, 8.0F);
+    auto propertyScroll = core::makeScrollView(
+        std::move(propertyBody), "designer-properties-scroll", std::nullopt,
+        std::nullopt, {});
+    propertyScroll.scrollAxis = core::ScrollAxis::Vertical;
+    propertyScroll.showScrollbar = true;
+    propertyScroll.flex = 1.0F;
+    auto panel = core::makeColumn(
+        {std::move(propertyScroll)}, core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Stretch, 8.0F,
         core::EdgeInsets::all(12.0F), {}, "designer-properties-panel", 280.0F);
     panel.color = theme.colors.surfaceSunken;

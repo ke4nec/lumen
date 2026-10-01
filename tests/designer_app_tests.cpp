@@ -142,7 +142,15 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
         "designer-toolbox:Text",      "designer-toolbox:Button",
         "designer-toolbox:TextField", "designer-toolbox:ScrollView",
         "designer-toolbox:ListView",  "designer-toolbox:Checkbox",
-        "designer-toolbox:Switch",    "designer-toolbox:FocusScope"};
+        "designer-toolbox:Switch",    "designer-toolbox:FocusScope",
+        "designer-toolbox:Grid",      "designer-toolbox:Image",
+        "designer-toolbox:Icon",      "designer-toolbox:Slider",
+        "designer-toolbox:ProgressBar", "designer-toolbox:Radio",
+        "designer-toolbox:Tooltip",   "designer-toolbox:Dropdown",
+        "designer-toolbox:Tabs",      "designer-toolbox:ThemeScope",
+        "designer-toolbox:VirtualList", "designer-toolbox:List",
+        "designer-toolbox:Tree",      "designer-toolbox:TreeList",
+        "designer-toolbox:Splitter"};
     for (const auto& key : toolboxKeys) {
         app.shell().keyDown(Key::Tab);
         CHECK(app.shell().focus().focusedKey() == key);
@@ -677,7 +685,11 @@ TEST_CASE("designer app routes L0 structure commands",
     const std::vector<std::string> toolboxTypes = {
         "Container", "Row",       "Column",    "Stack",
         "Text",      "Button",    "TextField", "ScrollView",
-        "ListView",  "Checkbox",  "Switch",    "FocusScope"};
+        "ListView",  "Checkbox",  "Switch",    "FocusScope",
+        "Grid",      "Image",      "Icon",      "Slider",
+        "ProgressBar", "Radio",    "Tooltip",   "Dropdown",
+        "Tabs",      "ThemeScope", "VirtualList", "List",
+        "Tree",      "TreeList",   "Splitter"};
 
     const auto activate = [&](const char* key) {
         const auto* button = findNodeByKey(app.shell().root(), key);
@@ -742,6 +754,72 @@ TEST_CASE("designer app routes L0 structure commands",
     CHECK(outline->children.back().id ==
           *app.workbench().selection().primary);
     CHECK(outline->children.back().type == "FocusScope");
+}
+
+TEST_CASE("designer app creates L1 and L2 toolbox nodes with schema defaults",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    const auto rootId = initial->id;
+    const auto rootHandler = app.shell().handlers().find(
+        "designer:select:" + std::to_string(rootId));
+    REQUIRE(rootHandler != app.shell().handlers().end());
+    rootHandler->second();
+    app.shell().markDirty();
+    (void)app.shell().renderFrame();
+
+    const auto activate = [&](const char* type) {
+        const auto* button = findNodeByKey(
+            app.shell().root(), std::string{"designer-toolbox:"} + type);
+        REQUIRE(button != nullptr);
+        CHECK(app.shell().performAccessibilityAction(
+                  button->identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+        (void)app.shell().renderFrame();
+    };
+
+    activate("Image");
+    auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto imageId = *app.workbench().selection().primary;
+    CHECK(outline->children.back().type == "Image");
+    REQUIRE(findNodeByKey(
+                app.shell().root(),
+                "designer-property-field:" + std::to_string(imageId) +
+                    ":imageSource") != nullptr);
+    app.shell().state().set(
+        "designer:property:" + std::to_string(imageId) + ":imageSource",
+        "assets/hero.png");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    const auto& imageNode = app.workbench().document()->root.children.back();
+    REQUIRE(imageNode.properties.contains("imageSource"));
+    CHECK(std::get<std::string>(imageNode.properties.at("imageSource").value) ==
+          "assets/hero.png");
+
+    const auto rootHandlerAgain = app.shell().handlers().find(
+        "designer:select:" + std::to_string(rootId));
+    REQUIRE(rootHandlerAgain != app.shell().handlers().end());
+    rootHandlerAgain->second();
+    app.shell().markDirty();
+    (void)app.shell().renderFrame();
+    activate("Splitter");
+    outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto splitterId = *app.workbench().selection().primary;
+    REQUIRE(outline->children.back().type == "Splitter");
+    CHECK(outline->children.back().children.size() == 2);
+    CHECK(splitterId != imageId);
+    CHECK(app.workbench().diagnostics().empty());
 }
 
 TEST_CASE("designer app edits named runtime references",

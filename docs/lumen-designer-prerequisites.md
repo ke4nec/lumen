@@ -1067,7 +1067,7 @@ SourceMap 的根锚点。
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
 真实 D3 应用出口当前已接通 L0 属性面板编辑、命名引用管理、文档级撤销/重做、结构插入/复制/删除/重排、
-12 类型工具箱、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1/L2/L3 schema 已可被私有设计文档编译，L3 组合件由应用注册 builder，工具箱扩展和完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
+由 27 个非组件 schema 驱动的 L0–L2 工具箱（含 L1/L2 声明默认值面板、Splitter 合法子树创建）、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1/L2/L3 schema 已可被私有设计文档编译，L3 组合件由应用注册 builder，L3 工具箱和完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
 visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
 `PreviewOnly`/`Derived` 属性进入可保存文档。
 引用面板现已接入中心页签：DataGrid 展示当前文档的命名引用、引用类型、节点位置和离线 `Stub`/
@@ -1129,7 +1129,8 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   G-D13（命令事务）+ G-D14（选择/坐标）+ G-D15（诊断）+ G-D16（资源生命周期）+
   编辑命令栈（undo/redo：CommandRegistry 分发 + 文档事务模型，参考
   `editing_history.h` 先例）+ 文档持久化（Preferences 原子写模式或独立文件写入）。
-- **范围**：首批仅覆盖 L0 的 12 个节点；控件工具箱拖入（应用内拖拽）、属性就地编辑（P2 驱动）、
+- **范围**：首批闭环仍是 L0 的 12 个节点；当前按覆盖矩阵增量开放 L1/L2 的 schema 驱动工具箱和声明属性默认值，
+  L3 组合件保留给有应用 builder 的专用入口。控件工具箱拖入（应用内拖拽）、属性就地编辑（P2 驱动）、
   结构拖拽重排、DocumentId 选择保持、命名引用管理、保存/导出、可选 `.lumen` 导入；
   运行时 Widget 只作为预览编译结果，不作为保存源。
 - **出口条件**：P1–P5 与 G-D13–G-D16 验收全绿；设计器自身作为 Lumen 应用自举运行
@@ -1265,10 +1266,10 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
   AppShell 状态镜像、画布辅助层开关以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `274` 个断言、
-  `16` 个测试用例通过，覆盖 L0 声明属性编辑、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `309` 个断言、
+  `17` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
-  绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，12 个 L0 工具箱按钮，以及插入/复制/删除/上移/下移命令的
+  绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，L0–L2 工具箱按钮，以及插入/复制/删除/上移/下移命令的
   语义激活、键盘等价路径、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开和文件对话框结果回传。
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
   `designer_window_smoke` 和 `designer_gallery_window_smoke` 四项（`4/4`）；另有
@@ -1276,16 +1277,16 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `108/108` 通过，
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `109/109` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1072/1072`，
-  Release 配置为 `1074/1074`；
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1073/1073`，
+  Release 配置为 `1075/1075`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、
   Tabs/ThemeScope 子树、集合声明属性、Splitter 双子节点约束和 L3 builder/占位路径的编译 golden；真实资源/组合件控制器加载和
-  L1/L2/L3 编辑器工具箱流程仍留在后续阶段。
+  L3 专用编辑器工具箱流程仍留在后续阶段。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
   代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译按 L0 schema
