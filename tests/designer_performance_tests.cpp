@@ -284,6 +284,14 @@ TEST_CASE("designer runtime preview virtualizes a large list deterministically",
     CHECK(source.lastMaterializedItems() == second.children.size());
     CHECK(source.peakMaterializedItems() >= source.lastMaterializedItems());
     CHECK(firstHash != 0);
+
+    source.scrollToIndex(900, 600.0F);
+    const auto scrolled = lumen::layout::LayoutEngine::layout(
+        widget, Constraints::tight(Size{800.0F, 600.0F}));
+    REQUIRE(scrolled.children.size() > 0);
+    CHECK(scrolled.children.size() < 50);
+    CHECK(source.lastMaterializedItems() == scrolled.children.size());
+    CHECK(source.peakMaterializedItems() < source.itemCount());
     INFO("virtual-list layout_us=" << layoutTime.count()
          << " paint_us=" << paintTime.count()
          << " materialized=" << first.children.size());
