@@ -791,6 +791,9 @@ TEST_CASE("designer app routes file dialog commands through one path",
 
     REQUIRE(app.loadSource("page other { Text(\"Other\") }",
                            "other.lumen"));
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Ready  /  other.lumen");
     app.shell().handlers().at("designer:open")();
     CHECK_FALSE(requestedForSave);
     app.handleFileDialogResult({path.string()});

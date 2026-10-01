@@ -488,6 +488,7 @@ void DesignerApp::handleFileDialogResult(
 }
 
 bool DesignerApp::loadDesignFile(const std::string& filename) {
+    statusMessage_.clear();
     sourceFile_ = filename;
     const bool loaded = workbench_.openDesignFile(filename);
     if (loaded) {
@@ -508,6 +509,7 @@ bool DesignerApp::saveDesignFile(const std::string& filename) {
 }
 
 bool DesignerApp::loadFile(const std::string& filename) {
+    statusMessage_.clear();
     sourceFile_ = filename;
     const bool loaded = workbench_.openLumenFile(filename);
     if (loaded) {
@@ -519,6 +521,7 @@ bool DesignerApp::loadFile(const std::string& filename) {
 }
 
 bool DesignerApp::loadSource(const std::string& source, std::string filename) {
+    statusMessage_.clear();
     sourceFile_ = filename.empty() ? "<memory>" : filename;
     const bool loaded = workbench_.openLumenSource(source, filename);
     if (loaded) {
