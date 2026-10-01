@@ -1307,7 +1307,7 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   和重复 runtime identity 诊断。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、迁移身份校验、迁移异常诊断、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `604` 个断言、`9` 个测试用例通过。
-- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `254` 个断言、
+- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `280` 个断言、
   `14` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、设计器应用语义壳、画布点选、
   键盘/语义激活、主题/密度/DPI/字体缩放/高对比环境预览、按 key 或私有稳定 key 的
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
@@ -1326,7 +1326,7 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `374` 个断言、
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `383` 个断言、
   `30` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
   未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1104/1104`，
@@ -1347,10 +1347,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - F6 性能基线：`designer_performance_tests.cpp` 覆盖 12、100、1000 节点的规范化读回、
   schema、compile、layout、CPU paint 和重复运行确定性；100 节点额外验证文档属性事务/
   undo，1000 节点额外验证大纲投影重复输出；另有 12 节点 `.lumen` 导入 fixture 和
-  1000 项运行时 VirtualList 窗口物化与 frame hash。测试只输出阶段耗时作为 DP-8 的相对
-  基线输入，不冻结跨机器的绝对毫秒门槛。L2 设计文档节点已登记 schema，真实 controller
-  资源和具体 widgets controller builder 仍由应用适配层按需接入；headless 组合件占位和
-  lease 路径已接入。
+  1000 项运行时 VirtualList 窗口物化与 frame hash，并记录当前/峰值物化项数。测试只输出
+  阶段耗时作为 DP-8 的相对基线输入，不冻结跨机器的绝对毫秒门槛。L2 设计文档节点已登记
+  schema，真实 controller 资源和具体 widgets controller builder 仍由应用适配层按需接入；
+  headless 组合件占位和 lease 路径已接入。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。
