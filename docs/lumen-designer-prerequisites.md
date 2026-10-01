@@ -2,7 +2,7 @@
 
 > 文档状态：决策记录与实施基线（2026-10-01）
 > 定位：登记「可视化设计器」的能力基线、结构性缺口、前置工程与待决策项，作为设计器立项前的评审入口。
-> 边界：本文不改变任何既有排除项口径（含「DSL 可编程化」，见 §4.3）。用户已于 2026-10-01 决定 DP-1、DP-3、DP-4；D3 只按已决定的 B/L0/独立 preview-session 范围实施，其余 DP 仍需单独决策。
+> 边界：本文不改变任何既有排除项口径（含「DSL 可编程化」，见 §4.3）。用户已于 2026-10-01 采用本文推荐的 DP-1–DP-9 方案；D3 按已决定的格式、覆盖、运行态、排期、保真度、兼容、权限、性能和工程容器边界实施。
 > 证据基线：2026-09-30 源码核对（HEAD `e2c61ef`）。[`support-matrix.md`](support-matrix.md) 记录的 `3fede85` / 935 项与 [`M15+ 路线图`](lumen-m15-roadmap.md) R6 首批的 940 项是不同历史批次。本文的本轮校验见 §10.3，规划 API 不计入已实现能力。
 
 ## 1. 背景与形态定义
@@ -12,10 +12,10 @@
 对照「可视化设计器」所需能力逐项核对源码后结论如下：
 
 - 框架层（控件库、离屏渲染、命中测试、主题/状态预览、命令分发、多窗口/IME/DPI）已经具备承载**只读预览工作台**的主要地基；运行时 Inspector 仍缺少选中节点后的 bounds/damage overlay；
-- **可编辑并保存的双向设计器**此前被三类结构性问题阻塞：声明式文档模型与双向转换缺失（G-D1）、属性/节点 schema 缺失（G-D2）、声明式文档与运行时 Widget/controller 的边界和格式治理未冻结（G-D3、G-D8）；P1–P5 已完成，DP-1/DP-3/DP-4 已冻结，剩余工作是 D3 L0 应用出口。
+- **可编辑并保存的双向设计器**此前被三类结构性问题阻塞：声明式文档模型与双向转换缺失（G-D1）、属性/节点 schema 缺失（G-D2）、声明式文档与运行时 Widget/controller 的边界和格式治理未冻结（G-D3、G-D8）；P1–P5 已完成，DP-1–DP-9 已冻结，剩余工作是 D3 L0 应用出口和平台证据。
 - 稳定编辑身份、源位置映射、版本迁移、绑定/资源注入和文档级事务也没有现成契约。这些不是单纯的 UI 面板工作，而是 D3 的前置条件。
 
-本文将上述缺口登记为可评审、可验收的前置工程；DP-1、DP-3、DP-4 的结论和日期记录于 §8，其余决策仍保持待定。
+本文将上述缺口登记为可评审、可验收的前置工程；DP-1–DP-9 的结论和日期记录于 §8，后续只保留实现验收和平台证据。
 
 ### 1.2 设计器三形态
 
@@ -25,11 +25,11 @@
 | --- | --- | --- | --- |
 | D1 检查器 | 运行中应用的只读诊断：树可视化、bounds/damage overlay、帧统计 | 无（观测运行时树） | tree/style dump 与帧统计已有；Inspector、节点选择和 bounds/damage overlay 仍属 R6 |
 | D2 预览工作台 | 打开 `.lumen`/应用提供的示例，画布渲染 + 结构浏览 + 环境/状态预览 | 只读 | 基础运行时预览可独立交付；文档定位版需要 P1 读取/编译子集、P3 预览适配与 P4 映射 |
-| D3 可编辑设计器 | 文档编辑：工具箱拖入、属性就地编辑、结构重排、保存/导出 | 读写 | DP-1/DP-3/DP-4 已决定 + P1–P5 + 编辑命令栈 |
+| D3 可编辑设计器 | 文档编辑：工具箱拖入、属性就地编辑、结构重排、保存/导出 | 读写 | DP-1–DP-9 已决定 + P1–P5 + 编辑命令栈 |
 
 与既有规划的关系：D1 的范围与 R6（开发者诊断）的未交付项重合，属
 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 阶段 D 的收口，不需要新编号；
-D2/D3 已立项，完成计划缺口矩阵和支持矩阵分别以 R11 登记 D3 L0 的四态；DP-2、DP-5–DP-8 仍按影响范围管理。
+D2/D3 已立项，完成计划缺口矩阵和支持矩阵分别以 R11 登记 D3 L0 的四态；DP-2、DP-5–DP-8 已冻结方案，按实现证据和平台范围管理。
 
 ### 1.3 阅读约定与分析方法
 
@@ -610,7 +610,7 @@ Widget 结果，DOM cache 在需要时单独增加，避免改变现有热重载
 | 编译接入 | `Widget` 是可移动值类型；`AppShell::swapRoot` 已存在 | 可行；首阶段可不改布局/渲染代码 |
 | 绑定接线 | AppShell 重建阶段调用 `applyBinds`，StateStore/HandlerRegistry 已存在 | 可行；P1 不应提前复制业务状态 |
 | 错误模型 | 现有 `DslError` 有 file/line/column/expected/found | 可行；DesignError 可复用字段并增加 node id/path |
-| 源文本保真 | 当前 lexer/AST 不保存注释和 trivia | 语义 round-trip 可行；无损格式 round-trip 必须留到 DP-5/CST |
+| 源文本保真 | 当前 lexer/AST 不保存注释和 trivia | 语义 round-trip 可行；DP-5 已选择规范化输出 + SourceMap，不做 CST 局部 patch |
 | 全控件编译 | 运行时 source/controller 是裸指针且组合件由 widgets 层构建 | P1 不可一次完成；必须按 P2/P3 分阶段扩展 |
 
 #### P1.5 第一阶段出口
@@ -791,8 +791,8 @@ DocumentId；编辑器在下一次编译后重新建立映射。若重复 `key` 
 
 第一阶段只保存节点和属性的起始/结束 `SourcePos`，足以实现错误列表、属性面板跳转和
 “定位到源”。当前 lexer 已维护 UTF-8 字符列，AST 已携带 token position；需要补充 token
-结束位置和注释 trivia 的工作留给 DP-5。若采用规范化输出，SourceMap 只作为导入会话数据，
-不承诺对原文件做局部 patch。
+结束位置和注释 trivia 的工作不进入设计器持久化契约。DP-5 选择规范化输出 + SourceMap，
+SourceMap 只作为导入会话数据，不承诺对原文件做局部 patch。
 
 #### P4.3 可行性验证
 
@@ -830,7 +830,7 @@ class DocumentStore {
 迁移函数接收值对象并返回新对象，不直接修改磁盘文件。
 
 DP-1 已选择 B，`DocumentStore` 使用 JSON/等价结构化设计器 codec；`.lumen` 仅作为单向
-导入，不提供设计器保存 printer。schemaVersion、未知字段策略和恢复行为必须一致。已有
+导入，不提供设计器保存 printer。DP-6 要求扩展字段原样保留；无法保留时拒绝保存，不得静默丢弃。schemaVersion 和恢复行为必须一致。已有
 `Preferences::save` 的 tmp+rename 可作为原子写实现参考，但不能直接复用其行格式承载嵌套
 节点和未知字段。
 
@@ -1015,7 +1015,7 @@ R6 未交付项（inspector GUI / 节点选择 / bounds·damage overlay）
 D1 检查器（只读诊断）
         ↓（选择/大纲/overlay 地基）
 D2 预览工作台（只读）                          ←—— P1/P3/P4；P2 可选（属性只读有降级路径）
-        ↓ DP-1/DP-3/DP-4 + P1–P5 + G-D13–G-D16
+        ↓ DP-1–DP-9 + P1–P5 + G-D13–G-D16
 D3 可编辑设计器
 ```
 
@@ -1115,17 +1115,32 @@ counter 与覆盖全部 L0 节点的 gallery fixture 已纳入同一组验证。
 Gallery 的完整样本覆盖仍待补齐；在 Windows/macOS 构建中，CMake 同样注册原生窗口 smoke，
 但本工作区尚未取得这两桌面的现场结果。
 
-D2 工作台的 UI 设计稿见 [`design/designer.html`](../design/designer.html)（2026-10-01）：四带三栏
+D2 工作台的 UI 设计稿见 [`design/designer.html`](../design/designer.html)（2026-10-01，v2）：四带三栏
 简洁布局（工具栏 + 大纲/画布/属性 + 诊断带 + 状态栏），面板控件全部映射到既有 widgets 层
 （`ToolBarController`/`TreeController`/`DataGridController`/`StatusBarController`/`SplitterController`/
-`ComboBoxController`/`SpinController`，视觉值取视觉系统语义 token）；框架缺失项（G-D7 Canvas
-自绘、G-D4 绝对定位容器、G-D5 自绘光标、P2 属性元数据 L1–L3 覆盖、专用缩放件）在稿内以
-「缺失 · 需补充」显式登记并给出绕行与立项路径。该稿是 D1/D2/D3 共用外壳的 UI 对照基线；
-D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
+`ComboBoxController`/`SpinController`，视觉值取视觉系统语义 token）。v2 追加三块体验：
+画布对齐辅助（标尺、智能对齐参考线、距离标注、选择手柄——overlay 承载的目标态与可交互
+拖动演示，视觉 token 冻结在 visual-system §3.5，吸附引擎属设计器自建）；工具栏
+运行/调试/停止组（编译当前文档 → `runApp` 多窗口独立 preview-session +
+`RunOptions.frameDebugOverlay` 帧 HUD，编译失败保留上一帧）；以及中心「画布/源码」页签
+（`makeTabs`：D2 源码只读 + 诊断行定位跳转，「编辑 → 编译并运行」为 D3 目标态交互演示，
+管线复用 FileWatcher/DslCache/swapRoot）。框架缺失项（G-D7 Canvas 自绘、G-D4 绝对定位
+容器、G-D5 自绘光标、P2 属性元数据 L1–L3 覆盖、专用缩放件、Stop/Debug/Magnet 命令图标）
+在稿内以「缺失 · 需补充」显式登记并给出绕行与立项路径。该稿是 D1/D2/D3 共用外壳的
+UI 对照基线；D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准，稿内 D3 交互演示不改变
+§6 阶段前置。2026-10-01 v3 再落「设计工程」目标态：左栏「工程」页（页面 / 资源树——
+manifest 视图；文档切换按 documentId 隔离、诊断跨文档聚合并可跳回出错文档）与新建 /
+导入 / 保存工程命令菜单（ContextMenuController / CommandRegistry 先例，图标复用
+IconId::Plus / Document / Folder / Image）；工程容器（清单格式、工程身份、跨文档引用
+协议）已按 DP-9 方案 A 落地为 D3 后独立范围：`DesignProject` 清单保存页面集、资源表、工程根、schemaVersion、工程身份和跨文档引用，`ProjectStore` 提供迁移、原子保存、revision 冲突与 `.bak` 恢复；`DesignerApp` 已接入多文档会话、按 `documentId` 切换、工程级打开/保存、资源根授权和工程页列表。v4 再落「引用面板」
+目标态：中心第三页签（DataGrid）呈现当前文档全部命名引用（bind / handler / 资源名）与
+RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以警告行进诊断带并可定位
+引用节点——这是设计器与代码实现的关联面（文档写稳定名称，行为在 C++ 注册表解析）；
+数据侧复用 P3 类型化解析结果，面板 UI 属设计器应用实现，随 D3 落地，无框架缺口。
 
 ### 6.3 D3：可编辑设计器
 
-- **前置**：DP-1、DP-3、DP-4 已于 2026-10-01 决定（B/L0/独立 preview-session）+ P1（文档格式与双向转换）+ P2（属性/节点元数据）+
+- **前置**：DP-1–DP-8 已于 2026-10-01 决定（私有规范化格式/L0/独立 preview-session、与阶段 A 并行、SourceMap、扩展字段保留、离线授权预览、相对性能基线）+ P1（文档格式与双向转换）+ P2（属性/节点元数据）+
   P3（RuntimeContext/引用注入）+ P4（DocumentId/SourceMap）+ P5（版本迁移/恢复）+
   G-D13（命令事务）+ G-D14（选择/坐标）+ G-D15（诊断）+ G-D16（资源生命周期）+
   编辑命令栈（undo/redo：CommandRegistry 分发 + 文档事务模型，参考
@@ -1163,20 +1178,20 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
 | ID | 决策 | 状态与选项 | 影响范围 |
 | --- | --- | --- | --- |
 | DP-1 | 设计器文档格式 | **已决定（2026-10-01）：B，设计器私有格式 + `.lumen` 单向导入**。 | P1 使用独立 magic/schema/codec；不扩展 `.lumen` 的写回语义。 |
-| DP-2 | 排期取舍 | 设计器工作是否在完成计划阶段 A（三桌面真实验收）之前/并行插入 | 收敛计划 §7 推荐顺序；D1 不受影响 |
+| DP-2 | 排期取舍 | **已决定（2026-10-01）：与阶段 A 并行推进；三桌面真实验收仍是发布门槛，设计器 headless 通过不替代平台验收**。 | 设计器可继续完成前置和 D3 应用出口；“实战可用”宣称仍受阶段 A 证据约束。 |
 | DP-3 | D3 首版控件覆盖 | **已决定（2026-10-01）：L0 的 12 个节点先闭环，L1–L3 按覆盖矩阵逐批加入**。 | 最终目标仍是所有有稳定声明语义的类型和组合件。 |
 | DP-4 | 运行时状态保存策略 | **已决定（2026-10-01）：只保存声明初值，运行时状态独立于设计文档，归 preview/session 管理**。 | P3/P5/undo/redo 均按文档 revision 与运行态隔离实现。 |
-| DP-5 | 源文本保真度 | **规范化输出 + SourceMap** / CST 保留注释和格式并做局部 patch | `.lumen` 导入体验、文档格式复杂度、P1 验收不变量 |
-| DP-6 | 未知节点/字段策略 | **保留扩展字段并原样写回；无法保留时拒绝保存（推荐）** / 打开即丢弃并警告 | P1/P5 codec、迁移安全和未来版本兼容 |
-| DP-7 | 预览资源与副作用权限 | **离线固定值/快照/占位为默认，应用适配器显式授权（推荐）** / 打开文档即使用真实业务 context | P3 session、G-D16、可重复 frame hash 和安全边界 |
-| DP-8 | 设计器性能门槛 | **先建立四类 fixture 基线，要求相对基线不回退（推荐）** / 现在即冻结绝对毫秒/内存目标 | §4.18、F6 出口和 CI 资源预算 |
+| DP-5 | 源文本保真度 | **已决定（2026-10-01）：规范化输出 + SourceMap，不做 CST 局部 patch**。 | `.lumen` 作为导入源；设计器文档保存规范化结构，SourceMap 负责会话内定位。 |
+| DP-6 | 未知节点/字段策略 | **已决定（2026-10-01）：保留扩展字段并原样写回；无法保留时拒绝保存**。 | P1/P5 codec、迁移安全和未来版本兼容；禁止静默丢字段。 |
+| DP-7 | 预览资源与副作用权限 | **已决定（2026-10-01）：离线固定值/快照/占位为默认，应用适配器显式授权**。 | P3 session、G-D16、可重复 frame hash 和安全边界。 |
+| DP-8 | 设计器性能门槛 | **已决定（2026-10-01）：先建立四类 fixture 基线，要求相对基线不回退，不冻结跨机器绝对毫秒/内存目标**。 | §4.18、F6 出口和 CI 资源预算。 |
 | DP-9 | 设计工程容器 | **已决定（2026-10-01）：A，工程 manifest + 多文档会话**。`DesignProject` 清单保存页面集 / 资源表 / 工程根 / schemaVersion / 工程身份 / 跨文档引用；`ProjectStore` 负责迁移、原子保存、revision 冲突与 `.bak` 恢复；设计器按 `documentId` 隔离页面、选择与预览，并聚合工程诊断。 | P5/G-D16 工程存储和资源授权已接入；最近文件 Preferences 仍作为后续便利功能，不替代工程容器 |
 
 ## 9. 决策后的文档同步动作
 
 任一 DP 决策后，同一变更内完成（AGENTS.md 规则）：
 
-1. 本文：对应 DP 状态从「待决策」改为决策结论与日期；本次已同步 DP-1/DP-3/DP-4，并更新 P1–P5、G-D13–G-D16 和四态证据；
+1. 本文：对应 DP 状态从「待决策」改为决策结论与日期；本次已同步 DP-1–DP-9，并更新 P1–P5、G-D13–G-D16 和四态证据；
 2. [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md)：D2/D3 已立项，缺口矩阵以
    R11 登记；方案 B 需在 §6 排除项处补「数据序列化 ≠ 可编程化」
    的边界注记（或确认无需改写）；R6 只保留 Inspector/bounds/damage 未交付项；
@@ -1303,7 +1318,7 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
 - F6 性能基线：`designer_performance_tests.cpp` 覆盖 12、100、1000 节点的规范化读回、
   schema、compile、layout、CPU paint 和重复运行确定性；另有 12 节点 `.lumen` 导入 fixture。
   同一 fixture 还覆盖 1000 项运行时 VirtualList 的窗口物化与 frame hash；测试只输出阶段
-  耗时供后续 DP-8 建立相对基线，不冻结跨机器的绝对毫秒门槛。L2 设计文档节点已登记 schema，
+  耗时作为 DP-8 的相对基线输入，不冻结跨机器的绝对毫秒门槛。L2 设计文档节点已登记 schema，
   真实 controller 资源和具体 widgets controller builder 仍由应用适配层按需接入；headless
   组合件占位和 lease 路径已接入。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
@@ -1318,8 +1333,7 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   设计器面板键盘流程仍属于 D2/D3 应用出口。
 - F6 选择隔离：`DesignSelectionModel` 将会话选择绑定到当前 `documentId`；切换文档时清除
   旧节点 ID、主节点、锚点和拖拽捕获，避免不同文档复用节点 ID 导致选择串用。
-- 决策记录：DP-1=B、DP-3=L0、DP-4=独立 preview/session、DP-9=A（工程 manifest + 多文档会话，2026-10-01）；DP-2、DP-5–DP-8
-  尚未作产品决策。现有完整 CTest 结果仍不等同于设计器真实平台验收；D3 应用的
+- 决策记录：DP-1=B、DP-2=与阶段 A 并行但平台验收仍为门槛、DP-3=L0、DP-4=独立 preview/session、DP-5=规范化输出 + SourceMap、DP-6=扩展字段保留且无法保留时拒绝保存、DP-7=离线默认 + 显式授权、DP-8=四类 fixture 相对基线、DP-9=A（工程 manifest + 多文档会话），均于 2026-10-01 决定。现有完整 CTest 结果仍不等同于设计器真实平台验收；D3 应用的
   round-trip、schema、DocumentId、RuntimeContext、完整资源加载和三桌面窗口验收仍须按阶段补齐。
 
 ### 10.4 实施期间的评审问题
@@ -1334,4 +1348,4 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
 6. P1–P5 和 G-D13–G-D16 的 headless fixture 是否先于真实窗口 smoke 加入 CI？
 7. 设计器自举页面的视觉 token、语义树、键盘路径和性能基线由哪份设计/测试文档维护？
 
-其余问题是实现验收条件，不撤销已记录的 D3 L0 实施授权；DP-2、DP-5–DP-8 仍按各自影响范围单独决策。
+其余问题是实现验收条件，不撤销已记录的 D3 L0 实施授权；三桌面现场结果和性能基线报告仍按已冻结方案补齐。
