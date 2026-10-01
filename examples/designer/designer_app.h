@@ -15,6 +15,7 @@
 #include "lumen/app/app_shell.h"
 #include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_resources.h"
+#include "lumen/dsl/design_mapping.h"
 #include "lumen/dsl/design_workbench.h"
 #include "lumen/dsl/document_store.h"
 #include "lumen/dsl/project_store.h"
@@ -205,6 +206,9 @@ class DesignerApp {
     void canvasResizeSession(core::DragPhase phase, core::Offset position,
                              const std::string& sourceKey);
     void endCanvasResizeSession();
+    void adjustCanvasZoom(float factor);
+    void panCanvas(core::Offset delta);
+    void resetCanvasView();
     [[nodiscard]] static float snapCanvasCoordinate(float value, float maximum,
                                                      float threshold);
     void refreshDocumentUi();
@@ -312,6 +316,7 @@ class DesignerApp {
     bool darkMode_{true};
     style::ControlDensity density_{style::ControlDensity::Comfortable};
     float deviceScale_{1.0F};
+    dsl::DesignCoordinateTransform canvasTransform_{};
     float fontScale_{1.0F};
     bool highContrast_{false};
     bool canvasGuidesEnabled_{false};

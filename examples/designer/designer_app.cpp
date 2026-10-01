@@ -52,6 +52,59 @@ void prefixWidgetKeys(core::Widget& widget, std::string_view prefix) {
     for (auto& child : widget.children) prefixWidgetKeys(child, prefix);
 }
 
+void scaleEdgeInsets(core::EdgeInsets& insets, float scale) {
+    insets.left *= scale;
+    insets.top *= scale;
+    insets.right *= scale;
+    insets.bottom *= scale;
+}
+
+void scaleCornerRadius(core::CornerRadius& radius, float scale) {
+    radius.topLeft *= scale;
+    radius.topRight *= scale;
+    radius.bottomLeft *= scale;
+    radius.bottomRight *= scale;
+}
+
+void scaleTextStyle(core::TextStyle& style, float scale) {
+    style.fontSize *= scale;
+    style.letterSpacing *= scale;
+}
+
+void scaleCanvasWidget(core::Widget& widget, float scale) {
+    if (scale == 1.0F) return;
+    if (widget.width.has_value()) *widget.width *= scale;
+    if (widget.height.has_value()) *widget.height *= scale;
+    scaleEdgeInsets(widget.padding, scale);
+    scaleEdgeInsets(widget.margin, scale);
+    widget.spacing *= scale;
+    widget.textStyle.fontSize *= scale;
+    widget.textStyle.letterSpacing *= scale;
+    if (widget.stackPosition.has_value()) {
+        widget.stackPosition->x *= scale;
+        widget.stackPosition->y *= scale;
+    }
+    widget.virtualCacheExtent *= scale;
+    widget.gridMinColumnWidth *= scale;
+    widget.gridColumnGap *= scale;
+    widget.gridRowGap *= scale;
+    widget.elevation *= scale;
+    widget.styleOverrides.iconSize *= scale;
+    if (widget.styleOverrides.padding.has_value()) {
+        scaleEdgeInsets(*widget.styleOverrides.padding, scale);
+    }
+    if (widget.styleOverrides.radius.has_value()) {
+        scaleCornerRadius(*widget.styleOverrides.radius, scale);
+    }
+    if (widget.styleOverrides.borderWidth.has_value()) {
+        *widget.styleOverrides.borderWidth *= scale;
+    }
+    if (widget.styleOverrides.text.has_value()) {
+        scaleTextStyle(*widget.styleOverrides.text, scale);
+    }
+    for (auto& child : widget.children) scaleCanvasWidget(child, scale);
+}
+
 bool isL0ToolboxType(std::string_view type) {
     for (const auto* candidate : {"Container", "Row", "Column", "Stack",
                                   "Text", "Button", "TextField", "ScrollView",
@@ -353,14 +406,17 @@ bool DesignerApp::OfflineRuntimeContext::resolveReference(
             return true;
         case dsl::DesignReferenceKind::VirtualSource: {
             if (name != "preview_rows") return false;
+            const float zoom = owner_ != nullptr
+                                   ? owner_->canvasTransform_.zoom()
+                                   : 1.0F;
             auto source = std::make_shared<core::VirtualListController>();
             source->setItemCount(12);
-            source->setEstimatedExtent(28.0F);
-            source->setItemBuilder([](std::size_t index) {
+            source->setEstimatedExtent(28.0F * zoom);
+            source->setItemBuilder([zoom](std::size_t index) {
                 auto item = core::makeText(
                     "Preview row " + std::to_string(index + 1));
                 item.key = "designer-preview-row:" + std::to_string(index);
-                item.height = 28.0F;
+                item.height = 28.0F * zoom;
                 return item;
             });
             out = dsl::DesignReference{kind, name, source, source.get()};
@@ -368,7 +424,11 @@ bool DesignerApp::OfflineRuntimeContext::resolveReference(
         }
         case dsl::DesignReferenceKind::SplitterSource: {
             if (name != "preview_splitter") return false;
-            auto source = std::make_shared<widgets::SplitterController>(180.0F);
+            const float zoom = owner_ != nullptr
+                                   ? owner_->canvasTransform_.zoom()
+                                   : 1.0F;
+            auto source =
+                std::make_shared<widgets::SplitterController>(180.0F * zoom);
             out = dsl::DesignReference{kind, name, source, source.get()};
             return true;
         }
@@ -796,6 +856,14 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                 (void)self->startPreview(true);
                 return true;
             }
+            if (!editingProperty && (keyChar == '+' || keyChar == '=')) {
+                self->adjustCanvasZoom(1.1F);
+                return true;
+            }
+            if (!editingProperty && keyChar == '-') {
+                self->adjustCanvasZoom(1.0F / 1.1F);
+                return true;
+            }
             if (!editingProperty && key == core::Key::Up) {
                 self->moveSelectedNode(-1);
                 return true;
@@ -817,6 +885,16 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
     };
     config.onWheel = [self](const core::RenderNode&, const core::RenderNode*,
                             core::Offset position, core::Offset delta) {
+        const auto* canvas =
+            core::findNodeByKey(self->shell_.root(), "designer-canvas");
+        if (canvas != nullptr) {
+            const auto origin =
+                core::absoluteOffset(self->shell_.root(), canvas->key);
+            if (core::Rect{origin, canvas->size}.contains(position)) {
+                self->panCanvas(delta);
+                return true;
+            }
+        }
         return self->spinPreviewController_.handleWheel(self->shell_, position,
                                                         delta);
     };
@@ -961,6 +1039,20 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:theme"] = [this] { toggleTheme(); };
     shell_.handlers()["designer:density"] = [this] { cycleDensity(); };
     shell_.handlers()["designer:dpi"] = [this] { cycleDpi(); };
+    shell_.handlers()["designer:zoom-in"] =
+        [this] { adjustCanvasZoom(1.1F); };
+    shell_.handlers()["designer:zoom-out"] =
+        [this] { adjustCanvasZoom(1.0F / 1.1F); };
+    shell_.handlers()["designer:zoom-reset"] =
+        [this] { resetCanvasView(); };
+    shell_.handlers()["designer:pan-left"] =
+        [this] { panCanvas(core::Offset{-40.0F, 0.0F}); };
+    shell_.handlers()["designer:pan-right"] =
+        [this] { panCanvas(core::Offset{40.0F, 0.0F}); };
+    shell_.handlers()["designer:pan-up"] =
+        [this] { panCanvas(core::Offset{0.0F, -40.0F}); };
+    shell_.handlers()["designer:pan-down"] =
+        [this] { panCanvas(core::Offset{0.0F, 40.0F}); };
     shell_.handlers()["designer:font-scale"] = [this] { cycleFontScale(); };
     shell_.handlers()["designer:contrast"] = [this] { toggleHighContrast(); };
     shell_.handlers()["designer:canvas-guides"] =
@@ -2327,9 +2419,10 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
     endCanvasResizeSession();
 
     std::vector<std::pair<std::string, dsl::DesignValue>> properties;
-    const auto number = [](float value) {
+    const float zoom = canvasTransform_.zoom();
+    const auto number = [zoom](float value) {
         return dsl::DesignValue{dsl::DesignValue::Variant{
-            static_cast<double>(std::max(0.0F, value))}};
+            static_cast<double>(std::max(0.0F, value / zoom))}};
     };
     if (handleName.find('e') != std::string::npos ||
         handleName.find('w') != std::string::npos) {
@@ -2340,10 +2433,12 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
         properties.emplace_back("height", number(preview.height));
     }
     if (positionEditable && handleName.find('w') != std::string::npos) {
-        properties.emplace_back("left", number(preview.x));
+        properties.emplace_back(
+            "left", number(preview.x - canvasTransform_.pan().x));
     }
     if (positionEditable && handleName.find('n') != std::string::npos) {
-        properties.emplace_back("top", number(preview.y));
+        properties.emplace_back(
+            "top", number(preview.y - canvasTransform_.pan().y));
     }
     if (!properties.empty() &&
         workbench_.setProperties(preview.id, std::move(properties))) {
@@ -2574,10 +2669,37 @@ void DesignerApp::cycleDpi() {
         }
     }
     deviceScale_ = kScales[next];
+    (void)canvasTransform_.setDeviceScale(deviceScale_);
     shell_.setDeviceScale(deviceScale_);
     previewShell_.setDeviceScale(deviceScale_);
     shell_.markDirty();
     previewShell_.markDirty();
+}
+
+void DesignerApp::adjustCanvasZoom(float factor) {
+    if (!std::isfinite(factor) || factor <= 0.0F) return;
+    const float next = std::clamp(canvasTransform_.zoom() * factor, 0.5F, 2.0F);
+    if (next == canvasTransform_.zoom()) return;
+    (void)canvasTransform_.setZoom(next);
+    refreshDocumentUi();
+    shell_.markDirty();
+}
+
+void DesignerApp::panCanvas(core::Offset delta) {
+    if (!std::isfinite(delta.x) || !std::isfinite(delta.y)) return;
+    const auto current = canvasTransform_.pan();
+    (void)canvasTransform_.setPan(current + delta);
+    shell_.markDirty();
+}
+
+void DesignerApp::resetCanvasView() {
+    const bool changed = canvasTransform_.zoom() != 1.0F ||
+                         canvasTransform_.pan() != core::Offset{};
+    if (!changed) return;
+    (void)canvasTransform_.setZoom(1.0F);
+    (void)canvasTransform_.setPan({});
+    refreshDocumentUi();
+    shell_.markDirty();
 }
 
 void DesignerApp::cycleFontScale() {
@@ -2943,6 +3065,19 @@ core::Widget DesignerApp::buildToolbar() {
                          "designer-save-as", 92.0F, std::nullopt,
                          "designer:save-as"),
         core::IconId::Document);
+    auto zoomOutButton = core::makeButton(
+        "Zoom -", theme.typography.label, {}, 0.0F, "designer-zoom-out",
+        84.0F, std::nullopt, "designer:zoom-out");
+    zoomOutButton.excludeFromFocus = true;
+    auto zoomInButton = core::makeButton(
+        "Zoom +", theme.typography.label, {}, 0.0F, "designer-zoom-in",
+        84.0F, std::nullopt, "designer:zoom-in");
+    zoomInButton.excludeFromFocus = true;
+    auto zoomResetButton = core::makeButton(
+        scaleLabel("Zoom", canvasTransform_.zoom()), theme.typography.label,
+        {}, 0.0F, "designer-zoom-reset", 96.0F, std::nullopt,
+        "designer:zoom-reset");
+    zoomResetButton.excludeFromFocus = true;
     auto title = core::makeText("Lumen Designer  /  D3 Editor",
                                 theme.typography.title, {}, 1.0F,
                                 "designer-title");
@@ -2956,7 +3091,9 @@ core::Widget DesignerApp::buildToolbar() {
          std::move(removeButton), std::move(moveUpButton),
          std::move(moveDownButton), std::move(newProjectButton),
          std::move(openButton),
-         std::move(saveButton), std::move(saveAsButton)},
+         std::move(saveButton), std::move(saveAsButton),
+         std::move(zoomOutButton), std::move(zoomInButton),
+         std::move(zoomResetButton)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
         8.0F, core::EdgeInsets::symmetric(16.0F, 8.0F), {}, "designer-toolbar",
         std::nullopt, 56.0F);
@@ -3277,6 +3414,12 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
             }
         }
     }
+
+    // Apply the view transform at the canvas boundary. The model remains in
+    // design units; only the materialized preview geometry moves and scales.
+    scaleCanvasWidget(preview, canvasTransform_.zoom());
+    preview = core::withStackPosition(std::move(preview),
+                                      canvasTransform_.pan());
 
     // The preview stays above passive guides so the canvas keeps normal hit
     // testing. Handles and the dimensions chip are the intentional interactive

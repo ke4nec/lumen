@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include <algorithm>
 #include <array>
@@ -485,6 +486,58 @@ TEST_CASE("designer app frame-selects canvas siblings",
           std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
     CHECK(app.workbench().selection().primary == secondId);
     CHECK(app.shell().overlayRoot() == nullptr);
+}
+
+TEST_CASE("designer app transforms canvas preview without editing the document",
+          "[designer][d3][app][designer-transform]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { Text(\"Title\", key: "
+        "\"node\", width: 120, height: 30) } }",
+        "transform.lumen"));
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(!outline->children.empty());
+    const std::string nodeKey = outline->children.front().key;
+    REQUIRE_FALSE(nodeKey.empty());
+    const auto* before = findNodeByKey(app.shell().root(), nodeKey);
+    REQUIRE(before != nullptr);
+    const auto beforeSize = before->size;
+    const auto beforeOrigin = absoluteOffset(app.shell().root(), nodeKey);
+    const auto revision = app.workbench().documentRevision();
+    CHECK_FALSE(app.workbench().dirty());
+
+    app.shell().handlers().at("designer:zoom-in")();
+    (void)app.shell().renderFrame();
+    const auto* zoomed = findNodeByKey(app.shell().root(), nodeKey);
+    REQUIRE(zoomed != nullptr);
+    CHECK(zoomed->size.width == Catch::Approx(beforeSize.width * 1.1F));
+    CHECK(zoomed->size.height == Catch::Approx(beforeSize.height * 1.1F));
+    CHECK(app.workbench().documentRevision() == revision);
+    CHECK_FALSE(app.workbench().dirty());
+
+    app.shell().handlers().at("designer:pan-right")();
+    (void)app.shell().renderFrame();
+    const auto pannedOrigin = absoluteOffset(app.shell().root(), nodeKey);
+    CHECK(pannedOrigin.x > beforeOrigin.x);
+    CHECK(app.workbench().documentRevision() == revision);
+    CHECK_FALSE(app.workbench().dirty());
+
+    app.shell().handlers().at("designer:zoom-reset")();
+    (void)app.shell().renderFrame();
+    const auto* reset = findNodeByKey(app.shell().root(), nodeKey);
+    REQUIRE(reset != nullptr);
+    const auto resetOrigin = absoluteOffset(app.shell().root(), nodeKey);
+    CHECK(reset->size.width == Catch::Approx(beforeSize.width));
+    CHECK(reset->size.height == Catch::Approx(beforeSize.height));
+    CHECK(resetOrigin.x == Catch::Approx(beforeOrigin.x));
+    CHECK(resetOrigin.y == Catch::Approx(beforeOrigin.y));
+    CHECK(app.workbench().documentRevision() == revision);
+    CHECK_FALSE(app.workbench().dirty());
 }
 
 TEST_CASE("designer app resizes a selected node with one snapped transaction",

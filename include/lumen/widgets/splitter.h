@@ -26,7 +26,7 @@ namespace lumen::widgets {
 class SplitterController final : public core::SplitterSource {
   public:
     explicit SplitterController(float initialOffsetPx = 240.0F)
-        : initial_(initialOffsetPx), offset_(initialOffsetPx) {}
+        : offset_(initialOffsetPx), initial_(initialOffsetPx) {}
 
     // --- M17：resize 行为与塌缩（splitter-design §5.3） ---
     enum class ResizeBehavior : std::uint8_t { KeepOffset, KeepRatio };
