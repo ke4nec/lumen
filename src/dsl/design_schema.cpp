@@ -15,6 +15,7 @@ using core::ButtonVariant;
 using core::Color;
 using core::ControlSize;
 using core::CrossAxisAlignment;
+using core::IconId;
 using core::MainAxisAlignment;
 using core::StackAlignment;
 using core::TextOverflow;
@@ -75,6 +76,40 @@ using core::WidgetType;
     return std::get_if<DesignEnum>(&value.value);
 }
 
+[[nodiscard]] const std::vector<std::pair<const char*, IconId>>& iconValues() {
+    static const std::vector<std::pair<const char*, IconId>> values = {
+        {"none", IconId::None},       {"check", IconId::Check},
+        {"close", IconId::Close},     {"chevronDown", IconId::ChevronDown},
+        {"chevronRight", IconId::ChevronRight}, {"alert", IconId::Alert},
+        {"chevronLeft", IconId::ChevronLeft},  {"chevronUp", IconId::ChevronUp},
+        {"plus", IconId::Plus},       {"minus", IconId::Minus},
+        {"search", IconId::Search},   {"info", IconId::Info},
+        {"maximize", IconId::Maximize}, {"image", IconId::Image},
+        {"restore", IconId::Restore}, {"document", IconId::Document},
+        {"folder", IconId::Folder},   {"undo", IconId::Undo},
+        {"redo", IconId::Redo},       {"play", IconId::Play},
+        {"grid", IconId::Grid},       {"settings", IconId::Settings},
+        {"busy", IconId::Busy},       {"grip", IconId::Grip},
+        {"galleryLogo", IconId::GalleryLogo},
+        {"navHome", IconId::NavHome}, {"navButtons", IconId::NavButtons},
+        {"navInputs", IconId::NavInputs}, {"navLayout", IconId::NavLayout},
+        {"navLists", IconId::NavLists}, {"navCollections", IconId::NavCollections},
+        {"navMenus", IconId::NavMenus}, {"navControls", IconId::NavControls},
+        {"navFeedback", IconId::NavFeedback}, {"navTheme", IconId::NavTheme},
+    };
+    return values;
+}
+
+[[nodiscard]] std::vector<std::string> iconNames() {
+    std::vector<std::string> result;
+    result.reserve(iconValues().size());
+    for (const auto& [name, icon] : iconValues()) {
+        (void)icon;
+        result.emplace_back(name);
+    }
+    return result;
+}
+
 [[nodiscard]] bool isStyled(WidgetType type) {
     return type == WidgetType::Text || type == WidgetType::Button ||
            type == WidgetType::TextField || type == WidgetType::Checkbox ||
@@ -89,7 +124,8 @@ using core::WidgetType;
 [[nodiscard]] bool isLeaf(WidgetType type) {
     return type == WidgetType::Text || type == WidgetType::Button ||
            type == WidgetType::TextField || type == WidgetType::Checkbox ||
-           type == WidgetType::Switch;
+           type == WidgetType::Switch || type == WidgetType::Image ||
+           type == WidgetType::Icon;
 }
 
 [[nodiscard]] DesignValue readProperty(const Widget& widget,
@@ -169,6 +205,18 @@ using core::WidgetType;
     if (name == "showFocusRing") return booleanValue(widget.showFocusRing);
     if (name == "checked") return booleanValue(widget.checked);
     if (name == "scrollOffset") return numberValue(widget.scrollOffset);
+    if (name == "columnCount") return numberValue(widget.gridColumnCount);
+    if (name == "minColumnWidth") return numberValue(widget.gridMinColumnWidth);
+    if (name == "columnGap") return numberValue(widget.gridColumnGap);
+    if (name == "rowGap") return numberValue(widget.gridRowGap);
+    if (name == "imageSource") return stringValue(widget.imageSource);
+    if (name == "icon") {
+        const auto found = std::find_if(
+            iconValues().begin(), iconValues().end(),
+            [&widget](const auto& item) { return item.second == widget.icon; });
+        return enumValue("icon", found == iconValues().end() ? "none"
+                                                               : found->first);
+    }
     return DesignValue{};
 }
 
@@ -349,6 +397,30 @@ template <typename T>
         return true;
     }
     if (name == "scrollOffset") return assignNumber(value, widget.scrollOffset);
+    if (name == "columnCount") return assignNumber(value, widget.gridColumnCount);
+    if (name == "minColumnWidth") {
+        return assignNumber(value, widget.gridMinColumnWidth);
+    }
+    if (name == "columnGap") return assignNumber(value, widget.gridColumnGap);
+    if (name == "rowGap") return assignNumber(value, widget.gridRowGap);
+    if (name == "imageSource") {
+        const auto* string = stringOf(value);
+        if (string == nullptr) return false;
+        widget.imageSource = *string;
+        return true;
+    }
+    if (name == "icon") {
+        const auto* enumeration = enumOf(value);
+        if (enumeration == nullptr || enumeration->domain != "icon") return false;
+        const auto found = std::find_if(
+            iconValues().begin(), iconValues().end(),
+            [&enumeration](const auto& item) {
+                return enumeration->value == item.first;
+            });
+        if (found == iconValues().end()) return false;
+        widget.icon = found->second;
+        return true;
+    }
     return false;
 }
 
@@ -384,6 +456,14 @@ template <typename T>
                     return numberRepresentable<std::size_t>(*number);
                 }
                 if (property == "scrollOffset") {
+                    return *number >= 0;
+                }
+                if (property == "columnCount") {
+                    return *number >= 0 && std::floor(*number) == *number &&
+                           numberRepresentable<int>(*number);
+                }
+                if (property == "minColumnWidth" || property == "columnGap" ||
+                    property == "rowGap") {
                     return *number >= 0;
                 }
                 return true;
@@ -460,6 +540,9 @@ void addCommon(std::vector<PropertySpec>& properties, bool styled) {
                                PropertyPersistence::Declaration, booleanValue(false)));
     properties.push_back(spec("showFocusRing", PropertyKind::Boolean,
                                PropertyPersistence::Declaration, booleanValue(false)));
+    properties.push_back(spec(
+        "icon", PropertyKind::Enum, PropertyPersistence::Declaration,
+        enumValue("icon", "none"), iconNames()));
 }
 
 void addStyled(std::vector<PropertySpec>& properties) {
@@ -496,7 +579,9 @@ void addStyled(std::vector<PropertySpec>& properties) {
         {"Text", WidgetType::Text}, {"Button", WidgetType::Button},
         {"TextField", WidgetType::TextField}, {"ScrollView", WidgetType::ScrollView},
         {"ListView", WidgetType::ListView}, {"Checkbox", WidgetType::Checkbox},
-        {"Switch", WidgetType::Switch}, {"FocusScope", WidgetType::FocusScope}};
+        {"Switch", WidgetType::Switch}, {"FocusScope", WidgetType::FocusScope},
+        {"Grid", WidgetType::Grid},     {"Image", WidgetType::Image},
+        {"Icon", WidgetType::Icon}};
     for (const auto& [name, widgetType] : types) {
         if (type == name) {
             widget.type = widgetType;
@@ -560,6 +645,25 @@ void addStyled(std::vector<PropertySpec>& properties) {
         schema.properties.push_back(spec("scrollOffset", PropertyKind::Number,
                                          PropertyPersistence::PreviewOnly,
                                          numberValue(0)));
+    }
+    if (widgetType == WidgetType::Grid) {
+        schema.properties.push_back(spec("columnCount", PropertyKind::Number,
+                                         PropertyPersistence::Declaration,
+                                         numberValue(0)));
+        schema.properties.push_back(spec("minColumnWidth", PropertyKind::Number,
+                                         PropertyPersistence::Declaration,
+                                         numberValue(0)));
+        schema.properties.push_back(spec("columnGap", PropertyKind::Number,
+                                         PropertyPersistence::Declaration,
+                                         numberValue(0)));
+        schema.properties.push_back(spec("rowGap", PropertyKind::Number,
+                                         PropertyPersistence::Declaration,
+                                         numberValue(0)));
+    }
+    if (widgetType == WidgetType::Image) {
+        schema.properties.push_back(spec("imageSource", PropertyKind::String,
+                                         PropertyPersistence::Declaration,
+                                         stringValue("")));
     }
     if (isLeaf(widgetType)) schema.maxChildren = 0;
     else if (isSingleChild(widgetType)) schema.maxChildren = 1;
@@ -726,12 +830,13 @@ const WidgetFieldInventory& widgetFieldInventory() {
         {"checked", "checked", WidgetFieldCategory::Declaration},
         {"indeterminate", "", WidgetFieldCategory::Declaration},
         {"scrollOffset", "scrollOffset", WidgetFieldCategory::PreviewOnly},
-        {"gridColumnCount", "", WidgetFieldCategory::Declaration},
-        {"gridMinColumnWidth", "", WidgetFieldCategory::Declaration},
-        {"gridColumnGap", "", WidgetFieldCategory::Declaration},
-        {"gridRowGap", "", WidgetFieldCategory::Declaration},
+        {"gridColumnCount", "columnCount", WidgetFieldCategory::Declaration},
+        {"gridMinColumnWidth", "minColumnWidth", WidgetFieldCategory::Declaration},
+        {"gridColumnGap", "columnGap", WidgetFieldCategory::Declaration},
+        {"gridRowGap", "rowGap", WidgetFieldCategory::Declaration},
         {"imageId", "", WidgetFieldCategory::Derived},
-        {"imageSource", "image", WidgetFieldCategory::RuntimeReference},
+        {"imageSource", "imageSource", WidgetFieldCategory::Declaration},
+        {"image", "image", WidgetFieldCategory::RuntimeReference},
         {"themeOverride", "theme", WidgetFieldCategory::RuntimeReference},
         {"virtualSource", "virtualSource", WidgetFieldCategory::RuntimeReference},
         {"virtualCacheExtent", "", WidgetFieldCategory::Declaration},
@@ -754,7 +859,7 @@ const WidgetFieldInventory& widgetFieldInventory() {
         {"selected", "selected", WidgetFieldCategory::Declaration},
         {"showScrollbar", "", WidgetFieldCategory::Declaration},
         {"scrollbarAutoHide", "", WidgetFieldCategory::Declaration},
-        {"icon", "", WidgetFieldCategory::Declaration},
+        {"icon", "icon", WidgetFieldCategory::Declaration},
         {"elevation", "", WidgetFieldCategory::Declaration},
         {"transitionAlpha", "", WidgetFieldCategory::PreviewOnly},
         {"styleOverrides", "", WidgetFieldCategory::Declaration},
@@ -779,7 +884,8 @@ const std::vector<NodeSchema>& nodeSchemaRegistry() {
         std::vector<NodeSchema> result;
         for (const char* type : {"Container", "Row", "Column", "Stack", "Text",
                                  "Button", "TextField", "ScrollView", "ListView",
-                                 "Checkbox", "Switch", "FocusScope"}) {
+                                 "Checkbox", "Switch", "FocusScope", "Grid",
+                                 "Image", "Icon"}) {
             result.push_back(makeSchema(type));
         }
         return result;

@@ -6,12 +6,14 @@
 
 #include "lumen/core/render_node.h"
 #include "lumen/dsl/design_codec.h"
+#include "lumen/dsl/design_schema.h"
 #include "lumen/layout/layout.h"
 
 using lumen::core::Color;
 using lumen::core::Constraints;
 using lumen::core::Size;
 using lumen::dsl::DesignDocument;
+using lumen::dsl::DesignEnum;
 using lumen::dsl::DesignNode;
 using lumen::dsl::DesignRuntimeContext;
 using lumen::dsl::DesignValue;
@@ -21,6 +23,7 @@ using lumen::dsl::compileDesignDocument;
 using lumen::dsl::parseLumenSource;
 using lumen::dsl::readDesignDocument;
 using lumen::dsl::serializeDesignDocument;
+using lumen::dsl::validateDesignDocument;
 using lumen::layout::LayoutEngine;
 
 TEST_CASE("designer document imports and round trips the L0 DOM",
@@ -109,6 +112,31 @@ TEST_CASE("designer codec round trips every frozen L0 node",
     CHECK(serializeDesignDocument(decoded.document) == encoded);
     CHECK(decoded.document.root.source.has_value());
     CHECK(decoded.document.root.propertySources.contains("padding"));
+}
+
+TEST_CASE("designer codec round trips the first L1 static nodes",
+          "[designer][p2][designer-l1]") {
+    DesignDocument document;
+    document.documentId = "l1-doc";
+    document.pageName = "static";
+    document.root = DesignNode{1, "Grid"};
+    document.root.properties["columnCount"] =
+        DesignValue{DesignValue::Variant{2.0}};
+    DesignNode image{2, "Image"};
+    image.properties["imageSource"] = DesignValue{DesignValue::Variant{
+        std::string{"project://images/cover.png"}}};
+    DesignNode icon{3, "Icon"};
+    icon.properties["icon"] = DesignValue{DesignValue::Variant{
+        DesignEnum{"icon", "document"}}};
+    document.root.children = {image, icon};
+
+    REQUIRE(validateDesignDocument(document).empty());
+    const auto encoded = serializeDesignDocument(document);
+    const auto decoded = readDesignDocument(encoded, "l1.design");
+    REQUIRE(decoded.ok());
+    CHECK(decoded.document == document);
+    CHECK(serializeDesignDocument(decoded.document) == encoded);
+    CHECK(compileDesignDocument(decoded.document).ok());
 }
 
 TEST_CASE("designer document compiles to the independent C++ builder golden",
@@ -214,7 +242,7 @@ TEST_CASE("designer document diagnostics reject unsupported and damaged input",
           "[designer][p1]") {
     DesignDocument unknown;
     unknown.pageName = "preview";
-    unknown.root = DesignNode{1, "Grid"};
+    unknown.root = DesignNode{1, "VirtualList"};
     const auto unsupported = compileDesignDocument(unknown);
     REQUIRE_FALSE(unsupported.ok());
     REQUIRE(unsupported.diagnostics.size() == 1);

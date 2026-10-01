@@ -19,13 +19,12 @@ using lumen::dsl::parseLumenSource;
 using lumen::dsl::validateDesignDocument;
 using lumen::dsl::widgetFieldInventory;
 
-TEST_CASE("designer schema registry covers the frozen L0 node set",
+TEST_CASE("designer schema registry covers the L0 and first L1 node set",
           "[designer][p2]") {
-    REQUIRE(nodeSchemaRegistry().size() == 12);
+    REQUIRE(nodeSchemaRegistry().size() == 15);
     for (const auto& schema : nodeSchemaRegistry()) {
         REQUIRE(schema.canBeRoot);
         REQUIRE(schema.makeDefault);
-        CHECK(schema.makeDefault().type != lumen::core::WidgetType::Grid);
         const auto* key = findPropertySpec(schema, "key");
         REQUIRE(key != nullptr);
         REQUIRE(key->get);
@@ -35,7 +34,9 @@ TEST_CASE("designer schema registry covers the frozen L0 node set",
         REQUIRE(key->set(widget, value));
         CHECK(key->get(widget) == value);
     }
-    CHECK(findNodeSchema("Grid") == nullptr);
+    for (const auto* type : {"Grid", "Image", "Icon"}) {
+        REQUIRE(findNodeSchema(type) != nullptr);
+    }
 }
 
 TEST_CASE("designer schema properties round trip through their Widget accessors",
@@ -73,7 +74,7 @@ TEST_CASE("designer schema properties round trip through their Widget accessors"
     }
 }
 
-TEST_CASE("designer compiler applies every L0 declaration through the registry",
+TEST_CASE("designer compiler applies every registered declaration through the registry",
           "[designer][p2]") {
     for (const auto& schema : nodeSchemaRegistry()) {
         DesignDocument document;
@@ -98,6 +99,60 @@ TEST_CASE("designer compiler applies every L0 declaration through the registry",
                   document.root.properties.at(property.name));
         }
     }
+}
+
+TEST_CASE("designer compiler applies first L1 static widget declarations",
+          "[designer][p2][designer-l1]") {
+    DesignDocument document;
+    document.pageName = "l1-static";
+    document.root = DesignNode{1, "Grid"};
+    document.root.properties["columnCount"] =
+        DesignValue{DesignValue::Variant{3.0}};
+    document.root.properties["columnGap"] =
+        DesignValue{DesignValue::Variant{8.0}};
+    document.root.properties["rowGap"] =
+        DesignValue{DesignValue::Variant{12.0}};
+
+    DesignNode image{2, "Image"};
+    image.properties["imageSource"] =
+        DesignValue{DesignValue::Variant{std::string{"project://hero.png"}}};
+    image.properties["width"] = DesignValue{DesignValue::Variant{120.0}};
+    image.properties["height"] = DesignValue{DesignValue::Variant{80.0}};
+
+    DesignNode icon{3, "Icon"};
+    icon.properties["icon"] = DesignValue{DesignValue::Variant{
+        DesignEnum{"icon", "search"}}};
+    document.root.children = {image, icon};
+
+    CHECK(validateDesignDocument(document).empty());
+    const auto compiled = compileDesignDocument(document);
+    REQUIRE(compiled.ok());
+    REQUIRE(compiled.root.type == lumen::core::WidgetType::Grid);
+    CHECK(compiled.root.gridColumnCount == 3);
+    CHECK(compiled.root.gridColumnGap == 8.0F);
+    CHECK(compiled.root.gridRowGap == 12.0F);
+    REQUIRE(compiled.root.children.size() == 2);
+    CHECK(compiled.root.children[0].type == lumen::core::WidgetType::Image);
+    CHECK(compiled.root.children[0].imageSource == "project://hero.png");
+    CHECK(compiled.root.children[0].width == 120.0F);
+    CHECK(compiled.root.children[0].height == 80.0F);
+    CHECK(compiled.root.children[1].type == lumen::core::WidgetType::Icon);
+    CHECK(compiled.root.children[1].icon == lumen::core::IconId::Search);
+
+    auto invalidGrid = document;
+    invalidGrid.root.properties["columnCount"] =
+        DesignValue{DesignValue::Variant{1.5}};
+    const auto invalidGridDiagnostics = validateDesignDocument(invalidGrid);
+    REQUIRE(invalidGridDiagnostics.size() == 1);
+    CHECK(invalidGridDiagnostics.front().code == "schema.invalid_property");
+    CHECK(invalidGridDiagnostics.front().property == "columnCount");
+
+    auto invalidImage = document;
+    invalidImage.root = image;
+    invalidImage.root.children.push_back(DesignNode{4, "Text"});
+    const auto invalidImageDiagnostics = validateDesignDocument(invalidImage);
+    REQUIRE(invalidImageDiagnostics.size() == 1);
+    CHECK(invalidImageDiagnostics.front().code == "schema.children");
 }
 
 TEST_CASE("designer schema validates types, enums, ranges and structure",
@@ -167,7 +222,7 @@ TEST_CASE("designer schema validates types, enums, ranges and structure",
 TEST_CASE("designer schema inventory covers registry persistence categories",
           "[designer][p2]") {
     const auto& inventory = widgetFieldInventory();
-    REQUIRE(inventory.size() == 84);
+    REQUIRE(inventory.size() == 85);
 
     std::set<std::string> names;
     std::set<std::string> schemaNames;

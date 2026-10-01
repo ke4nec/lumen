@@ -26,6 +26,12 @@ constexpr char kSampleSource[] =
     " Row(key: \"status\") { Text(\"Ready\", key: \"message\") }"
     " } }";
 
+constexpr const char* kDesignerToolboxTypes[] = {
+    "Container", "Row",       "Column",    "Stack",     "Text",
+    "Button",    "TextField", "ScrollView", "ListView",  "Checkbox",
+    "Switch",    "FocusScope",
+};
+
 std::string nodeLabel(const dsl::DesignPreviewOutlineNode& node) {
     if (node.key.empty()) return node.type;
     return node.type + "  [" + node.key + "]";
@@ -471,9 +477,9 @@ void DesignerApp::attach() {
         centerTab_ = CenterTab::References;
         shell_.markDirty();
     };
-    for (const auto& schema : dsl::nodeSchemaRegistry()) {
-        shell_.handlers()["designer:toolbox:" + schema.type] =
-            [this, type = schema.type] { insertNodeType(type); };
+    for (const char* type : kDesignerToolboxTypes) {
+        shell_.handlers()["designer:toolbox:" + std::string{type}] =
+            [this, type = std::string{type}] { insertNodeType(type); };
     }
     (void)loadSource(kSampleSource, "sample.lumen");
 }
@@ -1726,16 +1732,17 @@ core::Widget DesignerApp::buildToolbar() {
 core::Widget DesignerApp::buildToolboxPanel() {
     const auto& theme = shell_.theme();
     std::vector<core::Widget> rows;
-    const auto& schemas = dsl::nodeSchemaRegistry();
-    for (std::size_t index = 0; index < schemas.size(); index += 3) {
+    for (std::size_t index = 0;
+         index < std::size(kDesignerToolboxTypes); index += 3) {
         std::vector<core::Widget> buttons;
         for (std::size_t offset = 0;
-             offset < 3 && index + offset < schemas.size(); ++offset) {
-            const auto& schema = schemas[index + offset];
+             offset < 3 && index + offset < std::size(kDesignerToolboxTypes);
+             ++offset) {
+            const char* type = kDesignerToolboxTypes[index + offset];
             buttons.push_back(core::makeButton(
-                schema.type, theme.typography.caption, {}, 1.0F,
-                "designer-toolbox:" + schema.type, std::nullopt,
-                std::nullopt, "designer:toolbox:" + schema.type));
+                type, theme.typography.caption, {}, 1.0F,
+                "designer-toolbox:" + std::string{type}, std::nullopt,
+                std::nullopt, "designer:toolbox:" + std::string{type}));
         }
         rows.push_back(core::makeRow(
             std::move(buttons), core::MainAxisAlignment::Start,
