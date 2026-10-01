@@ -1,8 +1,11 @@
 #include <cstdio>
+#include <algorithm>
 #include <charconv>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
@@ -49,6 +52,15 @@ Options parseOptions(int argc, char** argv) {
     return options;
 }
 
+bool isDesignFile(const std::string& filename) {
+    std::string extension = std::filesystem::path(filename).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char value) {
+                       return static_cast<char>(std::tolower(value));
+                   });
+    return extension == ".design";
+}
+
 int runHeadless(lumen::designer_app::DesignerApp& app) {
     app.shell().setView(lumen::core::Size{1280.0F, 800.0F});
     const auto frame = app.shell().renderFrame();
@@ -62,11 +74,32 @@ int runHeadless(lumen::designer_app::DesignerApp& app) {
 int runWindowed(lumen::designer_app::DesignerApp& app,
                 const Options& designerOptions) {
     lumen::platform::Sdl3ApplicationHost host;
+    app.setFileDialogRequester([&host](bool forSave,
+                                       const std::string& defaultName) {
+        if (!host.capabilities().fileDialogs) {
+            return std::string{"file dialogs are unavailable"};
+        }
+        lumen::platform::FileDialogRequest request;
+        request.title = forSave ? "Save Lumen design" : "Open Lumen document";
+        request.filters = forSave ? std::vector<std::string>{"*.design"}
+                                  : std::vector<std::string>{"*.design",
+                                                             "*.lumen"};
+        request.defaultName = defaultName;
+        request.forSave = forSave;
+        const auto result = host.requestFileDialog({}, request);
+        return result.ok ? std::string{} : result.message;
+    });
     lumen::app::RunOptions runOptions;
     runOptions.windowDesc.title = "Lumen Designer";
     runOptions.windowDesc.width = 1280;
     runOptions.windowDesc.height = 800;
     runOptions.maxFrames = designerOptions.maxFrames;
+    runOptions.onEvent = [&app](lumen::app::AppShell&,
+                                const lumen::core::HostEvent& event) {
+        if (event.type == lumen::core::HostEventType::FileDialogCompleted) {
+            app.handleFileDialogResult(event.filePaths, event.text);
+        }
+    };
     std::optional<lumen::designer_app::FileWatcher> watcher;
     if (designerOptions.watch && !designerOptions.filename.empty()) {
         watcher.emplace(designerOptions.filename);
@@ -76,7 +109,9 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
                                            std::uint64_t /*nowMs*/) {
             if (!watcher.has_value()) return false;
             if (!watcher->poll()) return false;
-            const bool loaded = app.loadFile(watcher->filename());
+            const bool loaded = isDesignFile(watcher->filename())
+                                    ? app.loadDesignFile(watcher->filename())
+                                    : app.loadFile(watcher->filename());
             std::printf(loaded ? "ui reloaded\n"
                                : "ui reload failed (kept previous UI)\n");
             return true;
@@ -96,7 +131,11 @@ int main(int argc, char** argv) {
     lumen::designer_app::DesignerApp app;
     app.attach();
     if (!options.filename.empty()) {
-        (void)app.loadFile(options.filename);
+        if (isDesignFile(options.filename)) {
+            (void)app.loadDesignFile(options.filename);
+        } else {
+            (void)app.loadFile(options.filename);
+        }
     }
     try {
         return options.headless ? runHeadless(app) : runWindowed(app, options);

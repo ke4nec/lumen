@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <functional>
 #include <iomanip>
 #include <sstream>
@@ -11,6 +12,7 @@
 #include <utility>
 
 #include "lumen/dsl/design_schema.h"
+#include "lumen/core/icon_id.h"
 
 namespace lumen::designer_app {
 namespace {
@@ -41,6 +43,15 @@ std::string referenceBindingKey(dsl::DesignNodeId id,
                                 std::string_view property) {
     return "designer:reference:" + std::to_string(id) + ":" +
            std::string{property};
+}
+
+bool isDesignFile(const std::string& filename) {
+    std::string extension = std::filesystem::path(filename).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char value) {
+                       return static_cast<char>(std::tolower(value));
+                   });
+    return extension == ".design";
 }
 
 std::string propertyStateValue(const dsl::DesignValue& value) {
@@ -263,6 +274,18 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                 (void)self->redo();
                 return true;
             }
+            if (lower == 'o') {
+                self->requestOpenFile();
+                return true;
+            }
+            if (lower == 's') {
+                if ((modifiers & core::kModifierShift) != 0) {
+                    self->requestSaveAsFile();
+                } else {
+                    self->requestSaveFile();
+                }
+                return true;
+            }
             if (!editingProperty && key == core::Key::Up) {
                 self->moveSelectedNode(-1);
                 return true;
@@ -355,6 +378,10 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:move-up"] = [this] { moveSelectedNode(-1); };
     shell_.handlers()["designer:move-down"] =
         [this] { moveSelectedNode(1); };
+    shell_.handlers()["designer:open"] = [this] { requestOpenFile(); };
+    shell_.handlers()["designer:save"] = [this] { requestSaveFile(); };
+    shell_.handlers()["designer:save-as"] =
+        [this] { requestSaveAsFile(); };
     for (const auto& schema : dsl::nodeSchemaRegistry()) {
         shell_.handlers()["designer:toolbox:" + schema.type] =
             [this, type = schema.type] { insertNodeType(type); };
@@ -376,6 +403,88 @@ bool DesignerApp::redo() {
     refreshDocumentUi();
     shell_.markDirty();
     return true;
+}
+
+void DesignerApp::requestOpenFile() {
+    pendingFileDialog_ = PendingFileDialog::Open;
+    if (!fileDialogRequester_) {
+        pendingFileDialog_ = PendingFileDialog::None;
+        statusMessage_ = "Open unavailable: file dialogs are not configured";
+        shell_.markDirty();
+        return;
+    }
+    const std::string error = fileDialogRequester_(false, {});
+    if (!error.empty()) {
+        pendingFileDialog_ = PendingFileDialog::None;
+        statusMessage_ = "Open failed: " + error;
+    } else {
+        statusMessage_ = "Opening document...";
+    }
+    shell_.markDirty();
+}
+
+void DesignerApp::requestSaveAsFile() {
+    pendingFileDialog_ = PendingFileDialog::SaveAs;
+    if (!fileDialogRequester_) {
+        pendingFileDialog_ = PendingFileDialog::None;
+        statusMessage_ =
+            "Save as unavailable: file dialogs are not configured";
+        shell_.markDirty();
+        return;
+    }
+    const std::string error = fileDialogRequester_(true, "untitled.design");
+    if (!error.empty()) {
+        pendingFileDialog_ = PendingFileDialog::None;
+        statusMessage_ = "Save as failed: " + error;
+    } else {
+        statusMessage_ = "Choosing a design file...";
+    }
+    shell_.markDirty();
+}
+
+void DesignerApp::requestSaveFile() {
+    if (workbench_.document().has_value() && !sourceFile_.empty() &&
+        sourceFile_.front() != '<' && isDesignFile(sourceFile_)) {
+        if (saveDesignFile(sourceFile_)) {
+            statusMessage_ = "Saved  /  " + sourceFile_;
+        } else {
+            statusMessage_ = "Save failed  /  " + sourceFile_;
+        }
+        shell_.markDirty();
+        return;
+    }
+    requestSaveAsFile();
+}
+
+void DesignerApp::handleFileDialogResult(
+    const std::vector<std::string>& paths, const std::string& error) {
+    const auto pending = pendingFileDialog_;
+    pendingFileDialog_ = PendingFileDialog::None;
+    if (!error.empty()) {
+        statusMessage_ = "File dialog failed: " + error;
+        shell_.markDirty();
+        return;
+    }
+    if (paths.empty()) {
+        statusMessage_ = "File dialog cancelled";
+        shell_.markDirty();
+        return;
+    }
+
+    const std::string& filename = paths.front();
+    if (pending == PendingFileDialog::Open) {
+        const bool loaded = isDesignFile(filename) ? loadDesignFile(filename)
+                                                   : loadFile(filename);
+        statusMessage_ = loaded ? "Opened  /  " + filename
+                                : "Open failed  /  " + filename;
+    } else if (pending == PendingFileDialog::SaveAs) {
+        const bool saved = saveDesignFile(filename);
+        statusMessage_ = saved ? "Saved  /  " + filename
+                               : "Save failed  /  " + filename;
+    } else {
+        statusMessage_ = "Unexpected file dialog result";
+    }
+    shell_.markDirty();
 }
 
 bool DesignerApp::loadDesignFile(const std::string& filename) {
@@ -1140,6 +1249,21 @@ core::Widget DesignerApp::buildToolbar() {
     auto moveDownButton = core::makeButton(
         "Move down", theme.typography.label, {}, 0.0F, "designer-move-down",
         96.0F, std::nullopt, "designer:move-down");
+    auto openButton = core::withLeadingIcon(
+        core::makeButton("Open", theme.typography.label, {}, 0.0F,
+                         "designer-open", 78.0F, std::nullopt,
+                         "designer:open"),
+        core::IconId::Folder);
+    auto saveButton = core::withLeadingIcon(
+        core::makeButton("Save", theme.typography.label, {}, 0.0F,
+                         "designer-save", 78.0F, std::nullopt,
+                         "designer:save"),
+        core::IconId::Document);
+    auto saveAsButton = core::withLeadingIcon(
+        core::makeButton("Save as", theme.typography.label, {}, 0.0F,
+                         "designer-save-as", 92.0F, std::nullopt,
+                         "designer:save-as"),
+        core::IconId::Document);
     auto title = core::makeText("Lumen Designer  /  D3 Editor",
                                 theme.typography.title, {}, 1.0F,
                                 "designer-title");
@@ -1149,7 +1273,8 @@ core::Widget DesignerApp::buildToolbar() {
          std::move(contrastButton), std::move(previewButton),
          std::move(addTextButton), std::move(duplicateButton),
          std::move(removeButton), std::move(moveUpButton),
-         std::move(moveDownButton)},
+         std::move(moveDownButton), std::move(openButton),
+         std::move(saveButton), std::move(saveAsButton)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
         8.0F, core::EdgeInsets::symmetric(16.0F, 8.0F), {}, "designer-toolbar",
         std::nullopt, 56.0F);
@@ -1316,10 +1441,14 @@ core::Widget DesignerApp::buildDiagnosticRow(std::size_t index) {
 
 core::Widget DesignerApp::buildDiagnosticsPanel() {
     const auto& theme = shell_.theme();
-    auto status = core::makeText(
-        workbench_.diagnostics().empty() ? "Ready  /  " + sourceFile_
-                                         : "Diagnostics  /  " + sourceFile_,
-        theme.typography.caption, {}, 0.0F, "designer-status");
+    const std::string statusText =
+        statusMessage_.empty()
+            ? (workbench_.diagnostics().empty()
+                   ? "Ready  /  " + sourceFile_
+                   : "Diagnostics  /  " + sourceFile_)
+            : statusMessage_;
+    auto status = core::makeText(statusText, theme.typography.caption, {},
+                                 0.0F, "designer-status");
     for (auto it = shell_.handlers().begin(); it != shell_.handlers().end();) {
         if (it->first.starts_with("designer:diagnostic:")) {
             it = shell_.handlers().erase(it);

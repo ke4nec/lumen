@@ -119,6 +119,12 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
         app.shell().keyDown(Key::Tab);
         CHECK(app.shell().focus().focusedKey() == key);
     }
+    const std::vector<std::string> fileKeys = {
+        "designer-open", "designer-save", "designer-save-as"};
+    for (const auto& key : fileKeys) {
+        app.shell().keyDown(Key::Tab);
+        CHECK(app.shell().focus().focusedKey() == key);
+    }
     const std::vector<std::string> toolboxKeys = {
         "designer-toolbox:Container", "designer-toolbox:Row",
         "designer-toolbox:Column",    "designer-toolbox:Stack",
@@ -734,6 +740,69 @@ TEST_CASE("designer app reopens private design files",
     CHECK(app.workbench().frame().generation() == generation);
     REQUIRE(app.workbench().diagnostics().size() == 1);
     CHECK(app.workbench().diagnostics().front().file == path.string());
+}
+
+TEST_CASE("designer app routes file dialog commands through one path",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-dialog-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()) +
+                       ".design");
+    struct Cleanup {
+        std::filesystem::path path;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove(path, error);
+            std::filesystem::remove(path.string() + ".bak", error);
+        }
+    } cleanup{path};
+
+    bool requestedForSave = false;
+    std::string requestedDefaultName;
+    app.setFileDialogRequester(
+        [&](bool forSave, const std::string& defaultName) {
+            requestedForSave = forSave;
+            requestedDefaultName = defaultName;
+            return std::string{};
+        });
+
+    app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'o');
+    CHECK_FALSE(requestedForSave);
+    app.handleFileDialogResult({});
+    app.shell().keyDown(Key::None,
+                        lumen::core::kModifierCtrl | lumen::core::kModifierShift,
+                        's');
+    CHECK(requestedForSave);
+    app.handleFileDialogResult({});
+
+    app.shell().handlers().at("designer:save-as")();
+    CHECK(requestedForSave);
+    CHECK(requestedDefaultName == "untitled.design");
+    app.handleFileDialogResult({path.string()});
+    CHECK(std::filesystem::exists(path));
+    CHECK_FALSE(app.workbench().dirty());
+
+    REQUIRE(app.loadSource("page other { Text(\"Other\") }",
+                           "other.lumen"));
+    app.shell().handlers().at("designer:open")();
+    CHECK_FALSE(requestedForSave);
+    app.handleFileDialogResult({path.string()});
+    CHECK(app.workbench().diagnostics().empty());
+    CHECK(app.workbench().document().has_value());
+
+    app.shell().handlers().at("designer:open")();
+    app.handleFileDialogResult({}, "cancelled");
+    CHECK(findNodeByKey(app.shell().root(), "designer-status") != nullptr);
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "File dialog failed: cancelled");
 }
 
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",

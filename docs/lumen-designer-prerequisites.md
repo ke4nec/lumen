@@ -1056,7 +1056,7 @@ SourceMap 的根锚点。
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
 真实 D3 应用出口当前已接通 L0 属性面板编辑、命名引用管理、文档级撤销/重做、结构插入/复制/删除/重排、
-12 类型工具箱和显式保存 API；L1–L3 扩展、保存 UI/路径策略与完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
+12 类型工具箱、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1–L3 扩展与完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
 visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
 `PreviewOnly`/`Derived` 属性进入可保存文档。
 
@@ -1235,26 +1235,26 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   和重复 runtime identity 诊断。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、迁移身份校验、迁移异常诊断、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `604` 个断言、`9` 个测试用例通过。
-- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `194` 个断言、
+- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `214` 个断言、
   `11` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、设计器应用语义壳、画布点选、
   键盘/语义激活、主题/密度/DPI/字体缩放/高对比环境预览、按 key 或私有稳定 key 的
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation 以及显式会话清理。
-- D3 首个 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `214` 个断言、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `214` 个断言、
   `13` 个测试用例通过，覆盖 L0 声明属性编辑、命名引用编辑、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，12 个 L0 工具箱按钮，以及插入/复制/删除/上移/下移命令的
-  语义激活、键盘等价路径、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航和私有 `.design` 重开。
+  语义激活、键盘等价路径、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开和文件对话框结果回传。
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
   `designer_window_smoke` 和 `designer_gallery_window_smoke` 四项（`4/4`）；另有
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `92/92` 通过，
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `93/93` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1056/1056`，
-  Release 配置为 `1058/1058`；
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1057/1057`，
+  Release 配置为 `1059/1059`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
@@ -1287,7 +1287,7 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   旧节点 ID、主节点、锚点和拖拽捕获，避免不同文档复用节点 ID 导致选择串用。
 - 决策记录：DP-1=B、DP-3=L0、DP-4=独立 preview/session（2026-10-01）；DP-2、DP-5–DP-8
   尚未作产品决策。现有完整 CTest 结果仍不等同于设计器真实平台验收；D3 应用的
-  round-trip、schema、DocumentId、RuntimeContext、保存 UI/路径策略和三桌面窗口验收仍须按阶段补齐。
+  round-trip、schema、DocumentId、RuntimeContext、完整资源加载和三桌面窗口验收仍须按阶段补齐。
 
 ### 10.4 实施期间的评审问题
 

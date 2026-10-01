@@ -1,8 +1,10 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "lumen/app/app_shell.h"
@@ -14,6 +16,9 @@ namespace lumen::designer_app {
 
 class DesignerApp {
   public:
+    using FileDialogRequester =
+        std::function<std::string(bool forSave, const std::string& defaultName)>;
+
     DesignerApp();
 
     void attach();
@@ -32,6 +37,11 @@ class DesignerApp {
     [[nodiscard]] bool redo();
     [[nodiscard]] bool loadDesignFile(const std::string& filename);
     [[nodiscard]] bool saveDesignFile(const std::string& filename);
+    void setFileDialogRequester(FileDialogRequester requester) {
+        fileDialogRequester_ = std::move(requester);
+    }
+    void handleFileDialogResult(const std::vector<std::string>& paths,
+                                const std::string& error = {});
 
   private:
     class OutlineModel final : public widgets::TreeModel {
@@ -92,6 +102,9 @@ class DesignerApp {
     void cyclePreviewState();
     void applyPreviewState();
     void resetPreviewState();
+    void requestOpenFile();
+    void requestSaveFile();
+    void requestSaveAsFile();
     void insertNodeType(std::string type);
     void insertTextNode();
     void duplicateSelectedNode();
@@ -119,6 +132,12 @@ class DesignerApp {
         Focused,
     };
 
+    enum class PendingFileDialog {
+        None,
+        Open,
+        SaveAs,
+    };
+
     [[nodiscard]] core::Widget decoratePreview(
         core::Widget widget, const dsl::DesignNode& node,
         std::optional<dsl::DesignNodeId> selected) const;
@@ -133,6 +152,9 @@ class DesignerApp {
     widgets::TreeController outlineController_{};
     core::VirtualListController diagnosticsController_{};
     std::string sourceFile_{"<sample>"};
+    std::string statusMessage_{};
+    FileDialogRequester fileDialogRequester_{};
+    PendingFileDialog pendingFileDialog_{PendingFileDialog::None};
     bool darkMode_{true};
     style::ControlDensity density_{style::ControlDensity::Comfortable};
     float deviceScale_{1.0F};
