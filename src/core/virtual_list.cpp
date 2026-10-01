@@ -41,6 +41,11 @@ void VirtualListController::setItemBuilder(
 
 std::size_t VirtualListController::itemCount() const { return itemCount_; }
 
+void VirtualListController::noteMaterializedItems(std::size_t count) const {
+    lastMaterializedItems_ = count;
+    peakMaterializedItems_ = std::max(peakMaterializedItems_, count);
+}
+
 float VirtualListController::estimatedExtent() const {
     return estimatedExtent_;
 }

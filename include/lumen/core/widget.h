@@ -181,6 +181,12 @@ class VirtualListSource {
     [[nodiscard]] virtual Widget buildItem(std::size_t index) const = 0;
     // 布局期回填实测高度（幂等缓存写入，允许修正滚动锚点）。
     virtual void noteExtent(std::size_t index, float extent) const = 0;
+    // Layout reports the number of materialized rows after each pass. Sources
+    // that expose performance diagnostics can retain current and peak counts;
+    // ordinary sources can use the no-op default.
+    virtual void noteMaterializedItems(std::size_t count) const {
+        (void)count;
+    }
 
     // --- 集合控件扩展（collection-controls-design §8.3） ---
     // TreeList 表头（非滚动 chrome）：返回空 Widget = 无表头。表头在

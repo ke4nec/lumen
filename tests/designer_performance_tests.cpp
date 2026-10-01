@@ -261,6 +261,8 @@ TEST_CASE("designer runtime preview virtualizes a large list deterministically",
     REQUIRE(first.children.size() > 0);
     CHECK(first.children.size() < 50);
     CHECK(first.children.size() < source.itemCount());
+    CHECK(source.lastMaterializedItems() == first.children.size());
+    CHECK(source.peakMaterializedItems() == first.children.size());
 
     lumen::render::CpuRenderer renderer;
     const auto paintBegin = Clock::now();
@@ -279,6 +281,8 @@ TEST_CASE("designer runtime preview virtualizes a large list deterministically",
     repeatedRenderer.endFrame();
     CHECK(first == second);
     CHECK(lumen::render::frameHash(repeatedRenderer.pixels()) == firstHash);
+    CHECK(source.lastMaterializedItems() == second.children.size());
+    CHECK(source.peakMaterializedItems() >= source.lastMaterializedItems());
     CHECK(firstHash != 0);
     INFO("virtual-list layout_us=" << layoutTime.count()
          << " paint_us=" << paintTime.count()

@@ -35,6 +35,12 @@ class VirtualListController final : public VirtualListSource {
 
     // --- VirtualListSource（布局读取） ---
     [[nodiscard]] std::size_t itemCount() const override;
+    [[nodiscard]] std::size_t lastMaterializedItems() const {
+        return lastMaterializedItems_;
+    }
+    [[nodiscard]] std::size_t peakMaterializedItems() const {
+        return peakMaterializedItems_;
+    }
     [[nodiscard]] float estimatedExtent() const override;
     [[nodiscard]] float extentOf(std::size_t index) const override;
     [[nodiscard]] float scrollOffset() const override;
@@ -44,6 +50,7 @@ class VirtualListController final : public VirtualListSource {
         float viewportExtent, float cacheExtent) const override;
     [[nodiscard]] Widget buildItem(std::size_t index) const override;
     void noteExtent(std::size_t index, float extent) const override;
+    void noteMaterializedItems(std::size_t count) const override;
     void updateViewport(float viewportExtent, float contentPadding) const override;
     [[nodiscard]] ScrollController* scrollController() const override {
         return &scroll_;
@@ -72,6 +79,8 @@ class VirtualListController final : public VirtualListSource {
     // mutable：布局期经 const noteExtent 回填（幂等缓存）。
     mutable std::map<std::size_t, float> measured_{};
     mutable bool extentsChanged_{false};
+    mutable std::size_t lastMaterializedItems_{0};
+    mutable std::size_t peakMaterializedItems_{0};
 };
 
 }  // namespace lumen::core

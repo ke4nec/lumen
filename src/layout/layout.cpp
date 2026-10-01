@@ -1391,6 +1391,7 @@ void materializeVirtualRows(RenderNode& node,
                     node.scrollOffset};
             node.children.push_back(std::move(item.node));
         }
+        source->noteMaterializedItems(node.children.size());
         break;
     }
 }
@@ -1428,6 +1429,7 @@ RenderNode layoutVirtualList(const Widget& widget,
     if (source == nullptr || source->itemCount() == 0) {
         node.scrollExtent = 0.0F;
         node.scrollOffset = 0.0F;
+        if (source != nullptr) source->noteMaterializedItems(0);
         if (source != nullptr && list) {
             Widget empty = source->buildEmpty();
             if (widget.type == WidgetType::Tree ||
