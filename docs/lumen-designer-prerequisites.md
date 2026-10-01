@@ -1059,6 +1059,8 @@ compile 三元代数校验；仍负责把这些契约接入工具箱、属性面
 12 类型工具箱、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1–L3 扩展与完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
 visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
 `PreviewOnly`/`Derived` 属性进入可保存文档。
+引用面板现已接入中心页签：DataGrid 展示当前文档的命名引用、引用类型、节点位置和离线 `Stub`/
+`Missing` 状态，激活行可定位大纲节点；该面板不改变运行时引用解析或保存格式。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 

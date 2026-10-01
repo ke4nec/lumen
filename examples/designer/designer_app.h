@@ -10,6 +10,7 @@
 #include "lumen/app/app_shell.h"
 #include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_workbench.h"
+#include "lumen/widgets/datagrid.h"
 #include "lumen/widgets/tree.h"
 
 namespace lumen::designer_app {
@@ -82,11 +83,15 @@ class DesignerApp {
     [[nodiscard]] core::Widget buildBody();
     [[nodiscard]] core::Widget buildOutlinePanel();
     [[nodiscard]] core::Widget buildPreviewPanel();
+    [[nodiscard]] core::Widget buildCanvasPanel();
+    [[nodiscard]] core::Widget buildReferencesPanel();
     [[nodiscard]] core::Widget buildPropertiesPanel();
     [[nodiscard]] core::Widget buildDiagnosticsPanel();
     [[nodiscard]] core::Widget buildDiagnosticRow(std::size_t index);
 
     void rebuildOutline();
+    void rebuildReferences();
+    void selectReference(const std::string& key);
     void selectNode(dsl::DesignNodeId id);
     [[nodiscard]] std::optional<dsl::DesignNodeId> diagnosticTarget(
         std::size_t index) const;
@@ -138,6 +143,22 @@ class DesignerApp {
         SaveAs,
     };
 
+    enum class CenterTab {
+        Canvas,
+        Source,
+        References,
+    };
+
+    struct ReferenceEntry {
+        dsl::DesignNodeId nodeId{0};
+        std::string property{};
+        std::string value{};
+        std::string kind{};
+        std::string status{};
+        std::string location{};
+        std::string key{};
+    };
+
     [[nodiscard]] core::Widget decoratePreview(
         core::Widget widget, const dsl::DesignNode& node,
         std::optional<dsl::DesignNodeId> selected) const;
@@ -150,7 +171,10 @@ class DesignerApp {
     dsl::DesignPreviewWorkbench workbench_{};
     OutlineModel outlineModel_;
     widgets::TreeController outlineController_{};
+    widgets::DataGridController referencesController_{};
     core::VirtualListController diagnosticsController_{};
+    std::vector<ReferenceEntry> referenceRows_{};
+    CenterTab centerTab_{CenterTab::Canvas};
     std::string sourceFile_{"<sample>"};
     std::string statusMessage_{};
     FileDialogRequester fileDialogRequester_{};

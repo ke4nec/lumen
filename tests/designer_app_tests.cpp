@@ -495,6 +495,46 @@ TEST_CASE("designer app edits named runtime references",
                             std::to_string(buttonId) + ":onClick"));
 }
 
+TEST_CASE("designer app exposes named references in the center panel",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page refs { Button(\"Save\", bind: prefs_value, "
+        "onClick: app_save, key: \"save\") }",
+        "references.lumen"));
+    (void)app.shell().renderFrame();
+
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-center-tabs") !=
+            nullptr);
+    const auto sourceTab =
+        findNodeByKey(app.shell().root(), "designer-tab-source");
+    REQUIRE(sourceTab != nullptr);
+    CHECK_FALSE(sourceTab->enabled);
+
+    app.shell().handlers().at("designer:tab-references")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-references-panel") !=
+            nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-references") != nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-references-status") !=
+            nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-references-status")->text ==
+          "2 refs  /  0 missing");
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    const auto saveId = outline->id;
+    const auto* row = findNodeByKey(
+        app.shell().root(),
+        "designer-references:item:designer-reference:" +
+            std::to_string(saveId) + ":onClick");
+    REQUIRE(row != nullptr);
+    CHECK(app.shell().controller().activateCollectionRow(*row));
+    CHECK(app.workbench().selection().primary == saveId);
+}
+
 TEST_CASE("designer app routes structural keyboard commands",
           "[designer][d3][app]") {
     DesignerApp app;

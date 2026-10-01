@@ -323,6 +323,33 @@ void DesignerApp::attach() {
             shell_.markDirty();
         }
     };
+    referencesController_.setSelectionMode(widgets::SelectionMode::None);
+    referencesController_.setColumns({
+        widgets::DataColumn{"name", "Reference", 156.0F, false, false, false},
+        widgets::DataColumn{"kind", "Kind", 92.0F, false, false, false},
+        widgets::DataColumn{"status", "State", 92.0F, false, false, false},
+        widgets::DataColumn{"value", "Value", 176.0F, false, false, false},
+        widgets::DataColumn{"location", "Node", 220.0F, false, false, false},
+    });
+    referencesController_.setKeyOf(
+        [this](std::size_t index) {
+            return index < referenceRows_.size() ? referenceRows_[index].key
+                                                  : std::string{};
+        });
+    referencesController_.setCellText(
+        [this](std::size_t index, const std::string& column) {
+            if (index >= referenceRows_.size()) return std::string{};
+            const auto& row = referenceRows_[index];
+            if (column == "name") return row.property;
+            if (column == "kind") return row.kind;
+            if (column == "status") return row.status;
+            if (column == "value") return row.value;
+            if (column == "location") return row.location;
+            return std::string{};
+        });
+    referencesController_.onRowActivated =
+        [this](const std::string& key) { selectReference(key); };
+    referencesController_.attach(shell_, "designer-references");
     shell_.controller().addDragArmSink(
         [this](const std::vector<const core::RenderNode*>& chain,
                core::PointerDevice, core::DragSourceClaim& claim) {
@@ -382,6 +409,14 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:save"] = [this] { requestSaveFile(); };
     shell_.handlers()["designer:save-as"] =
         [this] { requestSaveAsFile(); };
+    shell_.handlers()["designer:tab-canvas"] = [this] {
+        centerTab_ = CenterTab::Canvas;
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:tab-references"] = [this] {
+        centerTab_ = CenterTab::References;
+        shell_.markDirty();
+    };
     for (const auto& schema : dsl::nodeSchemaRegistry()) {
         shell_.handlers()["designer:toolbox:" + schema.type] =
             [this, type = schema.type] { insertNodeType(type); };
@@ -561,6 +596,72 @@ void DesignerApp::rebuildOutline() {
     }
 }
 
+void DesignerApp::rebuildReferences() {
+    referenceRows_.clear();
+    const auto& document = workbench_.document();
+    if (!document.has_value()) {
+        referencesController_.setRowCount(0);
+        return;
+    }
+
+    const auto statusFor = [this](dsl::DesignNodeId id,
+                                  const std::string& property) {
+        for (const auto& diagnostic : workbench_.diagnostics()) {
+            if (diagnostic.nodeId == id && diagnostic.property == property &&
+                (diagnostic.code.starts_with("reference.") ||
+                 diagnostic.code == "compile.reference_kind")) {
+                return std::string{"Missing"};
+            }
+        }
+        return std::string{"Stub"};
+    };
+    std::function<void(const dsl::DesignNode&)> visit =
+        [&](const dsl::DesignNode& node) {
+            for (const auto& [property, value] : node.references) {
+                ReferenceEntry row;
+                row.nodeId = node.id;
+                row.property = property;
+                row.value = value;
+                if (property == "bind") {
+                    row.kind = "Binding";
+                } else if (property == "onClick") {
+                    row.kind = "Handler";
+                } else {
+                    row.kind = "Reference";
+                }
+                row.status = statusFor(node.id, property);
+                std::string nodeKey;
+                const auto keyIt = node.properties.find("key");
+                if (keyIt != node.properties.end()) {
+                    if (const auto* value =
+                            std::get_if<std::string>(&keyIt->second.value)) {
+                        nodeKey = *value;
+                    }
+                }
+                row.location = nodeKey.empty()
+                                   ? node.type
+                                   : node.type + "  [" + nodeKey + "]";
+                row.key = "designer-reference:" + std::to_string(node.id) +
+                          ":" + property;
+                referenceRows_.push_back(std::move(row));
+            }
+            for (const auto& child : node.children) visit(child);
+            for (const auto& [slot, children] : node.slots) {
+                (void)slot;
+                for (const auto& child : children) visit(child);
+            }
+        };
+    visit(document->root);
+    referencesController_.setRowCount(referenceRows_.size());
+}
+
+void DesignerApp::selectReference(const std::string& key) {
+    const auto row = std::find_if(
+        referenceRows_.begin(), referenceRows_.end(),
+        [&key](const ReferenceEntry& item) { return item.key == key; });
+    if (row != referenceRows_.end()) selectNode(row->nodeId);
+}
+
 void DesignerApp::selectNode(dsl::DesignNodeId id) {
     if (!workbench_.selectNode(id)) return;
     applyPreviewState();
@@ -612,6 +713,7 @@ void DesignerApp::refreshDocumentUi() {
     resetPreviewState();
     clearPropertyObservers();
     rebuildOutline();
+    rebuildReferences();
     if (workbench_.document().has_value()) {
         for (auto it = shell_.handlers().begin();
              it != shell_.handlers().end();) {
@@ -1329,7 +1431,7 @@ core::Widget DesignerApp::buildOutlinePanel() {
     return panel;
 }
 
-core::Widget DesignerApp::buildPreviewPanel() {
+core::Widget DesignerApp::buildCanvasPanel() {
     const auto& theme = shell_.theme();
     core::Widget preview;
     if (workbench_.frame().hasFrame() && workbench_.document().has_value()) {
@@ -1350,7 +1452,69 @@ core::Widget DesignerApp::buildPreviewPanel() {
     auto panel = core::makeColumn(
         {std::move(heading), std::move(canvas)}, core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Stretch, 8.0F,
-        core::EdgeInsets::all(12.0F), {}, "designer-preview-panel");
+        core::EdgeInsets::all(12.0F), {}, "designer-preview-canvas");
+    panel.flex = 1.0F;
+    panel.color = theme.colors.surface;
+    return panel;
+}
+
+core::Widget DesignerApp::buildReferencesPanel() {
+    const auto& theme = shell_.theme();
+    std::size_t missing = 0;
+    for (const auto& row : referenceRows_) {
+        if (row.status == "Missing") ++missing;
+    }
+    auto heading = core::makeRow(
+        {core::makeText("References", theme.typography.label, {}, 0.0F,
+                        "designer-references-heading"),
+         core::makeText(std::to_string(referenceRows_.size()) + " refs  /  " +
+                            std::to_string(missing) + " missing",
+                        theme.typography.caption, {}, 1.0F,
+                        "designer-references-status")},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 8.0F);
+    auto grid = referencesController_.build();
+    grid.key = "designer-references";
+    grid.flex = 1.0F;
+    auto panel = core::makeColumn(
+        {std::move(heading), std::move(grid)}, core::MainAxisAlignment::Start,
+        core::CrossAxisAlignment::Stretch, 8.0F,
+        core::EdgeInsets::all(12.0F), {}, "designer-references-panel");
+    panel.flex = 1.0F;
+    panel.color = theme.colors.surface;
+    return panel;
+}
+
+core::Widget DesignerApp::buildPreviewPanel() {
+    const auto& theme = shell_.theme();
+    auto canvasTab = core::makeButton(
+        "Canvas", theme.typography.label, {}, 0.0F, "designer-tab-canvas",
+        96.0F, std::nullopt, "designer:tab-canvas");
+    canvasTab.selected = centerTab_ == CenterTab::Canvas;
+    auto sourceTab = core::makeButton(
+        "Source", theme.typography.label, {}, 0.0F, "designer-tab-source",
+        96.0F, std::nullopt);
+    sourceTab.enabled = false;
+    sourceTab.semanticsLabel = "Source editor pending";
+    auto referencesTab = core::makeButton(
+        "References", theme.typography.label, {}, 0.0F,
+        "designer-tab-references", 112.0F, std::nullopt,
+        "designer:tab-references");
+    referencesTab.selected = centerTab_ == CenterTab::References;
+    auto tabs = core::makeTabs(
+        {std::move(canvasTab), std::move(sourceTab), std::move(referencesTab)},
+        "designer-center-tabs");
+
+    core::Widget content;
+    if (centerTab_ == CenterTab::References) {
+        content = buildReferencesPanel();
+    } else {
+        content = buildCanvasPanel();
+    }
+    content.flex = 1.0F;
+    auto panel = core::makeColumn(
+        {std::move(tabs), std::move(content)}, core::MainAxisAlignment::Start,
+        core::CrossAxisAlignment::Stretch, 0.0F, {}, {},
+        "designer-preview-panel");
     panel.flex = 1.0F;
     panel.color = theme.colors.surface;
     return panel;
