@@ -19,6 +19,7 @@
 #include "lumen/widgets/color_picker.h"
 #include "lumen/widgets/combo_box.h"
 #include "lumen/widgets/datagrid.h"
+#include "lumen/widgets/dialog_host.h"
 #include "lumen/widgets/form.h"
 #include "lumen/widgets/menu.h"
 #include "lumen/widgets/navigator.h"
@@ -258,6 +259,7 @@ class DesignerApp {
     widgets::MenuBarController menuPreviewController_{};
     widgets::NavigatorController navigatorPreviewController_{"home"};
     widgets::FormController formPreviewController_{};
+    widgets::DialogHost dialogPreviewController_{};
     widgets::DataGridController dataGridPreviewController_{};
     widgets::ToolBarController toolBarPreviewController_{
         "designer-component-toolbar"};

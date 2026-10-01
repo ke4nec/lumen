@@ -266,7 +266,8 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
         "designer-toolbox:Splitter",  "designer-toolbox:ComboBox",
         "designer-toolbox:ColorPicker", "designer-toolbox:Spin",
         "designer-toolbox:ToolBar", "designer-toolbox:StatusBar",
-        "designer-toolbox:Menu", "designer-toolbox:Navigator",
+        "designer-toolbox:Menu", "designer-toolbox:DialogHost",
+        "designer-toolbox:Navigator",
         "designer-toolbox:Form", "designer-toolbox:DataGrid"};
     for (const auto& key : toolboxKeys) {
         app.shell().keyDown(Key::Tab);
@@ -807,7 +808,8 @@ TEST_CASE("designer app routes L0 structure commands",
         "ProgressBar", "Radio",    "Tooltip",   "Dropdown",
         "Tabs",      "ThemeScope", "VirtualList", "List",
         "Tree",      "TreeList",   "Splitter", "ComboBox", "ColorPicker",
-        "Spin",      "ToolBar",    "StatusBar", "Menu", "Navigator",
+        "Spin",      "ToolBar",    "StatusBar", "Menu", "DialogHost",
+        "Navigator",
         "Form",      "DataGrid"};
 
     const auto activate = [&](const char* key) {
@@ -1149,7 +1151,7 @@ TEST_CASE("designer app previews menu navigator and form adapters",
     app.shell().markDirty();
     (void)app.shell().renderFrame();
 
-    for (const std::string type : {"Menu", "Navigator", "Form"}) {
+    for (const std::string type : {"Menu", "DialogHost", "Navigator", "Form"}) {
         const auto* button = findNodeByKey(
             app.shell().root(), "designer-toolbox:" + type);
         REQUIRE(button != nullptr);
@@ -1171,7 +1173,19 @@ TEST_CASE("designer app previews menu navigator and form adapters",
         CHECK(app.workbench().frame().widget().children.back().key.starts_with(
             prefix));
 
-        if (type == "Navigator") {
+        if (type == "DialogHost") {
+            const auto* open = findNodeByKey(
+                app.shell().root(), prefix + "dialog-open-button");
+            REQUIRE(open != nullptr);
+            CHECK(app.shell().performAccessibilityAction(
+                      open->identity, kActionActivate) ==
+                  lumen::accessibility::SemanticsActionStatus::Handled);
+            (void)app.shell().renderFrame();
+            REQUIRE(findNodeByKey(app.shell().root(), "dialog-host") != nullptr);
+            app.shell().keyDown(Key::Escape);
+            (void)app.shell().renderFrame();
+            CHECK(findNodeByKey(app.shell().root(), "dialog-host") == nullptr);
+        } else if (type == "Navigator") {
             const auto* routeButton = findNodeByKey(
                 app.shell().root(), prefix + "navigator-button:details");
             REQUIRE(routeButton != nullptr);

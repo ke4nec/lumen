@@ -31,13 +31,14 @@ std::vector<const dsl::NodeSchema*> designerToolboxSchemas() {
     std::vector<const dsl::NodeSchema*> result;
     for (const auto& schema : dsl::nodeSchemaRegistry()) {
         // These L3 components have deterministic designer-owned adapters.
-        // Other component nodes stay out until their application builders are
-        // wired, so inserting one cannot silently produce a placeholder.
+        // Component nodes without an adapter stay out so inserting one cannot
+        // silently produce a placeholder.
         if (!schema.isComponent || schema.type == "ComboBox" ||
             schema.type == "ColorPicker" || schema.type == "Spin" ||
             schema.type == "DataGrid" || schema.type == "ToolBar" ||
             schema.type == "StatusBar" || schema.type == "Menu" ||
-            schema.type == "Navigator" || schema.type == "Form") {
+            schema.type == "DialogHost" || schema.type == "Navigator" ||
+            schema.type == "Form") {
             result.push_back(&schema);
         }
     }
@@ -279,8 +280,8 @@ dsl::DesignComponentResult DesignerApp::OfflineRuntimeContext::buildComponent(
         (node.type != "ComboBox" && node.type != "ColorPicker" &&
          node.type != "Spin" && node.type != "DataGrid" &&
          node.type != "ToolBar" && node.type != "StatusBar" &&
-         node.type != "Menu" && node.type != "Navigator" &&
-         node.type != "Form")) {
+         node.type != "Menu" && node.type != "DialogHost" &&
+         node.type != "Navigator" && node.type != "Form")) {
         return dsl::DesignComponentResult{
             std::nullopt, {}, "component.missing",
             "no component builder is registered for this node type"};
@@ -306,6 +307,47 @@ dsl::DesignComponentResult DesignerApp::OfflineRuntimeContext::buildComponent(
     } else if (node.type == "Menu") {
         result.widget = owner_->menuPreviewController_.build(
             owner_->shell_.theme());
+    } else if (node.type == "DialogHost") {
+        const std::string prefix =
+            "designer:component:DialogHost:" + std::to_string(node.id) + ":";
+        const auto& theme = owner_->shell_.theme();
+        const std::string openHandler = prefix + "open";
+        owner_->shell_.handlers()[openHandler] = [owner = owner_] {
+            owner->dialogPreviewController_.showConfirm(
+                owner->shell_, "Preview dialog", "DialogHost component preview",
+                widgets::DialogHost::Buttons{"Accept", "Cancel"},
+                [owner](bool accepted) {
+                    owner->statusMessage_ =
+                        accepted ? "Dialog accepted" : "Dialog cancelled";
+                    owner->refreshDocumentUi();
+                    owner->shell_.markDirty();
+                });
+            owner->refreshDocumentUi();
+            owner->shell_.markDirty();
+        };
+        auto open = core::makeButton(
+            "Open dialog", theme.typography.body, {}, 0.0F,
+            "dialog-open-button", std::nullopt, std::nullopt, openHandler);
+        open.buttonVariant = core::ButtonVariant::Tonal;
+        auto panel = core::makeColumn(
+            {core::makeText("DialogHost", theme.typography.label, {}, 0.0F,
+                            "dialog-title"),
+             core::makeText("Modal lifecycle preview", theme.typography.body,
+                            {}, 0.0F, "dialog-description"),
+             std::move(open)},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+            8.0F, {}, {}, "dialog-host-preview");
+        prefixWidgetKeys(panel, prefix);
+        if (const auto dialog = owner_->dialogPreviewController_.build(
+                owner_->shell_);
+            dialog.has_value()) {
+            result.widget = core::makeStack(
+                {std::move(panel), std::move(*dialog)},
+                core::StackAlignment::TopLeft, {}, {}, prefix + "overlay");
+        } else {
+            result.widget = std::move(panel);
+        }
+        return result;
     } else if (node.type == "Navigator") {
         const std::string prefix =
             "designer:component:Navigator:" + std::to_string(node.id) + ":";
@@ -574,6 +616,10 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
         const bool editingProperty =
             focused.starts_with("designer-property-field:") ||
             focused.starts_with("designer-reference-field:");
+        if (self->dialogPreviewController_.handleKey(shell, key, modifiers,
+                                                     keyChar)) {
+            return true;
+        }
         if (self->comboPreviewController_.handleKey(shell, key, modifiers,
                                                      keyChar)) {
             return true;
@@ -650,6 +696,12 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
     };
     config.onAnimate = [self](app::AppShell& shell, std::uint64_t nowMs) {
         return self->spinPreviewController_.step(shell, nowMs);
+    };
+    config.onRebuilt = [self](app::AppShell& shell) {
+        self->dialogPreviewController_.onRebuilt(shell);
+    };
+    config.onCloseRequested = [self](app::AppShell& shell) {
+        return self->dialogPreviewController_.handleCloseRequested(shell);
     };
     return config;
 }
