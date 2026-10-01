@@ -651,6 +651,48 @@ TEST_CASE("designer app inserts toolbox nodes by pointer drag",
     CHECK(app.workbench().outline()->children.back().type == "Text");
 }
 
+TEST_CASE("designer app navigates actionable diagnostics to their node",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    auto broken = *app.workbench().document();
+    REQUIRE(!broken.root.children.empty());
+    const auto childId = broken.root.children.front().id;
+    broken.root.children.front().type = "Unknown";
+    CHECK_FALSE(app.workbench().openDocument(std::move(broken)));
+    app.shell().markDirty();
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().diagnostics().size() == 1);
+    CHECK(app.workbench().diagnostics().front().nodeId == childId);
+    const auto* diagnostic =
+        findNodeByKey(app.shell().root(), "designer-diagnostic:0");
+    REQUIRE(diagnostic != nullptr);
+    CHECK(diagnostic->type == lumen::core::WidgetType::Button);
+    CHECK(diagnostic->onClick == "designer:diagnostic:0");
+    CHECK(diagnostic->size.width > 0.0F);
+    CHECK(diagnostic->size.height > 0.0F);
+    const auto origin = absoluteOffset(app.shell().root(), diagnostic->key);
+    const Offset center = origin +
+                          Offset{diagnostic->size.width * 0.5F,
+                                 diagnostic->size.height * 0.5F};
+    CAPTURE(origin.x, origin.y, diagnostic->size.width,
+            diagnostic->size.height, center.x, center.y);
+    std::vector<const lumen::core::RenderNode*> hitChain;
+    REQUIRE(lumen::core::hitTestChain(app.shell().root(), center, hitChain));
+    REQUIRE(!hitChain.empty());
+    CHECK(hitChain.front()->key == "designer-diagnostic:0");
+    app.shell().pointerDown(center);
+    app.shell().pointerUp(center);
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().selection().primary.has_value());
+    CHECK(*app.workbench().selection().primary == childId);
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /

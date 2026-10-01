@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "lumen/app/app_shell.h"
+#include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_workbench.h"
 #include "lumen/widgets/tree.h"
 
@@ -72,8 +73,13 @@ class DesignerApp {
     [[nodiscard]] core::Widget buildPreviewPanel();
     [[nodiscard]] core::Widget buildPropertiesPanel();
     [[nodiscard]] core::Widget buildDiagnosticsPanel();
+    [[nodiscard]] core::Widget buildDiagnosticRow(std::size_t index);
 
     void rebuildOutline();
+    void selectNode(dsl::DesignNodeId id);
+    [[nodiscard]] std::optional<dsl::DesignNodeId> diagnosticTarget(
+        std::size_t index) const;
+    void activateDiagnostic(std::size_t index);
     void registerSelectionHandlers(const dsl::DesignNode& node);
     void syncSelectionFromOutline();
     void applyEnvironmentTheme();
@@ -124,6 +130,7 @@ class DesignerApp {
     dsl::DesignPreviewWorkbench workbench_{};
     OutlineModel outlineModel_;
     widgets::TreeController outlineController_{};
+    core::VirtualListController diagnosticsController_{};
     std::string sourceFile_{"<sample>"};
     bool darkMode_{true};
     style::ControlDensity density_{style::ControlDensity::Comfortable};

@@ -177,6 +177,17 @@ const dsl::DesignPreviewOutlineNode* findOutlineNode(
     return nullptr;
 }
 
+std::optional<std::string> outlinePathForNode(
+    const dsl::DesignPreviewOutlineNode& node, dsl::DesignNodeId id) {
+    if (node.id == id) return node.path;
+    for (const auto& child : node.children) {
+        if (auto path = outlinePathForNode(child, id); path.has_value()) {
+            return path;
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 void DesignerApp::OutlineModel::setRoot(
@@ -275,6 +286,9 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
 }
 
 void DesignerApp::attach() {
+    diagnosticsController_.setItemBuilder([this](std::size_t index) {
+        return buildDiagnosticRow(index);
+    });
     outlineController_.setSelectionMode(widgets::SelectionMode::Single);
     outlineController_.setModel(&outlineModel_);
     outlineController_.attach(shell_, "designer-outline");
@@ -424,28 +438,45 @@ void DesignerApp::rebuildOutline() {
     }
 }
 
+void DesignerApp::selectNode(dsl::DesignNodeId id) {
+    if (!workbench_.selectNode(id)) return;
+    applyPreviewState();
+    if (const auto outline = workbench_.outline(); outline.has_value()) {
+        if (const auto path = outlinePathForNode(*outline, id); path.has_value()) {
+            outlineController_.selection().setCurrent(*path);
+            outlineController_.selection().setSelected({*path});
+        }
+    }
+    shell_.markDirty();
+}
+
+std::optional<dsl::DesignNodeId> DesignerApp::diagnosticTarget(
+    std::size_t index) const {
+    const auto& diagnostics = workbench_.diagnostics();
+    if (index >= diagnostics.size() || !workbench_.document().has_value()) {
+        return std::nullopt;
+    }
+    const auto& diagnostic = diagnostics[index];
+    const auto& document = *workbench_.document();
+    if (diagnostic.nodeId == 0 ||
+        (!diagnostic.documentId.empty() &&
+         diagnostic.documentId != document.documentId) ||
+        findDesignNode(document.root, diagnostic.nodeId) == nullptr) {
+        return std::nullopt;
+    }
+    return diagnostic.nodeId;
+}
+
+void DesignerApp::activateDiagnostic(std::size_t index) {
+    if (const auto id = diagnosticTarget(index); id.has_value()) {
+        selectNode(*id);
+    }
+}
+
 void DesignerApp::registerSelectionHandlers(const dsl::DesignNode& node) {
     const std::string handler = "designer:select:" + std::to_string(node.id);
     shell_.handlers()[handler] = [this, id = node.id] {
-        if (!workbench_.selectNode(id)) return;
-        applyPreviewState();
-        if (const auto outline = workbench_.outline(); outline.has_value()) {
-            std::function<std::optional<std::string>(
-                const dsl::DesignPreviewOutlineNode&)>
-                find = [&](const dsl::DesignPreviewOutlineNode& item)
-                -> std::optional<std::string> {
-                if (item.id == id) return item.path;
-                for (const auto& child : item.children) {
-                    if (auto path = find(child); path.has_value()) return path;
-                }
-                return std::nullopt;
-            };
-            if (const auto path = find(*outline); path.has_value()) {
-                outlineController_.selection().setCurrent(*path);
-                outlineController_.selection().setSelected({*path});
-            }
-        }
-        shell_.markDirty();
+        selectNode(id);
     };
     for (const auto& child : node.children) registerSelectionHandlers(child);
     for (const auto& [slot, children] : node.slots) {
@@ -1255,19 +1286,57 @@ core::Widget DesignerApp::buildPropertiesPanel() {
     return panel;
 }
 
+core::Widget DesignerApp::buildDiagnosticRow(std::size_t index) {
+    const auto& theme = shell_.theme();
+    const auto& diagnostic = workbench_.diagnostics().at(index);
+    const std::string key = "designer-diagnostic:" + std::to_string(index);
+    if (!diagnosticTarget(index).has_value()) {
+        return core::makeText(formatDiagnostic(diagnostic),
+                              theme.typography.caption, {}, 0.0F, key);
+    }
+    auto row = core::makeButton(
+        formatDiagnostic(diagnostic), theme.typography.caption, {}, 0.0F,
+        key, std::nullopt, std::nullopt,
+        "designer:diagnostic:" + std::to_string(index));
+    row = core::withVariant(std::move(row), core::ButtonVariant::Ghost);
+    row = core::withFocusRing(std::move(row));
+    return row;
+}
+
 core::Widget DesignerApp::buildDiagnosticsPanel() {
     const auto& theme = shell_.theme();
-    std::vector<core::Widget> rows;
-    rows.push_back(core::makeText(
+    auto status = core::makeText(
         workbench_.diagnostics().empty() ? "Ready  /  " + sourceFile_
                                          : "Diagnostics  /  " + sourceFile_,
-        theme.typography.caption, {}, 0.0F, "designer-status"));
-    for (const auto& diagnostic : workbench_.diagnostics()) {
-        rows.push_back(core::makeText(formatDiagnostic(diagnostic),
-                                      theme.typography.caption));
+        theme.typography.caption, {}, 0.0F, "designer-status");
+    for (auto it = shell_.handlers().begin(); it != shell_.handlers().end();) {
+        if (it->first.starts_with("designer:diagnostic:")) {
+            it = shell_.handlers().erase(it);
+        } else {
+            ++it;
+        }
     }
+    for (std::size_t index = 0; index < workbench_.diagnostics().size();
+         ++index) {
+        if (diagnosticTarget(index).has_value()) {
+            const std::string handler =
+                "designer:diagnostic:" + std::to_string(index);
+            shell_.handlers()[handler] = [this, index] {
+                activateDiagnostic(index);
+            };
+        }
+    }
+    const auto count = workbench_.diagnostics().size();
+    if (diagnosticsController_.itemCount() != count) {
+        diagnosticsController_.setItemCount(count);
+    }
+    diagnosticsController_.setEstimatedExtent(
+        theme.metrics.minHeight[theme.metrics.baseIndex]);
+    auto list = core::makeVirtualList(&diagnosticsController_,
+                                      "designer-diagnostic-list");
+    list.flex = 1.0F;
     auto panel = core::makeColumn(
-        std::move(rows), core::MainAxisAlignment::Start,
+        {std::move(status), std::move(list)}, core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Stretch, 4.0F,
         core::EdgeInsets::symmetric(12.0F, 8.0F), {}, "designer-diagnostics",
         std::nullopt, 96.0F);
@@ -1281,10 +1350,12 @@ core::Widget DesignerApp::buildBody() {
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 1.0F,
         core::EdgeInsets::all(8.0F), {}, "designer-body");
     body.flex = 1.0F;
-    return core::makeColumn({std::move(body), buildDiagnosticsPanel()},
-                             core::MainAxisAlignment::Start,
-                             core::CrossAxisAlignment::Stretch, 0.0F, {}, {},
-                             "designer-content");
+    auto content = core::makeColumn({std::move(body), buildDiagnosticsPanel()},
+                                    core::MainAxisAlignment::Start,
+                                    core::CrossAxisAlignment::Stretch, 0.0F,
+                                    {}, {}, "designer-content");
+    content.flex = 1.0F;
+    return content;
 }
 
 core::Widget DesignerApp::buildUi() {
