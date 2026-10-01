@@ -378,6 +378,17 @@ bool DesignerApp::redo() {
     return true;
 }
 
+bool DesignerApp::loadDesignFile(const std::string& filename) {
+    sourceFile_ = filename;
+    const bool loaded = workbench_.openDesignFile(filename);
+    if (loaded) {
+        resetPreviewState();
+        refreshDocumentUi();
+    }
+    shell_.markDirty();
+    return loaded;
+}
+
 bool DesignerApp::saveDesignFile(const std::string& filename) {
     const bool saved = workbench_.saveDesignFile(filename);
     if (saved) {

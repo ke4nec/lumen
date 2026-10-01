@@ -30,6 +30,7 @@ class DesignerApp {
 
     [[nodiscard]] bool undo();
     [[nodiscard]] bool redo();
+    [[nodiscard]] bool loadDesignFile(const std::string& filename);
     [[nodiscard]] bool saveDesignFile(const std::string& filename);
 
   private:

@@ -693,6 +693,49 @@ TEST_CASE("designer app navigates actionable diagnostics to their node",
     CHECK(*app.workbench().selection().primary == childId);
 }
 
+TEST_CASE("designer app reopens private design files",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-app-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()) +
+                       ".design");
+    struct Cleanup {
+        std::filesystem::path path;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove(path, error);
+        }
+    } cleanup{path};
+
+    REQUIRE(app.saveDesignFile(path.string()));
+    const auto savedDocument = app.workbench().document();
+    REQUIRE(savedDocument.has_value());
+    REQUIRE(app.loadSource("page other { Text(\"Other\") }",
+                           "other.lumen"));
+    REQUIRE(app.loadDesignFile(path.string()));
+    CHECK(app.workbench().document() == savedDocument);
+    CHECK(app.workbench().frame().hasFrame());
+    CHECK(app.workbench().diagnostics().empty());
+
+    {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(output.good());
+        output << "{ broken";
+    }
+    const auto generation = app.workbench().frame().generation();
+    CHECK_FALSE(app.loadDesignFile(path.string()));
+    CHECK(app.workbench().frame().generation() == generation);
+    REQUIRE(app.workbench().diagnostics().size() == 1);
+    CHECK(app.workbench().diagnostics().front().file == path.string());
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /
