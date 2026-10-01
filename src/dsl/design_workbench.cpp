@@ -170,12 +170,22 @@ bool DesignPreviewWorkbench::refresh(DesignRuntimeContext* context) {
 
 bool DesignPreviewWorkbench::setProperty(DesignNodeId id, std::string property,
                                          DesignValue value) {
+    return setProperty(std::vector<DesignNodeId>{id}, std::move(property),
+                       std::move(value));
+}
+
+bool DesignPreviewWorkbench::setProperty(
+    std::vector<DesignNodeId> ids, std::string property, DesignValue value) {
+    if (ids.empty()) return false;
+    std::set<DesignNodeId> affected(ids.begin(), ids.end());
     return applyEdit(
-        "Edit property", {id},
-        [id, property = std::move(property), value = std::move(value)](
-            DesignDocumentEditor& editor) mutable {
-            return editor.setProperty(id, std::move(property),
-                                      std::move(value));
+        "Edit properties", affected,
+        [ids = std::move(ids), property = std::move(property),
+         value = std::move(value)](DesignDocumentEditor& editor) mutable {
+            for (const auto id : ids) {
+                if (!editor.setProperty(id, property, value)) return false;
+            }
+            return true;
         });
 }
 

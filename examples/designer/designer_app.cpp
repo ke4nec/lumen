@@ -2416,8 +2416,15 @@ void DesignerApp::registerPropertyBinding(
     if (propertyObservers_.contains(bind)) return;
 
     const dsl::DesignValue prototype = *property.value;
+    const std::vector<dsl::DesignNodeId> selectedIds =
+        workbench_.selection().ids.empty()
+            ? std::vector<dsl::DesignNodeId>{id}
+            : std::vector<dsl::DesignNodeId>{
+                  workbench_.selection().ids.begin(),
+                  workbench_.selection().ids.end()};
     propertyObservers_[bind] = shell_.state().subscribe(
-        bind, [this, id, name = property.name, bind, prototype] {
+        bind, [this, id, name = property.name, bind, prototype,
+               selectedIds] {
             if (syncingPropertyState_ || !workbench_.document().has_value()) {
                 return;
             }
@@ -2430,8 +2437,8 @@ void DesignerApp::registerPropertyBinding(
                                       : propertyIt->second;
             const auto parsed =
                 parsePropertyState(current, shell_.state().get(bind));
-            if (!parsed.has_value() || !workbench_.setProperty(
-                                           id, name, *parsed)) {
+            if (!parsed.has_value() ||
+                !workbench_.setProperty(selectedIds, name, *parsed)) {
                 syncingPropertyState_ = true;
                 shell_.state().set(bind, propertyStateValue(current));
                 syncingPropertyState_ = false;
@@ -3279,6 +3286,35 @@ core::Widget DesignerApp::buildPropertiesPanel() {
                     addSourceReference("splitterSource");
                 }
             }
+        }
+        if (workbench_.selection().ids.size() > 1) {
+            const auto selectedIds = workbench_.selection().ids;
+            properties.erase(
+                std::remove_if(
+                    properties.begin(), properties.end(),
+                    [this, &selectedIds](
+                        const dsl::DesignPreviewProperty& property) {
+                        if (!property.value.has_value() ||
+                            !isEditableProperty(*property.value)) {
+                            return true;
+                        }
+                        for (const auto id : selectedIds) {
+                            const auto candidates = workbench_.properties(id);
+                            const auto found = std::find_if(
+                                candidates.begin(), candidates.end(),
+                                [&property](
+                                    const dsl::DesignPreviewProperty& candidate) {
+                                    return candidate.name == property.name &&
+                                           candidate.value.has_value() &&
+                                           isEditableProperty(*candidate.value) &&
+                                           candidate.value->value.index() ==
+                                               property.value->value.index();
+                                });
+                            if (found == candidates.end()) return true;
+                        }
+                        return false;
+                    }),
+                properties.end());
         }
         for (const auto& property : properties) {
             if (property.reference.has_value()) {

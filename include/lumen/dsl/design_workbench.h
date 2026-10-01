@@ -63,6 +63,10 @@ class DesignPreviewWorkbench {
     // DesignPreviewState and never enter these document transactions.
     [[nodiscard]] bool setProperty(DesignNodeId id, std::string property,
                                     DesignValue value);
+    // Applies one declaration property to every selected node as one
+    // undoable transaction. Schema validation is all-or-nothing.
+    [[nodiscard]] bool setProperty(std::vector<DesignNodeId> ids,
+                                   std::string property, DesignValue value);
     // Applies several declaration properties as one undoable document edit.
     // This is used by gesture-based controls such as canvas resizing, where
     // width/height/position together form one user intent.

@@ -898,6 +898,75 @@ TEST_CASE("designer app edits declaration properties and routes undo redo",
     CHECK(app.workbench().dirty());
 }
 
+TEST_CASE("designer app edits a shared multi-selection property in one transaction",
+          "[designer][d3][app][selection]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { Text(\"A\", key: \"a\") "
+        "Text(\"B\", key: \"b\") Button(\"C\", key: \"c\") } }",
+        "multi-property.lumen"));
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().document().has_value());
+    const auto& children = app.workbench().document()->root.children;
+    REQUIRE(children.size() == 3);
+    const auto firstId = children[0].id;
+    const auto secondId = children[1].id;
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    const auto* firstOutline = findOutlineNodeById(*outline, firstId);
+    const auto* secondOutline = findOutlineNodeById(*outline, secondId);
+    REQUIRE(firstOutline != nullptr);
+    REQUIRE(secondOutline != nullptr);
+    const auto* firstRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + firstOutline->path);
+    const auto* secondRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + secondOutline->path);
+    REQUIRE(firstRow != nullptr);
+    REQUIRE(secondRow != nullptr);
+    const auto firstOrigin = absoluteOffset(app.shell().root(), firstRow->key);
+    const auto secondOrigin = absoluteOffset(app.shell().root(), secondRow->key);
+    const Offset firstPoint =
+        firstOrigin + Offset{firstRow->size.width * 0.5F,
+                             firstRow->size.height * 0.5F};
+    const Offset secondPoint =
+        secondOrigin + Offset{secondRow->size.width * 0.5F,
+                              secondRow->size.height * 0.5F};
+    app.shell().pointerDown(firstPoint);
+    app.shell().pointerUp(firstPoint);
+    app.shell().pointerDown(secondPoint, lumen::core::kModifierShift);
+    app.shell().pointerUp(secondPoint);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().selection().ids ==
+            std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+
+    const std::string bind =
+        "designer:property:" + std::to_string(secondId) + ":text";
+    REQUIRE(findNodeByKey(
+        app.shell().root(),
+        "designer-property-field:" + std::to_string(secondId) + ":text"));
+    app.shell().state().set(bind, "Shared");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(std::get<std::string>(
+              app.workbench().document()->root.children[0].properties.at("text").value) ==
+          "Shared");
+    CHECK(std::get<std::string>(
+              app.workbench().document()->root.children[1].properties.at("text").value) ==
+          "Shared");
+    CHECK(app.workbench().canUndo());
+    REQUIRE(app.undo());
+    CHECK(std::get<std::string>(
+              app.workbench().document()->root.children[0].properties.at("text").value) ==
+          "A");
+    CHECK(std::get<std::string>(
+              app.workbench().document()->root.children[1].properties.at("text").value) ==
+          "B");
+    CHECK_FALSE(app.workbench().dirty());
+}
+
 TEST_CASE("designer app routes L0 structure commands",
           "[designer][d3][app]") {
     DesignerApp app;

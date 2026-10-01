@@ -280,3 +280,57 @@ TEST_CASE("designer D3 workbench rejects cross-parent batch moves atomically",
     REQUIRE(workbench.diagnostics().size() == 1);
     CHECK(workbench.diagnostics().front().code == "editor.rejected");
 }
+
+TEST_CASE("designer D3 workbench edits a multi-selection atomically",
+          "[designer][d3]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page preview { Column(key: \"root\") {"
+        " Text(\"A\", key: \"a\") Text(\"B\", key: \"b\") } }"));
+    REQUIRE(workbench.document().has_value());
+    const auto& children = workbench.document()->root.children;
+    REQUIRE(children.size() == 2);
+    const auto firstId = children[0].id;
+    const auto secondId = children[1].id;
+    REQUIRE(workbench.selectNode(firstId));
+    REQUIRE(workbench.selectNode(secondId, DesignSelectionMode::Add));
+    CHECK(workbench.setProperty(
+        {firstId, secondId}, "text",
+        DesignValue{DesignValue::Variant{std::string{"Shared"}}}));
+    CHECK(std::get<std::string>(
+              workbench.document()->root.children[0].properties.at("text").value) ==
+          "Shared");
+    CHECK(std::get<std::string>(
+              workbench.document()->root.children[1].properties.at("text").value) ==
+          "Shared");
+    CHECK(workbench.selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+    REQUIRE(workbench.undo());
+    CHECK(std::get<std::string>(
+              workbench.document()->root.children[0].properties.at("text").value) ==
+          "A");
+    CHECK(std::get<std::string>(
+              workbench.document()->root.children[1].properties.at("text").value) ==
+          "B");
+    REQUIRE(workbench.redo());
+    CHECK(workbench.document()->root.children[0].properties.at("text") ==
+          workbench.document()->root.children[1].properties.at("text"));
+}
+
+TEST_CASE("designer D3 workbench rejects an incompatible batch property",
+          "[designer][d3]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page preview { Column { Text(\"A\") Checkbox(checked: true) } }"));
+    REQUIRE(workbench.document().has_value());
+    const auto& children = workbench.document()->root.children;
+    REQUIRE(children.size() == 2);
+    const auto before = *workbench.document();
+    CHECK_FALSE(workbench.setProperty(
+        {children[0].id, children[1].id}, "focusWidth",
+        DesignValue{DesignValue::Variant{std::string{"Shared"}}}));
+    CHECK(workbench.document() == before);
+    CHECK_FALSE(workbench.dirty());
+    REQUIRE(workbench.diagnostics().size() == 1);
+    CHECK(workbench.diagnostics().front().code == "editor.rejected");
+}
