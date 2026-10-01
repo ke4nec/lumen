@@ -913,6 +913,9 @@ using ResolvedReferenceHandles =
 [[nodiscard]] std::optional<core::Widget> compileNode(
     const DesignNode& node, std::set<DesignNodeId>& ids, std::string path,
     const ResolvedReferenceHandles& handles,
+    DesignRuntimeContext& context, DesignRuntimeSession& session,
+    std::set<DesignNodeId>& unresolved,
+    std::vector<DesignError>& diagnostics,
     std::optional<DesignError>& error) {
     const NodeSchema* schema = findNodeSchema(node.type);
     if (schema == nullptr) {
@@ -935,6 +938,47 @@ using ResolvedReferenceHandles =
     }
 
     core::Widget widget = schema->makeDefault();
+    if (schema->isComponent) {
+        const void* controller = nullptr;
+        if (const auto found = handles.find(node.id); found != handles.end()) {
+            if (const auto component = found->second.find("component");
+                component != found->second.end()) {
+                controller = component->second;
+            }
+        }
+        DesignComponentResult built;
+        try {
+            built = context.buildComponent(
+                node, DesignComponentContext{controller, &session});
+        } catch (const std::exception& exception) {
+            built.diagnosticCode = "component.exception";
+            built.diagnosticMessage =
+                "component builder threw an exception: " +
+                std::string{exception.what()};
+        } catch (...) {
+            built.diagnosticCode = "component.exception";
+            built.diagnosticMessage =
+                "component builder threw an unknown exception";
+        }
+        if (built.widget.has_value()) {
+            widget = std::move(*built.widget);
+            session.retain(std::move(built.lifetimeToken));
+        } else {
+            unresolved.insert(node.id);
+            const auto code = built.diagnosticCode.empty()
+                                  ? std::string{"component.builder"}
+                                  : std::move(built.diagnosticCode);
+            const auto message = built.diagnosticMessage.empty()
+                                     ? std::string{
+                                           "component builder returned no Widget"}
+                                     : std::move(built.diagnosticMessage);
+            DesignError diagnostic =
+                errorAt(code, "<design>", message);
+            diagnostic.nodeId = node.id;
+            diagnostic.nodePath = path;
+            diagnostics.push_back(std::move(diagnostic));
+        }
+    }
     for (const auto& [name, value] : node.properties) {
         const PropertySpec* property = findPropertySpec(*schema, name);
         if (property == nullptr ||
@@ -974,7 +1018,7 @@ using ResolvedReferenceHandles =
         widget.bindPrefix = widget.text;
     }
 
-    if (!node.slots.empty()) {
+    if (!node.slots.empty() && !schema->isComponent) {
         DesignError diagnostic = errorAt(
             "compile.unsupported_slots", "<design>",
             "named slots require a component schema and are not supported in P1");
@@ -986,7 +1030,8 @@ using ResolvedReferenceHandles =
     for (std::size_t i = 0; i < node.children.size(); ++i) {
         const auto child = compileNode(
             node.children[i], ids,
-            path + ".children[" + std::to_string(i) + "]", handles, error);
+            path + ".children[" + std::to_string(i) + "]", handles, context,
+            session, unresolved, diagnostics, error);
         if (!child.has_value()) return std::nullopt;
         widget.children.push_back(std::move(*child));
     }
@@ -1211,6 +1256,16 @@ void validateRuntimeReferences(
             node.children[i], path + ".children[" + std::to_string(i) + "]",
             context, session, unresolved, handles, diagnostics);
     }
+    for (const auto& [slot, children] : node.slots) {
+        const std::size_t unresolvedBefore = unresolved.size();
+        for (std::size_t i = 0; i < children.size(); ++i) {
+            validateRuntimeReferences(
+                children[i], path + ".slots[" + slot + "][" +
+                                 std::to_string(i) + "]", context, session,
+                unresolved, handles, diagnostics);
+        }
+        if (unresolved.size() != unresolvedBefore) unresolved.insert(node.id);
+    }
 }
 
 void disableUnresolvedReferenceNode(const DesignNode& node, core::Widget& widget,
@@ -1385,7 +1440,9 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
     std::set<DesignNodeId> ids;
     std::optional<DesignError> error;
     const auto compiled = compileNode(document.root, ids, "root",
-                                      resolvedReferenceHandles, error);
+                                      resolvedReferenceHandles, context,
+                                      *result.session, unresolvedReferences,
+                                      result.diagnostics, error);
     if (!compiled.has_value()) {
         result.diagnostics.push_back(std::move(*error));
         return result;

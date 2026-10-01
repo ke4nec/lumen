@@ -6,11 +6,17 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "lumen/core/widget.h"
+
 namespace lumen::dsl {
+
+struct DesignNode;
+class DesignRuntimeSession;
 
 enum class DesignReferenceKind {
     Binding,
@@ -33,6 +39,26 @@ struct DesignReference {
     }
 };
 
+// A widgets-layer composition is built by the application adapter. The DSL
+// only carries the node and an opaque controller handle; it never includes a
+// concrete ComboBox/Spin/Dialog controller header.
+struct DesignComponentContext {
+    const void* controller{nullptr};
+    DesignRuntimeSession* session{nullptr};
+};
+
+struct DesignComponentResult {
+    std::optional<core::Widget> widget{};
+    std::shared_ptr<const void> lifetimeToken{};
+    std::string diagnosticCode{};
+    std::string diagnosticMessage{};
+
+    [[nodiscard]] bool ok() const { return widget.has_value(); }
+};
+
+using DesignComponentBuilder = std::function<DesignComponentResult(
+    const DesignNode&, const DesignComponentContext&)>;
+
 // P3 resolves names to typed, opaque handles. Runtime compilation may copy the
 // handle into a Widget source field, while the adapter's lease keeps that
 // application-owned object alive for the preview session.
@@ -51,6 +77,15 @@ class DesignRuntimeContext {
         (void)name;
         (void)out;
         return false;
+    }
+
+    [[nodiscard]] virtual DesignComponentResult buildComponent(
+        const DesignNode& node, const DesignComponentContext& componentContext) const {
+        (void)node;
+        (void)componentContext;
+        return DesignComponentResult{
+            std::nullopt, {}, "component.missing",
+            "no component builder is registered for this node type"};
     }
 };
 
@@ -82,6 +117,19 @@ class MapDesignRuntimeContext final : public DesignRuntimeContext {
         return true;
     }
 
+    void registerComponentBuilder(std::string type,
+                                   DesignComponentBuilder builder) {
+        if (builder) {
+            componentBuilders_[std::move(type)] = std::move(builder);
+        } else {
+            componentBuilders_.erase(type);
+        }
+    }
+
+    [[nodiscard]] DesignComponentResult buildComponent(
+        const DesignNode& node,
+        const DesignComponentContext& componentContext) const override;
+
   private:
     struct ReferenceKey {
         DesignReferenceKind kind{};
@@ -94,6 +142,7 @@ class MapDesignRuntimeContext final : public DesignRuntimeContext {
     };
 
     std::map<ReferenceKey, DesignReference> references_{};
+    std::map<std::string, DesignComponentBuilder> componentBuilders_{};
 };
 
 class DesignRuntimeSession {

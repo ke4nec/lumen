@@ -687,10 +687,21 @@ void addCollection(std::vector<PropertySpec>& properties, WidgetType type) {
     return widget;
 }
 
+[[nodiscard]] bool isComponentType(std::string_view type) {
+    for (const auto* candidate : {"ComboBox", "ColorPicker", "Spin",
+                                  "ToolBar", "StatusBar", "Menu",
+                                  "DialogHost", "Navigator", "Form",
+                                  "DataGrid"}) {
+        if (type == candidate) return true;
+    }
+    return false;
+}
+
 [[nodiscard]] NodeSchema makeSchema(const std::string& type) {
     NodeSchema schema;
     schema.type = type;
     schema.canBeRoot = true;
+    schema.isComponent = isComponentType(type);
     schema.makeDefault = [type] { return defaultWidget(type); };
     WidgetType widgetType = defaultWidget(type).type;
     addCommon(schema.properties, isStyled(widgetType));
@@ -789,6 +800,12 @@ void addCollection(std::vector<PropertySpec>& properties, WidgetType type) {
     if (widgetType == WidgetType::Splitter) {
         schema.minChildren = 2;
         schema.maxChildren = 2;
+    }
+    if (schema.isComponent) {
+        // The generated Widget subtree belongs to the application builder;
+        // document children would otherwise be mistaken for generated nodes.
+        schema.minChildren = 0;
+        schema.maxChildren = 0;
     }
     return schema;
 }
@@ -898,7 +915,7 @@ void validateNode(const DesignNode& node, const std::string& path, bool root,
                 "reference names must be identifiers", path, name));
         }
     }
-    if (!node.slots.empty()) {
+    if (!node.slots.empty() && !schema->isComponent) {
         diagnostics.push_back(schemaError(
             "schema.unsupported_slots", node,
             "named slots require a component schema", path));
@@ -906,6 +923,13 @@ void validateNode(const DesignNode& node, const std::string& path, bool root,
     for (std::size_t i = 0; i < node.children.size(); ++i) {
         validateNode(node.children[i], path + ".children[" + std::to_string(i) + "]",
                      false, ids, diagnostics);
+    }
+    for (const auto& [slot, children] : node.slots) {
+        for (std::size_t i = 0; i < children.size(); ++i) {
+            validateNode(children[i],
+                         path + ".slots[" + slot + "][" +
+                             std::to_string(i) + "]", false, ids, diagnostics);
+        }
     }
 }
 
@@ -1011,7 +1035,10 @@ const std::vector<NodeSchema>& nodeSchemaRegistry() {
                                  "Image", "Icon", "Slider", "ProgressBar",
                                  "Radio", "Tooltip", "Dropdown", "Tabs",
                                  "ThemeScope", "VirtualList", "List", "Tree",
-                                 "TreeList", "Splitter"}) {
+                                 "TreeList", "Splitter", "ComboBox",
+                                 "ColorPicker", "Spin", "ToolBar", "StatusBar",
+                                 "Menu", "DialogHost", "Navigator", "Form",
+                                 "DataGrid"}) {
             result.push_back(makeSchema(type));
         }
         return result;

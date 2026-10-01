@@ -61,6 +61,7 @@ struct PropertySpec {
 struct NodeSchema {
     std::string type{};
     bool canBeRoot{false};
+    bool isComponent{false};
     std::size_t minChildren{0};
     std::optional<std::size_t> maxChildren{};
     std::vector<std::string> allowedParents{};

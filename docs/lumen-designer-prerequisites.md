@@ -577,12 +577,15 @@ struct DesignCompileResult {
 ```
 
 `compileDesignDocument` 当前编译 L0 的 12 个节点、L1 静态节点 `Grid`、`Image`、`Icon`、
-`Slider`、`ProgressBar`、`Radio`、`Tooltip`、`Dropdown`、`Tabs`、`ThemeScope`，以及 L2
-动态节点 `VirtualList`、`List`、`Tree`、`TreeList`、`Splitter`；L2 的
-`virtualSource`/`splitterSource` 通过 `DesignRuntimeContext` 解析到带 lease 的类型化句柄，
-缺失句柄时保留可检查节点并禁用交互。遇到 L3 节点必须返回“未注册节点”诊断，不能降级成
-`Container`。绑定、handler、theme、image 命名引用和组合件 builder 仍留给后续 P3/L3；
-第一阶段只把稳定名称写入 DOM，不写入裸指针。上例中的
+`Slider`、`ProgressBar`、`Radio`、`Tooltip`、`Dropdown`、`Tabs`、`ThemeScope`，L2
+动态节点 `VirtualList`、`List`、`Tree`、`TreeList`、`Splitter`，以及首批 L3 组合件
+`ComboBox`、`ColorPicker`、`Spin`、`ToolBar`、`StatusBar`、`Menu`、`DialogHost`、
+`Navigator`、`Form`、`DataGrid`；L2 的 `virtualSource`/`splitterSource` 通过
+`DesignRuntimeContext` 解析到带 lease 的类型化句柄，缺失句柄时保留可检查节点并禁用交互。
+L3 节点由按类型注册的 `buildComponent(node, componentContext)` 创建 Widget 子树；缺失
+builder 时保留禁用的 `Container` 占位和节点级诊断，成功结果及其 lease 进入同一个
+`DesignRuntimeSession`。绑定、handler、theme、image 命名引用仍只把稳定名称写入 DOM，
+不写入裸指针。上例中的
 `CompileTrace` 和 `DesignRuntimeSession` 是 P4/P3 的候选返回值，若分阶段实现，也必须
 通过等价的 sidecar 结果保留映射和 lease，不能丢回普通 `Widget`。
 
@@ -637,7 +640,7 @@ P2 继续放在 `lumen-dsl`，因为 schema 同时服务文档解析、Widget �
 | 文件 | 职责 |
 | --- | --- |
 | `include/lumen/dsl/design_schema.h` | `PropertySpec`、`NodeSchema`、约束、编辑器 hint、schema registry 接口 |
-| `src/dsl/design_schema.cpp` | L0、L1 静态与 L2 动态节点注册表、通用属性转换和校验；后续 L3 分批追加 |
+| `src/dsl/design_schema.cpp` | L0、L1 静态、L2 动态和首批 L3 组合件注册表、通用属性转换和校验；后续组合件按批追加 |
 | `tests/designer_schema_tests.cpp` | 注册表覆盖、默认值、读写往返、非法值和节点结构约束 |
 
 注册表使用显式静态表，不使用宏反射或字段偏移。字段类型有 `bool`、`number`、`string`、
@@ -1025,16 +1028,17 @@ D3 可编辑设计器
 | --- | --- | --- | --- |
 | F0 | 现有边界核对 | 当前 DSL/Element/热重载历史边界回归通过；完整 `ctest` 结果另记 §10.3 | 修正事实或范围，不写新 API |
 | F1 / P1 | L0 `DesignDocument`、解析/编译/规范化输出 | DOM round-trip、C++ builder golden、旧 DSL 测试不变 | 停在 L0，不进入属性全量登记 |
-| F2 / P2 | L0–L2 `NodeSchema`/`PropertySpec` | 逐属性读写、默认值、非法值和字段登记守护 | 保留旧 converter，修正 schema 漂移 |
+| F2 / P2 | L0–L3 `NodeSchema`/`PropertySpec` | 逐属性读写、默认值、非法值和字段登记守护 | 保留旧 converter，修正 schema 漂移 |
 | F3 / P3 | RuntimeContext、preview session、引用诊断 | 缺失/错误引用、source lease 生命周期、组合件替身和副作用禁用 | 禁止保存运行时指针，回退占位树 |
 | F4 / P4 | DocumentId、CompileTrace、SourceMap、坐标变换 | 插入/复制/重排/撤销后的选择、bounds 和源码定位 | 禁止用 runtime identity 充当文档 ID |
 | F5 / P5 | DocumentStore、版本迁移、原子保存和恢复 | 旧 fixture、损坏输入、保存中断、旧画布保留、未知字段策略 | 原文件不变，报告结构化错误 |
 | F6 / D3 | 工具箱、属性面板、结构编辑、undo/redo、资源授权 | P1–P5 + G-D13–G-D16 全部通过后再做真实编辑流程 | 退回只读 D2，不宣称双向完成 |
 
 F0 是源码边界核对；F1/P1 已完成 L0 语义 DOM、`.lumen` 导入、规范化设计文档 codec 和
-DOM→Widget 编译入口；F2/P2 已完成 L0、L1 静态和 L2 动态节点（27 个 schema，含 `Grid`/`Image`/
-`Icon`/`Slider`/`ProgressBar`/`Radio`/`Tooltip`/`Dropdown`/`Tabs`/`ThemeScope`/
-`VirtualList`/`List`/`Tree`/`TreeList`/`Splitter`）的
+DOM→Widget 编译入口；F2/P2 已完成 L0、L1 静态、L2 动态和首批 L3 组合件节点（37 个 schema，含
+`Grid`/`Image`/`Icon`/`Slider`/`ProgressBar`/`Radio`/`Tooltip`/`Dropdown`/`Tabs`/`ThemeScope`/
+`VirtualList`/`List`/`Tree`/`TreeList`/`Splitter`/`ComboBox`/`ColorPicker`/`Spin`/`ToolBar`/
+`StatusBar`/`Menu`/`DialogHost`/`Navigator`/`Form`/`DataGrid`）的
 `NodeSchema`/`PropertySpec` 显式注册表，并由编译
 入口执行类型、枚举、范围、子节点、引用存储位置和不可持久化预览属性约束，并以
 `widgetFieldInventory()` 守护 Widget 字段分类；F3/P3 已完成类型化 `DesignRuntimeContext`、
@@ -1043,12 +1047,12 @@ DOM→Widget 编译入口；F2/P2 已完成 L0、L1 静态和 L2 动态节点（
 清除 `bind`/`onClick`，避免未解析引用触发业务行为。
 `designer_document_tests.cpp`
 覆盖 DOM round-trip、C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和
-P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 27 节点注册（含 L1 静态和 L2 动态节点）、访问器、非法属性和
+P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 37 节点注册（含 L1 静态、L2 动态和首批 L3 组合件）、访问器、非法属性和
 结构诊断、引用错误存储位置和 `PreviewOnly` 字段拒绝；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留、
-session 关闭回调（含 session 析构时的 RAII 关闭）和引用 lease 在关闭时释放。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
+session 关闭回调（含 session 析构时的 RAII 关闭）、组合件 builder 占位/异常诊断和组件 lease 保活。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
 和命名 slot，并在插入/复制时清除外来 source span、分配新 ID、在重排时保持原 ID；编译结果
-同时返回 SourceMap 和 CompileTrace。P2 registry 已覆盖 L0、L1 与 L2 节点；P3 已接通 source handle 注入和 lease 保活，仍未构造组合件 controller 或真实资源裸指针；F5 的
+同时返回 SourceMap 和 CompileTrace。P2 registry 已覆盖 L0、L1、L2 与首批 L3 节点；P3 已接通 source handle 注入、组合件 builder 和 lease 保活，真实 widgets controller 适配和真实资源裸指针仍由应用层按需注册；F5 的
 DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢复已完成；主文件的读取、迁移或
 schema 失败均尝试有效恢复副本。F6 已增加设计器
 应用层的 `DesignDocumentTransaction`/`DesignDocumentHistory`、会话级 `DesignSelectionModel`
@@ -1063,7 +1067,7 @@ SourceMap 的根锚点。
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
 真实 D3 应用出口当前已接通 L0 属性面板编辑、命名引用管理、文档级撤销/重做、结构插入/复制/删除/重排、
-12 类型工具箱、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1/L2 schema 已可被私有设计文档编译，工具箱创建和 L3 扩展、完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
+12 类型工具箱、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1/L2/L3 schema 已可被私有设计文档编译，L3 组合件由应用注册 builder，工具箱扩展和完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
 visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
 `PreviewOnly`/`Derived` 属性进入可保存文档。
 引用面板现已接入中心页签：DataGrid 展示当前文档的命名引用、引用类型、节点位置和离线 `Stub`/
@@ -1245,11 +1249,11 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
 - P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `106` 个断言、
   `9` 个测试用例通过，覆盖 12 个 L0 节点 round-trip、codec 扩展字段、独立 C++ builder
   Widget golden、codec 字符串边界、非法 UTF-8 和损坏诊断。
-- P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `2740` 个断言、
-  `5` 个测试用例通过，覆盖 Widget 字段清单、访问器回读、registry 驱动编译、可选默认值、
+- P2 专属筛选 `build-debug/tests/lumen-tests "[designer][p2]"` 为 `7596` 个断言、
+  `8` 个测试用例通过，覆盖 Widget 字段清单、访问器回读、registry 驱动编译、可选默认值、
   枚举 domain 和引用存储位置约束。
-- P3 专属筛选 `build-debug/tests/lumen-tests "[designer][p3]"` 为 `56` 个断言、
-  `8` 个测试用例通过，覆盖类型化解析、错误引用隔离、解析异常诊断、session 关闭回调和 lease 生命周期。
+- P3 专属筛选 `build-debug/tests/lumen-tests "[designer][p3]"` 为 `93` 个断言、
+  `13` 个测试用例通过，覆盖类型化解析、错误引用隔离、组合件 builder/占位诊断、解析异常诊断、session 关闭回调和 lease 生命周期。
 - P4 专属筛选 `build-debug/tests/lumen-tests "[designer][p4]"` 为 `69` 个断言、
   `6` 个测试用例通过，覆盖 source map、DPI/zoom/pan 变换、稳定 ID 结构编辑、布局 trace 定位
   和重复 runtime identity 诊断。
@@ -1272,16 +1276,16 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `94/94` 通过，
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `108/108` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1064/1064`，
-  Release 配置为 `1066/1066`；
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1072/1072`，
+  Release 配置为 `1074/1074`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
-  `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态与 L2 动态节点已登记私有
+  `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、
-  Tabs/ThemeScope 子树、集合声明属性和 Splitter 双子节点约束的编译 golden；L3 节点、真实资源/组合件加载和
-  L1/L2 编辑器工具箱流程仍留在后续阶段。
+  Tabs/ThemeScope 子树、集合声明属性、Splitter 双子节点约束和 L3 builder/占位路径的编译 golden；真实资源/组合件控制器加载和
+  L1/L2/L3 编辑器工具箱流程仍留在后续阶段。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
   代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译按 L0 schema
@@ -1294,7 +1298,8 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   schema、compile、layout、CPU paint 和重复运行确定性；另有 12 节点 `.lumen` 导入 fixture。
   同一 fixture 还覆盖 1000 项运行时 VirtualList 的窗口物化与 frame hash；测试只输出阶段
   耗时供后续 DP-8 建立相对基线，不冻结跨机器的绝对毫秒门槛。L2 设计文档节点已登记 schema，
-  真实 controller 资源和 L3 组合件预览仍未接入。
+  真实 controller 资源和具体 widgets controller builder 仍由应用适配层按需接入；headless
+  组合件占位和 lease 路径已接入。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。

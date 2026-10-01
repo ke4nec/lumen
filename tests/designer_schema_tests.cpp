@@ -24,9 +24,9 @@ using lumen::dsl::parseLumenSource;
 using lumen::dsl::validateDesignDocument;
 using lumen::dsl::widgetFieldInventory;
 
-TEST_CASE("designer schema registry covers the L0 through L2 node set",
+TEST_CASE("designer schema registry covers the L0 through L3 node set",
           "[designer][p2]") {
-    REQUIRE(nodeSchemaRegistry().size() == 27);
+    REQUIRE(nodeSchemaRegistry().size() == 37);
     for (const auto& schema : nodeSchemaRegistry()) {
         REQUIRE(schema.canBeRoot);
         REQUIRE(schema.makeDefault);
@@ -42,7 +42,9 @@ TEST_CASE("designer schema registry covers the L0 through L2 node set",
     for (const auto* type : {"Grid", "Image", "Icon", "Slider", "ProgressBar",
                              "Radio", "Tooltip", "Dropdown", "Tabs",
                              "ThemeScope", "VirtualList", "List", "Tree",
-                             "TreeList", "Splitter"}) {
+                             "TreeList", "Splitter", "ComboBox", "ColorPicker",
+                             "Spin", "ToolBar", "StatusBar", "Menu", "DialogHost",
+                             "Navigator", "Form", "DataGrid"}) {
         REQUIRE(findNodeSchema(type) != nullptr);
     }
 }
@@ -84,6 +86,17 @@ TEST_CASE("designer schema properties round trip through their Widget accessors"
 
 TEST_CASE("designer compiler applies every registered declaration through the registry",
           "[designer][p2]") {
+    MapDesignRuntimeContext context;
+    for (const auto& schema : nodeSchemaRegistry()) {
+        if (!schema.isComponent) continue;
+        context.registerComponentBuilder(
+            schema.type,
+            [](const DesignNode&, const lumen::dsl::DesignComponentContext&) {
+                lumen::dsl::DesignComponentResult result;
+                result.widget = lumen::core::makeContainerLeaf();
+                return result;
+            });
+    }
     for (const auto& schema : nodeSchemaRegistry()) {
         DesignDocument document;
         document.pageName = "schema-compile";
@@ -99,7 +112,7 @@ TEST_CASE("designer compiler applies every registered declaration through the re
             }
         }
 
-        const auto compiled = compileDesignDocument(document);
+        const auto compiled = compileDesignDocument(document, context);
         REQUIRE(compiled.ok());
         for (const auto& property : schema.properties) {
             if (property.persistence !=
@@ -111,6 +124,88 @@ TEST_CASE("designer compiler applies every registered declaration through the re
                   document.root.properties.at(property.name));
         }
     }
+}
+
+TEST_CASE("designer compiler delegates L3 composition to a typed builder",
+          "[designer][p3][designer-l3]") {
+    DesignDocument document;
+    document.pageName = "component-preview";
+    document.root = DesignNode{1, "ComboBox"};
+    document.root.properties["key"] =
+        DesignValue{DesignValue::Variant{std::string{"picker"}}};
+    document.root.references["component"] = "pickerController";
+    document.root.slots["content"] = {DesignNode{2, "Text"}};
+
+    int controller = 7;
+    const auto lease = std::make_shared<int>(11);
+    MapDesignRuntimeContext context;
+    context.registerTypedReference(DesignReferenceKind::Component,
+                                   "pickerController", &controller, lease);
+    bool receivedController = false;
+    context.registerComponentBuilder(
+        "ComboBox", [&](const DesignNode& node,
+                         const lumen::dsl::DesignComponentContext& component) {
+            CHECK(node.type == "ComboBox");
+            CHECK(node.slots.contains("content"));
+            receivedController = component.controller == &controller;
+            CHECK(component.session != nullptr);
+            lumen::dsl::DesignComponentResult result;
+            result.widget = lumen::core::makeButton("generated");
+            result.lifetimeToken = std::make_shared<int>(13);
+            return result;
+        });
+
+    const auto compiled = compileDesignDocument(document, context);
+    REQUIRE(compiled.ok());
+    CHECK(receivedController);
+    CHECK(compiled.root.type == lumen::core::WidgetType::Button);
+    CHECK(compiled.root.key == "picker");
+    REQUIRE(compiled.session != nullptr);
+    CHECK(compiled.session->leaseCount() == 2);
+}
+
+TEST_CASE("designer compiler keeps a component placeholder when its builder is missing",
+          "[designer][p3][designer-l3]") {
+    DesignDocument document;
+    document.pageName = "component-placeholder";
+    document.root = DesignNode{1, "Form"};
+
+    const auto compiled = compileDesignDocument(document);
+    REQUIRE_FALSE(compiled.ok());
+    CHECK(compiled.root.type == lumen::core::WidgetType::Container);
+    CHECK_FALSE(compiled.root.enabled);
+    CHECK(compiled.root.invalid);
+    const auto diagnostic = std::find_if(
+        compiled.diagnostics.begin(), compiled.diagnostics.end(),
+        [](const auto& error) { return error.code == "component.missing"; });
+    REQUIRE(diagnostic != compiled.diagnostics.end());
+    CHECK(diagnostic->nodeId == document.root.id);
+}
+
+TEST_CASE("designer component slots propagate unresolved references to the root",
+          "[designer][p3][designer-l3]") {
+    DesignDocument document;
+    document.root = DesignNode{1, "Form"};
+    document.root.slots["content"] = {DesignNode{2, "Button"}};
+    document.root.slots["content"].front().references["onClick"] = "missing";
+
+    MapDesignRuntimeContext context;
+    context.registerComponentBuilder(
+        "Form", [](const DesignNode&, const lumen::dsl::DesignComponentContext&) {
+            lumen::dsl::DesignComponentResult result;
+            result.widget = lumen::core::makeContainerLeaf();
+            return result;
+        });
+
+    const auto compiled = compileDesignDocument(document, context);
+    REQUIRE_FALSE(compiled.ok());
+    CHECK_FALSE(compiled.root.enabled);
+    CHECK(compiled.root.invalid);
+    const auto diagnostic = std::find_if(
+        compiled.diagnostics.begin(), compiled.diagnostics.end(),
+        [](const auto& error) { return error.code == "reference.missing"; });
+    REQUIRE(diagnostic != compiled.diagnostics.end());
+    CHECK(diagnostic->nodePath == "root.slots[content][0]");
 }
 
 TEST_CASE("designer compiler applies first L1 static widget declarations",
