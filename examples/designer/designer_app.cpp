@@ -1864,8 +1864,16 @@ void DesignerApp::removeSelectedNode() {
 }
 
 void DesignerApp::moveSelectedNode(int offset) {
-    const auto selected = workbench_.selection().primary;
-    if (!selected || !workbench_.moveNodeRelative(*selected, offset)) return;
+    const auto& selected = workbench_.selection().ids;
+    if (selected.empty() ||
+        !workbench_.moveNodesRelative(
+            std::vector<dsl::DesignNodeId>(selected.begin(), selected.end()),
+            offset)) {
+        return;
+    }
+    if (selected.size() > 1) {
+        statusMessage_ = "Moved " + std::to_string(selected.size()) + " nodes";
+    }
     refreshDocumentUi();
     shell_.markDirty();
 }

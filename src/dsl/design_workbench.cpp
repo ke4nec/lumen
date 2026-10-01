@@ -373,24 +373,103 @@ bool DesignPreviewWorkbench::moveNode(DesignNodeId id,
 }
 
 bool DesignPreviewWorkbench::moveNodeRelative(DesignNodeId id, int offset) {
-    if (!document_.has_value() || offset == 0) return false;
-    const auto location = locateNode(document_->root, id);
-    if (!location.has_value()) return false;
-    const auto* parent = findNode(document_->root, location->parent);
-    if (parent == nullptr) return false;
-    std::size_t siblings = parent->children.size();
-    if (!location->slot.empty()) {
-        const auto slot = parent->slots.find(location->slot);
-        if (slot == parent->slots.end()) return false;
-        siblings = slot->second.size();
-    }
-    const auto target = static_cast<std::int64_t>(location->index) + offset;
-    if (target < 0 || target >= static_cast<std::int64_t>(siblings)) {
-        setEditError("node cannot move outside its sibling list");
+    return moveNodesRelative({id}, offset);
+}
+
+bool DesignPreviewWorkbench::moveNodesRelative(
+    std::vector<DesignNodeId> ids, int offset) {
+    if (!document_.has_value() || ids.empty() || offset == 0) return false;
+
+    const std::set<DesignNodeId> selected(ids.begin(), ids.end());
+    if (selected.contains(document_->root.id)) {
+        setEditError("the root node cannot be moved");
         return false;
     }
-    return moveNode(id, location->parent,
-                    static_cast<std::size_t>(target), location->slot);
+    for (const auto id : selected) {
+        if (findNode(document_->root, id) == nullptr) {
+            setEditError("node is not present in the document");
+            return false;
+        }
+    }
+
+    std::vector<DesignNodeId> roots;
+    std::function<void(const DesignNode&, bool)> collectRoots =
+        [&](const DesignNode& node, bool selectedAncestor) {
+            const bool isSelected = selected.contains(node.id);
+            if (isSelected && !selectedAncestor) {
+                roots.push_back(node.id);
+                return;
+            }
+            for (const auto& child : node.children) {
+                collectRoots(child, selectedAncestor || isSelected);
+            }
+            for (const auto& [slot, children] : node.slots) {
+                (void)slot;
+                for (const auto& child : children) {
+                    collectRoots(child, selectedAncestor || isSelected);
+                }
+            }
+        };
+    collectRoots(document_->root, false);
+    if (roots.empty()) {
+        setEditError("node is not present in the document");
+        return false;
+    }
+
+    const auto firstLocation = locateNode(document_->root, roots.front());
+    if (!firstLocation.has_value()) {
+        setEditError("node is not present in the document");
+        return false;
+    }
+    const auto parentId = firstLocation->parent;
+    const auto slot = firstLocation->slot;
+    const auto* parent = findNode(document_->root, parentId);
+    if (parent == nullptr) return false;
+    const auto siblingCount = slot.empty()
+                                  ? parent->children.size()
+                                  : parent->slots.at(slot).size();
+
+    struct Move {
+        DesignNodeId id;
+        std::size_t source;
+        std::size_t target;
+    };
+    std::vector<Move> moves;
+    moves.reserve(roots.size());
+    for (const auto id : roots) {
+        const auto location = locateNode(document_->root, id);
+        if (!location.has_value() || location->parent != parentId ||
+            location->slot != slot) {
+            setEditError("selected nodes must share a sibling list");
+            return false;
+        }
+        const auto target = static_cast<std::int64_t>(location->index) + offset;
+        if (target < 0 || target >= static_cast<std::int64_t>(siblingCount)) {
+            setEditError("node cannot move outside its sibling list");
+            return false;
+        }
+        moves.push_back(
+            Move{id, location->index, static_cast<std::size_t>(target)});
+    }
+
+    std::sort(moves.begin(), moves.end(), [offset](const Move& left,
+                                                   const Move& right) {
+        return offset < 0 ? left.source < right.source
+                           : left.source > right.source;
+    });
+    std::set<DesignNodeId> affected(roots.begin(), roots.end());
+    affected.insert(parentId);
+    return applyEdit(
+        "Move nodes", std::move(affected),
+        [parentId, slot, moves = std::move(moves)](
+            DesignDocumentEditor& editor) mutable {
+            for (const auto& move : moves) {
+                if (!editor.moveNode(move.id, parentId, move.target, slot)) {
+                    return false;
+                }
+            }
+            return true;
+        });
 }
 
 std::optional<DesignNodeId> DesignPreviewWorkbench::duplicateNode(

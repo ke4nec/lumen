@@ -260,3 +260,23 @@ TEST_CASE("designer D3 workbench rejects a stale batch removal atomically",
     REQUIRE(workbench.diagnostics().size() == 1);
     CHECK(workbench.diagnostics().front().code == "editor.rejected");
 }
+
+TEST_CASE("designer D3 workbench rejects cross-parent batch moves atomically",
+          "[designer][d3]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page preview { Column(key: \"root\") {"
+        " Row(key: \"left\") { Text(\"A\", key: \"a\") }"
+        " Row(key: \"right\") { Text(\"B\", key: \"b\") } } }"));
+    REQUIRE(workbench.document().has_value());
+    const auto before = *workbench.document();
+    const auto& children = workbench.document()->root.children;
+    REQUIRE(children.size() == 2);
+    const auto leftChild = children[0].children.front().id;
+    const auto rightChild = children[1].children.front().id;
+    CHECK_FALSE(workbench.moveNodesRelative({leftChild, rightChild}, 1));
+    CHECK(workbench.document() == before);
+    CHECK_FALSE(workbench.dirty());
+    REQUIRE(workbench.diagnostics().size() == 1);
+    CHECK(workbench.diagnostics().front().code == "editor.rejected");
+}

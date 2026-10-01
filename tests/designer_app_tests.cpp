@@ -1216,6 +1216,76 @@ TEST_CASE("designer app deletes multi-selection as one transaction",
     CHECK(app.workbench().selection().primary == rootId);
 }
 
+TEST_CASE("designer app moves multi-selection as one transaction",
+          "[designer][d3][app][selection]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { Text(\"A\", key: \"a\") "
+        "Button(\"B\", key: \"b\") Text(\"C\", key: \"c\") } }",
+        "multi-move.lumen"));
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().document().has_value());
+    const auto& children = app.workbench().document()->root.children;
+    REQUIRE(children.size() == 3);
+    const auto firstId = children[0].id;
+    const auto secondId = children[1].id;
+    const auto thirdId = children[2].id;
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    const auto* firstOutline = findOutlineNodeById(*outline, firstId);
+    const auto* secondOutline = findOutlineNodeById(*outline, secondId);
+    REQUIRE(firstOutline != nullptr);
+    REQUIRE(secondOutline != nullptr);
+    const auto* firstRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + firstOutline->path);
+    const auto* secondRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + secondOutline->path);
+    REQUIRE(firstRow != nullptr);
+    REQUIRE(secondRow != nullptr);
+    const auto firstOrigin = absoluteOffset(app.shell().root(), firstRow->key);
+    const auto secondOrigin = absoluteOffset(app.shell().root(), secondRow->key);
+    const Offset firstPoint =
+        firstOrigin + Offset{firstRow->size.width * 0.5F,
+                             firstRow->size.height * 0.5F};
+    const Offset secondPoint =
+        secondOrigin + Offset{secondRow->size.width * 0.5F,
+                              secondRow->size.height * 0.5F};
+    app.shell().pointerDown(firstPoint);
+    app.shell().pointerUp(firstPoint);
+    app.shell().pointerDown(secondPoint, lumen::core::kModifierShift);
+    app.shell().pointerUp(secondPoint);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().selection().ids ==
+            std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+
+    app.shell().handlers().at("designer:move-down")();
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children[0].id == thirdId);
+    CHECK(app.workbench().document()->root.children[1].id == firstId);
+    CHECK(app.workbench().document()->root.children[2].id == secondId);
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Moved 2 nodes");
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+
+    REQUIRE(app.undo());
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children[0].id == firstId);
+    CHECK(app.workbench().document()->root.children[1].id == secondId);
+    CHECK(app.workbench().document()->root.children[2].id == thirdId);
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+    REQUIRE(app.redo());
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children[0].id == thirdId);
+    CHECK(app.workbench().selection().primary == secondId);
+    CHECK(app.workbench().selection().anchor == secondId);
+}
+
 TEST_CASE("designer app creates L1 and L2 toolbox nodes with schema defaults",
           "[designer][d3][app]") {
     DesignerApp app;

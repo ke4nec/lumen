@@ -89,6 +89,10 @@ class DesignPreviewWorkbench {
     [[nodiscard]] bool moveNode(DesignNodeId id, DesignNodeId newParentId,
                                 std::size_t index, std::string slot = {});
     [[nodiscard]] bool moveNodeRelative(DesignNodeId id, int offset);
+    // Moves top-level selected nodes within one sibling list as one undoable
+    // transaction, preserving their selection and relative order.
+    [[nodiscard]] bool moveNodesRelative(std::vector<DesignNodeId> ids,
+                                          int offset);
     [[nodiscard]] std::optional<DesignNodeId> duplicateNode(DesignNodeId id,
                                                               DesignNodeId newParentId,
                                                               std::size_t index,
