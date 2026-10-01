@@ -509,6 +509,7 @@ TEST_CASE("designer app transforms canvas preview without editing the document",
     const auto beforeSize = before->size;
     const auto beforeOrigin = absoluteOffset(app.shell().root(), nodeKey);
     const auto revision = app.workbench().documentRevision();
+    const auto initialGeneration = app.workbench().frame().generation();
     CHECK_FALSE(app.workbench().dirty());
 
     app.shell().handlers().at("designer:zoom-in")();
@@ -519,6 +520,8 @@ TEST_CASE("designer app transforms canvas preview without editing the document",
     CHECK(zoomed->size.height == Catch::Approx(beforeSize.height * 1.1F));
     CHECK(app.workbench().documentRevision() == revision);
     CHECK_FALSE(app.workbench().dirty());
+    CHECK(app.workbench().frame().generation() > initialGeneration);
+    const auto zoomGeneration = app.workbench().frame().generation();
 
     app.shell().handlers().at("designer:pan-right")();
     (void)app.shell().renderFrame();
@@ -526,6 +529,7 @@ TEST_CASE("designer app transforms canvas preview without editing the document",
     CHECK(pannedOrigin.x > beforeOrigin.x);
     CHECK(app.workbench().documentRevision() == revision);
     CHECK_FALSE(app.workbench().dirty());
+    CHECK(app.workbench().frame().generation() == zoomGeneration);
 
     app.shell().handlers().at("designer:zoom-reset")();
     (void)app.shell().renderFrame();
@@ -538,6 +542,7 @@ TEST_CASE("designer app transforms canvas preview without editing the document",
     CHECK(resetOrigin.y == Catch::Approx(beforeOrigin.y));
     CHECK(app.workbench().documentRevision() == revision);
     CHECK_FALSE(app.workbench().dirty());
+    CHECK(app.workbench().frame().generation() > zoomGeneration);
 }
 
 TEST_CASE("designer app selects transformed canvas nodes across dpi and zoom",
