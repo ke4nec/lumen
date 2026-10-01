@@ -242,6 +242,61 @@ TEST_CASE("designer app cycles keyed interaction state previews",
     checkState("Hover state", "save", lumen::style::WidgetState{});
 }
 
+TEST_CASE("designer app previews interaction state for keyless nodes",
+          "[designer][d2][app]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { "
+        "Button(\"Save\", showFocusRing: true) } }",
+        "keyless-state-preview.lumen"));
+    (void)app.shell().renderFrame();
+
+    const auto activatePreview = [&] {
+        const auto* button =
+            findNodeByKey(app.shell().root(), "designer-preview-state");
+        REQUIRE(button != nullptr);
+        CHECK(app.shell().performAccessibilityAction(
+                  button->identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+        (void)app.shell().renderFrame();
+    };
+    activatePreview();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() == 1);
+    const auto keylessId = outline->children.front().id;
+    CHECK(outline->children.front().key.empty());
+    const auto previewKey = "designer:node:" + std::to_string(keylessId);
+    const auto handler = app.shell().handlers().find(
+        "designer:select:" + std::to_string(keylessId));
+    REQUIRE(handler != app.shell().handlers().end());
+    handler->second();
+    (void)app.shell().renderFrame();
+
+    const auto context = app.shell().styleContext();
+    REQUIRE(context.previewStates != nullptr);
+    const auto found = context.previewStates->find(previewKey);
+    REQUIRE(found != context.previewStates->end());
+    CHECK(found->second == lumen::style::WidgetState{.hovered = true});
+
+    activatePreview();
+    const auto pressed = app.shell().styleContext().previewStates->find(previewKey);
+    REQUIRE(pressed != app.shell().styleContext().previewStates->end());
+    CHECK(pressed->second == lumen::style::WidgetState{.pressed = true});
+    activatePreview();
+    const auto focused = app.shell().styleContext().previewStates->find(previewKey);
+    REQUIRE(focused != app.shell().styleContext().previewStates->end());
+    CHECK(focused->second == lumen::style::WidgetState{.focused = true});
+    const auto* focusedNode = findNodeByKey(app.shell().root(), previewKey);
+    REQUIRE(focusedNode != nullptr);
+    CHECK(focusedNode->commonStyle().focusWidth > 0.0F);
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /

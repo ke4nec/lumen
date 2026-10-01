@@ -22,6 +22,10 @@ std::string nodeLabel(const dsl::DesignPreviewOutlineNode& node) {
     return node.type + "  [" + node.key + "]";
 }
 
+std::string previewKeyForNode(dsl::DesignNodeId id) {
+    return "designer:node:" + std::to_string(id);
+}
+
 }  // namespace
 
 void DesignerApp::OutlineModel::setRoot(
@@ -275,27 +279,26 @@ void DesignerApp::applyPreviewState() {
         previewStateMode_ = PreviewStateMode::None;
         return;
     }
-    // AppShell resolves visual overrides by Widget::key; the workbench trace
-    // identity is a layout path and cannot be used for this lookup.
+    // AppShell resolves overrides by Widget::key. The designer assigns a
+    // private stable key to keyless preview nodes in decoratePreview.
     std::function<std::optional<std::string>(
         const dsl::DesignPreviewOutlineNode&)> findKey =
         [&](const dsl::DesignPreviewOutlineNode& node)
         -> std::optional<std::string> {
         if (node.id == *primary) {
-            if (node.key.empty()) return std::nullopt;
-            return node.key;
+            return node.key.empty() ? previewKeyForNode(node.id) : node.key;
         }
         for (const auto& child : node.children) {
             if (const auto key = findKey(child); key.has_value()) return key;
         }
         return std::nullopt;
     };
-    const auto key = findKey(*outline);
-    if (!key.has_value()) {
+    const auto previewKey = findKey(*outline);
+    if (!previewKey.has_value()) {
         previewStateMode_ = PreviewStateMode::None;
         return;
     }
-    previewStateKey_ = *key;
+    previewStateKey_ = *previewKey;
     style::WidgetState state;
     switch (previewStateMode_) {
         case PreviewStateMode::None:
@@ -334,6 +337,7 @@ void DesignerApp::cyclePreviewState() {
 core::Widget DesignerApp::decoratePreview(
     core::Widget widget, const dsl::DesignNode& node,
     std::optional<dsl::DesignNodeId> selected) const {
+    if (widget.key.empty()) widget.key = previewKeyForNode(node.id);
     widget.onClick = "designer:select:" + std::to_string(node.id);
     if (selected.has_value() && selected == node.id) {
         widget.selected = true;
