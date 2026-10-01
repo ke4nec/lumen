@@ -609,6 +609,48 @@ TEST_CASE("designer app reorders outline rows by pointer drag",
     CHECK(app.workbench().selection().primary == titleId);
 }
 
+TEST_CASE("designer app inserts toolbox nodes by pointer drag",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    const auto rootId = initial->id;
+    const auto* toolbox = findNodeByKey(app.shell().root(),
+                                        "designer-toolbox:Text");
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    REQUIRE(toolbox != nullptr);
+    REQUIRE(canvas != nullptr);
+    const auto toolboxOrigin = absoluteOffset(app.shell().root(), toolbox->key);
+    const auto canvasOrigin = absoluteOffset(app.shell().root(), canvas->key);
+    const Offset toolboxPoint =
+        toolboxOrigin + Offset{toolbox->size.width * 0.5F,
+                               toolbox->size.height * 0.5F};
+    const Offset canvasPoint =
+        canvasOrigin + Offset{canvas->size.width * 0.5F,
+                              canvas->size.height * 0.5F};
+
+    app.shell().pointerDown(toolboxPoint);
+    (void)app.shell().renderFrame();
+    app.shell().pointerMove(canvasPoint);
+    (void)app.shell().renderFrame();
+    CHECK(app.shell().controller().dragSessionActive());
+    app.shell().pointerUp(canvasPoint);
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().outline().has_value());
+    CHECK(app.workbench().outline()->children.size() ==
+          initial->children.size() + 1);
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto insertedId = *app.workbench().selection().primary;
+    CHECK(insertedId != rootId);
+    CHECK(app.workbench().outline()->children.back().id == insertedId);
+    CHECK(app.workbench().outline()->children.back().type == "Text");
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /

@@ -94,6 +94,10 @@ class DesignerApp {
                             const std::string& sourceKey);
     void endOutlineDragSession();
     [[nodiscard]] core::Widget buildOutlineDragOverlay() const;
+    void toolboxDragSession(core::DragPhase phase, core::Offset position,
+                            const std::string& sourceKey);
+    void endToolboxDragSession();
+    [[nodiscard]] core::Widget buildToolboxDragOverlay() const;
     void refreshDocumentUi();
     void clearPropertyObservers();
     void registerPropertyBinding(dsl::DesignNodeId id,
@@ -135,6 +139,9 @@ class DesignerApp {
     std::size_t outlineDragInsertIndex_{0};
     std::string outlineDragSlot_{};
     core::Offset outlineDragPointer_{};
+    bool toolboxDragActive_{false};
+    std::string toolboxDragType_{};
+    core::Offset toolboxDragPointer_{};
     std::map<std::string, core::StateStore::ObserverId> propertyObservers_{};
     bool syncingPropertyState_{false};
     app::AppShell shell_;

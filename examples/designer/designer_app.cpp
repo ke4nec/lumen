@@ -307,6 +307,17 @@ void DesignerApp::attach() {
                 return locateDesignNode(workbench_.document()->root, *id)
                     .has_value();
             }
+            constexpr std::string_view kToolboxPrefix = "designer:toolbox:";
+            for (const auto* node : chain) {
+                if (node == nullptr ||
+                    node->onClick.rfind(kToolboxPrefix, 0) != 0) {
+                    continue;
+                }
+                claim.key = node->key;
+                claim.identity = node->identity;
+                claim.touchAllowed = false;
+                return workbench_.document().has_value();
+            }
             return false;
         });
     shell_.controller().addDragSessionSink(
@@ -314,6 +325,7 @@ void DesignerApp::attach() {
                const std::vector<const core::RenderNode*>&,
                const std::string& sourceKey, const std::string&) {
             outlineDragSession(phase, position, sourceKey);
+            toolboxDragSession(phase, position, sourceKey);
         });
     shell_.handlers()["designer:theme"] = [this] { toggleTheme(); };
     shell_.handlers()["designer:density"] = [this] { cycleDensity(); };
@@ -655,6 +667,81 @@ core::Widget DesignerApp::buildOutlineDragOverlay() const {
     overlay.key = "designer:outline-drag-overlay";
     overlay.width = view.width;
     overlay.height = view.height;
+    return overlay;
+}
+
+void DesignerApp::toolboxDragSession(core::DragPhase phase,
+                                     core::Offset position,
+                                     const std::string& sourceKey) {
+    constexpr std::string_view kSourcePrefix = "designer-toolbox:";
+    if (sourceKey.rfind(kSourcePrefix, 0) != 0) return;
+    if (!workbench_.document().has_value()) {
+        if (phase == core::DragPhase::Cancel || phase == core::DragPhase::Drop) {
+            endToolboxDragSession();
+        }
+        return;
+    }
+    if (phase == core::DragPhase::Cancel) {
+        endToolboxDragSession();
+        return;
+    }
+    if (phase == core::DragPhase::Start) {
+        toolboxDragActive_ = true;
+        toolboxDragType_ = sourceKey.substr(kSourcePrefix.size());
+        toolboxDragPointer_ = position;
+        shell_.setVisualOverlayBuilder([this]()
+                                            -> std::optional<core::Widget> {
+            if (!toolboxDragActive_) return std::nullopt;
+            return buildToolboxDragOverlay();
+        });
+        return;
+    }
+    if (!toolboxDragActive_) return;
+    toolboxDragPointer_ = position;
+    if (phase == core::DragPhase::Move) {
+        shell_.markDirty();
+        return;
+    }
+    if (phase != core::DragPhase::Drop) return;
+    const std::string type = toolboxDragType_;
+    std::vector<const core::RenderNode*> chain;
+    (void)core::hitTestChain(shell_.root(), position, chain);
+    const bool overCanvas = std::any_of(
+        chain.begin(), chain.end(), [](const core::RenderNode* node) {
+            return node != nullptr && node->key == "designer-canvas";
+        });
+    endToolboxDragSession();
+    if (overCanvas) insertNodeType(type);
+}
+
+void DesignerApp::endToolboxDragSession() {
+    toolboxDragActive_ = false;
+    toolboxDragType_.clear();
+    toolboxDragPointer_ = {};
+    shell_.clearVisualOverlay();
+}
+
+core::Widget DesignerApp::buildToolboxDragOverlay() const {
+    const auto& theme = shell_.theme();
+    const auto& tokens = theme.dragDrop;
+    auto ghost = core::makeContainer(
+        core::makeText(toolboxDragType_, theme.typography.caption),
+        std::nullopt, std::nullopt, core::EdgeInsets::symmetric(8.0F, 4.0F),
+        {}, tokens.ghostSurface,
+        core::CornerRadius::all(theme.metrics.cardRadius),
+        "designer:toolbox-drag-ghost");
+    ghost.elevation = 2.0F;
+    ghost.styleOverrides.border = tokens.ghostBorder;
+    ghost.styleOverrides.borderWidth = theme.metrics.controlBorderWidth;
+    ghost = core::withStackPosition(
+        std::move(ghost),
+        core::Offset{toolboxDragPointer_.x + tokens.ghostGrabOffsetX,
+                     toolboxDragPointer_.y - tokens.ghostGrabOffsetY});
+    auto overlay = core::makeStack({std::move(ghost)},
+                                   core::StackAlignment::TopLeft);
+    overlay.key = "designer:toolbox-drag-overlay";
+    overlay.width = shell_.view().width;
+    overlay.height = shell_.view().height;
     return overlay;
 }
 
