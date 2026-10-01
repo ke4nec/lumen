@@ -1012,7 +1012,7 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   当前先交付 headless 的 12/100/1000 L0 fixture，覆盖规范化
   serialize/read、schema、compile、layout 和 CPU paint；它记录阶段耗时并断言重复运行的
   DOM、RenderNode 和 frame hash 一致。当前另有运行时 Widget 虚拟列表 fixture，验证大列表
-  只物化可见窗口；L2 DesignDocument 虚拟列表/组合件 schema 已登记，峰值内存和真实重建次数仍待
+  只物化可见窗口；L2 DesignDocument 虚拟列表/组合件 schema 已登记，真实堆内存峰值仍待
   D3 预览容器补齐。100 节点文档事务和 1000 节点大纲投影的 headless 基线已具备；
   `DesignPreviewFrame::rebuildCount()` 现已记录每次预览编译尝试（含可恢复失败），并由 D3
   测试验证成功、占位失败和保留上一帧失败的计数；`VirtualListController` 另记录当前/峰值
