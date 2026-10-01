@@ -1313,7 +1313,7 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
   AppShell 状态镜像、画布辅助层开关以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `842` 个断言、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `845` 个断言、
   `41` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y、Ctrl/Cmd+C/V 结构化节点复制粘贴（含多选跨父节点批量粘贴），多选 Delete/上移/下移，L0–L2 工具箱按钮，以及插入/复制/删除/上移/下移命令的

@@ -20,6 +20,7 @@
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/render_node.h"
 #include "lumen/core/splitter.h"
+#include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_codec.h"
 #include "lumen/dsl/project_store.h"
 #include "lumen/style/state.h"
@@ -1759,6 +1760,12 @@ TEST_CASE("designer app previews deterministic L2 source adapters",
     REQUIRE(list->virtualSource != nullptr);
     CHECK(list->virtualSource->itemCount() == 12);
     CHECK(list->children.size() > 0);
+    const auto* listSource =
+        dynamic_cast<const lumen::core::VirtualListController*>(list->virtualSource);
+    REQUIRE(listSource != nullptr);
+    CHECK(listSource->lastMaterializedItems() == list->children.size());
+    CHECK(listSource->peakMaterializedItems() >=
+          listSource->lastMaterializedItems());
     const auto* dynamicRow = findNodeByKey(
         app.shell().root(), "designer-preview-row:0");
     REQUIRE(dynamicRow != nullptr);
