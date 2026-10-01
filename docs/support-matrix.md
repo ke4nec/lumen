@@ -98,7 +98,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
 | R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；`examples/common/example_kit.h` 首批提取 mutedLabel/errorText/statusLine（2026-09-30，两应用逐字节重复收敛为单点）；页面壳（sectionCard 级）仍按需 |
 | R10 文档与证据同步 | 进行中 | 本表与待验收登记即该缺口的 2026-09-30 批次；后续状态变化须同一变更内更新 |
-| R11 D3 L0 可编辑设计器 | 接口已存在 + headless 已验证 | DP-1=B、DP-3=L0、DP-4=独立 preview/session 已于 2026-10-01 决定；P1–P5 和编辑基础契约已有 headless 证据，工具箱/属性/结构编辑的真实应用出口与三桌面 smoke 待完成 |
+| R11 D3 L0 可编辑设计器 | L0 应用出口部分交付 + headless 已验证 | DP-1=B、DP-3=L0、DP-4=独立 preview/session 已于 2026-10-01 决定；DesignerApp 已接通 12 类型工具箱、属性/结构编辑、undo/redo 和保存 API，保存 UI/路径策略与三桌面 smoke 待完成 |
 
 ### 预乘 alpha 联调历史记录（2026-09-20）
 

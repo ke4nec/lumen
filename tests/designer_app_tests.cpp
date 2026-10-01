@@ -119,6 +119,17 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
         app.shell().keyDown(Key::Tab);
         CHECK(app.shell().focus().focusedKey() == key);
     }
+    const std::vector<std::string> toolboxKeys = {
+        "designer-toolbox:Container", "designer-toolbox:Row",
+        "designer-toolbox:Column",    "designer-toolbox:Stack",
+        "designer-toolbox:Text",      "designer-toolbox:Button",
+        "designer-toolbox:TextField", "designer-toolbox:ScrollView",
+        "designer-toolbox:ListView",  "designer-toolbox:Checkbox",
+        "designer-toolbox:Switch",    "designer-toolbox:FocusScope"};
+    for (const auto& key : toolboxKeys) {
+        app.shell().keyDown(Key::Tab);
+        CHECK(app.shell().focus().focusedKey() == key);
+    }
     app.shell().keyDown(Key::Tab);
     CHECK(app.shell().focus().focusedKey().starts_with(
         "designer-outline:item:"));
@@ -364,6 +375,10 @@ TEST_CASE("designer app routes L0 structure commands",
     REQUIRE(initial.has_value());
     const auto rootId = initial->id;
     const auto initialChildren = initial->children.size();
+    const std::vector<std::string> toolboxTypes = {
+        "Container", "Row",       "Column",    "Stack",
+        "Text",      "Button",    "TextField", "ScrollView",
+        "ListView",  "Checkbox",  "Switch",    "FocusScope"};
 
     const auto activate = [&](const char* key) {
         const auto* button = findNodeByKey(app.shell().root(), key);
@@ -373,6 +388,10 @@ TEST_CASE("designer app routes L0 structure commands",
               lumen::accessibility::SemanticsActionStatus::Handled);
         (void)app.shell().renderFrame();
     };
+
+    for (const auto& type : toolboxTypes) {
+        REQUIRE(findNodeByKey(app.shell().root(), "designer-toolbox:" + type));
+    }
 
     activate("designer-add-text");
     auto outline = app.workbench().outline();
@@ -409,6 +428,21 @@ TEST_CASE("designer app routes L0 structure commands",
     CHECK(app.undo());
     CHECK(app.workbench().selection().primary == duplicateId);
     CHECK(app.workbench().outline()->children.size() == initialChildren + 2);
+
+    const auto rootHandler = app.shell().handlers().find(
+        "designer:select:" + std::to_string(rootId));
+    REQUIRE(rootHandler != app.shell().handlers().end());
+    rootHandler->second();
+    app.shell().markDirty();
+    (void)app.shell().renderFrame();
+    activate("designer-toolbox:FocusScope");
+    outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    CHECK(outline->children.size() == initialChildren + 3);
+    REQUIRE(app.workbench().selection().primary.has_value());
+    CHECK(outline->children.back().id ==
+          *app.workbench().selection().primary);
+    CHECK(outline->children.back().type == "FocusScope");
 }
 
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",

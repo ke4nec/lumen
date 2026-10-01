@@ -10,6 +10,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "lumen/dsl/design_schema.h"
+
 namespace lumen::designer_app {
 namespace {
 
@@ -227,6 +229,10 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:move-up"] = [this] { moveSelectedNode(-1); };
     shell_.handlers()["designer:move-down"] =
         [this] { moveSelectedNode(1); };
+    for (const auto& schema : dsl::nodeSchemaRegistry()) {
+        shell_.handlers()["designer:toolbox:" + schema.type] =
+            [this, type = schema.type] { insertNodeType(type); };
+    }
     (void)loadSource(kSampleSource, "sample.lumen");
 }
 
@@ -352,21 +358,28 @@ void DesignerApp::refreshDocumentUi() {
     }
 }
 
-void DesignerApp::insertTextNode() {
+void DesignerApp::insertNodeType(std::string type) {
     const auto parentId = workbench_.selection().primary;
     if (!parentId || !workbench_.document().has_value()) return;
     const auto* parent = findDesignNode(workbench_.document()->root, *parentId);
     if (parent == nullptr) return;
     dsl::DesignNode node;
-    node.type = "Text";
-    node.properties["text"] = dsl::DesignValue{
-        dsl::DesignValue::Variant{std::string{"New text"}}};
+    node.type = std::move(type);
+    if (node.type == "Text") {
+        node.properties["text"] = dsl::DesignValue{
+            dsl::DesignValue::Variant{std::string{"New text"}}};
+    } else if (node.type == "Button") {
+        node.properties["text"] = dsl::DesignValue{
+            dsl::DesignValue::Variant{std::string{"Button"}}};
+    }
     if (workbench_.insertNode(*parentId, parent->children.size(),
                               std::move(node))) {
         refreshDocumentUi();
         shell_.markDirty();
     }
 }
+
+void DesignerApp::insertTextNode() { insertNodeType("Text"); }
 
 void DesignerApp::duplicateSelectedNode() {
     const auto selected = workbench_.selection().primary;
@@ -721,6 +734,34 @@ core::Widget DesignerApp::buildToolbar() {
     return toolbar;
 }
 
+core::Widget DesignerApp::buildToolboxPanel() {
+    const auto& theme = shell_.theme();
+    std::vector<core::Widget> rows;
+    const auto& schemas = dsl::nodeSchemaRegistry();
+    for (std::size_t index = 0; index < schemas.size(); index += 3) {
+        std::vector<core::Widget> buttons;
+        for (std::size_t offset = 0;
+             offset < 3 && index + offset < schemas.size(); ++offset) {
+            const auto& schema = schemas[index + offset];
+            buttons.push_back(core::makeButton(
+                schema.type, theme.typography.caption, {}, 1.0F,
+                "designer-toolbox:" + schema.type, std::nullopt,
+                std::nullopt, "designer:toolbox:" + schema.type));
+        }
+        rows.push_back(core::makeRow(
+            std::move(buttons), core::MainAxisAlignment::Start,
+            core::CrossAxisAlignment::Stretch, 4.0F));
+    }
+    auto heading = core::makeText("Toolbox", theme.typography.label, {}, 0.0F,
+                                  "designer-toolbox-heading");
+    return core::makeColumn(
+        {std::move(heading),
+         core::makeColumn(std::move(rows), core::MainAxisAlignment::Start,
+                          core::CrossAxisAlignment::Stretch, 4.0F)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 6.0F,
+        {}, {}, "designer-toolbox");
+}
+
 core::Widget DesignerApp::buildOutlinePanel() {
     const auto& theme = shell_.theme();
     auto heading = core::makeText("Outline", theme.typography.label, {}, 0.0F,
@@ -729,7 +770,8 @@ core::Widget DesignerApp::buildOutlinePanel() {
                                std::nullopt, std::nullopt);
     tree.flex = 1.0F;
     auto panel = core::makeColumn(
-        {std::move(heading), std::move(tree)}, core::MainAxisAlignment::Start,
+        {buildToolboxPanel(), std::move(heading), std::move(tree)},
+        core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Stretch, 8.0F,
         core::EdgeInsets::all(12.0F), {}, "designer-outline-panel", 240.0F);
     panel.color = theme.colors.surfaceSunken;

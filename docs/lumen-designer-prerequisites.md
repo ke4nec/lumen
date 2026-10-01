@@ -1240,10 +1240,11 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   键盘/语义激活、主题/密度/DPI/字体缩放/高对比环境预览、按 key 或私有稳定 key 的
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation 以及显式会话清理。
-- D3 首个 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `98` 个断言、
+- D3 首个 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `118` 个断言、
   `5` 个测试用例通过，覆盖 L0 声明属性编辑、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
-  绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，以及插入/复制/删除/上移/下移命令的语义激活和选择恢复。
+  绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，12 个 L0 工具箱按钮，以及插入/复制/删除/上移/下移命令的
+  语义激活和选择恢复。
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
   `designer_window_smoke` 和 `designer_gallery_window_smoke` 四项（`4/4`）；另有
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`

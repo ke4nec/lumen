@@ -66,6 +66,7 @@ class DesignerApp {
     [[nodiscard]] static app::ShellConfig configFor(DesignerApp* self);
     [[nodiscard]] core::Widget buildUi();
     [[nodiscard]] core::Widget buildToolbar();
+    [[nodiscard]] core::Widget buildToolboxPanel();
     [[nodiscard]] core::Widget buildBody();
     [[nodiscard]] core::Widget buildOutlinePanel();
     [[nodiscard]] core::Widget buildPreviewPanel();
@@ -84,6 +85,7 @@ class DesignerApp {
     void cyclePreviewState();
     void applyPreviewState();
     void resetPreviewState();
+    void insertNodeType(std::string type);
     void insertTextNode();
     void duplicateSelectedNode();
     void removeSelectedNode();
