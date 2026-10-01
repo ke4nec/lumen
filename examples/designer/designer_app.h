@@ -94,6 +94,8 @@ class DesignerApp {
     void clearPropertyObservers();
     void registerPropertyBinding(dsl::DesignNodeId id,
                                   const dsl::DesignPreviewProperty& property);
+    void registerReferenceBinding(dsl::DesignNodeId id,
+                                  const dsl::DesignPreviewProperty& property);
 
     enum class PreviewStateMode {
         None,

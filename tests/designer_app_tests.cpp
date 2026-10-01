@@ -445,6 +445,50 @@ TEST_CASE("designer app routes L0 structure commands",
     CHECK(outline->children.back().type == "FocusScope");
 }
 
+TEST_CASE("designer app edits named runtime references",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Button(\"Save\", onClick: save, key: \"save\") }",
+        "reference-editor.lumen"));
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    const auto buttonId = outline->id;
+    const std::string bind =
+        "designer:reference:" + std::to_string(buttonId) + ":onClick";
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-reference-field:" +
+                              std::to_string(buttonId) + ":onClick"));
+
+    app.shell().state().set(bind, "submit");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document()->root.references.contains("onClick"));
+    CHECK(app.workbench().document()->root.references.at("onClick") ==
+          "submit");
+    CHECK(app.workbench().dirty());
+
+    app.shell().state().set(bind, "not-valid");
+    (void)app.shell().renderFrame();
+    CHECK(app.shell().state().get(bind) == "submit");
+    CHECK(app.workbench().document()->root.references.at("onClick") ==
+          "submit");
+
+    app.shell().state().set(bind, "");
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.workbench().document()->root.references.contains("onClick"));
+    REQUIRE(app.undo());
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().document()->root.references.at("onClick") ==
+          "submit");
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-reference-field:" +
+                            std::to_string(buttonId) + ":onClick"));
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /

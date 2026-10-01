@@ -37,6 +37,12 @@ std::string propertyBindingKey(dsl::DesignNodeId id,
            std::string{property};
 }
 
+std::string referenceBindingKey(dsl::DesignNodeId id,
+                                std::string_view property) {
+    return "designer:reference:" + std::to_string(id) + ":" +
+           std::string{property};
+}
+
 std::string propertyStateValue(const dsl::DesignValue& value) {
     return std::visit(
         [](const auto& item) -> std::string {
@@ -525,6 +531,44 @@ void DesignerApp::registerPropertyBinding(
         });
 }
 
+void DesignerApp::registerReferenceBinding(
+    dsl::DesignNodeId id, const dsl::DesignPreviewProperty& property) {
+    if (!property.reference.has_value()) return;
+    const std::string bind = referenceBindingKey(id, property.name);
+    syncingPropertyState_ = true;
+    shell_.state().set(bind, *property.reference);
+    syncingPropertyState_ = false;
+    if (propertyObservers_.contains(bind)) return;
+
+    propertyObservers_[bind] = shell_.state().subscribe(
+        bind, [this, id, name = property.name, bind] {
+            if (syncingPropertyState_ || !workbench_.document().has_value()) {
+                return;
+            }
+            const auto* node =
+                findDesignNode(workbench_.document()->root, id);
+            if (node == nullptr) return;
+            const auto referenceIt = node->references.find(name);
+            const std::string previous =
+                referenceIt == node->references.end() ? std::string{}
+                                                       : referenceIt->second;
+            const std::string value = shell_.state().get(bind);
+            bool changed = false;
+            if (value.empty()) {
+                changed = workbench_.clearReference(id, name);
+            } else {
+                changed = workbench_.setReference(id, name, value);
+            }
+            if (!changed) {
+                syncingPropertyState_ = true;
+                shell_.state().set(bind, previous);
+                syncingPropertyState_ = false;
+                return;
+            }
+            shell_.markDirty();
+        });
+}
+
 void DesignerApp::applyPreviewState() {
     if (!previewStateKey_.empty()) {
         shell_.setVisualPreviewState(previewStateKey_, {});
@@ -813,7 +857,28 @@ core::Widget DesignerApp::buildPropertiesPanel() {
     const auto selected = workbench_.selection().primary;
     if (selected.has_value()) {
         for (const auto& property : workbench_.properties(*selected)) {
-            if (property.value.has_value() &&
+            if (property.reference.has_value()) {
+                registerReferenceBinding(*selected, property);
+                const std::string bind =
+                    referenceBindingKey(*selected, property.name);
+                auto field = core::makeTextField(
+                    {}, "reference", theme.typography.body, {}, 0.0F,
+                    "designer-reference-field:" +
+                        std::to_string(*selected) + ":" + property.name,
+                    168.0F, std::nullopt, bind);
+                field.flex = 1.0F;
+                auto row = core::makeRow(
+                    {core::makeText(property.name, theme.typography.caption,
+                                    {}, 0.0F,
+                                    "designer-reference-label:" +
+                                        property.name),
+                     std::move(field)},
+                    core::MainAxisAlignment::Start,
+                    core::CrossAxisAlignment::Center, 8.0F, {}, {},
+                    "designer-reference-row:" + std::to_string(*selected) +
+                        ":" + property.name);
+                rows.push_back(std::move(row));
+            } else if (property.value.has_value() &&
                 isEditableProperty(*property.value)) {
                 registerPropertyBinding(*selected, property);
                 const std::string bind =
