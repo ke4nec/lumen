@@ -664,6 +664,10 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                 self->requestOpenFile();
                 return true;
             }
+            if (lower == 'n' && (modifiers & core::kModifierShift) != 0) {
+                self->requestNewProjectFile();
+                return true;
+            }
             if (lower == 's') {
                 if ((modifiers & core::kModifierShift) != 0) {
                     self->requestSaveAsFile();
@@ -844,6 +848,8 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:move-down"] =
         [this] { moveSelectedNode(1); };
     shell_.handlers()["designer:open"] = [this] { requestOpenFile(); };
+    shell_.handlers()["designer:new-project"] =
+        [this] { requestNewProjectFile(); };
     shell_.handlers()["designer:save"] = [this] { requestSaveFile(); };
     shell_.handlers()["designer:save-as"] =
         [this] { requestSaveAsFile(); };
@@ -903,6 +909,26 @@ void DesignerApp::requestOpenFile() {
         statusMessage_ = "Open failed: " + error;
     } else {
         statusMessage_ = "Opening document...";
+    }
+    shell_.markDirty();
+}
+
+void DesignerApp::requestNewProjectFile() {
+    pendingFileDialog_ = PendingFileDialog::NewProject;
+    if (!fileDialogRequester_) {
+        pendingFileDialog_ = PendingFileDialog::None;
+        statusMessage_ =
+            "New project unavailable: file dialogs are not configured";
+        shell_.markDirty();
+        return;
+    }
+    const std::string error =
+        fileDialogRequester_(true, "untitled.lumen-project");
+    if (!error.empty()) {
+        pendingFileDialog_ = PendingFileDialog::None;
+        statusMessage_ = "New project failed: " + error;
+    } else {
+        statusMessage_ = "Choosing a project file...";
     }
     shell_.markDirty();
 }
@@ -1027,6 +1053,10 @@ void DesignerApp::handleFileDialogResult(
                                                           : loadFile(filename));
         statusMessage_ = loaded ? "Opened  /  " + filename
                                 : "Open failed  /  " + filename;
+    } else if (pending == PendingFileDialog::NewProject) {
+        const bool created = createProjectFile(filename);
+        statusMessage_ = created ? "Created project  /  " + filename
+                                 : "New project failed  /  " + filename;
     } else if (pending == PendingFileDialog::SaveAs) {
         const bool saved = project_.has_value() && isProjectFile(filename)
                                ? saveProjectFile(filename)
@@ -1257,6 +1287,40 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
     statusMessage_ = "Project saved  /  " + filename;
     shell_.markDirty();
     return true;
+}
+
+bool DesignerApp::createProjectFile(const std::string& filename) {
+    if (!workbench_.document().has_value() || filename.empty()) return false;
+
+    const auto manifestPath = std::filesystem::path{filename};
+    const auto pagePath = manifestPath.parent_path() / "main.design";
+    dsl::DesignProject project;
+    project.projectId = manifestPath.stem().string();
+    if (project.projectId.empty()) project.projectId = "designer.project";
+    project.name = project.projectId;
+    project.root = ".";
+    project.pages.push_back(dsl::DesignProjectPage{
+        workbench_.document()->documentId, "main.design",
+        workbench_.document()->pageName});
+
+    std::vector<dsl::DesignError> diagnostics;
+    if (!projectDocumentStore_.save(pagePath.string(), *workbench_.document(),
+                                    diagnostics)) {
+        for (auto diagnostic : diagnostics) {
+            appendProjectDiagnostic(std::move(diagnostic),
+                                    workbench_.document()->documentId);
+        }
+        shell_.markDirty();
+        return false;
+    }
+    if (!projectStore_.save(filename, project, diagnostics)) {
+        for (auto diagnostic : diagnostics) {
+            appendProjectDiagnostic(std::move(diagnostic));
+        }
+        shell_.markDirty();
+        return false;
+    }
+    return loadProjectFile(filename);
 }
 
 bool DesignerApp::loadFile(const std::string& filename) {
@@ -2448,6 +2512,11 @@ core::Widget DesignerApp::buildToolbar() {
     auto moveDownButton = core::makeButton(
         "Move down", theme.typography.label, {}, 0.0F, "designer-move-down",
         96.0F, std::nullopt, "designer:move-down");
+    auto newProjectButton = core::withLeadingIcon(
+        core::makeButton("New project", theme.typography.label, {}, 0.0F,
+                         "designer-new-project", 116.0F, std::nullopt,
+                         "designer:new-project"),
+        core::IconId::Plus);
     auto openButton = core::withLeadingIcon(
         core::makeButton("Open", theme.typography.label, {}, 0.0F,
                          "designer-open", 78.0F, std::nullopt,
@@ -2474,7 +2543,8 @@ core::Widget DesignerApp::buildToolbar() {
          std::move(runButton), std::move(debugButton), std::move(stopButton),
          std::move(addTextButton), std::move(duplicateButton),
          std::move(removeButton), std::move(moveUpButton),
-         std::move(moveDownButton), std::move(openButton),
+         std::move(moveDownButton), std::move(newProjectButton),
+         std::move(openButton),
          std::move(saveButton), std::move(saveAsButton)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
         8.0F, core::EdgeInsets::symmetric(16.0F, 8.0F), {}, "designer-toolbar",

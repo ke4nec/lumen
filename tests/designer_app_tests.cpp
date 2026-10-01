@@ -1759,6 +1759,56 @@ TEST_CASE("designer app routes file dialog commands through one path",
           "File dialog failed: cancelled");
 }
 
+TEST_CASE("designer app creates a project from the current document",
+          "[designer][dp9][d3][app]") {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-new-project-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()));
+    std::error_code error;
+    std::filesystem::create_directories(root, error);
+    REQUIRE_FALSE(error);
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+
+    DesignerApp app;
+    app.attach();
+    REQUIRE(app.loadSource("page editor { Text(\"Editor\") }",
+                           "editor.lumen"));
+    const auto documentId = app.workbench().document()->documentId;
+    bool requestedForSave = false;
+    std::string requestedDefaultName;
+    app.setFileDialogRequester(
+        [&](bool forSave, const std::string& defaultName) {
+            requestedForSave = forSave;
+            requestedDefaultName = defaultName;
+            return std::string{};
+        });
+
+    app.shell().handlers().at("designer:new-project")();
+    CHECK(requestedForSave);
+    CHECK(requestedDefaultName == "untitled.lumen-project");
+    const auto manifest = root / "editor.lumen-project";
+    app.handleFileDialogResult({manifest.string()});
+
+    REQUIRE(app.project().has_value());
+    REQUIRE(app.project()->pages.size() == 1);
+    CHECK(app.project()->pages.front().documentId == documentId);
+    CHECK(app.activeProjectDocumentId() == documentId);
+    CHECK(app.workbench().document()->documentId == documentId);
+    CHECK(std::filesystem::exists(root / "main.design"));
+    lumen::dsl::ProjectStore store;
+    const auto loaded = store.load(manifest.string());
+    REQUIRE(loaded.ok());
+    CHECK(loaded.project.pages.front().documentId == documentId);
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /

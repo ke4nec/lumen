@@ -74,6 +74,7 @@ class DesignerApp {
     [[nodiscard]] bool saveDesignFile(const std::string& filename);
     [[nodiscard]] bool loadProjectFile(const std::string& filename);
     [[nodiscard]] bool saveProjectFile(const std::string& filename);
+    [[nodiscard]] bool createProjectFile(const std::string& filename);
     [[nodiscard]] bool switchProjectDocument(const std::string& documentId);
     [[nodiscard]] const std::optional<dsl::DesignProject>& project() const {
         return project_;
@@ -176,6 +177,7 @@ class DesignerApp {
     void applyPreviewState();
     void resetPreviewState();
     void requestOpenFile();
+    void requestNewProjectFile();
     void requestSaveFile();
     void requestSaveAsFile();
     [[nodiscard]] bool startPreview(bool debug);
@@ -222,6 +224,7 @@ class DesignerApp {
     enum class PendingFileDialog {
         None,
         Open,
+        NewProject,
         SaveAs,
     };
 
