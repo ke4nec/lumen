@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -286,6 +287,80 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     (void)app.shell().renderFrame();
     REQUIRE(app.workbench().selection().primary.has_value());
     CHECK(*app.workbench().selection().primary == outline->children.front().id);
+}
+
+TEST_CASE("designer app mirrors extended outline selection into the canvas",
+          "[designer][d3][app][selection]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() >= 3);
+    const auto firstId = outline->children[0].id;
+    const auto secondId = outline->children[1].id;
+    const auto thirdId = outline->children[2].id;
+    const auto* firstRow = findNodeByKey(
+        app.shell().root(),
+        "designer-outline:item:" + outline->children[0].path);
+    const auto* thirdRow = findNodeByKey(
+        app.shell().root(),
+        "designer-outline:item:" + outline->children[2].path);
+    REQUIRE(firstRow != nullptr);
+    REQUIRE(thirdRow != nullptr);
+
+    const auto firstOrigin = absoluteOffset(app.shell().root(), firstRow->key);
+    const auto thirdOrigin = absoluteOffset(app.shell().root(), thirdRow->key);
+    const Offset firstPoint =
+        firstOrigin + Offset{firstRow->size.width * 0.5F,
+                             firstRow->size.height * 0.5F};
+    const Offset thirdPoint =
+        thirdOrigin + Offset{thirdRow->size.width * 0.5F,
+                             thirdRow->size.height * 0.5F};
+
+    app.shell().pointerDown(firstPoint);
+    app.shell().pointerUp(firstPoint);
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId});
+
+    app.shell().pointerDown(thirdPoint, lumen::core::kModifierShift);
+    app.shell().pointerUp(thirdPoint);
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().selection().primary == thirdId);
+    CHECK(app.workbench().selection().ids.contains(firstId));
+    CHECK(app.workbench().selection().ids.contains(secondId));
+    CHECK(app.workbench().selection().ids.contains(thirdId));
+
+    const auto* firstCanvas = findNodeByKey(
+        app.shell().root(), outline->children[0].key);
+    const auto* secondCanvas = findNodeByKey(
+        app.shell().root(), outline->children[1].key);
+    const auto* thirdCanvas = findNodeByKey(
+        app.shell().root(), outline->children[2].key);
+    REQUIRE(firstCanvas != nullptr);
+    REQUIRE(secondCanvas != nullptr);
+    REQUIRE(thirdCanvas != nullptr);
+    CHECK(firstCanvas->selected);
+    CHECK(secondCanvas->selected);
+    CHECK(thirdCanvas->selected);
+
+    const auto* secondRow = findNodeByKey(
+        app.shell().root(),
+        "designer-outline:item:" + outline->children[1].path);
+    REQUIRE(secondRow != nullptr);
+    const auto secondOrigin = absoluteOffset(app.shell().root(), secondRow->key);
+    const Offset secondPoint =
+        secondOrigin + Offset{secondRow->size.width * 0.5F,
+                              secondRow->size.height * 0.5F};
+    app.shell().pointerDown(secondPoint, lumen::core::kModifierCtrl);
+    app.shell().pointerUp(secondPoint);
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.workbench().selection().ids.contains(secondId));
+    CHECK_FALSE(findNodeByKey(app.shell().root(), outline->children[1].key)
+                    ->selected);
 }
 
 TEST_CASE("designer app renders canvas alignment guides for the selection",

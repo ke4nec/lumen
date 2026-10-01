@@ -252,7 +252,7 @@ class DesignerApp {
 
     [[nodiscard]] core::Widget decoratePreview(
         core::Widget widget, const dsl::DesignNode& node,
-        std::optional<dsl::DesignNodeId> selected) const;
+        const std::set<dsl::DesignNodeId>& selected) const;
     [[nodiscard]] static std::string formatValue(
         const std::optional<dsl::DesignValue>& value,
         const std::optional<std::string>& reference);

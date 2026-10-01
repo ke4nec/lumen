@@ -732,7 +732,7 @@ void DesignerApp::attach() {
     diagnosticsController_.setItemBuilder([this](std::size_t index) {
         return buildDiagnosticRow(index);
     });
-    outlineController_.setSelectionMode(widgets::SelectionMode::Single);
+    outlineController_.setSelectionMode(widgets::SelectionMode::Extended);
     outlineController_.setModel(&outlineModel_);
     outlineController_.attach(shell_, "designer-outline");
     outlineController_.onActivated = [this](const std::string& key) {
@@ -1365,14 +1365,17 @@ void DesignerApp::rebuildOutline() {
     outlineModel_.setRoot(workbench_.outline());
     outlineController_.modelChanged();
     if (const auto root = workbench_.outline(); root.has_value()) {
-        const auto selected = workbench_.selection().primary;
+        const auto& selection = workbench_.selection();
+        std::vector<std::string> selectedPaths;
         std::optional<std::string> selectedPath;
         std::function<void(const dsl::DesignPreviewOutlineNode&)> findPath =
             [&](const dsl::DesignPreviewOutlineNode& item) {
-                if (selectedPath.has_value()) return;
-                if (selected.has_value() && item.id == *selected) {
+                if (selection.ids.contains(item.id)) {
+                    selectedPaths.push_back(item.path);
+                }
+                if (selection.primary.has_value() &&
+                    item.id == *selection.primary) {
                     selectedPath = item.path;
-                    return;
                 }
                 for (const auto& child : item.children) findPath(child);
             };
@@ -1380,11 +1383,14 @@ void DesignerApp::rebuildOutline() {
         if (!selectedPath.has_value()) {
             selectedPath = root->path;
             (void)workbench_.selectNode(root->id);
+            selectedPaths = {root->path};
+        } else if (selectedPaths.empty()) {
+            selectedPaths = {*selectedPath};
         }
         outlineController_.collapseAll();
         (void)outlineController_.expandAll();
         outlineController_.selection().setCurrent(*selectedPath);
-        outlineController_.selection().setSelected({*selectedPath});
+        outlineController_.selection().setSelected(std::move(selectedPaths));
     } else {
         outlineController_.selection().clear();
     }
@@ -2118,12 +2124,44 @@ core::Widget DesignerApp::buildToolboxDragOverlay() const {
 }
 
 void DesignerApp::syncSelectionFromOutline() {
-    const auto key = outlineController_.selection().currentKey();
-    if (key.empty()) return;
-    const auto id = outlineModel_.idForKey(key);
-    if (!id.has_value() || workbench_.selection().primary == id) return;
-    (void)workbench_.selectNode(*id);
+    const auto& outlineSelection = outlineController_.selection();
+    if (outlineSelection.selectedKeys().empty()) return;
+
+    std::vector<dsl::DesignNodeId> ordered;
+    std::set<dsl::DesignNodeId> selected;
+    for (const auto& key : outlineSelection.selectedKeys()) {
+        const auto id = outlineModel_.idForKey(key);
+        if (!id.has_value() || selected.contains(*id)) continue;
+        selected.insert(*id);
+        ordered.push_back(*id);
+    }
+    if (selected.empty()) return;
+
+    std::optional<dsl::DesignNodeId> primary;
+    if (!outlineSelection.currentKey().empty()) {
+        primary = outlineModel_.idForKey(outlineSelection.currentKey());
+        if (!primary.has_value() || !selected.contains(*primary)) {
+            primary.reset();
+        }
+    }
+    if (!primary.has_value()) primary = ordered.back();
+
+    const auto& current = workbench_.selection();
+    if (current.ids == selected && current.primary == primary) return;
+
+    std::vector<dsl::DesignNodeId> reordered;
+    reordered.reserve(ordered.size());
+    for (const auto id : ordered) {
+        if (id != *primary) reordered.push_back(id);
+    }
+    reordered.push_back(*primary);
+    for (std::size_t index = 0; index < reordered.size(); ++index) {
+        (void)workbench_.selectNode(
+            reordered[index], index == 0 ? dsl::DesignSelectionMode::Replace
+                                         : dsl::DesignSelectionMode::Add);
+    }
     applyPreviewState();
+    shell_.markDirty();
 }
 
 void DesignerApp::applyEnvironmentTheme() {
@@ -2366,10 +2404,10 @@ void DesignerApp::cyclePreviewState() {
 
 core::Widget DesignerApp::decoratePreview(
     core::Widget widget, const dsl::DesignNode& node,
-    std::optional<dsl::DesignNodeId> selected) const {
+    const std::set<dsl::DesignNodeId>& selected) const {
     if (widget.key.empty()) widget.key = previewKeyForNode(node.id);
     widget.onClick = "designer:select:" + std::to_string(node.id);
-    if (selected.has_value() && selected == node.id) {
+    if (selected.contains(node.id)) {
         widget.selected = true;
         widget.styleOverrides.background = shell_.theme().colors.selectionBackground;
         widget.styleOverrides.border = shell_.theme().colors.accent;
@@ -2887,7 +2925,7 @@ core::Widget DesignerApp::buildCanvasPanel() {
         applyImageResources(previewFrame);
         preview = decoratePreview(
             std::move(previewFrame), workbench_.document()->root,
-            workbench_.selection().primary);
+            workbench_.selection().ids);
     } else {
         preview = core::makeText("No valid preview frame",
                                  theme.typography.body);
