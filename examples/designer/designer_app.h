@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <filesystem>
 #include <map>
@@ -15,6 +16,8 @@
 #include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_resources.h"
 #include "lumen/dsl/design_workbench.h"
+#include "lumen/dsl/document_store.h"
+#include "lumen/dsl/project_store.h"
 #include "lumen/render/resource_manager.h"
 #include "lumen/widgets/color_picker.h"
 #include "lumen/widgets/combo_box.h"
@@ -69,6 +72,18 @@ class DesignerApp {
     [[nodiscard]] bool redo();
     [[nodiscard]] bool loadDesignFile(const std::string& filename);
     [[nodiscard]] bool saveDesignFile(const std::string& filename);
+    [[nodiscard]] bool loadProjectFile(const std::string& filename);
+    [[nodiscard]] bool saveProjectFile(const std::string& filename);
+    [[nodiscard]] bool switchProjectDocument(const std::string& documentId);
+    [[nodiscard]] const std::optional<dsl::DesignProject>& project() const {
+        return project_;
+    }
+    [[nodiscard]] const std::string& activeProjectDocumentId() const {
+        return activeProjectDocumentId_;
+    }
+    [[nodiscard]] const std::vector<dsl::DesignError>& projectDiagnostics() const {
+        return projectDiagnostics_;
+    }
     void setFileDialogRequester(FileDialogRequester requester) {
         fileDialogRequester_ = std::move(requester);
     }
@@ -129,6 +144,7 @@ class DesignerApp {
     [[nodiscard]] core::Widget buildPreviewWindow();
     [[nodiscard]] core::Widget buildToolbar();
     [[nodiscard]] core::Widget buildToolboxPanel();
+    [[nodiscard]] core::Widget buildProjectPanel();
     [[nodiscard]] core::Widget buildBody();
     [[nodiscard]] core::Widget buildOutlinePanel();
     [[nodiscard]] core::Widget buildPreviewPanel();
@@ -183,6 +199,11 @@ class DesignerApp {
     [[nodiscard]] static float snapCanvasCoordinate(float value, float maximum,
                                                      float threshold);
     void refreshDocumentUi();
+    void syncActiveProjectDocument();
+    [[nodiscard]] std::filesystem::path projectRootPath() const;
+    [[nodiscard]] std::filesystem::path projectPagePath(
+        const dsl::DesignProjectPage& page) const;
+    void appendProjectDiagnostic(dsl::DesignError diagnostic);
     void clearPropertyObservers();
     void registerPropertyBinding(dsl::DesignNodeId id,
                                   const dsl::DesignPreviewProperty& property);
@@ -315,6 +336,16 @@ class DesignerApp {
         std::make_shared<render::ResourceManager>()};
     std::map<std::string, render::ResourceHandle> imageResources_{};
     std::vector<dsl::DesignDiagnostic> diagnostics_{};
+    dsl::ProjectStore projectStore_{};
+    dsl::DocumentStore projectDocumentStore_{};
+    std::optional<dsl::DesignProject> project_{};
+    std::string projectFile_{};
+    std::uint64_t projectRevision_{0};
+    std::map<std::string, dsl::DesignDocument> projectDocuments_{};
+    std::map<std::string, std::string> projectDocumentPaths_{};
+    std::map<std::string, std::uint64_t> projectDocumentRevisions_{};
+    std::vector<dsl::DesignError> projectDiagnostics_{};
+    std::string activeProjectDocumentId_{};
     app::AppShell shell_;
     app::AppShell previewShell_;
 };

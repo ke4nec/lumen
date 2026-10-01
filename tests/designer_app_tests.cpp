@@ -17,6 +17,7 @@
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/render_node.h"
+#include "lumen/dsl/project_store.h"
 #include "lumen/style/state.h"
 
 using lumen::accessibility::kActionActivate;
@@ -1560,6 +1561,71 @@ TEST_CASE("designer app reopens private design files",
     CHECK(app.workbench().frame().generation() == generation);
     REQUIRE(app.workbench().diagnostics().size() == 1);
     CHECK(app.workbench().diagnostics().front().file == path.string());
+}
+
+TEST_CASE("designer app opens, switches, and saves a multi document project",
+          "[designer][dp9][d3][app]") {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-project-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()));
+    std::error_code error;
+    std::filesystem::create_directories(root, error);
+    REQUIRE_FALSE(error);
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+
+    DesignerApp seed;
+    seed.attach();
+    REQUIRE(seed.loadSource("page home { Text(\"Home\") }", "home.lumen"));
+    REQUIRE(seed.saveDesignFile((root / "home.design").string()));
+    const auto homeId = seed.workbench().document()->documentId;
+    REQUIRE(seed.loadSource("page settings { Text(\"Settings\") }",
+                            "settings.lumen"));
+    REQUIRE(seed.saveDesignFile((root / "settings.design").string()));
+    const auto settingsId = seed.workbench().document()->documentId;
+
+    lumen::dsl::DesignProject project;
+    project.projectId = "designer.project";
+    project.name = "Designer project";
+    project.root = ".";
+    project.pages = {
+        {homeId, "home.design", "Home"},
+        {settingsId, "settings.design", "Settings"},
+    };
+    lumen::dsl::ProjectStore projectStore;
+    std::vector<lumen::dsl::DesignError> diagnostics;
+    const auto manifest = root / "demo.lumen-project";
+    REQUIRE(projectStore.save(manifest.string(), project, diagnostics));
+
+    DesignerApp app;
+    app.attach();
+    REQUIRE(app.loadProjectFile(manifest.string()));
+    REQUIRE(app.project().has_value());
+    CHECK(app.project()->pages.size() == 2);
+    CHECK(app.activeProjectDocumentId() == homeId);
+    CHECK(app.workbench().document()->documentId == homeId);
+    CHECK(app.projectDiagnostics().empty());
+
+    REQUIRE(app.switchProjectDocument(settingsId));
+    CHECK(app.activeProjectDocumentId() == settingsId);
+    CHECK(app.workbench().document()->pageName == "settings");
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-project-panel") != nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-project-page:" + settingsId) !=
+          nullptr);
+
+    REQUIRE(app.saveProjectFile(manifest.string()));
+    const auto saved = projectStore.load(manifest.string());
+    REQUIRE(saved.ok());
+    CHECK(saved.project.pages[1].documentId == settingsId);
 }
 
 TEST_CASE("designer app routes file dialog commands through one path",

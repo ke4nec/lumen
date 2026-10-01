@@ -15,6 +15,7 @@
 
 #include "lumen/dsl/design_schema.h"
 #include "lumen/dsl/design_codec.h"
+#include "lumen/dsl/project_store.h"
 #include "lumen/core/icon_id.h"
 
 namespace lumen::designer_app {
@@ -88,6 +89,15 @@ bool isDesignFile(const std::string& filename) {
                        return static_cast<char>(std::tolower(value));
                    });
     return extension == ".design";
+}
+
+bool isProjectFile(const std::string& filename) {
+    std::string extension = std::filesystem::path(filename).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char value) {
+                       return static_cast<char>(std::tolower(value));
+                   });
+    return extension == ".lumen-project" || extension == ".lumenproject";
 }
 
 std::optional<std::string> readSourceFile(const std::string& filename) {
@@ -958,17 +968,29 @@ void DesignerApp::requestSaveAsFile() {
         shell_.markDirty();
         return;
     }
-    const std::string error = fileDialogRequester_(true, "untitled.design");
+    const std::string error = fileDialogRequester_(
+        true, project_.has_value() ? "untitled.lumen-project" : "untitled.design");
     if (!error.empty()) {
         pendingFileDialog_ = PendingFileDialog::None;
         statusMessage_ = "Save as failed: " + error;
     } else {
-        statusMessage_ = "Choosing a design file...";
+        statusMessage_ = project_.has_value()
+                             ? "Choosing a project file..."
+                             : "Choosing a design file...";
     }
     shell_.markDirty();
 }
 
 void DesignerApp::requestSaveFile() {
+    if (project_.has_value() && !projectFile_.empty()) {
+        if (saveProjectFile(projectFile_)) {
+            statusMessage_ = "Saved project  /  " + projectFile_;
+        } else {
+            statusMessage_ = "Project save failed  /  " + projectFile_;
+        }
+        shell_.markDirty();
+        return;
+    }
     if (workbench_.document().has_value() && !sourceFile_.empty() &&
         sourceFile_.front() != '<' && isDesignFile(sourceFile_)) {
         if (saveDesignFile(sourceFile_)) {
@@ -999,12 +1021,16 @@ void DesignerApp::handleFileDialogResult(
 
     const std::string& filename = paths.front();
     if (pending == PendingFileDialog::Open) {
-        const bool loaded = isDesignFile(filename) ? loadDesignFile(filename)
-                                                   : loadFile(filename);
+        const bool loaded = isProjectFile(filename)
+                                ? loadProjectFile(filename)
+                                : (isDesignFile(filename) ? loadDesignFile(filename)
+                                                          : loadFile(filename));
         statusMessage_ = loaded ? "Opened  /  " + filename
                                 : "Open failed  /  " + filename;
     } else if (pending == PendingFileDialog::SaveAs) {
-        const bool saved = saveDesignFile(filename);
+        const bool saved = project_.has_value() && isProjectFile(filename)
+                               ? saveProjectFile(filename)
+                               : saveDesignFile(filename);
         statusMessage_ = saved ? "Saved  /  " + filename
                                : "Save failed  /  " + filename;
     } else {
@@ -1041,6 +1067,184 @@ bool DesignerApp::saveDesignFile(const std::string& filename) {
         shell_.markDirty();
     }
     return saved;
+}
+
+void DesignerApp::appendProjectDiagnostic(dsl::DesignError diagnostic) {
+    projectDiagnostics_.push_back(std::move(diagnostic));
+}
+
+std::filesystem::path DesignerApp::projectRootPath() const {
+    if (!project_.has_value()) return {};
+    std::filesystem::path root{project_->root};
+    const std::filesystem::path manifest{projectFile_};
+    if (root.is_relative()) root = manifest.parent_path() / root;
+    return root.lexically_normal();
+}
+
+std::filesystem::path DesignerApp::projectPagePath(
+    const dsl::DesignProjectPage& page) const {
+    const auto root = projectRootPath();
+    if (root.empty()) return {};
+    const auto relative = std::filesystem::path{page.path};
+    if (relative.empty() || relative.is_absolute()) return {};
+    const auto candidate = (root / relative).lexically_normal();
+    const auto within = candidate.lexically_relative(root);
+    if (within.empty() || within == ".." ||
+        (within.begin() != within.end() && *within.begin() == "..")) {
+        return {};
+    }
+    return candidate;
+}
+
+void DesignerApp::syncActiveProjectDocument() {
+    if (activeProjectDocumentId_.empty() || !workbench_.document().has_value()) {
+        return;
+    }
+    projectDocuments_[activeProjectDocumentId_] = *workbench_.document();
+}
+
+bool DesignerApp::switchProjectDocument(const std::string& documentId) {
+    if (!project_.has_value()) return false;
+    const auto found = projectDocuments_.find(documentId);
+    const auto path = projectDocumentPaths_.find(documentId);
+    if (found == projectDocuments_.end() || path == projectDocumentPaths_.end()) {
+        return false;
+    }
+    syncActiveProjectDocument();
+    if (!workbench_.openDocument(found->second, &runtimeContext_)) return false;
+    activeProjectDocumentId_ = documentId;
+    sourceFile_ = path->second;
+    sourceSnapshot_ = dsl::serializeDesignDocument(found->second);
+    sourceFocusLine_ = 0;
+    resetPreviewState();
+    refreshDocumentUi();
+    statusMessage_ = "Page  /  " + documentId;
+    shell_.markDirty();
+    return true;
+}
+
+bool DesignerApp::loadProjectFile(const std::string& filename) {
+    const auto loaded = projectStore_.load(filename);
+    if (!loaded.ok()) {
+        projectDiagnostics_ = loaded.diagnostics;
+        shell_.markDirty();
+        return false;
+    }
+    const auto previousProject = project_;
+    const auto previousProjectFile = projectFile_;
+    const auto previousDocuments = projectDocuments_;
+    const auto previousPaths = projectDocumentPaths_;
+    const auto previousRevisions = projectDocumentRevisions_;
+    const auto previousActive = activeProjectDocumentId_;
+    project_ = loaded.project;
+    projectFile_ = filename;
+    projectRevision_ = loaded.revision;
+    projectDiagnostics_ = loaded.diagnostics;
+    projectDocuments_.clear();
+    projectDocumentPaths_.clear();
+    projectDocumentRevisions_.clear();
+
+    const auto root = projectRootPath();
+    if (root.empty()) {
+        appendProjectDiagnostic(dsl::DesignError{
+            "project.root", filename, {}, "project root is invalid", {}, {}, 0,
+            {}, {}});
+    } else {
+        setResourceRoot(root);
+    }
+    for (const auto& page : project_->pages) {
+        const auto pagePath = projectPagePath(page);
+        if (pagePath.empty()) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.page_path", filename, {},
+                "page path must stay inside the project root", {}, {}, 0, {}, {}});
+            continue;
+        }
+        const auto document = projectDocumentStore_.load(pagePath.string());
+        projectDiagnostics_.insert(projectDiagnostics_.end(),
+                                   document.diagnostics.begin(),
+                                   document.diagnostics.end());
+        if (!document.ok()) continue;
+        if (document.document.documentId != page.documentId) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.document_id", pagePath.string(), {},
+                "page documentId does not match the project manifest", {}, {}, 0,
+                {}, {}});
+            continue;
+        }
+        projectDocuments_[page.documentId] = document.document;
+        projectDocumentPaths_[page.documentId] = pagePath.string();
+        projectDocumentRevisions_[page.documentId] = document.revision;
+    }
+    if (projectDocuments_.empty()) {
+        project_ = previousProject;
+        projectFile_ = previousProjectFile;
+        projectDocuments_ = previousDocuments;
+        projectDocumentPaths_ = previousPaths;
+        projectDocumentRevisions_ = previousRevisions;
+        activeProjectDocumentId_ = previousActive;
+        shell_.markDirty();
+        return false;
+    }
+    const auto& first = project_->pages.front().documentId;
+    const auto active = projectDocuments_.contains(first) ? first
+                                                           : projectDocuments_.begin()->first;
+    if (!switchProjectDocument(active)) return false;
+    shell_.markDirty();
+    return true;
+}
+
+bool DesignerApp::saveProjectFile(const std::string& filename) {
+    if (!project_.has_value()) return false;
+    syncActiveProjectDocument();
+    std::vector<dsl::DesignError> diagnostics;
+    for (auto& page : project_->pages) {
+        const auto document = projectDocuments_.find(page.documentId);
+        const auto path = projectPagePath(page);
+        if (document == projectDocuments_.end() || path.empty()) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.page", filename, {}, "project page is not loaded", {}, {},
+                0, {}, {}});
+            return false;
+        }
+        const auto revision = projectDocumentRevisions_.find(page.documentId);
+        if (!projectDocumentStore_.save(
+                path.string(), document->second, diagnostics,
+                revision == projectDocumentRevisions_.end()
+                    ? std::nullopt
+                    : std::optional<std::uint64_t>{revision->second})) {
+            projectDiagnostics_.insert(projectDiagnostics_.end(), diagnostics.begin(),
+                                       diagnostics.end());
+            return false;
+        }
+        page.pageName = document->second.pageName;
+        const auto saved = projectDocumentStore_.load(path.string());
+        if (saved.ok()) projectDocumentRevisions_[page.documentId] = saved.revision;
+    }
+    if (!projectStore_.save(filename, *project_, diagnostics,
+                            projectFile_ == filename
+                                ? std::optional<std::uint64_t>{projectRevision_}
+                                : std::nullopt)) {
+        projectDiagnostics_.insert(projectDiagnostics_.end(), diagnostics.begin(),
+                                   diagnostics.end());
+        return false;
+    }
+    projectFile_ = filename;
+    const auto savedProject = projectStore_.load(filename);
+    projectRevision_ = savedProject.revision;
+    if (!activeProjectDocumentId_.empty()) {
+        const auto activePath = projectDocumentPaths_.find(activeProjectDocumentId_);
+        if (activePath != projectDocumentPaths_.end()) {
+            (void)workbench_.saveDesignFile(activePath->second);
+            sourceSnapshot_ = workbench_.document().has_value()
+                                  ? dsl::serializeDesignDocument(*workbench_.document())
+                                  : std::string{};
+        }
+    }
+    projectDiagnostics_.clear();
+    statusMessage_ = "Project saved  /  " + filename;
+    shell_.markDirty();
+    return true;
 }
 
 bool DesignerApp::loadFile(const std::string& filename) {
@@ -2263,6 +2467,37 @@ core::Widget DesignerApp::buildToolboxPanel() {
         {}, {}, "designer-toolbox");
 }
 
+core::Widget DesignerApp::buildProjectPanel() {
+    const auto& theme = shell_.theme();
+    auto heading = core::makeText("Project", theme.typography.label, {}, 0.0F,
+                                  "designer-project-heading");
+    std::vector<core::Widget> rows;
+    if (!project_.has_value()) {
+        rows.push_back(core::makeText("No project", theme.typography.caption, {},
+                                      0.0F, "designer-project-empty"));
+    } else {
+        for (const auto& page : project_->pages) {
+            const std::string handler = "designer:project-page:" + page.documentId;
+            shell_.handlers()[handler] = [this, id = page.documentId] {
+                (void)switchProjectDocument(id);
+            };
+            auto row = core::makeButton(
+                page.pageName.empty() ? page.documentId : page.pageName,
+                theme.typography.caption, {}, 0.0F,
+                "designer-project-page:" + page.documentId, std::nullopt,
+                std::nullopt, handler);
+            row.selected = page.documentId == activeProjectDocumentId_;
+            rows.push_back(std::move(row));
+        }
+    }
+    auto body = core::makeColumn(std::move(rows), core::MainAxisAlignment::Start,
+                                 core::CrossAxisAlignment::Stretch, 4.0F);
+    return core::makeColumn({std::move(heading), std::move(body)},
+                            core::MainAxisAlignment::Start,
+                            core::CrossAxisAlignment::Stretch, 6.0F, {}, {},
+                            "designer-project-panel");
+}
+
 core::Widget DesignerApp::buildOutlinePanel() {
     const auto& theme = shell_.theme();
     auto heading = core::makeText("Outline", theme.typography.label, {}, 0.0F,
@@ -2271,7 +2506,8 @@ core::Widget DesignerApp::buildOutlinePanel() {
                                std::nullopt, std::nullopt);
     tree.flex = 1.0F;
     auto panel = core::makeColumn(
-        {buildToolboxPanel(), std::move(heading), std::move(tree)},
+        {buildProjectPanel(), buildToolboxPanel(), std::move(heading),
+         std::move(tree)},
         core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Stretch, 8.0F,
         core::EdgeInsets::all(12.0F), {}, "designer-outline-panel", 240.0F);

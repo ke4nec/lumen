@@ -61,6 +61,15 @@ bool isDesignFile(const std::string& filename) {
     return extension == ".design";
 }
 
+bool isProjectFile(const std::string& filename) {
+    std::string extension = std::filesystem::path(filename).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char value) {
+                       return static_cast<char>(std::tolower(value));
+                   });
+    return extension == ".lumen-project" || extension == ".lumenproject";
+}
+
 int runHeadless(lumen::designer_app::DesignerApp& app) {
     app.shell().setView(lumen::core::Size{1280.0F, 800.0F});
     const auto frame = app.shell().renderFrame();
@@ -81,9 +90,11 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
         }
         lumen::platform::FileDialogRequest request;
         request.title = forSave ? "Save Lumen design" : "Open Lumen document";
-        request.filters = forSave ? std::vector<std::string>{"*.design"}
-                                  : std::vector<std::string>{"*.design",
-                                                             "*.lumen"};
+        request.filters = forSave
+                              ? std::vector<std::string>{"*.lumen-project",
+                                                         "*.design"}
+                              : std::vector<std::string>{"*.lumen-project",
+                                                         "*.design", "*.lumen"};
         request.defaultName = defaultName;
         request.forSave = forSave;
         const auto result = host.requestFileDialog({}, request);
@@ -110,9 +121,11 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
                                            std::uint64_t /*nowMs*/) {
             if (!watcher.has_value()) return false;
             if (!watcher->poll()) return false;
-            const bool loaded = isDesignFile(watcher->filename())
-                                    ? app.loadDesignFile(watcher->filename())
-                                    : app.loadFile(watcher->filename());
+            const bool loaded = isProjectFile(watcher->filename())
+                                    ? app.loadProjectFile(watcher->filename())
+                                    : (isDesignFile(watcher->filename())
+                                           ? app.loadDesignFile(watcher->filename())
+                                           : app.loadFile(watcher->filename()));
             std::printf(loaded ? "ui reloaded\n"
                                : "ui reload failed (kept previous UI)\n");
             return true;
@@ -144,7 +157,9 @@ int main(int argc, char** argv) {
     if (!resourceRootError) app.setResourceRoot(resourceRoot);
     app.attach();
     if (!options.filename.empty()) {
-        if (isDesignFile(options.filename)) {
+        if (isProjectFile(options.filename)) {
+            (void)app.loadProjectFile(options.filename);
+        } else if (isDesignFile(options.filename)) {
             (void)app.loadDesignFile(options.filename);
         } else {
             (void)app.loadFile(options.filename);
