@@ -1,11 +1,15 @@
 #pragma once
 
+#include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "lumen/dsl/design_editor.h"
 #include "lumen/dsl/design_preview_frame.h"
+#include "lumen/dsl/document_store.h"
 
 namespace lumen::dsl {
 
@@ -41,9 +45,32 @@ class DesignPreviewWorkbench {
     [[nodiscard]] bool openDesignSource(
         const std::string& source, std::string filename = "<memory>",
         DesignRuntimeContext* context = nullptr);
+    [[nodiscard]] bool openDesignFile(
+        const std::string& filename, DesignRuntimeContext* context = nullptr);
     [[nodiscard]] bool openDocument(
         DesignDocument document, DesignRuntimeContext* context = nullptr);
     [[nodiscard]] bool refresh(DesignRuntimeContext* context = nullptr);
+
+    // D3 L0 editing is declaration-only. Runtime preview values remain in
+    // DesignPreviewState and never enter these document transactions.
+    [[nodiscard]] bool setProperty(DesignNodeId id, std::string property,
+                                    DesignValue value);
+    [[nodiscard]] bool clearProperty(DesignNodeId id,
+                                     std::string_view property);
+    [[nodiscard]] bool setReference(DesignNodeId id, std::string name,
+                                    std::string value);
+    [[nodiscard]] bool clearReference(DesignNodeId id,
+                                      std::string_view name);
+    [[nodiscard]] bool undo();
+    [[nodiscard]] bool redo();
+    [[nodiscard]] bool saveDesignFile(const std::string& filename);
+
+    [[nodiscard]] bool dirty() const { return history_.dirty(); }
+    [[nodiscard]] bool canUndo() const { return history_.canUndo(); }
+    [[nodiscard]] bool canRedo() const { return history_.canRedo(); }
+    [[nodiscard]] std::uint64_t documentRevision() const {
+        return history_.documentRevision();
+    }
 
     void clear();
 
@@ -85,11 +112,25 @@ class DesignPreviewWorkbench {
         const DesignNode& node, std::string path);
     [[nodiscard]] static std::string nodeKey(const DesignNode& node);
 
+    using EditOperation = std::function<bool(DesignDocumentEditor&)>;
+
+    [[nodiscard]] bool applyEdit(std::string label,
+                                 std::set<DesignNodeId> affectedIds,
+                                 EditOperation operation);
+    void resetHistory(bool saved);
+    void restoreSelection(const DesignSelection& selection);
+    void setEditError(std::string message);
+    void setStoreDiagnostics(const std::vector<DesignError>& errors);
+
     std::optional<DesignDocument> document_{};
     DesignPreviewFrame frame_{};
     DesignSelectionModel selection_{};
+    DesignDocumentHistory history_{};
+    DocumentStore documentStore_{};
     std::vector<DesignDiagnostic> diagnostics_{};
     std::string sourceFile_{"<design>"};
+    std::uint64_t loadedRevision_{0};
+    bool hasLoadedRevision_{false};
 };
 
 }  // namespace lumen::dsl

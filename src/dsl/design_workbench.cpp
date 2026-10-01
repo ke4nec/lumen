@@ -16,8 +16,10 @@ bool DesignPreviewWorkbench::openLumenSource(
         setError(*parsed.error);
         return false;
     }
-    return openDocumentInternal(std::move(parsed.document), context,
-                                sourceFile);
+    const bool opened =
+        openDocumentInternal(std::move(parsed.document), context, sourceFile);
+    if (opened) resetHistory(true);
+    return opened;
 }
 
 bool DesignPreviewWorkbench::openLumenFile(
@@ -46,12 +48,35 @@ bool DesignPreviewWorkbench::openDesignSource(
         setError(*read.error);
         return false;
     }
-    return openDocumentInternal(std::move(read.document), context, sourceFile);
+    const bool opened =
+        openDocumentInternal(std::move(read.document), context, sourceFile);
+    if (opened) resetHistory(true);
+    return opened;
+}
+
+bool DesignPreviewWorkbench::openDesignFile(
+    const std::string& filename, DesignRuntimeContext* context) {
+    const auto loaded = documentStore_.load(filename);
+    if (!loaded.ok()) {
+        setStoreDiagnostics(loaded.diagnostics);
+        return false;
+    }
+    const bool opened =
+        openDocumentInternal(loaded.document, context, filename);
+    if (!opened) return false;
+    resetHistory(true);
+    loadedRevision_ = loaded.revision;
+    hasLoadedRevision_ = true;
+    if (!loaded.diagnostics.empty()) setStoreDiagnostics(loaded.diagnostics);
+    return true;
 }
 
 bool DesignPreviewWorkbench::openDocument(DesignDocument document,
                                           DesignRuntimeContext* context) {
-    return openDocumentInternal(std::move(document), context, "<design>");
+    const bool opened =
+        openDocumentInternal(std::move(document), context, "<design>");
+    if (opened) resetHistory(true);
+    return opened;
 }
 
 bool DesignPreviewWorkbench::openDocumentInternal(
@@ -71,12 +96,205 @@ bool DesignPreviewWorkbench::refresh(DesignRuntimeContext* context) {
     return updateFrame(context);
 }
 
+bool DesignPreviewWorkbench::setProperty(DesignNodeId id, std::string property,
+                                         DesignValue value) {
+    return applyEdit(
+        "Edit property", {id},
+        [id, property = std::move(property), value = std::move(value)](
+            DesignDocumentEditor& editor) mutable {
+            return editor.setProperty(id, std::move(property),
+                                      std::move(value));
+        });
+}
+
+bool DesignPreviewWorkbench::clearProperty(DesignNodeId id,
+                                           std::string_view property) {
+    const std::string name{property};
+    return applyEdit("Clear property", {id},
+                     [id, name](DesignDocumentEditor& editor) {
+                         return editor.clearProperty(id, name);
+                     });
+}
+
+bool DesignPreviewWorkbench::setReference(DesignNodeId id, std::string name,
+                                          std::string value) {
+    return applyEdit(
+        "Edit reference", {id},
+        [id, name = std::move(name), value = std::move(value)](
+            DesignDocumentEditor& editor) mutable {
+            return editor.setReference(id, std::move(name), std::move(value));
+        });
+}
+
+bool DesignPreviewWorkbench::clearReference(DesignNodeId id,
+                                            std::string_view name) {
+    const std::string reference{name};
+    return applyEdit("Clear reference", {id},
+                     [id, reference](DesignDocumentEditor& editor) {
+                         return editor.clearReference(id, reference);
+                     });
+}
+
+bool DesignPreviewWorkbench::undo() {
+    if (!document_.has_value()) return false;
+    auto document = *document_;
+    auto selection = selection_.state();
+    if (!history_.undo(document, selection)) return false;
+    document_ = std::move(document);
+    restoreSelection(selection);
+    return updateFrame(nullptr);
+}
+
+bool DesignPreviewWorkbench::redo() {
+    if (!document_.has_value()) return false;
+    auto document = *document_;
+    auto selection = selection_.state();
+    if (!history_.redo(document, selection)) return false;
+    document_ = std::move(document);
+    restoreSelection(selection);
+    return updateFrame(nullptr);
+}
+
+bool DesignPreviewWorkbench::saveDesignFile(const std::string& filename) {
+    if (!document_.has_value()) {
+        setEditError("no design document is open");
+        return false;
+    }
+    std::vector<DesignError> errors;
+    const auto expected = hasLoadedRevision_
+                              ? std::optional<std::uint64_t>{loadedRevision_}
+                              : std::nullopt;
+    if (!documentStore_.save(filename, *document_, errors, expected)) {
+        setStoreDiagnostics(errors);
+        return false;
+    }
+    sourceFile_ = filename;
+    const auto saved = documentStore_.load(filename);
+    loadedRevision_ = saved.revision;
+    hasLoadedRevision_ = true;
+    history_.markSaved();
+    diagnostics_.clear();
+    return true;
+}
+
 void DesignPreviewWorkbench::clear() {
     frame_.clear();
     selection_.clear();
     document_.reset();
     diagnostics_.clear();
     sourceFile_ = "<design>";
+    history_.clear();
+    loadedRevision_ = 0;
+    hasLoadedRevision_ = false;
+}
+
+bool DesignPreviewWorkbench::applyEdit(std::string label,
+                                       std::set<DesignNodeId> affectedIds,
+                                       EditOperation operation) {
+    if (!document_.has_value() || !operation) return false;
+
+    const DesignDocument before = *document_;
+    DesignDocumentEditor editor{before};
+    if (!operation(editor)) {
+        setEditError("edit rejected by the L0 document schema");
+        return false;
+    }
+    const DesignDocument after = editor.document();
+    if (after == before) return true;
+
+    const DesignSelection beforeSelection = selection_.state();
+    DesignDocumentCommand command;
+    command.label = label;
+    command.affectedIds = std::move(affectedIds);
+    command.precondition = [before](const DesignDocument& candidate) {
+        return candidate == before;
+    };
+    command.apply = [after](DesignDocument& candidate) {
+        candidate = after;
+        return true;
+    };
+    command.revert = [before](DesignDocument& candidate) {
+        candidate = before;
+        return true;
+    };
+
+    auto transaction = history_.begin(before, beforeSelection);
+    transaction.setLabel(label);
+    if (!transaction.apply(std::move(command))) {
+        setEditError("document transaction rejected the edit");
+        return false;
+    }
+    transaction.setSelectionAfter(beforeSelection);
+
+    auto committedDocument = before;
+    auto committedSelection = beforeSelection;
+    if (!history_.commit(committedDocument, committedSelection,
+                         std::move(transaction))) {
+        setEditError("document transaction could not be committed");
+        return false;
+    }
+    document_ = std::move(committedDocument);
+    restoreSelection(committedSelection);
+    if (!updateFrame(nullptr)) {
+        auto rollbackDocument = *document_;
+        auto rollbackSelection = selection_.state();
+        if (history_.undo(rollbackDocument, rollbackSelection)) {
+            document_ = std::move(rollbackDocument);
+            restoreSelection(rollbackSelection);
+        }
+        setEditError("edited document could not be previewed");
+        return false;
+    }
+    return true;
+}
+
+void DesignPreviewWorkbench::resetHistory(bool saved) {
+    history_.clear();
+    if (saved) history_.markSaved();
+    loadedRevision_ = 0;
+    hasLoadedRevision_ = false;
+}
+
+void DesignPreviewWorkbench::restoreSelection(const DesignSelection& selection) {
+    if (!document_.has_value()) {
+        selection_.clear();
+        return;
+    }
+    if (!selection_.setSelection(selection.ids, selection.primary,
+                                 selection.anchor, *document_)) {
+        selection_.clear();
+    }
+    selection_.setFocusPanel(selection.focusPanel);
+    if (selection.captured.has_value()) {
+        (void)selection_.capture(*selection.captured);
+    } else {
+        selection_.releaseCapture();
+    }
+}
+
+void DesignPreviewWorkbench::setEditError(std::string message) {
+    DesignError error;
+    error.code = "editor.rejected";
+    error.file = sourceFile_;
+    error.message = std::move(message);
+    diagnostics_.clear();
+    appendDesignDiagnostic(
+        diagnostics_,
+        DesignDiagnostic::fromError(error, DesignDiagnosticStage::Schema));
+}
+
+void DesignPreviewWorkbench::setStoreDiagnostics(
+    const std::vector<DesignError>& errors) {
+    diagnostics_.clear();
+    for (const auto& error : errors) {
+        auto diagnostic = DesignDiagnostic::fromError(
+            error, error.code.rfind("store.", 0) == 0
+                       ? std::optional<DesignDiagnosticStage>{
+                             DesignDiagnosticStage::Save}
+                       : std::nullopt);
+        if (diagnostic.file.empty()) diagnostic.file = sourceFile_;
+        appendDesignDiagnostic(diagnostics_, std::move(diagnostic));
+    }
 }
 
 bool DesignPreviewWorkbench::updateFrame(DesignRuntimeContext* context) {

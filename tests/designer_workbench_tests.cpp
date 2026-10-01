@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
+#include <filesystem>
 #include <string>
 #include <variant>
 
@@ -107,4 +109,85 @@ TEST_CASE("designer D2 workbench reports file read failures",
           "/lumen/this-file-does-not-exist/design.lumen");
     CHECK_FALSE(workbench.document().has_value());
     CHECK_FALSE(workbench.frame().hasFrame());
+}
+
+TEST_CASE("designer D3 workbench edits L0 declarations with history and saves",
+          "[designer][d3]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page preview { Column(key: \"root\") {"
+        " Text(\"Title\", key: \"title\")"
+        " Button(\"Save\", key: \"save\")"
+        " } }",
+        "preview.lumen"));
+    const auto outline = workbench.outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() == 2);
+    const auto titleId = outline->children.front().id;
+    REQUIRE(workbench.selectNode(titleId));
+    const auto initialGeneration = workbench.frame().generation();
+
+    REQUIRE(workbench.setProperty(
+        titleId, "text",
+        lumen::dsl::DesignValue{
+            lumen::dsl::DesignValue::Variant{std::string{"Edited"}}}));
+    CHECK(workbench.dirty());
+    CHECK(workbench.canUndo());
+    CHECK(workbench.frame().generation() > initialGeneration);
+    auto properties = workbench.properties(titleId);
+    REQUIRE(properties.size() == 2);
+    CHECK(std::get<std::string>(properties.back().value->value) == "Edited");
+
+    REQUIRE(workbench.undo());
+    CHECK_FALSE(workbench.dirty());
+    CHECK(workbench.canRedo());
+    properties = workbench.properties(titleId);
+    REQUIRE(properties.size() == 2);
+    CHECK(std::get<std::string>(properties.back().value->value) == "Title");
+
+    REQUIRE(workbench.redo());
+    CHECK(workbench.dirty());
+    properties = workbench.properties(titleId);
+    REQUIRE(properties.size() == 2);
+    CHECK(std::get<std::string>(properties.back().value->value) == "Edited");
+
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-d3-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()) +
+                       ".design");
+    REQUIRE(workbench.saveDesignFile(path.string()));
+    CHECK_FALSE(workbench.dirty());
+    CHECK(workbench.canUndo());
+
+    DesignPreviewWorkbench reopened;
+    REQUIRE(reopened.openDesignFile(path.string()));
+    REQUIRE(reopened.document().has_value());
+    CHECK(reopened.document()->documentId ==
+          workbench.document()->documentId);
+    const auto reopenedOutline = reopened.outline();
+    REQUIRE(reopenedOutline.has_value());
+    CHECK(reopened.properties(reopenedOutline->children.front().id).back()
+              .value == properties.back().value);
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    std::filesystem::remove(path.string() + ".bak", error);
+}
+
+TEST_CASE("designer D3 workbench rejects runtime preview properties",
+          "[designer][d3]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page preview { Button(\"Save\", showFocusRing: true) }"));
+    const auto outline = workbench.outline();
+    REQUIRE(outline.has_value());
+    const auto buttonId = outline->id;
+    CHECK_FALSE(workbench.setProperty(
+        buttonId, "focusWidth",
+        lumen::dsl::DesignValue{
+            lumen::dsl::DesignValue::Variant{2.0}}));
+    CHECK_FALSE(workbench.dirty());
+    REQUIRE(workbench.diagnostics().size() == 1);
+    CHECK(workbench.diagnostics().front().code == "editor.rejected");
 }
