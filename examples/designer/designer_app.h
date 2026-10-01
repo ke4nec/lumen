@@ -29,6 +29,10 @@ class DesignerApp {
 
     [[nodiscard]] app::AppShell& shell() { return shell_; }
     [[nodiscard]] const app::AppShell& shell() const { return shell_; }
+    [[nodiscard]] app::AppShell& previewShell() { return previewShell_; }
+    [[nodiscard]] const app::AppShell& previewShell() const {
+        return previewShell_;
+    }
     [[nodiscard]] const dsl::DesignPreviewWorkbench& workbench() const {
         return workbench_;
     }
@@ -77,7 +81,9 @@ class DesignerApp {
     };
 
     [[nodiscard]] static app::ShellConfig configFor(DesignerApp* self);
+    [[nodiscard]] static app::ShellConfig previewConfigFor(DesignerApp* self);
     [[nodiscard]] core::Widget buildUi();
+    [[nodiscard]] core::Widget buildPreviewWindow() const;
     [[nodiscard]] core::Widget buildToolbar();
     [[nodiscard]] core::Widget buildToolboxPanel();
     [[nodiscard]] core::Widget buildBody();
@@ -234,6 +240,7 @@ class DesignerApp {
     std::map<std::string, core::StateStore::ObserverId> propertyObservers_{};
     bool syncingPropertyState_{false};
     app::AppShell shell_;
+    app::AppShell previewShell_;
 };
 
 }  // namespace lumen::designer_app

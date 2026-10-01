@@ -7,6 +7,7 @@
 #include <fstream>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "designer_app.h"
@@ -430,6 +431,64 @@ TEST_CASE("designer app runs and stops the current preview session",
     CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
           "Preview stopped");
     CHECK_FALSE(findNodeByKey(app.shell().root(), "designer-stop")->enabled);
+}
+
+TEST_CASE("designer app mirrors running preview into an independent shell",
+          "[designer][d2][app]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    app.previewShell().setView(Size{960.0F, 640.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { Text(\"Preview\", "
+        "key: \"title\") } }",
+        "independent-preview.lumen"));
+    (void)app.shell().renderFrame();
+    (void)app.previewShell().renderFrame();
+    REQUIRE(findNodeByKey(app.previewShell().root(),
+                          "designer-preview-status") != nullptr);
+
+    const auto* run = findNodeByKey(app.shell().root(), "designer-run");
+    REQUIRE(run != nullptr);
+    CHECK(app.shell().performAccessibilityAction(
+              run->identity, kActionActivate) ==
+          lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.previewShell().renderFrame();
+    CHECK(findNodeByKey(app.previewShell().root(), "title") != nullptr);
+
+    const auto* debug = findNodeByKey(app.shell().root(), "designer-debug");
+    REQUIRE(debug != nullptr);
+    CHECK(app.shell().performAccessibilityAction(
+              debug->identity, kActionActivate) ==
+          lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.shell().renderFrame();
+    (void)app.previewShell().renderFrame();
+    CHECK(app.previewShell().frameDebugSnapshot().nodeCount > 0);
+
+    auto broken = *app.workbench().document();
+    broken.root.type = "Unknown";
+    CHECK_FALSE(app.workbench().openDocument(std::move(broken)));
+    run = findNodeByKey(app.shell().root(), "designer-run");
+    REQUIRE(run != nullptr);
+    CHECK(app.shell().performAccessibilityAction(
+              run->identity, kActionActivate) ==
+          lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.shell().renderFrame();
+    (void)app.previewShell().renderFrame();
+    CHECK(findNodeByKey(app.previewShell().root(), "title") != nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Run failed  /  kept previous preview");
+
+    const auto* stop = findNodeByKey(app.shell().root(), "designer-stop");
+    REQUIRE(stop != nullptr);
+    CHECK(app.shell().performAccessibilityAction(
+              stop->identity, kActionActivate) ==
+          lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.previewShell().renderFrame();
+    CHECK(findNodeByKey(app.previewShell().root(),
+                        "designer-preview-status") != nullptr);
 }
 
 TEST_CASE("designer app cycles keyed interaction state previews",

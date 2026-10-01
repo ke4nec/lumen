@@ -117,7 +117,15 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
             return true;
         };
     }
-    return lumen::app::runApp(app.shell(), host, runOptions);
+    lumen::app::RunOptions previewOptions;
+    previewOptions.windowDesc.title = "Lumen Preview";
+    previewOptions.windowDesc.width = 960;
+    previewOptions.windowDesc.height = 640;
+    previewOptions.maxFrames = designerOptions.maxFrames;
+    return lumen::app::runApp(
+        {{&app.shell(), std::move(runOptions)},
+         {&app.previewShell(), std::move(previewOptions)}},
+        host);
 }
 
 }  // namespace

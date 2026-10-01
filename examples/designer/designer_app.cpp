@@ -260,7 +260,8 @@ core::Widget DesignerApp::OutlineModel::buildRow(const std::string& key,
 }
 
 DesignerApp::DesignerApp()
-    : outlineModel_(this), shell_(configFor(this)) {}
+    : outlineModel_(this), shell_(configFor(this)),
+      previewShell_(previewConfigFor(this)) {}
 
 app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
     app::ShellConfig config;
@@ -324,6 +325,14 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
         }
         return false;
     };
+    return config;
+}
+
+app::ShellConfig DesignerApp::previewConfigFor(DesignerApp* self) {
+    app::ShellConfig config;
+    config.initialView = core::Size{960.0F, 640.0F};
+    config.caretBlink = false;
+    config.build = [self] { return self->buildPreviewWindow(); };
     return config;
 }
 
@@ -505,12 +514,21 @@ void DesignerApp::requestOpenFile() {
 
 bool DesignerApp::startPreview(bool debug) {
     if (!workbench_.document().has_value() || !workbench_.refresh()) {
-        previewSessionMode_ = PreviewSessionMode::Stopped;
-        shell_.setFrameStatsCapture(false);
-        shell_.setDebugFrameStats(false);
-        shell_.setDebugBoundsOverlay(false);
+        const bool keepActivePreview =
+            previewSessionMode_ != PreviewSessionMode::Stopped &&
+            workbench_.frame().hasFrame();
+        if (!keepActivePreview) {
+            previewSessionMode_ = PreviewSessionMode::Stopped;
+            shell_.setFrameStatsCapture(false);
+            shell_.setDebugFrameStats(false);
+            shell_.setDebugBoundsOverlay(false);
+            previewShell_.setFrameStatsCapture(false);
+            previewShell_.setDebugFrameStats(false);
+            previewShell_.setDebugBoundsOverlay(false);
+        }
         statusMessage_ = "Run failed  /  kept previous preview";
         shell_.markDirty();
+        previewShell_.markDirty();
         return false;
     }
 
@@ -519,9 +537,13 @@ bool DesignerApp::startPreview(bool debug) {
     shell_.setFrameStatsCapture(debug);
     shell_.setDebugFrameStats(debug);
     shell_.setDebugBoundsOverlay(debug);
+    previewShell_.setFrameStatsCapture(debug);
+    previewShell_.setDebugFrameStats(debug);
+    previewShell_.setDebugBoundsOverlay(debug);
     statusMessage_ = debug ? "Debug preview running  /  current session"
                            : "Preview running  /  current session";
     shell_.markDirty();
+    previewShell_.markDirty();
     return true;
 }
 
@@ -531,8 +553,12 @@ void DesignerApp::stopPreview() {
     shell_.setFrameStatsCapture(false);
     shell_.setDebugFrameStats(false);
     shell_.setDebugBoundsOverlay(false);
+    previewShell_.setFrameStatsCapture(false);
+    previewShell_.setDebugFrameStats(false);
+    previewShell_.setDebugBoundsOverlay(false);
     statusMessage_ = "Preview stopped";
     shell_.markDirty();
+    previewShell_.markDirty();
 }
 
 void DesignerApp::requestSaveAsFile() {
@@ -833,6 +859,7 @@ void DesignerApp::refreshDocumentUi() {
         }
         registerSelectionHandlers(workbench_.document()->root);
     }
+    previewShell_.markDirty();
 }
 
 void DesignerApp::insertNodeType(std::string type) {
@@ -1288,9 +1315,12 @@ void DesignerApp::applyEnvironmentTheme() {
     overrides.highContrast = highContrast_;
     overrides.fontScale = fontScale_;
     shell_.setAccessibilityOverrides(overrides);
+    previewShell_.setAccessibilityOverrides(overrides);
     const auto settings = shell_.accessibilitySettings();
     shell_.setTheme(
         style::Theme::fromSettings(settings, darkMode_, density_));
+    previewShell_.setTheme(style::Theme::fromSettings(
+        previewShell_.accessibilitySettings(), darkMode_, density_));
 }
 
 void DesignerApp::toggleTheme() {
@@ -1325,7 +1355,9 @@ void DesignerApp::cycleDpi() {
     }
     deviceScale_ = kScales[next];
     shell_.setDeviceScale(deviceScale_);
+    previewShell_.setDeviceScale(deviceScale_);
     shell_.markDirty();
+    previewShell_.markDirty();
 }
 
 void DesignerApp::cycleFontScale() {
@@ -2266,6 +2298,22 @@ core::Widget DesignerApp::buildUi() {
                                  "designer-root");
     root.color = shell_.theme().colors.pageBackground;
     return root;
+}
+
+core::Widget DesignerApp::buildPreviewWindow() const {
+    if (previewSessionMode_ == PreviewSessionMode::Stopped ||
+        !workbench_.frame().hasFrame()) {
+        return core::makeContainer(
+            core::makeText(statusMessage_.empty() ? "Preview stopped"
+                                                    : statusMessage_,
+                           {}, {}, 0.0F, "designer-preview-status"),
+            std::nullopt, std::nullopt, core::EdgeInsets::all(32.0F), {},
+            core::Color::transparent(), core::CornerRadius::zero(),
+            "designer-preview-window");
+    }
+    auto preview = workbench_.frame().widget();
+    if (preview.key.empty()) preview.key = "designer-preview-root";
+    return preview;
 }
 
 }  // namespace lumen::designer_app
