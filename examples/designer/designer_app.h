@@ -1,15 +1,21 @@
 #pragma once
 
 #include <functional>
+#include <filesystem>
 #include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "lumen/app/app_shell.h"
 #include "lumen/core/virtual_list.h"
+#include "lumen/dsl/design_resources.h"
 #include "lumen/dsl/design_workbench.h"
+#include "lumen/render/resource_manager.h"
 #include "lumen/widgets/datagrid.h"
 #include "lumen/widgets/statusbar.h"
 #include "lumen/widgets/toolbar.h"
@@ -39,6 +45,18 @@ class DesignerApp {
         return workbench_;
     }
     [[nodiscard]] dsl::DesignPreviewWorkbench& workbench() { return workbench_; }
+    [[nodiscard]] const std::vector<dsl::DesignDiagnostic>& diagnostics() const {
+        return diagnostics_;
+    }
+
+    // Image resources are restricted to this explicitly authorized project
+    // root. The policy is intentionally application-owned so opening a
+    // document never grants arbitrary filesystem access.
+    void setResourceRoot(std::filesystem::path root);
+    [[nodiscard]] const std::shared_ptr<render::ResourceManager>&
+    resourceManager() const {
+        return resourceManager_;
+    }
 
     [[nodiscard]] bool undo();
     [[nodiscard]] bool redo();
@@ -101,7 +119,7 @@ class DesignerApp {
     [[nodiscard]] static app::ShellConfig configFor(DesignerApp* self);
     [[nodiscard]] static app::ShellConfig previewConfigFor(DesignerApp* self);
     [[nodiscard]] core::Widget buildUi();
-    [[nodiscard]] core::Widget buildPreviewWindow() const;
+    [[nodiscard]] core::Widget buildPreviewWindow();
     [[nodiscard]] core::Widget buildToolbar();
     [[nodiscard]] core::Widget buildToolboxPanel();
     [[nodiscard]] core::Widget buildBody();
@@ -209,6 +227,14 @@ class DesignerApp {
     [[nodiscard]] static std::string formatDiagnostic(
         const dsl::DesignDiagnostic& diagnostic);
 
+    void syncImageResources();
+    void collectImageResources(const dsl::DesignNode& node,
+                               const std::string& path,
+                               std::set<std::string>& activeUris);
+    void applyImageResources(core::Widget& widget) const;
+    [[nodiscard]] static std::string imageUriForSource(
+        std::string_view source);
+
     dsl::DesignPreviewWorkbench workbench_{};
     OfflineRuntimeContext runtimeContext_;
     OutlineModel outlineModel_;
@@ -263,6 +289,12 @@ class DesignerApp {
     bool canvasResizePositionEditable_{false};
     std::map<std::string, core::StateStore::ObserverId> propertyObservers_{};
     bool syncingPropertyState_{false};
+    dsl::DesignResourcePolicy resourcePolicy_{};
+    dsl::DesignResourceAuthorizer resourceAuthorizer_{resourcePolicy_};
+    std::shared_ptr<render::ResourceManager> resourceManager_{
+        std::make_shared<render::ResourceManager>()};
+    std::map<std::string, render::ResourceHandle> imageResources_{};
+    std::vector<dsl::DesignDiagnostic> diagnostics_{};
     app::AppShell shell_;
     app::AppShell previewShell_;
 };

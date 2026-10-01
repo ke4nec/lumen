@@ -1,12 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -26,6 +28,117 @@ using lumen::core::absoluteOffset;
 using lumen::core::findNodeByKey;
 using lumen::designer_app::DesignerApp;
 using lumen::designer_app::FileWatcher;
+
+void writeRawRgba(const std::filesystem::path& path) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file << "LUMENRGBA\n2 2\n";
+    const std::array<unsigned char, 16> pixels{
+        220, 80, 60, 255, 220, 80, 60, 255,
+        220, 80, 60, 255, 220, 80, 60, 255};
+    file.write(reinterpret_cast<const char*>(pixels.data()),
+               static_cast<std::streamsize>(pixels.size()));
+}
+
+TEST_CASE("designer app loads authorized image resources into both previews",
+          "[designer][f6][resource][app]") {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-image-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()));
+    std::error_code error;
+    std::filesystem::create_directories(root / "images", error);
+    REQUIRE_FALSE(error);
+    writeRawRgba(root / "images" / "hero.lumenrgba");
+
+    DesignerApp app;
+    app.setResourceRoot(root);
+    app.attach();
+    lumen::dsl::DesignDocument document;
+    document.documentId = "image-preview";
+    document.pageName = "image";
+    document.root = lumen::dsl::DesignNode{1, "Column"};
+    lumen::dsl::DesignNode image{2, "Image"};
+    image.properties["key"] = lumen::dsl::DesignValue{
+        lumen::dsl::DesignValue::Variant{std::string{"hero"}}};
+    image.properties["imageSource"] = lumen::dsl::DesignValue{
+        lumen::dsl::DesignValue::Variant{
+            std::string{"project://images/./hero.lumenrgba"}}};
+    image.properties["width"] = lumen::dsl::DesignValue{
+        lumen::dsl::DesignValue::Variant{80.0}};
+    image.properties["height"] = lumen::dsl::DesignValue{
+        lumen::dsl::DesignValue::Variant{40.0}};
+    document.root.children.push_back(std::move(image));
+    REQUIRE(app.workbench().openDocument(std::move(document)));
+
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    const auto* placeholder = findNodeByKey(app.shell().root(), "hero");
+    REQUIRE(placeholder != nullptr);
+    CHECK(placeholder->imageId == 0);
+    CHECK(app.resourceManager()->diagnostics().requested == 1);
+    CHECK(app.diagnostics().empty());
+
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds{3};
+    while (std::chrono::steady_clock::now() < deadline &&
+           app.resourceManager()->diagnostics().loads == 0) {
+        (void)app.resourceManager()->pumpCompletions();
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    REQUIRE(app.resourceManager()->diagnostics().loads == 1);
+    app.shell().markDirty();
+    (void)app.shell().renderFrame();
+    const auto* loaded = findNodeByKey(app.shell().root(), "hero");
+    REQUIRE(loaded != nullptr);
+    CHECK(loaded->imageId != 0);
+    app.shell().handlers().at("designer:run")();
+    app.previewShell().setView(Size{960.0F, 640.0F});
+    (void)app.previewShell().renderFrame();
+    const auto* previewLoaded =
+        findNodeByKey(app.previewShell().root(), "hero");
+    REQUIRE(previewLoaded != nullptr);
+    CHECK(previewLoaded->imageId != 0);
+
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("designer app reports denied image resources without requesting files",
+          "[designer][f6][resource][app]") {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-denied-image-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()));
+    std::error_code error;
+    std::filesystem::create_directories(root, error);
+    REQUIRE_FALSE(error);
+
+    DesignerApp app;
+    app.setResourceRoot(root);
+    app.attach();
+    lumen::dsl::DesignDocument document;
+    document.documentId = "denied-image";
+    document.pageName = "image";
+    document.root = lumen::dsl::DesignNode{1, "Image"};
+    document.root.properties["key"] = lumen::dsl::DesignValue{
+        lumen::dsl::DesignValue::Variant{std::string{"denied"}}};
+    document.root.properties["imageSource"] = lumen::dsl::DesignValue{
+        lumen::dsl::DesignValue::Variant{
+            std::string{"https://example.test/hero.png"}}};
+    REQUIRE(app.workbench().openDocument(std::move(document)));
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.diagnostics().size() == 1);
+    CHECK(app.diagnostics().front().code == "resource.scheme_denied");
+    CHECK(app.resourceManager()->diagnostics().requested == 0);
+    const auto* denied = findNodeByKey(app.shell().root(), "denied");
+    REQUIRE(denied != nullptr);
+    CHECK(denied->imageId == 0);
+
+    std::filesystem::remove_all(root, error);
+}
 
 TEST_CASE("designer app exposes the D2 shell and semantic controls",
           "[designer][d2][app]") {

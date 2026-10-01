@@ -94,6 +94,7 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
     runOptions.windowDesc.width = 1280;
     runOptions.windowDesc.height = 800;
     runOptions.maxFrames = designerOptions.maxFrames;
+    runOptions.resourceManager = app.resourceManager();
     runOptions.onEvent = [&app](lumen::app::AppShell&,
                                 const lumen::core::HostEvent& event) {
         if (event.type == lumen::core::HostEventType::FileDialogCompleted) {
@@ -122,6 +123,7 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
     previewOptions.windowDesc.width = 960;
     previewOptions.windowDesc.height = 640;
     previewOptions.maxFrames = designerOptions.maxFrames;
+    previewOptions.resourceManager = app.resourceManager();
     return lumen::app::runApp(
         {{&app.shell(), std::move(runOptions)},
          {&app.previewShell(), std::move(previewOptions)}},
@@ -137,6 +139,9 @@ int main(int argc, char** argv) {
         return 2;
     }
     lumen::designer_app::DesignerApp app;
+    std::error_code resourceRootError;
+    const auto resourceRoot = std::filesystem::current_path(resourceRootError);
+    if (!resourceRootError) app.setResourceRoot(resourceRoot);
     app.attach();
     if (!options.filename.empty()) {
         if (isDesignFile(options.filename)) {

@@ -344,6 +344,10 @@ core::Widget DesignerApp::OutlineModel::buildRow(const std::string& key,
 DesignerApp::DesignerApp()
     : runtimeContext_(this), outlineModel_(this), shell_(configFor(this)),
       previewShell_(previewConfigFor(this)) {
+    resourcePolicy_.allowKind(dsl::DesignResourceKind::Image);
+    resourceAuthorizer_ = dsl::DesignResourceAuthorizer{resourcePolicy_};
+    shell_.setResourceManager(resourceManager_);
+    previewShell_.setResourceManager(resourceManager_);
     workbench_.setEditRuntimeContext(&runtimeContext_);
     dataGridPreviewController_.setColumns({
         widgets::DataColumn{"id", "ID", 88.0F, true, false, false},
@@ -390,6 +394,21 @@ DesignerApp::DesignerApp()
     });
     statusBarPreviewController_.setProgress(68.0F);
     statusBarPreviewController_.setSemanticsLabel("Designer component status");
+}
+
+void DesignerApp::setResourceRoot(std::filesystem::path root) {
+    for (const auto& [uri, handle] : imageResources_) {
+        (void)uri;
+        resourceManager_->release(handle);
+    }
+    imageResources_.clear();
+    resourcePolicy_ = dsl::DesignResourcePolicy{};
+    if (!root.empty()) resourcePolicy_.allowRoot("project", std::move(root));
+    resourcePolicy_.allowKind(dsl::DesignResourceKind::Image);
+    resourceAuthorizer_ = dsl::DesignResourceAuthorizer{resourcePolicy_};
+    syncImageResources();
+    shell_.markDirty();
+    previewShell_.markDirty();
 }
 
 app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
@@ -645,8 +664,10 @@ void DesignerApp::requestOpenFile() {
 }
 
 bool DesignerApp::startPreview(bool debug) {
-    if (!workbench_.document().has_value() ||
-        !workbench_.refresh(&runtimeContext_)) {
+    const bool refreshed = workbench_.document().has_value() &&
+                           workbench_.refresh(&runtimeContext_);
+    syncImageResources();
+    if (!refreshed) {
         const bool keepActivePreview =
             previewSessionMode_ != PreviewSessionMode::Stopped &&
             workbench_.frame().hasFrame();
@@ -865,7 +886,7 @@ void DesignerApp::rebuildReferences() {
 
     const auto statusFor = [this](dsl::DesignNodeId id,
                                   const std::string& property) {
-        for (const auto& diagnostic : workbench_.diagnostics()) {
+        for (const auto& diagnostic : diagnostics_) {
             if (diagnostic.nodeId == id && diagnostic.property == property &&
                 (diagnostic.code.starts_with("reference.") ||
                  diagnostic.code == "compile.reference_kind")) {
@@ -935,7 +956,7 @@ void DesignerApp::selectNode(dsl::DesignNodeId id) {
 
 std::optional<dsl::DesignNodeId> DesignerApp::diagnosticTarget(
     std::size_t index) const {
-    const auto& diagnostics = workbench_.diagnostics();
+    const auto& diagnostics = diagnostics_;
     if (index >= diagnostics.size() || !workbench_.document().has_value()) {
         return std::nullopt;
     }
@@ -954,8 +975,8 @@ void DesignerApp::activateDiagnostic(std::size_t index) {
     if (const auto id = diagnosticTarget(index); id.has_value()) {
         selectNode(*id);
     }
-    if (index < workbench_.diagnostics().size()) {
-        const auto& diagnostic = workbench_.diagnostics()[index];
+    if (index < diagnostics_.size()) {
+        const auto& diagnostic = diagnostics_[index];
         if (diagnostic.sourceSpan.has_value()) {
             centerTab_ = CenterTab::Source;
             sourceFocusLine_ = diagnostic.sourceSpan->begin.line;
@@ -976,10 +997,109 @@ void DesignerApp::registerSelectionHandlers(const dsl::DesignNode& node) {
     }
 }
 
+std::string DesignerApp::imageUriForSource(std::string_view source) {
+    if (source.empty()) return {};
+    std::string uri = source.find("://") == std::string_view::npos
+                          ? "project://" + std::string{source}
+                          : std::string{source};
+    const auto separator = uri.find("://");
+    if (separator == std::string::npos) return uri;
+    std::string scheme = uri.substr(0, separator);
+    for (char& character : scheme) {
+        character = static_cast<char>(std::tolower(
+            static_cast<unsigned char>(character)));
+    }
+    const auto path = std::filesystem::path(uri.substr(separator + 3))
+                          .lexically_normal()
+                          .generic_string();
+    return scheme + "://" + path;
+}
+
+void DesignerApp::collectImageResources(
+    const dsl::DesignNode& node, const std::string& path,
+    std::set<std::string>& activeUris) {
+    const auto property = node.properties.find("imageSource");
+    if (property != node.properties.end()) {
+        if (const auto* source = std::get_if<std::string>(&property->second.value);
+            source != nullptr && !source->empty()) {
+            const auto uri = imageUriForSource(*source);
+            std::vector<dsl::DesignDiagnostic> diagnostics;
+            const auto reference = resourceAuthorizer_.authorize(
+                dsl::DesignResourceKind::Image, uri,
+                dsl::DesignResourceDiagnosticContext{
+                    sourceFile_,
+                    workbench_.document().has_value()
+                        ? workbench_.document()->documentId
+                        : std::string{},
+                    node.id, path, "imageSource"},
+                diagnostics);
+            for (auto& diagnostic : diagnostics) {
+                dsl::appendDesignDiagnostic(diagnostics_, std::move(diagnostic));
+            }
+            if (reference.has_value()) {
+                activeUris.insert(reference->uri());
+                if (!imageResources_.contains(reference->uri())) {
+                    const auto root = resourcePolicy_.roots().find(reference->scheme);
+                    if (root != resourcePolicy_.roots().end()) {
+                        const auto filename =
+                            (root->second / reference->relativePath).string();
+                        imageResources_.emplace(
+                            reference->uri(),
+                            resourceManager_->requestImage(filename));
+                    }
+                }
+            }
+        }
+    }
+    for (std::size_t index = 0; index < node.children.size(); ++index) {
+        collectImageResources(
+            node.children[index],
+            path + ".children[" + std::to_string(index) + "]", activeUris);
+    }
+    for (const auto& [slot, children] : node.slots) {
+        for (std::size_t index = 0; index < children.size(); ++index) {
+            collectImageResources(
+                children[index],
+                path + ".slots[" + slot + "][" + std::to_string(index) + "]",
+                activeUris);
+        }
+    }
+}
+
+void DesignerApp::syncImageResources() {
+    diagnostics_ = workbench_.diagnostics();
+    std::set<std::string> activeUris;
+    if (workbench_.document().has_value()) {
+        collectImageResources(workbench_.document()->root, "root", activeUris);
+    }
+    for (auto it = imageResources_.begin(); it != imageResources_.end();) {
+        if (activeUris.contains(it->first)) {
+            ++it;
+            continue;
+        }
+        resourceManager_->release(it->second);
+        it = imageResources_.erase(it);
+    }
+}
+
+void DesignerApp::applyImageResources(core::Widget& widget) const {
+    if (widget.type == core::WidgetType::Image &&
+        !widget.imageSource.empty()) {
+        const auto uri = imageUriForSource(widget.imageSource);
+        const auto found = imageResources_.find(uri);
+        widget.imageId = found != imageResources_.end() &&
+                                 resourceManager_->ready(found->second)
+                             ? resourceManager_->imageId(found->second)
+                             : 0;
+    }
+    for (auto& child : widget.children) applyImageResources(child);
+}
+
 void DesignerApp::refreshDocumentUi() {
     if (workbench_.document().has_value()) {
         (void)workbench_.refresh(&runtimeContext_);
     }
+    syncImageResources();
     resetPreviewState();
     clearPropertyObservers();
     rebuildOutline();
@@ -2149,8 +2269,10 @@ core::Widget DesignerApp::buildCanvasPanel() {
     const auto& theme = shell_.theme();
     core::Widget preview;
     if (workbench_.frame().hasFrame() && workbench_.document().has_value()) {
+        auto previewFrame = workbench_.frame().widget();
+        applyImageResources(previewFrame);
         preview = decoratePreview(
-            workbench_.frame().widget(), workbench_.document()->root,
+            std::move(previewFrame), workbench_.document()->root,
             workbench_.selection().primary);
     } else {
         preview = core::makeText("No valid preview frame",
@@ -2429,7 +2551,7 @@ core::Widget DesignerApp::buildPropertiesPanel() {
 
 core::Widget DesignerApp::buildDiagnosticRow(std::size_t index) {
     const auto& theme = shell_.theme();
-    const auto& diagnostic = workbench_.diagnostics().at(index);
+    const auto& diagnostic = diagnostics_.at(index);
     const std::string key = "designer-diagnostic:" + std::to_string(index);
     if (!diagnosticTarget(index).has_value()) {
         return core::makeText(formatDiagnostic(diagnostic),
@@ -2448,7 +2570,7 @@ core::Widget DesignerApp::buildDiagnosticsPanel() {
     const auto& theme = shell_.theme();
     const std::string statusText =
         statusMessage_.empty()
-            ? (workbench_.diagnostics().empty()
+            ? (diagnostics_.empty()
                    ? "Ready  /  " + sourceFile_
                    : "Diagnostics  /  " + sourceFile_)
             : statusMessage_;
@@ -2461,7 +2583,7 @@ core::Widget DesignerApp::buildDiagnosticsPanel() {
             ++it;
         }
     }
-    for (std::size_t index = 0; index < workbench_.diagnostics().size();
+    for (std::size_t index = 0; index < diagnostics_.size();
          ++index) {
         if (diagnosticTarget(index).has_value()) {
             const std::string handler =
@@ -2471,7 +2593,7 @@ core::Widget DesignerApp::buildDiagnosticsPanel() {
             };
         }
     }
-    const auto count = workbench_.diagnostics().size();
+    const auto count = diagnostics_.size();
     if (diagnosticsController_.itemCount() != count) {
         diagnosticsController_.setItemCount(count);
     }
@@ -2504,6 +2626,7 @@ core::Widget DesignerApp::buildBody() {
 }
 
 core::Widget DesignerApp::buildUi() {
+    syncImageResources();
     syncSelectionFromOutline();
     auto root = core::makeColumn({buildToolbar(), buildBody()},
                                  core::MainAxisAlignment::Start,
@@ -2513,7 +2636,8 @@ core::Widget DesignerApp::buildUi() {
     return root;
 }
 
-core::Widget DesignerApp::buildPreviewWindow() const {
+core::Widget DesignerApp::buildPreviewWindow() {
+    syncImageResources();
     if (previewSessionMode_ == PreviewSessionMode::Stopped ||
         !workbench_.frame().hasFrame()) {
         return core::makeContainer(
@@ -2525,6 +2649,7 @@ core::Widget DesignerApp::buildPreviewWindow() const {
             "designer-preview-window");
     }
     auto preview = workbench_.frame().widget();
+    applyImageResources(preview);
     if (preview.key.empty()) preview.key = "designer-preview-root";
     return preview;
 }
