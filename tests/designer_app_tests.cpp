@@ -525,6 +525,44 @@ TEST_CASE("designer app routes structural keyboard commands",
     CHECK(app.workbench().outline()->children[1].id == titleId);
 }
 
+TEST_CASE("designer app clears preview state across structural edits",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    REQUIRE(initial->children.size() >= 1);
+    const auto titleId = initial->children.front().id;
+    const auto selectTitle = app.shell().handlers().find(
+        "designer:select:" + std::to_string(titleId));
+    REQUIRE(selectTitle != app.shell().handlers().end());
+    selectTitle->second();
+    const auto preview = app.shell().handlers().find("designer:preview-state");
+    REQUIRE(preview != app.shell().handlers().end());
+    preview->second();
+    (void)app.shell().renderFrame();
+
+    const auto previewKey = "title";
+    REQUIRE(app.shell().styleContext().previewStates != nullptr);
+    REQUIRE(app.shell().styleContext().previewStates->contains(previewKey));
+    CHECK(app.shell().styleContext().previewStates->at(previewKey).hovered);
+
+    app.shell().keyDown(Key::Delete);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().styleContext().previewStates->contains(previewKey));
+    CHECK(app.shell().styleContext().previewStates->at(previewKey) ==
+          lumen::style::WidgetState{});
+
+    REQUIRE(app.undo());
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().styleContext().previewStates->contains(previewKey));
+    CHECK(app.shell().styleContext().previewStates->at(previewKey) ==
+          lumen::style::WidgetState{});
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /

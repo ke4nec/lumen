@@ -366,6 +366,7 @@ void DesignerApp::registerSelectionHandlers(const dsl::DesignNode& node) {
 }
 
 void DesignerApp::refreshDocumentUi() {
+    resetPreviewState();
     clearPropertyObservers();
     rebuildOutline();
     if (workbench_.document().has_value()) {
