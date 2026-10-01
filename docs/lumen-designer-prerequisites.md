@@ -1269,24 +1269,24 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
   AppShell 状态镜像、画布辅助层开关以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `498` 个断言、
-  `23` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `512` 个断言、
+  `24` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，L0–L2 工具箱按钮，以及插入/复制/删除/上移/下移命令的
   语义激活、键盘等价路径、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开和文件对话框结果回传。
-- DP-9 专属筛选 `build-debug/tests/lumen-tests "[designer][dp9]"` 为 `49` 个断言、`5` 个测试用例通过，
+- DP-9 专属筛选 `build-debug/tests/lumen-tests "[designer][dp9]"` 为 `63` 个断言、`6` 个测试用例通过，
   覆盖 manifest round-trip、未知字段、schema 迁移、revision 冲突、跨文档引用端点、损坏恢复，以及
-  `DesignerApp` 的工程打开、页面切换、工程页列表和工程保存。
+  `DesignerApp` 的工程打开、页面切换、工程页列表、工程保存和工程诊断跨文档跳转。
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
   `designer_window_smoke` 和 `designer_gallery_window_smoke` 四项（`4/4`）；另有
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `357` 个断言、
-  `29` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `117/117` 通过，
+  `29` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `118/118` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1085/1085`，
-  Release 配置为 `1087/1087`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1086/1086`，
+  Release 配置为 `1088/1088`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、
