@@ -506,7 +506,7 @@ TEST_CASE("designer app resizes a selected node with one snapped transaction",
     app.shell().pointerMove(cancelStart + Offset{24.0F, 0.0F});
     (void)app.shell().renderFrame();
     REQUIRE(app.shell().controller().dragSessionActive());
-    app.shell().pointerCancel();
+    app.shell().keyDown(Key::Escape);
     (void)app.shell().renderFrame();
     CHECK_FALSE(app.shell().controller().dragSessionActive());
     const auto cancelled = app.workbench().properties(titleId);
@@ -1949,6 +1949,7 @@ TEST_CASE("designer app reorders outline rows by pointer drag",
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
     REQUIRE(initial->children.size() >= 2);
+    const auto rootId = initial->id;
     const auto titleId = initial->children.front().id;
     const auto saveId = initial->children[1].id;
     const auto* titleRow = findNodeByKey(
@@ -1982,7 +1983,7 @@ TEST_CASE("designer app reorders outline rows by pointer drag",
     REQUIRE(app.undo());
     CHECK(app.workbench().outline()->children[0].id == titleId);
     CHECK(app.workbench().outline()->children[1].id == saveId);
-    CHECK(app.workbench().selection().primary == titleId);
+    CHECK(app.workbench().selection().primary == rootId);
 }
 
 TEST_CASE("designer app inserts toolbox nodes by pointer drag",
@@ -2025,6 +2026,47 @@ TEST_CASE("designer app inserts toolbox nodes by pointer drag",
     CHECK(insertedId != rootId);
     CHECK(app.workbench().outline()->children.back().id == insertedId);
     CHECK(app.workbench().outline()->children.back().type == "Text");
+}
+
+TEST_CASE("designer app cancels outline drag with Escape",
+          "[designer][d3][app][selection]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    REQUIRE(initial->children.size() >= 2);
+    const auto rootId = initial->id;
+    const auto firstId = initial->children[0].id;
+    const auto secondId = initial->children[1].id;
+    const auto* firstRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + initial->children[0].path);
+    const auto* secondRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + initial->children[1].path);
+    REQUIRE(firstRow != nullptr);
+    REQUIRE(secondRow != nullptr);
+    const auto firstOrigin = absoluteOffset(app.shell().root(), firstRow->key);
+    const auto secondOrigin = absoluteOffset(app.shell().root(), secondRow->key);
+    const Offset firstPoint =
+        firstOrigin + Offset{firstRow->size.width * 0.5F,
+                             firstRow->size.height * 0.5F};
+    const Offset secondPoint =
+        secondOrigin + Offset{secondRow->size.width * 0.5F,
+                              secondRow->size.height * 0.25F};
+
+    app.shell().pointerDown(firstPoint);
+    app.shell().pointerMove(secondPoint);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    app.shell().keyDown(Key::Escape);
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().outline().has_value());
+    CHECK(app.workbench().outline()->children[0].id == firstId);
+    CHECK(app.workbench().outline()->children[1].id == secondId);
+    CHECK(app.workbench().selection().primary == rootId);
 }
 
 TEST_CASE("designer app navigates actionable diagnostics to their node",

@@ -708,6 +708,13 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
             return true;
         }
         if (key == core::Key::Escape &&
+            (self->outlineDragActive_ || self->toolboxDragActive_ ||
+             self->canvasResizeActive_ ||
+             shell.controller().dragSessionActive())) {
+            shell.pointerCancel();
+            return true;
+        }
+        if (key == core::Key::Escape &&
             self->navigatorPreviewController_.handleBack(false)) {
             self->statusMessage_ =
                 "Route: " + self->navigatorPreviewController_.current();
@@ -1944,10 +1951,6 @@ void DesignerApp::outlineDragSession(core::DragPhase phase,
         outlineDragInsertIndex_ = location->index;
         outlineDragSlot_ = location->slot;
         outlineDragPointer_ = position;
-        (void)workbench_.selectNode(*sourceId);
-        const std::string path = sourceKey.substr(kSourcePrefix.size());
-        outlineController_.selection().setCurrent(path);
-        outlineController_.selection().setSelected({path});
         shell_.setVisualOverlayBuilder([this]()
                                             -> std::optional<core::Widget> {
             if (!outlineDragActive_) return std::nullopt;
@@ -2003,6 +2006,7 @@ void DesignerApp::outlineDragSession(core::DragPhase phase,
         !workbench_.moveNode(id, parent, index, slot)) {
         return;
     }
+    (void)workbench_.selectNode(id);
     refreshDocumentUi();
     shell_.markDirty();
 }
