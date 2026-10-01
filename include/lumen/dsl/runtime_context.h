@@ -26,15 +26,16 @@ struct DesignReference {
     DesignReferenceKind kind{DesignReferenceKind::Binding};
     std::string stableName{};
     std::shared_ptr<const void> lifetimeToken{};
+    const void* handle{};
 
     bool operator==(const DesignReference& other) const {
         return kind == other.kind && stableName == other.stableName;
     }
 };
 
-// P3 resolves names to typed, opaque handles. The handle deliberately carries
-// no raw pointer; adapters that own a controller or resource keep it alive for
-// the preview session and expose only its stable name here.
+// P3 resolves names to typed, opaque handles. Runtime compilation may copy the
+// handle into a Widget source field, while the adapter's lease keeps that
+// application-owned object alive for the preview session.
 class DesignRuntimeContext {
   public:
     virtual ~DesignRuntimeContext() = default;
@@ -62,6 +63,14 @@ class MapDesignRuntimeContext final : public DesignRuntimeContext {
         const ReferenceKey key{kind, name};
         references_[key] =
             DesignReference{kind, std::move(name), std::move(lifetimeToken)};
+    }
+
+    void registerTypedReference(DesignReferenceKind kind, std::string name,
+                                const void* handle,
+                                std::shared_ptr<const void> lifetimeToken = {}) {
+        const ReferenceKey key{kind, name};
+        references_[key] = DesignReference{kind, std::move(name),
+                                           std::move(lifetimeToken), handle};
     }
 
     [[nodiscard]] bool resolveReference(DesignReferenceKind kind,

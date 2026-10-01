@@ -129,7 +129,9 @@ using core::WidgetType;
            type == WidgetType::Switch || type == WidgetType::Image ||
            type == WidgetType::Icon || type == WidgetType::Slider ||
            type == WidgetType::ProgressBar || type == WidgetType::Radio ||
-           type == WidgetType::Tooltip || type == WidgetType::Dropdown;
+           type == WidgetType::Tooltip || type == WidgetType::Dropdown ||
+           type == WidgetType::VirtualList || type == WidgetType::List ||
+           type == WidgetType::Tree || type == WidgetType::TreeList;
 }
 
 [[nodiscard]] DesignValue readProperty(const Widget& widget,
@@ -209,6 +211,24 @@ using core::WidgetType;
     if (name == "showFocusRing") return booleanValue(widget.showFocusRing);
     if (name == "checked") return booleanValue(widget.checked);
     if (name == "scrollOffset") return numberValue(widget.scrollOffset);
+    if (name == "virtualCacheExtent") {
+        return numberValue(widget.virtualCacheExtent);
+    }
+    if (name == "collectionSelectionMode") {
+        static const char* names[] = {"none", "single", "multiple", "extended"};
+        const auto index = std::min<std::size_t>(widget.collectionSelectionMode, 3);
+        return enumValue("collectionSelectionMode", names[index]);
+    }
+    if (name == "collectionShowHeader") {
+        return booleanValue(widget.collectionShowHeader);
+    }
+    if (name == "splitterHorizontal") {
+        return booleanValue(widget.splitterHorizontal);
+    }
+    if (name == "showScrollbar") return booleanValue(widget.showScrollbar);
+    if (name == "scrollbarAutoHide") {
+        return booleanValue(widget.scrollbarAutoHide);
+    }
     if (name == "progressIndeterminate") {
         return booleanValue(widget.progressIndeterminate);
     }
@@ -404,6 +424,29 @@ template <typename T>
         return true;
     }
     if (name == "scrollOffset") return assignNumber(value, widget.scrollOffset);
+    if (name == "virtualCacheExtent") {
+        return assignNumber(value, widget.virtualCacheExtent);
+    }
+    if (name == "collectionSelectionMode") {
+        const auto* enumeration = enumOf(value);
+        if (enumeration == nullptr || enumeration->domain != name) return false;
+        static const std::vector<std::string> names = {"none", "single", "multiple", "extended"};
+        const auto found = std::find(names.begin(), names.end(), enumeration->value);
+        if (found == names.end()) return false;
+        widget.collectionSelectionMode =
+            static_cast<std::uint8_t>(found - names.begin());
+        return true;
+    }
+    if (name == "collectionShowHeader" || name == "splitterHorizontal" ||
+        name == "showScrollbar" || name == "scrollbarAutoHide") {
+        const auto* boolean = boolOf(value);
+        if (boolean == nullptr) return false;
+        if (name == "collectionShowHeader") widget.collectionShowHeader = *boolean;
+        else if (name == "splitterHorizontal") widget.splitterHorizontal = *boolean;
+        else if (name == "showScrollbar") widget.showScrollbar = *boolean;
+        else widget.scrollbarAutoHide = *boolean;
+        return true;
+    }
     if (name == "progressIndeterminate") {
         const auto* boolean = boolOf(value);
         if (boolean == nullptr) return false;
@@ -469,6 +512,9 @@ template <typename T>
                     return numberRepresentable<std::size_t>(*number);
                 }
                 if (property == "scrollOffset") {
+                    return *number >= 0;
+                }
+                if (property == "virtualCacheExtent") {
                     return *number >= 0;
                 }
                 if (property == "columnCount") {
@@ -584,6 +630,31 @@ void addStyled(std::vector<PropertySpec>& properties) {
                                {"clip", "ellipsis", "fade", "visible"}));
 }
 
+void addCollection(std::vector<PropertySpec>& properties, WidgetType type) {
+    properties.push_back(spec("virtualCacheExtent", PropertyKind::Number,
+                               PropertyPersistence::Declaration,
+                               numberValue(200)));
+    properties.push_back(spec("showScrollbar", PropertyKind::Boolean,
+                               PropertyPersistence::Declaration,
+                               booleanValue(false)));
+    properties.push_back(spec("scrollbarAutoHide", PropertyKind::Boolean,
+                               PropertyPersistence::Declaration,
+                               booleanValue(false)));
+    if (type == WidgetType::List || type == WidgetType::Tree ||
+        type == WidgetType::TreeList) {
+        properties.push_back(spec(
+            "collectionSelectionMode", PropertyKind::Enum,
+            PropertyPersistence::Declaration,
+            enumValue("collectionSelectionMode", "none"),
+            {"none", "single", "multiple", "extended"}));
+    }
+    if (type == WidgetType::TreeList) {
+        properties.push_back(spec("collectionShowHeader", PropertyKind::Boolean,
+                                  PropertyPersistence::Declaration,
+                                  booleanValue(true)));
+    }
+}
+
 [[nodiscard]] Widget defaultWidget(const std::string& type) {
     Widget widget;
     static const std::pair<const char*, WidgetType> types[] = {
@@ -598,7 +669,10 @@ void addStyled(std::vector<PropertySpec>& properties) {
         {"ProgressBar", WidgetType::ProgressBar},
         {"Radio", WidgetType::Radio},   {"Tooltip", WidgetType::Tooltip},
         {"Dropdown", WidgetType::Dropdown}, {"Tabs", WidgetType::Tabs},
-        {"ThemeScope", WidgetType::ThemeScope}};
+        {"ThemeScope", WidgetType::ThemeScope},
+        {"VirtualList", WidgetType::VirtualList}, {"List", WidgetType::List},
+        {"Tree", WidgetType::Tree}, {"TreeList", WidgetType::TreeList},
+        {"Splitter", WidgetType::Splitter}};
     for (const auto& [name, widgetType] : types) {
         if (type == name) {
             widget.type = widgetType;
@@ -609,6 +683,7 @@ void addStyled(std::vector<PropertySpec>& properties) {
     if (widget.type == WidgetType::Dropdown) {
         widget.buttonVariant = ButtonVariant::Outline;
     }
+    if (widget.type == WidgetType::TreeList) widget.collectionShowHeader = true;
     return widget;
 }
 
@@ -700,8 +775,21 @@ void addStyled(std::vector<PropertySpec>& properties) {
                                          PropertyPersistence::Declaration,
                                          stringValue("")));
     }
+    if (widgetType == WidgetType::VirtualList || widgetType == WidgetType::List ||
+        widgetType == WidgetType::Tree || widgetType == WidgetType::TreeList) {
+        addCollection(schema.properties, widgetType);
+    }
+    if (widgetType == WidgetType::Splitter) {
+        schema.properties.push_back(spec(
+            "splitterHorizontal", PropertyKind::Boolean,
+            PropertyPersistence::Declaration, booleanValue(true)));
+    }
     if (isLeaf(widgetType)) schema.maxChildren = 0;
     else if (isSingleChild(widgetType)) schema.maxChildren = 1;
+    if (widgetType == WidgetType::Splitter) {
+        schema.minChildren = 2;
+        schema.maxChildren = 2;
+    }
     return schema;
 }
 
@@ -874,26 +962,26 @@ const WidgetFieldInventory& widgetFieldInventory() {
         {"image", "image", WidgetFieldCategory::RuntimeReference},
         {"themeOverride", "theme", WidgetFieldCategory::RuntimeReference},
         {"virtualSource", "virtualSource", WidgetFieldCategory::RuntimeReference},
-        {"virtualCacheExtent", "", WidgetFieldCategory::Declaration},
-        {"collectionSelectionMode", "", WidgetFieldCategory::Declaration},
+        {"virtualCacheExtent", "virtualCacheExtent", WidgetFieldCategory::Declaration},
+        {"collectionSelectionMode", "collectionSelectionMode", WidgetFieldCategory::Declaration},
         {"showFocusRing", "showFocusRing", WidgetFieldCategory::Declaration},
         {"gridColumnSpan", "", WidgetFieldCategory::Declaration},
         {"gridRowSpan", "", WidgetFieldCategory::Declaration},
         {"collectionColumns", "component", WidgetFieldCategory::RuntimeReference},
         {"collectionRow", "", WidgetFieldCategory::Derived},
-        {"collectionShowHeader", "", WidgetFieldCategory::Declaration},
+        {"collectionShowHeader", "collectionShowHeader", WidgetFieldCategory::Declaration},
         {"listPart", "", WidgetFieldCategory::Derived},
         {"treePart", "", WidgetFieldCategory::Derived},
         {"treeDepth", "", WidgetFieldCategory::Derived},
         {"splitterSource", "splitterSource", WidgetFieldCategory::RuntimeReference},
-        {"splitterHorizontal", "", WidgetFieldCategory::Declaration},
+        {"splitterHorizontal", "splitterHorizontal", WidgetFieldCategory::Declaration},
         {"buttonVariant", "variant", WidgetFieldCategory::Declaration},
         {"controlSize", "size", WidgetFieldCategory::Declaration},
         {"enabled", "enabled", WidgetFieldCategory::Declaration},
         {"invalid", "invalid", WidgetFieldCategory::Declaration},
         {"selected", "selected", WidgetFieldCategory::Declaration},
-        {"showScrollbar", "", WidgetFieldCategory::Declaration},
-        {"scrollbarAutoHide", "", WidgetFieldCategory::Declaration},
+        {"showScrollbar", "showScrollbar", WidgetFieldCategory::Declaration},
+        {"scrollbarAutoHide", "scrollbarAutoHide", WidgetFieldCategory::Declaration},
         {"icon", "icon", WidgetFieldCategory::Declaration},
         {"elevation", "", WidgetFieldCategory::Declaration},
         {"transitionAlpha", "", WidgetFieldCategory::PreviewOnly},
@@ -922,7 +1010,8 @@ const std::vector<NodeSchema>& nodeSchemaRegistry() {
                                  "Checkbox", "Switch", "FocusScope", "Grid",
                                  "Image", "Icon", "Slider", "ProgressBar",
                                  "Radio", "Tooltip", "Dropdown", "Tabs",
-                                 "ThemeScope"}) {
+                                 "ThemeScope", "VirtualList", "List", "Tree",
+                                 "TreeList", "Splitter"}) {
             result.push_back(makeSchema(type));
         }
         return result;

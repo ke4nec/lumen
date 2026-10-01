@@ -1,16 +1,21 @@
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <set>
 #include <string>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "lumen/core/splitter.h"
 #include "lumen/dsl/design_schema.h"
+#include "lumen/dsl/runtime_context.h"
 
 using lumen::dsl::DesignDocument;
 using lumen::dsl::DesignEnum;
 using lumen::dsl::DesignNode;
 using lumen::dsl::DesignValue;
+using lumen::dsl::DesignReferenceKind;
+using lumen::dsl::MapDesignRuntimeContext;
 using lumen::dsl::compileDesignDocument;
 using lumen::dsl::findNodeSchema;
 using lumen::dsl::findPropertySpec;
@@ -19,9 +24,9 @@ using lumen::dsl::parseLumenSource;
 using lumen::dsl::validateDesignDocument;
 using lumen::dsl::widgetFieldInventory;
 
-TEST_CASE("designer schema registry covers the L0 and L1 static node set",
+TEST_CASE("designer schema registry covers the L0 through L2 node set",
           "[designer][p2]") {
-    REQUIRE(nodeSchemaRegistry().size() == 22);
+    REQUIRE(nodeSchemaRegistry().size() == 27);
     for (const auto& schema : nodeSchemaRegistry()) {
         REQUIRE(schema.canBeRoot);
         REQUIRE(schema.makeDefault);
@@ -36,7 +41,8 @@ TEST_CASE("designer schema registry covers the L0 and L1 static node set",
     }
     for (const auto* type : {"Grid", "Image", "Icon", "Slider", "ProgressBar",
                              "Radio", "Tooltip", "Dropdown", "Tabs",
-                             "ThemeScope"}) {
+                             "ThemeScope", "VirtualList", "List", "Tree",
+                             "TreeList", "Splitter"}) {
         REQUIRE(findNodeSchema(type) != nullptr);
     }
 }
@@ -82,6 +88,10 @@ TEST_CASE("designer compiler applies every registered declaration through the re
         DesignDocument document;
         document.pageName = "schema-compile";
         document.root = DesignNode{1, schema.type};
+        if (schema.type == "Splitter") {
+            document.root.children = {DesignNode{2, "Text"},
+                                      DesignNode{3, "Text"}};
+        }
         for (const auto& property : schema.properties) {
             if (property.persistence ==
                 lumen::dsl::PropertyPersistence::Declaration) {
@@ -207,6 +217,97 @@ TEST_CASE("designer compiler applies the remaining L1 static controls",
     REQUIRE(compiled.root.children[6].children.size() == 1);
     CHECK(compiled.root.children[6].children[0].type ==
           lumen::core::WidgetType::Text);
+}
+
+namespace {
+
+class TestVirtualSource final : public lumen::core::VirtualListSource {
+  public:
+    [[nodiscard]] std::size_t itemCount() const override { return 0; }
+    [[nodiscard]] float estimatedExtent() const override { return 24.0F; }
+    [[nodiscard]] float extentOf(std::size_t) const override { return 24.0F; }
+    [[nodiscard]] float scrollOffset() const override { return 0.0F; }
+    [[nodiscard]] float totalExtent() const override { return 0.0F; }
+    [[nodiscard]] float offsetOfIndex(std::size_t) const override { return 0.0F; }
+    [[nodiscard]] std::pair<std::size_t, std::size_t> visibleRange(
+        float, float) const override {
+        return {0, 0};
+    }
+    [[nodiscard]] lumen::core::Widget buildItem(std::size_t) const override {
+        return {};
+    }
+    void noteExtent(std::size_t, float) const override {}
+};
+
+class TestSplitterSource final : public lumen::core::SplitterSource {
+  public:
+    [[nodiscard]] float offsetPx() const override { return 100.0F; }
+    [[nodiscard]] float minLeading() const override { return 48.0F; }
+    [[nodiscard]] float minTrailing() const override { return 48.0F; }
+    [[nodiscard]] float initialOffset() const override { return 100.0F; }
+    [[nodiscard]] bool seeded() const override { return true; }
+    [[nodiscard]] float extentPx() const override { return 400.0F; }
+    void noteLayout(float, float) const override {}
+    void dragTo(float) const override {}
+    void stepBy(float) const override {}
+    void stepToEdge(bool) const override {}
+    void reset() const override {}
+};
+
+}  // namespace
+
+TEST_CASE("designer compiler injects L2 source handles and leases",
+          "[designer][p3][designer-l2]") {
+    TestVirtualSource virtualSource;
+    TestSplitterSource splitterSource;
+    auto lease = std::make_shared<int>(7);
+    MapDesignRuntimeContext context;
+    context.registerTypedReference(DesignReferenceKind::VirtualSource, "rows",
+                                   &virtualSource, lease);
+    context.registerTypedReference(DesignReferenceKind::SplitterSource, "split",
+                                   &splitterSource, lease);
+
+    DesignDocument document;
+    document.pageName = "l2-sources";
+    document.root = DesignNode{1, "Column"};
+    DesignNode list{2, "List"};
+    list.references["virtualSource"] = "rows";
+    list.properties["collectionSelectionMode"] = DesignValue{
+        DesignValue::Variant{DesignEnum{"collectionSelectionMode", "single"}}};
+    DesignNode splitter{3, "Splitter"};
+    splitter.references["splitterSource"] = "split";
+    splitter.children = {DesignNode{4, "Text"}, DesignNode{5, "Text"}};
+    document.root.children = {list, splitter};
+
+    REQUIRE(validateDesignDocument(document).empty());
+    const auto compiled = compileDesignDocument(document, context);
+    REQUIRE(compiled.ok());
+    REQUIRE(compiled.session);
+    CHECK(compiled.session->leaseCount() == 2);
+    REQUIRE(compiled.root.children.size() == 2);
+    CHECK(compiled.root.children[0].virtualSource == &virtualSource);
+    CHECK(compiled.root.children[0].collectionSelectionMode == 1);
+    CHECK(compiled.root.children[1].splitterSource == &splitterSource);
+    compiled.session->close();
+    CHECK_FALSE(compiled.session->active());
+}
+
+TEST_CASE("designer compiler keeps L2 source nodes inspectable when references are missing",
+          "[designer][p3][designer-l2]") {
+    DesignDocument document;
+    document.root = DesignNode{1, "List"};
+    document.root.references["virtualSource"] = "missing";
+
+    MapDesignRuntimeContext context;
+    const auto compiled = compileDesignDocument(document, context);
+    REQUIRE_FALSE(compiled.ok());
+    REQUIRE(compiled.root.type == lumen::core::WidgetType::List);
+    CHECK_FALSE(compiled.root.enabled);
+    CHECK(compiled.root.invalid);
+    CHECK(compiled.root.virtualSource == nullptr);
+    REQUIRE(compiled.diagnostics.size() == 1);
+    CHECK(compiled.diagnostics.front().code == "reference.missing");
+    CHECK(compiled.diagnostics.front().property == "virtualSource");
 }
 
 TEST_CASE("designer schema validates types, enums, ranges and structure",

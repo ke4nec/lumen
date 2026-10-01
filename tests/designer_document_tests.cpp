@@ -242,7 +242,7 @@ TEST_CASE("designer document diagnostics reject unsupported and damaged input",
           "[designer][p1]") {
     DesignDocument unknown;
     unknown.pageName = "preview";
-    unknown.root = DesignNode{1, "VirtualList"};
+    unknown.root = DesignNode{1, "ComboBox"};
     const auto unsupported = compileDesignDocument(unknown);
     REQUIRE_FALSE(unsupported.ok());
     REQUIRE(unsupported.diagnostics.size() == 1);

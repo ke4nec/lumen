@@ -907,8 +907,12 @@ template <typename Integer>
     return true;
 }
 
+using ResolvedReferenceHandles =
+    std::map<DesignNodeId, std::map<std::string, const void*>>;
+
 [[nodiscard]] std::optional<core::Widget> compileNode(
     const DesignNode& node, std::set<DesignNodeId>& ids, std::string path,
+    const ResolvedReferenceHandles& handles,
     std::optional<DesignError>& error) {
     const NodeSchema* schema = findNodeSchema(node.type);
     if (schema == nullptr) {
@@ -952,6 +956,20 @@ template <typename Integer>
         if (name == "bind") widget.bind = reference;
         if (name == "onClick") widget.onClick = reference;
     }
+    if (const auto found = handles.find(node.id); found != handles.end()) {
+        for (const auto& [name, handle] : found->second) {
+            if (name == "theme") widget.themeOverride = handle;
+            if (name == "virtualSource") {
+                widget.virtualSource =
+                    static_cast<const core::VirtualListSource*>(handle);
+            }
+            if (name == "splitterSource") {
+                widget.splitterSource =
+                    static_cast<const core::SplitterSource*>(handle);
+            }
+            if (name == "component") widget.collectionColumns = handle;
+        }
+    }
     if (widget.type == core::WidgetType::Text) {
         widget.bindPrefix = widget.text;
     }
@@ -968,7 +986,7 @@ template <typename Integer>
     for (std::size_t i = 0; i < node.children.size(); ++i) {
         const auto child = compileNode(
             node.children[i], ids,
-            path + ".children[" + std::to_string(i) + "]", error);
+            path + ".children[" + std::to_string(i) + "]", handles, error);
         if (!child.has_value()) return std::nullopt;
         widget.children.push_back(std::move(*child));
     }
@@ -1062,6 +1080,7 @@ void validateRuntimeReferences(
     const DesignNode& node, const std::string& path,
     const DesignRuntimeContext& context, DesignRuntimeSession& session,
     std::set<DesignNodeId>& unresolved,
+    ResolvedReferenceHandles& handles,
     std::vector<DesignError>& diagnostics) {
     for (const auto& [name, reference] : node.references) {
         const auto kind = referenceKind(name);
@@ -1076,7 +1095,11 @@ void validateRuntimeReferences(
             diagnostic.property = name;
             diagnostics.push_back(std::move(diagnostic));
         } else if (*kind != DesignReferenceKind::Binding &&
-                   *kind != DesignReferenceKind::Handler) {
+                   *kind != DesignReferenceKind::Handler &&
+                   *kind != DesignReferenceKind::Theme &&
+                   *kind != DesignReferenceKind::VirtualSource &&
+                   *kind != DesignReferenceKind::SplitterSource &&
+                   *kind != DesignReferenceKind::Component) {
             unresolved.insert(node.id);
             DesignError diagnostic = errorAt(
                 "reference.unsupported", "<design>",
@@ -1138,7 +1161,24 @@ void validateRuntimeReferences(
                         diagnostic.nodePath = path;
                         diagnostic.property = name;
                         diagnostics.push_back(std::move(diagnostic));
+                    } else if ((*kind == DesignReferenceKind::Theme ||
+                                *kind == DesignReferenceKind::VirtualSource ||
+                                *kind == DesignReferenceKind::SplitterSource ||
+                                *kind == DesignReferenceKind::Component) &&
+                               resolved.handle == nullptr) {
+                        unresolved.insert(node.id);
+                        DesignError diagnostic = errorAt(
+                            "reference.type", "<design>",
+                            "reference resolver returned no typed handle",
+                            referenceSourcePosition(node, name));
+                        diagnostic.nodeId = node.id;
+                        diagnostic.nodePath = path;
+                        diagnostic.property = name;
+                        diagnostics.push_back(std::move(diagnostic));
                     } else {
+                        if (resolved.handle != nullptr) {
+                            handles[node.id][name] = resolved.handle;
+                        }
                         session.retain(std::move(resolved.lifetimeToken));
                     }
                 } catch (const std::exception& exception) {
@@ -1169,7 +1209,7 @@ void validateRuntimeReferences(
     for (std::size_t i = 0; i < node.children.size(); ++i) {
         validateRuntimeReferences(
             node.children[i], path + ".children[" + std::to_string(i) + "]",
-            context, session, unresolved, diagnostics);
+            context, session, unresolved, handles, diagnostics);
     }
 }
 
@@ -1330,8 +1370,10 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
     }
     if (!result.diagnostics.empty()) return result;
     std::set<DesignNodeId> unresolvedReferences;
+    ResolvedReferenceHandles resolvedReferenceHandles;
     validateRuntimeReferences(document.root, "root", context, *result.session,
-                              unresolvedReferences, result.diagnostics);
+                              unresolvedReferences, resolvedReferenceHandles,
+                              result.diagnostics);
     const std::size_t diagnosticsBeforeIdentityValidation =
         result.diagnostics.size();
     std::map<std::string, DesignNodeId> runtimeIdentities;
@@ -1342,7 +1384,8 @@ DesignCompileResult compileDesignDocument(const DesignDocument& document,
     }
     std::set<DesignNodeId> ids;
     std::optional<DesignError> error;
-    const auto compiled = compileNode(document.root, ids, "root", error);
+    const auto compiled = compileNode(document.root, ids, "root",
+                                      resolvedReferenceHandles, error);
     if (!compiled.has_value()) {
         result.diagnostics.push_back(std::move(*error));
         return result;
