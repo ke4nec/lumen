@@ -2540,6 +2540,23 @@ core::Widget DesignerApp::buildProjectPanel() {
             row.selected = page.documentId == activeProjectDocumentId_;
             rows.push_back(std::move(row));
         }
+        if (!project_->resources.empty()) {
+            rows.push_back(core::makeText("Resources", theme.typography.caption,
+                                          {}, 0.0F,
+                                          "designer-project-resources-heading"));
+            for (std::size_t index = 0; index < project_->resources.size();
+                 ++index) {
+                const auto& resource = project_->resources[index];
+                const std::string label =
+                    resource.kind.empty() ? "Resource" : resource.kind;
+                const std::string path = resource.path.empty()
+                                             ? resource.uri
+                                             : resource.path;
+                rows.push_back(core::makeText(
+                    label + "  /  " + path, theme.typography.caption, {}, 0.0F,
+                    "designer-project-resource:" + std::to_string(index)));
+            }
+        }
     }
     auto body = core::makeColumn(std::move(rows), core::MainAxisAlignment::Start,
                                  core::CrossAxisAlignment::Stretch, 4.0F);

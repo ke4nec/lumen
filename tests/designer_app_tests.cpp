@@ -1599,6 +1599,9 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
         {homeId, "home.design", "Home"},
         {settingsId, "settings.design", "Settings"},
     };
+    project.resources = {
+        {"project://images/logo.png", "images/logo.png", "image"},
+    };
     lumen::dsl::ProjectStore projectStore;
     std::vector<lumen::dsl::DesignError> diagnostics;
     const auto manifest = root / "demo.lumen-project";
@@ -1620,6 +1623,10 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     (void)app.shell().renderFrame();
     CHECK(findNodeByKey(app.shell().root(), "designer-project-panel") != nullptr);
     CHECK(findNodeByKey(app.shell().root(), "designer-project-page:" + settingsId) !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-project-resources-heading") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-project-resource:0") !=
           nullptr);
 
     REQUIRE(app.saveProjectFile(manifest.string()));
