@@ -1220,6 +1220,82 @@ TEST_CASE("designer app copies multi-selection across parents as one transaction
           std::set<lumen::dsl::DesignNodeId>{pastedFirstId, pastedSecondId});
 }
 
+TEST_CASE("designer app duplicates multi-selection with unique keys",
+          "[designer][d3][app][selection]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { Text(\"A\", key: \"a\") "
+        "Button(\"B\", key: \"b\") Text(\"C\", key: \"c\") } }",
+        "multi-duplicate.lumen"));
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().document().has_value());
+    const auto& children = app.workbench().document()->root.children;
+    REQUIRE(children.size() == 3);
+    const auto firstId = children[0].id;
+    const auto secondId = children[1].id;
+    const auto thirdId = children[2].id;
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    const auto* firstOutline = findOutlineNodeById(*outline, firstId);
+    const auto* secondOutline = findOutlineNodeById(*outline, secondId);
+    REQUIRE(firstOutline != nullptr);
+    REQUIRE(secondOutline != nullptr);
+    const auto* firstRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + firstOutline->path);
+    const auto* secondRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + secondOutline->path);
+    REQUIRE(firstRow != nullptr);
+    REQUIRE(secondRow != nullptr);
+    const auto firstOrigin = absoluteOffset(app.shell().root(), firstRow->key);
+    const auto secondOrigin = absoluteOffset(app.shell().root(), secondRow->key);
+    const Offset firstPoint =
+        firstOrigin + Offset{firstRow->size.width * 0.5F,
+                             firstRow->size.height * 0.5F};
+    const Offset secondPoint =
+        secondOrigin + Offset{secondRow->size.width * 0.5F,
+                              secondRow->size.height * 0.5F};
+    app.shell().pointerDown(firstPoint);
+    app.shell().pointerUp(firstPoint);
+    app.shell().pointerDown(secondPoint, lumen::core::kModifierShift);
+    app.shell().pointerUp(secondPoint);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().selection().ids ==
+            std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+
+    app.shell().handlers().at("designer:duplicate")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Duplicated 2 nodes");
+    REQUIRE(app.workbench().document().has_value());
+    const auto& duplicated = app.workbench().document()->root.children;
+    REQUIRE(duplicated.size() == 5);
+    const auto duplicateFirstId = duplicated[2].id;
+    const auto duplicateSecondId = duplicated[3].id;
+    CHECK(duplicateFirstId != firstId);
+    CHECK(duplicateSecondId != secondId);
+    CHECK(std::get<std::string>(
+              duplicated[2].properties.at("key").value) == "a-copy");
+    CHECK(std::get<std::string>(
+              duplicated[3].properties.at("key").value) == "b-copy");
+    CHECK(duplicated[4].id == thirdId);
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{duplicateFirstId,
+                                               duplicateSecondId});
+
+    REQUIRE(app.undo());
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.size() == 3);
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+    REQUIRE(app.redo());
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.size() == 5);
+    CHECK(app.workbench().selection().primary == duplicateSecondId);
+}
+
 TEST_CASE("designer app deletes multi-selection as one transaction",
           "[designer][d3][app][selection]") {
     DesignerApp app;

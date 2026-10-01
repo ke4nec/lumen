@@ -1783,8 +1783,45 @@ void DesignerApp::insertNodeType(std::string type) {
 void DesignerApp::insertTextNode() { insertNodeType("Text"); }
 
 void DesignerApp::duplicateSelectedNode() {
-    const auto selected = workbench_.selection().primary;
-    if (!selected || !workbench_.duplicateNode(*selected)) return;
+    if (!workbench_.document().has_value()) return;
+    const auto& selection = workbench_.selection();
+    if (selection.ids.empty()) return;
+
+    std::vector<dsl::DesignNode> copies;
+    collectClipboardNodes(workbench_.document()->root, selection.ids, false,
+                          copies);
+    if (copies.empty()) return;
+
+    const auto firstLocation =
+        locateDesignNode(workbench_.document()->root, copies.front().id);
+    if (!firstLocation.has_value()) return;
+    const auto parentId = firstLocation->parent;
+    const auto slot = firstLocation->slot;
+    std::size_t insertionIndex = firstLocation->index + 1;
+    for (const auto& copy : copies) {
+        const auto location =
+            locateDesignNode(workbench_.document()->root, copy.id);
+        if (!location.has_value() || location->parent != parentId ||
+            location->slot != slot) {
+            statusMessage_ = "Duplicate requires one sibling list";
+            shell_.markDirty();
+            return;
+        }
+        insertionIndex = std::max(insertionIndex, location->index + 1);
+    }
+
+    std::set<std::string> usedKeys;
+    collectDesignKeys(workbench_.document()->root, usedKeys);
+    for (auto& copy : copies) makePastedKeysUnique(copy, usedKeys);
+    const auto inserted = workbench_.insertNodes(
+        parentId, insertionIndex, std::move(copies), slot);
+    if (inserted.empty()) return;
+    if (inserted.size() == 1) {
+        statusMessage_ = "Duplicated node";
+    } else {
+        statusMessage_ =
+            "Duplicated " + std::to_string(inserted.size()) + " nodes";
+    }
     refreshDocumentUi();
     shell_.markDirty();
 }
