@@ -18,6 +18,8 @@
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/render_node.h"
+#include "lumen/core/splitter.h"
+#include "lumen/dsl/design_codec.h"
 #include "lumen/dsl/project_store.h"
 #include "lumen/style/state.h"
 
@@ -1596,6 +1598,115 @@ TEST_CASE("designer app exposes L2 source references and offline diagnostics",
     CHECK_FALSE(app.workbench().document()->root.children.back().references
                     .contains("virtualSource"));
     CHECK(app.workbench().diagnostics().empty());
+}
+
+TEST_CASE("designer app previews deterministic L2 source adapters",
+          "[designer][d3][app][designer-l2]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    const auto rootId = outline->id;
+    const auto selectRoot = [&] {
+        const auto handler = app.shell().handlers().find(
+            "designer:select:" + std::to_string(rootId));
+        REQUIRE(handler != app.shell().handlers().end());
+        handler->second();
+        (void)app.shell().renderFrame();
+    };
+    const auto activate = [&](const char* type) {
+        const auto* button = findNodeByKey(
+            app.shell().root(), std::string{"designer-toolbox:"} + type);
+        REQUIRE(button != nullptr);
+        CHECK(app.shell().performAccessibilityAction(
+                  button->identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+        (void)app.shell().renderFrame();
+    };
+
+    selectRoot();
+    activate("List");
+    outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto listId = *app.workbench().selection().primary;
+    const std::string listReference =
+        "designer:reference:" + std::to_string(listId) + ":virtualSource";
+    REQUIRE(findNodeByKey(
+                app.shell().root(),
+                "designer-reference-field:" + std::to_string(listId) +
+                    ":virtualSource") != nullptr);
+    app.shell().state().set(listReference, "preview_rows");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.back().references.at(
+              "virtualSource") == "preview_rows");
+    CHECK(app.workbench().diagnostics().empty());
+    const auto* list = findNodeByKey(
+        app.shell().root(), "designer:node:" + std::to_string(listId));
+    REQUIRE(list != nullptr);
+    REQUIRE(list->virtualSource != nullptr);
+    CHECK(list->virtualSource->itemCount() == 12);
+    CHECK(list->children.size() > 0);
+    REQUIRE(app.workbench().frame().session() != nullptr);
+    CHECK(app.workbench().frame().session()->leaseCount() == 1);
+
+    selectRoot();
+    activate("Splitter");
+    outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto splitterId = *app.workbench().selection().primary;
+    const std::string splitterReference =
+        "designer:reference:" + std::to_string(splitterId) +
+        ":splitterSource";
+    REQUIRE(findNodeByKey(
+                app.shell().root(),
+                "designer-reference-field:" + std::to_string(splitterId) +
+                    ":splitterSource") != nullptr);
+    app.shell().state().set(splitterReference, "preview_splitter");
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().diagnostics().empty());
+    const auto* splitter = findNodeByKey(
+        app.shell().root(),
+        "split:div:designer:node:" + std::to_string(splitterId));
+    REQUIRE(splitter != nullptr);
+    REQUIRE(splitter->splitterSource != nullptr);
+    CHECK(app.workbench().frame().session()->leaseCount() == 2);
+    const auto document = lumen::dsl::serializeDesignDocument(
+        *app.workbench().document());
+    const auto revision = app.workbench().documentRevision();
+    const auto oldSession = app.workbench().frame().session();
+    splitter->splitterSource->stepBy(16.0F);
+    CHECK(lumen::dsl::serializeDesignDocument(*app.workbench().document()) ==
+          document);
+    CHECK(app.workbench().documentRevision() == revision);
+
+    app.shell().handlers().at("designer:run")();
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(oldSession->active());
+    CHECK(oldSession->leaseCount() == 0);
+    CHECK(app.workbench().frame().session()->leaseCount() == 2);
+    CHECK(lumen::dsl::serializeDesignDocument(*app.workbench().document()) ==
+          document);
+    CHECK(app.workbench().documentRevision() == revision);
+
+    app.shell().handlers().at("designer:select:" + std::to_string(listId))();
+    (void)app.shell().renderFrame();
+    app.shell().handlers().at("designer:duplicate")();
+    (void)app.shell().renderFrame();
+    std::vector<const lumen::core::VirtualListSource*> sources;
+    for (const auto& child : app.workbench().frame().widget().children) {
+        if (child.virtualSource != nullptr) sources.push_back(child.virtualSource);
+    }
+    REQUIRE(sources.size() == 2);
+    CHECK(sources[0] != sources[1]);
+    CHECK(sources[0]->scrollController() != sources[1]->scrollController());
 }
 
 TEST_CASE("designer app previews its first L3 DataGrid component",

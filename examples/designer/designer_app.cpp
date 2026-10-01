@@ -17,6 +17,7 @@
 #include "lumen/dsl/design_codec.h"
 #include "lumen/dsl/project_store.h"
 #include "lumen/core/icon_id.h"
+#include "lumen/widgets/splitter.h"
 
 namespace lumen::designer_app {
 namespace {
@@ -341,17 +342,37 @@ bool DesignerApp::OfflineRuntimeContext::resolveReference(
     dsl::DesignReference& out) const {
     if (name.empty()) return false;
     // The designer can display bindings, handlers, and image names without
-    // owning their application objects. Typed source handles remain missing
-    // until the embedding application registers a real adapter.
+    // owning their application objects. The two deterministic source names
+    // below keep L2 previews usable offline; other source names remain
+    // explicit missing-reference diagnostics.
     switch (kind) {
         case dsl::DesignReferenceKind::Binding:
         case dsl::DesignReferenceKind::Handler:
         case dsl::DesignReferenceKind::Image:
             out = dsl::DesignReference{kind, name, {}, nullptr};
             return true;
+        case dsl::DesignReferenceKind::VirtualSource: {
+            if (name != "preview_rows") return false;
+            auto source = std::make_shared<core::VirtualListController>();
+            source->setItemCount(12);
+            source->setEstimatedExtent(28.0F);
+            source->setItemBuilder([](std::size_t index) {
+                auto item = core::makeText(
+                    "Preview row " + std::to_string(index + 1));
+                item.key = "designer-preview-row:" + std::to_string(index);
+                item.height = 28.0F;
+                return item;
+            });
+            out = dsl::DesignReference{kind, name, source, source.get()};
+            return true;
+        }
+        case dsl::DesignReferenceKind::SplitterSource: {
+            if (name != "preview_splitter") return false;
+            auto source = std::make_shared<widgets::SplitterController>(180.0F);
+            out = dsl::DesignReference{kind, name, source, source.get()};
+            return true;
+        }
         case dsl::DesignReferenceKind::Theme:
-        case dsl::DesignReferenceKind::VirtualSource:
-        case dsl::DesignReferenceKind::SplitterSource:
         case dsl::DesignReferenceKind::Component:
             return false;
     }
