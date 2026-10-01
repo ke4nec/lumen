@@ -112,6 +112,8 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     CHECK(app.shell().focus().focusedKey() == "designer-contrast");
     app.shell().keyDown(Key::Tab);
     CHECK(app.shell().focus().focusedKey() == "designer-preview-state");
+    app.shell().keyDown(Key::Tab);
+    CHECK(app.shell().focus().focusedKey() == "designer-canvas-guides");
     const std::vector<std::string> previewKeys = {"designer-run",
                                                   "designer-debug"};
     for (const auto& key : previewKeys) {
@@ -153,6 +155,53 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     (void)app.shell().renderFrame();
     REQUIRE(app.workbench().selection().primary.has_value());
     CHECK(*app.workbench().selection().primary == outline->children.front().id);
+}
+
+TEST_CASE("designer app renders canvas alignment guides for the selection",
+          "[designer][d2][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    // The first frame establishes the canvas geometry used to place the
+    // non-modal guide layer; enabling it forces the first geometry-aware
+    // rebuild.
+    app.shell().handlers().at("designer:canvas-guides")();
+    (void)app.shell().renderFrame();
+
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-canvas-guides") !=
+            nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-canvas-ruler-top") != nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-canvas-grid-dot:0:0") != nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-canvas-guide-frame") != nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-canvas-handle:nw") != nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-canvas-dimensions") != nullptr);
+    bool guideInSemantics = false;
+    for (const auto& [id, node] : app.shell().buildSemanticsSnapshot().nodes) {
+        (void)node;
+        if (id.find("designer-canvas-guide-frame") != std::string::npos ||
+            id.find("designer-canvas-guide-v") != std::string::npos ||
+            id.find("designer-canvas-guide-h") != std::string::npos ||
+            id.find("designer-canvas-handle") != std::string::npos) {
+            guideInSemantics = true;
+            break;
+        }
+    }
+    CHECK_FALSE(guideInSemantics);
+
+    app.shell().handlers().at("designer:canvas-guides")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-guide-frame") == nullptr);
+    app.shell().handlers().at("designer:canvas-guides")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-guide-frame") != nullptr);
 }
 
 TEST_CASE("designer app previews theme density dpi and accessibility inputs",

@@ -415,6 +415,8 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:dpi"] = [this] { cycleDpi(); };
     shell_.handlers()["designer:font-scale"] = [this] { cycleFontScale(); };
     shell_.handlers()["designer:contrast"] = [this] { toggleHighContrast(); };
+    shell_.handlers()["designer:canvas-guides"] =
+        [this] { toggleCanvasGuides(); };
     shell_.handlers()["designer:preview-state"] =
         [this] { cyclePreviewState(); };
     shell_.handlers()["designer:add-text"] = [this] { insertTextNode(); };
@@ -1167,6 +1169,11 @@ void DesignerApp::toggleHighContrast() {
     applyEnvironmentTheme();
 }
 
+void DesignerApp::toggleCanvasGuides() {
+    canvasGuidesEnabled_ = !canvasGuidesEnabled_;
+    shell_.markDirty();
+}
+
 void DesignerApp::resetPreviewState() {
     if (!previewStateKey_.empty()) {
         shell_.setVisualPreviewState(previewStateKey_, {});
@@ -1432,6 +1439,13 @@ core::Widget DesignerApp::buildToolbar() {
         }(),
         theme.typography.label, {}, 0.0F, "designer-preview-state", 128.0F,
         std::nullopt, "designer:preview-state");
+    auto guidesButton = core::withLeadingIcon(
+        core::makeButton(canvasGuidesEnabled_ ? "Guides on" : "Guides off",
+                         theme.typography.label, {}, 0.0F,
+                         "designer-canvas-guides", 104.0F, std::nullopt,
+                         "designer:canvas-guides"),
+        core::IconId::Grid);
+    guidesButton.selected = canvasGuidesEnabled_;
     auto runButton = core::withLeadingIcon(
         core::makeButton("Run", theme.typography.label, {}, 0.0F,
                          "designer-run", 72.0F, std::nullopt,
@@ -1486,6 +1500,7 @@ core::Widget DesignerApp::buildToolbar() {
         {std::move(title), std::move(themeButton), std::move(densityButton),
          std::move(dpiButton), std::move(fontButton),
          std::move(contrastButton), std::move(previewButton),
+         std::move(guidesButton),
          std::move(runButton), std::move(debugButton), std::move(stopButton),
          std::move(addTextButton), std::move(duplicateButton),
          std::move(removeButton), std::move(moveUpButton),
@@ -1542,6 +1557,213 @@ core::Widget DesignerApp::buildOutlinePanel() {
     return panel;
 }
 
+core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
+    const auto& theme = shell_.theme();
+    const auto& tokens = theme.designerCanvas;
+    std::vector<core::Widget> children;
+    std::optional<float> contentWidth;
+    std::optional<float> contentHeight;
+    const core::RenderNode* canvasNode =
+        core::findNodeByKey(shell_.root(), "designer-canvas");
+    if (canvasNode != nullptr) {
+        contentWidth = std::max(
+            0.0F, canvasNode->size.width - canvasNode->padding.horizontal());
+        contentHeight = std::max(
+            0.0F, canvasNode->size.height - canvasNode->padding.vertical());
+    }
+
+    const auto makeDecoration = [](core::Widget widget) {
+        widget.excludeFromSemantics = true;
+        widget.excludeFromFocus = true;
+        return widget;
+    };
+    const auto position = [](core::Widget widget, core::Offset offset) {
+        return core::withStackPosition(std::move(widget), offset);
+    };
+    const auto makeBar = [&](std::optional<float> width,
+                             std::optional<float> height, core::Color color,
+                             std::string key) {
+        auto bar = core::makeContainerLeaf(width, height, {}, {}, color,
+                                            std::move(key));
+        return makeDecoration(std::move(bar));
+    };
+
+    if (canvasGuidesEnabled_ && canvasNode != nullptr) {
+        const float width = contentWidth.value_or(0.0F);
+        const float height = contentHeight.value_or(0.0F);
+        if (width > 0.0F && height > 0.0F) {
+            // Keep the point field sparse enough for a retained widget tree;
+            // the 40px sampling still communicates the designer grid while
+            // leaving the frozen 8px snap threshold to the future engine.
+            for (float y = 0.0F; y <= height; y += 40.0F) {
+                for (float x = 0.0F; x <= width; x += 40.0F) {
+                    children.push_back(position(
+                        makeBar(2.0F, 2.0F, tokens.gridDot,
+                                "designer-canvas-grid-dot:" +
+                                    std::to_string(static_cast<int>(x)) +
+                                    ":" + std::to_string(static_cast<int>(y))),
+                        core::Offset{x, y}));
+                }
+            }
+            // Rulers are intentionally ordinary render widgets. They stay
+            // outside the semantic/focus tree and the preview remains the
+            // last child so selection and drag hit testing keep their order.
+            children.push_back(position(
+                makeBar(width, 20.0F, tokens.rulerSurface,
+                        "designer-canvas-ruler-top"),
+                core::Offset{0.0F, 0.0F}));
+            children.push_back(position(
+                makeBar(20.0F, height, tokens.rulerSurface,
+                        "designer-canvas-ruler-left"),
+                core::Offset{0.0F, 0.0F}));
+            for (float x = 0.0F; x <= width; x += 40.0F) {
+                children.push_back(position(
+                    makeBar(tokens.guideThickness, 8.0F, tokens.rulerTick,
+                            "designer-canvas-ruler-tick-x:" +
+                                std::to_string(static_cast<int>(x))),
+                    core::Offset{x, 12.0F}));
+            }
+            for (float y = 0.0F; y <= height; y += 40.0F) {
+                children.push_back(position(
+                    makeBar(8.0F, tokens.guideThickness, tokens.rulerTick,
+                            "designer-canvas-ruler-tick-y:" +
+                                std::to_string(static_cast<int>(y))),
+                    core::Offset{12.0F, y}));
+            }
+            for (float x = 0.0F; x <= width; x += 80.0F) {
+                auto label = core::makeText(
+                    std::to_string(static_cast<int>(x)),
+                    theme.typography.caption, {}, 0.0F,
+                    "designer-canvas-ruler-label-x:" +
+                        std::to_string(static_cast<int>(x)));
+                label.styleOverrides.foreground = tokens.rulerTick;
+                children.push_back(position(makeDecoration(std::move(label)),
+                                            core::Offset{x + 2.0F, 1.0F}));
+            }
+            for (float y = 40.0F; y <= height; y += 80.0F) {
+                auto label = core::makeText(
+                    std::to_string(static_cast<int>(y)),
+                    theme.typography.caption, {}, 0.0F,
+                    "designer-canvas-ruler-label-y:" +
+                        std::to_string(static_cast<int>(y)));
+                label.styleOverrides.foreground = tokens.rulerTick;
+                children.push_back(position(makeDecoration(std::move(label)),
+                                            core::Offset{1.0F, y + 2.0F}));
+            }
+        }
+
+        std::string selectedKey;
+        if (const auto primary = workbench_.selection().primary;
+            primary.has_value()) {
+            if (const auto outline = workbench_.outline(); outline.has_value()) {
+                if (const auto* selected =
+                        findOutlineNode(*outline, *primary);
+                    selected != nullptr) {
+                    selectedKey = selected->key.empty()
+                                      ? previewKeyForNode(*primary)
+                                      : selected->key;
+                }
+            }
+        }
+        const auto* selectedNode = selectedKey.empty()
+                                       ? nullptr
+                                       : core::findNodeByKey(shell_.root(),
+                                                             selectedKey);
+        if (selectedNode != nullptr && canvasNode != nullptr &&
+            contentWidth.has_value() && contentHeight.has_value()) {
+            const core::Offset canvasOrigin =
+                core::absoluteOffset(shell_.root(), "designer-canvas");
+            const core::Offset contentOrigin =
+                canvasOrigin +
+                core::Offset{canvasNode->padding.left,
+                             canvasNode->padding.top};
+            const core::Offset selectedOrigin =
+                core::absoluteOffset(shell_.root(), selectedKey);
+            const core::Offset local{selectedOrigin.x - contentOrigin.x,
+                                     selectedOrigin.y - contentOrigin.y};
+            const float selectedWidth = selectedNode->size.width;
+            const float selectedHeight = selectedNode->size.height;
+            if (selectedWidth > 0.0F && selectedHeight > 0.0F) {
+                auto vertical = makeBar(tokens.guideThickness, *contentHeight,
+                                        tokens.guide, "designer-canvas-guide-v");
+                children.push_back(position(
+                    std::move(vertical),
+                    core::Offset{local.x + selectedWidth * 0.5F -
+                                     tokens.guideThickness * 0.5F,
+                                 0.0F}));
+                auto horizontal = makeBar(*contentWidth, tokens.guideThickness,
+                                          tokens.guide,
+                                          "designer-canvas-guide-h");
+                children.push_back(position(
+                    std::move(horizontal),
+                    core::Offset{0.0F,
+                                 local.y + selectedHeight * 0.5F -
+                                     tokens.guideThickness * 0.5F}));
+
+                auto frame = core::makeContainerLeaf(
+                    selectedWidth + 12.0F, selectedHeight + 12.0F, {}, {},
+                    core::Color::transparent(),
+                    "designer-canvas-guide-frame");
+                frame.styleOverrides.border = tokens.guide;
+                frame.styleOverrides.borderWidth = tokens.guideThickness;
+                frame = makeDecoration(std::move(frame));
+                children.push_back(position(
+                    std::move(frame),
+                    core::Offset{local.x - 6.0F, local.y - 6.0F}));
+
+                const float handleSize = 8.0F;
+                const std::vector<std::pair<std::string, core::Offset>> handles = {
+                    {"nw", {local.x - 10.0F, local.y - 10.0F}},
+                    {"n", {local.x + selectedWidth * 0.5F - 4.0F,
+                            local.y - 10.0F}},
+                    {"ne", {local.x + selectedWidth + 2.0F,
+                             local.y - 10.0F}},
+                    {"e", {local.x + selectedWidth + 2.0F,
+                            local.y + selectedHeight * 0.5F - 4.0F}},
+                    {"se", {local.x + selectedWidth + 2.0F,
+                             local.y + selectedHeight + 2.0F}},
+                    {"s", {local.x + selectedWidth * 0.5F - 4.0F,
+                            local.y + selectedHeight + 2.0F}},
+                    {"sw", {local.x - 10.0F, local.y + selectedHeight + 2.0F}},
+                    {"w", {local.x - 10.0F,
+                            local.y + selectedHeight * 0.5F - 4.0F}},
+                };
+                for (const auto& [name, offset] : handles) {
+                    auto handle = core::makeContainerLeaf(
+                        handleSize, handleSize, {}, {}, tokens.handleFill,
+                        "designer-canvas-handle:" + name);
+                    handle.styleOverrides.border = tokens.handleBorder;
+                    handle.styleOverrides.borderWidth = tokens.guideThickness;
+                    children.push_back(position(makeDecoration(std::move(handle)),
+                                                offset));
+                }
+
+                auto dimensions = core::makeText(
+                    "X " + std::to_string(static_cast<int>(local.x)) +
+                        "  Y " + std::to_string(static_cast<int>(local.y)) +
+                        "  W " +
+                        std::to_string(static_cast<int>(selectedWidth)) +
+                        "  H " +
+                        std::to_string(static_cast<int>(selectedHeight)),
+                    theme.typography.caption, {}, 0.0F,
+                    "designer-canvas-dimensions", std::nullopt, std::nullopt,
+                    core::EdgeInsets::symmetric(6.0F, 3.0F));
+                dimensions.styleOverrides.background = tokens.guide;
+                dimensions.styleOverrides.foreground = tokens.onGuide;
+                children.push_back(position(makeDecoration(std::move(dimensions)),
+                                            core::Offset{local.x,
+                                                         local.y + selectedHeight +
+                                                             14.0F}));
+            }
+        }
+    }
+
+    children.push_back(std::move(preview));
+    return core::makeStack(std::move(children), core::StackAlignment::TopLeft,
+                           {}, {}, "designer-canvas-stack", contentWidth,
+                           contentHeight);
+}
+
 core::Widget DesignerApp::buildCanvasPanel() {
     const auto& theme = shell_.theme();
     core::Widget preview;
@@ -1554,7 +1776,7 @@ core::Widget DesignerApp::buildCanvasPanel() {
                                  theme.typography.body);
     }
     auto canvas = core::makeContainer(
-        std::move(preview), std::nullopt, std::nullopt,
+        buildCanvasStack(std::move(preview)), std::nullopt, std::nullopt,
         core::EdgeInsets::all(24.0F), {}, theme.colors.pageBackground,
         core::CornerRadius::all(theme.metrics.cardRadius), "designer-canvas");
     canvas.flex = 1.0F;

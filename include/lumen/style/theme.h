@@ -415,6 +415,23 @@ struct DragDropTokens {
     bool operator==(const DragDropTokens&) const = default;
 };
 
+// 设计器画布辅助 token（lumen-visual-system-design §3.5）：参考线、标尺、
+// 网格点和选择手柄属于编辑器 chrome，不随控件密度改变。颜色按明暗主题
+// 派生；高对比模式提升为纯色轮廓，几何仍保持稳定。
+struct DesignerCanvasTokens {
+    core::Color guide{244, 88, 127, 255};
+    core::Color onGuide{255, 255, 255, 255};
+    core::Color rulerSurface{46, 46, 54, 255};
+    core::Color rulerTick{82, 82, 91, 255};
+    core::Color gridDot{82, 82, 91, 180};
+    core::Color handleFill{39, 39, 46, 255};
+    core::Color handleBorder{86, 140, 240, 255};
+    float guideThickness{1.0F};
+    float snapThreshold{6.0F};
+
+    bool operator==(const DesignerCanvasTokens&) const = default;
+};
+
 // 主题值对象（§4 建议结构的实现）。light/dark/high contrast/font
 // scale/density/reduced motion 都由 fromSettings 与工厂派生。
 struct Theme {
@@ -439,6 +456,7 @@ struct Theme {
     TreeTokens tree{};
     DataGridTokens dataGrid{};
     DragDropTokens dragDrop{};
+    DesignerCanvasTokens designerCanvas{};
     // M11：派生元数据（值语义，参与 ==）。应用直接读取，替代按色值
     // 反推（gallery/settings 旧的 pageBackground 比较启发式）。
     ThemeDirection direction{ThemeDirection::CoreDark};
@@ -495,6 +513,8 @@ struct Theme {
 [[nodiscard]] DataGridTokens dataGridTokensFrom(
     ControlDensity density = ControlDensity::Comfortable);
 [[nodiscard]] DragDropTokens dragDropTokensFrom(const ColorScheme& colors);
+[[nodiscard]] DesignerCanvasTokens designerCanvasTokensFrom(
+    const ColorScheme& colors, bool darkMode, bool highContrast = false);
 
 // density → 基准档索引（0/1/2）。
 [[nodiscard]] std::uint8_t densityBaseIndex(ControlDensity density);

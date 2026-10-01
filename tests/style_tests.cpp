@@ -1250,3 +1250,24 @@ TEST_CASE("style_datagrid_tokens_derive_by_density_and_scale", "[style]") {
     CHECK(Theme::fromSettings(hc).dataGrid.headerExtent == 36.0F);
     CHECK(Theme::fromSettings(hc).dataGrid.selectionColumnWidth == 44.0F);
 }
+
+TEST_CASE("style_designer_canvas_tokens_follow_theme_and_contrast",
+          "[style][designer]") {
+    const auto dark = Theme::dark();
+    const auto light = Theme::light();
+    CHECK(dark.designerCanvas.guide == Color{244, 88, 127, 255});
+    CHECK(light.designerCanvas.guide == Color{207, 46, 95, 255});
+    CHECK(dark.designerCanvas.guideThickness == 1.0F);
+    CHECK(dark.designerCanvas.snapThreshold == 6.0F);
+    CHECK(dark.designerCanvas.handleBorder == dark.colors.accent);
+
+    AccessibilitySettings highContrast;
+    highContrast.highContrast = true;
+    const auto contrast = Theme::fromSettings(highContrast);
+    CHECK(contrast.designerCanvas.guide == contrast.colors.contentPrimary);
+    CHECK(contrast.designerCanvas.rulerTick ==
+          contrast.colors.contentPrimary);
+    CHECK(contrast.designerCanvas.gridDot.a == 255);
+    CHECK(contrast.designerCanvas.handleFill ==
+          contrast.colors.pageBackground);
+}

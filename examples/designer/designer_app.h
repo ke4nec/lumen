@@ -84,6 +84,7 @@ class DesignerApp {
     [[nodiscard]] core::Widget buildOutlinePanel();
     [[nodiscard]] core::Widget buildPreviewPanel();
     [[nodiscard]] core::Widget buildCanvasPanel();
+    [[nodiscard]] core::Widget buildCanvasStack(core::Widget preview) const;
     [[nodiscard]] core::Widget buildSourcePanel();
     [[nodiscard]] core::Widget buildReferencesPanel();
     [[nodiscard]] core::Widget buildPropertiesPanel();
@@ -105,6 +106,7 @@ class DesignerApp {
     void cycleDpi();
     void cycleFontScale();
     void toggleHighContrast();
+    void toggleCanvasGuides();
     void cyclePreviewState();
     void applyPreviewState();
     void resetPreviewState();
@@ -197,6 +199,7 @@ class DesignerApp {
     float deviceScale_{1.0F};
     float fontScale_{1.0F};
     bool highContrast_{false};
+    bool canvasGuidesEnabled_{false};
     PreviewStateMode previewStateMode_{PreviewStateMode::None};
     std::string previewStateKey_{};
     bool outlineDragActive_{false};

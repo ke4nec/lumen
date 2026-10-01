@@ -340,6 +340,27 @@ DragDropTokens dragDropTokensFrom(const ColorScheme& colors) {
     return tokens;
 }
 
+DesignerCanvasTokens designerCanvasTokensFrom(const ColorScheme& colors,
+                                               bool darkMode,
+                                               bool highContrast) {
+    DesignerCanvasTokens tokens;
+    // Rose separates editor chrome from the semantic accent in both themes;
+    // the high-contrast branch replaces hue with the strongest legal outline.
+    tokens.guide = highContrast
+                       ? colors.contentPrimary
+                       : (darkMode ? core::Color{244, 88, 127, 255}
+                                   : core::Color{207, 46, 95, 255});
+    tokens.onGuide = core::Color{255, 255, 255, 255};
+    tokens.rulerSurface = colors.surfaceSunken;
+    tokens.rulerTick = highContrast ? colors.contentPrimary
+                                     : colors.borderDefault;
+    tokens.gridDot = colors.borderDefault;
+    tokens.gridDot.a = highContrast ? 255 : 180;
+    tokens.handleFill = highContrast ? colors.pageBackground : colors.surface;
+    tokens.handleBorder = colors.accent;
+    return tokens;
+}
+
 ListTokens listTokensFrom(const ColorScheme& colors) {
     ListTokens tokens;
     tokens.background = colors.surface;
@@ -634,6 +655,7 @@ Theme baseTheme(bool darkMode, ControlDensity density,
     theme.tree.chevronContent = theme.colors.contentSecondary;
     theme.dataGrid = dataGridTokensFrom(theme.metrics.density);
     theme.dragDrop = dragDropTokensFrom(theme.colors);
+    theme.designerCanvas = designerCanvasTokensFrom(theme.colors, darkMode);
     theme.direction = direction;
     theme.darkMode = darkMode;
     return theme;
@@ -686,6 +708,8 @@ void applyHighContrast(Theme& theme, bool darkMode, ThemeDirection direction) {
     theme.tree.chevronContent = theme.colors.contentSecondary;
     theme.dataGrid = dataGridTokensFrom(theme.metrics.density);
     theme.dragDrop = dragDropTokensFrom(theme.colors);
+    theme.designerCanvas =
+        designerCanvasTokensFrom(theme.colors, darkMode, true);
 }
 
 void scaleComponentSizes(Theme& theme, float factor) {
