@@ -1,7 +1,7 @@
 # Lumen 桌面平台支持矩阵
 
-> 状态：2026-09-30 核对；保留 M0 四态定义，当前能力覆盖 M0–M8、M10–M18 实现批次（M15 拖放、M16 窗口与系统集成、M17 控件细节池、M18 开发者诊断首批），各批次四态见下方「实现批次与真实平台缺口」；M9 冻结，不计入当前完成范围。三平台屏幕阅读器回环仍需真实桌面验收。
-> 后续完善顺序、缺口编号（R0–R10）与验收模板以 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 为任务入口；待现场验收项逐条登记于 [`platform-acceptance.md`](platform-acceptance.md)。
+> 状态：2026-10-01 核对；保留 M0 四态定义，当前能力覆盖 M0–M8、M10–M18 实现批次（M15 拖放、M16 窗口与系统集成、M17 控件细节池、M18 开发者诊断首批），各批次四态见下方「实现批次与真实平台缺口」；M9 冻结，不计入当前完成范围。三平台屏幕阅读器回环仍需真实桌面验收。
+> 后续完善顺序、缺口编号（R0–R11）与验收模板以 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 为任务入口；待现场验收项逐条登记于 [`platform-acceptance.md`](platform-acceptance.md)。
 > 当前产品范围（2026-09-14）：Windows/Linux/macOS 桌面；Android/iOS 暂不实现并冻结，M9 仅保留历史编号。
 > 构建命令与系统依赖的单一事实来源是
 > [`build-commands.md`](build-commands.md) 与 `.github/workflows/`。
@@ -81,7 +81,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 ### 实现批次与真实平台缺口（2026-09-30）
 
 按 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 的缺口编号
-（R0–R10）汇总 2026-09-29/30 M15–M18 实现批次的四态。实现已交付不等于平台
+（R0–R11）汇总 2026-09-29/30 M15–M18 实现批次及 2026-10-01 D3 决策记录的四态。实现已交付不等于平台
 完成；「待现场」条目的平台、原因、降级与后续归属逐条登记于
 [`platform-acceptance.md`](platform-acceptance.md) 的待验收登记表。
 
@@ -98,6 +98,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
 | R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；`examples/common/example_kit.h` 首批提取 mutedLabel/errorText/statusLine（2026-09-30，两应用逐字节重复收敛为单点）；页面壳（sectionCard 级）仍按需 |
 | R10 文档与证据同步 | 进行中 | 本表与待验收登记即该缺口的 2026-09-30 批次；后续状态变化须同一变更内更新 |
+| R11 D3 L0 可编辑设计器 | 接口已存在 + headless 已验证 | DP-1=B、DP-3=L0、DP-4=独立 preview/session 已于 2026-10-01 决定；P1–P5 和编辑基础契约已有 headless 证据，工具箱/属性/结构编辑的真实应用出口与三桌面 smoke 待完成 |
 
 ### 预乘 alpha 联调历史记录（2026-09-20）
 
