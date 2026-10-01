@@ -1,9 +1,9 @@
 # Lumen 设计器前置条件与缺口分析
 
-> 文档状态：决策记录与实施基线（2026-10-01）
+> 文档状态：决策记录与实施基线（2026-10-02）
 > 定位：登记「可视化设计器」的能力基线、结构性缺口、前置工程与待决策项，作为设计器立项前的评审入口。
 > 边界：本文不改变任何既有排除项口径（含「DSL 可编程化」，见 §4.3）。用户已于 2026-10-01 采用本文推荐的 DP-1–DP-9 方案；D3 按已决定的格式、覆盖、运行态、排期、保真度、兼容、权限、性能和工程容器边界实施。
-> 证据基线：2026-09-30 源码核对（HEAD `e2c61ef`）。[`support-matrix.md`](support-matrix.md) 记录的 `3fede85` / 935 项与 [`M15+ 路线图`](lumen-m15-roadmap.md) R6 首批的 940 项是不同历史批次。本文的本轮校验见 §10.3，规划 API 不计入已实现能力。
+> 证据基线：2026-09-30 源码核对（HEAD `e2c61ef`）；后续提交的实现证据以本文 §10.3 和支持矩阵为准。[`support-matrix.md`](support-matrix.md) 记录的 `3fede85` / 935 项与 [`M15+ 路线图`](lumen-m15-roadmap.md) R6 首批的 940 项是不同历史批次。规划 API 不计入已实现能力。
 
 ## 1. 背景与形态定义
 
@@ -11,8 +11,8 @@
 
 对照「可视化设计器」所需能力逐项核对源码后结论如下：
 
-- 框架层（控件库、离屏渲染、命中测试、主题/状态预览、命令分发、多窗口/IME/DPI）已经具备承载**只读预览工作台**的主要地基；运行时 Inspector 仍缺少选中节点后的 bounds/damage overlay；
-- **可编辑并保存的双向设计器**此前被三类结构性问题阻塞：声明式文档模型与双向转换缺失（G-D1）、属性/节点 schema 缺失（G-D2）、声明式文档与运行时 Widget/controller 的边界和格式治理未冻结（G-D3、G-D8）；P1–P5 已完成，DP-1–DP-9 已冻结，剩余工作是 D3 L0 应用出口和平台证据。
+- 框架层（控件库、离屏渲染、命中测试、主题/状态预览、命令分发、多窗口/IME/DPI）已经具备承载**只读预览工作台**的主要地基；运行时 Inspector、bounds/damage overlay 和帧统计已有 headless 证据，三桌面现场证据仍待补齐；
+- **可编辑并保存的双向设计器**此前被三类结构性问题阻塞：声明式文档模型与双向转换缺失（G-D1）、属性/节点 schema 缺失（G-D2）、声明式文档与运行时 Widget/controller 的边界和格式治理未冻结（G-D3、G-D8）；P1–P5 已完成，DP-1–DP-9 已冻结，D3 L0 应用出口已有 headless 证据，剩余工作主要是平台证据和覆盖矩阵增量。
 - 稳定编辑身份、源位置映射、版本迁移、绑定/资源注入和文档级事务也没有现成契约。这些不是单纯的 UI 面板工作，而是 D3 的前置条件。
 
 本文将上述缺口登记为可评审、可验收的前置工程；DP-1–DP-9 的结论和日期记录于 §8，后续只保留实现验收和平台证据。
@@ -127,12 +127,12 @@ flowchart LR
 | 消费能力 | 当前状态 | D1/D2/D3 可直接依赖的部分 | 仍需补的证据或契约 |
 | --- | --- | --- | --- |
 | Render/style/semantics dump | 接口已存在 + headless 已验证 | 只读树、样式和语义对照、CI 诊断 | 三桌面 inspector smoke、平台现场辅助技术验收 |
-| CPU 离屏画布与 frame hash | headless 已验证 | 像素输出、固定环境的 golden 对照 | 失败保留旧帧的会话管理、文档映射、zoom/DPI 交互和像素 alpha 模式适配 |
-| 命中测试与 overlay | 接口已存在 + headless 已验证 | 最深命中链、Inspector 钉住、bounds/damage 调试层、非模态辅助层、拖拽 ghost；画布根节点框选和大纲多选已接通 | 动态节点选择策略、zoom/pan 与 DPI 下的坐标变换契约 |
-| Theme/状态/DPI 预览 | 接口已存在 + headless 已验证 | 只读环境切换、视觉状态覆盖 | 预览值与声明值分栏显示、切换不污染 dirty/undo 的验收 |
-| 拖放与命令分发 | 接口已存在 + headless 已验证 | 应用内工具箱拖入和结构重排的输入基础 | 设计器文档命令的原子事务、失败回滚和多选语义 |
-| StateStore/HandlerRegistry | 接口已存在 + headless 已验证 | 应用运行时绑定和事件名称解析 | 设计器的 preview context、引用类型校验、缺失引用占位策略 |
-| Preferences/原子写先例 | headless 已验证 | DocumentStore 的实现参考 | 文档 schema 版本、迁移、未知字段和恢复副本 |
+| CPU 离屏画布与 frame hash | headless 已验证 | 像素输出、固定环境的 golden 对照、失败保留旧帧、文档映射和 zoom/DPI 交互 | 三桌面 renderer/alpha 现场验收 |
+| 命中测试与 overlay | 接口已存在 + headless 已验证 | 最深命中链、Inspector 钉住、bounds/damage 调试层、动态行回选源节点、zoom/pan 与 DPI 变换、非模态辅助层、拖拽 ghost；画布根节点框选和大纲多选已接通 | 三桌面指针/DPI 现场验收 |
+| Theme/状态/DPI 预览 | 接口已存在 + headless 已验证 | 环境切换、视觉状态覆盖、预览值与声明值隔离、dirty/undo 不污染 | 三桌面高对比、字体缩放和辅助技术现场验收 |
+| 拖放与命令分发 | 接口已存在 + headless 已验证 | 应用内工具箱拖入和结构重排、原子事务、失败回滚和多选语义 | 三桌面 OS 拖入和触摸边界现场验收 |
+| StateStore/HandlerRegistry | 接口已存在 + headless 已验证 | 应用运行时绑定、事件名称解析、preview context、引用类型校验和缺失引用占位 | 真实业务适配器不属于离线设计器前置范围 |
+| Preferences/原子写先例 | headless 已验证 | DocumentStore 的 schema 版本、迁移、未知字段、原子保存和恢复副本 | 三桌面文件系统/安装链现场验收 |
 | 真实平台窗口/IME/辅助技术 | 部分真实平台证据 | 设计器 UI 可沿用 AppShell/IME/语义接口 | 三桌面窗口 smoke、屏幕阅读器和高 DPI 现场验收 |
 
 因此，D1 随 R6 调试层实现收口；D2 的文档定位版需 P1/P4 才能把选择指回文档；D3 必须等 P1–P5
@@ -1368,14 +1368,14 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 
 ### 10.4 实施期间的评审问题
 
-以下问题仍需在对应实现阶段记录证据；前三项决策已不再阻塞 D3 L0 开工：
+以下问题已在对应实现阶段记录证据；剩余未闭环项是三桌面现场验收和分配量统计契约：
 
-1. DP-1 已决定为 B；文件扩展名、magic、codec、单向导入边界和未知字段策略是否在正式 schema 与 fixture 中固定？
-2. 谁拥有 `DesignRuntimeSession`，其寿命是否覆盖 Widget、RenderNode、交互和异步资源？
-3. 失败编译时上一份有效树、DOM dirty 状态、诊断列表和保存按钮分别显示什么？
-4. 画布选择如何从窗口像素经过 DPI/zoom/pan 找到 `DocumentId`，动态物化行如何回到源节点？
-5. 设计器文档需要哪些资源权限；空 context 是否足以在离线环境完成打开、检查和另存？
-6. P1–P5 和 G-D13–G-D16 的 headless fixture 是否先于真实窗口 smoke 加入 CI？
-7. 设计器自举页面的视觉 token、语义树、键盘路径和性能基线由哪份设计/测试文档维护？
+1. **已验证**：DP-1 的私有格式、magic、codec、单向导入边界和未知字段策略由正式 schema 与 fixture 固定。
+2. **已验证**：`DesignRuntimeSession` 由预览编译结果持有，lease 覆盖 Widget、RenderNode、交互和异步资源，并在替换/清理时关闭。
+3. **已验证**：失败编译保留同文档上一份有效树，诊断更新，placeholder/keep-last-frame recoverability 和 dirty/save 隔离均有测试。
+4. **已验证**：画布通过 DPI/zoom/pan 逆变换命中 `DocumentId`；动态物化行只回选 source node，不进入文档选择集合。
+5. **已验证**：资源采用显式 scheme/root 授权，空或离线 context 使用固定替身/placeholder，不启动业务副作用。
+6. **已验证**：P1–P5、G-D13–G-D16 的 fixture 已注册 CMake/CTest；真实窗口 smoke 仍按平台矩阵单独登记。
+7. **已验证**：视觉 token 以 `lumen-visual-system-design.md` 为基线，语义/键盘/性能证据分别在 designer 测试和 §10.3 记录。
 
 其余问题是实现验收条件，不撤销已记录的 D3 L0 实施授权；三桌面现场结果和性能基线报告仍按已冻结方案补齐。
