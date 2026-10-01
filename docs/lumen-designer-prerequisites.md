@@ -1067,7 +1067,7 @@ SourceMap 的根锚点。
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
 真实 D3 应用出口当前已接通 L0 属性面板编辑、命名引用管理、文档级撤销/重做、结构插入/复制/删除/重排、
-由 27 个非组件 schema 驱动的 L0–L2 工具箱，并增加首个 L3 `DataGrid` 专用入口（含 L1/L2 声明默认值面板、L2 source 引用字段、缺失 source 诊断、Splitter 合法子树创建和 DataGrid controller 预览）、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1/L2/L3 schema 已可被私有设计文档编译，其他 L3 组合件仍由应用注册 builder，专用工具箱和完整资源加载按组件逐步补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
+由 27 个非组件 schema 驱动的 L0–L2 工具箱，并增加首批 L3 `DataGrid`/`ToolBar`/`StatusBar` 专用入口（含 L1/L2 声明默认值面板、L2 source 引用字段、缺失 source 诊断、Splitter 合法子树创建和三个 controller 预览）、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1/L2/L3 schema 已可被私有设计文档编译，其他 L3 组合件仍由应用注册 builder，专用工具箱和完整资源加载按组件逐步补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
 visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
 `PreviewOnly`/`Derived` 属性进入可保存文档。
 引用面板现已接入中心页签：DataGrid 展示当前文档的命名引用、引用类型、节点位置和离线 `Stub`/
@@ -1286,7 +1286,7 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、
   Tabs/ThemeScope 子树、集合声明属性、Splitter 双子节点约束和 L3 builder/占位路径的编译 golden；真实资源/组合件控制器加载和
-  L3 专用编辑器工具箱流程仍留在后续阶段。
+  其余 L3 专用编辑器工具箱流程仍留在后续阶段。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
   代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译按 L0 schema

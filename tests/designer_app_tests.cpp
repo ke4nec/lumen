@@ -150,7 +150,8 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
         "designer-toolbox:Tabs",      "designer-toolbox:ThemeScope",
         "designer-toolbox:VirtualList", "designer-toolbox:List",
         "designer-toolbox:Tree",      "designer-toolbox:TreeList",
-        "designer-toolbox:Splitter",  "designer-toolbox:DataGrid"};
+        "designer-toolbox:Splitter",  "designer-toolbox:ToolBar",
+        "designer-toolbox:StatusBar", "designer-toolbox:DataGrid"};
     for (const auto& key : toolboxKeys) {
         app.shell().keyDown(Key::Tab);
         CHECK(app.shell().focus().focusedKey() == key);
@@ -689,7 +690,8 @@ TEST_CASE("designer app routes L0 structure commands",
         "Grid",      "Image",      "Icon",      "Slider",
         "ProgressBar", "Radio",    "Tooltip",   "Dropdown",
         "Tabs",      "ThemeScope", "VirtualList", "List",
-        "Tree",      "TreeList",   "Splitter", "DataGrid"};
+        "Tree",      "TreeList",   "Splitter", "ToolBar", "StatusBar",
+        "DataGrid"};
 
     const auto activate = [&](const char* key) {
         const auto* button = findNodeByKey(app.shell().root(), key);
@@ -915,8 +917,8 @@ TEST_CASE("designer app previews its first L3 DataGrid component",
     CHECK(app.workbench().diagnostics().empty());
     REQUIRE(app.workbench().frame().hasFrame());
     CHECK_FALSE(app.workbench().frame().widget().children.empty());
-    CHECK(app.workbench().frame().widget().children.back().key ==
-          "designer-component-datagrid");
+    CHECK(app.workbench().frame().widget().children.back().key.starts_with(
+        "designer:component:DataGrid:"));
 
     CHECK(app.undo());
     REQUIRE(app.workbench().outline().has_value());
@@ -924,6 +926,49 @@ TEST_CASE("designer app previews its first L3 DataGrid component",
     CHECK(app.redo());
     REQUIRE(app.workbench().outline().has_value());
     CHECK(app.workbench().outline()->children.back().type == "DataGrid");
+}
+
+TEST_CASE("designer app previews toolbar and statusbar components",
+          "[designer][d3][app][designer-l3]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    const auto rootHandler = app.shell().handlers().find(
+        "designer:select:" + std::to_string(initial->id));
+    REQUIRE(rootHandler != app.shell().handlers().end());
+    rootHandler->second();
+    app.shell().markDirty();
+    (void)app.shell().renderFrame();
+
+    for (const std::string type : {"ToolBar", "StatusBar"}) {
+        const auto* button = findNodeByKey(
+            app.shell().root(), "designer-toolbox:" + type);
+        REQUIRE(button != nullptr);
+        CHECK(app.shell().performAccessibilityAction(
+                  button->identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+        (void)app.shell().renderFrame();
+
+        const auto outline = app.workbench().outline();
+        REQUIRE(outline.has_value());
+        REQUIRE(!outline->children.empty());
+        CHECK(outline->children.back().type == type);
+        CHECK(app.workbench().diagnostics().empty());
+        REQUIRE(app.workbench().frame().hasFrame());
+        REQUIRE(!app.workbench().frame().widget().children.empty());
+        CHECK(app.workbench().frame().widget().children.back().key.starts_with(
+            "designer:component:" + type + ":"));
+
+        CHECK(app.undo());
+        REQUIRE(app.workbench().outline().has_value());
+        CHECK(app.workbench().outline()->children.back().type == "Row");
+    }
 }
 
 TEST_CASE("designer app edits named runtime references",

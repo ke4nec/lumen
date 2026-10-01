@@ -29,14 +29,20 @@ constexpr char kSampleSource[] =
 std::vector<const dsl::NodeSchema*> designerToolboxSchemas() {
     std::vector<const dsl::NodeSchema*> result;
     for (const auto& schema : dsl::nodeSchemaRegistry()) {
-        // DataGrid is the first L3 component with a designer-owned adapter.
+        // These L3 components have deterministic designer-owned adapters.
         // Other component nodes stay out until their application builders are
         // wired, so inserting one cannot silently produce a placeholder.
-        if (!schema.isComponent || schema.type == "DataGrid") {
+        if (!schema.isComponent || schema.type == "DataGrid" ||
+            schema.type == "ToolBar" || schema.type == "StatusBar") {
             result.push_back(&schema);
         }
     }
     return result;
+}
+
+void prefixWidgetKeys(core::Widget& widget, std::string_view prefix) {
+    if (!widget.key.empty()) widget.key = std::string{prefix} + widget.key;
+    for (auto& child : widget.children) prefixWidgetKeys(child, prefix);
 }
 
 bool isL0ToolboxType(std::string_view type) {
@@ -265,13 +271,26 @@ dsl::DesignComponentResult DesignerApp::OfflineRuntimeContext::buildComponent(
     const dsl::DesignNode& node,
     const dsl::DesignComponentContext& componentContext) const {
     (void)componentContext;
-    if (owner_ == nullptr || node.type != "DataGrid") {
+    if (owner_ == nullptr ||
+        (node.type != "DataGrid" && node.type != "ToolBar" &&
+         node.type != "StatusBar")) {
         return dsl::DesignComponentResult{
             std::nullopt, {}, "component.missing",
             "no component builder is registered for this node type"};
     }
     dsl::DesignComponentResult result;
-    result.widget = owner_->dataGridPreviewController_.build();
+    if (node.type == "DataGrid") {
+        result.widget = owner_->dataGridPreviewController_.build();
+    } else if (node.type == "ToolBar") {
+        result.widget = owner_->toolBarPreviewController_.build(
+            owner_->shell_, owner_->shell_.theme());
+    } else {
+        result.widget = owner_->statusBarPreviewController_.build(
+            owner_->shell_.theme());
+    }
+    prefixWidgetKeys(*result.widget,
+                     "designer:component:" + node.type + ":" +
+                         std::to_string(node.id) + ":");
     return result;
 }
 
@@ -342,6 +361,35 @@ DesignerApp::DesignerApp()
                                                      : std::string{"Draft"};
             return std::string{};
         });
+    toolBarPreviewController_.setItems({
+        widgets::ToolBarItem{.id = "open",
+                             .icon = core::IconId::Folder,
+                             .label = "Open",
+                             .shortcut = "Ctrl+O"},
+        widgets::ToolBarItem{.id = "run",
+                             .icon = core::IconId::Play,
+                             .label = "Run",
+                             .shortcut = "Ctrl+R",
+                             .checkable = true,
+                             .labelMode = true},
+        widgets::ToolBarItem{.id = "grid",
+                             .icon = core::IconId::Grid,
+                             .label = "Grid",
+                             .checkable = true},
+    });
+    toolBarPreviewController_.setSemanticsLabel("Designer component toolbar");
+    statusBarPreviewController_.setIdleMessage("Designer ready");
+    statusBarPreviewController_.setItems({
+        widgets::StatusBarItem{.id = "status",
+                               .kind = widgets::StatusItemKind::Text,
+                               .text = "Preview"},
+        widgets::StatusBarItem{.id = "separator",
+                               .kind = widgets::StatusItemKind::Separator},
+        widgets::StatusBarItem{.id = "progress",
+                               .kind = widgets::StatusItemKind::Progress},
+    });
+    statusBarPreviewController_.setProgress(68.0F);
+    statusBarPreviewController_.setSemanticsLabel("Designer component status");
 }
 
 app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
@@ -460,6 +508,8 @@ void DesignerApp::attach() {
         [this](const std::string& key) { selectReference(key); };
     referencesController_.attach(shell_, "designer-references");
     dataGridPreviewController_.attach(shell_, "designer-component-datagrid");
+    toolBarPreviewController_.attach(shell_);
+    statusBarPreviewController_.attach(shell_);
     shell_.controller().addDragArmSink(
         [this](const std::vector<const core::RenderNode*>& chain,
                core::PointerDevice, core::DragSourceClaim& claim) {

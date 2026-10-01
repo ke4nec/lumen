@@ -11,6 +11,8 @@
 #include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_workbench.h"
 #include "lumen/widgets/datagrid.h"
+#include "lumen/widgets/statusbar.h"
+#include "lumen/widgets/toolbar.h"
 #include "lumen/widgets/tree.h"
 
 namespace lumen::designer_app {
@@ -213,6 +215,10 @@ class DesignerApp {
     widgets::TreeController outlineController_{};
     widgets::DataGridController referencesController_{};
     widgets::DataGridController dataGridPreviewController_{};
+    widgets::ToolBarController toolBarPreviewController_{
+        "designer-component-toolbar"};
+    widgets::StatusBarController statusBarPreviewController_{
+        "designer-component-statusbar"};
     core::VirtualListController diagnosticsController_{};
     std::vector<ReferenceEntry> referenceRows_{};
     CenterTab centerTab_{CenterTab::Canvas};
