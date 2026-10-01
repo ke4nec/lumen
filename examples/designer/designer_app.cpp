@@ -185,10 +185,14 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
     app::ShellConfig config;
     config.initialView = core::Size{1280.0F, 800.0F};
     config.build = [self] { return self->buildUi(); };
-    config.onKey = [self](app::AppShell&, core::Key key,
+    config.onKey = [self](app::AppShell& shell, core::Key key,
                           core::KeyModifiers modifiers, char keyChar) {
         const bool ctrlLike =
             (modifiers & (core::kModifierCtrl | core::kModifierGui)) != 0;
+        const std::string& focused = shell.focus().focusedKey();
+        const bool editingProperty =
+            focused.starts_with("designer-property-field:") ||
+            focused.starts_with("designer-reference-field:");
         if (ctrlLike && (modifiers & core::kModifierAlt) == 0) {
             const char lower = static_cast<char>(
                 std::tolower(static_cast<unsigned char>(keyChar)));
@@ -200,6 +204,19 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                 (void)self->redo();
                 return true;
             }
+            if (!editingProperty && key == core::Key::Up) {
+                self->moveSelectedNode(-1);
+                return true;
+            }
+            if (!editingProperty && key == core::Key::Down) {
+                self->moveSelectedNode(1);
+                return true;
+            }
+        }
+        if (!editingProperty && key == core::Key::Delete &&
+            (modifiers & core::kModifierAlt) == 0) {
+            self->removeSelectedNode();
+            return true;
         }
         if (self->outlineController_.handleKey(key, modifiers, keyChar)) {
             return true;

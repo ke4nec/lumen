@@ -489,6 +489,42 @@ TEST_CASE("designer app edits named runtime references",
                             std::to_string(buttonId) + ":onClick"));
 }
 
+TEST_CASE("designer app routes structural keyboard commands",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    REQUIRE(initial->children.size() >= 2);
+    const auto rootId = initial->id;
+    const auto titleId = initial->children.front().id;
+    const auto saveId = initial->children[1].id;
+    const auto selectTitle = app.shell().handlers().find(
+        "designer:select:" + std::to_string(titleId));
+    REQUIRE(selectTitle != app.shell().handlers().end());
+    selectTitle->second();
+    (void)app.shell().renderFrame();
+
+    app.shell().keyDown(Key::Down, lumen::core::kModifierCtrl);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().selection().primary == titleId);
+    REQUIRE(app.workbench().outline()->children[0].id == saveId);
+    CHECK(app.workbench().outline()->children[1].id == titleId);
+
+    app.shell().keyDown(Key::Delete);
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().selection().primary == rootId);
+    CHECK(app.workbench().outline()->children[0].id == saveId);
+
+    CHECK(app.undo());
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().selection().primary == titleId);
+    CHECK(app.workbench().outline()->children[1].id == titleId);
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /
