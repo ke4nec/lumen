@@ -183,9 +183,11 @@ void DesignerApp::syncSelectionFromOutline() {
 }
 
 void DesignerApp::applyEnvironmentTheme() {
-    const accessibility::AccessibilitySettings settings{
-        highContrast_, false, fontScale_};
-    shell_.setAccessibilitySettings(settings, darkMode_);
+    accessibility::AccessibilityOverrides overrides;
+    overrides.highContrast = highContrast_;
+    overrides.fontScale = fontScale_;
+    shell_.setAccessibilityOverrides(overrides);
+    const auto settings = shell_.accessibilitySettings();
     shell_.setTheme(
         style::Theme::fromSettings(settings, darkMode_, density_));
 }

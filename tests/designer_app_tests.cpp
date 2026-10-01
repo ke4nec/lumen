@@ -122,6 +122,8 @@ TEST_CASE("designer app previews theme density dpi and accessibility inputs",
     lumen::accessibility::RecordingAccessibilityBridge bridge;
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
+    app.shell().setSystemAccessibilitySettings(
+        lumen::accessibility::AccessibilitySettings{false, true, 1.0F});
     (void)app.shell().renderFrame();
 
     const auto activate = [&](const char* key) {
@@ -137,6 +139,7 @@ TEST_CASE("designer app previews theme density dpi and accessibility inputs",
     CHECK(app.shell().styleContext().deviceScale == 1.0F);
     CHECK(app.shell().accessibilitySettings().fontScale == 1.0F);
     CHECK_FALSE(app.shell().accessibilitySettings().highContrast);
+    CHECK(app.shell().accessibilitySettings().reduceAnimation);
 
     activate("designer-theme");
     CHECK(app.shell().theme().darkMode != dark);
@@ -148,6 +151,10 @@ TEST_CASE("designer app previews theme density dpi and accessibility inputs",
     CHECK(app.shell().accessibilitySettings().fontScale == 1.25F);
     activate("designer-contrast");
     CHECK(app.shell().accessibilitySettings().highContrast);
+    CHECK(app.shell().accessibilitySettings().reduceAnimation);
+    app.shell().setSystemAccessibilitySettings(
+        lumen::accessibility::AccessibilitySettings{false, false, 1.0F});
+    CHECK_FALSE(app.shell().accessibilitySettings().reduceAnimation);
 
     (void)app.shell().renderFrame();
     CHECK(findNodeByKey(app.shell().root(), "designer-dpi")->text == "DPI 125%");
