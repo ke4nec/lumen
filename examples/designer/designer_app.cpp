@@ -220,16 +220,20 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:contrast"] = [this] { toggleHighContrast(); };
     shell_.handlers()["designer:preview-state"] =
         [this] { cyclePreviewState(); };
+    shell_.handlers()["designer:add-text"] = [this] { insertTextNode(); };
+    shell_.handlers()["designer:duplicate"] =
+        [this] { duplicateSelectedNode(); };
+    shell_.handlers()["designer:remove"] = [this] { removeSelectedNode(); };
+    shell_.handlers()["designer:move-up"] = [this] { moveSelectedNode(-1); };
+    shell_.handlers()["designer:move-down"] =
+        [this] { moveSelectedNode(1); };
     (void)loadSource(kSampleSource, "sample.lumen");
 }
 
 bool DesignerApp::undo() {
     const bool changed = workbench_.undo();
     if (!changed) return false;
-    rebuildOutline();
-    if (workbench_.document().has_value()) {
-        registerSelectionHandlers(workbench_.document()->root);
-    }
+    refreshDocumentUi();
     shell_.markDirty();
     return true;
 }
@@ -237,10 +241,7 @@ bool DesignerApp::undo() {
 bool DesignerApp::redo() {
     const bool changed = workbench_.redo();
     if (!changed) return false;
-    rebuildOutline();
-    if (workbench_.document().has_value()) {
-        registerSelectionHandlers(workbench_.document()->root);
-    }
+    refreshDocumentUi();
     shell_.markDirty();
     return true;
 }
@@ -258,10 +259,8 @@ bool DesignerApp::loadFile(const std::string& filename) {
     sourceFile_ = filename;
     const bool loaded = workbench_.openLumenFile(filename);
     if (loaded) {
-        clearPropertyObservers();
         resetPreviewState();
-        rebuildOutline();
-        registerSelectionHandlers(workbench_.document()->root);
+        refreshDocumentUi();
     }
     shell_.markDirty();
     return loaded;
@@ -271,10 +270,8 @@ bool DesignerApp::loadSource(const std::string& source, std::string filename) {
     sourceFile_ = filename.empty() ? "<memory>" : filename;
     const bool loaded = workbench_.openLumenSource(source, filename);
     if (loaded) {
-        clearPropertyObservers();
         resetPreviewState();
-        rebuildOutline();
-        registerSelectionHandlers(workbench_.document()->root);
+        refreshDocumentUi();
     }
     shell_.markDirty();
     return loaded;
@@ -284,11 +281,26 @@ void DesignerApp::rebuildOutline() {
     outlineModel_.setRoot(workbench_.outline());
     outlineController_.modelChanged();
     if (const auto root = workbench_.outline(); root.has_value()) {
+        const auto selected = workbench_.selection().primary;
+        std::optional<std::string> selectedPath;
+        std::function<void(const dsl::DesignPreviewOutlineNode&)> findPath =
+            [&](const dsl::DesignPreviewOutlineNode& item) {
+                if (selectedPath.has_value()) return;
+                if (selected.has_value() && item.id == *selected) {
+                    selectedPath = item.path;
+                    return;
+                }
+                for (const auto& child : item.children) findPath(child);
+            };
+        findPath(*root);
+        if (!selectedPath.has_value()) {
+            selectedPath = root->path;
+            (void)workbench_.selectNode(root->id);
+        }
         outlineController_.collapseAll();
         (void)outlineController_.expandAll();
-        outlineController_.selection().setCurrent(root->path);
-        outlineController_.selection().setSelected({root->path});
-        (void)workbench_.selectNode(root->id);
+        outlineController_.selection().setCurrent(*selectedPath);
+        outlineController_.selection().setSelected({*selectedPath});
     } else {
         outlineController_.selection().clear();
     }
@@ -322,6 +334,59 @@ void DesignerApp::registerSelectionHandlers(const dsl::DesignNode& node) {
         (void)slot;
         for (const auto& child : children) registerSelectionHandlers(child);
     }
+}
+
+void DesignerApp::refreshDocumentUi() {
+    clearPropertyObservers();
+    rebuildOutline();
+    if (workbench_.document().has_value()) {
+        for (auto it = shell_.handlers().begin();
+             it != shell_.handlers().end();) {
+            if (it->first.starts_with("designer:select:")) {
+                it = shell_.handlers().erase(it);
+            } else {
+                ++it;
+            }
+        }
+        registerSelectionHandlers(workbench_.document()->root);
+    }
+}
+
+void DesignerApp::insertTextNode() {
+    const auto parentId = workbench_.selection().primary;
+    if (!parentId || !workbench_.document().has_value()) return;
+    const auto* parent = findDesignNode(workbench_.document()->root, *parentId);
+    if (parent == nullptr) return;
+    dsl::DesignNode node;
+    node.type = "Text";
+    node.properties["text"] = dsl::DesignValue{
+        dsl::DesignValue::Variant{std::string{"New text"}}};
+    if (workbench_.insertNode(*parentId, parent->children.size(),
+                              std::move(node))) {
+        refreshDocumentUi();
+        shell_.markDirty();
+    }
+}
+
+void DesignerApp::duplicateSelectedNode() {
+    const auto selected = workbench_.selection().primary;
+    if (!selected || !workbench_.duplicateNode(*selected)) return;
+    refreshDocumentUi();
+    shell_.markDirty();
+}
+
+void DesignerApp::removeSelectedNode() {
+    const auto selected = workbench_.selection().primary;
+    if (!selected || !workbench_.removeNode(*selected)) return;
+    refreshDocumentUi();
+    shell_.markDirty();
+}
+
+void DesignerApp::moveSelectedNode(int offset) {
+    const auto selected = workbench_.selection().primary;
+    if (!selected || !workbench_.moveNodeRelative(*selected, offset)) return;
+    refreshDocumentUi();
+    shell_.markDirty();
 }
 
 void DesignerApp::syncSelectionFromOutline() {
@@ -624,13 +689,31 @@ core::Widget DesignerApp::buildToolbar() {
         }(),
         theme.typography.label, {}, 0.0F, "designer-preview-state", 128.0F,
         std::nullopt, "designer:preview-state");
-    auto title = core::makeText("Lumen Designer  /  D2 Preview",
+    auto addTextButton = core::makeButton(
+        "Add Text", theme.typography.label, {}, 0.0F, "designer-add-text",
+        96.0F, std::nullopt, "designer:add-text");
+    auto duplicateButton = core::makeButton(
+        "Duplicate", theme.typography.label, {}, 0.0F,
+        "designer-duplicate", 104.0F, std::nullopt, "designer:duplicate");
+    auto removeButton = core::makeButton(
+        "Delete", theme.typography.label, {}, 0.0F, "designer-remove", 80.0F,
+        std::nullopt, "designer:remove");
+    auto moveUpButton = core::makeButton(
+        "Move up", theme.typography.label, {}, 0.0F, "designer-move-up",
+        88.0F, std::nullopt, "designer:move-up");
+    auto moveDownButton = core::makeButton(
+        "Move down", theme.typography.label, {}, 0.0F, "designer-move-down",
+        96.0F, std::nullopt, "designer:move-down");
+    auto title = core::makeText("Lumen Designer  /  D3 Editor",
                                 theme.typography.title, {}, 1.0F,
                                 "designer-title");
     auto toolbar = core::makeRow(
         {std::move(title), std::move(themeButton), std::move(densityButton),
          std::move(dpiButton), std::move(fontButton),
-         std::move(contrastButton), std::move(previewButton)},
+         std::move(contrastButton), std::move(previewButton),
+         std::move(addTextButton), std::move(duplicateButton),
+         std::move(removeButton), std::move(moveUpButton),
+         std::move(moveDownButton)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
         8.0F, core::EdgeInsets::symmetric(16.0F, 8.0F), {}, "designer-toolbar",
         std::nullopt, 56.0F);

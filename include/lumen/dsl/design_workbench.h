@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <optional>
 #include <set>
@@ -61,6 +62,18 @@ class DesignPreviewWorkbench {
                                     std::string value);
     [[nodiscard]] bool clearReference(DesignNodeId id,
                                       std::string_view name);
+    [[nodiscard]] std::optional<DesignNodeId> insertNode(
+        DesignNodeId parentId, std::size_t index, DesignNode node,
+        std::string slot = {});
+    [[nodiscard]] bool removeNode(DesignNodeId id);
+    [[nodiscard]] bool moveNode(DesignNodeId id, DesignNodeId newParentId,
+                                std::size_t index, std::string slot = {});
+    [[nodiscard]] bool moveNodeRelative(DesignNodeId id, int offset);
+    [[nodiscard]] std::optional<DesignNodeId> duplicateNode(DesignNodeId id,
+                                                              DesignNodeId newParentId,
+                                                              std::size_t index,
+                                                              std::string slot = {});
+    [[nodiscard]] std::optional<DesignNodeId> duplicateNode(DesignNodeId id);
     [[nodiscard]] bool undo();
     [[nodiscard]] bool redo();
     [[nodiscard]] bool saveDesignFile(const std::string& filename);
@@ -113,10 +126,14 @@ class DesignPreviewWorkbench {
     [[nodiscard]] static std::string nodeKey(const DesignNode& node);
 
     using EditOperation = std::function<bool(DesignDocumentEditor&)>;
+    using SelectionTransform =
+        std::function<DesignSelection(const DesignDocument&,
+                                      const DesignSelection&)>;
 
     [[nodiscard]] bool applyEdit(std::string label,
                                  std::set<DesignNodeId> affectedIds,
-                                 EditOperation operation);
+                                 EditOperation operation,
+                                 SelectionTransform selectionTransform = {});
     void resetHistory(bool saved);
     void restoreSelection(const DesignSelection& selection);
     void setEditError(std::string message);

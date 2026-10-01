@@ -1,11 +1,80 @@
 #include "lumen/dsl/design_workbench.h"
 
+#include <cstdint>
 #include <fstream>
 #include <iterator>
 #include <map>
 #include <utility>
 
 namespace lumen::dsl {
+
+namespace {
+
+struct ParentLocation {
+    DesignNodeId parent{0};
+    std::size_t index{0};
+    std::string slot{};
+};
+
+const DesignNode* findNode(const DesignNode& node, DesignNodeId id) {
+    if (node.id == id) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = findNode(child, id); found != nullptr) {
+            return found;
+        }
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            if (const auto* found = findNode(child, id); found != nullptr) {
+                return found;
+            }
+        }
+    }
+    return nullptr;
+}
+
+std::optional<ParentLocation> locateNode(const DesignNode& parent,
+                                         DesignNodeId id) {
+    for (std::size_t index = 0; index < parent.children.size(); ++index) {
+        if (parent.children[index].id == id) {
+            return ParentLocation{parent.id, index, {}};
+        }
+    }
+    for (const auto& [slot, children] : parent.slots) {
+        for (std::size_t index = 0; index < children.size(); ++index) {
+            if (children[index].id == id) {
+                return ParentLocation{parent.id, index, slot};
+            }
+        }
+    }
+    for (const auto& child : parent.children) {
+        if (const auto found = locateNode(child, id); found.has_value()) {
+            return found;
+        }
+    }
+    for (const auto& [slot, children] : parent.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            if (const auto found = locateNode(child, id); found.has_value()) {
+                return found;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+bool selectionHasMissingNode(const DesignSelection& selection,
+                             const DesignDocument& document) {
+    for (const auto id : selection.ids) {
+        if (findNode(document.root, id) == nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
 
 bool DesignPreviewWorkbench::openLumenSource(
     const std::string& source, std::string filename,
@@ -135,6 +204,125 @@ bool DesignPreviewWorkbench::clearReference(DesignNodeId id,
                      });
 }
 
+std::optional<DesignNodeId> DesignPreviewWorkbench::insertNode(
+    DesignNodeId parentId, std::size_t index, DesignNode node,
+    std::string slot) {
+    std::optional<DesignNodeId> inserted;
+    const bool changed = applyEdit(
+        "Insert node", {parentId},
+        [parentId, index, node = std::move(node), slot = std::move(slot),
+         &inserted](DesignDocumentEditor& editor) mutable {
+            inserted.emplace();
+            return editor.insertChild(parentId, index, std::move(node),
+                                      &*inserted,
+                                      std::move(slot));
+        },
+        [&inserted](const DesignDocument&, const DesignSelection& before) {
+            auto after = before;
+            if (inserted.has_value()) {
+                after.ids = {*inserted};
+                after.primary = *inserted;
+                after.anchor = *inserted;
+                after.captured.reset();
+            }
+            return after;
+        });
+    return changed ? inserted : std::nullopt;
+}
+
+bool DesignPreviewWorkbench::removeNode(DesignNodeId id) {
+    if (!document_.has_value() || id == document_->root.id) {
+        setEditError("the root node cannot be removed");
+        return false;
+    }
+    const auto location = locateNode(document_->root, id);
+    if (!location.has_value()) {
+        setEditError("node is not present in the document");
+        return false;
+    }
+    return applyEdit(
+        "Remove node", {id, location->parent},
+        [id](DesignDocumentEditor& editor) {
+            return editor.removeNode(id).has_value();
+        },
+        [parentId = location->parent](const DesignDocument& after,
+                                      const DesignSelection& before) {
+            if (!selectionHasMissingNode(before, after)) return before;
+            auto selection = before;
+            selection.ids = {parentId};
+            selection.primary = parentId;
+            selection.anchor = parentId;
+            selection.captured.reset();
+            return selection;
+        });
+}
+
+bool DesignPreviewWorkbench::moveNode(DesignNodeId id,
+                                      DesignNodeId newParentId,
+                                      std::size_t index, std::string slot) {
+    return applyEdit(
+        "Move node", {id, newParentId},
+        [id, newParentId, index, slot = std::move(slot)](
+            DesignDocumentEditor& editor) mutable {
+            return editor.moveNode(id, newParentId, index, std::move(slot));
+        });
+}
+
+bool DesignPreviewWorkbench::moveNodeRelative(DesignNodeId id, int offset) {
+    if (!document_.has_value() || offset == 0) return false;
+    const auto location = locateNode(document_->root, id);
+    if (!location.has_value()) return false;
+    const auto* parent = findNode(document_->root, location->parent);
+    if (parent == nullptr) return false;
+    std::size_t siblings = parent->children.size();
+    if (!location->slot.empty()) {
+        const auto slot = parent->slots.find(location->slot);
+        if (slot == parent->slots.end()) return false;
+        siblings = slot->second.size();
+    }
+    const auto target = static_cast<std::int64_t>(location->index) + offset;
+    if (target < 0 || target >= static_cast<std::int64_t>(siblings)) {
+        setEditError("node cannot move outside its sibling list");
+        return false;
+    }
+    return moveNode(id, location->parent,
+                    static_cast<std::size_t>(target), location->slot);
+}
+
+std::optional<DesignNodeId> DesignPreviewWorkbench::duplicateNode(
+    DesignNodeId id, DesignNodeId newParentId, std::size_t index,
+    std::string slot) {
+    std::optional<DesignNodeId> inserted;
+    const bool changed = applyEdit(
+        "Duplicate node", {id, newParentId},
+        [id, newParentId, index, slot = std::move(slot), &inserted](
+            DesignDocumentEditor& editor) mutable {
+            inserted = editor.duplicateNode(id, newParentId, index,
+                                            std::move(slot));
+            return inserted.has_value();
+        },
+        [&inserted](const DesignDocument&, const DesignSelection& before) {
+            auto after = before;
+            if (inserted.has_value()) {
+                after.ids = {*inserted};
+                after.primary = *inserted;
+                after.anchor = *inserted;
+                after.captured.reset();
+            }
+            return after;
+        });
+    return changed ? inserted : std::nullopt;
+}
+
+std::optional<DesignNodeId> DesignPreviewWorkbench::duplicateNode(
+    DesignNodeId id) {
+    if (!document_.has_value()) return std::nullopt;
+    const auto location = locateNode(document_->root, id);
+    if (!location.has_value()) return std::nullopt;
+    return duplicateNode(id, location->parent, location->index + 1,
+                         location->slot);
+}
+
 bool DesignPreviewWorkbench::undo() {
     if (!document_.has_value()) return false;
     auto document = *document_;
@@ -190,10 +378,12 @@ void DesignPreviewWorkbench::clear() {
 
 bool DesignPreviewWorkbench::applyEdit(std::string label,
                                        std::set<DesignNodeId> affectedIds,
-                                       EditOperation operation) {
+                                       EditOperation operation,
+                                       SelectionTransform selectionTransform) {
     if (!document_.has_value() || !operation) return false;
 
     const DesignDocument before = *document_;
+    const DesignSelection beforeSelection = selection_.state();
     DesignDocumentEditor editor{before};
     if (!operation(editor)) {
         setEditError("edit rejected by the L0 document schema");
@@ -202,7 +392,9 @@ bool DesignPreviewWorkbench::applyEdit(std::string label,
     const DesignDocument after = editor.document();
     if (after == before) return true;
 
-    const DesignSelection beforeSelection = selection_.state();
+    const DesignSelection afterSelection =
+        selectionTransform ? selectionTransform(after, beforeSelection)
+                            : beforeSelection;
     DesignDocumentCommand command;
     command.label = label;
     command.affectedIds = std::move(affectedIds);
@@ -224,7 +416,7 @@ bool DesignPreviewWorkbench::applyEdit(std::string label,
         setEditError("document transaction rejected the edit");
         return false;
     }
-    transaction.setSelectionAfter(beforeSelection);
+    transaction.setSelectionAfter(afterSelection);
 
     auto committedDocument = before;
     auto committedSelection = beforeSelection;

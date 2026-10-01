@@ -10,6 +10,8 @@
 
 using lumen::dsl::DesignPreviewWorkbench;
 using lumen::dsl::DesignSelectionMode;
+using lumen::dsl::DesignNode;
+using lumen::dsl::DesignValue;
 
 TEST_CASE("designer D2 workbench exposes outline properties and trace selection",
           "[designer][d2]") {
@@ -190,4 +192,51 @@ TEST_CASE("designer D3 workbench rejects runtime preview properties",
     CHECK_FALSE(workbench.dirty());
     REQUIRE(workbench.diagnostics().size() == 1);
     CHECK(workbench.diagnostics().front().code == "editor.rejected");
+}
+
+TEST_CASE("designer D3 workbench applies structural edits with selection history",
+          "[designer][d3]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page preview { Column(key: \"root\") {"
+        " Text(\"Title\", key: \"title\")"
+        " Button(\"Save\", key: \"save\")"
+        " } }"));
+    const auto outline = workbench.outline();
+    REQUIRE(outline.has_value());
+    const auto rootId = outline->id;
+    const auto titleId = outline->children.front().id;
+
+    DesignNode inserted;
+    inserted.type = "Text";
+    inserted.properties["text"] = DesignValue{
+        DesignValue::Variant{std::string{"Added"}}};
+    const auto insertedId = workbench.insertNode(rootId, 1, inserted);
+    REQUIRE(insertedId.has_value());
+    CHECK(workbench.outline()->children.size() == 3);
+    CHECK(workbench.selection().primary == insertedId);
+
+    const auto duplicateId = workbench.duplicateNode(*insertedId);
+    REQUIRE(duplicateId.has_value());
+    CHECK(*duplicateId != *insertedId);
+    CHECK(workbench.outline()->children.size() == 4);
+    CHECK(workbench.selection().primary == duplicateId);
+
+    REQUIRE(workbench.moveNodeRelative(*duplicateId, -1));
+    CHECK(workbench.selection().primary == duplicateId);
+    REQUIRE(workbench.removeNode(*duplicateId));
+    CHECK(workbench.selection().primary == rootId);
+    CHECK(workbench.outline()->children.size() == 3);
+
+    REQUIRE(workbench.undo());
+    CHECK(workbench.selection().primary == duplicateId);
+    CHECK(workbench.outline()->children.size() == 4);
+    REQUIRE(workbench.undo());
+    CHECK(workbench.selection().primary == duplicateId);
+    CHECK(workbench.outline()->children.size() == 4);
+    REQUIRE(workbench.undo());
+    CHECK(workbench.selection().primary == insertedId);
+    CHECK(workbench.outline()->children.size() == 3);
+    CHECK(workbench.canRedo());
+    CHECK(workbench.document()->root.children.front().id == titleId);
 }

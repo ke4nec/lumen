@@ -1055,8 +1055,8 @@ span、恢复策略和稳定去重。F6
 SourceMap 的根锚点。
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
-真实 D3 应用出口当前已接通 L0 属性面板编辑、文档级撤销/重做和显式保存 API，结构编辑与
-完整工具箱流程仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
+真实 D3 应用出口当前已接通 L0 属性面板编辑、文档级撤销/重做、结构插入/复制/删除/重排和
+显式保存 API，完整工具箱流程仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
 visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
 `PreviewOnly`/`Derived` 属性进入可保存文档。
 
@@ -1240,20 +1240,20 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   键盘/语义激活、主题/密度/DPI/字体缩放/高对比环境预览、按 key 或私有稳定 key 的
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation 以及显式会话清理。
-- D3 首个 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `44` 个断言、
-  `3` 个测试用例通过，覆盖 L0 声明属性编辑、schema 拒绝运行时属性、事务 dirty/revision、
-  undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层还覆盖属性面板 TextField
-  绑定以及 Ctrl/Cmd+Z、Ctrl/Cmd+Y 路由，结构编辑仍留在后续 R11 子阶段。
+- D3 首个 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `98` 个断言、
+  `5` 个测试用例通过，覆盖 L0 声明属性编辑、schema 拒绝运行时属性、事务 dirty/revision、
+  undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
+  绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，以及插入/复制/删除/上移/下移命令的语义激活和选择恢复。
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
   `designer_window_smoke` 和 `designer_gallery_window_smoke` 四项（`4/4`）；另有
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
-  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `83/83` 通过，
+  `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `85/85` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1047/1047`，
-  Release 配置为 `1048/1048`；
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1049/1049`，
+  Release 配置为 `1051/1051`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、

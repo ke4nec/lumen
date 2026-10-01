@@ -84,6 +84,11 @@ class DesignerApp {
     void cyclePreviewState();
     void applyPreviewState();
     void resetPreviewState();
+    void insertTextNode();
+    void duplicateSelectedNode();
+    void removeSelectedNode();
+    void moveSelectedNode(int offset);
+    void refreshDocumentUi();
     void clearPropertyObservers();
     void registerPropertyBinding(dsl::DesignNodeId id,
                                   const dsl::DesignPreviewProperty& property);

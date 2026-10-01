@@ -5,6 +5,7 @@
 #include <fstream>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "designer_app.h"
 #include "file_watcher.h"
@@ -111,6 +112,13 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     CHECK(app.shell().focus().focusedKey() == "designer-contrast");
     app.shell().keyDown(Key::Tab);
     CHECK(app.shell().focus().focusedKey() == "designer-preview-state");
+    const std::vector<std::string> structureKeys = {
+        "designer-add-text", "designer-duplicate", "designer-remove",
+        "designer-move-up", "designer-move-down"};
+    for (const auto& key : structureKeys) {
+        app.shell().keyDown(Key::Tab);
+        CHECK(app.shell().focus().focusedKey() == key);
+    }
     app.shell().keyDown(Key::Tab);
     CHECK(app.shell().focus().focusedKey().starts_with(
         "designer-outline:item:"));
@@ -341,6 +349,66 @@ TEST_CASE("designer app edits declaration properties and routes undo redo",
     CHECK(std::get<std::string>(properties.back().value->value) ==
           "Edited in panel");
     CHECK(app.workbench().dirty());
+}
+
+TEST_CASE("designer app routes L0 structure commands",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    const auto rootId = initial->id;
+    const auto initialChildren = initial->children.size();
+
+    const auto activate = [&](const char* key) {
+        const auto* button = findNodeByKey(app.shell().root(), key);
+        REQUIRE(button != nullptr);
+        CHECK(app.shell().performAccessibilityAction(
+                  button->identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+        (void)app.shell().renderFrame();
+    };
+
+    activate("designer-add-text");
+    auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() == initialChildren + 1);
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto insertedId = *app.workbench().selection().primary;
+    CHECK(insertedId != rootId);
+
+    activate("designer-duplicate");
+    outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    CHECK(outline->children.size() == initialChildren + 2);
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto duplicateId = *app.workbench().selection().primary;
+    CHECK(duplicateId != insertedId);
+
+    activate("designer-move-up");
+    outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    CHECK(outline->children.back().id != duplicateId);
+
+    activate("designer-move-down");
+    outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    CHECK(outline->children.back().id == duplicateId);
+
+    activate("designer-remove");
+    outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    CHECK(outline->children.size() == initialChildren + 1);
+    CHECK(app.workbench().selection().primary == rootId);
+
+    CHECK(app.undo());
+    CHECK(app.workbench().selection().primary == duplicateId);
+    CHECK(app.workbench().outline()->children.size() == initialChildren + 2);
 }
 
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
