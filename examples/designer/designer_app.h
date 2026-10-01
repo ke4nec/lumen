@@ -185,6 +185,8 @@ class DesignerApp {
     void insertNodeType(std::string type);
     void insertTextNode();
     void duplicateSelectedNode();
+    void copySelectedNode();
+    void pasteCopiedNode();
     void removeSelectedNode();
     void moveSelectedNode(int offset);
     void outlineDragSession(core::DragPhase phase, core::Offset position,
@@ -299,6 +301,7 @@ class DesignerApp {
     std::size_t sourceFocusLine_{0};
     std::string sourceFile_{"<sample>"};
     std::string statusMessage_{};
+    std::optional<dsl::DesignNode> clipboardNode_{};
     FileDialogRequester fileDialogRequester_{};
     PendingFileDialog pendingFileDialog_{PendingFileDialog::None};
     bool darkMode_{true};

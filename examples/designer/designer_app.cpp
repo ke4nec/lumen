@@ -188,6 +188,49 @@ const dsl::DesignNode* findDesignNode(const dsl::DesignNode& node,
     return nullptr;
 }
 
+void collectDesignKeys(const dsl::DesignNode& node,
+                       std::set<std::string>& keys) {
+    if (const auto found = node.properties.find("key");
+        found != node.properties.end()) {
+        if (const auto* key = std::get_if<std::string>(&found->second.value);
+            key != nullptr && !key->empty()) {
+            keys.insert(*key);
+        }
+    }
+    for (const auto& child : node.children) collectDesignKeys(child, keys);
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) collectDesignKeys(child, keys);
+    }
+}
+
+void makePastedKeysUnique(dsl::DesignNode& node,
+                          std::set<std::string>& usedKeys) {
+    const auto found = node.properties.find("key");
+    if (found != node.properties.end()) {
+        if (auto* key = std::get_if<std::string>(&found->second.value);
+            key != nullptr && !key->empty() &&
+            usedKeys.find(*key) != usedKeys.end()) {
+            const std::string base = *key + "-copy";
+            std::string candidate = base;
+            std::size_t suffix = 2;
+            while (usedKeys.find(candidate) != usedKeys.end()) {
+                candidate = base + "-" + std::to_string(suffix++);
+            }
+            *key = std::move(candidate);
+        }
+        if (const auto* key = std::get_if<std::string>(&found->second.value);
+            key != nullptr && !key->empty()) {
+            usedKeys.insert(*key);
+        }
+    }
+    for (auto& child : node.children) makePastedKeysUnique(child, usedKeys);
+    for (auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (auto& child : children) makePastedKeysUnique(child, usedKeys);
+    }
+}
+
 bool isEditableProperty(const dsl::DesignValue& value) {
     return std::holds_alternative<bool>(value.value) ||
            std::holds_alternative<double>(value.value) ||
@@ -668,6 +711,14 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                 self->requestNewProjectFile();
                 return true;
             }
+            if (!editingProperty && lower == 'c') {
+                self->copySelectedNode();
+                return true;
+            }
+            if (!editingProperty && lower == 'v') {
+                self->pasteCopiedNode();
+                return true;
+            }
             if (lower == 's') {
                 if ((modifiers & core::kModifierShift) != 0) {
                     self->requestSaveAsFile();
@@ -843,6 +894,8 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:add-text"] = [this] { insertTextNode(); };
     shell_.handlers()["designer:duplicate"] =
         [this] { duplicateSelectedNode(); };
+    shell_.handlers()["designer:copy"] = [this] { copySelectedNode(); };
+    shell_.handlers()["designer:paste"] = [this] { pasteCopiedNode(); };
     shell_.handlers()["designer:remove"] = [this] { removeSelectedNode(); };
     shell_.handlers()["designer:move-up"] = [this] { moveSelectedNode(-1); };
     shell_.handlers()["designer:move-down"] =
@@ -1710,6 +1763,46 @@ void DesignerApp::insertTextNode() { insertNodeType("Text"); }
 void DesignerApp::duplicateSelectedNode() {
     const auto selected = workbench_.selection().primary;
     if (!selected || !workbench_.duplicateNode(*selected)) return;
+    refreshDocumentUi();
+    shell_.markDirty();
+}
+
+void DesignerApp::copySelectedNode() {
+    const auto selected = workbench_.selection().primary;
+    if (!selected || !workbench_.document().has_value()) return;
+    const auto* node = findDesignNode(workbench_.document()->root, *selected);
+    if (node == nullptr) return;
+    clipboardNode_ = *node;
+    statusMessage_ = "Copied " + node->type;
+    shell_.markDirty();
+}
+
+void DesignerApp::pasteCopiedNode() {
+    if (!clipboardNode_.has_value() || !workbench_.document().has_value()) {
+        return;
+    }
+    const auto selected = workbench_.selection().primary;
+    if (!selected) return;
+
+    dsl::DesignNodeId parentId = workbench_.document()->root.id;
+    std::size_t index = workbench_.document()->root.children.size();
+    std::string slot;
+    if (*selected != parentId) {
+        const auto location = locateDesignNode(workbench_.document()->root,
+                                               *selected);
+        if (!location.has_value()) return;
+        parentId = location->parent;
+        index = location->index + 1;
+        slot = location->slot;
+    }
+
+    dsl::DesignNode pasted = *clipboardNode_;
+    std::set<std::string> usedKeys;
+    collectDesignKeys(workbench_.document()->root, usedKeys);
+    makePastedKeysUnique(pasted, usedKeys);
+    const auto pastedType = pasted.type;
+    if (!workbench_.insertNode(parentId, index, std::move(pasted), slot)) return;
+    statusMessage_ = "Pasted " + pastedType;
     refreshDocumentUi();
     shell_.markDirty();
 }

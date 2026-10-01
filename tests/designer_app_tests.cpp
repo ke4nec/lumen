@@ -954,6 +954,57 @@ TEST_CASE("designer app routes L0 structure commands",
     CHECK(outline->children.back().type == "FocusScope");
 }
 
+TEST_CASE("designer app copies and pastes a selected node as one transaction",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    REQUIRE(initial->children.size() >= 2);
+    const auto sourceId = initial->children.front().id;
+    const auto select = app.shell().handlers().find(
+        "designer:select:" + std::to_string(sourceId));
+    REQUIRE(select != app.shell().handlers().end());
+    select->second();
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().selection().primary == sourceId);
+    CHECK_FALSE(app.shell().focus().focusedKey().starts_with(
+        "designer-property-field:"));
+
+    app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'c');
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Copied Text");
+    CHECK_FALSE(app.shell().focus().focusedKey().starts_with(
+        "designer-property-field:"));
+    CHECK_FALSE(app.shell().focus().focusedKey().starts_with(
+        "designer-reference-field:"));
+    CHECK(app.workbench().selection().primary == sourceId);
+    CHECK_FALSE(app.workbench().dirty());
+    app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'v');
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Pasted Text");
+
+    const auto afterPaste = app.workbench().outline();
+    REQUIRE(afterPaste.has_value());
+    REQUIRE(afterPaste->children.size() == initial->children.size() + 1);
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto pastedId = *app.workbench().selection().primary;
+    CHECK(pastedId != sourceId);
+    CHECK(afterPaste->children[1].id == pastedId);
+    CHECK(afterPaste->children[1].type == initial->children.front().type);
+    CHECK(app.workbench().dirty());
+
+    REQUIRE(app.undo());
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().outline()->children.size() == initial->children.size());
+    CHECK(app.workbench().selection().primary == sourceId);
+}
+
 TEST_CASE("designer app creates L1 and L2 toolbox nodes with schema defaults",
           "[designer][d3][app]") {
     DesignerApp app;
