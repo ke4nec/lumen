@@ -299,6 +299,50 @@ TEST_CASE("designer app previews interaction state for keyless nodes",
     CHECK(focusedNode->commonStyle().focusWidth > 0.0F);
 }
 
+TEST_CASE("designer app edits declaration properties and routes undo redo",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() >= 1);
+    const auto titleId = outline->children.front().id;
+    const auto handler = app.shell().handlers().find(
+        "designer:select:" + std::to_string(titleId));
+    REQUIRE(handler != app.shell().handlers().end());
+    handler->second();
+    (void)app.shell().renderFrame();
+
+    const std::string bind = "designer:property:" + std::to_string(titleId) +
+                             ":text";
+    REQUIRE(findNodeByKey(
+        app.shell().root(),
+        "designer-property-field:" + std::to_string(titleId) + ":text"));
+    app.shell().state().set(bind, "Edited in panel");
+    (void)app.shell().renderFrame();
+    auto properties = app.workbench().properties(titleId);
+    REQUIRE(properties.size() == 2);
+    CHECK(std::get<std::string>(properties.back().value->value) ==
+          "Edited in panel");
+    CHECK(app.workbench().dirty());
+
+    app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'z');
+    (void)app.shell().renderFrame();
+    properties = app.workbench().properties(titleId);
+    CHECK(std::get<std::string>(properties.back().value->value) == "Preview title");
+    CHECK_FALSE(app.workbench().dirty());
+
+    app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'y');
+    (void)app.shell().renderFrame();
+    properties = app.workbench().properties(titleId);
+    CHECK(std::get<std::string>(properties.back().value->value) ==
+          "Edited in panel");
+    CHECK(app.workbench().dirty());
+}
+
 TEST_CASE("designer file watcher reloads valid files and keeps the last frame on errors",
           "[designer][d2][watch]") {
     const auto path = std::filesystem::temp_directory_path() /

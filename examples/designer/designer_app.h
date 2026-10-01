@@ -25,6 +25,11 @@ class DesignerApp {
     [[nodiscard]] const dsl::DesignPreviewWorkbench& workbench() const {
         return workbench_;
     }
+    [[nodiscard]] dsl::DesignPreviewWorkbench& workbench() { return workbench_; }
+
+    [[nodiscard]] bool undo();
+    [[nodiscard]] bool redo();
+    [[nodiscard]] bool saveDesignFile(const std::string& filename);
 
   private:
     class OutlineModel final : public widgets::TreeModel {
@@ -79,6 +84,9 @@ class DesignerApp {
     void cyclePreviewState();
     void applyPreviewState();
     void resetPreviewState();
+    void clearPropertyObservers();
+    void registerPropertyBinding(dsl::DesignNodeId id,
+                                  const dsl::DesignPreviewProperty& property);
 
     enum class PreviewStateMode {
         None,
@@ -107,6 +115,8 @@ class DesignerApp {
     bool highContrast_{false};
     PreviewStateMode previewStateMode_{PreviewStateMode::None};
     std::string previewStateKey_{};
+    std::map<std::string, core::StateStore::ObserverId> propertyObservers_{};
+    bool syncingPropertyState_{false};
     app::AppShell shell_;
 };
 

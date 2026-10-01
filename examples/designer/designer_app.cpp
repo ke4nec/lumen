@@ -1,6 +1,9 @@
 #include "designer_app.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <cstdlib>
 #include <functional>
 #include <iomanip>
 #include <sstream>
@@ -24,6 +27,98 @@ std::string nodeLabel(const dsl::DesignPreviewOutlineNode& node) {
 
 std::string previewKeyForNode(dsl::DesignNodeId id) {
     return "designer:node:" + std::to_string(id);
+}
+
+std::string propertyBindingKey(dsl::DesignNodeId id,
+                               std::string_view property) {
+    return "designer:property:" + std::to_string(id) + ":" +
+           std::string{property};
+}
+
+std::string propertyStateValue(const dsl::DesignValue& value) {
+    return std::visit(
+        [](const auto& item) -> std::string {
+            using T = std::decay_t<decltype(item)>;
+            if constexpr (std::is_same_v<T, bool>) {
+                return item ? "true" : "false";
+            } else if constexpr (std::is_same_v<T, double>) {
+                std::ostringstream stream;
+                stream << item;
+                return stream.str();
+            } else if constexpr (std::is_same_v<T, std::string>) {
+                return item;
+            } else if constexpr (std::is_same_v<T, dsl::DesignEnum>) {
+                return item.value;
+            } else {
+                return {};
+            }
+        },
+        value.value);
+}
+
+std::optional<dsl::DesignValue> parsePropertyState(
+    const dsl::DesignValue& prototype, std::string_view raw) {
+    return std::visit(
+        [raw](const auto& item) -> std::optional<dsl::DesignValue> {
+            using T = std::decay_t<decltype(item)>;
+            if constexpr (std::is_same_v<T, bool>) {
+                if (raw == "true" || raw == "1") {
+                    return dsl::DesignValue{
+                        dsl::DesignValue::Variant{true}};
+                }
+                if (raw == "false" || raw == "0") {
+                    return dsl::DesignValue{
+                        dsl::DesignValue::Variant{false}};
+                }
+                return std::nullopt;
+            } else if constexpr (std::is_same_v<T, double>) {
+                std::string text{raw};
+                char* end = nullptr;
+                const double parsed = std::strtod(text.c_str(), &end);
+                if (end == text.c_str() || *end != '\0' ||
+                    !std::isfinite(parsed)) {
+                    return std::nullopt;
+                }
+                return dsl::DesignValue{
+                    dsl::DesignValue::Variant{parsed}};
+            } else if constexpr (std::is_same_v<T, std::string>) {
+                return dsl::DesignValue{
+                    dsl::DesignValue::Variant{std::string{raw}}};
+            } else if constexpr (std::is_same_v<T, dsl::DesignEnum>) {
+                return dsl::DesignValue{dsl::DesignValue::Variant{
+                    dsl::DesignEnum{item.domain, std::string{raw}}}};
+            } else {
+                return std::nullopt;
+            }
+        },
+        prototype.value);
+}
+
+const dsl::DesignNode* findDesignNode(const dsl::DesignNode& node,
+                                      dsl::DesignNodeId id) {
+    if (node.id == id) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = findDesignNode(child, id); found != nullptr) {
+            return found;
+        }
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            if (const auto* found = findDesignNode(child, id);
+                found != nullptr) {
+                return found;
+            }
+        }
+    }
+    return nullptr;
+}
+
+bool isEditableProperty(const dsl::DesignValue& value) {
+    return std::holds_alternative<bool>(value.value) ||
+           std::holds_alternative<double>(value.value) ||
+           std::holds_alternative<std::string>(value.value) ||
+           std::holds_alternative<dsl::DesignEnum>(value.value);
 }
 
 }  // namespace
@@ -84,6 +179,20 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
     config.build = [self] { return self->buildUi(); };
     config.onKey = [self](app::AppShell&, core::Key key,
                           core::KeyModifiers modifiers, char keyChar) {
+        const bool ctrlLike =
+            (modifiers & (core::kModifierCtrl | core::kModifierGui)) != 0;
+        if (ctrlLike && (modifiers & core::kModifierAlt) == 0) {
+            const char lower = static_cast<char>(
+                std::tolower(static_cast<unsigned char>(keyChar)));
+            if (lower == 'z') {
+                (void)self->undo();
+                return true;
+            }
+            if (lower == 'y') {
+                (void)self->redo();
+                return true;
+            }
+        }
         if (self->outlineController_.handleKey(key, modifiers, keyChar)) {
             return true;
         }
@@ -114,10 +223,42 @@ void DesignerApp::attach() {
     (void)loadSource(kSampleSource, "sample.lumen");
 }
 
+bool DesignerApp::undo() {
+    const bool changed = workbench_.undo();
+    if (!changed) return false;
+    rebuildOutline();
+    if (workbench_.document().has_value()) {
+        registerSelectionHandlers(workbench_.document()->root);
+    }
+    shell_.markDirty();
+    return true;
+}
+
+bool DesignerApp::redo() {
+    const bool changed = workbench_.redo();
+    if (!changed) return false;
+    rebuildOutline();
+    if (workbench_.document().has_value()) {
+        registerSelectionHandlers(workbench_.document()->root);
+    }
+    shell_.markDirty();
+    return true;
+}
+
+bool DesignerApp::saveDesignFile(const std::string& filename) {
+    const bool saved = workbench_.saveDesignFile(filename);
+    if (saved) {
+        sourceFile_ = filename;
+        shell_.markDirty();
+    }
+    return saved;
+}
+
 bool DesignerApp::loadFile(const std::string& filename) {
     sourceFile_ = filename;
     const bool loaded = workbench_.openLumenFile(filename);
     if (loaded) {
+        clearPropertyObservers();
         resetPreviewState();
         rebuildOutline();
         registerSelectionHandlers(workbench_.document()->root);
@@ -130,6 +271,7 @@ bool DesignerApp::loadSource(const std::string& source, std::string filename) {
     sourceFile_ = filename.empty() ? "<memory>" : filename;
     const bool loaded = workbench_.openLumenSource(source, filename);
     if (loaded) {
+        clearPropertyObservers();
         resetPreviewState();
         rebuildOutline();
         registerSelectionHandlers(workbench_.document()->root);
@@ -261,6 +403,48 @@ void DesignerApp::resetPreviewState() {
     }
     previewStateKey_.clear();
     previewStateMode_ = PreviewStateMode::None;
+}
+
+void DesignerApp::clearPropertyObservers() {
+    for (const auto& [key, observer] : propertyObservers_) {
+        (void)key;
+        shell_.state().unsubscribe(observer);
+    }
+    propertyObservers_.clear();
+}
+
+void DesignerApp::registerPropertyBinding(
+    dsl::DesignNodeId id, const dsl::DesignPreviewProperty& property) {
+    if (!property.value.has_value() || !isEditableProperty(*property.value)) {
+        return;
+    }
+    const std::string bind = propertyBindingKey(id, property.name);
+    syncingPropertyState_ = true;
+    shell_.state().set(bind, propertyStateValue(*property.value));
+    syncingPropertyState_ = false;
+    if (propertyObservers_.contains(bind)) return;
+
+    propertyObservers_[bind] = shell_.state().subscribe(
+        bind, [this, id, name = property.name, bind] {
+            if (syncingPropertyState_ || !workbench_.document().has_value()) {
+                return;
+            }
+            const auto* node =
+                findDesignNode(workbench_.document()->root, id);
+            if (node == nullptr) return;
+            const auto propertyIt = node->properties.find(name);
+            if (propertyIt == node->properties.end()) return;
+            const auto parsed =
+                parsePropertyState(propertyIt->second, shell_.state().get(bind));
+            if (!parsed.has_value() || !workbench_.setProperty(
+                                           id, name, *parsed)) {
+                syncingPropertyState_ = true;
+                shell_.state().set(bind, propertyStateValue(propertyIt->second));
+                syncingPropertyState_ = false;
+                return;
+            }
+            shell_.markDirty();
+        });
 }
 
 void DesignerApp::applyPreviewState() {
@@ -504,11 +688,34 @@ core::Widget DesignerApp::buildPropertiesPanel() {
     const auto selected = workbench_.selection().primary;
     if (selected.has_value()) {
         for (const auto& property : workbench_.properties(*selected)) {
-            rows.push_back(core::makeText(
-                property.name + "  " +
-                    formatValue(property.value, property.reference),
-                theme.typography.body, {}, 0.0F,
-                "designer-property:" + property.name));
+            if (property.value.has_value() &&
+                isEditableProperty(*property.value)) {
+                registerPropertyBinding(*selected, property);
+                const std::string bind =
+                    propertyBindingKey(*selected, property.name);
+                auto field = core::makeTextField(
+                    {}, "value", theme.typography.body, {}, 0.0F,
+                    "designer-property-field:" + std::to_string(*selected) +
+                        ":" + property.name,
+                    168.0F, std::nullopt, bind);
+                field.flex = 1.0F;
+                auto row = core::makeRow(
+                    {core::makeText(property.name, theme.typography.caption,
+                                    {}, 0.0F,
+                                    "designer-property-label:" + property.name),
+                     std::move(field)},
+                    core::MainAxisAlignment::Start,
+                    core::CrossAxisAlignment::Center, 8.0F, {}, {},
+                    "designer-property-row:" + std::to_string(*selected) +
+                        ":" + property.name);
+                rows.push_back(std::move(row));
+            } else {
+                rows.push_back(core::makeText(
+                    property.name + "  " +
+                        formatValue(property.value, property.reference),
+                    theme.typography.body, {}, 0.0F,
+                    "designer-property:" + property.name));
+            }
         }
     } else {
         rows.push_back(core::makeText("Select a node", theme.typography.body));
