@@ -29,9 +29,12 @@ constexpr char kSampleSource[] =
 std::vector<const dsl::NodeSchema*> designerToolboxSchemas() {
     std::vector<const dsl::NodeSchema*> result;
     for (const auto& schema : dsl::nodeSchemaRegistry()) {
-        // L3 component nodes need an application-provided builder. Keep them
-        // out of the generic toolbox until the designer owns that adapter.
-        if (!schema.isComponent) result.push_back(&schema);
+        // DataGrid is the first L3 component with a designer-owned adapter.
+        // Other component nodes stay out until their application builders are
+        // wired, so inserting one cannot silently produce a placeholder.
+        if (!schema.isComponent || schema.type == "DataGrid") {
+            result.push_back(&schema);
+        }
     }
     return result;
 }
@@ -258,6 +261,20 @@ bool DesignerApp::OfflineRuntimeContext::resolveReference(
     return false;
 }
 
+dsl::DesignComponentResult DesignerApp::OfflineRuntimeContext::buildComponent(
+    const dsl::DesignNode& node,
+    const dsl::DesignComponentContext& componentContext) const {
+    (void)componentContext;
+    if (owner_ == nullptr || node.type != "DataGrid") {
+        return dsl::DesignComponentResult{
+            std::nullopt, {}, "component.missing",
+            "no component builder is registered for this node type"};
+    }
+    dsl::DesignComponentResult result;
+    result.widget = owner_->dataGridPreviewController_.build();
+    return result;
+}
+
 void DesignerApp::OutlineModel::setRoot(
     std::optional<dsl::DesignPreviewOutlineNode> root) {
     entries_.clear();
@@ -306,8 +323,26 @@ core::Widget DesignerApp::OutlineModel::buildRow(const std::string& key,
 }
 
 DesignerApp::DesignerApp()
-    : outlineModel_(this), shell_(configFor(this)),
-      previewShell_(previewConfigFor(this)) {}
+    : runtimeContext_(this), outlineModel_(this), shell_(configFor(this)),
+      previewShell_(previewConfigFor(this)) {
+    workbench_.setEditRuntimeContext(&runtimeContext_);
+    dataGridPreviewController_.setColumns({
+        widgets::DataColumn{"id", "ID", 88.0F, true, false, false},
+        widgets::DataColumn{"name", "Name", 156.0F, true, false, false},
+        widgets::DataColumn{"state", "State", 112.0F, false, false, false},
+    });
+    dataGridPreviewController_.setRowCount(4);
+    dataGridPreviewController_.setCellText(
+        [](std::size_t row, const std::string& column) {
+            if (column == "id") return "D-" + std::to_string(row + 1);
+            if (column == "name") {
+                return "Preview row " + std::to_string(row + 1);
+            }
+            if (column == "state") return row == 0 ? std::string{"Ready"}
+                                                     : std::string{"Draft"};
+            return std::string{};
+        });
+}
 
 app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
     app::ShellConfig config;
@@ -424,6 +459,7 @@ void DesignerApp::attach() {
     referencesController_.onRowActivated =
         [this](const std::string& key) { selectReference(key); };
     referencesController_.attach(shell_, "designer-references");
+    dataGridPreviewController_.attach(shell_, "designer-component-datagrid");
     shell_.controller().addDragArmSink(
         [this](const std::vector<const core::RenderNode*>& chain,
                core::PointerDevice, core::DragSourceClaim& claim) {

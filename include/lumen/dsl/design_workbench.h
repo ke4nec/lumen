@@ -35,7 +35,9 @@ struct DesignPreviewOutlineNode {
 
 // Headless D2 model. It owns the document being inspected and composes the
 // preview frame, document selection, outline, and read-only property views.
-// Runtime contexts are borrowed only for the duration of open/refresh.
+// Runtime contexts are borrowed for open/refresh. An optional edit context can
+// also be registered by an application adapter so document transactions and
+// undo/redo can rebuild component previews without owning the adapter.
 class DesignPreviewWorkbench {
   public:
     [[nodiscard]] bool openLumenSource(
@@ -52,6 +54,10 @@ class DesignPreviewWorkbench {
     [[nodiscard]] bool openDocument(
         DesignDocument document, DesignRuntimeContext* context = nullptr);
     [[nodiscard]] bool refresh(DesignRuntimeContext* context = nullptr);
+
+    void setEditRuntimeContext(DesignRuntimeContext* context) {
+        editContext_ = context;
+    }
 
     // D3 L0 editing is declaration-only. Runtime preview values remain in
     // DesignPreviewState and never enter these document transactions.
@@ -155,6 +161,7 @@ class DesignPreviewWorkbench {
     std::string sourceFile_{"<design>"};
     std::uint64_t loadedRevision_{0};
     bool hasLoadedRevision_{false};
+    DesignRuntimeContext* editContext_{nullptr};
 };
 
 }  // namespace lumen::dsl

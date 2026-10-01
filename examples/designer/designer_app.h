@@ -51,10 +51,18 @@ class DesignerApp {
   private:
     class OfflineRuntimeContext final : public dsl::DesignRuntimeContext {
       public:
+        explicit OfflineRuntimeContext(DesignerApp* owner) : owner_(owner) {}
+
         [[nodiscard]] bool validatesReferences() const override;
         [[nodiscard]] bool resolveReference(
             dsl::DesignReferenceKind kind, const std::string& name,
             dsl::DesignReference& out) const override;
+        [[nodiscard]] dsl::DesignComponentResult buildComponent(
+            const dsl::DesignNode& node,
+            const dsl::DesignComponentContext& componentContext) const override;
+
+      private:
+        DesignerApp* owner_{nullptr};
     };
 
     class OutlineModel final : public widgets::TreeModel {
@@ -200,10 +208,11 @@ class DesignerApp {
         const dsl::DesignDiagnostic& diagnostic);
 
     dsl::DesignPreviewWorkbench workbench_{};
-    OfflineRuntimeContext runtimeContext_{};
+    OfflineRuntimeContext runtimeContext_;
     OutlineModel outlineModel_;
     widgets::TreeController outlineController_{};
     widgets::DataGridController referencesController_{};
+    widgets::DataGridController dataGridPreviewController_{};
     core::VirtualListController diagnosticsController_{};
     std::vector<ReferenceEntry> referenceRows_{};
     CenterTab centerTab_{CenterTab::Canvas};

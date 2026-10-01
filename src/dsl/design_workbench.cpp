@@ -1,5 +1,6 @@
 #include "lumen/dsl/design_workbench.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -72,6 +73,17 @@ bool selectionHasMissingNode(const DesignSelection& selection,
         }
     }
     return false;
+}
+
+bool recoverablePreviewFailure(
+    const DesignPreviewFrame& frame,
+    const std::vector<DesignDiagnostic>& diagnostics) {
+    if (!frame.hasFrame() || diagnostics.empty()) return false;
+    return std::all_of(
+        diagnostics.begin(), diagnostics.end(), [](const DesignDiagnostic& item) {
+            return item.code.rfind("reference.", 0) == 0 ||
+                   item.code.rfind("component.", 0) == 0;
+        });
 }
 
 }  // namespace
@@ -348,7 +360,8 @@ bool DesignPreviewWorkbench::undo() {
     if (!history_.undo(document, selection)) return false;
     document_ = std::move(document);
     restoreSelection(selection);
-    return updateFrame(nullptr);
+    const bool compiled = updateFrame(editContext_);
+    return compiled || recoverablePreviewFailure(frame_, diagnostics_);
 }
 
 bool DesignPreviewWorkbench::redo() {
@@ -358,7 +371,8 @@ bool DesignPreviewWorkbench::redo() {
     if (!history_.redo(document, selection)) return false;
     document_ = std::move(document);
     restoreSelection(selection);
-    return updateFrame(nullptr);
+    const bool compiled = updateFrame(editContext_);
+    return compiled || recoverablePreviewFailure(frame_, diagnostics_);
 }
 
 bool DesignPreviewWorkbench::saveDesignFile(const std::string& filename) {
@@ -445,7 +459,8 @@ bool DesignPreviewWorkbench::applyEdit(std::string label,
     }
     document_ = std::move(committedDocument);
     restoreSelection(committedSelection);
-    if (!updateFrame(nullptr)) {
+    const bool compiled = updateFrame(editContext_);
+    if (!compiled && !recoverablePreviewFailure(frame_, diagnostics_)) {
         auto rollbackDocument = *document_;
         auto rollbackSelection = selection_.state();
         if (history_.undo(rollbackDocument, rollbackSelection)) {
