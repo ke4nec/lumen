@@ -540,6 +540,54 @@ TEST_CASE("designer app transforms canvas preview without editing the document",
     CHECK_FALSE(app.workbench().dirty());
 }
 
+TEST_CASE("designer app selects transformed canvas nodes across dpi and zoom",
+          "[designer][d3][app][designer-transform]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { Text(\"Title\", key: "
+        "\"node\", width: 120, height: 30) } }",
+        "transform-selection.lumen"));
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(!outline->children.empty());
+    const auto nodeId = outline->children.front().id;
+    const auto revision = app.workbench().documentRevision();
+    const auto selectTransformedNode = [&] {
+        const auto* node = findNodeByKey(app.shell().root(), "node");
+        REQUIRE(node != nullptr);
+        const auto origin = absoluteOffset(app.shell().root(), "node");
+        const Offset center{origin.x + node->size.width * 0.5F,
+                            origin.y + node->size.height * 0.5F};
+        app.shell().pointerDown(center);
+        app.shell().pointerUp(center);
+        (void)app.shell().renderFrame();
+        REQUIRE(app.workbench().selection().primary.has_value());
+        CHECK(*app.workbench().selection().primary == nodeId);
+        CHECK(app.workbench().selection().ids.size() == 1);
+        CHECK_FALSE(app.workbench().dirty());
+    };
+
+    selectTransformedNode();
+    app.shell().handlers().at("designer:dpi")();
+    (void)app.shell().renderFrame();
+    CHECK(app.shell().styleContext().deviceScale == 1.25F);
+    app.shell().handlers().at("designer:zoom-in")();
+    (void)app.shell().renderFrame();
+    selectTransformedNode();
+
+    app.shell().handlers().at("designer:dpi")();
+    (void)app.shell().renderFrame();
+    CHECK(app.shell().styleContext().deviceScale == 2.0F);
+    app.shell().handlers().at("designer:zoom-in")();
+    (void)app.shell().renderFrame();
+    selectTransformedNode();
+    CHECK(app.workbench().documentRevision() == revision);
+}
+
 TEST_CASE("designer app resizes a selected node with one snapped transaction",
           "[designer][d3][app]") {
     DesignerApp app;
