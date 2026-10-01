@@ -1067,7 +1067,9 @@ D2 Source 页签现已提供只读源快照、行号和诊断行定位；文档�
 调试层；编译失败保留上一份有效画面并报告状态，独立 `runApp` 多窗口预览仍属目标态。
 画布 Guides 开关现已接通 Theme 令牌驱动的标尺、中心参考线、位置/尺寸标注、选择框和八个
 手柄；辅助节点排除语义与焦点，预览节点仍保持最上层命中。首帧先建立画布几何，再启用
-Guides 即可生成定位层；吸附计算和手柄拖动仍是后续设计器交互阶段。
+Guides 即可生成定位层。手柄拖动使用独立拖放源，会话中只更新辅助层预览，释放时以一个
+文档事务提交 `width`/`height`，Stack 子项的可表达位置同时提交 `left`/`top`；尺寸边缘按
+8px 网格、画布边缘和中心线在 6px 阈值内吸附。普通流式父布局不会伪造绝对位置写回。
 
 ### 6.1 D1：检查器（并入 R6，无前置工程）
 
@@ -1250,8 +1252,8 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、画布辅助层
   开关以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `232` 个断言、
-  `14` 个测试用例通过，覆盖 L0 声明属性编辑、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `249` 个断言、
+  `15` 个测试用例通过，覆盖 L0 声明属性编辑、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y，12 个 L0 工具箱按钮，以及插入/复制/删除/上移/下移命令的
   语义激活、键盘等价路径、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开和文件对话框结果回传。
@@ -1263,8 +1265,8 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `339` 个断言、
   `27` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `94/94` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1061/1061`，
-  Release 配置为 `1063/1063`；
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1062/1062`，
+  Release 配置为 `1064/1064`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、

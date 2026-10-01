@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -202,6 +204,78 @@ TEST_CASE("designer app renders canvas alignment guides for the selection",
     (void)app.shell().renderFrame();
     CHECK(findNodeByKey(app.shell().root(),
                         "designer-canvas-guide-frame") != nullptr);
+}
+
+TEST_CASE("designer app resizes a selected node with one snapped transaction",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(!outline->children.empty());
+    const auto titleId = outline->children.front().id;
+    const auto select = app.shell().handlers().find(
+        "designer:select:" + std::to_string(titleId));
+    REQUIRE(select != app.shell().handlers().end());
+    select->second();
+    app.shell().handlers().at("designer:canvas-guides")();
+    (void)app.shell().renderFrame();
+
+    const auto* handle =
+        findNodeByKey(app.shell().root(), "designer-canvas-handle:e");
+    REQUIRE(handle != nullptr);
+    const auto handleOrigin = absoluteOffset(app.shell().root(), handle->key);
+    const Offset start =
+        handleOrigin + Offset{handle->size.width * 0.5F,
+                              handle->size.height * 0.5F};
+    const Offset end = start + Offset{17.0F, 0.0F};
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    app.shell().pointerUp(end);
+    (void)app.shell().renderFrame();
+
+    const auto properties = app.workbench().properties(titleId);
+    const auto width = std::find_if(
+        properties.begin(), properties.end(),
+        [](const auto& property) { return property.name == "width"; });
+    REQUIRE(width != properties.end());
+    REQUIRE(width->value.has_value());
+    const auto* widthValue = std::get_if<double>(&width->value->value);
+    REQUIRE(widthValue != nullptr);
+    CHECK(*widthValue >= 8.0);
+    CHECK(std::fmod(*widthValue, 8.0) == 0.0);
+    CHECK(app.workbench().dirty());
+
+    REQUIRE(app.undo());
+    const auto restored = app.workbench().properties(titleId);
+    CHECK(std::find_if(restored.begin(), restored.end(), [](const auto& property) {
+              return property.name == "width";
+          }) == restored.end());
+
+    (void)app.shell().renderFrame();
+    handle = findNodeByKey(app.shell().root(), "designer-canvas-handle:e");
+    REQUIRE(handle != nullptr);
+    const auto cancelOrigin = absoluteOffset(app.shell().root(), handle->key);
+    const Offset cancelStart =
+        cancelOrigin + Offset{handle->size.width * 0.5F,
+                              handle->size.height * 0.5F};
+    app.shell().pointerDown(cancelStart);
+    app.shell().pointerMove(cancelStart + Offset{24.0F, 0.0F});
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    app.shell().pointerCancel();
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.shell().controller().dragSessionActive());
+    const auto cancelled = app.workbench().properties(titleId);
+    CHECK(std::find_if(cancelled.begin(), cancelled.end(),
+                       [](const auto& property) {
+                           return property.name == "width";
+                       }) == cancelled.end());
 }
 
 TEST_CASE("designer app previews theme density dpi and accessibility inputs",

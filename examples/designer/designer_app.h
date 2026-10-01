@@ -128,6 +128,11 @@ class DesignerApp {
                             const std::string& sourceKey);
     void endToolboxDragSession();
     [[nodiscard]] core::Widget buildToolboxDragOverlay() const;
+    void canvasResizeSession(core::DragPhase phase, core::Offset position,
+                             const std::string& sourceKey);
+    void endCanvasResizeSession();
+    [[nodiscard]] static float snapCanvasCoordinate(float value, float maximum,
+                                                     float threshold);
     void refreshDocumentUi();
     void clearPropertyObservers();
     void registerPropertyBinding(dsl::DesignNodeId id,
@@ -212,6 +217,20 @@ class DesignerApp {
     bool toolboxDragActive_{false};
     std::string toolboxDragType_{};
     core::Offset toolboxDragPointer_{};
+    struct CanvasResizePreview {
+        dsl::DesignNodeId id{0};
+        float x{0.0F};
+        float y{0.0F};
+        float width{0.0F};
+        float height{0.0F};
+    };
+    bool canvasResizeActive_{false};
+    dsl::DesignNodeId canvasResizeId_{0};
+    std::string canvasResizeHandle_{};
+    core::Offset canvasResizePointer_{};
+    CanvasResizePreview canvasResizeStart_{};
+    CanvasResizePreview canvasResizePreview_{};
+    bool canvasResizePositionEditable_{false};
     std::map<std::string, core::StateStore::ObserverId> propertyObservers_{};
     bool syncingPropertyState_{false};
     app::AppShell shell_;

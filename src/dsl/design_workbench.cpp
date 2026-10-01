@@ -176,6 +176,24 @@ bool DesignPreviewWorkbench::setProperty(DesignNodeId id, std::string property,
         });
 }
 
+bool DesignPreviewWorkbench::setProperties(
+    DesignNodeId id,
+    std::vector<std::pair<std::string, DesignValue>> properties) {
+    if (properties.empty()) return false;
+    return applyEdit(
+        "Edit properties", {id},
+        [id, properties = std::move(properties)](
+            DesignDocumentEditor& editor) mutable {
+            for (auto& [name, value] : properties) {
+                if (!editor.setProperty(id, std::move(name),
+                                         std::move(value))) {
+                    return false;
+                }
+            }
+            return true;
+        });
+}
+
 bool DesignPreviewWorkbench::clearProperty(DesignNodeId id,
                                            std::string_view property) {
     const std::string name{property};

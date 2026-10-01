@@ -372,6 +372,18 @@ void DesignerApp::attach() {
     shell_.controller().addDragArmSink(
         [this](const std::vector<const core::RenderNode*>& chain,
                core::PointerDevice, core::DragSourceClaim& claim) {
+            constexpr std::string_view kHandlePrefix =
+                "designer-canvas-handle:";
+            for (const auto* node : chain) {
+                if (node == nullptr ||
+                    node->onClick.rfind(kHandlePrefix, 0) != 0) {
+                    continue;
+                }
+                claim.key = node->key;
+                claim.identity = node->identity;
+                claim.touchAllowed = true;
+                return true;
+            }
             constexpr std::string_view kRowPrefix =
                 "tree:designer-outline:";
             for (const auto* node : chain) {
@@ -407,6 +419,7 @@ void DesignerApp::attach() {
         [this](core::DragPhase phase, core::Offset position,
                const std::vector<const core::RenderNode*>&,
                const std::string& sourceKey, const std::string&) {
+            canvasResizeSession(phase, position, sourceKey);
             outlineDragSession(phase, position, sourceKey);
             toolboxDragSession(phase, position, sourceKey);
         });
@@ -967,6 +980,171 @@ void DesignerApp::endOutlineDragSession() {
     outlineDragSlot_.clear();
     outlineDragPointer_ = {};
     shell_.clearVisualOverlay();
+}
+
+float DesignerApp::snapCanvasCoordinate(float value, float maximum,
+                                         float threshold) {
+    if (!std::isfinite(value) || maximum <= 0.0F) return value;
+    float best = value;
+    float distance = threshold;
+    const float grid = std::round(value / 8.0F) * 8.0F;
+    const float candidates[] = {0.0F, maximum, maximum * 0.5F, grid};
+    for (const float candidate : candidates) {
+        if (candidate < 0.0F || candidate > maximum) continue;
+        const float candidateDistance = std::abs(value - candidate);
+        if (candidateDistance <= distance) {
+            distance = candidateDistance;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+void DesignerApp::canvasResizeSession(core::DragPhase phase,
+                                      core::Offset position,
+                                      const std::string& sourceKey) {
+    constexpr std::string_view kSourcePrefix = "designer-canvas-handle:";
+    if (sourceKey.rfind(kSourcePrefix, 0) != 0) return;
+    const std::string handle = sourceKey.substr(kSourcePrefix.size());
+    if (phase == core::DragPhase::Cancel) {
+        endCanvasResizeSession();
+        shell_.markDirty();
+        return;
+    }
+    if (phase == core::DragPhase::Start) {
+        const auto selected = workbench_.selection().primary;
+        if (!selected.has_value() || !workbench_.document().has_value()) {
+            return;
+        }
+        const auto outline = workbench_.outline();
+        if (!outline.has_value()) return;
+        const auto* outlineNode = findOutlineNode(*outline, *selected);
+        if (outlineNode == nullptr) return;
+        const std::string key = outlineNode->key.empty()
+                                    ? previewKeyForNode(*selected)
+                                    : outlineNode->key;
+        const auto* renderNode = core::findNodeByKey(shell_.root(), key);
+        const auto* canvasNode =
+            core::findNodeByKey(shell_.root(), "designer-canvas");
+        if (renderNode == nullptr || canvasNode == nullptr) return;
+        const core::Offset canvasOrigin =
+            core::absoluteOffset(shell_.root(), "designer-canvas");
+        const core::Offset contentOrigin =
+            canvasOrigin +
+            core::Offset{canvasNode->padding.left, canvasNode->padding.top};
+        const core::Offset renderOrigin =
+            core::absoluteOffset(shell_.root(), key);
+        const auto location =
+            locateDesignNode(workbench_.document()->root, *selected);
+        const auto* parent = location.has_value()
+                                 ? findDesignNode(workbench_.document()->root,
+                                                  location->parent)
+                                 : nullptr;
+        canvasResizePositionEditable_ =
+            parent != nullptr && parent->type == "Stack";
+        canvasResizeActive_ = true;
+        canvasResizeId_ = *selected;
+        canvasResizeHandle_ = handle;
+        canvasResizePointer_ = position;
+        canvasResizeStart_ = CanvasResizePreview{
+            *selected,
+            renderOrigin.x - contentOrigin.x,
+            renderOrigin.y - contentOrigin.y,
+            renderNode->size.width,
+            renderNode->size.height};
+        canvasResizePreview_ = canvasResizeStart_;
+        shell_.markDirty();
+        return;
+    }
+    if (!canvasResizeActive_) return;
+    const auto* canvasNode =
+        core::findNodeByKey(shell_.root(), "designer-canvas");
+    if (canvasNode == nullptr) return;
+    const float canvasWidth =
+        std::max(0.0F, canvasNode->size.width - canvasNode->padding.horizontal());
+    const float canvasHeight =
+        std::max(0.0F, canvasNode->size.height - canvasNode->padding.vertical());
+    if (phase == core::DragPhase::Move) {
+        const core::Offset delta = position - canvasResizePointer_;
+        CanvasResizePreview next = canvasResizeStart_;
+        const bool moveLeft = canvasResizeHandle_.find('w') != std::string::npos;
+        const bool moveRight = canvasResizeHandle_.find('e') != std::string::npos;
+        const bool moveTop = canvasResizeHandle_.find('n') != std::string::npos;
+        const bool moveBottom = canvasResizeHandle_.find('s') != std::string::npos;
+        const float right = canvasResizeStart_.x + canvasResizeStart_.width;
+        const float bottom = canvasResizeStart_.y + canvasResizeStart_.height;
+        if (moveLeft) {
+            float edge = snapCanvasCoordinate(
+                canvasResizeStart_.x + delta.x, canvasWidth,
+                shell_.theme().designerCanvas.snapThreshold);
+            edge = std::clamp(edge, 0.0F, right - 4.0F);
+            next.x = canvasResizePositionEditable_ ? edge : canvasResizeStart_.x;
+            next.width = std::max(4.0F, right - edge);
+        } else if (moveRight) {
+            float edge = snapCanvasCoordinate(
+                right + delta.x, canvasWidth,
+                shell_.theme().designerCanvas.snapThreshold);
+            edge = std::clamp(edge, next.x + 4.0F, canvasWidth);
+            next.width = std::max(4.0F, edge - next.x);
+        }
+        if (moveTop) {
+            float edge = snapCanvasCoordinate(
+                canvasResizeStart_.y + delta.y, canvasHeight,
+                shell_.theme().designerCanvas.snapThreshold);
+            edge = std::clamp(edge, 0.0F, bottom - 4.0F);
+            next.y = canvasResizePositionEditable_ ? edge : canvasResizeStart_.y;
+            next.height = std::max(4.0F, bottom - edge);
+        } else if (moveBottom) {
+            float edge = snapCanvasCoordinate(
+                bottom + delta.y, canvasHeight,
+                shell_.theme().designerCanvas.snapThreshold);
+            edge = std::clamp(edge, next.y + 4.0F, canvasHeight);
+            next.height = std::max(4.0F, edge - next.y);
+        }
+        canvasResizePreview_ = next;
+        shell_.markDirty();
+        return;
+    }
+    if (phase != core::DragPhase::Drop) return;
+    const auto preview = canvasResizePreview_;
+    const std::string handleName = canvasResizeHandle_;
+    const bool positionEditable = canvasResizePositionEditable_;
+    endCanvasResizeSession();
+
+    std::vector<std::pair<std::string, dsl::DesignValue>> properties;
+    const auto number = [](float value) {
+        return dsl::DesignValue{dsl::DesignValue::Variant{
+            static_cast<double>(std::max(0.0F, value))}};
+    };
+    if (handleName.find('e') != std::string::npos ||
+        handleName.find('w') != std::string::npos) {
+        properties.emplace_back("width", number(preview.width));
+    }
+    if (handleName.find('n') != std::string::npos ||
+        handleName.find('s') != std::string::npos) {
+        properties.emplace_back("height", number(preview.height));
+    }
+    if (positionEditable && handleName.find('w') != std::string::npos) {
+        properties.emplace_back("left", number(preview.x));
+    }
+    if (positionEditable && handleName.find('n') != std::string::npos) {
+        properties.emplace_back("top", number(preview.y));
+    }
+    if (!properties.empty() &&
+        workbench_.setProperties(preview.id, std::move(properties))) {
+        refreshDocumentUi();
+        shell_.markDirty();
+    }
+}
+
+void DesignerApp::endCanvasResizeSession() {
+    canvasResizeActive_ = false;
+    canvasResizeId_ = 0;
+    canvasResizeHandle_.clear();
+    canvasResizePointer_ = {};
+    canvasResizeStart_ = {};
+    canvasResizePreview_ = {};
+    canvasResizePositionEditable_ = false;
 }
 
 core::Widget DesignerApp::buildOutlineDragOverlay() const {
@@ -1665,6 +1843,7 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                 }
             }
         }
+        const auto selectedId = workbench_.selection().primary;
         const auto* selectedNode = selectedKey.empty()
                                        ? nullptr
                                        : core::findNodeByKey(shell_.root(),
@@ -1681,14 +1860,23 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                 core::absoluteOffset(shell_.root(), selectedKey);
             const core::Offset local{selectedOrigin.x - contentOrigin.x,
                                      selectedOrigin.y - contentOrigin.y};
-            const float selectedWidth = selectedNode->size.width;
-            const float selectedHeight = selectedNode->size.height;
+            float selectedX = local.x;
+            float selectedY = local.y;
+            float selectedWidth = selectedNode->size.width;
+            float selectedHeight = selectedNode->size.height;
+            if (canvasResizeActive_ && selectedId.has_value() &&
+                canvasResizePreview_.id == *selectedId) {
+                selectedX = canvasResizePreview_.x;
+                selectedY = canvasResizePreview_.y;
+                selectedWidth = canvasResizePreview_.width;
+                selectedHeight = canvasResizePreview_.height;
+            }
             if (selectedWidth > 0.0F && selectedHeight > 0.0F) {
                 auto vertical = makeBar(tokens.guideThickness, *contentHeight,
                                         tokens.guide, "designer-canvas-guide-v");
                 children.push_back(position(
                     std::move(vertical),
-                    core::Offset{local.x + selectedWidth * 0.5F -
+                    core::Offset{selectedX + selectedWidth * 0.5F -
                                      tokens.guideThickness * 0.5F,
                                  0.0F}));
                 auto horizontal = makeBar(*contentWidth, tokens.guideThickness,
@@ -1697,7 +1885,7 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                 children.push_back(position(
                     std::move(horizontal),
                     core::Offset{0.0F,
-                                 local.y + selectedHeight * 0.5F -
+                                 selectedY + selectedHeight * 0.5F -
                                      tokens.guideThickness * 0.5F}));
 
                 auto frame = core::makeContainerLeaf(
@@ -1709,29 +1897,31 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                 frame = makeDecoration(std::move(frame));
                 children.push_back(position(
                     std::move(frame),
-                    core::Offset{local.x - 6.0F, local.y - 6.0F}));
+                    core::Offset{selectedX - 6.0F, selectedY - 6.0F}));
 
                 const float handleSize = 8.0F;
                 const std::vector<std::pair<std::string, core::Offset>> handles = {
-                    {"nw", {local.x - 10.0F, local.y - 10.0F}},
-                    {"n", {local.x + selectedWidth * 0.5F - 4.0F,
-                            local.y - 10.0F}},
-                    {"ne", {local.x + selectedWidth + 2.0F,
-                             local.y - 10.0F}},
-                    {"e", {local.x + selectedWidth + 2.0F,
-                            local.y + selectedHeight * 0.5F - 4.0F}},
-                    {"se", {local.x + selectedWidth + 2.0F,
-                             local.y + selectedHeight + 2.0F}},
-                    {"s", {local.x + selectedWidth * 0.5F - 4.0F,
-                            local.y + selectedHeight + 2.0F}},
-                    {"sw", {local.x - 10.0F, local.y + selectedHeight + 2.0F}},
-                    {"w", {local.x - 10.0F,
-                            local.y + selectedHeight * 0.5F - 4.0F}},
+                    {"nw", {selectedX - 10.0F, selectedY - 10.0F}},
+                    {"n", {selectedX + selectedWidth * 0.5F - 4.0F,
+                            selectedY - 10.0F}},
+                    {"ne", {selectedX + selectedWidth + 2.0F,
+                             selectedY - 10.0F}},
+                    {"e", {selectedX + selectedWidth + 2.0F,
+                            selectedY + selectedHeight * 0.5F - 4.0F}},
+                    {"se", {selectedX + selectedWidth + 2.0F,
+                             selectedY + selectedHeight + 2.0F}},
+                    {"s", {selectedX + selectedWidth * 0.5F - 4.0F,
+                            selectedY + selectedHeight + 2.0F}},
+                    {"sw", {selectedX - 10.0F, selectedY + selectedHeight + 2.0F}},
+                    {"w", {selectedX - 10.0F,
+                            selectedY + selectedHeight * 0.5F - 4.0F}},
                 };
                 for (const auto& [name, offset] : handles) {
                     auto handle = core::makeContainerLeaf(
                         handleSize, handleSize, {}, {}, tokens.handleFill,
                         "designer-canvas-handle:" + name);
+                    handle = core::withOnClick(
+                        std::move(handle), "designer-canvas-handle:" + name);
                     handle.styleOverrides.border = tokens.handleBorder;
                     handle.styleOverrides.borderWidth = tokens.guideThickness;
                     children.push_back(position(makeDecoration(std::move(handle)),
@@ -1751,8 +1941,8 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                 dimensions.styleOverrides.background = tokens.guide;
                 dimensions.styleOverrides.foreground = tokens.onGuide;
                 children.push_back(position(makeDecoration(std::move(dimensions)),
-                                            core::Offset{local.x,
-                                                         local.y + selectedHeight +
+                                            core::Offset{selectedX,
+                                                         selectedY + selectedHeight +
                                                              14.0F}));
             }
         }

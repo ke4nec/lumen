@@ -6,6 +6,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "lumen/dsl/design_editor.h"
@@ -56,6 +57,12 @@ class DesignPreviewWorkbench {
     // DesignPreviewState and never enter these document transactions.
     [[nodiscard]] bool setProperty(DesignNodeId id, std::string property,
                                     DesignValue value);
+    // Applies several declaration properties as one undoable document edit.
+    // This is used by gesture-based controls such as canvas resizing, where
+    // width/height/position together form one user intent.
+    [[nodiscard]] bool setProperties(
+        DesignNodeId id,
+        std::vector<std::pair<std::string, DesignValue>> properties);
     [[nodiscard]] bool clearProperty(DesignNodeId id,
                                      std::string_view property);
     [[nodiscard]] bool setReference(DesignNodeId id, std::string name,
