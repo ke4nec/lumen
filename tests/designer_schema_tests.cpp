@@ -19,9 +19,9 @@ using lumen::dsl::parseLumenSource;
 using lumen::dsl::validateDesignDocument;
 using lumen::dsl::widgetFieldInventory;
 
-TEST_CASE("designer schema registry covers the L0 and first L1 node set",
+TEST_CASE("designer schema registry covers the L0 and L1 static node set",
           "[designer][p2]") {
-    REQUIRE(nodeSchemaRegistry().size() == 15);
+    REQUIRE(nodeSchemaRegistry().size() == 22);
     for (const auto& schema : nodeSchemaRegistry()) {
         REQUIRE(schema.canBeRoot);
         REQUIRE(schema.makeDefault);
@@ -34,7 +34,9 @@ TEST_CASE("designer schema registry covers the L0 and first L1 node set",
         REQUIRE(key->set(widget, value));
         CHECK(key->get(widget) == value);
     }
-    for (const auto* type : {"Grid", "Image", "Icon"}) {
+    for (const auto* type : {"Grid", "Image", "Icon", "Slider", "ProgressBar",
+                             "Radio", "Tooltip", "Dropdown", "Tabs",
+                             "ThemeScope"}) {
         REQUIRE(findNodeSchema(type) != nullptr);
     }
 }
@@ -153,6 +155,58 @@ TEST_CASE("designer compiler applies first L1 static widget declarations",
     const auto invalidImageDiagnostics = validateDesignDocument(invalidImage);
     REQUIRE(invalidImageDiagnostics.size() == 1);
     CHECK(invalidImageDiagnostics.front().code == "schema.children");
+}
+
+TEST_CASE("designer compiler applies the remaining L1 static controls",
+          "[designer][p2][designer-l1]") {
+    DesignDocument document;
+    document.pageName = "l1-controls";
+    document.root = DesignNode{1, "Column"};
+
+    DesignNode slider{2, "Slider"};
+    slider.properties["width"] = DesignValue{DesignValue::Variant{180.0}};
+    DesignNode progress{3, "ProgressBar"};
+    progress.properties["text"] =
+        DesignValue{DesignValue::Variant{std::string{"50"}}};
+    progress.properties["progressIndeterminate"] =
+        DesignValue{DesignValue::Variant{true}};
+    DesignNode radio{4, "Radio"};
+    radio.properties["text"] =
+        DesignValue{DesignValue::Variant{std::string{"Plan"}}};
+    radio.properties["checked"] = DesignValue{DesignValue::Variant{true}};
+    DesignNode tooltip{5, "Tooltip"};
+    tooltip.properties["text"] =
+        DesignValue{DesignValue::Variant{std::string{"Tip"}}};
+    DesignNode dropdown{6, "Dropdown"};
+    dropdown.properties["text"] =
+        DesignValue{DesignValue::Variant{std::string{"Selected"}}};
+    DesignNode tabs{7, "Tabs"};
+    tabs.children = {DesignNode{8, "Button"}, DesignNode{9, "Button"}};
+    DesignNode themeScope{10, "ThemeScope"};
+    themeScope.children = {DesignNode{11, "Text"}};
+    document.root.children = {slider, progress, radio, tooltip, dropdown, tabs,
+                             themeScope};
+
+    REQUIRE(validateDesignDocument(document).empty());
+    const auto compiled = compileDesignDocument(document);
+    REQUIRE(compiled.ok());
+    REQUIRE(compiled.root.children.size() == 7);
+    CHECK(compiled.root.children[0].showFocusRing);
+    CHECK(compiled.root.children[0].width == 180.0F);
+    CHECK(compiled.root.children[1].text == "50");
+    CHECK(compiled.root.children[1].progressIndeterminate);
+    CHECK(compiled.root.children[2].text == "Plan");
+    CHECK(compiled.root.children[2].checked);
+    CHECK(compiled.root.children[3].text == "Tip");
+    CHECK(compiled.root.children[4].text == "Selected");
+    CHECK(compiled.root.children[4].buttonVariant ==
+          lumen::core::ButtonVariant::Outline);
+    REQUIRE(compiled.root.children[5].children.size() == 2);
+    CHECK(compiled.root.children[5].children[0].showFocusRing);
+    CHECK(compiled.root.children[5].children[1].showFocusRing);
+    REQUIRE(compiled.root.children[6].children.size() == 1);
+    CHECK(compiled.root.children[6].children[0].type ==
+          lumen::core::WidgetType::Text);
 }
 
 TEST_CASE("designer schema validates types, enums, ranges and structure",

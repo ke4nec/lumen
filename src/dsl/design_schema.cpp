@@ -113,19 +113,23 @@ using core::WidgetType;
 [[nodiscard]] bool isStyled(WidgetType type) {
     return type == WidgetType::Text || type == WidgetType::Button ||
            type == WidgetType::TextField || type == WidgetType::Checkbox ||
-           type == WidgetType::Switch;
+           type == WidgetType::Switch || type == WidgetType::Radio ||
+           type == WidgetType::Dropdown;
 }
 
 [[nodiscard]] bool isSingleChild(WidgetType type) {
     return type == WidgetType::Container || type == WidgetType::ScrollView ||
-           type == WidgetType::ListView || type == WidgetType::FocusScope;
+           type == WidgetType::ListView || type == WidgetType::FocusScope ||
+           type == WidgetType::ThemeScope;
 }
 
 [[nodiscard]] bool isLeaf(WidgetType type) {
     return type == WidgetType::Text || type == WidgetType::Button ||
            type == WidgetType::TextField || type == WidgetType::Checkbox ||
            type == WidgetType::Switch || type == WidgetType::Image ||
-           type == WidgetType::Icon;
+           type == WidgetType::Icon || type == WidgetType::Slider ||
+           type == WidgetType::ProgressBar || type == WidgetType::Radio ||
+           type == WidgetType::Tooltip || type == WidgetType::Dropdown;
 }
 
 [[nodiscard]] DesignValue readProperty(const Widget& widget,
@@ -205,6 +209,9 @@ using core::WidgetType;
     if (name == "showFocusRing") return booleanValue(widget.showFocusRing);
     if (name == "checked") return booleanValue(widget.checked);
     if (name == "scrollOffset") return numberValue(widget.scrollOffset);
+    if (name == "progressIndeterminate") {
+        return booleanValue(widget.progressIndeterminate);
+    }
     if (name == "columnCount") return numberValue(widget.gridColumnCount);
     if (name == "minColumnWidth") return numberValue(widget.gridMinColumnWidth);
     if (name == "columnGap") return numberValue(widget.gridColumnGap);
@@ -397,6 +404,12 @@ template <typename T>
         return true;
     }
     if (name == "scrollOffset") return assignNumber(value, widget.scrollOffset);
+    if (name == "progressIndeterminate") {
+        const auto* boolean = boolOf(value);
+        if (boolean == nullptr) return false;
+        widget.progressIndeterminate = *boolean;
+        return true;
+    }
     if (name == "columnCount") return assignNumber(value, widget.gridColumnCount);
     if (name == "minColumnWidth") {
         return assignNumber(value, widget.gridMinColumnWidth);
@@ -581,12 +594,20 @@ void addStyled(std::vector<PropertySpec>& properties) {
         {"ListView", WidgetType::ListView}, {"Checkbox", WidgetType::Checkbox},
         {"Switch", WidgetType::Switch}, {"FocusScope", WidgetType::FocusScope},
         {"Grid", WidgetType::Grid},     {"Image", WidgetType::Image},
-        {"Icon", WidgetType::Icon}};
+        {"Icon", WidgetType::Icon},     {"Slider", WidgetType::Slider},
+        {"ProgressBar", WidgetType::ProgressBar},
+        {"Radio", WidgetType::Radio},   {"Tooltip", WidgetType::Tooltip},
+        {"Dropdown", WidgetType::Dropdown}, {"Tabs", WidgetType::Tabs},
+        {"ThemeScope", WidgetType::ThemeScope}};
     for (const auto& [name, widgetType] : types) {
         if (type == name) {
             widget.type = widgetType;
             break;
         }
+    }
+    if (widget.type == WidgetType::Slider) widget.showFocusRing = true;
+    if (widget.type == WidgetType::Dropdown) {
+        widget.buttonVariant = ButtonVariant::Outline;
     }
     return widget;
 }
@@ -605,7 +626,8 @@ void addStyled(std::vector<PropertySpec>& properties) {
             enumValue("variant", "filled"),
             {"filled", "tonal", "outline", "ghost", "danger"}));
     }
-    if (widgetType == WidgetType::Checkbox || widgetType == WidgetType::Switch) {
+    if (widgetType == WidgetType::Checkbox || widgetType == WidgetType::Switch ||
+        widgetType == WidgetType::Radio) {
         schema.properties.push_back(spec("checked", PropertyKind::Boolean,
                                          PropertyPersistence::Declaration,
                                          booleanValue(false)));
@@ -662,6 +684,19 @@ void addStyled(std::vector<PropertySpec>& properties) {
     }
     if (widgetType == WidgetType::Image) {
         schema.properties.push_back(spec("imageSource", PropertyKind::String,
+                                         PropertyPersistence::Declaration,
+                                         stringValue("")));
+    }
+    if (widgetType == WidgetType::ProgressBar) {
+        schema.properties.push_back(spec("text", PropertyKind::String,
+                                         PropertyPersistence::Declaration,
+                                         stringValue("")));
+        schema.properties.push_back(spec(
+            "progressIndeterminate", PropertyKind::Boolean,
+            PropertyPersistence::Declaration, booleanValue(false)));
+    }
+    if (widgetType == WidgetType::Tooltip) {
+        schema.properties.push_back(spec("text", PropertyKind::String,
                                          PropertyPersistence::Declaration,
                                          stringValue("")));
     }
@@ -863,7 +898,7 @@ const WidgetFieldInventory& widgetFieldInventory() {
         {"elevation", "", WidgetFieldCategory::Declaration},
         {"transitionAlpha", "", WidgetFieldCategory::PreviewOnly},
         {"styleOverrides", "", WidgetFieldCategory::Declaration},
-        {"progressIndeterminate", "", WidgetFieldCategory::Declaration},
+        {"progressIndeterminate", "progressIndeterminate", WidgetFieldCategory::Declaration},
         {"iconRotation", "", WidgetFieldCategory::PreviewOnly},
         {"iconLeading", "", WidgetFieldCategory::Declaration},
         {"clipRounded", "", WidgetFieldCategory::Declaration},
@@ -885,7 +920,9 @@ const std::vector<NodeSchema>& nodeSchemaRegistry() {
         for (const char* type : {"Container", "Row", "Column", "Stack", "Text",
                                  "Button", "TextField", "ScrollView", "ListView",
                                  "Checkbox", "Switch", "FocusScope", "Grid",
-                                 "Image", "Icon"}) {
+                                 "Image", "Icon", "Slider", "ProgressBar",
+                                 "Radio", "Tooltip", "Dropdown", "Tabs",
+                                 "ThemeScope"}) {
             result.push_back(makeSchema(type));
         }
         return result;

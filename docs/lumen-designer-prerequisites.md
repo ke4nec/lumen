@@ -576,8 +576,9 @@ struct DesignCompileResult {
     const DesignDocument& document);
 ```
 
-`compileDesignDocument` 当前编译 L0 的 12 个节点和首批 L1 静态节点 `Grid`、`Image`、`Icon`；
-遇到其余 L1–L3 节点必须返回“未注册节点”诊断，不能降级成 `Container`。绑定、handler、theme、
+`compileDesignDocument` 当前编译 L0 的 12 个节点和 L1 静态节点 `Grid`、`Image`、`Icon`、
+`Slider`、`ProgressBar`、`Radio`、`Tooltip`、`Dropdown`、`Tabs`、`ThemeScope`；
+遇到 L2–L3 节点必须返回“未注册节点”诊断，不能降级成 `Container`。绑定、handler、theme、
 image 命名引用和 controller 的运行时
 注入留给 P3；第一阶段只保留命名 `references`，因此不会把裸指针写进 DOM。上例中的
 `CompileTrace` 和 `DesignRuntimeSession` 是 P4/P3 的候选返回值，若分阶段实现，也必须
@@ -634,7 +635,7 @@ P2 继续放在 `lumen-dsl`，因为 schema 同时服务文档解析、Widget �
 | 文件 | 职责 |
 | --- | --- |
 | `include/lumen/dsl/design_schema.h` | `PropertySpec`、`NodeSchema`、约束、编辑器 hint、schema registry 接口 |
-| `src/dsl/design_schema.cpp` | L0 与首批 L1 注册表、通用属性转换和校验；后续 L1–L3 分批追加 |
+| `src/dsl/design_schema.cpp` | L0 与 L1 静态节点注册表、通用属性转换和校验；后续 L2–L3 分批追加 |
 | `tests/designer_schema_tests.cpp` | 注册表覆盖、默认值、读写往返、非法值和节点结构约束 |
 
 注册表使用显式静态表，不使用宏反射或字段偏移。字段类型有 `bool`、`number`、`string`、
@@ -1029,7 +1030,8 @@ D3 可编辑设计器
 | F6 / D3 | 工具箱、属性面板、结构编辑、undo/redo、资源授权 | P1–P5 + G-D13–G-D16 全部通过后再做真实编辑流程 | 退回只读 D2，不宣称双向完成 |
 
 F0 是源码边界核对；F1/P1 已完成 L0 语义 DOM、`.lumen` 导入、规范化设计文档 codec 和
-DOM→Widget 编译入口；F2/P2 已完成 L0 与首批 L1 静态节点（`Grid`/`Image`/`Icon`）的
+DOM→Widget 编译入口；F2/P2 已完成 L0 与 L1 静态节点（22 个 schema，含 `Grid`/`Image`/
+`Icon`/`Slider`/`ProgressBar`/`Radio`/`Tooltip`/`Dropdown`/`Tabs`/`ThemeScope`）的
 `NodeSchema`/`PropertySpec` 显式注册表，并由编译
 入口执行类型、枚举、范围、子节点、引用存储位置和不可持久化预览属性约束，并以
 `widgetFieldInventory()` 守护 Widget 字段分类；F3/P3 已完成类型化 `DesignRuntimeContext`、
@@ -1038,12 +1040,12 @@ DOM→Widget 编译入口；F2/P2 已完成 L0 与首批 L1 静态节点（`Grid
 清除 `bind`/`onClick`，避免未解析引用触发业务行为。
 `designer_document_tests.cpp`
 覆盖 DOM round-trip、C++ builder golden、未知节点/损坏输入、未知字段保留、重复 ID 和
-P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 15 节点注册（含首批 L1）、访问器、非法属性和
+P1 运行时引用拒绝；`designer_schema_tests.cpp` 覆盖 22 节点注册（含 L1 静态节点）、访问器、非法属性和
 结构诊断、引用错误存储位置和 `PreviewOnly` 字段拒绝；`designer_runtime_context_tests.cpp` 覆盖成功解析、缺失引用、错误类型引用、frame 保留、
 session 关闭回调（含 session 析构时的 RAII 关闭）和引用 lease 在关闭时释放。F4/P4 已完成 `DesignSourceMap`、`DesignCoordinateTransform` 和值语义的
 `DesignDocumentEditor`：节点/属性 source span 会随 codec 往返保留，编辑操作覆盖普通子节点
 和命名 slot，并在插入/复制时清除外来 source span、分配新 ID、在重排时保持原 ID；编译结果
-同时返回 SourceMap 和 CompileTrace。P2 registry 已覆盖 L0 与首批 L1 静态节点；P3 尚未构造 controller 或资源裸指针；F5 的
+同时返回 SourceMap 和 CompileTrace。P2 registry 已覆盖 L0 与 L1 静态节点；P3 尚未构造 controller 或资源裸指针；F5 的
 DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢复已完成；主文件的读取、迁移或
 schema 失败均尝试有效恢复副本。F6 已增加设计器
 应用层的 `DesignDocumentTransaction`/`DesignDocumentHistory`、会话级 `DesignSelectionModel`
@@ -1058,7 +1060,7 @@ SourceMap 的根锚点。
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
 真实 D3 应用出口当前已接通 L0 属性面板编辑、命名引用管理、文档级撤销/重做、结构插入/复制/删除/重排、
-12 类型工具箱、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；首批 L1 schema 已可被私有设计文档编译，工具箱创建和其余 L1–L3 扩展、完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
+12 类型工具箱、打开/保存/另存为命令和 `.design`/`.lumen` 文件对话框路径；L1 schema 已可被私有设计文档编译，工具箱创建和 L2–L3 扩展、完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
 visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
 `PreviewOnly`/`Derived` 属性进入可保存文档。
 引用面板现已接入中心页签：DataGrid 展示当前文档的命名引用、引用类型、节点位置和离线 `Stub`/
@@ -1273,9 +1275,10 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   Release 配置为 `1066/1066`；
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
-  `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；`Grid`、`Image`、
-  `Icon` 已登记私有设计 schema，并覆盖列/间距、稳定 imageSource 和 IconId 枚举的编译 golden；
-  其余 L1–L3 节点、controller/resource 引用注入、真实资源加载和 L1 编辑器工具箱流程仍留在后续阶段。
+  `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态节点已登记私有
+  设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值和
+  Tabs/ThemeScope 子树的编译 golden；L2–L3 节点、controller/resource 引用注入、真实资源加载和
+  L1 编辑器工具箱流程仍留在后续阶段。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
   代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译按 L0 schema

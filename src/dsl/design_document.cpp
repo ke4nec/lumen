@@ -972,6 +972,9 @@ template <typename Integer>
         if (!child.has_value()) return std::nullopt;
         widget.children.push_back(std::move(*child));
     }
+    if (widget.type == core::WidgetType::Tabs) {
+        for (auto& child : widget.children) child.showFocusRing = true;
+    }
     return widget;
 }
 
