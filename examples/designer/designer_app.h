@@ -16,7 +16,10 @@
 #include "lumen/dsl/design_resources.h"
 #include "lumen/dsl/design_workbench.h"
 #include "lumen/render/resource_manager.h"
+#include "lumen/widgets/color_picker.h"
+#include "lumen/widgets/combo_box.h"
 #include "lumen/widgets/datagrid.h"
+#include "lumen/widgets/spin.h"
 #include "lumen/widgets/statusbar.h"
 #include "lumen/widgets/toolbar.h"
 #include "lumen/widgets/tree.h"
@@ -240,6 +243,15 @@ class DesignerApp {
     OutlineModel outlineModel_;
     widgets::TreeController outlineController_{};
     widgets::DataGridController referencesController_{};
+    widgets::ComboBoxController comboPreviewController_{
+        {widgets::ComboBoxController::Option{"draft", "Draft"},
+         widgets::ComboBoxController::Option{"review", "Review"},
+         widgets::ComboBoxController::Option{"published", "Published"}},
+        "designer-component-combo-value", "designer-component-combo"};
+    widgets::ColorPickerController colorPickerPreviewController_{
+        "designer-component-color-value", "designer-component-color"};
+    widgets::SpinController spinPreviewController_{
+        42.0, "designer-component-spin"};
     widgets::DataGridController dataGridPreviewController_{};
     widgets::ToolBarController toolBarPreviewController_{
         "designer-component-toolbar"};

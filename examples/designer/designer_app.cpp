@@ -32,8 +32,10 @@ std::vector<const dsl::NodeSchema*> designerToolboxSchemas() {
         // These L3 components have deterministic designer-owned adapters.
         // Other component nodes stay out until their application builders are
         // wired, so inserting one cannot silently produce a placeholder.
-        if (!schema.isComponent || schema.type == "DataGrid" ||
-            schema.type == "ToolBar" || schema.type == "StatusBar") {
+        if (!schema.isComponent || schema.type == "ComboBox" ||
+            schema.type == "ColorPicker" || schema.type == "Spin" ||
+            schema.type == "DataGrid" || schema.type == "ToolBar" ||
+            schema.type == "StatusBar") {
             result.push_back(&schema);
         }
     }
@@ -272,14 +274,24 @@ dsl::DesignComponentResult DesignerApp::OfflineRuntimeContext::buildComponent(
     const dsl::DesignComponentContext& componentContext) const {
     (void)componentContext;
     if (owner_ == nullptr ||
-        (node.type != "DataGrid" && node.type != "ToolBar" &&
-         node.type != "StatusBar")) {
+        (node.type != "ComboBox" && node.type != "ColorPicker" &&
+         node.type != "Spin" && node.type != "DataGrid" &&
+         node.type != "ToolBar" && node.type != "StatusBar")) {
         return dsl::DesignComponentResult{
             std::nullopt, {}, "component.missing",
             "no component builder is registered for this node type"};
     }
     dsl::DesignComponentResult result;
-    if (node.type == "DataGrid") {
+    if (node.type == "ComboBox") {
+        result.widget = owner_->comboPreviewController_.build(
+            owner_->shell_.theme());
+    } else if (node.type == "ColorPicker") {
+        result.widget = owner_->colorPickerPreviewController_.build(
+            owner_->shell_, owner_->shell_.theme());
+    } else if (node.type == "Spin") {
+        result.widget = owner_->spinPreviewController_.build(
+            owner_->shell_.theme());
+    } else if (node.type == "DataGrid") {
         result.widget = owner_->dataGridPreviewController_.build();
     } else if (node.type == "ToolBar") {
         result.widget = owner_->toolBarPreviewController_.build(
@@ -365,6 +377,9 @@ DesignerApp::DesignerApp()
                                                      : std::string{"Draft"};
             return std::string{};
         });
+    spinPreviewController_.setRange(0.0, 100.0);
+    spinPreviewController_.setStep(1.0);
+    spinPreviewController_.setLabel("Preview value");
     toolBarPreviewController_.setItems({
         widgets::ToolBarItem{.id = "open",
                              .icon = core::IconId::Folder,
@@ -423,6 +438,14 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
         const bool editingProperty =
             focused.starts_with("designer-property-field:") ||
             focused.starts_with("designer-reference-field:");
+        if (self->comboPreviewController_.handleKey(shell, key, modifiers,
+                                                     keyChar)) {
+            return true;
+        }
+        if (self->spinPreviewController_.handleKey(shell, key, modifiers,
+                                                    keyChar)) {
+            return true;
+        }
         if (ctrlLike && (modifiers & core::kModifierAlt) == 0) {
             const char lower = static_cast<char>(
                 std::tolower(static_cast<unsigned char>(keyChar)));
@@ -472,6 +495,14 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
             return true;
         }
         return false;
+    };
+    config.onWheel = [self](const core::RenderNode&, const core::RenderNode*,
+                            core::Offset position, core::Offset delta) {
+        return self->spinPreviewController_.handleWheel(self->shell_, position,
+                                                        delta);
+    };
+    config.onAnimate = [self](app::AppShell& shell, std::uint64_t nowMs) {
+        return self->spinPreviewController_.step(shell, nowMs);
     };
     return config;
 }
@@ -526,6 +557,9 @@ void DesignerApp::attach() {
     referencesController_.onRowActivated =
         [this](const std::string& key) { selectReference(key); };
     referencesController_.attach(shell_, "designer-references");
+    comboPreviewController_.attach(shell_);
+    colorPickerPreviewController_.attach(shell_);
+    spinPreviewController_.attach(shell_);
     dataGridPreviewController_.attach(shell_, "designer-component-datagrid");
     toolBarPreviewController_.attach(shell_);
     statusBarPreviewController_.attach(shell_);
@@ -2015,10 +2049,16 @@ core::Widget DesignerApp::buildToolboxPanel() {
     }
     auto heading = core::makeText("Toolbox", theme.typography.label, {}, 0.0F,
                                   "designer-toolbox-heading");
+    auto toolboxBody = core::makeColumn(
+        std::move(rows), core::MainAxisAlignment::Start,
+        core::CrossAxisAlignment::Stretch, 4.0F);
+    auto toolboxScroll = core::makeScrollView(
+        std::move(toolboxBody), "designer-toolbox-scroll", std::nullopt,
+        240.0F, {});
+    toolboxScroll.scrollAxis = core::ScrollAxis::Vertical;
+    toolboxScroll.showScrollbar = true;
     return core::makeColumn(
-        {std::move(heading),
-         core::makeColumn(std::move(rows), core::MainAxisAlignment::Start,
-                          core::CrossAxisAlignment::Stretch, 4.0F)},
+        {std::move(heading), std::move(toolboxScroll)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 6.0F,
         {}, {}, "designer-toolbox");
 }
