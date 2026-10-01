@@ -203,7 +203,9 @@ class DesignerApp {
     [[nodiscard]] std::filesystem::path projectRootPath() const;
     [[nodiscard]] std::filesystem::path projectPagePath(
         const dsl::DesignProjectPage& page) const;
-    void appendProjectDiagnostic(dsl::DesignError diagnostic);
+    void appendProjectDiagnostic(dsl::DesignError diagnostic,
+                                 std::string documentId = {});
+    [[nodiscard]] bool diagnosticActionable(std::size_t index) const;
     void clearPropertyObservers();
     void registerPropertyBinding(dsl::DesignNodeId id,
                                   const dsl::DesignPreviewProperty& property);
@@ -345,6 +347,7 @@ class DesignerApp {
     std::map<std::string, std::string> projectDocumentPaths_{};
     std::map<std::string, std::uint64_t> projectDocumentRevisions_{};
     std::vector<dsl::DesignError> projectDiagnostics_{};
+    std::vector<std::string> projectDiagnosticDocumentIds_{};
     std::string activeProjectDocumentId_{};
     app::AppShell shell_;
     app::AppShell previewShell_;

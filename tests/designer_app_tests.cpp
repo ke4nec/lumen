@@ -1628,6 +1628,64 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     CHECK(saved.project.pages[1].documentId == settingsId);
 }
 
+TEST_CASE("designer project diagnostics switch to the affected document",
+          "[designer][dp9][d3][app]") {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-project-diagnostics-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()));
+    std::error_code error;
+    std::filesystem::create_directories(root, error);
+    REQUIRE_FALSE(error);
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+
+    const auto homePath = root / "home.design";
+    const auto settingsPath = root / "settings.design";
+    DesignerApp seed;
+    seed.attach();
+    REQUIRE(seed.loadSource("page home { Text(\"Home\") }", "home.lumen"));
+    REQUIRE(seed.saveDesignFile(homePath.string()));
+    const auto homeId = seed.workbench().document()->documentId;
+    REQUIRE(seed.loadSource("page settings { Text(\"Settings\") }",
+                            "settings.lumen"));
+    REQUIRE(seed.saveDesignFile(settingsPath.string()));
+    REQUIRE(seed.saveDesignFile(settingsPath.string()));
+    const auto settingsId = seed.workbench().document()->documentId;
+
+    std::ofstream(settingsPath, std::ios::trunc) << "{\"truncated\":";
+    lumen::dsl::DesignProject project;
+    project.projectId = "diagnostics.project";
+    project.name = "Diagnostics project";
+    project.root = ".";
+    project.pages = {{homeId, "home.design", "Home"},
+                     {settingsId, "settings.design", "Settings"}};
+    lumen::dsl::ProjectStore projectStore;
+    std::vector<lumen::dsl::DesignError> saveDiagnostics;
+    const auto manifest = root / "diagnostics.lumen-project";
+    REQUIRE(projectStore.save(manifest.string(), project, saveDiagnostics));
+
+    DesignerApp app;
+    app.attach();
+    REQUIRE(app.loadProjectFile(manifest.string()));
+    CHECK(app.activeProjectDocumentId() == homeId);
+    REQUIRE(app.projectDiagnostics().size() == 1);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    const auto diagnostic = findNodeByKey(app.shell().root(), "designer-diagnostic:0");
+    REQUIRE(diagnostic != nullptr);
+    REQUIRE(app.shell().handlers().contains("designer:diagnostic:0"));
+    app.shell().handlers().at("designer:diagnostic:0")();
+    CHECK(app.activeProjectDocumentId() == settingsId);
+    CHECK(app.workbench().document()->documentId == settingsId);
+}
+
 TEST_CASE("designer app routes file dialog commands through one path",
           "[designer][d3][app]") {
     DesignerApp app;

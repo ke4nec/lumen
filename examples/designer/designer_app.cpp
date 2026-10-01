@@ -1069,8 +1069,10 @@ bool DesignerApp::saveDesignFile(const std::string& filename) {
     return saved;
 }
 
-void DesignerApp::appendProjectDiagnostic(dsl::DesignError diagnostic) {
+void DesignerApp::appendProjectDiagnostic(dsl::DesignError diagnostic,
+                                          std::string documentId) {
     projectDiagnostics_.push_back(std::move(diagnostic));
+    projectDiagnosticDocumentIds_.push_back(std::move(documentId));
 }
 
 std::filesystem::path DesignerApp::projectRootPath() const {
@@ -1127,6 +1129,7 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
     const auto loaded = projectStore_.load(filename);
     if (!loaded.ok()) {
         projectDiagnostics_ = loaded.diagnostics;
+        projectDiagnosticDocumentIds_.assign(projectDiagnostics_.size(), {});
         shell_.markDirty();
         return false;
     }
@@ -1135,11 +1138,14 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
     const auto previousDocuments = projectDocuments_;
     const auto previousPaths = projectDocumentPaths_;
     const auto previousRevisions = projectDocumentRevisions_;
+    const auto previousDiagnostics = projectDiagnostics_;
+    const auto previousDiagnosticDocumentIds = projectDiagnosticDocumentIds_;
     const auto previousActive = activeProjectDocumentId_;
     project_ = loaded.project;
     projectFile_ = filename;
     projectRevision_ = loaded.revision;
     projectDiagnostics_ = loaded.diagnostics;
+    projectDiagnosticDocumentIds_.assign(projectDiagnostics_.size(), {});
     projectDocuments_.clear();
     projectDocumentPaths_.clear();
     projectDocumentRevisions_.clear();
@@ -1161,15 +1167,16 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
             continue;
         }
         const auto document = projectDocumentStore_.load(pagePath.string());
-        projectDiagnostics_.insert(projectDiagnostics_.end(),
-                                   document.diagnostics.begin(),
-                                   document.diagnostics.end());
+        for (auto diagnostic : document.diagnostics) {
+            appendProjectDiagnostic(std::move(diagnostic), page.documentId);
+        }
         if (!document.ok()) continue;
         if (document.document.documentId != page.documentId) {
             appendProjectDiagnostic(dsl::DesignError{
                 "project.document_id", pagePath.string(), {},
                 "page documentId does not match the project manifest", {}, {}, 0,
-                {}, {}});
+                {}, {}},
+                page.documentId);
             continue;
         }
         projectDocuments_[page.documentId] = document.document;
@@ -1182,6 +1189,8 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
         projectDocuments_ = previousDocuments;
         projectDocumentPaths_ = previousPaths;
         projectDocumentRevisions_ = previousRevisions;
+        projectDiagnostics_ = previousDiagnostics;
+        projectDiagnosticDocumentIds_ = previousDiagnosticDocumentIds;
         activeProjectDocumentId_ = previousActive;
         shell_.markDirty();
         return false;
@@ -1213,8 +1222,9 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
                 revision == projectDocumentRevisions_.end()
                     ? std::nullopt
                     : std::optional<std::uint64_t>{revision->second})) {
-            projectDiagnostics_.insert(projectDiagnostics_.end(), diagnostics.begin(),
-                                       diagnostics.end());
+            for (auto diagnostic : diagnostics) {
+                appendProjectDiagnostic(std::move(diagnostic), page.documentId);
+            }
             return false;
         }
         page.pageName = document->second.pageName;
@@ -1225,8 +1235,9 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
                             projectFile_ == filename
                                 ? std::optional<std::uint64_t>{projectRevision_}
                                 : std::nullopt)) {
-        projectDiagnostics_.insert(projectDiagnostics_.end(), diagnostics.begin(),
-                                   diagnostics.end());
+        for (auto diagnostic : diagnostics) {
+            appendProjectDiagnostic(std::move(diagnostic));
+        }
         return false;
     }
     projectFile_ = filename;
@@ -1242,6 +1253,7 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
         }
     }
     projectDiagnostics_.clear();
+    projectDiagnosticDocumentIds_.clear();
     statusMessage_ = "Project saved  /  " + filename;
     shell_.markDirty();
     return true;
@@ -1325,6 +1337,11 @@ void DesignerApp::rebuildReferences() {
     const auto statusFor = [this](dsl::DesignNodeId id,
                                   const std::string& property) {
         for (const auto& diagnostic : diagnostics_) {
+            if (workbench_.document().has_value() &&
+                !diagnostic.documentId.empty() &&
+                diagnostic.documentId != workbench_.document()->documentId) {
+                continue;
+            }
             if (diagnostic.nodeId == id && diagnostic.property == property &&
                 (diagnostic.code.starts_with("reference.") ||
                  diagnostic.code == "compile.reference_kind")) {
@@ -1410,17 +1427,39 @@ std::optional<dsl::DesignNodeId> DesignerApp::diagnosticTarget(
 }
 
 void DesignerApp::activateDiagnostic(std::size_t index) {
-    if (const auto id = diagnosticTarget(index); id.has_value()) {
+    if (index >= diagnostics_.size()) return;
+    const auto diagnostic = diagnostics_[index];
+    bool switchedDocument = false;
+    if (project_.has_value() && !diagnostic.documentId.empty() &&
+        diagnostic.documentId != activeProjectDocumentId_ &&
+        projectDocuments_.contains(diagnostic.documentId)) {
+        if (!switchProjectDocument(diagnostic.documentId)) return;
+        switchedDocument = true;
+    }
+    if (switchedDocument) {
+        if (workbench_.document().has_value() && diagnostic.nodeId != 0 &&
+            workbench_.document()->documentId == diagnostic.documentId &&
+            findDesignNode(workbench_.document()->root, diagnostic.nodeId) !=
+                nullptr) {
+            selectNode(diagnostic.nodeId);
+        }
+    } else if (const auto id = diagnosticTarget(index); id.has_value()) {
         selectNode(*id);
     }
-    if (index < diagnostics_.size()) {
-        const auto& diagnostic = diagnostics_[index];
-        if (diagnostic.sourceSpan.has_value()) {
-            centerTab_ = CenterTab::Source;
-            sourceFocusLine_ = diagnostic.sourceSpan->begin.line;
-            shell_.markDirty();
-        }
+    if (diagnostic.sourceSpan.has_value()) {
+        centerTab_ = CenterTab::Source;
+        sourceFocusLine_ = diagnostic.sourceSpan->begin.line;
+        shell_.markDirty();
     }
+}
+
+bool DesignerApp::diagnosticActionable(std::size_t index) const {
+    if (index >= diagnostics_.size()) return false;
+    const auto& diagnostic = diagnostics_[index];
+    return diagnosticTarget(index).has_value() ||
+           (project_.has_value() && !diagnostic.documentId.empty() &&
+            diagnostic.documentId != activeProjectDocumentId_ &&
+            projectDocuments_.contains(diagnostic.documentId));
 }
 
 void DesignerApp::registerSelectionHandlers(const dsl::DesignNode& node) {
@@ -1509,6 +1548,15 @@ void DesignerApp::syncImageResources() {
     std::set<std::string> activeUris;
     if (workbench_.document().has_value()) {
         collectImageResources(workbench_.document()->root, "root", activeUris);
+    }
+    for (std::size_t index = 0; index < projectDiagnostics_.size(); ++index) {
+        auto diagnostic = dsl::DesignDiagnostic::fromError(
+            projectDiagnostics_[index]);
+        if (index < projectDiagnosticDocumentIds_.size() &&
+            diagnostic.documentId.empty()) {
+            diagnostic.documentId = projectDiagnosticDocumentIds_[index];
+        }
+        dsl::appendDesignDiagnostic(diagnostics_, std::move(diagnostic));
     }
     for (auto it = imageResources_.begin(); it != imageResources_.end();) {
         if (activeUris.contains(it->first)) {
@@ -2314,6 +2362,9 @@ std::string DesignerApp::formatDiagnostic(
         stream << ":" << diagnostic.sourceSpan->begin.line << ":"
                << diagnostic.sourceSpan->begin.column;
     }
+    if (!diagnostic.documentId.empty()) {
+        stream << "  [" << diagnostic.documentId << "]";
+    }
     stream << "  " << diagnostic.code << "  " << diagnostic.message;
     return stream.str();
 }
@@ -3029,7 +3080,7 @@ core::Widget DesignerApp::buildDiagnosticRow(std::size_t index) {
     const auto& theme = shell_.theme();
     const auto& diagnostic = diagnostics_.at(index);
     const std::string key = "designer-diagnostic:" + std::to_string(index);
-    if (!diagnosticTarget(index).has_value()) {
+    if (!diagnosticActionable(index)) {
         return core::makeText(formatDiagnostic(diagnostic),
                               theme.typography.caption, {}, 0.0F, key);
     }
@@ -3061,7 +3112,7 @@ core::Widget DesignerApp::buildDiagnosticsPanel() {
     }
     for (std::size_t index = 0; index < diagnostics_.size();
          ++index) {
-        if (diagnosticTarget(index).has_value()) {
+        if (diagnosticActionable(index)) {
             const std::string handler =
                 "designer:diagnostic:" + std::to_string(index);
             shell_.handlers()[handler] = [this, index] {
