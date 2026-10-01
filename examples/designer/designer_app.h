@@ -301,7 +301,7 @@ class DesignerApp {
     std::size_t sourceFocusLine_{0};
     std::string sourceFile_{"<sample>"};
     std::string statusMessage_{};
-    std::optional<dsl::DesignNode> clipboardNode_{};
+    std::vector<dsl::DesignNode> clipboardNodes_{};
     FileDialogRequester fileDialogRequester_{};
     PendingFileDialog pendingFileDialog_{PendingFileDialog::None};
     bool darkMode_{true};

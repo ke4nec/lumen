@@ -78,6 +78,11 @@ class DesignPreviewWorkbench {
     [[nodiscard]] std::optional<DesignNodeId> insertNode(
         DesignNodeId parentId, std::size_t index, DesignNode node,
         std::string slot = {});
+    // Inserts a group of sibling nodes as one undoable document transaction.
+    // The returned ids preserve insertion order and are selected together.
+    [[nodiscard]] std::vector<DesignNodeId> insertNodes(
+        DesignNodeId parentId, std::size_t index,
+        std::vector<DesignNode> nodes, std::string slot = {});
     [[nodiscard]] bool removeNode(DesignNodeId id);
     [[nodiscard]] bool moveNode(DesignNodeId id, DesignNodeId newParentId,
                                 std::size_t index, std::string slot = {});

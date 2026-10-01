@@ -260,6 +260,40 @@ std::optional<DesignNodeId> DesignPreviewWorkbench::insertNode(
     return changed ? inserted : std::nullopt;
 }
 
+std::vector<DesignNodeId> DesignPreviewWorkbench::insertNodes(
+    DesignNodeId parentId, std::size_t index, std::vector<DesignNode> nodes,
+    std::string slot) {
+    if (nodes.empty()) return {};
+    std::vector<DesignNodeId> inserted;
+    const bool changed = applyEdit(
+        "Insert nodes", {parentId},
+        [parentId, index, nodes = std::move(nodes), slot = std::move(slot),
+         &inserted](DesignDocumentEditor& editor) mutable {
+            std::size_t insertionIndex = index;
+            for (auto& node : nodes) {
+                DesignNodeId insertedId = 0;
+                if (!editor.insertChild(parentId, insertionIndex++,
+                                        std::move(node), &insertedId, slot)) {
+                    return false;
+                }
+                inserted.push_back(insertedId);
+            }
+            return true;
+        },
+        [&inserted](const DesignDocument&, const DesignSelection& before) {
+            auto after = before;
+            if (!inserted.empty()) {
+                after.ids = std::set<DesignNodeId>(inserted.begin(),
+                                                   inserted.end());
+                after.primary = inserted.back();
+                after.anchor = inserted.front();
+                after.captured.reset();
+            }
+            return after;
+        });
+    return changed ? inserted : std::vector<DesignNodeId>{};
+}
+
 bool DesignPreviewWorkbench::removeNode(DesignNodeId id) {
     if (!document_.has_value() || id == document_->root.id) {
         setEditError("the root node cannot be removed");

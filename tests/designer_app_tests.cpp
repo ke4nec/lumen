@@ -41,6 +41,40 @@ void writeRawRgba(const std::filesystem::path& path) {
                static_cast<std::streamsize>(pixels.size()));
 }
 
+const lumen::dsl::DesignNode* findDesignNodeById(
+    const lumen::dsl::DesignNode& node, lumen::dsl::DesignNodeId id) {
+    if (node.id == id) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = findDesignNodeById(child, id);
+            found != nullptr) {
+            return found;
+        }
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            if (const auto* found = findDesignNodeById(child, id);
+                found != nullptr) {
+                return found;
+            }
+        }
+    }
+    return nullptr;
+}
+
+const lumen::dsl::DesignPreviewOutlineNode* findOutlineNodeById(
+    const lumen::dsl::DesignPreviewOutlineNode& node,
+    lumen::dsl::DesignNodeId id) {
+    if (node.id == id) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = findOutlineNodeById(child, id);
+            found != nullptr) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 TEST_CASE("designer app loads authorized image resources into both previews",
           "[designer][f6][resource][app]") {
     const auto root = std::filesystem::temp_directory_path() /
@@ -1003,6 +1037,118 @@ TEST_CASE("designer app copies and pastes a selected node as one transaction",
     (void)app.shell().renderFrame();
     CHECK(app.workbench().outline()->children.size() == initial->children.size());
     CHECK(app.workbench().selection().primary == sourceId);
+}
+
+TEST_CASE("designer app copies multi-selection across parents as one transaction",
+          "[designer][d3][app][selection]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") { Row(key: \"source\") { "
+        "Text(\"A\", key: \"a\") Button(\"B\", key: \"b\") } "
+        "Column(key: \"target\") { Text(\"Existing\", key: \"existing\") } "
+        "} }",
+        "multi-copy.lumen"));
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().document().has_value());
+    const auto& root = app.workbench().document()->root;
+    REQUIRE(root.children.size() == 2);
+    const auto& source = root.children[0];
+    const auto& target = root.children[1];
+    REQUIRE(source.children.size() == 2);
+    REQUIRE(target.children.size() == 1);
+    const auto firstId = source.children[0].id;
+    const auto secondId = source.children[1].id;
+    const auto targetId = target.id;
+    const auto targetChildId = target.children.front().id;
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    const auto* firstOutline = findOutlineNodeById(*outline, firstId);
+    const auto* secondOutline = findOutlineNodeById(*outline, secondId);
+    REQUIRE(firstOutline != nullptr);
+    REQUIRE(secondOutline != nullptr);
+    const auto* firstRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + firstOutline->path);
+    const auto* secondRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + secondOutline->path);
+    REQUIRE(firstRow != nullptr);
+    REQUIRE(secondRow != nullptr);
+    const auto firstOrigin = absoluteOffset(app.shell().root(), firstRow->key);
+    const auto secondOrigin = absoluteOffset(app.shell().root(), secondRow->key);
+    const Offset firstPoint =
+        firstOrigin + Offset{firstRow->size.width * 0.5F,
+                             firstRow->size.height * 0.5F};
+    const Offset secondPoint =
+        secondOrigin + Offset{secondRow->size.width * 0.5F,
+                              secondRow->size.height * 0.5F};
+    app.shell().pointerDown(firstPoint);
+    app.shell().pointerUp(firstPoint);
+    app.shell().pointerDown(secondPoint, lumen::core::kModifierShift);
+    app.shell().pointerUp(secondPoint);
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+
+    app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'c');
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Copied 2 nodes");
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{firstId, secondId});
+    CHECK_FALSE(app.workbench().dirty());
+
+    const auto targetOutline = findOutlineNodeById(*outline, targetChildId);
+    REQUIRE(targetOutline != nullptr);
+    const auto* targetRow = findNodeByKey(
+        app.shell().root(), "designer-outline:item:" + targetOutline->path);
+    REQUIRE(targetRow != nullptr);
+    const auto targetOrigin = absoluteOffset(app.shell().root(), targetRow->key);
+    const Offset targetPoint =
+        targetOrigin + Offset{targetRow->size.width * 0.5F,
+                              targetRow->size.height * 0.5F};
+    app.shell().pointerDown(targetPoint);
+    app.shell().pointerUp(targetPoint);
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().selection().primary == targetChildId);
+    app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'v');
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Pasted 2 nodes");
+
+    REQUIRE(app.workbench().document().has_value());
+    const auto* pastedTarget = findDesignNodeById(
+        app.workbench().document()->root, targetId);
+    REQUIRE(pastedTarget != nullptr);
+    REQUIRE(pastedTarget->children.size() == 3);
+    const auto pastedFirstId = pastedTarget->children[1].id;
+    const auto pastedSecondId = pastedTarget->children[2].id;
+    CHECK(pastedFirstId != firstId);
+    CHECK(pastedSecondId != secondId);
+    CHECK(pastedTarget->children[1].type == "Text");
+    CHECK(pastedTarget->children[2].type == "Button");
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{pastedFirstId, pastedSecondId});
+    CHECK(app.workbench().selection().primary == pastedSecondId);
+    CHECK(app.workbench().dirty());
+
+    REQUIRE(app.undo());
+    REQUIRE(app.workbench().document().has_value());
+    pastedTarget = findDesignNodeById(app.workbench().document()->root,
+                                      targetId);
+    REQUIRE(pastedTarget != nullptr);
+    CHECK(pastedTarget->children.size() == 1);
+    CHECK(app.workbench().selection().primary == targetChildId);
+
+    REQUIRE(app.redo());
+    REQUIRE(app.workbench().document().has_value());
+    pastedTarget = findDesignNodeById(app.workbench().document()->root,
+                                      targetId);
+    REQUIRE(pastedTarget != nullptr);
+    CHECK(pastedTarget->children.size() == 3);
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{pastedFirstId, pastedSecondId});
 }
 
 TEST_CASE("designer app creates L1 and L2 toolbox nodes with schema defaults",

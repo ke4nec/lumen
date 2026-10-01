@@ -231,6 +231,28 @@ void makePastedKeysUnique(dsl::DesignNode& node,
     }
 }
 
+void collectClipboardNodes(const dsl::DesignNode& node,
+                           const std::set<dsl::DesignNodeId>& selected,
+                           bool selectedAncestor,
+                           std::vector<dsl::DesignNode>& result) {
+    const bool isSelected = selected.contains(node.id);
+    if (isSelected && !selectedAncestor) {
+        result.push_back(node);
+        return;
+    }
+    for (const auto& child : node.children) {
+        collectClipboardNodes(child, selected, selectedAncestor || isSelected,
+                              result);
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            collectClipboardNodes(child, selected,
+                                  selectedAncestor || isSelected, result);
+        }
+    }
+}
+
 bool isEditableProperty(const dsl::DesignValue& value) {
     return std::holds_alternative<bool>(value.value) ||
            std::holds_alternative<double>(value.value) ||
@@ -1768,17 +1790,25 @@ void DesignerApp::duplicateSelectedNode() {
 }
 
 void DesignerApp::copySelectedNode() {
-    const auto selected = workbench_.selection().primary;
-    if (!selected || !workbench_.document().has_value()) return;
-    const auto* node = findDesignNode(workbench_.document()->root, *selected);
-    if (node == nullptr) return;
-    clipboardNode_ = *node;
-    statusMessage_ = "Copied " + node->type;
+    if (!workbench_.document().has_value()) return;
+    const auto& selection = workbench_.selection();
+    if (selection.ids.empty()) return;
+    std::vector<dsl::DesignNode> copied;
+    collectClipboardNodes(workbench_.document()->root, selection.ids, false,
+                          copied);
+    if (copied.empty()) return;
+    clipboardNodes_ = std::move(copied);
+    if (clipboardNodes_.size() == 1) {
+        statusMessage_ = "Copied " + clipboardNodes_.front().type;
+    } else {
+        statusMessage_ = "Copied " + std::to_string(clipboardNodes_.size()) +
+                         " nodes";
+    }
     shell_.markDirty();
 }
 
 void DesignerApp::pasteCopiedNode() {
-    if (!clipboardNode_.has_value() || !workbench_.document().has_value()) {
+    if (clipboardNodes_.empty() || !workbench_.document().has_value()) {
         return;
     }
     const auto selected = workbench_.selection().primary;
@@ -1796,13 +1826,23 @@ void DesignerApp::pasteCopiedNode() {
         slot = location->slot;
     }
 
-    dsl::DesignNode pasted = *clipboardNode_;
+    std::vector<dsl::DesignNode> pasted;
+    pasted.reserve(clipboardNodes_.size());
     std::set<std::string> usedKeys;
     collectDesignKeys(workbench_.document()->root, usedKeys);
-    makePastedKeysUnique(pasted, usedKeys);
-    const auto pastedType = pasted.type;
-    if (!workbench_.insertNode(parentId, index, std::move(pasted), slot)) return;
-    statusMessage_ = "Pasted " + pastedType;
+    for (auto node : clipboardNodes_) {
+        makePastedKeysUnique(node, usedKeys);
+        pasted.push_back(std::move(node));
+    }
+    const auto pastedIds = workbench_.insertNodes(
+        parentId, index, std::move(pasted), std::move(slot));
+    if (pastedIds.empty()) return;
+    if (pastedIds.size() == 1) {
+        statusMessage_ = "Pasted " + clipboardNodes_.front().type;
+    } else {
+        statusMessage_ = "Pasted " + std::to_string(pastedIds.size()) +
+                         " nodes";
+    }
     refreshDocumentUi();
     shell_.markDirty();
 }
