@@ -1185,7 +1185,8 @@ void validateRuntimeReferences(
             if (validates) {
                 DesignReference resolved;
                 try {
-                    if (!context.resolveReference(*kind, reference, resolved)) {
+                    if (!context.resolveReferenceForNode(
+                            node, *kind, reference, resolved)) {
                         unresolved.insert(node.id);
                         DesignError diagnostic = errorAt(
                             "reference.missing", "<design>",

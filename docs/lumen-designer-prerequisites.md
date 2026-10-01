@@ -926,7 +926,8 @@ RTL/方向设置不能通过“看起来相同”的屏幕像素值回写文档�
 `pointerCancel` 路径取消大纲、工具箱或画布手柄拖拽，保留事务开始时的 DOM 和选择状态。
 画布空白区域支持拖拽框选根节点的直接子项和直接 slot 子项，使用同一逻辑坐标空间中的
 `RenderNode` bounds 相交测试；Drop 以一次选择更新同步 `DesignSelection` 和大纲，空框清空
-选区。动态物化节点仍按上面的 `CompileTrace` 规则过滤，不进入文档选择集合。DesignerApp
+选区。动态物化节点仍按上面的 `CompileTrace` 规则过滤，不进入文档选择集合；虚拟行点击会
+回到其所属 source 节点的 `DocumentId`，不会把行索引伪造成文档节点。DesignerApp
 现已增加画布 zoom/pan 视图状态：Zoom +/-、Reset view、画布滚轮和方向命令只改变
 `DesignCoordinateTransform` 的视图参数，预览 Widget 在画布边界按 zoom 缩放、按 pan
 平移；实际命中、框选和手柄仍读取缩放后的 RenderNode bounds，文档数值、dirty、revision
@@ -1307,11 +1308,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
   AppShell 状态镜像、画布辅助层开关以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `811` 个断言、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `818` 个断言、
   `40` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y、Ctrl/Cmd+C/V 结构化节点复制粘贴（含多选跨父节点批量粘贴），多选 Delete/上移/下移，L0–L2 工具箱按钮，以及插入/复制/删除/上移/下移命令的
-  语义激活、键盘等价路径、Shift 区间/Ctrl-Cmd 切换多选、画布多选标记、选择恢复、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开、文件对话框结果回传和从当前文档新建工程；另覆盖画布 zoom/pan/reset 的 RenderNode 几何变换及其对 dirty/revision/undo 的隔离。
+  语义激活、键盘等价路径、Shift 区间/Ctrl-Cmd 切换多选、画布多选标记、选择恢复、动态虚拟行回选 source 节点、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开、文件对话框结果回传和从当前文档新建工程；另覆盖画布 zoom/pan/reset 的 RenderNode 几何变换及其对 dirty/revision/undo 的隔离。
 - DP-9 专属筛选 `build-debug/tests/lumen-tests "[designer][dp9]"` 为 `77` 个断言、`7` 个测试用例通过，
   覆盖 manifest round-trip、未知字段、schema 迁移、revision 冲突、跨文档引用端点、损坏恢复，以及
   `DesignerApp` 的工程新建/打开、页面切换、工程页列表、资源清单、工程保存和工程诊断跨文档跳转。

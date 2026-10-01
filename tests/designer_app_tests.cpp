@@ -1706,6 +1706,24 @@ TEST_CASE("designer app previews deterministic L2 source adapters",
     REQUIRE(list->virtualSource != nullptr);
     CHECK(list->virtualSource->itemCount() == 12);
     CHECK(list->children.size() > 0);
+    const auto* dynamicRow = findNodeByKey(
+        app.shell().root(), "designer-preview-row:0");
+    REQUIRE(dynamicRow != nullptr);
+    CHECK(dynamicRow->onClick == "designer:select:" +
+                                  std::to_string(listId));
+    selectRoot();
+    dynamicRow = findNodeByKey(app.shell().root(), "designer-preview-row:0");
+    REQUIRE(dynamicRow != nullptr);
+    const auto rowOrigin = absoluteOffset(app.shell().root(),
+                                           "designer-preview-row:0");
+    const Offset rowCenter{rowOrigin.x + dynamicRow->size.width * 0.5F,
+                           rowOrigin.y + dynamicRow->size.height * 0.5F};
+    app.shell().pointerDown(rowCenter);
+    app.shell().pointerUp(rowCenter);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().selection().primary.has_value());
+    CHECK(*app.workbench().selection().primary == listId);
+    CHECK(app.workbench().selection().ids.size() == 1);
     REQUIRE(app.workbench().frame().session() != nullptr);
     CHECK(app.workbench().frame().session()->leaseCount() == 1);
 

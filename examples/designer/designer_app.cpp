@@ -393,6 +393,12 @@ bool DesignerApp::OfflineRuntimeContext::validatesReferences() const {
 bool DesignerApp::OfflineRuntimeContext::resolveReference(
     dsl::DesignReferenceKind kind, const std::string& name,
     dsl::DesignReference& out) const {
+    return resolveReferenceForNode(dsl::DesignNode{}, kind, name, out);
+}
+
+bool DesignerApp::OfflineRuntimeContext::resolveReferenceForNode(
+    const dsl::DesignNode& node, dsl::DesignReferenceKind kind,
+    const std::string& name, dsl::DesignReference& out) const {
     if (name.empty()) return false;
     // The designer can display bindings, handlers, and image names without
     // owning their application objects. The two deterministic source names
@@ -412,11 +418,16 @@ bool DesignerApp::OfflineRuntimeContext::resolveReference(
             auto source = std::make_shared<core::VirtualListController>();
             source->setItemCount(12);
             source->setEstimatedExtent(28.0F * zoom);
-            source->setItemBuilder([zoom](std::size_t index) {
+            const auto onSelect = node.id == 0
+                                      ? std::string{}
+                                      : "designer:select:" +
+                                            std::to_string(node.id);
+            source->setItemBuilder([zoom, onSelect](std::size_t index) {
                 auto item = core::makeText(
                     "Preview row " + std::to_string(index + 1));
                 item.key = "designer-preview-row:" + std::to_string(index);
                 item.height = 28.0F * zoom;
+                if (!onSelect.empty()) item.onClick = onSelect;
                 return item;
             });
             out = dsl::DesignReference{kind, name, source, source.get()};

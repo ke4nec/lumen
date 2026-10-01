@@ -101,6 +101,10 @@ class DesignerApp {
         [[nodiscard]] bool resolveReference(
             dsl::DesignReferenceKind kind, const std::string& name,
             dsl::DesignReference& out) const override;
+        [[nodiscard]] bool resolveReferenceForNode(
+            const dsl::DesignNode& node, dsl::DesignReferenceKind kind,
+            const std::string& name,
+            dsl::DesignReference& out) const override;
         [[nodiscard]] dsl::DesignComponentResult buildComponent(
             const dsl::DesignNode& node,
             const dsl::DesignComponentContext& componentContext) const override;

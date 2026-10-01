@@ -79,6 +79,17 @@ class DesignRuntimeContext {
         return false;
     }
 
+    // Node-aware resolution lets an application adapter attach runtime-only
+    // interaction metadata (for example, a virtual row selecting its source
+    // node) without putting the materialized item into the document model.
+    // The default preserves the original context contract.
+    [[nodiscard]] virtual bool resolveReferenceForNode(
+        const DesignNode& node, DesignReferenceKind kind,
+        const std::string& name, DesignReference& out) const {
+        (void)node;
+        return resolveReference(kind, name, out);
+    }
+
     [[nodiscard]] virtual DesignComponentResult buildComponent(
         const DesignNode& node, const DesignComponentContext& componentContext) const {
         (void)node;
