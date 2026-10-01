@@ -1739,6 +1739,7 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
     const auto& theme = shell_.theme();
     const auto& tokens = theme.designerCanvas;
     std::vector<core::Widget> children;
+    std::vector<core::Widget> foregroundDecorations;
     std::optional<float> contentWidth;
     std::optional<float> contentHeight;
     const core::RenderNode* canvasNode =
@@ -1924,8 +1925,8 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                         std::move(handle), "designer-canvas-handle:" + name);
                     handle.styleOverrides.border = tokens.handleBorder;
                     handle.styleOverrides.borderWidth = tokens.guideThickness;
-                    children.push_back(position(makeDecoration(std::move(handle)),
-                                                offset));
+                    foregroundDecorations.push_back(
+                        position(makeDecoration(std::move(handle)), offset));
                 }
 
                 auto dimensions = core::makeText(
@@ -1940,15 +1941,21 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                     core::EdgeInsets::symmetric(6.0F, 3.0F));
                 dimensions.styleOverrides.background = tokens.guide;
                 dimensions.styleOverrides.foreground = tokens.onGuide;
-                children.push_back(position(makeDecoration(std::move(dimensions)),
-                                            core::Offset{selectedX,
-                                                         selectedY + selectedHeight +
-                                                             14.0F}));
+                foregroundDecorations.push_back(
+                    position(makeDecoration(std::move(dimensions)),
+                             core::Offset{selectedX,
+                                          selectedY + selectedHeight + 14.0F}));
             }
         }
     }
 
+    // The preview stays above passive guides so the canvas keeps normal hit
+    // testing. Handles and the dimensions chip are the intentional interactive
+    // chrome, so they are appended after the preview and can claim a drag.
     children.push_back(std::move(preview));
+    for (auto& decoration : foregroundDecorations) {
+        children.push_back(std::move(decoration));
+    }
     return core::makeStack(std::move(children), core::StackAlignment::TopLeft,
                            {}, {}, "designer-canvas-stack", contentWidth,
                            contentHeight);

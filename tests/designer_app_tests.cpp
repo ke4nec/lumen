@@ -278,6 +278,77 @@ TEST_CASE("designer app resizes a selected node with one snapped transaction",
                        }) == cancelled.end());
 }
 
+TEST_CASE("designer app resizes stack children with position in one transaction",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Stack(key: \"root\", width: 300, height: 200) { "
+        "Text(\"Title\", key: \"node\", width: 40, height: 30, left: 20, "
+        "top: 20) } }",
+        "stack-resize.lumen"));
+    (void)app.shell().renderFrame();
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(!outline->children.empty());
+    const auto nodeId = outline->children.front().id;
+    const auto select = app.shell().handlers().find(
+        "designer:select:" + std::to_string(nodeId));
+    REQUIRE(select != app.shell().handlers().end());
+    select->second();
+    app.shell().handlers().at("designer:canvas-guides")();
+    (void)app.shell().renderFrame();
+
+    const auto* handle =
+        findNodeByKey(app.shell().root(), "designer-canvas-handle:nw");
+    REQUIRE(handle != nullptr);
+    const auto handleOrigin = absoluteOffset(app.shell().root(), handle->key);
+    const Offset start =
+        handleOrigin + Offset{handle->size.width * 0.5F,
+                              handle->size.height * 0.5F};
+    const Offset end = start + Offset{-11.0F, -11.0F};
+    std::vector<const lumen::core::RenderNode*> hitChain;
+    REQUIRE(lumen::core::hitTestChain(app.shell().root(), start, hitChain));
+    CHECK(std::any_of(hitChain.begin(), hitChain.end(), [](const auto* node) {
+        return node != nullptr && node->key == "designer-canvas-handle:nw";
+    }));
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    app.shell().pointerUp(end);
+    (void)app.shell().renderFrame();
+
+    const auto properties = app.workbench().properties(nodeId);
+    const auto hasProperty = [&](std::string_view name) {
+        return std::find_if(properties.begin(), properties.end(),
+                            [name](const auto& property) {
+                                return property.name == name &&
+                                       property.value.has_value();
+                            }) != properties.end();
+    };
+    CHECK(hasProperty("width"));
+    CHECK(hasProperty("height"));
+    CHECK(hasProperty("left"));
+    CHECK(hasProperty("top"));
+    REQUIRE(app.undo());
+    const auto restored = app.workbench().properties(nodeId);
+    const auto restoredValue = [&](std::string_view name) {
+        const auto found = std::find_if(
+            restored.begin(), restored.end(), [name](const auto& property) {
+                return property.name == name;
+            });
+        REQUIRE(found != restored.end());
+        REQUIRE(found->value.has_value());
+        return std::get<double>(found->value->value);
+    };
+    CHECK(restoredValue("width") == 40.0);
+    CHECK(restoredValue("height") == 30.0);
+    CHECK(restoredValue("left") == 20.0);
+    CHECK(restoredValue("top") == 20.0);
+}
+
 TEST_CASE("designer app previews theme density dpi and accessibility inputs",
           "[designer][d2][app]") {
     DesignerApp app;
