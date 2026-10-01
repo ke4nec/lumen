@@ -1055,8 +1055,8 @@ span、恢复策略和稳定去重。F6
 SourceMap 的根锚点。
 又增加了默认拒绝的 `DesignResourcePolicy`/`DesignResourceAuthorizer` 以及文档、session、
 compile 三元代数校验；仍负责把这些契约接入工具箱、属性面板、结构编辑流程和真实资源加载，
-真实 D3 应用出口当前已接通 L0 属性面板编辑、文档级撤销/重做、结构插入/复制/删除/重排和
-显式保存 API，完整工具箱流程仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
+真实 D3 应用出口当前已接通 L0 属性面板编辑、文档级撤销/重做、结构插入/复制/删除/重排、
+12 类型工具箱和显式保存 API；L1–L3 扩展、保存 UI/路径策略与完整资源加载仍待补齐。G-D12 已增加独立的 `DesignPreviewState`，runtime snapshot 和
 visual override 只在预览会话中覆盖读取值，不改变 DOM、dirty 或设计文档序列化；schema 会拒绝
 `PreviewOnly`/`Derived` 属性进入可保存文档。
 
@@ -1258,7 +1258,8 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1–L3 节点、
-  controller/resource 引用注入、真实资源加载和真实编辑流程仍留在 F6；L1–L3 节点 schema 仍未登记。
+  controller/resource 引用注入、真实资源加载和 L1–L3 编辑流程仍留在后续阶段；L1–L3 节点
+  schema 仍未登记，L0 应用编辑出口已有 headless/DesignerApp 证据。
 - 静态核对：确认 parser allowlist 为 12 个节点；确认 `Widget` 的 source/theme/controller
   字段是运行时指针；确认 RenderNode identity 使用 key/位置路径；确认 R6 dump/HUD 已有
   代码入口而 inspector、节点选择、bounds/damage overlay 未交付；P1 编译按 L0 schema
@@ -1286,7 +1287,7 @@ D3 L0 的实现授权以本文 §8 决策和 §6.3 范围为准。
   旧节点 ID、主节点、锚点和拖拽捕获，避免不同文档复用节点 ID 导致选择串用。
 - 决策记录：DP-1=B、DP-3=L0、DP-4=独立 preview/session（2026-10-01）；DP-2、DP-5–DP-8
   尚未作产品决策。现有完整 CTest 结果仍不等同于设计器真实平台验收；D3 应用的
-  round-trip、schema、DocumentId、RuntimeContext 和三桌面窗口验收仍须按阶段补齐。
+  round-trip、schema、DocumentId、RuntimeContext、保存 UI/路径策略和三桌面窗口验收仍须按阶段补齐。
 
 ### 10.4 实施期间的评审问题
 
