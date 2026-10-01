@@ -101,6 +101,9 @@ void DesignerApp::attach() {
     };
     shell_.handlers()["designer:theme"] = [this] { toggleTheme(); };
     shell_.handlers()["designer:density"] = [this] { cycleDensity(); };
+    shell_.handlers()["designer:dpi"] = [this] { cycleDpi(); };
+    shell_.handlers()["designer:font-scale"] = [this] { cycleFontScale(); };
+    shell_.handlers()["designer:contrast"] = [this] { toggleHighContrast(); };
     shell_.handlers()["designer:preview-state"] =
         [this] { togglePreviewState(); };
     (void)loadSource(kSampleSource, "sample.lumen");
@@ -179,10 +182,17 @@ void DesignerApp::syncSelectionFromOutline() {
     (void)workbench_.selectNode(*id);
 }
 
+void DesignerApp::applyEnvironmentTheme() {
+    const accessibility::AccessibilitySettings settings{
+        highContrast_, false, fontScale_};
+    shell_.setAccessibilitySettings(settings, darkMode_);
+    shell_.setTheme(
+        style::Theme::fromSettings(settings, darkMode_, density_));
+}
+
 void DesignerApp::toggleTheme() {
     darkMode_ = !darkMode_;
-    shell_.setTheme(darkMode_ ? style::Theme::dark(density_)
-                              : style::Theme::light(density_));
+    applyEnvironmentTheme();
 }
 
 void DesignerApp::cycleDensity() {
@@ -197,8 +207,41 @@ void DesignerApp::cycleDensity() {
             density_ = style::ControlDensity::Compact;
             break;
     }
-    shell_.setTheme(darkMode_ ? style::Theme::dark(density_)
-                              : style::Theme::light(density_));
+    applyEnvironmentTheme();
+}
+
+void DesignerApp::cycleDpi() {
+    constexpr float kScales[] = {1.0F, 1.25F, 2.0F};
+    constexpr std::size_t kScaleCount = sizeof(kScales) / sizeof(kScales[0]);
+    std::size_t next = 0;
+    for (std::size_t index = 0; index < kScaleCount; ++index) {
+        if (deviceScale_ == kScales[index]) {
+            next = (index + 1) % kScaleCount;
+            break;
+        }
+    }
+    deviceScale_ = kScales[next];
+    shell_.setDeviceScale(deviceScale_);
+    shell_.markDirty();
+}
+
+void DesignerApp::cycleFontScale() {
+    constexpr float kScales[] = {1.0F, 1.25F, 1.5F};
+    constexpr std::size_t kScaleCount = sizeof(kScales) / sizeof(kScales[0]);
+    std::size_t next = 0;
+    for (std::size_t index = 0; index < kScaleCount; ++index) {
+        if (fontScale_ == kScales[index]) {
+            next = (index + 1) % kScaleCount;
+            break;
+        }
+    }
+    fontScale_ = kScales[next];
+    applyEnvironmentTheme();
+}
+
+void DesignerApp::toggleHighContrast() {
+    highContrast_ = !highContrast_;
+    applyEnvironmentTheme();
 }
 
 void DesignerApp::togglePreviewState() {
@@ -284,12 +327,28 @@ std::string DesignerApp::formatDiagnostic(
 
 core::Widget DesignerApp::buildToolbar() {
     const auto& theme = shell_.theme();
+    auto scaleLabel = [](const char* name, float scale) {
+        std::ostringstream stream;
+        stream << name << " " << static_cast<int>(scale * 100.0F + 0.5F)
+               << "%";
+        return stream.str();
+    };
     auto themeButton = core::makeButton(
         darkMode_ ? "Light" : "Dark", theme.typography.label, {}, 0.0F,
         "designer-theme", 88.0F, std::nullopt, "designer:theme");
     auto densityButton = core::makeButton(
         "Density", theme.typography.label, {}, 0.0F, "designer-density",
         96.0F, std::nullopt, "designer:density");
+    auto dpiButton = core::makeButton(
+        scaleLabel("DPI", deviceScale_), theme.typography.label, {}, 0.0F,
+        "designer-dpi", 88.0F, std::nullopt, "designer:dpi");
+    auto fontButton = core::makeButton(
+        scaleLabel("Font", fontScale_), theme.typography.label, {}, 0.0F,
+        "designer-font-scale", 96.0F, std::nullopt, "designer:font-scale");
+    auto contrastButton = core::makeButton(
+        highContrast_ ? "Contrast on" : "Contrast off", theme.typography.label,
+        {}, 0.0F, "designer-contrast", 112.0F, std::nullopt,
+        "designer:contrast");
     auto previewButton = core::makeButton(
         previewStateActive_ ? "Clear state" : "Hover state",
         theme.typography.label, {}, 0.0F, "designer-preview-state", 128.0F,
@@ -299,7 +358,8 @@ core::Widget DesignerApp::buildToolbar() {
                                 "designer-title");
     auto toolbar = core::makeRow(
         {std::move(title), std::move(themeButton), std::move(densityButton),
-         std::move(previewButton)},
+         std::move(dpiButton), std::move(fontButton),
+         std::move(contrastButton), std::move(previewButton)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
         8.0F, core::EdgeInsets::symmetric(16.0F, 8.0F), {}, "designer-toolbar",
         std::nullopt, 56.0F);

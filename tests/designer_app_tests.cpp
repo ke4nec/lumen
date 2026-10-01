@@ -95,6 +95,12 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     app.shell().keyDown(Key::Tab);
     CHECK(app.shell().focus().focusedKey() == "designer-density");
     app.shell().keyDown(Key::Tab);
+    CHECK(app.shell().focus().focusedKey() == "designer-dpi");
+    app.shell().keyDown(Key::Tab);
+    CHECK(app.shell().focus().focusedKey() == "designer-font-scale");
+    app.shell().keyDown(Key::Tab);
+    CHECK(app.shell().focus().focusedKey() == "designer-contrast");
+    app.shell().keyDown(Key::Tab);
     CHECK(app.shell().focus().focusedKey() == "designer-preview-state");
     app.shell().keyDown(Key::Tab);
     CHECK(app.shell().focus().focusedKey().starts_with(
@@ -107,4 +113,46 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     (void)app.shell().renderFrame();
     REQUIRE(app.workbench().selection().primary.has_value());
     CHECK(*app.workbench().selection().primary == outline->children.front().id);
+}
+
+TEST_CASE("designer app previews theme density dpi and accessibility inputs",
+          "[designer][d2][app]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto activate = [&](const char* key) {
+        const auto* node = findNodeByKey(app.shell().root(), key);
+        REQUIRE(node != nullptr);
+        CHECK(app.shell().performAccessibilityAction(
+                  node->identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+    };
+
+    const bool dark = app.shell().theme().darkMode;
+    const auto density = app.shell().theme().metrics.density;
+    CHECK(app.shell().styleContext().deviceScale == 1.0F);
+    CHECK(app.shell().accessibilitySettings().fontScale == 1.0F);
+    CHECK_FALSE(app.shell().accessibilitySettings().highContrast);
+
+    activate("designer-theme");
+    CHECK(app.shell().theme().darkMode != dark);
+    activate("designer-density");
+    CHECK(app.shell().theme().metrics.density != density);
+    activate("designer-dpi");
+    CHECK(app.shell().styleContext().deviceScale == 1.25F);
+    activate("designer-font-scale");
+    CHECK(app.shell().accessibilitySettings().fontScale == 1.25F);
+    activate("designer-contrast");
+    CHECK(app.shell().accessibilitySettings().highContrast);
+
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-dpi")->text == "DPI 125%");
+    CHECK(findNodeByKey(app.shell().root(), "designer-font-scale")->text ==
+          "Font 125%");
+    CHECK(findNodeByKey(app.shell().root(), "designer-contrast")->text ==
+          "Contrast on");
 }

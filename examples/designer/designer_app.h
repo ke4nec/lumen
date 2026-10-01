@@ -70,8 +70,12 @@ class DesignerApp {
     void rebuildOutline();
     void registerSelectionHandlers(const dsl::DesignNode& node);
     void syncSelectionFromOutline();
+    void applyEnvironmentTheme();
     void toggleTheme();
     void cycleDensity();
+    void cycleDpi();
+    void cycleFontScale();
+    void toggleHighContrast();
     void togglePreviewState();
 
     [[nodiscard]] core::Widget decoratePreview(
@@ -89,6 +93,9 @@ class DesignerApp {
     std::string sourceFile_{"<sample>"};
     bool darkMode_{true};
     style::ControlDensity density_{style::ControlDensity::Comfortable};
+    float deviceScale_{1.0F};
+    float fontScale_{1.0F};
+    bool highContrast_{false};
     bool previewStateActive_{false};
     std::string previewStateIdentity_{};
     app::AppShell shell_;
