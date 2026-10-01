@@ -1163,7 +1163,7 @@ Gallery 的完整样本覆盖仍待补齐；在 Windows/macOS 构建中，CMake 
 | Widget 携带 source/theme/controller 指针 | `include/lumen/core/widget.h` | 文档只保存稳定命名引用；编译结果必须有 session lease |
 | StateStore 绑定和 AppShell 重建在运行时解析 | `include/lumen/core/state.h`、`src/app/app_shell.cpp` | 设计器需要 preview StateStore；不能复制 `applyBinds` 或保存业务值 |
 | RenderNode identity 由 key/位置生成 | `src/layout/layout.cpp`、`include/lumen/core/render_node.h` | runtime identity 只能做 CompileTrace 结果，不能当 DocumentId |
-| visual preview state 以 key 查找 | `include/lumen/app/app_shell.h`、`src/style/resolver.cpp` | 无 key/重复 key 的逐节点预览需要额外映射，不可假设天然稳定 |
+| visual preview state 以 key 查找 | `include/lumen/app/app_shell.h`、`src/style/resolver.cpp`、`examples/designer/designer_app.cpp` | DesignerApp 为无 key 节点生成基于 `DesignNodeId` 的私有稳定 key；重复 key 仍不可假设天然稳定 |
 | overlay 安装会影响事件树，模态/视觉 overlay 共槽位 | `include/lumen/app/app_shell.h`、`docs/lumen-drag-drop-design.md` | 高亮层、拖拽层和菜单必须有互斥及输入路由契约 |
 | Preferences 使用 `.tmp` + rename | `src/core/preferences.cpp` | 可复用原子替换思路，不能复用扁平格式或假定已 fsync |
 | SDL host 能接收 OS 拖入，拖出能力为 false | `include/lumen/platform/application_host.h`、`src/platform/sdl3_host.cpp` | 应用内拖入属于设计器范围；OS 拖出继续登记为降级 |
