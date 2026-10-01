@@ -232,6 +232,32 @@ std::optional<std::string> outlinePathForNode(
 
 }  // namespace
 
+bool DesignerApp::OfflineRuntimeContext::validatesReferences() const {
+    return true;
+}
+
+bool DesignerApp::OfflineRuntimeContext::resolveReference(
+    dsl::DesignReferenceKind kind, const std::string& name,
+    dsl::DesignReference& out) const {
+    if (name.empty()) return false;
+    // The designer can display bindings, handlers, and image names without
+    // owning their application objects. Typed source handles remain missing
+    // until the embedding application registers a real adapter.
+    switch (kind) {
+        case dsl::DesignReferenceKind::Binding:
+        case dsl::DesignReferenceKind::Handler:
+        case dsl::DesignReferenceKind::Image:
+            out = dsl::DesignReference{kind, name, {}, nullptr};
+            return true;
+        case dsl::DesignReferenceKind::Theme:
+        case dsl::DesignReferenceKind::VirtualSource:
+        case dsl::DesignReferenceKind::SplitterSource:
+        case dsl::DesignReferenceKind::Component:
+            return false;
+    }
+    return false;
+}
+
 void DesignerApp::OutlineModel::setRoot(
     std::optional<dsl::DesignPreviewOutlineNode> root) {
     entries_.clear();
@@ -533,7 +559,8 @@ void DesignerApp::requestOpenFile() {
 }
 
 bool DesignerApp::startPreview(bool debug) {
-    if (!workbench_.document().has_value() || !workbench_.refresh()) {
+    if (!workbench_.document().has_value() ||
+        !workbench_.refresh(&runtimeContext_)) {
         const bool keepActivePreview =
             previewSessionMode_ != PreviewSessionMode::Stopped &&
             workbench_.frame().hasFrame();
@@ -864,6 +891,9 @@ void DesignerApp::registerSelectionHandlers(const dsl::DesignNode& node) {
 }
 
 void DesignerApp::refreshDocumentUi() {
+    if (workbench_.document().has_value()) {
+        (void)workbench_.refresh(&runtimeContext_);
+    }
     resetPreviewState();
     clearPropertyObservers();
     rebuildOutline();
@@ -1501,6 +1531,8 @@ void DesignerApp::registerReferenceBinding(
                 syncingPropertyState_ = false;
                 return;
             }
+            (void)workbench_.refresh(&runtimeContext_);
+            rebuildReferences();
             shell_.markDirty();
         });
 }
@@ -2211,6 +2243,30 @@ core::Widget DesignerApp::buildPropertiesPanel() {
                     properties.push_back(
                         dsl::DesignPreviewProperty{spec.name, spec.defaultValue,
                                                     std::nullopt});
+                }
+
+                const auto addSourceReference =
+                    [&properties, schema](std::string_view name) {
+                        const auto* spec =
+                            dsl::findPropertySpec(*schema, name);
+                        if (spec == nullptr ||
+                            spec->persistence !=
+                                dsl::PropertyPersistence::RuntimeReference ||
+                            std::any_of(
+                                properties.begin(), properties.end(),
+                                [name](const auto& property) {
+                                    return property.name == name;
+                                })) {
+                            return;
+                        }
+                        properties.push_back(dsl::DesignPreviewProperty{
+                            std::string{name}, std::nullopt, std::string{}});
+                    };
+                if (node->type == "VirtualList" || node->type == "List" ||
+                    node->type == "Tree" || node->type == "TreeList") {
+                    addSourceReference("virtualSource");
+                } else if (node->type == "Splitter") {
+                    addSourceReference("splitterSource");
                 }
             }
         }

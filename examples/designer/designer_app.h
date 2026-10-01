@@ -49,6 +49,14 @@ class DesignerApp {
                                 const std::string& error = {});
 
   private:
+    class OfflineRuntimeContext final : public dsl::DesignRuntimeContext {
+      public:
+        [[nodiscard]] bool validatesReferences() const override;
+        [[nodiscard]] bool resolveReference(
+            dsl::DesignReferenceKind kind, const std::string& name,
+            dsl::DesignReference& out) const override;
+    };
+
     class OutlineModel final : public widgets::TreeModel {
       public:
         explicit OutlineModel(DesignerApp* owner) : owner_(owner) {}
@@ -192,6 +200,7 @@ class DesignerApp {
         const dsl::DesignDiagnostic& diagnostic);
 
     dsl::DesignPreviewWorkbench workbench_{};
+    OfflineRuntimeContext runtimeContext_{};
     OutlineModel outlineModel_;
     widgets::TreeController outlineController_{};
     widgets::DataGridController referencesController_{};

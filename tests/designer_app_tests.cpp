@@ -819,6 +819,66 @@ TEST_CASE("designer app creates L1 and L2 toolbox nodes with schema defaults",
     REQUIRE(outline->children.back().type == "Splitter");
     CHECK(outline->children.back().children.size() == 2);
     CHECK(splitterId != imageId);
+    CHECK(findNodeByKey(
+              app.shell().root(),
+              "designer-reference-field:" + std::to_string(splitterId) +
+                  ":splitterSource") != nullptr);
+    CHECK(app.workbench().diagnostics().empty());
+}
+
+TEST_CASE("designer app exposes L2 source references and offline diagnostics",
+          "[designer][d3][app]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    const auto rootId = initial->id;
+    const auto rootHandler = app.shell().handlers().find(
+        "designer:select:" + std::to_string(rootId));
+    REQUIRE(rootHandler != app.shell().handlers().end());
+    rootHandler->second();
+    app.shell().markDirty();
+    (void)app.shell().renderFrame();
+
+    const auto* listButton = findNodeByKey(
+        app.shell().root(), "designer-toolbox:List");
+    REQUIRE(listButton != nullptr);
+    CHECK(app.shell().performAccessibilityAction(
+              listButton->identity, kActionActivate) ==
+          lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto listId = *app.workbench().selection().primary;
+    REQUIRE(outline->children.back().type == "List");
+    const std::string bind =
+        "designer:reference:" + std::to_string(listId) + ":virtualSource";
+    REQUIRE(findNodeByKey(
+                app.shell().root(),
+                "designer-reference-field:" + std::to_string(listId) +
+                    ":virtualSource") != nullptr);
+
+    app.shell().state().set(bind, "rows");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document()->root.children.back().references
+                .contains("virtualSource"));
+    CHECK(app.workbench().document()->root.children.back().references.at(
+              "virtualSource") == "rows");
+    REQUIRE(app.workbench().diagnostics().size() == 1);
+    CHECK(app.workbench().diagnostics().front().code == "reference.missing");
+    CHECK(app.workbench().diagnostics().front().property == "virtualSource");
+
+    app.shell().state().set(bind, "");
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.workbench().document()->root.children.back().references
+                    .contains("virtualSource"));
     CHECK(app.workbench().diagnostics().empty());
 }
 
