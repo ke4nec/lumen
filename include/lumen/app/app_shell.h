@@ -220,6 +220,8 @@ class AppShell {
     // 外部渲染器（Skia 光栅/GPU/测试 renderer）；nullptr 恢复内部 CPU。
     // 后端不共享 framebuffer：切换即失效绘制缓存并全量重绘。
     void setRenderer(render::Renderer* renderer);
+    // 注入调用方拥有的整帧分配遥测源；不注入时 HUD 明确显示来源缺失。
+    void setFrameAllocationSource(render::FrameAllocationSource* source);
     // M1：正式字体事实注入（布局/绘制/命中测试/IME 查询共享）。
     void setFontManager(std::shared_ptr<const text::FontManager> fonts);
     // M14-C：当前字体源（未注入/异步加载未完成时为空 = 占位度量）。
@@ -598,6 +600,8 @@ class AppShell {
     float deviceScale_{1.0F};
     std::uint64_t frameIndex_{0};
     std::uint64_t lastTickMs_{0};
+    render::FrameAllocationSource* frameAllocationSource_{nullptr};
+    render::FrameAllocationStats frameAllocationStats_{};
     // R6：帧阶段采样（frameStatsCapture_ 关闭时所有路径零开销）。
     bool frameStatsCapture_{false};
     double frameRebuildTotalMs_{0.0};  // paintFrame 内 rebuild 区段总耗时
@@ -706,9 +710,12 @@ struct RunOptions {
     // 帧统计采样并绘制纯图层（左上角面板；读数滞后一帧），且每调度帧
     // 标脏刷新——这是显式开启才有的额外帧与采样开销；关闭时零额外
     // 帧、frame hash 与性能基线不变。图层不经 overlay 槽位，不影响应
-    // 用输入。分配量维度未接入（renderer stats 无该维度，见
-    // support-matrix R6 登记）。
+    // 用输入。整帧堆读数需通过 frameAllocationSource 注入；未注入时 HUD
+    // 明确显示来源缺失。
     bool frameDebugOverlay{false};
+    // R6：调用方拥有的整帧 allocator telemetry source。scope 覆盖
+    // rebuild/layout/paint/submit；空值不会伪造分配数字。
+    render::FrameAllocationSource* frameAllocationSource{nullptr};
     // R6：bounds/damage 调试图层（默认关闭零开销）。纯绘制层：只随重
     // 绘帧在主场景命令后追加描画，不驱动帧节奏、不进语义树；开启后帧
     // 不再具备确定性 hash（描画进入像素输出）。

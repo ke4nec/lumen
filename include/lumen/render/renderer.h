@@ -122,6 +122,34 @@ struct RenderStats {
     std::string fallbackReason{};
 };
 
+// A caller-owned source for allocator telemetry covering one submitted frame.
+// The source is UI-thread confined: beginFrame() is called before app rebuild,
+// layout and command recording, and finishFrame() is called after Renderer::submit.
+// A source may report unavailable when the platform allocator is not instrumented;
+// RSS and command-storage counters are not valid substitutes for this contract.
+struct FrameAllocationStats {
+    bool available{false};
+    std::string source{};
+    std::uint64_t allocationCount{0};
+    std::uint64_t allocatedBytes{0};
+    std::uint64_t peakBytes{0};
+    std::uint64_t liveBytes{0};
+
+    [[nodiscard]] bool operator==(const FrameAllocationStats&) const = default;
+};
+
+class FrameAllocationSource {
+  public:
+    virtual ~FrameAllocationSource() = default;
+
+    // Starts a scope for one candidate frame. Scopes are never nested.
+    virtual void beginFrame(std::uint64_t frameIndex) = 0;
+    // Finishes a submitted frame and returns its scoped allocator telemetry.
+    [[nodiscard]] virtual FrameAllocationStats finishFrame() = 0;
+    // Discards a scope when no visible frame was submitted.
+    virtual void cancelFrame() = 0;
+};
+
 // 目标 surface 重建描述（plan §3.1 resetSurface）。nativeWindow 是不透明
 // 平台句柄，只在 lumen-platform 与 Renderer 适配层解引用。window 让设备
 // 重建与窗口关联（阶段8A）。

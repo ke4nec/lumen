@@ -237,6 +237,8 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         AppShell& shell = *runtime.app.shell;
         applyAccessibilityPreferences(runtime);
         shell.setRenderer(runtime.setup.renderer);
+        shell.setFrameAllocationSource(
+            runtime.app.options.frameAllocationSource);
         if (runtime.app.options.fontFactory) {
             // M14-C：asyncFonts 时工厂移到后台线程（首帧占位度量），
             // 完成后在主循环热替换；同步路径保持原语义。

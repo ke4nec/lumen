@@ -159,6 +159,13 @@ void AppShell::setRenderer(render::Renderer* renderer) {
     fullRepaintPending_ = true;
 }
 
+void AppShell::setFrameAllocationSource(
+    render::FrameAllocationSource* source) {
+    frameAllocationSource_ = source;
+    frameAllocationStats_ = render::FrameAllocationStats{};
+    fullRepaintPending_ = true;
+}
+
 void AppShell::setAccessibilityBridge(
     accessibility::AccessibilityBridge* bridge) {
     accessibilityBridge_ = bridge;
@@ -828,6 +835,9 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
 }
 
 void AppShell::paintFrame(bool forceFullRepaint) {
+    if (frameAllocationSource_ != nullptr) {
+        frameAllocationSource_->beginFrame(frameIndex_);
+    }
     // R6：帧阶段采样（默认关闭零开销）——rebuild 区段含两次
     // rebuildIfDirty（交互快照收敛）；布局耗时在其内部按调用累计。
     std::optional<std::chrono::steady_clock::time_point> statsRebuildStart;
@@ -888,6 +898,9 @@ void AppShell::paintFrame(bool forceFullRepaint) {
                            optionsChanged || motionPaint || blendPaint ||
                            tooltipPaint || portalPaint;
     if (!needPaint) {
+        if (frameAllocationSource_ != nullptr) {
+            frameAllocationSource_->cancelFrame();
+        }
         if (semanticsNeedsPush_) {
             pushSemantics();
         }
@@ -986,6 +999,9 @@ void AppShell::paintFrame(bool forceFullRepaint) {
         ++partialRepaintCount_;
     }
     renderer.submit(commands, info);
+    if (frameAllocationSource_ != nullptr) {
+        frameAllocationStats_ = frameAllocationSource_->finishFrame();
+    }
     frameHashValid_ = false;
     frameIndex_ += 1;
     if (frameStatsCapture_) {
@@ -1103,6 +1119,12 @@ FrameDebugSnapshot AppShell::frameDebugSnapshot() {
         stats.commandStorageAllocationCount;
     snapshot.commandStorageAllocatedBytes = stats.commandStorageAllocatedBytes;
     snapshot.commandStoragePeakBytes = stats.commandStoragePeakBytes;
+    snapshot.frameAllocationAvailable = frameAllocationStats_.available;
+    snapshot.frameAllocationSource = frameAllocationStats_.source;
+    snapshot.frameAllocationCount = frameAllocationStats_.allocationCount;
+    snapshot.frameAllocatedBytes = frameAllocationStats_.allocatedBytes;
+    snapshot.frameAllocationPeakBytes = frameAllocationStats_.peakBytes;
+    snapshot.frameLiveBytes = frameAllocationStats_.liveBytes;
     snapshot.fullFrameFallback = stats.fullFrameFallback;
     snapshot.fallbackReason = stats.fallbackReason;
     snapshot.backendName = activeRenderer().capabilities().backendName;

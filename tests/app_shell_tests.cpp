@@ -75,6 +75,36 @@ void wireCounter(AppShell& shell) {
     };
 }
 
+class FakeFrameAllocationSource final
+    : public lumen::render::FrameAllocationSource {
+  public:
+    void beginFrame(std::uint64_t frameIndex) override {
+        ++begins;
+        lastFrameIndex = frameIndex;
+        active = true;
+    }
+
+    lumen::render::FrameAllocationStats finishFrame() override {
+        REQUIRE(active);
+        active = false;
+        ++finishes;
+        return lumen::render::FrameAllocationStats{
+            true, "fake-allocator", 7, 4096, 3072, 1024};
+    }
+
+    void cancelFrame() override {
+        REQUIRE(active);
+        active = false;
+        ++cancels;
+    }
+
+    std::size_t begins{0};
+    std::size_t finishes{0};
+    std::size_t cancels{0};
+    std::uint64_t lastFrameIndex{0};
+    bool active{false};
+};
+
 class VisibilityHost final : public lumen::platform::ApplicationHost {
   public:
     bool initialize() override {
@@ -1440,12 +1470,14 @@ TEST_CASE("frame_stats_layer_synthesizes_and_never_blocks_input",
     const lumen::core::RenderNode layer =
         lumen::app::makeFrameStatsLayer(snapshot, style);
     REQUIRE(layer.type == lumen::core::WidgetType::Container);
-    CHECK(layer.children.size() == 6);  // 5 读数行 + fallback 告警行。
+    CHECK(layer.children.size() == 7);  // 6 读数行 + fallback 告警行。
     CHECK(layer.children[0].type == lumen::core::WidgetType::Text);
     CHECK(layer.children[0].text.find("lumen frame #7") !=
           std::string::npos);
     CHECK(layer.children[2].text.find("cmd storage") != std::string::npos);
-    CHECK(layer.children[5].text.find("damage-invalid") != std::string::npos);
+    CHECK(layer.children[3].text.find("frame heap unavailable") !=
+          std::string::npos);
+    CHECK(layer.children[6].text.find("damage-invalid") != std::string::npos);
     CHECK(layer.commonStyle().background == style.panel);
 
     // R6 回归（2026-09-30 修复）：HUD 开启时应用输入不被吞——按钮仍
@@ -1494,6 +1526,43 @@ TEST_CASE("frame_stats_layer_synthesizes_and_never_blocks_input",
     clickShell.pointerDown(clickCenter);
     clickShell.pointerUp(clickCenter);
     CHECK(clicks == 1);  // HUD 开启不吞点击（修复前 overlay 槽位会吞）。
+}
+
+TEST_CASE("frame allocation source scopes submitted frames only",
+          "[app][r6]") {
+    lumen::app::ShellConfig config;
+    config.initialView = {200.0F, 100.0F};
+    config.build = [] { return lumen::core::makeText("content"); };
+    lumen::app::AppShell shell(config);
+    FakeFrameAllocationSource source;
+    shell.setFrameAllocationSource(&source);
+
+    REQUIRE(shell.renderFrame() != 0);
+    CHECK(source.begins == 1);
+    CHECK(source.finishes == 1);
+    CHECK(source.cancels == 0);
+    CHECK(source.lastFrameIndex == 0);
+    const auto first = shell.frameDebugSnapshot();
+    CHECK(first.frameAllocationAvailable);
+    CHECK(first.frameAllocationSource == "fake-allocator");
+    CHECK(first.frameAllocationCount == 7);
+    CHECK(first.frameAllocatedBytes == 4096);
+    CHECK(first.frameAllocationPeakBytes == 3072);
+    CHECK(first.frameLiveBytes == 1024);
+
+    const auto unchanged = shell.renderFrame();
+    CHECK(unchanged != 0);
+    CHECK(source.begins == 2);
+    CHECK(source.finishes == 1);
+    CHECK(source.cancels == 1);
+
+    shell.markDirty();
+    REQUIRE(shell.renderFrame() != 0);
+    CHECK(source.begins == 3);
+    CHECK(source.finishes == 2);
+    CHECK(source.cancels == 1);
+    shell.setFrameAllocationSource(nullptr);
+    CHECK_FALSE(shell.frameDebugSnapshot().frameAllocationAvailable);
 }
 
 // 像素采样（CPU framebuffer；datagrid_tests 同模式）。
@@ -1730,6 +1799,8 @@ TEST_CASE("run_app_paints_frame_stats_layer_when_enabled",
     lumen::app::RunOptions options;
     options.maxFrames = 3;
     options.frameDebugOverlay = true;
+    FakeFrameAllocationSource source;
+    options.frameAllocationSource = &source;
     CHECK(lumen::app::runApp(shell, host, options) == 0);
     // 图层路径：不占 overlay 槽位；采样开启；帧统计已产出。
     CHECK_FALSE(shell.hasOverlay());
@@ -1737,6 +1808,11 @@ TEST_CASE("run_app_paints_frame_stats_layer_when_enabled",
         shell.frameDebugSnapshot();
     CHECK(snapshot.frameIndex >= 1);
     CHECK(snapshot.nodeCount > 0);
+    CHECK(source.begins >= 1);
+    CHECK(source.finishes >= 1);
+    CHECK(source.cancels == 0);
+    CHECK(snapshot.frameAllocationAvailable);
+    CHECK(snapshot.frameAllocationSource == "fake-allocator");
 
     // 关闭旗标（默认）不装配：独立壳 + Fake host 对照。
     lumen::platform::FakeApplicationHost plainHost;

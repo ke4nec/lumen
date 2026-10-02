@@ -1362,7 +1362,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   注册独立 source lease，真实 controller 资源和具体 widgets controller builder 仍由应用
   适配层按需接入；headless 组合件占位和 lease 路径已接入。
   `designer_performance_tests.cpp` 的 L2 VirtualList fixture 还重复编译同一文档，验证 source
-  lease、可见窗口物化数量、RenderNode 和 frame hash 的确定性。
+  lease、可见窗口物化数量、RenderNode 和 frame hash 的确定性。R6 已冻结
+  `render::FrameAllocationSource` 注入契约：一次 scope 从应用 rebuild/layout/paint 覆盖到
+  `Renderer::submit`，没有平台 allocator source 时 HUD 显示 unavailable；命令流容量和进程
+  RSS 不得冒充整帧读数。`app_shell_tests.cpp` 的 fake source 已覆盖提交帧、无绘制帧取消、
+  重新标脏和 HUD 快照。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。
@@ -1380,7 +1384,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 
 ### 10.4 实施期间的评审问题
 
-以下问题已在对应实现阶段记录证据；剩余未闭环项是三桌面现场验收和整帧堆分配统计契约：
+以下问题已在对应实现阶段记录证据；剩余未闭环项是三桌面现场验收和跨平台真实 allocator
+source 接入：
 
 1. **已验证**：DP-1 的私有格式、magic、codec、单向导入边界和未知字段策略由正式 schema 与 fixture 固定。
 2. **已验证**：`DesignRuntimeSession` 由预览编译结果持有，lease 覆盖 Widget、RenderNode、交互和异步资源，并在替换/清理时关闭。
@@ -1391,4 +1396,6 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 7. **已验证**：视觉 token 以 `lumen-visual-system-design.md` 为基线，语义/键盘/性能证据分别在 designer 测试和 §10.3 记录；`designer_memory_peak` 已补齐预览打开、属性编辑、运行时 VirtualList 和 L2 `DesignDocument` VirtualList fixture 的真实 scoped heap 峰值读数。
 
 其余问题是实现验收条件，不撤销已记录的 D3 L0 实施授权；预览 fixture 的 scoped heap 读数已补齐，
-但命令流存储分配读数和该探针都不能替代 R6 的生产整帧堆分配统计；三桌面现场结果和性能基线报告仍按已冻结方案补齐。
+但命令流存储分配读数和该探针都不能替代 R6 的生产整帧堆分配统计；当前已具备可注入的
+`FrameAllocationSource` 契约和 unavailable 降级，三桌面真实 allocator source、现场结果和
+性能基线报告仍按已冻结方案补齐。

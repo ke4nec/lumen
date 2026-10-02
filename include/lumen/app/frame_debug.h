@@ -9,7 +9,8 @@
 // Stack 承载、排除语义与焦点——诊断图层不进入读屏树）。
 //
 // 语义边界：图层在提交前绘制，读数来自上一帧的采样（滞后一帧）；命令
-// 存储分配只覆盖 RenderCommandList 的 vector 容量增长，不是整帧堆分配。
+// 命令存储分配只覆盖 RenderCommandList 的 vector 容量增长；整帧堆读数
+// 只有注入 FrameAllocationSource 后才显示为可用。
 // 文本含真实时间读数，因此开启 HUD 的帧不做确定性 hash 对照。
 
 #include <cstdint>
@@ -38,6 +39,12 @@ struct FrameDebugSnapshot {
     std::uint64_t commandStorageAllocationCount{0};
     std::uint64_t commandStorageAllocatedBytes{0};
     std::uint64_t commandStoragePeakBytes{0};
+    bool frameAllocationAvailable{false};
+    std::string frameAllocationSource{};
+    std::uint64_t frameAllocationCount{0};
+    std::uint64_t frameAllocatedBytes{0};
+    std::uint64_t frameAllocationPeakBytes{0};
+    std::uint64_t frameLiveBytes{0};
     bool fullFrameFallback{false};
     std::string fallbackReason{};
     std::string backendName{};  // renderer capabilities
@@ -99,7 +106,7 @@ namespace frame_debug_detail {
         bool accent{false};
     };
     std::vector<Row> rows;
-    rows.reserve(6);
+    rows.reserve(7);
 
     std::snprintf(line, sizeof(line), "lumen frame #%llu %s",
                   static_cast<unsigned long long>(snapshot.frameIndex),
@@ -119,6 +126,23 @@ namespace frame_debug_detail {
                   static_cast<unsigned long long>(
                       ceilKiB(snapshot.commandStoragePeakBytes)));
     rows.push_back(Row{line, false});
+
+    if (snapshot.frameAllocationAvailable) {
+        std::snprintf(line, sizeof(line),
+                      "frame heap %llu alloc / %llu KiB / %llu KiB peak",
+                      static_cast<unsigned long long>(
+                          snapshot.frameAllocationCount),
+                      static_cast<unsigned long long>(
+                          ceilKiB(snapshot.frameAllocatedBytes)),
+                      static_cast<unsigned long long>(
+                          ceilKiB(snapshot.frameAllocationPeakBytes)));
+    } else {
+        std::snprintf(line, sizeof(line), "frame heap unavailable%s",
+                      snapshot.frameAllocationSource.empty()
+                          ? ""
+                          : (": " + snapshot.frameAllocationSource).c_str());
+    }
+    rows.push_back(Row{line, !snapshot.frameAllocationAvailable});
 
     std::snprintf(line, sizeof(line), "submit %.2fms  gpu wait %.2fms  fps %.1f",
                   snapshot.submitMs, snapshot.gpuWaitMs, snapshot.fps);
