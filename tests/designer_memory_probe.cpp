@@ -10,12 +10,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <memory>
 #include <new>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "lumen/core/virtual_list.h"
+#include "lumen/dsl/design_preview_frame.h"
 #include "lumen/dsl/design_workbench.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
@@ -211,6 +213,11 @@ lumen::dsl::DesignValue stringValue(std::string value) {
         lumen::dsl::DesignValue::Variant{std::move(value)}};
 }
 
+lumen::dsl::DesignValue numberValue(double value) {
+    return lumen::dsl::DesignValue{
+        lumen::dsl::DesignValue::Variant{value}};
+}
+
 lumen::dsl::DesignDocument makeDocument(std::size_t nodeCount) {
     lumen::dsl::DesignDocument document;
     document.documentId = "designer-memory-probe";
@@ -229,6 +236,19 @@ lumen::dsl::DesignDocument makeDocument(std::size_t nodeCount) {
             stringValue("Memory probe node " + std::to_string(index));
         document.root.children.push_back(std::move(child));
     }
+    return document;
+}
+
+lumen::dsl::DesignDocument makeVirtualListDocument() {
+    lumen::dsl::DesignDocument document;
+    document.documentId = "designer-memory-virtual-list";
+    document.pageName = "virtual-list";
+    document.root = lumen::dsl::DesignNode{1, "VirtualList"};
+    document.root.properties["key"] = stringValue("design-preview-list");
+    document.root.properties["width"] = numberValue(800.0);
+    document.root.properties["height"] = numberValue(600.0);
+    document.root.properties["virtualCacheExtent"] = numberValue(200.0);
+    document.root.references["virtualSource"] = "preview_rows";
     return document;
 }
 
@@ -283,17 +303,49 @@ int main() {
         renderer.endFrame();
     });
 
+    auto designDocument = makeVirtualListDocument();
+    auto designSource = std::make_shared<lumen::core::VirtualListController>();
+    designSource->setItemCount(1000);
+    designSource->setEstimatedExtent(32.0F);
+    designSource->setItemBuilder([](std::size_t index) {
+        auto item = lumen::core::makeText(
+            "Design preview item " + std::to_string(index));
+        item.key = "design-preview-item-" + std::to_string(index);
+        item.height = 32.0F;
+        return item;
+    });
+    lumen::dsl::MapDesignRuntimeContext designContext;
+    designContext.registerTypedReference(
+        lumen::dsl::DesignReferenceKind::VirtualSource, "preview_rows",
+        designSource.get(), designSource);
+    lumen::dsl::DesignPreviewFrame designFrame;
+    const auto designDocumentPreview = measure([&] {
+        if (!designFrame.update(designDocument, designContext)) std::abort();
+        const auto renderNode = lumen::layout::LayoutEngine::layout(
+            designFrame.widget(), lumen::core::Constraints::tight(
+                                      lumen::core::Size{800.0F, 600.0F}));
+        lumen::render::CpuRenderer renderer;
+        renderer.beginFrame(lumen::core::Size{800.0F, 600.0F});
+        lumen::render::paintScene(renderer, renderNode);
+        renderer.endFrame();
+    });
+    designFrame.clear();
+
     const auto peakBytes = std::max({open.peakBytes, edit.peakBytes,
-                                     virtualList.peakBytes});
+                                     virtualList.peakBytes,
+                                     designDocumentPreview.peakBytes});
     const auto totalAllocations = open.allocationCount + edit.allocationCount +
-                                  virtualList.allocationCount;
+                                  virtualList.allocationCount +
+                                  designDocumentPreview.allocationCount;
     const auto totalAllocatedBytes =
         open.allocatedBytes + edit.allocatedBytes +
-        virtualList.allocatedBytes;
+        virtualList.allocatedBytes + designDocumentPreview.allocatedBytes;
 
     const bool valid = checkSample("preview_open", open) &&
                        checkSample("preview_edit", edit) &&
-                       checkSample("virtual_list", virtualList);
+                       checkSample("virtual_list", virtualList) &&
+                       checkSample("design_document_preview",
+                                   designDocumentPreview);
     std::printf(
         "{\"schema\":1,\"scope\":\"designer_preview_operations\","
         "\"peak_bytes\":%zu,\"allocation_count\":%zu,"
@@ -303,12 +355,17 @@ int main() {
         "\"preview_edit\":{\"allocations\":%zu,\"allocated_bytes\":%zu,"
         "\"peak_bytes\":%zu,\"live_bytes\":%zu},"
         "\"virtual_list\":{\"allocations\":%zu,\"allocated_bytes\":%zu,"
-        "\"peak_bytes\":%zu,\"live_bytes\":%zu}}\n",
+        "\"peak_bytes\":%zu,\"live_bytes\":%zu},"
+        "\"design_document_preview\":{\"allocations\":%zu,"
+        "\"allocated_bytes\":%zu,\"peak_bytes\":%zu,"
+        "\"live_bytes\":%zu}}\n",
         peakBytes, totalAllocations, totalAllocatedBytes, open.allocationCount,
         open.allocatedBytes, open.peakBytes,
         open.liveBytes, edit.allocationCount, edit.allocatedBytes,
         edit.peakBytes, edit.liveBytes, virtualList.allocationCount,
         virtualList.allocatedBytes, virtualList.peakBytes,
-        virtualList.liveBytes);
+        virtualList.liveBytes, designDocumentPreview.allocationCount,
+        designDocumentPreview.allocatedBytes, designDocumentPreview.peakBytes,
+        designDocumentPreview.liveBytes);
     return valid ? 0 : 1;
 }

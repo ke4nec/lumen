@@ -1019,8 +1019,9 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   100 节点文档事务和 1000 节点大纲投影的 headless 基线已具备；
   `DesignPreviewFrame::rebuildCount()` 现已记录每次预览编译尝试（含可恢复失败），并由 D3
   测试验证成功、占位失败和保留上一帧失败的计数；`VirtualListController` 另记录当前/峰值
-  物化项数并由 L2 fixture 验证可见窗口约束；运行时 VirtualList fixture 的 scoped heap
-  读数已由上述探针补齐，L2 DesignDocument 组合件的真实预览容器仍按应用适配层接入。
+  物化项数并由 L2 fixture 验证可见窗口约束；运行时 VirtualList fixture 与 L2
+  `DesignDocument` VirtualList 的 compile/layout/paint fixture 的 scoped heap 读数已由上述探针
+  补齐，L2 组合件（如 DataGrid）的真实预览容器仍按应用适配层接入。
   四类 fixture 的性能门禁仍只比较同一环境下的相对基线，不冻结跨机器绝对阈值。
 
 **验收**：键盘和辅助技术可以完成 D2 的选择/定位与 D3 的属性编辑/保存；高 DPI、高对比
@@ -1352,12 +1353,14 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   schema、compile、layout、CPU paint 和重复运行确定性；100 节点额外验证文档属性事务/
   undo，1000 节点额外验证大纲投影重复输出；另有 12 节点 `.lumen` 导入 fixture 和
   1000 项运行时 VirtualList 窗口物化与 frame hash，并记录当前/峰值物化项数。独立进程
-  `lumen-designer-memory-probe` 还对预览打开、属性编辑重建和 VirtualList layout/paint
-  做 scoped global `new/delete` 记账，输出 allocation count、累计 allocated bytes、
-  live bytes 和 peak bytes；CTest 名称为 `designer_memory_peak`。这些数值只作为同一环境
+  `lumen-designer-memory-probe` 还对预览打开、属性编辑重建、运行时 VirtualList
+  layout/paint，以及带 `virtualSource` 引用的 L2 `DesignDocument` VirtualList
+  compile/layout/paint 做 scoped global `new/delete` 记账，输出 allocation count、累计 allocated
+  bytes、live bytes 和 peak bytes；CTest 名称为 `designer_memory_peak`。这些数值只作为同一环境
   下的相对基线，不冻结跨机器的绝对毫秒或字节门槛，且不等同于 R6 的生产 HUD/RSS 或整帧
-  allocator 契约。L2 设计文档节点已登记 schema，真实 controller 资源和具体 widgets
-  controller builder 仍由应用适配层按需接入；headless 组合件占位和 lease 路径已接入。
+  allocator 契约。L2 设计文档节点已登记 schema；探针通过 `MapDesignRuntimeContext`
+  注册独立 source lease，真实 controller 资源和具体 widgets controller builder 仍由应用
+  适配层按需接入；headless 组合件占位和 lease 路径已接入。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。
@@ -1383,7 +1386,7 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 4. **已验证**：画布通过 DPI/zoom/pan 逆变换命中 `DocumentId`；动态物化行只回选 source node，不进入文档选择集合。
 5. **已验证**：资源采用显式 scheme/root 授权，空或离线 context 使用固定替身/placeholder，不启动业务副作用。
 6. **已验证**：P1–P5、G-D13–G-D16 的 fixture 已注册 CMake/CTest；真实窗口 smoke 仍按平台矩阵单独登记。
-7. **已验证**：视觉 token 以 `lumen-visual-system-design.md` 为基线，语义/键盘/性能证据分别在 designer 测试和 §10.3 记录；`designer_memory_peak` 已补齐预览操作 fixture 的真实 scoped heap 峰值读数。
+7. **已验证**：视觉 token 以 `lumen-visual-system-design.md` 为基线，语义/键盘/性能证据分别在 designer 测试和 §10.3 记录；`designer_memory_peak` 已补齐预览打开、属性编辑、运行时 VirtualList 和 L2 `DesignDocument` VirtualList fixture 的真实 scoped heap 峰值读数。
 
 其余问题是实现验收条件，不撤销已记录的 D3 L0 实施授权；预览 fixture 的 scoped heap 读数已补齐，
 但命令流存储分配读数和该探针都不能替代 R6 的生产整帧堆分配统计；三桌面现场结果和性能基线报告仍按已冻结方案补齐。
