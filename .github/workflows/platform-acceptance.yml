@@ -39,7 +39,9 @@ jobs:
       - name: Build live probe, Designer and GPU fault fixtures
         run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-settings lumen-gallery lumen-designer lumen-tests lumen-gpu-present-failure lumen-software-present-failure
       - name: Designer native window smoke
-        run: ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 | tee designer-live.log
+        run: |
+          set -o pipefail
+          ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 2>&1 | tee designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-x11-live.json
       - name: GPU/present recovery fault injection
@@ -87,7 +89,9 @@ jobs:
       - name: Build live probe, Designer and GPU fault fixtures
         run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-settings lumen-gallery lumen-designer lumen-tests lumen-gpu-present-failure lumen-software-present-failure
       - name: Designer native window smoke
-        run: ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 | tee designer-live.log
+        run: |
+          set -o pipefail
+          ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 2>&1 | tee designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-wayland-live.json
       - name: GPU/present recovery fault injection
@@ -133,7 +137,9 @@ jobs:
       - name: Build live probe, Designer and accessibility provider
         run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-tests lumen-settings lumen-gallery lumen-designer
       - name: Designer native window smoke
-        run: ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 | tee designer-live.log
+        run: |
+          set -o pipefail
+          ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 2>&1 | tee designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee macos-live.json
       - name: Headless NSAccessibility regression
@@ -174,8 +180,9 @@ jobs:
         shell: pwsh
         run: |
           $designer = Get-ChildItem build-live -Recurse -Filter lumen-designer.exe | Select-Object -First 1
-          & $designer.FullName --file "$env:GITHUB_WORKSPACE/examples/designer/gallery.design" --max-frames 3 | Tee-Object designer-live.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $designer.FullName --file "$env:GITHUB_WORKSPACE/examples/designer/gallery.design" --max-frames 3 2>&1 | Tee-Object designer-live.log
+          $designerExitCode = $LASTEXITCODE
+          if ($designerExitCode -ne 0) { exit $designerExitCode }
       - name: Window, resize, IME, clipboard and present probe
         shell: pwsh
         run: |
