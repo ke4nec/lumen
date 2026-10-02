@@ -44,9 +44,16 @@ Options parseOptions(int argc, char** argv) {
         } else if (std::strcmp(argv[index], "--max-frames") == 0) {
             options.error = "--max-frames requires a value";
             break;
-        } else if (std::strcmp(argv[index], "--file") == 0 &&
-                   index + 1 < argc) {
+        } else if (std::strcmp(argv[index], "--file") == 0) {
+            if (index + 1 >= argc || argv[index + 1][0] == '-') {
+                options.error = "--file requires a value";
+                break;
+            }
             options.filename = argv[++index];
+        } else {
+            options.error = "unknown option: ";
+            options.error += argv[index];
+            break;
         }
     }
     return options;
