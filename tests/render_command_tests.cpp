@@ -116,6 +116,38 @@ TEST_CASE("record_scene_orders_commands_like_the_immediate_path",
     CHECK(commands[buttonRect + 3].hasBounds);
 }
 
+TEST_CASE("command_list_reports_only_vector_storage_growth",
+          "[render][commands][allocation]") {
+    RenderCommandList list;
+    CHECK(list.storageStats() == lumen::render::RenderCommandStorageStats{});
+
+    list.reserve(4);
+    const auto reserved = list.storageStats();
+    CHECK(reserved.allocationCount == 1);
+    CHECK(reserved.allocatedBytes == 4U * sizeof(lumen::render::RenderCommand));
+    CHECK(reserved.peakBytes == reserved.allocatedBytes);
+
+    list.drawRect(Rect::fromXYWH(0.0F, 0.0F, 10.0F, 10.0F),
+                  Color::fromRGBA(255, 255, 255, 255));
+    CHECK(list.storageStats() == reserved);
+
+    list.reserve(16);
+    const auto grown = list.storageStats();
+    CHECK(grown.allocationCount == 2);
+    CHECK(grown.allocatedBytes ==
+          20U * sizeof(lumen::render::RenderCommand));
+    CHECK(grown.peakBytes == 16U * sizeof(lumen::render::RenderCommand));
+
+    CpuRenderer renderer;
+    FrameInfo info;
+    info.viewport = Size{32.0F, 32.0F};
+    renderer.submit(list, info);
+    const auto stats = renderer.stats();
+    CHECK(stats.commandStorageAllocationCount == grown.allocationCount);
+    CHECK(stats.commandStorageAllocatedBytes == grown.allocatedBytes);
+    CHECK(stats.commandStoragePeakBytes == grown.peakBytes);
+}
+
 TEST_CASE("cpu_submit_matches_immediate_paint_pixels", "[render][commands]") {
     const auto root = laidOutScene(sampleScene());
 

@@ -1198,6 +1198,9 @@ void CpuRenderer::submit(const RenderCommandList& commands,
             .count();
     stats_.commandCount = commands.size();
     stats_.culledCommands = commands.size() - effective->size();
+    const auto storage = commands.storageStats();
+    noteCommandStorageStats(storage.allocationCount, storage.allocatedBytes,
+                            storage.peakBytes);
     stats_.fullFrameFallback = wantsPartial && !partial;
     stats_.fallbackReason = std::move(fallbackReason);
     stats_.uploads += uploads;

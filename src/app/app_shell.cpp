@@ -1099,6 +1099,10 @@ FrameDebugSnapshot AppShell::frameDebugSnapshot() {
     snapshot.gpuWaitMs = stats.gpuWaitMs;
     snapshot.commandCount = stats.commandCount;
     snapshot.culledCommands = stats.culledCommands;
+    snapshot.commandStorageAllocationCount =
+        stats.commandStorageAllocationCount;
+    snapshot.commandStorageAllocatedBytes = stats.commandStorageAllocatedBytes;
+    snapshot.commandStoragePeakBytes = stats.commandStoragePeakBytes;
     snapshot.fullFrameFallback = stats.fullFrameFallback;
     snapshot.fallbackReason = stats.fallbackReason;
     snapshot.backendName = activeRenderer().capabilities().backendName;

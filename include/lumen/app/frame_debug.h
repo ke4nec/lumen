@@ -8,9 +8,9 @@
 // 件事：快照值类型 + 把快照组合成非模态视觉 overlay（左上角面板，
 // Stack 承载、排除语义与焦点——诊断图层不进入读屏树）。
 //
-// 语义边界：图层在提交前绘制，读数来自上一帧的采样（滞后一帧）；分
-// 配量统计未接入（renderer stats 无该维度，见 support-matrix R6 登
-// 记）。文本含真实时间读数，因此开启 HUD 的帧不做确定性 hash 对照。
+// 语义边界：图层在提交前绘制，读数来自上一帧的采样（滞后一帧）；命令
+// 存储分配只覆盖 RenderCommandList 的 vector 容量增长，不是整帧堆分配。
+// 文本含真实时间读数，因此开启 HUD 的帧不做确定性 hash 对照。
 
 #include <cstdint>
 #include <cstdio>
@@ -35,6 +35,9 @@ struct FrameDebugSnapshot {
     std::uint64_t nodeCount{0};       // 主树 + overlay RenderNode 计数
     std::uint64_t commandCount{0};    // renderer stats
     std::uint64_t culledCommands{0};  // renderer stats
+    std::uint64_t commandStorageAllocationCount{0};
+    std::uint64_t commandStorageAllocatedBytes{0};
+    std::uint64_t commandStoragePeakBytes{0};
     bool fullFrameFallback{false};
     std::string fallbackReason{};
     std::string backendName{};  // renderer capabilities
@@ -56,6 +59,10 @@ struct FrameOverlayStyle {
 };
 
 namespace frame_debug_detail {
+
+[[nodiscard]] inline std::uint64_t ceilKiB(std::uint64_t bytes) {
+    return bytes / 1024U + (bytes % 1024U == 0 ? 0U : 1U);
+}
 
 // 合成一行读数 Text 节点（11px；诊断图层小字号，密度无关；offset 为
 // 面板内绝对数据——本层不经布局）。
@@ -92,7 +99,7 @@ namespace frame_debug_detail {
         bool accent{false};
     };
     std::vector<Row> rows;
-    rows.reserve(5);
+    rows.reserve(6);
 
     std::snprintf(line, sizeof(line), "lumen frame #%llu %s",
                   static_cast<unsigned long long>(snapshot.frameIndex),
@@ -101,6 +108,16 @@ namespace frame_debug_detail {
 
     std::snprintf(line, sizeof(line), "build %.2fms  layout %.2fms  paint %.2fms",
                   snapshot.reconcileMs, snapshot.layoutMs, snapshot.paintMs);
+    rows.push_back(Row{line, false});
+
+    std::snprintf(line, sizeof(line),
+                  "cmd storage %llu alloc / %llu KiB / %llu KiB peak",
+                  static_cast<unsigned long long>(
+                      snapshot.commandStorageAllocationCount),
+                  static_cast<unsigned long long>(
+                      ceilKiB(snapshot.commandStorageAllocatedBytes)),
+                  static_cast<unsigned long long>(
+                      ceilKiB(snapshot.commandStoragePeakBytes)));
     rows.push_back(Row{line, false});
 
     std::snprintf(line, sizeof(line), "submit %.2fms  gpu wait %.2fms  fps %.1f",

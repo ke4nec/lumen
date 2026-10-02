@@ -296,7 +296,7 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
   （hover）描画进入像素。跨帧行为如实登记：局部帧只在 damage 区内重绘
   描画，可能残留描边（调试语义）。
 - 未交付池项（更新）：inspector 交互式节点查看（选中 → 节点信息面板）、
-  语义树视图、分配量统计——M18 §6 编号继续。
+  语义树视图、整帧堆分配统计——命令流 vector 存储分配读数已交付，M18 §6 编号继续。
 
 ### 菜单 F10/Alt 单批状态记录（2026-09-30，menu-controls P3 首项）
 
@@ -360,8 +360,8 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
   inspector 基线帧同位对比——AA 合成色不做精确断言）+ 输入存活 1；
   HUD 重写测试 2（合成 + runApp 装配/默认关闭对照，替换旧 overlay 槽
   位断言）。
-- 边界（如实）：读数/检视随重绘帧刷新（HUD 滞后一帧采样）；分配量维
-  度维持未接入。
+- 边界（如实）：读数/检视随重绘帧刷新（HUD 滞后一帧采样）；HUD 目前只显示
+  RenderCommandList vector 容量增长，整帧堆分配维度维持未接入。
 
 ### R6 四批状态记录（2026-09-30，inspector 钉住态与样式明细）
 
@@ -380,7 +380,7 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
 - 契约（如实声明）：钉住捕获是显式调试语义——仅主键、仅 inspector
   开启期；阶段8的"输入零影响"对 HUD/bounds/damage 图层仍成立（被动
   层），inspector 为主动调试工具（浏览器元素检视器惯例）。
-- 未交付池项（更新）：语义树视图、分配量统计、双轴联滚、RTL 镜像、
+- 未交付池项（更新）：语义树视图、整帧堆分配统计、双轴联滚、RTL 镜像、
   触摸长按唤起、横向网格——按需继续。
 
 
@@ -421,8 +421,8 @@ M19 富文本与复杂脚本（按产品需要启用，不占默认顺序）
   - **样式导出**（M18 §6.4 三旗标补齐）：`dumpStyleTree`（tree_dump.h；节点行 + `style:` 前缀样式行，颜色 `#rrggbbaa`，组件专有段覆盖 variant 全集）+ settings `--dump-style` + gallery `--dump-tree`/`--dump-semantics`/`--dump-style` 平价（1024x768 首帧）。
   - **帧读数 HUD**（M18 §6.3 首版）：`AppShell::setFrameStatsCapture/frameDebugSnapshot`（采样默认关闭零开销——关闭态 frame hash 单测断言不变；开启采样 reconcile/layout 阶段耗时、fps 环（64 帧 steady_clock 环，跨度不足 1s 用平均帧率）、主树+overlay 节点计数）+ `app::makeFrameStatsOverlay`（frame_debug.h；Theme token 派生配色，全子树 excludeFromSemantics/Focus）+ `RunOptions.frameDebugOverlay`（runApp 装配非模态视觉 overlay 并每调度帧标脏刷新；settings/gallery `--frame-overlay`）。
 - 测试：dump_style 确定性/组件覆盖/行数（app_shell_tests [m18]）；采样只读（hash 不变）+ HUD 组合/语义排除 + runApp 装配/默认关闭对照（[app][r6]）；gallery 三 dump 平价（gallery_integration_tests [m18]）。全量 ctest 940/940（本批 +5）。
-- 边界（如实）：读数滞后一帧（overlay builder 重建期求值）；paint/submit/GPU wait 来自 renderer stats、reconcile/layout 为帧管线内 steady_clock 采样；分配量维度未接入（renderer stats 无该维度，M18 §6.3 的该项维持未交付）；`--frame-overlay` 开启态帧无确定性 hash（读数含真实时间），关闭态不变；HUD 与菜单/拖拽 overlay 共用视觉槽位（互斥）——菜单打开或拖放会话期间顶替 HUD，关闭后不自动恢复（重启开关恢复）。
-- 未交付池项（更新）：inspector GUI（节点选中 → bounds overlay）、bounds/damage overlay、语义树视图、分配量统计——后续增量继续走 M18 §6 编号。
+- 边界（如实）：读数滞后一帧（overlay builder 重建期求值）；paint/submit/GPU wait 来自 renderer stats、reconcile/layout 为帧管线内 steady_clock 采样；HUD 的命令流存储分配读数只覆盖 RenderCommandList vector 容量增长，整帧堆分配维度未接入；`--frame-overlay` 开启态帧无确定性 hash（读数含真实时间），关闭态不变；HUD 与菜单/拖拽 overlay 共用视觉槽位（互斥）——菜单打开或拖放会话期间顶替 HUD，关闭后不自动恢复（重启开关恢复）。
+- 未交付池项（更新）：inspector GUI（节点选中 → bounds overlay）、bounds/damage overlay、语义树视图、整帧堆分配统计——后续增量继续走 M18 §6 编号。
 - 用法收录：`build-commands.md` §2（dump 三旗标 + `--frame-overlay` 行 + 确定性/golden 说明）。
 
 ### M15–M19 实现 review 记录（2026-09-30，逐提交复审）

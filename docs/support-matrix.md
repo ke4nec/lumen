@@ -93,7 +93,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | R3 OS 拖放 | 接口已存在 + headless 已验证 | OS 拖入归一化事件与应用内重排/列拖序 headless 契约通过；三桌面真实拖入 smoke 待现场（`drag_drop_os_receive` 已纳入必检清单）；拖出结构化不可用（SDL 3.2.10） |
 | R4 桌面系统集成 | 部分接口已存在 | 全屏/置顶/OS 模态/托盘契约与 SDL 实现已有（headless 已验证）；全局快捷键 Linux X11 后端已交付（Xvfb XTEST 端到端）+ Win32 后端交付（RegisterHotKey + 消息专用窗口；**编译级验证 = windows.yml，真实按键验收待现场**；平台经 createPlatformBackend 分发）；Wayland/macOS 结构化不可用；macOS 原生菜单栏/交通灯未实现 |
 | R5 文本与剪贴板深度 | headless 已验证 | G-3 剪贴板 MIME 数据层/图片与自定义格式/变更广播有 headless 断言；三桌面真实 IME 与跨应用复制粘贴待现场 |
-| R6 开发者诊断 | dump 与调试图层已交付（headless 已验证） | `dumpRenderTree`/`dumpSemanticsTree`/`dumpStyleTree` + settings/gallery 三旗标 + 帧读数 HUD + bounds/damage 调试图层 + inspector 悬停检视图层（`--inspector`；信息面板 + 命中高亮；同日修复 HUD 经 overlay 槽位吞输入的缺陷——全部纯绘制层）2026-09-30 交付；分配量维度未接入；inspector 钉住态与样式明细已交付（点击钉住/Esc 解钉，主键捕获为调试契约） |
+| R6 开发者诊断 | dump 与调试图层已交付（headless 已验证） | `dumpRenderTree`/`dumpSemanticsTree`/`dumpStyleTree` + settings/gallery 三旗标 + 帧读数 HUD + bounds/damage 调试图层 + inspector 悬停检视图层（`--inspector`；信息面板 + 命中高亮；同日修复 HUD 经 overlay 槽位吞输入的缺陷——全部纯绘制层）2026-09-30 交付；HUD 已接入命令流 vector 存储分配计数/字节/峰值，整帧堆分配维度仍未接入；inspector 钉住态与样式明细已交付（点击钉住/Esc 解钉，主键捕获为调试契约） |
 | R7 控件细节 | 按需池交付中 | 已交付 auto-hide 滚动条、Splitter 塌缩/KeepRatio、DataGrid 筛选接线、可编辑 ComboBox、DialogHost 便利层、ColorPicker、Grid 跨行列、菜单 F10/裸 Alt 单键切换 + 打开态 Alt+mnemonic 顶级切换、List/Tree 行内编辑（2026-09-30）；RTL 镜像、双轴联滚、触摸长按唤起等在池 |
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
 | R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；`examples/common/example_kit.h` 首批提取 mutedLabel/errorText/statusLine（2026-09-30，两应用逐字节重复收敛为单点）；页面壳（sectionCard 级）仍按需 |
@@ -197,9 +197,10 @@ Skia/GPU Release 779/779，无跳过；详见
   行 + `#rrggbbaa` 颜色）；gallery 补齐 `--dump-tree`/`--dump-semantics`
   平价；`app::makeFrameStatsOverlay` + `RunOptions.frameDebugOverlay`
   （settings/gallery `--frame-overlay`）——reconcile/layout/paint/submit/
-  GPU wait、fps、节点/命令数与当前 renderer，读数滞后一帧，全子树排除
-  语义与焦点；默认关闭零额外帧、frame hash 不变（单测断言）。分配量
-  维度未接入；inspector 与 bounds/damage overlay 仍为后续增量。
+  GPU wait、fps、节点/命令数、命令流存储分配与当前 renderer，读数滞后一帧，
+  全子树排除语义与焦点；默认关闭零额外帧、frame hash 不变（单测断言）。HUD
+  的命令流存储分配读数只覆盖 RenderCommandList vector 容量增长，整帧堆分配维度
+  仍未接入；inspector 与 bounds/damage overlay 仍为后续增量。
 - 示例组件 kit 首批（R9，2026-09-30）：`examples/common/example_kit.h`
   ——Gallery/Settings 逐字节重复的 `mutedLabel`/`errorText` 收敛为单点
   （相对包含，调用点零改动、输出不变——既有示例测试全绿即回归证据）；

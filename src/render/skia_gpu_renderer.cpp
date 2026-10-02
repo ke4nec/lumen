@@ -219,6 +219,9 @@ class SkiaGpuRenderer final : public Renderer {
         stats_.gpuWaitMs =
             std::chrono::duration<double, std::milli>(end - flushStart).count();
         stats_.commandCount = commands.size();
+        const auto storage = commands.storageStats();
+        noteCommandStorageStats(storage.allocationCount, storage.allocatedBytes,
+                                storage.peakBytes);
         stats_.fullFrameFallback = wantedPartial;
         stats_.fallbackReason =
             wantedPartial ? "gpu-backend-has-no-partial-submit" : "";

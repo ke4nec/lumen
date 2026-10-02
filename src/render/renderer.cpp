@@ -196,8 +196,19 @@ void Renderer::noteAdaptedSubmit(const RenderCommandList& commands,
     stats_.submitMs = submitMs;
     stats_.commandCount = commands.size();
     stats_.culledCommands = culledCommands;
+    const auto storage = commands.storageStats();
+    noteCommandStorageStats(storage.allocationCount, storage.allocatedBytes,
+                            storage.peakBytes);
     stats_.fullFrameFallback = fullFrameFallback;
     stats_.fallbackReason = std::move(fallbackReason);
+}
+
+void Renderer::noteCommandStorageStats(std::uint64_t allocationCount,
+                                        std::uint64_t allocatedBytes,
+                                        std::uint64_t peakBytes) {
+    stats_.commandStorageAllocationCount = allocationCount;
+    stats_.commandStorageAllocatedBytes = allocatedBytes;
+    stats_.commandStoragePeakBytes = peakBytes;
 }
 
 std::uint64_t frameHash(const PixelBuffer& buffer) {

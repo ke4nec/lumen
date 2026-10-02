@@ -1402,6 +1402,10 @@ TEST_CASE("frame_stats_capture_preserves_frame_hash_when_enabled",
     CHECK(snapshot.layoutMs >= 0.0);
     CHECK(snapshot.paintMs >= 0.0);
     CHECK(snapshot.fps == 0.0);  // 单帧样本不足以推导 fps。
+    CHECK(snapshot.commandStorageAllocationCount > 0);
+    CHECK(snapshot.commandStorageAllocatedBytes >=
+          snapshot.commandStoragePeakBytes);
+    CHECK(snapshot.commandStoragePeakBytes > 0);
 
     // 未开启采样：阶段/计数字段保持 0（零开销路径不产出数据）。
     const lumen::app::FrameDebugSnapshot idle = plain.frameDebugSnapshot();
@@ -1436,11 +1440,12 @@ TEST_CASE("frame_stats_layer_synthesizes_and_never_blocks_input",
     const lumen::core::RenderNode layer =
         lumen::app::makeFrameStatsLayer(snapshot, style);
     REQUIRE(layer.type == lumen::core::WidgetType::Container);
-    CHECK(layer.children.size() == 5);  // 4 读数行 + fallback 告警行。
+    CHECK(layer.children.size() == 6);  // 5 读数行 + fallback 告警行。
     CHECK(layer.children[0].type == lumen::core::WidgetType::Text);
     CHECK(layer.children[0].text.find("lumen frame #7") !=
           std::string::npos);
-    CHECK(layer.children[4].text.find("damage-invalid") != std::string::npos);
+    CHECK(layer.children[2].text.find("cmd storage") != std::string::npos);
+    CHECK(layer.children[5].text.find("damage-invalid") != std::string::npos);
     CHECK(layer.commonStyle().background == style.panel);
 
     // R6 回归（2026-09-30 修复）：HUD 开启时应用输入不被吞——按钮仍

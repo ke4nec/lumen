@@ -1,9 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "lumen/core/geometry.h"
@@ -80,11 +83,52 @@ struct RenderCommand {
     [[nodiscard]] bool operator==(const RenderCommand&) const = default;
 };
 
+// RenderCommandList 自身 vector 存储的分配轨迹。该指标只覆盖命令数组
+// 容量增长，不包含 RenderCommand 内部 string/vector 或其他应用堆分配。
+struct RenderCommandStorageStats {
+    std::uint64_t allocationCount{0};
+    std::uint64_t allocatedBytes{0};
+    std::uint64_t peakBytes{0};
+
+    [[nodiscard]] bool operator==(const RenderCommandStorageStats&) const = default;
+};
+
 // 一帧的命令序列。builder 方法与 Renderer 的即时路径一一对应，所以
 // 同一个 walker 模板既能驱动 Renderer 也能录制命令。
 class RenderCommandList {
   public:
-    void reserve(std::size_t count) { commands_.reserve(count); }
+    RenderCommandList() = default;
+    RenderCommandList(const RenderCommandList& other) : commands_(other.commands_) {
+        observeCapacity();
+    }
+    RenderCommandList(RenderCommandList&& other) noexcept
+        : commands_(std::move(other.commands_)), storageStats_(other.storageStats_),
+          observedCapacity_(other.observedCapacity_) {
+        other.storageStats_ = {};
+        other.observedCapacity_ = 0;
+    }
+    RenderCommandList& operator=(const RenderCommandList& other) {
+        if (this == &other) return *this;
+        commands_ = other.commands_;
+        storageStats_ = {};
+        observedCapacity_ = 0;
+        observeCapacity();
+        return *this;
+    }
+    RenderCommandList& operator=(RenderCommandList&& other) noexcept {
+        if (this == &other) return *this;
+        commands_ = std::move(other.commands_);
+        storageStats_ = other.storageStats_;
+        observedCapacity_ = other.observedCapacity_;
+        other.storageStats_ = {};
+        other.observedCapacity_ = 0;
+        return *this;
+    }
+
+    void reserve(std::size_t count) {
+        commands_.reserve(count);
+        observeCapacity();
+    }
 
     void save() { push(CommandType::Save); }
     void restore() { push(CommandType::Restore); }
@@ -198,6 +242,7 @@ class RenderCommandList {
     // 反序列化与裁剪工具的逐条追加入口；录制请走上面的 builder。
     void append(RenderCommand command) {
         commands_.push_back(std::move(command));
+        observeCapacity();
     }
     // M11：合并另一份录制（overlay 叠加）。每份录制自包含（Save/Clip
     // 平衡），顺序拼接即遮挡语义。
@@ -206,10 +251,15 @@ class RenderCommandList {
                          std::make_move_iterator(other.commands_.begin()),
                          std::make_move_iterator(other.commands_.end()));
         other.commands_.clear();
+        observeCapacity();
     }
     [[nodiscard]] bool empty() const { return commands_.empty(); }
     [[nodiscard]] std::size_t size() const { return commands_.size(); }
     void clear() { commands_.clear(); }
+
+    [[nodiscard]] RenderCommandStorageStats storageStats() const {
+        return storageStats_;
+    }
 
     // 绘制命令数（不含 Save/Restore/ClipRect/Upload/Unload）。
     [[nodiscard]] std::size_t drawCount() const {
@@ -231,16 +281,43 @@ class RenderCommandList {
         return count;
     }
 
-    [[nodiscard]] bool operator==(const RenderCommandList&) const = default;
+    [[nodiscard]] bool operator==(const RenderCommandList& other) const {
+        return commands_ == other.commands_;
+    }
 
   private:
     RenderCommand& push(CommandType type) {
         commands_.emplace_back();
         commands_.back().type = type;
+        observeCapacity();
         return commands_.back();
     }
 
+    void observeCapacity() {
+        const std::size_t capacity = commands_.capacity();
+        if (capacity <= observedCapacity_) return;
+        observedCapacity_ = capacity;
+        constexpr std::size_t elementSize = sizeof(RenderCommand);
+        const std::uint64_t bytes =
+            capacity > std::numeric_limits<std::uint64_t>::max() / elementSize
+                ? std::numeric_limits<std::uint64_t>::max()
+                : static_cast<std::uint64_t>(capacity * elementSize);
+        if (storageStats_.allocationCount !=
+            std::numeric_limits<std::uint64_t>::max()) {
+            ++storageStats_.allocationCount;
+        }
+        if (std::numeric_limits<std::uint64_t>::max() -
+                storageStats_.allocatedBytes < bytes) {
+            storageStats_.allocatedBytes = std::numeric_limits<std::uint64_t>::max();
+        } else {
+            storageStats_.allocatedBytes += bytes;
+        }
+        storageStats_.peakBytes = std::max(storageStats_.peakBytes, bytes);
+    }
+
     std::vector<RenderCommand> commands_{};
+    RenderCommandStorageStats storageStats_{};
+    std::size_t observedCapacity_{0};
 };
 
 // 一帧命令集的工具：序列化与 damage 裁剪。FrameInfo / RendererCapabilities

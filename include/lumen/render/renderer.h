@@ -114,6 +114,10 @@ struct RenderStats {
     std::uint64_t commandCount{0};
     // damage 裁剪丢弃的命令数。
     std::uint64_t culledCommands{0};
+    // 仅 RenderCommandList vector 存储，不代表整帧/进程堆分配。
+    std::uint64_t commandStorageAllocationCount{0};
+    std::uint64_t commandStorageAllocatedBytes{0};
+    std::uint64_t commandStoragePeakBytes{0};
     bool fullFrameFallback{false};
     std::string fallbackReason{};
 };
@@ -215,6 +219,9 @@ class Renderer {
     void noteAdaptedSubmit(const RenderCommandList& commands, double submitMs,
                            std::uint64_t culledCommands, bool fullFrameFallback,
                            std::string fallbackReason);
+    void noteCommandStorageStats(std::uint64_t allocationCount,
+                                  std::uint64_t allocatedBytes,
+                                  std::uint64_t peakBytes);
 
     RenderStats stats_{};
 };

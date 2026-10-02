@@ -69,7 +69,7 @@
 | R3 | P1 | OS 拖放 | headless 会话和应用内重排已实现 | 三桌面文件/文本拖入真实验证；拖出能力如实报告；取消、自动滚动、触摸边界明确 |
 | R4 | P1 | 桌面系统集成 | 全屏、置顶、OS 模态、托盘契约已有 | 全局快捷键平台后端、macOS 菜单栏/交通灯、任务栏进度和托盘细节完成或明确降级 |
 | R5 | P1 | 文本与剪贴板深度 | 基础编辑和文本剪贴板完成 | 三桌面真实 IME；图片/自定义格式剪贴板能力明确，跨平台不支持时有降级 |
-| R6 | P1 | 开发者诊断 | render tree、semantics dump、Inspector、bounds/damage overlay、帧阶段统计和命令/节点计数已交付，headless 已验证；分配量维度未接入 | 三桌面 Inspector smoke 和稳定的跨平台分配量来源；在没有统一来源前不得用进程 RSS 冒充帧分配统计 |
+| R6 | P1 | 开发者诊断 | render tree、semantics dump、Inspector、bounds/damage overlay、帧阶段统计、命令/节点计数和命令流存储分配读数已交付，headless 已验证；整帧堆分配维度仍未接入 | 三桌面 Inspector smoke 和稳定的跨平台整帧分配来源；命令流读数不能替代整帧堆统计，也不得用进程 RSS 冒充 |
 | R7 | P2 | 控件细节 | auto-hide scrollbar、Splitter 塌缩/KeepRatio 等已实现，仍有清单 | 双轴联滚/RTL/菜单 mnemonic/Tree/List 行内编辑/DataGrid 条件筛选等按需逐项交付 |
 | R8 | P2 | 复杂文本 | 当前为确定性 UAX#9 子集和逐 grapheme shaping | 只有在产品需要时实现 HarfBuzz、完整 UBA、TextSpan 富文本和目标语言字体策略 |
 | R9 | P2 | 框架使用效率 | 模板已存在，Gallery/Settings 仍较大 | 页面壳、工具栏、状态摘要、表单和常用对话框组合方式有稳定示例与文档 |
@@ -112,7 +112,7 @@
 R6、R9、R10 可以穿插实现，但应在新增复杂控件前提供足够的定位工具：
 
 - Inspector 默认关闭，开启后显示 Widget/Element 类型、key、identity、bounds、ResolvedStyle、damage 和语义节点。
-- Frame overlay 显示 build/layout/paint/submit/GPU wait、fps、命令数、节点数和当前 renderer；分配量维度仍待稳定的跨平台 renderer/allocator 契约，不能用进程 RSS 代替。
+- Frame overlay 显示 build/layout/paint/submit/GPU wait、fps、命令数、节点数、命令流存储分配和当前 renderer；整帧分配量仍待稳定的跨平台 renderer/allocator 契约，不能用进程 RSS 代替。
 - `--dump-tree`、`--dump-style`、`--dump-semantics` 使用同一套稳定文本格式，纳入 golden 和构建命令文档。
 - 默认关闭状态必须保持零额外帧、frame hash 和性能基线不变。
 - 将 Settings/Gallery 中反复出现的页面壳和状态摘要提取成小型示例组件，保持模板仍然简短。
@@ -161,6 +161,6 @@ headless：Catch2 用例、失败注入、确定性输出
 2. 完成 R0 的 Windows/macOS 读屏、IME、剪贴板、透明合成和一小时浸泡验收，形成可复查证据。
 3. 完成 R1 的 Windows/macOS GPU 包、CPack Bundle 和干净机器安装启动。
 4. 完成 R3 的三桌面拖入 smoke，并记录拖出不可用的结构化降级。
-5. 保持 R6 Inspector/Frame overlay 的默认关闭和零开销回归；若补充分配量读数，先冻结跨平台 allocator 契约，再加入 headless/golden 证据。
+5. 保持 R6 Inspector/Frame overlay 的默认关闭和零开销回归；命令流存储读数已加入 headless 证据，整帧分配量仍须先冻结跨平台 allocator 契约，不能以命令流或 RSS 代替。
 
 完成以上五项后，再根据实际工具需求选择 R4、R5 或 R7 的具体子项；不要把未完成的真实平台出口用新增控件数量掩盖。
