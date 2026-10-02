@@ -2819,4 +2819,18 @@ TEST_CASE("designer file watcher reloads valid files and keeps the last frame on
     CHECK_FALSE(app.loadFile(path.string()));
     CHECK(app.workbench().frame().generation() == goodGeneration);
     REQUIRE(app.workbench().diagnostics().size() == 1);
+
+    std::error_code removeError;
+    std::filesystem::remove(path, removeError);
+    REQUIRE_FALSE(removeError);
+    CHECK(watcher.poll());
+    CHECK_FALSE(app.loadFile(path.string()));
+    CHECK(app.workbench().frame().generation() == goodGeneration);
+    REQUIRE(app.workbench().diagnostics().size() == 1);
+
+    write("page watch { Text(\"Restored\", key: \"title\") }");
+    CHECK(watcher.poll());
+    REQUIRE(app.loadFile(path.string()));
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().frame().generation() > goodGeneration);
 }

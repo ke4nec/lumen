@@ -1340,7 +1340,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数、未知选项、缺失 `--file`
   值和不存在的 `--file`。
   headless CLI 对指定文件的读取/解析失败返回非零并保留诊断输出；窗口模式对启动时指定文件
-  读取/解析失败返回非零，watch 热重载期间仍保留上一份有效画面。
+  读取/解析失败返回非零，watch 热重载期间仍保留上一份有效画面；文件删除与重新出现也会
+  进入同一失败恢复和有效重载路径。
   窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery.lumen 覆盖冻结的 12 个 L0
   节点类型，gallery.design 覆盖全部注册 schema，且均无业务引用诊断。

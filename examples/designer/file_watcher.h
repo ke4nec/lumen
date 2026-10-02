@@ -14,6 +14,7 @@ class FileWatcher {
 
   private:
     std::string filename_{};
+    bool exists_{false};
     std::filesystem::file_time_type stamp_{};
 };
 
