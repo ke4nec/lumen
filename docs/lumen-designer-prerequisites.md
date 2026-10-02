@@ -1331,11 +1331,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
   节点类型且无业务引用诊断。
-- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `387` 个断言、
-  `30` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
+- 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
+  `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1106/1106`，
-  Release 配置为 `1108/1108`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1107/1107`，
+  Release 配置为 `1109/1109`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、
@@ -1361,6 +1361,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   allocator 契约。L2 设计文档节点已登记 schema；探针通过 `MapDesignRuntimeContext`
   注册独立 source lease，真实 controller 资源和具体 widgets controller builder 仍由应用
   适配层按需接入；headless 组合件占位和 lease 路径已接入。
+  `designer_performance_tests.cpp` 的 L2 VirtualList fixture 还重复编译同一文档，验证 source
+  lease、可见窗口物化数量、RenderNode 和 frame hash 的确定性。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。

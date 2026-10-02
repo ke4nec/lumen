@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -9,6 +10,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "lumen/dsl/design_codec.h"
+#include "lumen/dsl/design_preview_frame.h"
 #include "lumen/dsl/design_schema.h"
 #include "lumen/dsl/design_workbench.h"
 #include "lumen/core/virtual_list.h"
@@ -22,8 +24,11 @@ using lumen::core::Size;
 using lumen::dsl::DesignDocument;
 using lumen::dsl::DesignNode;
 using lumen::dsl::DesignPreviewOutlineNode;
+using lumen::dsl::DesignPreviewFrame;
 using lumen::dsl::DesignPreviewWorkbench;
 using lumen::dsl::DesignValue;
+using lumen::dsl::DesignReferenceKind;
+using lumen::dsl::MapDesignRuntimeContext;
 using lumen::dsl::compileDesignDocument;
 using lumen::dsl::parseLumenSource;
 using lumen::dsl::readDesignDocument;
@@ -49,6 +54,10 @@ struct FixtureDocument {
 
 DesignValue stringValue(std::string value) {
     return DesignValue{DesignValue::Variant{std::move(value)}};
+}
+
+DesignValue numberValue(double value) {
+    return DesignValue{DesignValue::Variant{value}};
 }
 
 DesignDocument makeDocument(std::size_t nodeCount) {
@@ -295,4 +304,63 @@ TEST_CASE("designer runtime preview virtualizes a large list deterministically",
     INFO("virtual-list layout_us=" << layoutTime.count()
          << " paint_us=" << paintTime.count()
          << " materialized=" << first.children.size());
+}
+
+TEST_CASE("designer L2 document virtual list preview is deterministic",
+          "[designer][f6][performance][designer-l2]") {
+    DesignDocument document;
+    document.documentId = "designer-performance-virtual-list";
+    document.pageName = "virtual-list";
+    document.root = DesignNode{1, "VirtualList"};
+    document.root.properties["key"] = stringValue("preview-list");
+    document.root.properties["width"] = numberValue(800.0);
+    document.root.properties["height"] = numberValue(600.0);
+    document.root.properties["virtualCacheExtent"] = numberValue(200.0);
+    document.root.references["virtualSource"] = "preview_rows";
+
+    auto source = std::make_shared<lumen::core::VirtualListController>();
+    source->setItemCount(1000);
+    source->setEstimatedExtent(32.0F);
+    source->setItemBuilder([](std::size_t index) {
+        auto item = lumen::core::makeText(
+            "Design preview item " + std::to_string(index));
+        item.key = "design-preview-item-" + std::to_string(index);
+        item.height = 32.0F;
+        return item;
+    });
+    MapDesignRuntimeContext context;
+    context.registerTypedReference(DesignReferenceKind::VirtualSource,
+                                   "preview_rows", source.get(), source);
+    DesignPreviewFrame frame;
+
+    auto paint = [](const lumen::core::RenderNode& renderNode) {
+        lumen::render::CpuRenderer renderer;
+        renderer.beginFrame(Size{800.0F, 600.0F});
+        lumen::render::paintScene(renderer, renderNode);
+        renderer.endFrame();
+        return lumen::render::frameHash(renderer.pixels());
+    };
+
+    REQUIRE(frame.update(document, context));
+    REQUIRE(frame.session());
+    CHECK(frame.session()->leaseCount() == 1);
+    const auto first = lumen::layout::LayoutEngine::layout(
+        frame.widget(), Constraints::tight(Size{800.0F, 600.0F}));
+    REQUIRE(first.children.size() > 0);
+    CHECK(first.children.size() < 50);
+    CHECK(source->lastMaterializedItems() == first.children.size());
+    const auto firstHash = paint(first);
+
+    REQUIRE(frame.update(document, context));
+    REQUIRE(frame.session());
+    CHECK(frame.session()->leaseCount() == 1);
+    const auto second = lumen::layout::LayoutEngine::layout(
+        frame.widget(), Constraints::tight(Size{800.0F, 600.0F}));
+    REQUIRE(second.children.size() == first.children.size());
+    CHECK(second == first);
+    CHECK(paint(second) == firstHash);
+    CHECK(source->lastMaterializedItems() == second.children.size());
+    CHECK(source->peakMaterializedItems() == first.children.size());
+    CHECK(firstHash != 0);
+    frame.clear();
 }
