@@ -42,7 +42,9 @@ CI 负责验证每种产物的职责：
 `tests/package_designer_smoke.py`：检查 `gallery.lumen` 与覆盖全部注册 schema 的
 `gallery.design` 均随包安装，并从解包目录启动 `lumen-designer --headless` 验证
 `.design` 预览链路；smoke 还要求结构化输出包含有效 `frame0`、`document 1` 和
-`diagnostics 0`，避免带可恢复诊断的 fixture 被误判为可发布。
+`diagnostics 0`，避免带可恢复诊断的 fixture 被误判为可发布。同时传入未知选项、缺失
+`--file` 值以及把另一个选项误作文件名，三条命令行失败路径必须返回非零并输出稳定的
+`usage error`，确保安装后的解析器与构建树一致。
 
 所有桌面 SDK 打包 job 还运行 `tests/package_consumer_smoke.py`：把解包产物
 复制到仓库外的含空格路径，拒绝导出配置泄漏源码/构建/原安装目录，独立

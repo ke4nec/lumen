@@ -28,12 +28,17 @@ def main() -> None:
     if not binary.is_file():
         raise FileNotFoundError(binary)
 
-    result = subprocess.run(
-        [str(binary), "--headless", "--file", str(examples / "gallery.design")],
-        cwd=binary.parent,
-        capture_output=True,
-        text=True,
-        timeout=30,
+    def run_designer(*arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [str(binary), *arguments],
+            cwd=binary.parent,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    result = run_designer(
+        "--headless", "--file", str(examples / "gallery.design")
     )
     print(result.stdout, end="")
     if result.stderr:
@@ -61,6 +66,30 @@ def main() -> None:
         raise RuntimeError(
             "Designer headless smoke reported diagnostics: "
             f"{diagnostic_line or '<missing>'}"
+        )
+
+    invalid_option = run_designer("--headless", "--package-unknown-option")
+    if invalid_option.returncode == 0:
+        raise RuntimeError("Designer package accepted an unknown option")
+    if "usage error: unknown option: --package-unknown-option" not in invalid_option.stderr:
+        raise RuntimeError(
+            "Designer package unknown-option failure did not report the expected usage error"
+        )
+
+    missing_file_value = run_designer("--headless", "--file")
+    if missing_file_value.returncode == 0:
+        raise RuntimeError("Designer package accepted --file without a value")
+    if "usage error: --file requires a value" not in missing_file_value.stderr:
+        raise RuntimeError(
+            "Designer package missing-file failure did not report the expected usage error"
+        )
+
+    option_as_file = run_designer("--headless", "--file", "--max-frames", "1")
+    if option_as_file.returncode == 0:
+        raise RuntimeError("Designer package accepted an option as the --file value")
+    if "usage error: --file requires a value" not in option_as_file.stderr:
+        raise RuntimeError(
+            "Designer package option-as-file failure did not report the expected usage error"
         )
 
 
