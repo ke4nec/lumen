@@ -126,7 +126,7 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 检查器只验证记录完整性和归属，不代替人工判断。当前容器无真实桌面、AppKit
 或 Windows，不能据本地 headless 结果标记三平台人工回环完成。
 
-## 待验收登记（2026-09-30）
+## 待验收登记（2026-10-02）
 
 按 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 的缺口编号，
 把“实现批次已交付（headless 契约通过）”与“真实平台缺口（必须现场验收）”
@@ -145,6 +145,10 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 | 全局快捷键真实按键 | Windows/Linux X11 | Linux X11 后端已交付（Xvfb XTEST 端到端通过）；Win32 后端已交付（RegisterHotKey，编译级 CI 门禁）；macOS 后端未实现 | X11 桌面真实键盘按键待现场；Win32 真实按键（消息泵→UI 事件、冲突码）待现场；Wayland 会话 = `globalHotkeys=false` + 结构化 Unavailable（如实）；macOS = 结构化 Unavailable | R4（Win32/Linux 为验收缺口；macOS 为实现缺口） |
 | macOS 原生菜单栏/交通灯 | macOS | 未实现 | 无实现 | 自绘 MenuBar/标题栏可用 | R4 |
 | GPU 包、CPack Bundle、干净机器启动 | Windows/macOS | CI 变体已构建（package-skia-gpu） | 无干净机器安装/启动记录 | CI 解包冒烟不替代真实验收 | R1 |
+
+本轮源码基线 `42c1da2` 的本地 Debug/Release 全量 CTest 和 Designer 工程保存回归均通过，
+但没有新增真实桌面、生产 allocator 或屏幕阅读器证据；因此本表所有平台检查项保持原状态，
+不能把本地 headless 结果写入 `record.json` 的 `pass` 字段。
 
 新增缺口进入本表时同步更新 `check_platform_acceptance.py` 的必检集合与本文
 record 模板；实现推进改变四态时，本表与
