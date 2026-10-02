@@ -146,6 +146,19 @@ if(LUMEN_ENABLE_GPU)
 endif()
 
 add_executable(lumen-tests ${LUMEN_TEST_SOURCES})
+
+# F6 设计器性能证据：独立进程安装全局 new/delete 记账，避免污染主测试
+# 进程；只输出预览操作期间的 live/peak heap bytes。
+if(NOT LUMEN_BUILD_MOBILE_CORE)
+    add_executable(lumen-designer-memory-probe designer_memory_probe.cpp)
+    target_link_libraries(lumen-designer-memory-probe PRIVATE
+        lumen-dsl lumen-layout lumen-render lumen-widgets)
+    target_compile_features(lumen-designer-memory-probe PRIVATE cxx_std_20)
+    add_test(NAME designer_memory_peak
+        COMMAND lumen-designer-memory-probe)
+    set_tests_properties(designer_memory_peak PROPERTIES TIMEOUT 30)
+endif()
+
 if(APPLE AND LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND NOT LUMEN_BUILD_MOBILE_CORE)
     target_sources(lumen-tests PRIVATE nsaccessibility_tests.mm)
     target_compile_definitions(lumen-tests PRIVATE LUMEN_ACCESSIBILITY_PROVIDER_NSACCESSIBILITY=1)
