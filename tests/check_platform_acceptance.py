@@ -13,7 +13,8 @@ READER_CASES = {"read", "focus", "activate", "value", "editing", "dialog",
                 "resize", "close_reopen"}
 PLATFORM_CASES = {"ime_preedit_commit_cancel", "ime_candidate_position", "clipboard_cross_app",
                   "multiwindow_focus_dpi", "window_lifecycle", "transparent_composition",
-                  "gpu_present_recovery_state", "soak_resources", "drag_drop_os_receive"}
+                  "gpu_present_recovery_state", "soak_resources", "drag_drop_os_receive",
+                  "frame_allocator_source"}
 
 
 def validate_platform(record: dict, soak: dict, platform: str) -> None:

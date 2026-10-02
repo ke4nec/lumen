@@ -30,6 +30,18 @@ class EvidenceTests(unittest.TestCase):
                                                    drag_drop_os_receive=value)}
                 validate_platform(invalid, soak, "linux-x11")
 
+    def test_frame_allocator_source_is_required_platform_check(self):
+        # R6 的 fake/headless scope 不能替代三桌面生产 allocator source。
+        record = {"platform_checks": {key: "pass" for key in PLATFORM_CASES}}
+        soak = dict(driver="x11", seconds=3600, windows=2, frames=100,
+                    resize_events=20, stress_mib=64, simulated_recoveries=2, state_preserved=True)
+        validate_platform(record, soak, "linux-x11")
+        for value in ("pending", None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                invalid = {"platform_checks": dict(record["platform_checks"],
+                                                   frame_allocator_source=value)}
+                validate_platform(invalid, soak, "linux-x11")
+
     def test_requires_current_commit_reader_cases_and_real_attachments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

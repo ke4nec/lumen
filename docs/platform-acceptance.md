@@ -96,7 +96,7 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
     "clipboard_cross_app": "pending", "multiwindow_focus_dpi": "pending",
     "window_lifecycle": "pending", "transparent_composition": "pending",
     "gpu_present_recovery_state": "pending", "soak_resources": "pending",
-    "drag_drop_os_receive": "pending"
+    "drag_drop_os_receive": "pending", "frame_allocator_source": "pending"
   },
   "readers": {
     "Orca": {
@@ -132,6 +132,7 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 | 透明合成 | Windows texture 已实测；X11/Wayland/macOS 未验 | headless 已验证（预乘表示一致） | 无真实合成器现场 | 软件窗口不支持逐像素透明时按不透明提交 | R0 |
 | 1 小时双窗口浸泡 | Linux 已做（M14-A）；Windows/macOS 未做 | headless 已验证（恢复用例） | 无登录桌面长时运行 | 模拟 renderer 失效不冒充真实 GPU context loss | R2 |
 | OS 拖入真实 smoke | 三平台 | headless 已验证（M15 契约） | 无真实文件管理器/源应用拖拽现场 | `dragDropStart=false`（SDL 3.2.10 无拖出 API）+ 结构化 Unavailable | R3（本日已纳入 `drag_drop_os_receive` 必检项） |
+| 真实整帧 allocator source | 三平台 | `FrameAllocationSource` scope 契约 + fake/headless 已验证 | 当前没有接入平台生产 allocator；无真实 allocator source 现场记录 | HUD 显示 `frame heap unavailable`，命令流容量和 RSS 不冒充整帧读数 | R6（`frame_allocator_source` 必检项） |
 | 全局快捷键真实按键 | Windows/Linux X11 | Linux X11 后端已交付（Xvfb XTEST 端到端通过）；Win32 后端已交付（RegisterHotKey，编译级 CI 门禁）；macOS 后端未实现 | X11 桌面真实键盘按键待现场；Win32 真实按键（消息泵→UI 事件、冲突码）待现场；Wayland 会话 = `globalHotkeys=false` + 结构化 Unavailable（如实）；macOS = 结构化 Unavailable | R4（Win32/Linux 为验收缺口；macOS 为实现缺口） |
 | macOS 原生菜单栏/交通灯 | macOS | 未实现 | 无实现 | 自绘 MenuBar/标题栏可用 | R4 |
 | GPU 包、CPack Bundle、干净机器启动 | Windows/macOS | CI 变体已构建（package-skia-gpu） | 无干净机器安装/启动记录 | CI 解包冒烟不替代真实验收 | R1 |
