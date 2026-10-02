@@ -1351,6 +1351,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   consumer smoke 均通过。包内失败路径覆盖未知选项、缺失 `--file` 值和选项误作文件名，均要求
   非零退出与稳定 `usage error`。
   包内 Designer smoke 同时校验 `frame0`、`document 1` 和 `diagnostics 0`，不会把带诊断的可恢复预览当作干净 fixture。
+- 后续增量提交 `322af90` 将上述三条命令行失败路径加入包内 smoke；`35af740` 让
+  `FileWatcher` 把文件删除和重新出现视为可观察变化，并在删除时走统一的旧帧保留诊断、
+  恢复后重新加载路径。Debug/Release Designer 相关 CTest 均为 `142/142`，watch fixture
+  为 `29` 个断言全通过；工作区仍只有 Linux Wayland 的真实窗口短 smoke，未把该证据扩展为
+  四平台验收。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
