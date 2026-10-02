@@ -126,7 +126,8 @@ if(LUMEN_BUILD_PACKAGE)
   # checkout when consumers import the exported static targets.
   set(_lumen_public_targets
       lumen-core lumen-style lumen-layout lumen-text lumen-accessibility
-      lumen-render lumen-widgets lumen-platform lumen-dsl lumen-app)
+      lumen-render lumen-widgets lumen-platform lumen-dsl lumen-app
+      lumen-diagnostics)
   foreach(_lumen_target IN LISTS _lumen_public_targets)
     if(TARGET ${_lumen_target})
       set_property(TARGET ${_lumen_target} PROPERTY INTERFACE_INCLUDE_DIRECTORIES
@@ -202,6 +203,8 @@ if(LUMEN_BUILD_PACKAGE)
     install(FILES examples/counter/counter.lumen
             DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)
     install(FILES examples/designer/gallery.lumen
+            DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)
+    install(FILES examples/designer/gallery.design
             DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)
     if(UNIX AND NOT APPLE)
       # M12：Linux 桌面集成（AppImage 的 linuxdeploy 消费同一布局）。

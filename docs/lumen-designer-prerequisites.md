@@ -1294,7 +1294,7 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `design_preview.cpp`、`designer_preview_tests.cpp`，D2 headless 地基追加
   `design_workbench.h`、`design_workbench.cpp`、`designer_workbench_tests.cpp`，D2 应用出口追加
   `examples/designer/CMakeLists.txt`、`designer_app.h`、`designer_app.cpp`、`main.cpp`、
-  `gallery.lumen`、`tests/designer_app_tests.cpp`、`tests/designer_cli_smoke.cmake`；工作区另有既存的平台 host 修改，
+  `gallery.lumen`/`gallery.design`、`tests/designer_app_tests.cpp`、`tests/designer_cli_smoke.cmake`；工作区另有既存的平台 host 修改，
   未把它们作为设计器证据。DP-9 A 方案追加 `project_store.h`、`project_store.cpp`、
   `project_store_tests.cpp`，并把 manifest、多文档会话、工程页列表接入 `DesignerApp`。
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
@@ -1337,6 +1337,9 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery.lumen 覆盖冻结的 12 个 L0
   节点类型，gallery.design 覆盖全部注册 schema，且均无业务引用诊断。
+- 便携包验收：启用 `LUMEN_BUILD_PACKAGE=ON` 的 Linux install/CPack 配置与构建通过，安装前缀和
+  TGZ 同时包含 `lumen-designer`、`gallery.lumen`、`gallery.design` 及导出所需的
+  `lumen-diagnostics`；安装后的 `gallery.design --headless` 和重定位 SDK consumer smoke 均通过。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
