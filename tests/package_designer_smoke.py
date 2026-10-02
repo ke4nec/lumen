@@ -44,9 +44,14 @@ def main() -> None:
         )
 
     lines = result.stdout.splitlines()
-    if not any(line.startswith("frame0 ") and len(line) > len("frame0 ")
-               for line in lines):
+    frame_lines = [line for line in lines if line.startswith("frame0 ")]
+    if len(frame_lines) != 1:
         raise RuntimeError("Designer headless smoke did not produce frame0")
+    frame_hash = frame_lines[0][len("frame0 "):]
+    if len(frame_hash) != 16 or any(
+        digit not in "0123456789abcdefABCDEF" for digit in frame_hash
+    ):
+        raise RuntimeError(f"Designer headless smoke produced invalid frame0: {frame_hash}")
     if "document 1" not in lines:
         raise RuntimeError("Designer headless smoke did not load a document")
     diagnostic_line = next(
