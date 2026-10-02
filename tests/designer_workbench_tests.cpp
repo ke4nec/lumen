@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <variant>
 
@@ -175,6 +176,53 @@ TEST_CASE("designer D3 workbench edits L0 declarations with history and saves",
     std::error_code error;
     std::filesystem::remove(path, error);
     std::filesystem::remove(path.string() + ".bak", error);
+}
+
+TEST_CASE("designer save as does not reuse the source revision",
+          "[designer][d3][p5]") {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-save-as-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()));
+    std::error_code error;
+    std::filesystem::create_directories(root, error);
+    REQUIRE_FALSE(error);
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code cleanupError;
+            std::filesystem::remove_all(root, cleanupError);
+        }
+    } cleanup{root};
+
+    const auto sourcePath = root / "source.design";
+    const auto targetPath = root / "target.design";
+    DesignPreviewWorkbench seed;
+    REQUIRE(seed.openLumenSource("page source { Text(\"Source\") }",
+                                 "source.lumen"));
+    REQUIRE(seed.saveDesignFile(sourcePath.string()));
+    REQUIRE(seed.openLumenSource("page target { Text(\"Existing\") }",
+                                 "target.lumen"));
+    REQUIRE(seed.saveDesignFile(targetPath.string()));
+
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openDesignFile(sourcePath.string()));
+    REQUIRE(workbench.saveDesignFile(targetPath.string()));
+    CHECK(workbench.document()->pageName == "source");
+    CHECK(workbench.diagnostics().empty());
+
+    DesignPreviewWorkbench reopened;
+    REQUIRE(reopened.openDesignFile(targetPath.string()));
+    CHECK(reopened.document()->pageName == "source");
+
+    auto external = *reopened.document();
+    external.pageName = "external";
+    std::ofstream(targetPath, std::ios::binary | std::ios::trunc)
+        << serializeDesignDocument(external);
+    CHECK_FALSE(reopened.saveDesignFile(targetPath.string()));
+    REQUIRE(reopened.diagnostics().size() == 1);
+    CHECK(reopened.diagnostics().front().code == "store.revision_conflict");
 }
 
 TEST_CASE("designer D3 workbench rejects runtime preview properties",

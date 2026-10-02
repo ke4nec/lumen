@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iterator>
@@ -17,6 +18,20 @@ struct ParentLocation {
     std::size_t index{0};
     std::string slot{};
 };
+
+[[nodiscard]] bool sameDocumentPath(const std::string& left,
+                                    const std::string& right) {
+    if (left == right) return true;
+    std::error_code leftError;
+    std::error_code rightError;
+    const auto leftPath =
+        std::filesystem::absolute(std::filesystem::path{left}, leftError)
+            .lexically_normal();
+    const auto rightPath =
+        std::filesystem::absolute(std::filesystem::path{right}, rightError)
+            .lexically_normal();
+    return !leftError && !rightError && leftPath == rightPath;
+}
 
 const DesignNode* findNode(const DesignNode& node, DesignNodeId id) {
     if (node.id == id) return &node;
@@ -156,6 +171,8 @@ bool DesignPreviewWorkbench::openDocumentInternal(
     std::string sourceFile) {
     document_ = std::move(document);
     sourceFile_ = sourceFile.empty() ? "<design>" : std::move(sourceFile);
+    loadedRevision_ = 0;
+    hasLoadedRevision_ = false;
     selection_.setDocument(*document_);
     return updateFrame(context);
 }
@@ -544,7 +561,8 @@ bool DesignPreviewWorkbench::saveDesignFile(const std::string& filename) {
         return false;
     }
     std::vector<DesignError> errors;
-    const auto expected = hasLoadedRevision_
+    const auto expected = hasLoadedRevision_ &&
+                                  sameDocumentPath(sourceFile_, filename)
                               ? std::optional<std::uint64_t>{loadedRevision_}
                               : std::nullopt;
     if (!documentStore_.save(filename, *document_, errors, expected)) {

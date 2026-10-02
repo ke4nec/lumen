@@ -1356,6 +1356,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   恢复后重新加载路径。Debug/Release Designer 相关 CTest 均为 `142/142`，watch fixture
   为 `29` 个断言全通过；工作区仍只有 Linux Wayland 的真实窗口短 smoke，未把该证据扩展为
   四平台验收。
+- 当前增量修复还收紧了 D3 另存为的 revision 边界：只有覆盖当前源路径时才携带
+  `expectedRevision`，另存为已有目标不会复用源文件 revision，而对目标文件后续外部修改
+  仍返回 `store.revision_conflict`。`designer save as does not reuse the source revision`
+  fixture 为 `14` 个断言通过。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
