@@ -70,14 +70,15 @@ bool isProjectFile(const std::string& filename) {
     return extension == ".lumen-project" || extension == ".lumenproject";
 }
 
-int runHeadless(lumen::designer_app::DesignerApp& app) {
+int runHeadless(lumen::designer_app::DesignerApp& app,
+                bool requestedFileLoaded) {
     app.shell().setView(lumen::core::Size{1280.0F, 800.0F});
     const auto frame = app.shell().renderFrame();
     std::printf("frame0 %016llx\n",
                 static_cast<unsigned long long>(frame));
     std::printf("document %d\n", app.workbench().document().has_value() ? 1 : 0);
     std::printf("diagnostics %zu\n", app.workbench().diagnostics().size());
-    return app.workbench().frame().hasFrame() ? 0 : 1;
+    return app.workbench().frame().hasFrame() && requestedFileLoaded ? 0 : 1;
 }
 
 int runWindowed(lumen::designer_app::DesignerApp& app,
@@ -156,17 +157,19 @@ int main(int argc, char** argv) {
     const auto resourceRoot = std::filesystem::current_path(resourceRootError);
     if (!resourceRootError) app.setResourceRoot(resourceRoot);
     app.attach();
+    bool requestedFileLoaded = true;
     if (!options.filename.empty()) {
         if (isProjectFile(options.filename)) {
-            (void)app.loadProjectFile(options.filename);
+            requestedFileLoaded = app.loadProjectFile(options.filename);
         } else if (isDesignFile(options.filename)) {
-            (void)app.loadDesignFile(options.filename);
+            requestedFileLoaded = app.loadDesignFile(options.filename);
         } else {
-            (void)app.loadFile(options.filename);
+            requestedFileLoaded = app.loadFile(options.filename);
         }
     }
     try {
-        return options.headless ? runHeadless(app) : runWindowed(app, options);
+        return options.headless ? runHeadless(app, requestedFileLoaded)
+                                : runWindowed(app, options);
     } catch (const std::exception& error) {
         std::fprintf(stderr, "fatal: %s\n", error.what());
         return 1;

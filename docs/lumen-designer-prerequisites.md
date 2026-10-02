@@ -1335,7 +1335,9 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
   `designer_gallery_design_headless`、`designer_window_smoke`、`designer_gallery_window_smoke`
   和 `designer_gallery_design_window_smoke` 六项（`6/6`）；另有
-  `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
+  `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数和不存在的 `--file`。
+  headless CLI 对指定文件的读取/解析失败返回非零并保留诊断输出；窗口/监听模式仍保留上一份有效画面。
+  窗口用例经 `xvfb-run`
   驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery.lumen 覆盖冻结的 12 个 L0
   节点类型，gallery.design 覆盖全部注册 schema，且均无业务引用诊断。
 - 便携包验收：启用 `LUMEN_BUILD_PACKAGE=ON` 的 Linux install/CPack 配置与构建通过，安装前缀和
