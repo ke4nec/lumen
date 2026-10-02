@@ -1367,6 +1367,9 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - 工程另存为现按目标 manifest 重新解析相对工程根，复制全部页面并更新页面路径/revision 映射；
   目标目录会先创建，复制后的 manifest 可重新打开并保留当前页面内容，源工程 revision 不会被带入目标。
   同一多文档 fixture 增至 `69` 个断言。
+- 工程打开失败现在恢复完整会话状态：旧工程、manifest/page revision、活动文档、源快照和资源授权根
+  一起回滚；全部页面缺失时，旧工程仍可继续保存。多文档 fixture 增至 `76` 个断言，并保留“部分页面
+  有效时展示工程诊断”的既有降级行为。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。

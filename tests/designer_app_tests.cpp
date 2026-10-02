@@ -2634,6 +2634,22 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     CHECK(copied.workbench().document()->root.properties.at("text") ==
           lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{
               std::string{"Edited home again"}}});
+
+    const auto badManifest = copyRoot / "missing-pages.lumen-project";
+    auto missingProject = project;
+    missingProject.projectId = "missing.pages";
+    missingProject.name = "Missing pages";
+    missingProject.pages.front().path = "missing/home.design";
+    missingProject.pages.back().path = "missing/settings.design";
+    std::vector<lumen::dsl::DesignError> missingDiagnostics;
+    REQUIRE(projectStore.save(badManifest.string(), missingProject,
+                              missingDiagnostics));
+    CHECK_FALSE(app.loadProjectFile(badManifest.string()));
+    REQUIRE(app.project().has_value());
+    CHECK(app.project()->projectId == project.projectId);
+    CHECK(app.activeProjectDocumentId() == homeId);
+    CHECK(app.workbench().document()->documentId == homeId);
+    CHECK(app.saveProjectFile(copyManifest.string()));
 }
 
 TEST_CASE("designer project diagnostics switch to the affected document",

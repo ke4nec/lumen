@@ -1479,9 +1479,32 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
     const auto previousDocuments = projectDocuments_;
     const auto previousPaths = projectDocumentPaths_;
     const auto previousRevisions = projectDocumentRevisions_;
+    const auto previousProjectRevision = projectRevision_;
     const auto previousDiagnostics = projectDiagnostics_;
     const auto previousDiagnosticDocumentIds = projectDiagnosticDocumentIds_;
     const auto previousActive = activeProjectDocumentId_;
+    const auto previousSourceFile = sourceFile_;
+    const auto previousSourceSnapshot = sourceSnapshot_;
+    const auto previousSourceFocusLine = sourceFocusLine_;
+    const auto previousResourceRoots = resourcePolicy_.roots();
+    const auto restorePreviousProject = [&] {
+        project_ = previousProject;
+        projectFile_ = previousProjectFile;
+        projectRevision_ = previousProjectRevision;
+        projectDocuments_ = previousDocuments;
+        projectDocumentPaths_ = previousPaths;
+        projectDocumentRevisions_ = previousRevisions;
+        projectDiagnostics_ = previousDiagnostics;
+        projectDiagnosticDocumentIds_ = previousDiagnosticDocumentIds;
+        activeProjectDocumentId_ = previousActive;
+        sourceFile_ = previousSourceFile;
+        sourceSnapshot_ = previousSourceSnapshot;
+        sourceFocusLine_ = previousSourceFocusLine;
+        const auto root = previousResourceRoots.find("project");
+        setResourceRoot(root == previousResourceRoots.end()
+                            ? std::filesystem::path{}
+                            : root->second);
+    };
     project_ = loaded.project;
     projectFile_ = filename;
     projectRevision_ = loaded.revision;
@@ -1525,21 +1548,18 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
         projectDocumentRevisions_[page.documentId] = document.revision;
     }
     if (projectDocuments_.empty()) {
-        project_ = previousProject;
-        projectFile_ = previousProjectFile;
-        projectDocuments_ = previousDocuments;
-        projectDocumentPaths_ = previousPaths;
-        projectDocumentRevisions_ = previousRevisions;
-        projectDiagnostics_ = previousDiagnostics;
-        projectDiagnosticDocumentIds_ = previousDiagnosticDocumentIds;
-        activeProjectDocumentId_ = previousActive;
+        restorePreviousProject();
         shell_.markDirty();
         return false;
     }
     const auto& first = project_->pages.front().documentId;
     const auto active = projectDocuments_.contains(first) ? first
                                                            : projectDocuments_.begin()->first;
-    if (!switchProjectDocument(active)) return false;
+    if (!switchProjectDocument(active)) {
+        restorePreviousProject();
+        shell_.markDirty();
+        return false;
+    }
     shell_.markDirty();
     return true;
 }
