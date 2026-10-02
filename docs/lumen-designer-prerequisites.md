@@ -1360,6 +1360,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `expectedRevision`，另存为已有目标不会复用源文件 revision，而对目标文件后续外部修改
   仍返回 `store.revision_conflict`。`designer save as does not reuse the source revision`
   fixture 为 `14` 个断言通过。
+- 当前增量修复还在工程保存前预检 manifest 与全部页面的 revision，避免后续页面发生外部修改时
+  先前页面已被部分写入；保存成功后重新打开活动页面以同步工作台的 loaded revision，连续保存不再
+  因旧 revision 失败。`designer app opens, switches, and saves a multi document project` fixture
+  增至 `61` 个断言，并覆盖“连续保存后保持干净”和“页面冲突不写入其他页面”。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。

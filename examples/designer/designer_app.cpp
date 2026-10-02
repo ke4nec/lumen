@@ -136,6 +136,19 @@ std::string referenceBindingKey(dsl::DesignNodeId id,
            std::string{property};
 }
 
+bool sameProjectPath(const std::string& left, const std::string& right) {
+    if (left == right) return true;
+    std::error_code leftError;
+    std::error_code rightError;
+    const auto leftPath =
+        std::filesystem::absolute(std::filesystem::path{left}, leftError)
+            .lexically_normal();
+    const auto rightPath =
+        std::filesystem::absolute(std::filesystem::path{right}, rightError)
+            .lexically_normal();
+    return !leftError && !rightError && leftPath == rightPath;
+}
+
 bool isDesignFile(const std::string& filename) {
     std::string extension = std::filesystem::path(filename).extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(),
@@ -1524,6 +1537,7 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
     if (!project_.has_value()) return false;
     syncActiveProjectDocument();
     std::vector<dsl::DesignError> diagnostics;
+    std::map<std::string, std::filesystem::path> pagePaths;
     for (auto& page : project_->pages) {
         const auto document = projectDocuments_.find(page.documentId);
         const auto path = projectPagePath(page);
@@ -1533,6 +1547,41 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
                 0, {}, {}});
             return false;
         }
+        pagePaths[page.documentId] = path;
+    }
+
+    // Check every input revision before writing any page. A later page
+    // conflict must not leave earlier pages from the same project partially
+    // saved.
+    if (sameProjectPath(projectFile_, filename)) {
+        const auto manifest = projectStore_.load(filename);
+        if (!manifest.ok() || manifest.revision != projectRevision_) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.revision_conflict", filename, {},
+                "project manifest changed after it was loaded", {}, {}, 0,
+                {}, {}});
+            return false;
+        }
+        for (const auto& page : project_->pages) {
+            const auto revision = projectDocumentRevisions_.find(page.documentId);
+            if (revision == projectDocumentRevisions_.end()) continue;
+            const auto current = projectDocumentStore_.load(
+                pagePaths.at(page.documentId).string());
+            if (!current.ok() || current.revision != revision->second) {
+                appendProjectDiagnostic(dsl::DesignError{
+                    "store.revision_conflict",
+                    pagePaths.at(page.documentId).string(), {},
+                    "project page changed after it was loaded", {}, {}, 0,
+                    {}, {}},
+                    page.documentId);
+                return false;
+            }
+        }
+    }
+
+    for (auto& page : project_->pages) {
+        const auto document = projectDocuments_.find(page.documentId);
+        const auto path = pagePaths.at(page.documentId);
         const auto revision = projectDocumentRevisions_.find(page.documentId);
         if (!projectDocumentStore_.save(
                 path.string(), document->second, diagnostics,
@@ -1563,10 +1612,24 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
     if (!activeProjectDocumentId_.empty()) {
         const auto activePath = projectDocumentPaths_.find(activeProjectDocumentId_);
         if (activePath != projectDocumentPaths_.end()) {
-            (void)workbench_.saveDesignFile(activePath->second);
-            sourceSnapshot_ = workbench_.document().has_value()
-                                  ? dsl::serializeDesignDocument(*workbench_.document())
-                                  : std::string{};
+            if (!workbench_.openDesignFile(activePath->second,
+                                           &runtimeContext_)) {
+                for (const auto& diagnostic : workbench_.diagnostics()) {
+                    appendProjectDiagnostic(
+                        dsl::DesignError{diagnostic.code, diagnostic.file,
+                                         diagnostic.sourceSpan.has_value()
+                                             ? diagnostic.sourceSpan->begin
+                                             : dsl::SourcePos{},
+                                         diagnostic.message, {}, {},
+                                         diagnostic.nodeId, diagnostic.nodePath,
+                                         diagnostic.property},
+                        activeProjectDocumentId_);
+                }
+                return false;
+            }
+            sourceSnapshot_ = dsl::serializeDesignDocument(
+                *workbench_.document());
+            refreshDocumentUi();
         }
     }
     projectDiagnostics_.clear();

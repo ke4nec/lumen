@@ -2588,6 +2588,35 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     const auto saved = projectStore.load(manifest.string());
     REQUIRE(saved.ok());
     CHECK(saved.project.pages[1].documentId == settingsId);
+
+    REQUIRE(app.switchProjectDocument(homeId));
+    REQUIRE(app.workbench().setProperty(
+        app.workbench().document()->root.id, "text",
+        lumen::dsl::DesignValue{
+            lumen::dsl::DesignValue::Variant{std::string{"Edited home"}}}));
+    REQUIRE(app.saveProjectFile(manifest.string()));
+    CHECK_FALSE(app.workbench().dirty());
+    REQUIRE(app.workbench().setProperty(
+        app.workbench().document()->root.id, "text",
+        lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{
+            std::string{"Edited home again"}}}));
+    const auto homePath = root / "home.design";
+    const auto settingsPath = root / "settings.design";
+    lumen::dsl::DocumentStore documentStore;
+    auto externalSettings = documentStore.load(settingsPath.string());
+    REQUIRE(externalSettings.ok());
+    externalSettings.document.pageName = "External settings";
+    std::vector<lumen::dsl::DesignError> externalDiagnostics;
+    REQUIRE(documentStore.save(settingsPath.string(),
+                               externalSettings.document, externalDiagnostics));
+    const auto homeBeforeConflict = documentStore.load(homePath.string());
+    REQUIRE(homeBeforeConflict.ok());
+    CHECK_FALSE(app.saveProjectFile(manifest.string()));
+    REQUIRE_FALSE(app.projectDiagnostics().empty());
+    CHECK(app.projectDiagnostics().back().code == "store.revision_conflict");
+    const auto homeAfterConflict = documentStore.load(homePath.string());
+    REQUIRE(homeAfterConflict.ok());
+    CHECK(homeAfterConflict.document == homeBeforeConflict.document);
 }
 
 TEST_CASE("designer project diagnostics switch to the affected document",
