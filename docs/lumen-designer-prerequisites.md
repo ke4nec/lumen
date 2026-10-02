@@ -1343,6 +1343,7 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - 便携包验收：启用 `LUMEN_BUILD_PACKAGE=ON` 的 Linux install/CPack 配置与构建通过，安装前缀和
   TGZ 同时包含 `lumen-designer`、`gallery.lumen`、`gallery.design` 及导出所需的
   `lumen-diagnostics`；安装后的 `gallery.design --headless` 和重定位 SDK consumer smoke 均通过。
+  包内 Designer smoke 同时校验 `frame0`、`document 1` 和 `diagnostics 0`，不会把带诊断的可恢复预览当作干净 fixture。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。

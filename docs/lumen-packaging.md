@@ -41,7 +41,8 @@ CI 负责验证每种产物的职责：
 所有三平台 package、Skia 和 GPU 变体还运行
 `tests/package_designer_smoke.py`：检查 `gallery.lumen` 与覆盖全部注册 schema 的
 `gallery.design` 均随包安装，并从解包目录启动 `lumen-designer --headless` 验证
-`.design` 预览链路。
+`.design` 预览链路；smoke 还要求结构化输出包含有效 `frame0`、`document 1` 和
+`diagnostics 0`，避免带可恢复诊断的 fixture 被误判为可发布。
 
 所有桌面 SDK 打包 job 还运行 `tests/package_consumer_smoke.py`：把解包产物
 复制到仓库外的含空格路径，拒绝导出配置泄漏源码/构建/原安装目录，独立

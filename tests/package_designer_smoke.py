@@ -28,12 +28,35 @@ def main() -> None:
     if not binary.is_file():
         raise FileNotFoundError(binary)
 
-    subprocess.run(
+    result = subprocess.run(
         [str(binary), "--headless", "--file", str(examples / "gallery.design")],
         cwd=binary.parent,
-        check=True,
+        capture_output=True,
+        text=True,
         timeout=30,
     )
+    print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="")
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Designer headless smoke failed with exit code {result.returncode}"
+        )
+
+    lines = result.stdout.splitlines()
+    if not any(line.startswith("frame0 ") and len(line) > len("frame0 ")
+               for line in lines):
+        raise RuntimeError("Designer headless smoke did not produce frame0")
+    if "document 1" not in lines:
+        raise RuntimeError("Designer headless smoke did not load a document")
+    diagnostic_line = next(
+        (line for line in lines if line.startswith("diagnostics ")), None
+    )
+    if diagnostic_line != "diagnostics 0":
+        raise RuntimeError(
+            "Designer headless smoke reported diagnostics: "
+            f"{diagnostic_line or '<missing>'}"
+        )
 
 
 if __name__ == "__main__":
