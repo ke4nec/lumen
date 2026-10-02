@@ -18,6 +18,10 @@ Linux 两个 job 使用当前会话的 SDL video driver，不启动 Xvfb 或 dum
 `lumen-platform-live-smoke` 使用两个真实 AppShell/runApp 窗口，包含文本编辑和
 千项 VirtualList；统计真实 IME、resize、滚轮事件及成功 present，按需验证
 跨应用剪贴板和最终文本。未操作 IME 时 `ime_verified=false`，不会冒充已验。
+每个平台 job 还直接启动 `lumen-designer --file examples/designer/gallery.design
+--max-frames 3`，验证设计器编辑器/预览双窗口在真实桌面会话中创建并完成原生窗口
+smoke；该结果必须在记录的 `designer_window_smoke` 项标记为 `pass`，并把
+`designer-live.log` 随平台 artifact 归档。
 Linux job 还加载现有 `LD_PRELOAD` present 故障夹具，确认
 GPU swap 失败和软件 present 失败均进入预期诊断路径。
 
@@ -96,7 +100,8 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
     "clipboard_cross_app": "pending", "multiwindow_focus_dpi": "pending",
     "window_lifecycle": "pending", "transparent_composition": "pending",
     "gpu_present_recovery_state": "pending", "soak_resources": "pending",
-    "drag_drop_os_receive": "pending", "frame_allocator_source": "pending"
+    "drag_drop_os_receive": "pending", "frame_allocator_source": "pending",
+    "designer_window_smoke": "pending"
   },
   "readers": {
     "Orca": {

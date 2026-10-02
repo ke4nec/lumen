@@ -36,8 +36,10 @@ jobs:
             -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
             -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON \
             -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
-      - name: Build live probe and GPU fault fixtures
-        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-settings lumen-gallery lumen-tests lumen-gpu-present-failure lumen-software-present-failure
+      - name: Build live probe, Designer and GPU fault fixtures
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-settings lumen-gallery lumen-designer lumen-tests lumen-gpu-present-failure lumen-software-present-failure
+      - name: Designer native window smoke
+        run: ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 | tee designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-x11-live.json
       - name: GPU/present recovery fault injection
@@ -62,6 +64,7 @@ jobs:
           name: platform-acceptance-linux-x11
           path: |
             linux-x11-live.json
+            designer-live.log
             soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log
@@ -81,8 +84,10 @@ jobs:
             -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
             -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON \
             -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
-      - name: Build live probe and GPU fault fixtures
-        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-settings lumen-gallery lumen-tests lumen-gpu-present-failure lumen-software-present-failure
+      - name: Build live probe, Designer and GPU fault fixtures
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-counter lumen-settings lumen-gallery lumen-designer lumen-tests lumen-gpu-present-failure lumen-software-present-failure
+      - name: Designer native window smoke
+        run: ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 | tee designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-wayland-live.json
       - name: GPU/present recovery fault injection
@@ -107,6 +112,7 @@ jobs:
           name: platform-acceptance-linux-wayland
           path: |
             linux-wayland-live.json
+            designer-live.log
             soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log
@@ -124,8 +130,10 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
             -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
-      - name: Build live probe and accessibility provider
-        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-tests lumen-settings lumen-gallery
+      - name: Build live probe, Designer and accessibility provider
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-tests lumen-settings lumen-gallery lumen-designer
+      - name: Designer native window smoke
+        run: ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 | tee designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee macos-live.json
       - name: Headless NSAccessibility regression
@@ -140,6 +148,7 @@ jobs:
           name: platform-acceptance-macos
           path: |
             macos-live.json
+            designer-live.log
             soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log
@@ -158,9 +167,15 @@ jobs:
           cmake -S . -B build-live -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
-      - name: Build live probe and accessibility provider
+      - name: Build live probe, Designer and accessibility provider
         shell: pwsh
-        run: cmake --build build-live --config Release --parallel --target lumen-platform-live-smoke lumen-tests lumen-settings lumen-gallery
+        run: cmake --build build-live --config Release --parallel --target lumen-platform-live-smoke lumen-tests lumen-settings lumen-gallery lumen-designer
+      - name: Designer native window smoke
+        shell: pwsh
+        run: |
+          $designer = Get-ChildItem build-live -Recurse -Filter lumen-designer.exe | Select-Object -First 1
+          & $designer.FullName --file "$env:GITHUB_WORKSPACE/examples/designer/gallery.design" --max-frames 3 | Tee-Object designer-live.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Window, resize, IME, clipboard and present probe
         shell: pwsh
         run: |
@@ -187,6 +202,7 @@ jobs:
           name: platform-acceptance-windows
           path: |
             windows-live.json
+            designer-live.log
             soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log

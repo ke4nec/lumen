@@ -1146,9 +1146,10 @@ Guides 即可生成定位层。手柄拖动使用独立拖放源，会话中只�
 接入真实 `AppShell`，提供只读画布、大纲树、属性/诊断面板、主题/密度/DPI/字体缩放/
 高对比/交互状态预览、`--watch` 热重载、`--headless` 冒烟和 Linux/Xvfb 窗口 smoke；
 counter、覆盖全部 L0 节点的 `gallery.lumen` 和覆盖全部注册 schema 的 `gallery.design` fixture
-已纳入同一组验证。Windows/macOS 三桌面窗口现场验收和现有运行时 Gallery 的真实桌面结果仍待补齐；在
-Windows/macOS 构建中，CMake 同样注册原生窗口 smoke，
-但本工作区尚未取得这两桌面的现场结果。
+已纳入同一组验证。self-hosted platform acceptance 现在在 Linux X11、Linux Wayland、macOS
+和 Windows 会话中直接启动 `lumen-designer --file gallery.design --max-frames 3`，并要求
+证据记录的 `designer_window_smoke` 为 `pass`；本工作区只取得 Linux Wayland 的一次短 smoke，
+不能替代四个平台的完整 acceptance 记录。
 
 D2 工作台的 UI 设计稿见 [`design/designer.html`](../design/designer.html)（2026-10-01，v2）：四带三栏
 简洁布局（工具栏 + 大纲/画布/属性 + 诊断带 + 状态栏），面板控件全部映射到既有 widgets 层
