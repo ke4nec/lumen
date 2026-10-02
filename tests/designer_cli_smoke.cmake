@@ -29,3 +29,13 @@ endif()
 if(NOT output MATCHES "diagnostics [1-9][0-9]*")
   message(FATAL_ERROR "missing --file did not report a diagnostic: ${output}")
 endif()
+
+execute_process(
+    COMMAND "${DESIGNER}" --file "${missing_file}" --max-frames 1
+    RESULT_VARIABLE result
+    OUTPUT_VARIABLE output
+    ERROR_VARIABLE error)
+
+if(result EQUAL 0)
+  message(FATAL_ERROR "window mode accepted a missing --file")
+endif()

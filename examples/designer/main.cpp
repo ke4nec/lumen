@@ -82,7 +82,10 @@ int runHeadless(lumen::designer_app::DesignerApp& app,
 }
 
 int runWindowed(lumen::designer_app::DesignerApp& app,
-                const Options& designerOptions) {
+                const Options& designerOptions, bool requestedFileLoaded) {
+    // A requested startup document is part of the window smoke contract. A
+    // later watch reload may still keep the last valid frame in the session.
+    if (!requestedFileLoaded && !designerOptions.watch) return 1;
     lumen::platform::Sdl3ApplicationHost host;
     app.setFileDialogRequester([&host](bool forSave,
                                        const std::string& defaultName) {
@@ -168,8 +171,9 @@ int main(int argc, char** argv) {
         }
     }
     try {
-        return options.headless ? runHeadless(app, requestedFileLoaded)
-                                : runWindowed(app, options);
+        return options.headless
+                   ? runHeadless(app, requestedFileLoaded)
+                   : runWindowed(app, options, requestedFileLoaded);
     } catch (const std::exception& error) {
         std::fprintf(stderr, "fatal: %s\n", error.what());
         return 1;
