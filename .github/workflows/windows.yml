@@ -69,6 +69,8 @@ jobs:
           fi
       - name: Relocated SDK consumer
         run: python -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Designer fixture smoke
+        run: python -B tests/package_designer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
@@ -382,6 +384,8 @@ jobs:
           ./$pkg/bin/lumen-settings.exe --headless
       - name: Relocated SDK consumer
         run: python -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Designer fixture smoke
+        run: python -B tests/package_designer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
@@ -433,6 +437,8 @@ jobs:
           ./$pkg/bin/lumen-counter.exe --renderer gpu --diagnostics --frames 2
       - name: Relocated SDK consumer
         run: python -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Designer fixture smoke
+        run: python -B tests/package_designer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:

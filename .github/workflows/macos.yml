@@ -81,6 +81,8 @@ jobs:
           fi
       - name: Relocated SDK consumer
         run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Designer fixture smoke
+        run: python3 -B tests/package_designer_smoke.py --unpack-root build-pkg/unpack
       - name: Bundle .app (Contents skeleton)
         # M12：macOS 发布形态——zip 包组 Lumen.app（Contents/MacOS + lib；
         # 可执行 RPATH @loader_path/../lib 相对布局不变），Info.plist
@@ -436,6 +438,8 @@ jobs:
           ./$pkg/bin/lumen-settings --headless
       - name: Relocated SDK consumer
         run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Designer fixture smoke
+        run: python3 -B tests/package_designer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
@@ -500,6 +504,8 @@ jobs:
           ./$pkg/bin/lumen-counter --renderer gpu --diagnostics --frames 2
       - name: Relocated SDK consumer
         run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Designer fixture smoke
+        run: python3 -B tests/package_designer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:

@@ -38,6 +38,11 @@ CI 负责验证每种产物的职责：
 - macOS `package` 发布 CPack ZIP 开发归档，同时把其中的运行时文件组装为
   `Lumen.app.zip` 并执行 bundle 内 headless 冒烟。
 
+所有三平台 package、Skia 和 GPU 变体还运行
+`tests/package_designer_smoke.py`：检查 `gallery.lumen` 与覆盖全部注册 schema 的
+`gallery.design` 均随包安装，并从解包目录启动 `lumen-designer --headless` 验证
+`.design` 预览链路。
+
 所有桌面 SDK 打包 job 还运行 `tests/package_consumer_smoke.py`：把解包产物
 复制到仓库外的含空格路径，拒绝导出配置泄漏源码/构建/原安装目录，独立
 `find_package(Lumen)`、编译、链接并运行消费者。Skia 包实际光栅绘制；GPU 包

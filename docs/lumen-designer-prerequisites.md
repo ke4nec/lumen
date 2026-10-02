@@ -1294,7 +1294,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `design_preview.cpp`、`designer_preview_tests.cpp`，D2 headless 地基追加
   `design_workbench.h`、`design_workbench.cpp`、`designer_workbench_tests.cpp`，D2 应用出口追加
   `examples/designer/CMakeLists.txt`、`designer_app.h`、`designer_app.cpp`、`main.cpp`、
-  `gallery.lumen`/`gallery.design`、`tests/designer_app_tests.cpp`、`tests/designer_cli_smoke.cmake`；工作区另有既存的平台 host 修改，
+  `gallery.lumen`/`gallery.design`、`tests/designer_app_tests.cpp`、`tests/designer_cli_smoke.cmake`、
+  `tests/package_designer_smoke.py`；工作区另有既存的平台 host 修改，
   未把它们作为设计器证据。DP-9 A 方案追加 `project_store.h`、`project_store.cpp`、
   `project_store_tests.cpp`，并把 manifest、多文档会话、工程页列表接入 `DesignerApp`。
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、

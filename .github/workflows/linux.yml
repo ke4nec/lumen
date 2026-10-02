@@ -101,6 +101,8 @@ jobs:
           grep -q "backend=" /tmp/pkg-diag.txt
       - name: Relocated SDK consumer
         run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Designer fixture smoke
+        run: python3 -B tests/package_designer_smoke.py --unpack-root build-pkg/unpack
       - name: Build AppImage (linuxdeploy)
         # M12：Linux 发布形态——TGZ 解包为 AppDir（usr/ 前缀布局），
         # linuxdeploy 组装（desktop/icon 来自 install 规则；RPATH
@@ -632,6 +634,8 @@ jobs:
           ./$pkg/bin/lumen-settings --headless
       - name: Relocated SDK consumer
         run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Designer fixture smoke
+        run: python3 -B tests/package_designer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
@@ -702,6 +706,8 @@ jobs:
             ./$pkg/bin/lumen-counter --renderer gpu --diagnostics --frames 2
       - name: Relocated SDK consumer
         run: python3 -B tests/package_consumer_smoke.py --unpack-root build-pkg/unpack
+      - name: Designer fixture smoke
+        run: python3 -B tests/package_designer_smoke.py --unpack-root build-pkg/unpack
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
