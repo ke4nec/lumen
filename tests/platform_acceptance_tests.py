@@ -3,7 +3,9 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
-from check_platform_acceptance import validate, validate_platform, READER_CASES, PLATFORM_CASES
+from check_platform_acceptance import (validate, validate_platform,
+                                       validate_designer_window_artifact,
+                                       READER_CASES, PLATFORM_CASES)
 
 
 class EvidenceTests(unittest.TestCase):
@@ -54,6 +56,20 @@ class EvidenceTests(unittest.TestCase):
                 invalid = {"platform_checks": dict(record["platform_checks"],
                                                    designer_window_smoke=value)}
                 validate_platform(invalid, soak, "linux-x11")
+
+    def test_designer_window_smoke_requires_success_marker_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "designer-live.log"
+            record = {"platform_checks": {"designer_window_smoke": "pass"},
+                      "artifacts": [{"path": log.name, "sha256": ""}]}
+            log.write_text("libEGL warning\n", encoding="utf-8")
+            record["artifacts"][0]["sha256"] = hashlib.sha256(log.read_bytes()).hexdigest()
+            with self.assertRaises(ValueError):
+                validate_designer_window_artifact(record, root)
+            log.write_text("designer_window_smoke pass\n", encoding="utf-8")
+            record["artifacts"][0]["sha256"] = hashlib.sha256(log.read_bytes()).hexdigest()
+            validate_designer_window_artifact(record, root)
 
     def test_requires_current_commit_reader_cases_and_real_attachments(self):
         with tempfile.TemporaryDirectory() as directory:

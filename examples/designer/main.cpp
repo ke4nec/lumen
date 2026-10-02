@@ -148,10 +148,12 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
     previewOptions.windowDesc.height = 640;
     previewOptions.maxFrames = designerOptions.maxFrames;
     previewOptions.resourceManager = app.resourceManager();
-    return lumen::app::runApp(
+    const int result = lumen::app::runApp(
         {{&app.shell(), std::move(runOptions)},
          {&app.previewShell(), std::move(previewOptions)}},
         host);
+    if (result == 0) std::printf("designer_window_smoke pass\n");
+    return result;
 }
 
 }  // namespace

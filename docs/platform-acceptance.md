@@ -21,7 +21,8 @@ Linux 两个 job 使用当前会话的 SDL video driver，不启动 Xvfb 或 dum
 每个平台 job 还直接启动 `lumen-designer --file examples/designer/gallery.design
 --max-frames 3`，验证设计器编辑器/预览双窗口在真实桌面会话中创建并完成原生窗口
 smoke；该结果必须在记录的 `designer_window_smoke` 项标记为 `pass`，并把
-`designer-live.log` 随平台 artifact 归档。
+`designer-live.log` 随平台 artifact 归档。日志必须包含 Designer 进程成功退出后输出的
+`designer_window_smoke pass` 标记；验收检查器会校验该标记和附件哈希。
 Linux job 还加载现有 `LD_PRELOAD` present 故障夹具，确认
 GPU swap 失败和软件 present 失败均进入预期诊断路径。
 
@@ -113,7 +114,10 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
       }
     }
   },
-  "artifacts": [{"path": "reader-trace.txt", "sha256": "实际附件 SHA256"}]
+  "artifacts": [
+    {"path": "designer-live.log", "sha256": "实际附件 SHA256"},
+    {"path": "reader-trace.txt", "sha256": "实际附件 SHA256"}
+  ]
 }
 ```
 

@@ -1148,7 +1148,8 @@ Guides 即可生成定位层。手柄拖动使用独立拖放源，会话中只�
 counter、覆盖全部 L0 节点的 `gallery.lumen` 和覆盖全部注册 schema 的 `gallery.design` fixture
 已纳入同一组验证。self-hosted platform acceptance 现在在 Linux X11、Linux Wayland、macOS
 和 Windows 会话中直接启动 `lumen-designer --file gallery.design --max-frames 3`，并要求
-证据记录的 `designer_window_smoke` 为 `pass`；本工作区只取得 Linux Wayland 的一次短 smoke，
+进程成功退出后日志出现 `designer_window_smoke pass`，且证据记录的
+`designer_window_smoke` 为 `pass`；本工作区只取得 Linux Wayland 的一次短 smoke，
 不能替代四个平台的完整 acceptance 记录。
 
 D2 工作台的 UI 设计稿见 [`design/designer.html`](../design/designer.html)（2026-10-01，v2）：四带三栏

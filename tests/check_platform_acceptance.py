@@ -17,6 +17,21 @@ PLATFORM_CASES = {"ime_preedit_commit_cancel", "ime_candidate_position", "clipbo
                   "frame_allocator_source", "designer_window_smoke"}
 
 
+def validate_designer_window_artifact(record: dict, directory: Path) -> None:
+    """Require the native Designer smoke marker when its check is passed."""
+    if record.get("platform_checks", {}).get("designer_window_smoke") != "pass":
+        return
+    logs = [Path(item["path"]) for item in record.get("artifacts", [])
+            if Path(item["path"]).name == "designer-live.log"]
+    if len(logs) != 1:
+        raise ValueError("designer_window_smoke requires exactly one designer-live.log artifact")
+    log = (directory / logs[0]).resolve()
+    if not log.is_relative_to(directory.resolve()) or not log.is_file():
+        raise ValueError("designer-live.log must be inside the evidence directory")
+    if b"designer_window_smoke pass" not in log.read_bytes():
+        raise ValueError("designer-live.log has no successful Designer smoke marker")
+
+
 def validate_platform(record: dict, soak: dict, platform: str) -> None:
     required = PLATFORM_CASES | ({"font_cold_start", "touchpad"} if platform == "windows" else set())
     for case in required:
@@ -68,6 +83,7 @@ def validate(record: dict, commit: str, platform: str, directory: Path) -> None:
             raise ValueError("artifact must be a file inside the evidence directory")
         if path.stat().st_size == 0 or hashlib.sha256(path.read_bytes()).hexdigest() != artifact["sha256"]:
             raise ValueError("empty or mismatched artifact")
+    validate_designer_window_artifact(record, directory)
 
 
 def main() -> None:
