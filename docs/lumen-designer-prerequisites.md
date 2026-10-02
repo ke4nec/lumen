@@ -1364,6 +1364,9 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   先前页面已被部分写入；保存成功后重新打开活动页面以同步工作台的 loaded revision，连续保存不再
   因旧 revision 失败。`designer app opens, switches, and saves a multi document project` fixture
   增至 `61` 个断言，并覆盖“连续保存后保持干净”和“页面冲突不写入其他页面”。
+- 工程另存为现按目标 manifest 重新解析相对工程根，复制全部页面并更新页面路径/revision 映射；
+  目标目录会先创建，复制后的 manifest 可重新打开并保留当前页面内容，源工程 revision 不会被带入目标。
+  同一多文档 fixture 增至 `69` 个断言。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。

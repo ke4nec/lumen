@@ -1406,16 +1406,27 @@ void DesignerApp::appendProjectDiagnostic(dsl::DesignError diagnostic,
 }
 
 std::filesystem::path DesignerApp::projectRootPath() const {
+    return projectRootPath(projectFile_);
+}
+
+std::filesystem::path DesignerApp::projectRootPath(
+    const std::string& manifest) const {
     if (!project_.has_value()) return {};
     std::filesystem::path root{project_->root};
-    const std::filesystem::path manifest{projectFile_};
-    if (root.is_relative()) root = manifest.parent_path() / root;
+    const std::filesystem::path manifestPath{manifest};
+    if (root.is_relative()) root = manifestPath.parent_path() / root;
     return root.lexically_normal();
 }
 
 std::filesystem::path DesignerApp::projectPagePath(
     const dsl::DesignProjectPage& page) const {
-    const auto root = projectRootPath();
+    return projectPagePath(page, projectFile_);
+}
+
+std::filesystem::path DesignerApp::projectPagePath(
+    const dsl::DesignProjectPage& page,
+    const std::string& manifest) const {
+    const auto root = projectRootPath(manifest);
     if (root.empty()) return {};
     const auto relative = std::filesystem::path{page.path};
     if (relative.empty() || relative.is_absolute()) return {};
@@ -1537,10 +1548,29 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
     if (!project_.has_value()) return false;
     syncActiveProjectDocument();
     std::vector<dsl::DesignError> diagnostics;
+    const bool samePath = sameProjectPath(projectFile_, filename);
+    const auto targetRoot = projectRootPath(filename);
+    if (targetRoot.empty()) {
+        appendProjectDiagnostic(dsl::DesignError{
+            "project.root", filename, {}, "project root is invalid", {}, {}, 0,
+            {}, {}});
+        return false;
+    }
+    {
+        std::error_code directoryError;
+        std::filesystem::create_directories(targetRoot, directoryError);
+        if (directoryError) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.root", filename, {},
+                "unable to create project root directory", {}, {}, 0, {}, {}});
+            return false;
+        }
+    }
+    dsl::DesignProject projectToSave = *project_;
     std::map<std::string, std::filesystem::path> pagePaths;
-    for (auto& page : project_->pages) {
+    for (const auto& page : projectToSave.pages) {
         const auto document = projectDocuments_.find(page.documentId);
-        const auto path = projectPagePath(page);
+        const auto path = projectPagePath(page, filename);
         if (document == projectDocuments_.end() || path.empty()) {
             appendProjectDiagnostic(dsl::DesignError{
                 "project.page", filename, {}, "project page is not loaded", {}, {},
@@ -1549,11 +1579,13 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
         }
         pagePaths[page.documentId] = path;
     }
+    auto nextRevisions = projectDocumentRevisions_;
+    auto nextPaths = projectDocumentPaths_;
 
     // Check every input revision before writing any page. A later page
     // conflict must not leave earlier pages from the same project partially
     // saved.
-    if (sameProjectPath(projectFile_, filename)) {
+    if (samePath) {
         const auto manifest = projectStore_.load(filename);
         if (!manifest.ok() || manifest.revision != projectRevision_) {
             appendProjectDiagnostic(dsl::DesignError{
@@ -1562,7 +1594,7 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
                 {}, {}});
             return false;
         }
-        for (const auto& page : project_->pages) {
+        for (const auto& page : projectToSave.pages) {
             const auto revision = projectDocumentRevisions_.find(page.documentId);
             if (revision == projectDocumentRevisions_.end()) continue;
             const auto current = projectDocumentStore_.load(
@@ -1579,15 +1611,30 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
         }
     }
 
-    for (auto& page : project_->pages) {
+    for (auto& page : projectToSave.pages) {
         const auto document = projectDocuments_.find(page.documentId);
         const auto path = pagePaths.at(page.documentId);
-        const auto revision = projectDocumentRevisions_.find(page.documentId);
+        const auto revision = nextRevisions.find(page.documentId);
+        if (!path.parent_path().empty()) {
+            std::error_code directoryError;
+            std::filesystem::create_directories(path.parent_path(),
+                                                directoryError);
+            if (directoryError) {
+                appendProjectDiagnostic(dsl::DesignError{
+                    "project.page_directory", path.string(), {},
+                    "unable to create project page directory", {}, {}, 0,
+                    {}, {}},
+                    page.documentId);
+                return false;
+            }
+        }
+        const auto expectedRevision =
+            samePath && revision != nextRevisions.end()
+                ? std::optional<std::uint64_t>{revision->second}
+                : std::nullopt;
         if (!projectDocumentStore_.save(
                 path.string(), document->second, diagnostics,
-                revision == projectDocumentRevisions_.end()
-                    ? std::nullopt
-                    : std::optional<std::uint64_t>{revision->second})) {
+                expectedRevision)) {
             for (auto diagnostic : diagnostics) {
                 appendProjectDiagnostic(std::move(diagnostic), page.documentId);
             }
@@ -1595,10 +1642,13 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
         }
         page.pageName = document->second.pageName;
         const auto saved = projectDocumentStore_.load(path.string());
-        if (saved.ok()) projectDocumentRevisions_[page.documentId] = saved.revision;
+        if (saved.ok()) {
+            nextRevisions[page.documentId] = saved.revision;
+            nextPaths[page.documentId] = path.string();
+        }
     }
-    if (!projectStore_.save(filename, *project_, diagnostics,
-                            projectFile_ == filename
+    if (!projectStore_.save(filename, projectToSave, diagnostics,
+                            samePath
                                 ? std::optional<std::uint64_t>{projectRevision_}
                                 : std::nullopt)) {
         for (auto diagnostic : diagnostics) {
@@ -1606,9 +1656,13 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
         }
         return false;
     }
+    project_ = std::move(projectToSave);
+    projectDocumentPaths_ = std::move(nextPaths);
+    projectDocumentRevisions_ = std::move(nextRevisions);
     projectFile_ = filename;
     const auto savedProject = projectStore_.load(filename);
     projectRevision_ = savedProject.revision;
+    setResourceRoot(targetRoot);
     if (!activeProjectDocumentId_.empty()) {
         const auto activePath = projectDocumentPaths_.find(activeProjectDocumentId_);
         if (activePath != projectDocumentPaths_.end()) {

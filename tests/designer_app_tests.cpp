@@ -2617,6 +2617,23 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     const auto homeAfterConflict = documentStore.load(homePath.string());
     REQUIRE(homeAfterConflict.ok());
     CHECK(homeAfterConflict.document == homeBeforeConflict.document);
+
+    const auto copyRoot = root / "copy";
+    std::filesystem::create_directories(copyRoot, error);
+    REQUIRE_FALSE(error);
+    const auto copyManifest = copyRoot / "copy.lumen-project";
+    REQUIRE(app.saveProjectFile(copyManifest.string()));
+    CHECK(app.projectDiagnostics().empty());
+    CHECK(std::filesystem::exists(copyRoot / "home.design"));
+    CHECK(std::filesystem::exists(copyRoot / "settings.design"));
+
+    DesignerApp copied;
+    copied.attach();
+    REQUIRE(copied.loadProjectFile(copyManifest.string()));
+    CHECK(copied.activeProjectDocumentId() == homeId);
+    CHECK(copied.workbench().document()->root.properties.at("text") ==
+          lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{
+              std::string{"Edited home again"}}});
 }
 
 TEST_CASE("designer project diagnostics switch to the affected document",
