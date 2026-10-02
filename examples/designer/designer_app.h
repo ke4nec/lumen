@@ -228,6 +228,11 @@ class DesignerApp {
                                   const dsl::DesignPreviewProperty& property);
     void registerReferenceBinding(dsl::DesignNodeId id,
                                   const dsl::DesignPreviewProperty& property);
+    void rebuildPreviewKeys();
+    [[nodiscard]] std::string previewKeyForNodeId(
+        dsl::DesignNodeId id) const;
+    [[nodiscard]] std::string previewKeyForDesignNode(
+        const dsl::DesignNode& node) const;
 
     enum class PreviewStateMode {
         None,
@@ -326,6 +331,7 @@ class DesignerApp {
     bool canvasGuidesEnabled_{false};
     PreviewStateMode previewStateMode_{PreviewStateMode::None};
     std::string previewStateKey_{};
+    std::map<dsl::DesignNodeId, std::string> previewKeys_{};
     bool outlineDragActive_{false};
     dsl::DesignNodeId outlineDragId_{0};
     dsl::DesignNodeId outlineDragParentId_{0};

@@ -106,7 +106,7 @@ flowchart LR
 | 命中链选择 | 画布点选 = 最深命中节点 + 祖先链 | `core::hitTestChain`（`include/lumen/core/interaction.h`） |
 | 树遍历与定位 | 大纲面板、滚动到节点、overlay 锚定 | `findNodeByIdentity`/`findNodeByKey`/`absoluteOffset`（`include/lumen/core/render_node.h`）；`AppShell::root()` |
 | 结构文本导出 | 大纲/对照工具链地基 | `app::dumpRenderTree`/`dumpStyleTree`/`dumpSemanticsTree`（`include/lumen/app/tree_dump.h`）；`AppShell::buildSemanticsSnapshot()`；settings/Gallery 三个 dump 入口 |
-| 交互状态预览 | 按 key 预览 hover/press/focus 视觉；DesignerApp 为无 key 节点生成私有稳定 key；重复 key 的逐节点覆盖仍需适配 | `AppShell::setVisualPreviewState(key, state)`；`src/style/resolver.cpp` 的 `stateOf` |
+| 交互状态预览 | 按 key 预览 hover/press/focus 视觉；DesignerApp 为无 key、重复 key 和私有 key 碰撞节点生成确定且唯一的会话 key | `AppShell::setVisualPreviewState(key, state)`；`src/style/resolver.cpp` 的 `stateOf` |
 | 环境模拟 | 主题方向/明暗、密度、字体缩放、高对比、减少动画、DPI 的实时切换预览 | `style::Theme`（`dark()`/`light()`/`fromSettings()`、`ControlDensity`）；Gallery CLI 开关（`--dpi/--density/--light/--high-contrast/--font-scale` 等） |
 | 面板控件地基 | 属性面板（TextField/Spin/ComboBox/ColorPicker/Slider/Form）、大纲（Tree/TreeList）、工具箱/属性表（DataGrid/ToolBar/StatusBar）、布局（Splitter） | `include/lumen/widgets/*.h`；这些是设计器可复用的面板部件，不等于已经存在 Widget 属性反射 |
 | overlay 机制 | 高亮、ghost 和辅助线的基础；两类 overlay 共用一个槽位，命中也会切树 | `setOverlayBuilder` / `setVisualOverlayBuilder`（`app_shell.h`）；限制与绕行见 §5 |
@@ -1254,7 +1254,7 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 | Widget 携带 source/theme/controller 指针 | `include/lumen/core/widget.h` | 文档只保存稳定命名引用；编译结果必须有 session lease |
 | StateStore 绑定和 AppShell 重建在运行时解析 | `include/lumen/core/state.h`、`src/app/app_shell.cpp` | 设计器需要 preview StateStore；不能复制 `applyBinds` 或保存业务值 |
 | RenderNode identity 由 key/位置生成 | `src/layout/layout.cpp`、`include/lumen/core/render_node.h` | runtime identity 只能做 CompileTrace 结果，不能当 DocumentId |
-| visual preview state 以 key 查找 | `include/lumen/app/app_shell.h`、`src/style/resolver.cpp`、`examples/designer/designer_app.cpp` | DesignerApp 为无 key 节点生成基于 `DesignNodeId` 的私有稳定 key；重复 key 仍不可假设天然稳定 |
+| visual preview state 以 key 查找 | `include/lumen/app/app_shell.h`、`src/style/resolver.cpp`、`examples/designer/designer_app.cpp` | DesignerApp 按文档会话建立 `DesignNodeId -> Widget::key` 映射；无 key、重复 key 和私有 key 碰撞均回退到确定的唯一会话 key，状态覆盖保持逐节点 |
 | overlay 安装会影响事件树，模态/视觉 overlay 共槽位 | `include/lumen/app/app_shell.h`、`docs/lumen-drag-drop-design.md` | 高亮层、拖拽层和菜单必须有互斥及输入路由契约 |
 | Preferences 使用 `.tmp` + rename | `src/core/preferences.cpp` | 可复用原子替换思路，不能复用扁平格式或假定已 fsync |
 | SDL host 能接收 OS 拖入，拖出能力为 false | `include/lumen/platform/application_host.h`、`src/platform/sdl3_host.cpp` | 应用内拖入属于设计器范围；OS 拖出继续登记为降级 |
@@ -1316,8 +1316,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   和重复 runtime identity 诊断。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、迁移身份校验、迁移异常诊断、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `604` 个断言、`9` 个测试用例通过。
-- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `280` 个断言、
-  `14` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、设计器应用语义壳、画布点选、
+- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `296` 个断言、
+  `15` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、设计器应用语义壳、画布点选、
   键盘/语义激活、主题/密度/DPI/字体缩放/高对比环境预览、按 key 或私有稳定 key 的
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
@@ -1338,8 +1338,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1108/1108`，
-  Release 配置为 `1110/1110`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1109/1109`，
+  Release 配置为 `1111/1111`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、

@@ -1004,6 +1004,55 @@ TEST_CASE("designer app previews interaction state for keyless nodes",
     CHECK(focusedNode->commonStyle().focusWidth > 0.0F);
 }
 
+TEST_CASE("designer app scopes interaction preview to duplicate keyed nodes",
+          "[designer][d2][app]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column { Column { Button(\"First\", key: \"dup\") } "
+        "Row { Button(\"Second\", key: \"dup\") } } }",
+        "duplicate-key-preview.lumen"));
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() == 2);
+    REQUIRE(outline->children[0].children.size() == 1);
+    REQUIRE(outline->children[1].children.size() == 1);
+    const auto firstId = outline->children[0].children[0].id;
+    const auto secondId = outline->children[1].children[0].id;
+    const auto firstKey = "designer:node:" + std::to_string(firstId);
+    const auto secondKey = "designer:node:" + std::to_string(secondId);
+    REQUIRE(findNodeByKey(app.shell().root(), firstKey) != nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(), secondKey) != nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "dup") == nullptr);
+
+    const auto preview = app.shell().handlers().find("designer:preview-state");
+    REQUIRE(preview != app.shell().handlers().end());
+    const auto firstSelect = app.shell().handlers().find(
+        "designer:select:" + std::to_string(firstId));
+    REQUIRE(firstSelect != app.shell().handlers().end());
+    firstSelect->second();
+    preview->second();
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().styleContext().previewStates != nullptr);
+    CHECK(app.shell().styleContext().previewStates->at(firstKey).hovered);
+    CHECK(app.shell().styleContext().previewStates->find(secondKey) ==
+          app.shell().styleContext().previewStates->end());
+
+    const auto secondSelect = app.shell().handlers().find(
+        "designer:select:" + std::to_string(secondId));
+    REQUIRE(secondSelect != app.shell().handlers().end());
+    secondSelect->second();
+    (void)app.shell().renderFrame();
+    CHECK(app.shell().styleContext().previewStates->at(firstKey) ==
+          lumen::style::WidgetState{});
+    CHECK(app.shell().styleContext().previewStates->at(secondKey).hovered);
+}
+
 TEST_CASE("designer app edits declaration properties and routes undo redo",
           "[designer][d3][app]") {
     DesignerApp app;

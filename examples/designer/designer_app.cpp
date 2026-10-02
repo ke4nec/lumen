@@ -258,7 +258,7 @@ void collectDesignKeys(const dsl::DesignNode& node,
     }
 }
 
-std::string previewKeyForDesignNode(const dsl::DesignNode& node) {
+std::string declaredPreviewKeyForDesignNode(const dsl::DesignNode& node) {
     const auto found = node.properties.find("key");
     if (found != node.properties.end()) {
         if (const auto* key = std::get_if<std::string>(&found->second.value);
@@ -266,7 +266,62 @@ std::string previewKeyForDesignNode(const dsl::DesignNode& node) {
             return *key;
         }
     }
-    return previewKeyForNode(node.id);
+    return {};
+}
+
+void collectPreviewKeyCounts(const dsl::DesignNode& node,
+                             std::map<std::string, std::size_t>& counts) {
+    const auto found = node.properties.find("key");
+    if (found != node.properties.end()) {
+        if (const auto* key = std::get_if<std::string>(&found->second.value);
+            key != nullptr && !key->empty()) {
+            ++counts[*key];
+        }
+    }
+    for (const auto& child : node.children) {
+        collectPreviewKeyCounts(child, counts);
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            collectPreviewKeyCounts(child, counts);
+        }
+    }
+}
+
+void assignPreviewKeys(const dsl::DesignNode& node,
+                       const std::map<std::string, std::size_t>& counts,
+                       const std::set<std::string>& declaredKeys,
+                       std::set<std::string>& usedKeys,
+                       std::map<dsl::DesignNodeId, std::string>& keys) {
+    const auto declared = declaredPreviewKeyForDesignNode(node);
+    const auto count = counts.find(declared);
+    const bool needsPrivate = declared.empty() ||
+                              (count != counts.end() && count->second > 1) ||
+                              usedKeys.contains(declared);
+    if (!needsPrivate) {
+        keys[node.id] = declared;
+        usedKeys.insert(declared);
+    } else {
+        const std::string base = previewKeyForNode(node.id);
+        std::string candidate = base;
+        std::size_t suffix = 2;
+        while (declaredKeys.contains(candidate) ||
+               usedKeys.contains(candidate)) {
+            candidate = base + "-" + std::to_string(suffix++);
+        }
+        keys[node.id] = candidate;
+        usedKeys.insert(candidate);
+    }
+    for (const auto& child : node.children) {
+        assignPreviewKeys(child, counts, declaredKeys, usedKeys, keys);
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            assignPreviewKeys(child, counts, declaredKeys, usedKeys, keys);
+        }
+    }
 }
 
 void makePastedKeysUnique(dsl::DesignNode& node,
@@ -1887,6 +1942,7 @@ void DesignerApp::refreshDocumentUi() {
     if (workbench_.document().has_value()) {
         (void)workbench_.refresh(&runtimeContext_);
     }
+    rebuildPreviewKeys();
     syncImageResources();
     resetPreviewState();
     clearPropertyObservers();
@@ -1904,6 +1960,31 @@ void DesignerApp::refreshDocumentUi() {
         registerSelectionHandlers(workbench_.document()->root);
     }
     previewShell_.markDirty();
+}
+
+void DesignerApp::rebuildPreviewKeys() {
+    previewKeys_.clear();
+    if (!workbench_.document().has_value()) return;
+    std::map<std::string, std::size_t> counts;
+    std::set<std::string> declaredKeys;
+    std::set<std::string> usedKeys;
+    collectPreviewKeyCounts(workbench_.document()->root, counts);
+    for (const auto& [key, count] : counts) {
+        (void)count;
+        declaredKeys.insert(key);
+    }
+    assignPreviewKeys(workbench_.document()->root, counts, declaredKeys,
+                      usedKeys, previewKeys_);
+}
+
+std::string DesignerApp::previewKeyForNodeId(dsl::DesignNodeId id) const {
+    const auto found = previewKeys_.find(id);
+    return found == previewKeys_.end() ? previewKeyForNode(id) : found->second;
+}
+
+std::string DesignerApp::previewKeyForDesignNode(
+    const dsl::DesignNode& node) const {
+    return previewKeyForNodeId(node.id);
 }
 
 void DesignerApp::insertNodeType(std::string type) {
@@ -2338,9 +2419,7 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
         if (!outline.has_value()) return;
         const auto* outlineNode = findOutlineNode(*outline, *selected);
         if (outlineNode == nullptr) return;
-        const std::string key = outlineNode->key.empty()
-                                    ? previewKeyForNode(*selected)
-                                    : outlineNode->key;
+        const std::string key = previewKeyForNodeId(*selected);
         const auto* renderNode = core::findNodeByKey(shell_.root(), key);
         const auto* canvasNode =
             core::findNodeByKey(shell_.root(), "designer-canvas");
@@ -2860,7 +2939,7 @@ void DesignerApp::applyPreviewState() {
         [&](const dsl::DesignPreviewOutlineNode& node)
         -> std::optional<std::string> {
         if (node.id == *primary) {
-            return node.key.empty() ? previewKeyForNode(node.id) : node.key;
+            return previewKeyForNodeId(node.id);
         }
         for (const auto& child : node.children) {
             if (const auto key = findKey(child); key.has_value()) return key;
@@ -2911,7 +2990,7 @@ void DesignerApp::cyclePreviewState() {
 core::Widget DesignerApp::decoratePreview(
     core::Widget widget, const dsl::DesignNode& node,
     const std::set<dsl::DesignNodeId>& selected) const {
-    if (widget.key.empty()) widget.key = previewKeyForNode(node.id);
+    widget.key = previewKeyForNodeId(node.id);
     widget.onClick = "designer:select:" + std::to_string(node.id);
     if (selected.contains(node.id)) {
         widget.selected = true;
@@ -3315,9 +3394,7 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                 if (const auto* selected =
                         findOutlineNode(*outline, *primary);
                     selected != nullptr) {
-                    selectedKey = selected->key.empty()
-                                      ? previewKeyForNode(*primary)
-                                      : selected->key;
+                    selectedKey = previewKeyForNodeId(*primary);
                 }
             }
         }
@@ -3834,6 +3911,7 @@ core::Widget DesignerApp::buildBody() {
 }
 
 core::Widget DesignerApp::buildUi() {
+    rebuildPreviewKeys();
     syncImageResources();
     syncSelectionFromOutline();
     auto root = core::makeColumn({buildToolbar(), buildBody()},
