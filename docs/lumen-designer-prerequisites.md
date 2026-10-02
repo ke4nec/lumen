@@ -1145,8 +1145,9 @@ Guides 即可生成定位层。手柄拖动使用独立拖放源，会话中只�
 恢复、DocumentId 选择、CompileTrace 定位、大纲和只读属性投影；`lumen-designer` 示例已
 接入真实 `AppShell`，提供只读画布、大纲树、属性/诊断面板、主题/密度/DPI/字体缩放/
 高对比/交互状态预览、`--watch` 热重载、`--headless` 冒烟和 Linux/Xvfb 窗口 smoke；
-counter 与覆盖全部 L0 节点的 gallery fixture 已纳入同一组验证。Windows/macOS 三桌面窗口现场验收和现有运行时
-Gallery 的完整样本覆盖仍待补齐；在 Windows/macOS 构建中，CMake 同样注册原生窗口 smoke，
+counter、覆盖全部 L0 节点的 `gallery.lumen` 和覆盖全部注册 schema 的 `gallery.design` fixture
+已纳入同一组验证。Windows/macOS 三桌面窗口现场验收和现有运行时 Gallery 的真实桌面结果仍待补齐；在
+Windows/macOS 构建中，CMake 同样注册原生窗口 smoke，
 但本工作区尚未取得这两桌面的现场结果。
 
 D2 工作台的 UI 设计稿见 [`design/designer.html`](../design/designer.html)（2026-10-01，v2）：四带三栏
@@ -1316,8 +1317,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   和重复 runtime identity 诊断。
 - P5 专属筛选 `build-debug/tests/lumen-tests "[designer][p5]"` 覆盖进程/序列号临时文件名、
   残留临时文件避让、迁移、迁移身份校验、迁移异常诊断、恢复副本、恢复后保存、revision 冲突、重复/缺失文档 ID、非法保存、非法未知字段诊断定位和恢复副本失败清理，为 `604` 个断言、`9` 个测试用例通过。
-- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `296` 个断言、
-  `15` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、设计器应用语义壳、画布点选、
+- D2 专属筛选 `build-debug/tests/lumen-tests "[designer][d2]"` 为 `337` 个断言、
+  `16` 个测试用例通过，覆盖大纲/只读属性/CompileTrace 选择、设计器应用语义壳、画布点选、
   键盘/语义激活、主题/密度/DPI/字体缩放/高对比环境预览、按 key 或私有稳定 key 的
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
@@ -1331,15 +1332,16 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   覆盖 manifest round-trip、未知字段、schema 迁移、revision 冲突、跨文档引用端点、损坏恢复，以及
   `DesignerApp` 的工程新建/打开、页面切换、工程页列表、资源清单、工程保存和工程诊断跨文档跳转。
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
-  `designer_window_smoke` 和 `designer_gallery_window_smoke` 四项（`4/4`）；另有
+  `designer_gallery_design_headless`、`designer_window_smoke`、`designer_gallery_window_smoke`
+  和 `designer_gallery_design_window_smoke` 六项（`6/6`）；另有
   `designer_cli_rejects_invalid_max_frames` 校验 CLI 拒绝非法帧数。窗口用例经 `xvfb-run`
-  驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery fixture 覆盖冻结的 12 个 L0
-  节点类型且无业务引用诊断。
+  驱动 SDL 窗口并以 `--max-frames 3` 确定性退出，gallery.lumen 覆盖冻结的 12 个 L0
+  节点类型，gallery.design 覆盖全部注册 schema，且均无业务引用诊断。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1109/1109`，
-  Release 配置为 `1111/1111`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1112/1112`，
+  Release 配置为 `1114/1114`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、

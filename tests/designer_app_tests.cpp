@@ -22,6 +22,7 @@
 #include "lumen/core/splitter.h"
 #include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_codec.h"
+#include "lumen/dsl/design_schema.h"
 #include "lumen/dsl/project_store.h"
 #include "lumen/style/state.h"
 
@@ -1628,6 +1629,33 @@ TEST_CASE("designer app moves multi-selection as one transaction",
     CHECK(app.workbench().document()->root.children[0].id == thirdId);
     CHECK(app.workbench().selection().primary == secondId);
     CHECK(app.workbench().selection().anchor == secondId);
+}
+
+TEST_CASE("designer gallery covers every registered schema without diagnostics",
+          "[designer][d2][gallery]") {
+    DesignerApp app;
+    app.attach();
+    const auto gallery = std::filesystem::path{__FILE__}
+                              .parent_path()
+                              .parent_path() /
+                          "examples/designer/gallery.design";
+    REQUIRE(app.loadDesignFile(gallery.string()));
+    CHECK(app.diagnostics().empty());
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    std::set<std::string> types;
+    std::function<void(const lumen::dsl::DesignPreviewOutlineNode&)> visit =
+        [&](const lumen::dsl::DesignPreviewOutlineNode& node) {
+            types.insert(node.type);
+            for (const auto& child : node.children) visit(child);
+        };
+    visit(*outline);
+    const auto& schemas = lumen::dsl::nodeSchemaRegistry();
+    CHECK(types.size() == schemas.size());
+    for (const auto& schema : schemas) {
+        CHECK(types.contains(schema.type));
+    }
 }
 
 TEST_CASE("designer app creates L1 and L2 toolbox nodes with schema defaults",

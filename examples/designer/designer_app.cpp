@@ -1359,7 +1359,7 @@ void DesignerApp::handleFileDialogResult(
 bool DesignerApp::loadDesignFile(const std::string& filename) {
     statusMessage_.clear();
     sourceFile_ = filename;
-    const bool loaded = workbench_.openDesignFile(filename);
+    const bool loaded = workbench_.openDesignFile(filename, &runtimeContext_);
     if (loaded) {
         sourceSnapshot_ = workbench_.document().has_value()
                               ? dsl::serializeDesignDocument(
@@ -1613,7 +1613,7 @@ bool DesignerApp::createProjectFile(const std::string& filename) {
 bool DesignerApp::loadFile(const std::string& filename) {
     statusMessage_.clear();
     sourceFile_ = filename;
-    const bool loaded = workbench_.openLumenFile(filename);
+    const bool loaded = workbench_.openLumenFile(filename, &runtimeContext_);
     if (loaded) {
         sourceSnapshot_ = readSourceFile(filename).value_or(
             workbench_.document().has_value()
@@ -1630,7 +1630,8 @@ bool DesignerApp::loadFile(const std::string& filename) {
 bool DesignerApp::loadSource(const std::string& source, std::string filename) {
     statusMessage_.clear();
     sourceFile_ = filename.empty() ? "<memory>" : filename;
-    const bool loaded = workbench_.openLumenSource(source, filename);
+    const bool loaded =
+        workbench_.openLumenSource(source, filename, &runtimeContext_);
     if (loaded) {
         sourceSnapshot_ = source;
         sourceFocusLine_ = 0;

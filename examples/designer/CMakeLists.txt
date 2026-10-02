@@ -30,6 +30,10 @@ if(LUMEN_BUILD_TESTS)
       COMMAND lumen-designer --headless
           --file ${PROJECT_SOURCE_DIR}/examples/designer/gallery.lumen)
   set_tests_properties(designer_gallery_headless PROPERTIES TIMEOUT 20)
+  add_test(NAME designer_gallery_design_headless
+      COMMAND lumen-designer --headless
+          --file ${PROJECT_SOURCE_DIR}/examples/designer/gallery.design)
+  set_tests_properties(designer_gallery_design_headless PROPERTIES TIMEOUT 20)
   add_test(NAME designer_cli_rejects_invalid_max_frames
       COMMAND ${CMAKE_COMMAND}
           -DDESIGNER=$<TARGET_FILE:lumen-designer>
@@ -52,6 +56,13 @@ if(LUMEN_BUILD_TESTS)
             --file ${PROJECT_SOURCE_DIR}/examples/designer/gallery.lumen
             --max-frames 3)
     set_tests_properties(designer_gallery_window_smoke PROPERTIES TIMEOUT 40)
+    add_test(NAME designer_gallery_design_window_smoke
+        COMMAND ${LUMEN_XVFB_RUN} -a ${CMAKE_COMMAND} -E env
+            SDL_AUDIODRIVER=dummy
+            $<TARGET_FILE:lumen-designer>
+            --file ${PROJECT_SOURCE_DIR}/examples/designer/gallery.design
+            --max-frames 3)
+    set_tests_properties(designer_gallery_design_window_smoke PROPERTIES TIMEOUT 40)
   elseif(WIN32 OR APPLE)
     add_test(NAME designer_window_smoke
         COMMAND ${CMAKE_COMMAND} -E env
@@ -67,5 +78,12 @@ if(LUMEN_BUILD_TESTS)
             --file ${PROJECT_SOURCE_DIR}/examples/designer/gallery.lumen
             --max-frames 3)
     set_tests_properties(designer_gallery_window_smoke PROPERTIES TIMEOUT 40)
+    add_test(NAME designer_gallery_design_window_smoke
+        COMMAND ${CMAKE_COMMAND} -E env
+            SDL_AUDIODRIVER=dummy
+            $<TARGET_FILE:lumen-designer>
+            --file ${PROJECT_SOURCE_DIR}/examples/designer/gallery.design
+            --max-frames 3)
+    set_tests_properties(designer_gallery_design_window_smoke PROPERTIES TIMEOUT 40)
   endif()
 endif()

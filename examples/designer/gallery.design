@@ -1,0 +1,54 @@
+{
+  "documentId": "designer-gallery",
+  "format": "lumen.design",
+  "pageName": "gallery",
+  "schemaVersion": 1,
+  "root": {
+    "id": "1",
+    "type": "Column",
+    "properties": {
+      "key": {"kind": "string", "value": "gallery-root"}
+    },
+    "children": [
+      {"id": "2", "type": "Container", "properties": {"key": {"kind": "string", "value": "container"}}},
+      {"id": "3", "type": "Row", "properties": {"key": {"kind": "string", "value": "row"}}},
+      {"id": "39", "type": "Stack", "properties": {"key": {"kind": "string", "value": "stack"}}},
+      {"id": "4", "type": "Text", "properties": {"key": {"kind": "string", "value": "text"}, "text": {"kind": "string", "value": "Gallery"}}},
+      {"id": "5", "type": "Button", "properties": {"key": {"kind": "string", "value": "button"}, "text": {"kind": "string", "value": "Action"}}},
+      {"id": "6", "type": "TextField", "properties": {"key": {"kind": "string", "value": "text-field"}}},
+      {"id": "7", "type": "ScrollView", "properties": {"key": {"kind": "string", "value": "scroll-view"}}},
+      {"id": "8", "type": "ListView", "properties": {"key": {"kind": "string", "value": "list-view"}}},
+      {"id": "9", "type": "Checkbox", "properties": {"key": {"kind": "string", "value": "checkbox"}}},
+      {"id": "10", "type": "Switch", "properties": {"key": {"kind": "string", "value": "switch"}}},
+      {"id": "11", "type": "FocusScope", "properties": {"key": {"kind": "string", "value": "focus-scope"}}},
+      {"id": "12", "type": "Grid", "properties": {"key": {"kind": "string", "value": "grid"}, "columnCount": {"kind": "number", "value": 2}}},
+      {"id": "13", "type": "Image", "properties": {"key": {"kind": "string", "value": "image"}}},
+      {"id": "14", "type": "Icon", "properties": {"key": {"kind": "string", "value": "icon"}}},
+      {"id": "15", "type": "Slider", "properties": {"key": {"kind": "string", "value": "slider"}}},
+      {"id": "16", "type": "ProgressBar", "properties": {"key": {"kind": "string", "value": "progress"}}},
+      {"id": "17", "type": "Radio", "properties": {"key": {"kind": "string", "value": "radio"}}},
+      {"id": "18", "type": "Tooltip", "properties": {"key": {"kind": "string", "value": "tooltip"}, "text": {"kind": "string", "value": "Tip"}}},
+      {"id": "19", "type": "Dropdown", "properties": {"key": {"kind": "string", "value": "dropdown"}}},
+      {"id": "20", "type": "Tabs", "properties": {"key": {"kind": "string", "value": "tabs"}}},
+      {"id": "21", "type": "ThemeScope", "properties": {"key": {"kind": "string", "value": "theme-scope"}}},
+      {"id": "22", "type": "VirtualList", "properties": {"key": {"kind": "string", "value": "virtual-list"}, "virtualCacheExtent": {"kind": "number", "value": 200}}, "references": {"virtualSource": "preview_rows"}},
+      {"id": "23", "type": "List", "properties": {"key": {"kind": "string", "value": "list"}}, "references": {"virtualSource": "preview_rows"}},
+      {"id": "24", "type": "Tree", "properties": {"key": {"kind": "string", "value": "tree"}}, "references": {"virtualSource": "preview_rows"}},
+      {"id": "25", "type": "TreeList", "properties": {"key": {"kind": "string", "value": "tree-list"}}, "references": {"virtualSource": "preview_rows"}},
+      {"id": "26", "type": "Splitter", "properties": {"key": {"kind": "string", "value": "splitter"}}, "references": {"splitterSource": "preview_splitter"}, "children": [
+        {"id": "27", "type": "Container", "properties": {"key": {"kind": "string", "value": "splitter-first"}}},
+        {"id": "28", "type": "Container", "properties": {"key": {"kind": "string", "value": "splitter-second"}}}
+      ]},
+      {"id": "29", "type": "ComboBox", "properties": {"key": {"kind": "string", "value": "combo"}}},
+      {"id": "30", "type": "ColorPicker", "properties": {"key": {"kind": "string", "value": "color-picker"}}},
+      {"id": "31", "type": "Spin", "properties": {"key": {"kind": "string", "value": "spin"}}},
+      {"id": "32", "type": "ToolBar", "properties": {"key": {"kind": "string", "value": "toolbar"}}},
+      {"id": "33", "type": "StatusBar", "properties": {"key": {"kind": "string", "value": "statusbar"}}},
+      {"id": "34", "type": "Menu", "properties": {"key": {"kind": "string", "value": "menu"}}},
+      {"id": "35", "type": "DialogHost", "properties": {"key": {"kind": "string", "value": "dialog-host"}}},
+      {"id": "36", "type": "Navigator", "properties": {"key": {"kind": "string", "value": "navigator"}}},
+      {"id": "37", "type": "Form", "properties": {"key": {"kind": "string", "value": "form"}}},
+      {"id": "38", "type": "DataGrid", "properties": {"key": {"kind": "string", "value": "data-grid"}}}
+    ]
+  }
+}
