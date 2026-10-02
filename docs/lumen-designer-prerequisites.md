@@ -1280,7 +1280,7 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 | `designer_accessibility` | 语义树、键盘、IME、高对比、字体缩放 | 无颜色唯一信息；键盘完成同等流程；preedit 不进 DOM |
 | `preview_determinism` | 固定 context、连续编译、异步结果乱序 | DOM/诊断/frame hash 按声明稳定；旧代数结果被丢弃 |
 
-### 10.3 本轮核对记录（2026-10-01）
+### 10.3 本轮核对记录（2026-10-02）
 
 - 规划基线：`e2c61ef`；F1/P1 实现新增 `design_document.h`、`design_codec.h`、
   `design_document.cpp`、`designer_document_tests.cpp`，F2/P2 追加 `design_schema.h`、
@@ -1298,7 +1298,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `project_store_tests.cpp`，并把 manifest、多文档会话、工程页列表接入 `DesignerApp`。
 - 执行命令：`cmake -S . -B build-debug -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON`、
   `cmake --build build-debug --config Debug --target lumen-tests`、
-  `ctest --test-dir build-debug --output-on-failure -C Debug`。
+  `ctest --test-dir build-debug --output-on-failure -C Debug`；Release 使用独立
+  `build-release` 配置执行相同构建和 CTest 命令。
+- R6 增量提交 `342a508` 建立 `render::FrameAllocationSource` 的调用方拥有、UI 线程整帧
+  scope 契约；`9881360` 将 `frame_allocator_source` 加入三桌面平台验收必检项，fake/headless
+  证据不能通过真实 allocator source 验收。
 - P1 专属筛选 `build-debug/tests/lumen-tests "[designer][p1]"` 为 `106` 个断言、
   `9` 个测试用例通过，覆盖 12 个 L0 节点 round-trip、codec 扩展字段、独立 C++ builder
   Widget golden、codec 字符串边界、非法 UTF-8 和损坏诊断。
@@ -1334,8 +1338,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1107/1107`，
-  Release 配置为 `1109/1109`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1108/1108`，
+  Release 配置为 `1110/1110`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、
