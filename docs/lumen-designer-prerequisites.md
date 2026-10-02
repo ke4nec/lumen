@@ -1019,7 +1019,8 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   100 节点文档事务和 1000 节点大纲投影的 headless 基线已具备；
   `DesignPreviewFrame::rebuildCount()` 现已记录每次预览编译尝试（含可恢复失败），并由 D3
   测试验证成功、占位失败和保留上一帧失败的计数；`VirtualListController` 另记录当前/峰值
-  物化项数并由 L2 fixture 验证可见窗口约束；物化树的 scoped heap 读数已由上述探针补齐。
+  物化项数并由 L2 fixture 验证可见窗口约束；运行时 VirtualList fixture 的 scoped heap
+  读数已由上述探针补齐，L2 DesignDocument 组合件的真实预览容器仍按应用适配层接入。
   四类 fixture 的性能门禁仍只比较同一环境下的相对基线，不冻结跨机器绝对阈值。
 
 **验收**：键盘和辅助技术可以完成 D2 的选择/定位与 D3 的属性编辑/保存；高 DPI、高对比
