@@ -5,6 +5,7 @@ set(LUMEN_PLATFORM_SOURCES
     platform_window.cpp
     application_host.cpp
     fake_host.cpp
+    frame_allocator.cpp
 )
 
 if(NOT LUMEN_BUILD_MOBILE_CORE)
@@ -42,6 +43,7 @@ target_include_directories(lumen-platform PUBLIC
 target_link_libraries(lumen-platform PUBLIC lumen-core lumen-render)
 # SDL stays private: public headers never include SDL types (AGENTS.md).
 if(NOT LUMEN_BUILD_MOBILE_CORE)
+  target_compile_definitions(lumen-platform PRIVATE LUMEN_DESKTOP_FRAME_ALLOCATOR_CLIENT=1)
   target_link_libraries(lumen-platform PRIVATE SDL3::SDL3)
   if(WIN32)
     # M12：Windows 原生 seam（DWM 强调色）；R4 RegisterHotKey（user32）。
@@ -61,6 +63,7 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
   endif()
   # M12：Linux libdbus（缺失时 dbus seam 编译为空实现）。
   if(UNIX AND NOT APPLE)
+    target_link_libraries(lumen-platform PRIVATE ${CMAKE_DL_LIBS})
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
       pkg_check_modules(DBUS QUIET dbus-1)
@@ -80,3 +83,35 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
   endif()
 endif()
 target_compile_features(lumen-platform PUBLIC cxx_std_20)
+
+if(LUMEN_ENABLE_FRAME_ALLOCATOR)
+  include(CheckCXXSourceCompiles)
+  check_cxx_source_compiles("
+    #include <cstddef>
+    #include <features.h>
+    #ifndef __GLIBC__
+    #error glibc is required
+    #endif
+    extern \"C\" {
+      void* __libc_malloc(std::size_t) noexcept;
+      void* __libc_calloc(std::size_t, std::size_t) noexcept;
+      void* __libc_realloc(void*, std::size_t) noexcept;
+      void* __libc_memalign(std::size_t, std::size_t) noexcept;
+      void __libc_free(void*) noexcept;
+    }
+    int main() {
+      __libc_free(__libc_realloc(__libc_malloc(1), 2));
+      __libc_free(__libc_calloc(1, 2));
+      __libc_free(__libc_memalign(64, 64));
+    }" LUMEN_HAS_GLIBC_ALLOCATOR_ENTRY_POINTS)
+  if(NOT LUMEN_HAS_GLIBC_ALLOCATOR_ENTRY_POINTS)
+    message(FATAL_ERROR "The frame allocator profiler requires glibc bootstrap entry points.")
+  endif()
+  find_package(Threads REQUIRED)
+  # Standalone interposer: linking Lumen/SDL here would recurse through malloc.
+  add_library(lumen-frame-allocator SHARED native_frame_allocator_linux.cpp)
+  target_link_libraries(lumen-frame-allocator PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
+  target_compile_options(lumen-frame-allocator PRIVATE -ftls-model=initial-exec)
+  target_link_options(lumen-frame-allocator PRIVATE -Wl,-Bsymbolic-functions -Wl,-z,defs)
+  target_compile_features(lumen-frame-allocator PRIVATE cxx_std_20)
+endif()

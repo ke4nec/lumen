@@ -1394,7 +1394,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   另有 D2 headless/窗口示例 smoke 通过。
   帧 allocator scope 生命周期修复后的完整
   `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1120/1120`，
-  Release 配置为 `1122/1122`；`[app][r6]` 为 `184` 个断言、`14` 个用例通过。
+  原生分配批次的 Release 配置启用 `LUMEN_ENABLE_FRAME_ALLOCATOR=ON` 后为
+  `1127/1127`（含五组独立进程原生回归）；`[app][r6]` 为 `184` 个断言、`14` 个用例通过。
   当前本地 `build-debug` 没有设置 `CMAKE_BUILD_TYPE`，采集器
   如实报告 `Unspecified`。移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
@@ -1449,6 +1450,15 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `noexcept`，并允许重复取消及报告失败后取消。
   headless 回归覆盖 build/submit/report 失败后重试及重建回调内切换 source；这些生命周期
   证据仍不替代三桌面真实 allocator 接入与现场验收。
+  后续原生批次新增 Linux/glibc 可选 profiler（`LUMEN_ENABLE_FRAME_ALLOCATOR=ON`，
+  启动时 `LD_PRELOAD` 显式安装），以原生 malloc-family 对象账本统计请求量、scope
+  live/peak bytes；`runApp` 可拥有工厂 source，显式 source 优先。原生 C/C++/SDL、
+  跨线程释放、fork、容量耗尽恢复及工厂拒绝不完整绑定均有独立进程回归；详见
+  [`lumen-frame-allocator-design.md`](lumen-frame-allocator-design.md)。这些是实际 glibc
+  分配的 headless 证据；另在本机 GNOME/Mutter Wayland 和 Xwayland 两窗口分别采集
+  `183` / `175` 个有效 allocator 帧，状态保持且 source 校验通过。短 smoke 的原始
+  指标、源码/二进制摘要见 `platform-evidence/frame-allocator-linux-2026-10-08.json`，
+  不替代独立 X11 桌面、Windows/macOS 后端、完整现场 record 或实际性能 CI 结果。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。
@@ -1479,5 +1489,6 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 
 其余问题是实现验收条件，不撤销已记录的 D3 L0 实施授权；预览 fixture 的 scoped heap 读数已补齐，
 但命令流存储分配读数和该探针都不能替代 R6 的生产整帧堆分配统计；当前已具备可注入的
-`FrameAllocationSource` 契约和 unavailable 降级，三桌面真实 allocator source、现场结果和
-真实 CI 的性能基线报告仍按已冻结方案补齐。
+`FrameAllocationSource` 契约和 unavailable 降级，Linux/glibc 原生后端及本地
+Wayland/Xwayland 单项窗口 smoke 已验证。Windows/macOS 后端、独立 X11 桌面、完整
+现场结果和真实 CI 的性能基线报告仍按已冻结方案补齐。

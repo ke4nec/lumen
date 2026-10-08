@@ -1,5 +1,6 @@
 // Real desktop probe: AppShell/runApp, real input, two windows and recovery.
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <chrono>
@@ -18,7 +19,7 @@ namespace {
 struct Options {
     int seconds{10};
     int stressMiB{0};
-    bool resize{false}, transparent{false}, recovery{false};
+    bool resize{false}, transparent{false}, recovery{false}, frameAllocator{false};
     std::string expectedText, clipboardExpected;
 };
 
@@ -37,6 +38,7 @@ Options parse(int argc, char** argv) {
         if (flag == "--resize-burst") out.resize = true;
         else if (flag == "--transparent") out.transparent = true;
         else if (flag == "--inject-recovery") out.recovery = true;
+        else if (flag == "--frame-allocator") out.frameAllocator = true;
         else if (i + 1 < argc && flag == "--seconds") out.seconds = number(argv[++i], 86400);
         else if (i + 1 < argc && flag == "--stress-mib") out.stressMiB = number(argv[++i], 256);
         else if (i + 1 < argc && flag == "--expected-text") out.expectedText = argv[++i];
@@ -72,6 +74,9 @@ struct ProbeWindow {
     std::string recoveryFocus;
     float recoveryOffset{0};
     unsigned recoveryFrame{0};
+    std::uint64_t allocationFrame{0}, allocationCount{0}, allocatedBytes{0}, allocationPeak{0};
+    unsigned allocationSamples{0};
+    bool allocationIncomplete{false};
 
     explicit ProbeWindow(std::string text) : shell(config()), initialText(std::move(text)) {
         list.setItemCount(1000);
@@ -137,6 +142,7 @@ int main(int argc, char** argv) {
             run.windowDesc.height = 360;
             run.windowDesc.transparent = options.transparent;
             run.idleWaitMs = 16;
+            run.frameDebugOverlay = options.frameAllocator;
             run.fontFactory = [&] {
                 auto fonts = text::createSystemFontManager();
                 fontAvailable = fontAvailable && fonts != nullptr;
@@ -176,6 +182,22 @@ int main(int argc, char** argv) {
                 };
             }
             run.poll = [&, isFirst = &probe == &first](app::AppShell&, std::uint64_t) {
+                if (options.frameAllocator) {
+                    const auto stats = probe.shell.frameDebugSnapshot();
+                    if (stats.frameIndex > probe.allocationFrame) {
+                        probe.allocationFrame = stats.frameIndex;
+                        if (stats.frameAllocationAvailable &&
+                            stats.frameAllocationSource == "glibc/malloc") {
+                            ++probe.allocationSamples;
+                            probe.allocationCount += stats.frameAllocationCount;
+                            probe.allocatedBytes += stats.frameAllocatedBytes;
+                            probe.allocationPeak = std::max(probe.allocationPeak,
+                                                           stats.frameAllocationPeakBytes);
+                        } else {
+                            probe.allocationIncomplete = true;
+                        }
+                    }
+                }
                 if (probe.recoveryValue && probe.presents > probe.recoveryFrame) {
                     probe.statePreserved = probe.statePreserved &&
                         probe.shell.controller().editingValue() == *probe.recoveryValue &&
@@ -216,20 +238,32 @@ int main(int argc, char** argv) {
             (events.commits > 0 || (first.shell.state().get("document") == first.initialText &&
                                    second.shell.state().get("document") == second.initialText));
         const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        const bool allocatorVerified = options.frameAllocator &&
+            first.allocationSamples > 0 && second.allocationSamples > 0 &&
+            !first.allocationIncomplete && !second.allocationIncomplete &&
+            first.allocationCount > 0 && second.allocationCount > 0;
         std::printf("{\"driver\":\"%s\",\"seconds\":%.3f,\"windows\":2,\"frames\":%u,"
                     "\"resize_events\":%u,\"preedit_events\":%u,\"commit_events\":%u,"
                     "\"composition_end_events\":%u,\"wheel_events\":%u,\"font_available\":%s,"
                     "\"transparent_requested\":%s,\"external_clipboard\":%s,\"ime_verified\":%s,"
-                    "\"stress_mib\":%d,\"simulated_recoveries\":%u,\"state_preserved\":%s}\n",
+                    "\"stress_mib\":%d,\"simulated_recoveries\":%u,\"state_preserved\":%s,"
+                    "\"frame_allocator_requested\":%s,\"frame_allocator_verified\":%s,"
+                    "\"frame_allocator_frames\":%u,\"frame_allocator_allocations\":%llu,"
+                    "\"frame_allocator_bytes\":%llu,\"frame_allocator_peak_bytes\":%llu}\n",
                     driver.c_str(), seconds, first.presents + second.presents,
                     events.resize.load(), events.preedit.load(), events.commits.load(),
                     events.compositionEnds.load(), events.wheel.load(), fontAvailable ? "true" : "false",
                     options.transparent ? "true" : "false", externalClipboard ? "true" : "false",
                     ime ? "true" : "false", options.stressMiB, first.recoveries + second.recoveries,
-                    preserved ? "true" : "false");
+                    preserved ? "true" : "false", options.frameAllocator ? "true" : "false",
+                    allocatorVerified ? "true" : "false", first.allocationSamples + second.allocationSamples,
+                    static_cast<unsigned long long>(first.allocationCount + second.allocationCount),
+                    static_cast<unsigned long long>(first.allocatedBytes + second.allocatedBytes),
+                    static_cast<unsigned long long>(std::max(first.allocationPeak, second.allocationPeak)));
         return code != 0 || !timedOut || first.presents == 0 || second.presents == 0 || !preserved ||
             (options.resize && events.resize == 0) || (!options.expectedText.empty() && !ime) ||
-            (options.recovery && (first.recoveries != 1 || second.recoveries != 1)) ? 1 : 0;
+            (options.recovery && (first.recoveries != 1 || second.recoveries != 1)) ||
+            (options.frameAllocator && !allocatorVerified) ? 1 : 0;
     } catch (const std::exception& error) {
         std::fprintf(stderr, "live acceptance failed: %s\n", error.what());
         return 2;

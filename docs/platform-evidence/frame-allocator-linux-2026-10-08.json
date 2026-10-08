@@ -1,0 +1,70 @@
+{
+  "kind": "native-frame-allocator-smoke",
+  "recorded_at": "2026-10-08T12:06:22+08:00",
+  "source_base_commit": "e46d69307443d87ff456ea26a0db41955c9cfb3f",
+  "source_dirty": true,
+  "acceptance_complete": false,
+  "workflow_run": null,
+  "os": "Ubuntu 26.04.1 LTS",
+  "kernel": "Linux 7.0.0-34-generic x86_64",
+  "desktop": "GNOME Shell 50.1 / Mutter; native Wayland and rootless Xwayland :0",
+  "framework_renderer": "CpuRenderer",
+  "allocator_source": "glibc/malloc",
+  "build_type": "Release",
+  "toolchain": "GNU-15.2.0",
+  "gpu_driver": null,
+  "source_sha256": {
+    "src/platform/native_frame_allocator_linux.cpp": "5d79a4330e4128a0893de9f0042aa92196e21569023a05edf0156885bf94cf38",
+    "src/platform/frame_allocator.cpp": "912a5721e562f914229531e66449ceb22681648cb5816fc5677bfb427cf97429",
+    "src/platform/native_frame_allocator_api.h": "e7bd372d4419ee78b81247d882fe87ebddc002a5891eae678178fa5b021ff617",
+    "include/lumen/platform/frame_allocator.h": "78c9a0d6f8c3df5eccd334ccec47cf0a2e943b3542cd85f90c04a59ea042d2a3",
+    "src/app/run_app.cpp": "e6780699a76aaf55f615fa6a0b8015d1064d138244ae8792adb55efd707e1da1",
+    "tests/platform_live_smoke.cpp": "792a59da70895ea0f0fb3bc426b9d06667ac7038cc3837c6cb790bd44b43d8c4"
+  },
+  "binary_sha256": {
+    "build-release/tests/lumen-platform-live-smoke": "c1f9948065374013c78243be737822caa2858b1eadaed6ba0f9058375df69b90",
+    "build-release/src/platform/liblumen-frame-allocator.so": "c683a001838ec9ff8ff44ff1b7d97a55770e51f8ac6b076df68cd40ed0d21127"
+  },
+  "runs": [
+    {
+      "session": "gnome-mutter-wayland",
+      "command": "WAYLAND_DISPLAY=wayland-0 SDL_VIDEODRIVER=wayland LD_PRELOAD=$PWD/build-release/src/platform/liblumen-frame-allocator.so timeout 20s build-release/tests/lumen-platform-live-smoke --frame-allocator --seconds 3",
+      "exit_code": 0,
+      "stderr": "MESA ZINK/EGL initialization warnings; probe used CPU framebuffer presentation and completed successfully",
+      "report": {
+        "driver": "wayland", "seconds": 3.021, "windows": 2, "frames": 184,
+        "resize_events": 0, "preedit_events": 0, "commit_events": 0,
+        "composition_end_events": 2, "wheel_events": 0, "font_available": true,
+        "transparent_requested": false, "external_clipboard": false,
+        "ime_verified": false, "stress_mib": 0, "simulated_recoveries": 0,
+        "state_preserved": true, "frame_allocator_requested": true,
+        "frame_allocator_verified": true, "frame_allocator_frames": 183,
+        "frame_allocator_allocations": 700640, "frame_allocator_bytes": 115274342,
+        "frame_allocator_peak_bytes": 914654
+      }
+    },
+    {
+      "session": "gnome-mutter-xwayland",
+      "command": "DISPLAY=:0 XAUTHORITY=<session Xwayland auth file> SDL_VIDEODRIVER=x11 LD_PRELOAD=$PWD/build-release/src/platform/liblumen-frame-allocator.so timeout 20s build-release/tests/lumen-platform-live-smoke --frame-allocator --seconds 3",
+      "exit_code": 0,
+      "report": {
+        "driver": "x11", "seconds": 3.024, "windows": 2, "frames": 176,
+        "resize_events": 0, "preedit_events": 0, "commit_events": 0,
+        "composition_end_events": 0, "wheel_events": 0, "font_available": true,
+        "transparent_requested": false, "external_clipboard": false,
+        "ime_verified": false, "stress_mib": 0, "simulated_recoveries": 0,
+        "state_preserved": true, "frame_allocator_requested": true,
+        "frame_allocator_verified": true, "frame_allocator_frames": 175,
+        "frame_allocator_allocations": 664450, "frame_allocator_bytes": 110485662,
+        "frame_allocator_peak_bytes": 909411
+      }
+    }
+  ],
+  "limitations": [
+    "Uncommitted implementation batch; source digests and binary digests identify the tested inputs",
+    "A short native allocator smoke, not a complete platform acceptance record",
+    "Xwayland is not a standalone X11 desktop session",
+    "No IME, reader, external clipboard, transparent compositor or one-hour soak sign-off",
+    "No GPU driver sign-off, Windows/macOS backend or real CI performance result"
+  ]
+}

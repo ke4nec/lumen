@@ -711,11 +711,12 @@ struct RunOptions {
     // 帧统计采样并绘制纯图层（左上角面板；读数滞后一帧），且每调度帧
     // 标脏刷新——这是显式开启才有的额外帧与采样开销；关闭时零额外
     // 帧、frame hash 与性能基线不变。图层不经 overlay 槽位，不影响应
-    // 用输入。整帧堆读数需通过 frameAllocationSource 注入；未注入时 HUD
-    // 明确显示来源缺失。
+    // 用输入。整帧堆读数来自显式 source 或已安装的原生 profiler；
+    // 两者均缺失时 HUD 明确显示来源缺失。
     bool frameDebugOverlay{false};
     // R6：调用方拥有的整帧 allocator telemetry source。scope 覆盖
-    // rebuild/layout/paint/submit；空值不会伪造分配数字。
+    // rebuild/layout/paint/submit；空值尝试原生 profiler 工厂，不可用时
+    // 不伪造数字。runApp 拥有并在返回/异常退出时解绑原生默认 source。
     render::FrameAllocationSource* frameAllocationSource{nullptr};
     // R6：bounds/damage 调试图层（默认关闭零开销）。纯绘制层：只随重
     // 绘帧在主场景命令后追加描画，不驱动帧节奏、不进语义树；开启后帧

@@ -123,8 +123,9 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 
 `provider_available` 根据应用 `--diagnostics` 的桥接诊断填写；只有逐项实测后
 才把 checks 改为 `pass`。附件应记录步骤、预期/实际结果并附日志或录像。
-检查器只验证记录完整性和归属，不代替人工判断。当前容器无真实桌面、AppKit
-或 Windows，不能据本地 headless 结果标记三平台人工回环完成。
+检查器只验证记录完整性和归属，不代替人工判断。本机已连接 GNOME/Mutter
+Wayland/Xwayland 执行 allocator 短 smoke；AppKit、Windows 和完整人工回环
+尚未验收，不能据 headless 或单项短 smoke 标记三平台完整验收完成。
 
 ## 待验收登记（2026-10-02）
 
@@ -141,16 +142,22 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 | 透明合成 | Windows texture 已实测；X11/Wayland/macOS 未验 | headless 已验证（预乘表示一致） | 无真实合成器现场 | 软件窗口不支持逐像素透明时按不透明提交 | R0 |
 | 1 小时双窗口浸泡 | Linux 已做（M14-A）；Windows/macOS 未做 | headless 已验证（恢复用例） | 无登录桌面长时运行 | 模拟 renderer 失效不冒充真实 GPU context loss | R2 |
 | OS 拖入真实 smoke | 三平台 | headless 已验证（M15 契约） | 无真实文件管理器/源应用拖拽现场 | `dragDropStart=false`（SDL 3.2.10 无拖出 API）+ 结构化 Unavailable | R3（本日已纳入 `drag_drop_os_receive` 必检项） |
-| 真实整帧 allocator source | 三平台 | `FrameAllocationSource` scope 契约 + fake/headless 已验证 | 当前没有接入平台生产 allocator；无真实 allocator source 现场记录 | HUD 显示 `frame heap unavailable`，命令流容量和 RSS 不冒充整帧读数 | R6（`frame_allocator_source` 必检项） |
+| 真实整帧 allocator source | 三平台 | scope/异常生命周期和 Linux/glibc 原生后端已有 headless 回归；GNOME/Mutter Wayland 与 Xwayland 两窗口短 smoke 通过（183/175 个有效 allocator 帧） | Windows/macOS 后端、独立 X11 桌面及完整现场 record 未补齐；短 smoke 不满足全部发布检查项 | 无安装、绑定不完整或容量溢出时 HUD 显示 unavailable；命令流容量和 RSS 不冒充整帧读数 | R6（`frame_allocator_source` 必检项；设计与现场命令见 `lumen-frame-allocator-design.md`） |
 | 全局快捷键真实按键 | Windows/Linux X11 | Linux X11 后端已交付（Xvfb XTEST 端到端通过）；Win32 后端已交付（RegisterHotKey，编译级 CI 门禁）；macOS 后端未实现 | X11 桌面真实键盘按键待现场；Win32 真实按键（消息泵→UI 事件、冲突码）待现场；Wayland 会话 = `globalHotkeys=false` + 结构化 Unavailable（如实）；macOS = 结构化 Unavailable | R4（Win32/Linux 为验收缺口；macOS 为实现缺口） |
 | macOS 原生菜单栏/交通灯 | macOS | 未实现 | 无实现 | 自绘 MenuBar/标题栏可用 | R4 |
 | GPU 包、CPack Bundle、干净机器启动 | Windows/macOS | CI 变体已构建（package-skia-gpu） | 无干净机器安装/启动记录 | CI 解包冒烟不替代真实验收 | R1 |
 
-本轮源码基线 `a1e012e` + DP-8 门禁批次的本地 `build-debug`/Release 全量 CTest
+此前源码基线 `a1e012e` + DP-8 门禁批次的本地 `build-debug`/Release 全量 CTest
 （1116/1116、1118/1118）均通过；`build-debug` 未指定构建类型，不能作为 Release 性能输入。
 包含 Designer 工程资源、恢复回归和四类性能报告/门禁校验；Linux CPU CI 已配置同机基线，
-但没有新增真实桌面、生产 allocator 或屏幕阅读器证据；因此本表所有平台检查项保持原状态，
-不能把本地 headless 结果写入 `record.json` 的 `pass` 字段。
+该批没有新增真实桌面、生产 allocator 或屏幕阅读器证据。
+后续 Linux/glibc 原生批次已增加实际分配的 headless 证据和双窗口
+`--frame-allocator` 现场探针（用法见原生分配设计文档），已通过本机 GNOME/Mutter
+Wayland/Xwayland 短 smoke。原始指标与摘要保存在
+[`frame-allocator-linux-2026-10-08.json`](platform-evidence/frame-allocator-linux-2026-10-08.json)。
+这是未提交实现批次的单项 CPU 诊断，明确 `source_dirty=true` / `acceptance_complete=false`；
+没有 workflow、完整提交归属、输入法/读屏、驱动及一小时浸泡记录，不能提交为完整
+`record.json`，也不更新其他检查项的 `pass` 字段。
 
 新增缺口进入本表时同步更新 `check_platform_acceptance.py` 的必检集合与本文
 record 模板；实现推进改变四态时，本表与

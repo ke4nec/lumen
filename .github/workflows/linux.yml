@@ -181,6 +181,7 @@ jobs:
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_BUILD_BENCHMARKS=ON
+          -DLUMEN_ENABLE_FRAME_ALLOCATOR=ON
           -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
       - name: Build
         run: cmake --build build --config Release

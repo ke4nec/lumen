@@ -147,6 +147,41 @@ endif()
 
 add_executable(lumen-tests ${LUMEN_TEST_SOURCES})
 
+if(TARGET lumen-frame-allocator)
+    find_package(Threads REQUIRED)
+    add_executable(lumen-frame-allocator-tests native_frame_allocator_tests.cpp)
+    target_include_directories(lumen-frame-allocator-tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/platform)
+    target_link_libraries(lumen-frame-allocator-tests PRIVATE
+        Catch2::Catch2WithMain lumen-app lumen-platform SDL3::SDL3
+        Threads::Threads ${CMAKE_DL_LIBS})
+    target_compile_options(lumen-frame-allocator-tests PRIVATE -fno-builtin)
+    add_library(lumen-shadow-malloc SHARED native_shadow_malloc.cpp)
+    add_test(NAME native_frame_allocator
+        COMMAND ${CMAKE_COMMAND} -E env
+            "LD_PRELOAD=$<TARGET_FILE:lumen-frame-allocator>" LD_BIND_NOW=1
+            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][present]")
+    add_test(NAME native_frame_allocator_absent
+        COMMAND ${CMAKE_COMMAND} -E env LD_PRELOAD= LD_BIND_NOW=1
+            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][absent]")
+    add_test(NAME native_frame_allocator_shadowed
+        COMMAND ${CMAKE_COMMAND} -E env
+            "LD_PRELOAD=$<TARGET_FILE:lumen-shadow-malloc>:$<TARGET_FILE:lumen-frame-allocator>"
+            LD_BIND_NOW=1
+            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][absent]")
+    add_test(NAME native_frame_allocator_sdl_untracked
+        COMMAND ${CMAKE_COMMAND} -E env
+            "LD_PRELOAD=$<TARGET_FILE:lumen-frame-allocator>" LD_BIND_NOW=1
+            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][sdl_untracked]")
+    add_test(NAME native_frame_allocator_background_probe
+        COMMAND ${CMAKE_COMMAND} -E env
+            "LD_PRELOAD=$<TARGET_FILE:lumen-frame-allocator>" LD_BIND_NOW=1
+            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][background_probe]")
+    set_tests_properties(native_frame_allocator native_frame_allocator_absent
+        native_frame_allocator_shadowed native_frame_allocator_sdl_untracked
+        native_frame_allocator_background_probe PROPERTIES TIMEOUT 30)
+endif()
+
 # F6 设计器性能证据：独立进程安装全局 new/delete 记账，避免污染主测试
 # 进程；只输出预览操作期间的 live/peak heap bytes。
 if(NOT LUMEN_BUILD_MOBILE_CORE)

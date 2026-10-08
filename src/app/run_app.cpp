@@ -15,6 +15,7 @@
 #include "lumen/core/windowing.h"
 #include "lumen/diagnostics/runtime_diagnostics.h"
 #include "lumen/platform/application_host.h"
+#include "lumen/platform/frame_allocator.h"
 #include "lumen/render/frame_scheduler.h"
 
 namespace lumen::app {
@@ -75,10 +76,20 @@ void printFrameDiagnostics(std::uint64_t frames, std::uint32_t partial,
 }
 
 struct WindowRuntime {
+    WindowRuntime() = default;
+    WindowRuntime(WindowRuntime&&) = default;
+    WindowRuntime& operator=(WindowRuntime&&) = delete;
+    ~WindowRuntime() {
+        if (nativeFrameAllocator && app.shell) {
+            app.shell->setFrameAllocationSource(nullptr);
+        }
+    }
+
     AppWindow app{};
     core::WindowId id{};
     RendererSetup setup{};
     std::unique_ptr<accessibility::AccessibilityBridge> nativeA11y{};
+    std::unique_ptr<render::FrameAllocationSource> nativeFrameAllocator{};
     std::unique_ptr<render::FrameScheduler> scheduler{};
     // M14-C：asyncFonts 时的后台字体加载（完成 pump 见主循环）。
     std::unique_ptr<FontLoader> fontLoader{};
@@ -237,8 +248,12 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         AppShell& shell = *runtime.app.shell;
         applyAccessibilityPreferences(runtime);
         shell.setRenderer(runtime.setup.renderer);
-        shell.setFrameAllocationSource(
-            runtime.app.options.frameAllocationSource);
+        auto* allocationSource = runtime.app.options.frameAllocationSource;
+        if (allocationSource == nullptr) {
+            runtime.nativeFrameAllocator = platform::makeNativeFrameAllocationSource();
+            allocationSource = runtime.nativeFrameAllocator.get();
+        }
+        shell.setFrameAllocationSource(allocationSource);
         if (runtime.app.options.fontFactory) {
             // M14-C：asyncFonts 时工厂移到后台线程（首帧占位度量），
             // 完成后在主循环热替换；同步路径保持原语义。
