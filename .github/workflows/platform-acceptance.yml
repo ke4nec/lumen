@@ -68,7 +68,7 @@ jobs:
       - name: One-hour multi-window resize pressure and recovery soak
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate Orca evidence for this commit and session
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-x11/record.json" --commit "$GITHUB_SHA" --platform linux-x11 --soak-report soak.json --frame-allocator-log frame-allocator-live.log --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-x11/record.json" --commit "$GITHUB_SHA" --platform linux-x11 --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -128,7 +128,7 @@ jobs:
       - name: One-hour multi-window resize pressure and recovery soak
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate Orca evidence for this commit and session
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-wayland/record.json" --commit "$GITHUB_SHA" --platform linux-wayland --soak-report soak.json --frame-allocator-log frame-allocator-live.log --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-wayland/record.json" --commit "$GITHUB_SHA" --platform linux-wayland --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -176,7 +176,7 @@ jobs:
       - name: One-hour multi-window resize pressure and recovery soak
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate VoiceOver evidence for this commit
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/macos/record.json" --commit "$GITHUB_SHA" --platform macos --soak-report soak.json --frame-allocator-log frame-allocator-live.log --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/macos/record.json" --commit "$GITHUB_SHA" --platform macos --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -252,7 +252,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Validate Narrator and NVDA evidence for this commit
         shell: pwsh
-        run: python tests/check_platform_acceptance.py --record "$env:LUMEN_ACCEPTANCE_ROOT/$env:GITHUB_SHA/windows/record.json" --commit "$env:GITHUB_SHA" --platform windows --soak-report soak.json --frame-allocator-log frame-allocator-live.log --archive acceptance-evidence
+        run: python tests/check_platform_acceptance.py --record "$env:LUMEN_ACCEPTANCE_ROOT/$env:GITHUB_SHA/windows/record.json" --commit "$env:GITHUB_SHA" --platform windows --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:

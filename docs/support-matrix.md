@@ -82,6 +82,8 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 Designer 另有独立的 [DP-8 四类基线](perf-baselines/designer/README.md)，固定 `a1e012e`，
 在 Linux CPU job 同机交错五轮，每轮 10 次 warmup 和 300 次测量，覆盖阶段计时、scoped
 heap、重建次数和虚拟化范围。此处“已配置 CI”不代表真实 CI 已通过或整帧 allocator 已接入。
+真实平台工作流还校验人工记录中的 Designer/allocator 附件与本次运行日志的 SHA256
+一致，并要求 Designer 成功标记为唯一完整行；有效旧日志不能替代本次提交的窗口证据。
 
 ### 实现批次与真实平台缺口（2026-09-30）
 

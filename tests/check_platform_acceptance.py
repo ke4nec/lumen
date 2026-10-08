@@ -62,32 +62,40 @@ def read_frame_allocator_log(path: Path, platform: str) -> None:
     validate_frame_allocator_report(reports[0], platform)
 
 
+def evidence_log(record: dict, directory: Path, name: str) -> Path:
+    logs = [Path(item["path"]) for item in record.get("artifacts", [])
+            if Path(item["path"]).name == name]
+    if len(logs) != 1:
+        raise ValueError(f"acceptance requires exactly one {name} artifact")
+    log = (directory / logs[0]).resolve()
+    if not log.is_relative_to(directory.resolve()) or not log.is_file():
+        raise ValueError(f"{name} must be inside the evidence directory")
+    return log
+
+
+def validate_current_log(record: dict, directory: Path, current: Path, name: str) -> None:
+    artifact = evidence_log(record, directory, name)
+    if hashlib.sha256(current.read_bytes()).digest() != hashlib.sha256(artifact.read_bytes()).digest():
+        raise ValueError(f"{name} artifact does not match the current workflow log")
+
+
 def validate_frame_allocator_artifact(record: dict, directory: Path) -> None:
     if record.get("platform_checks", {}).get("frame_allocator_source") != "pass":
         return
-    logs = [Path(item["path"]) for item in record.get("artifacts", [])
-            if Path(item["path"]).name == "frame-allocator-live.log"]
-    if len(logs) != 1:
-        raise ValueError("frame_allocator_source requires exactly one frame-allocator-live.log artifact")
-    log = (directory / logs[0]).resolve()
-    if not log.is_relative_to(directory.resolve()) or not log.is_file():
-        raise ValueError("frame-allocator-live.log must be inside the evidence directory")
+    log = evidence_log(record, directory, "frame-allocator-live.log")
     read_frame_allocator_log(log, record.get("platform"))
+
+
+def read_designer_window_log(path: Path) -> None:
+    if path.read_text(encoding="utf-8").splitlines().count("designer_window_smoke pass") != 1:
+        raise ValueError("designer-live.log requires exactly one successful Designer smoke marker")
 
 
 def validate_designer_window_artifact(record: dict, directory: Path) -> None:
     """Require the native Designer smoke marker when its check is passed."""
     if record.get("platform_checks", {}).get("designer_window_smoke") != "pass":
         return
-    logs = [Path(item["path"]) for item in record.get("artifacts", [])
-            if Path(item["path"]).name == "designer-live.log"]
-    if len(logs) != 1:
-        raise ValueError("designer_window_smoke requires exactly one designer-live.log artifact")
-    log = (directory / logs[0]).resolve()
-    if not log.is_relative_to(directory.resolve()) or not log.is_file():
-        raise ValueError("designer-live.log must be inside the evidence directory")
-    if b"designer_window_smoke pass" not in log.read_bytes():
-        raise ValueError("designer-live.log has no successful Designer smoke marker")
+    read_designer_window_log(evidence_log(record, directory, "designer-live.log"))
 
 
 def validate_platform(record: dict, soak: dict, platform: str) -> None:
@@ -153,11 +161,14 @@ def main() -> None:
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--soak-report", type=Path)
     parser.add_argument("--frame-allocator-log", type=Path)
+    parser.add_argument("--designer-log", type=Path)
     parser.add_argument("--validate-frame-allocator-only", action="store_true")
     args = parser.parse_args()
     try:
         if args.frame_allocator_log:
             read_frame_allocator_log(args.frame_allocator_log, args.platform)
+        if args.designer_log:
+            read_designer_window_log(args.designer_log)
         if args.validate_frame_allocator_only:
             if not args.frame_allocator_log:
                 raise ValueError("--validate-frame-allocator-only requires --frame-allocator-log")
@@ -167,6 +178,11 @@ def main() -> None:
             raise ValueError("operator acceptance requires --record and --commit")
         record = json.loads(args.record.read_text(encoding="utf-8"))
         validate(record, args.commit, args.platform, args.record.parent)
+        if args.frame_allocator_log:
+            validate_current_log(record, args.record.parent, args.frame_allocator_log,
+                                 "frame-allocator-live.log")
+        if args.designer_log:
+            validate_current_log(record, args.record.parent, args.designer_log, "designer-live.log")
         if args.soak_report:
             validate_platform(record, json.loads(args.soak_report.read_text(encoding="utf-8")), args.platform)
         if args.archive:

@@ -69,7 +69,7 @@
 | R3 | P1 | OS 拖放 | headless 会话和应用内重排已实现 | 三桌面文件/文本拖入真实验证；拖出能力如实报告；取消、自动滚动、触摸边界明确 |
 | R4 | P1 | 桌面系统集成 | 全屏、置顶、OS 模态、托盘契约已有 | 全局快捷键平台后端、macOS 菜单栏/交通灯、任务栏进度和托盘细节完成或明确降级 |
 | R5 | P1 | 文本与剪贴板深度 | 基础编辑和文本剪贴板完成 | 三桌面真实 IME；图片/自定义格式剪贴板能力明确，跨平台不支持时有降级 |
-| R6 | P1 | 开发者诊断 | render tree、semantics dump、Inspector、bounds/damage overlay、帧阶段统计、命令/节点计数和命令流存储分配读数已交付，headless 已验证；`FrameAllocationSource` 已冻结整帧 scope 契约并在无 source 时显示 unavailable | 三桌面 Inspector smoke 和稳定的跨平台生产 allocator source；命令流读数不能替代整帧堆统计，也不得用进程 RSS 冒充 |
+| R6 | P1 | 开发者诊断 | render tree、semantics dump、Inspector、bounds/damage overlay、帧阶段统计、命令/节点计数和命令流存储分配读数已交付，headless 已验证；`FrameAllocationSource` 已冻结整帧 scope 契约并交付 Linux/glibc、macOS/libmalloc、Windows/ntdll 可选后端，无有效 source 时显示 unavailable；原生 Windows/macOS CI 和三桌面完整现场记录仍待 | 三桌面 Inspector smoke 和稳定的跨平台生产 allocator source；命令流读数不能替代整帧堆统计，也不得用进程 RSS 冒充 |
 | R7 | P2 | 控件细节 | auto-hide scrollbar、Splitter 塌缩/KeepRatio 等已实现，仍有清单 | 双轴联滚/RTL/菜单 mnemonic/Tree/List 行内编辑/DataGrid 条件筛选等按需逐项交付 |
 | R8 | P2 | 复杂文本 | 当前为确定性 UAX#9 子集和逐 grapheme shaping | 只有在产品需要时实现 HarfBuzz、完整 UBA、TextSpan 富文本和目标语言字体策略 |
 | R9 | P2 | 框架使用效率 | 模板已存在，Gallery/Settings 仍较大 | 页面壳、工具栏、状态摘要、表单和常用对话框组合方式有稳定示例与文档 |

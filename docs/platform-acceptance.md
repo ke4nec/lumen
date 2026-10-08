@@ -23,13 +23,18 @@ Linux 两个 job 使用当前会话的 SDL video driver，不启动 Xvfb 或 dum
 smoke；该结果必须在记录的 `designer_window_smoke` 项标记为 `pass`，并把
 `designer-live.log` 随平台 artifact 归档。日志必须包含 Designer 进程成功退出后输出的
 `designer_window_smoke pass` 标记；验收检查器会校验该标记和附件哈希。
+该标记必须是唯一的完整日志行；人工附件必须与本次 workflow 的 `designer-live.log`
+逐字节匹配，不能以此前通过的日志替代。
 Linux job 还加载现有 `LD_PRELOAD` present 故障夹具，确认
 GPU swap 失败和软件 present 失败均进入预期诊断路径。
-Linux 两个 job 和 macOS job 还构建并启动期加载原生 frame allocator，独立运行双窗口
+四个 job 还构建原生 frame allocator，在探针启动时用 Linux `LD_PRELOAD`、macOS
+`DYLD_INSERT_LIBRARIES` 或 Windows `LUMEN_FRAME_ALLOCATOR_DLL` 加载，独立运行双窗口
 `--frame-allocator` 探针，将 JSON 与进程成功后才输出的
 `frame_allocator_smoke pass` 标记保存为 `frame-allocator-live.log`，先校验本次日志，
 再验证人工记录和附件。标记、实际来源、会话 driver、两窗口采样及正数指标均须通过；
 fake/RSS/命令流读数、dummy/offscreen、重复报告或不完整样本不能作为该项 pass。
+人工附件的 `frame-allocator-live.log` 也必须与本次 workflow 日志匹配；即使旧附件的
+来源、指标、成功标记和自报哈希都有效，检查器仍拒绝归档。
 
 ## 探针与长时间运行
 
@@ -70,6 +75,9 @@ AT-SPI live 冒烟互补，面向读屏器在场驱动；调用方式与前置�
 runner 本地证据目录，按 `<root>/<40 位提交>/<platform>/record.json` 存放记录，
 platform 为 `linux-x11`、`linux-wayland`、`macos` 或 `windows`。
 缺失记录、提交/会话不匹配、未通过项目或附件哈希不匹配均失败；验证后连同附件上传。
+探针完成后，把本次工作区的两份 live 日志复制到对应证据目录并登记 SHA256；
+人工回环记录可在后续一小时 soak 期间补齐。工作流最终通过 `--designer-log` 和
+`--frame-allocator-log` 核对本次日志，附件准备必须在最终验证步骤前完成。
 Linux/macOS 常规 CPU CI 启用原生桥，其他默认 OFF 构建继续覆盖降级路径。
 真实工作流同时构建 settings/Gallery，人工使用该次构建的应用进行：
 
@@ -134,9 +142,10 @@ Wayland/Xwayland 执行 allocator 短 smoke；AppKit、Windows 和完整人工�
 尚未验收，不能据 headless 或单项短 smoke 标记三平台完整验收完成。
 
 `frame_allocator_source=pass` 必须附唯一的 `frame-allocator-live.log`；检查器要求
-支持的生产来源及上述结构化指标。解析器识别 Linux 的 `glibc/malloc` 与 Cocoa 的
-`libmalloc/malloc`；macOS 后端已实现并通过 SDK 交叉编译，但未取得实际 macOS 运行
-或现场结果，Windows 后端仍缺失，不能把它们的检查项改为 pass。已采集的旧版单项 JSON 诊断不是完整
+支持的生产来源及上述结构化指标。解析器识别 Linux 的 `glibc/malloc`、Cocoa 的
+`libmalloc/malloc` 和 Win32 的 `ntdll/heap`。三平台后端已实现；macOS 已通过 SDK
+交叉编译，Windows x64 已完成交叉构建并在 Wine 中通过五组独立进程回归，仍未取得
+原生 Windows/macOS CI 或现场结果，不能把它们的检查项改为 pass。旧版单项 JSON 诊断不是完整
 record，须用带来源和成功标记的新探针重新采集正式附件。
 可用 `--frame-allocator-log <log> --validate-frame-allocator-only --platform <session>`
 单独检查原生日志；此模式不检查 commit、读屏、浸泡或人工 record，不等同完整验收。
@@ -156,7 +165,7 @@ record，须用带来源和成功标记的新探针重新采集正式附件。
 | 透明合成 | Windows texture 已实测；X11/Wayland/macOS 未验 | headless 已验证（预乘表示一致） | 无真实合成器现场 | 软件窗口不支持逐像素透明时按不透明提交 | R0 |
 | 1 小时双窗口浸泡 | Linux 已做（M14-A）；Windows/macOS 未做 | headless 已验证（恢复用例） | 无登录桌面长时运行 | 模拟 renderer 失效不冒充真实 GPU context loss | R2 |
 | OS 拖入真实 smoke | 三平台 | headless 已验证（M15 契约） | 无真实文件管理器/源应用拖拽现场 | `dragDropStart=false`（SDL 3.2.10 无拖出 API）+ 结构化 Unavailable | R3（本日已纳入 `drag_drop_os_receive` 必检项） |
-| 真实整帧 allocator source | 三平台 | scope/异常生命周期和 Linux/glibc 原生后端已有 headless 回归；GNOME/Mutter Wayland 与 Xwayland 两窗口短 smoke 通过（183/175 个有效 allocator 帧）；macOS 后端已实现，SDK 14.5/26.1 arm64/x86_64 交叉编译通过 | Windows 后端、macOS 原生运行/现场、独立 X11 桌面及完整 record 未补齐；短 smoke 不满足全部发布检查项 | 无安装、绑定不完整或容量溢出时 HUD 显示 unavailable；命令流容量和 RSS 不冒充整帧读数 | R6（`frame_allocator_source` 必检项；设计与现场命令见 `lumen-frame-allocator-design.md`） |
+| 真实整帧 allocator source | 三平台 | 三平台后端均已实现；Linux scope/异常生命周期已有 headless 回归，GNOME/Mutter Wayland 与 Xwayland 两窗口短 smoke 通过（183/175 个有效 allocator 帧）；macOS SDK 14.5/26.1 arm64/x86_64 交叉编译通过；Windows x64 交叉构建和 Wine 五组进程回归通过 | 原生 Windows/macOS CI 与现场、独立 X11 桌面及完整 record 未补齐；Wine 和短 smoke 不满足全部发布检查项 | 无安装、绑定不完整或容量溢出时 HUD 显示 unavailable；命令流容量和 RSS 不冒充整帧读数 | R6（`frame_allocator_source` 必检项；设计与现场命令见 `lumen-frame-allocator-design.md`） |
 | 全局快捷键真实按键 | Windows/Linux X11 | Linux X11 后端已交付（Xvfb XTEST 端到端通过）；Win32 后端已交付（RegisterHotKey，编译级 CI 门禁）；macOS 后端未实现 | X11 桌面真实键盘按键待现场；Win32 真实按键（消息泵→UI 事件、冲突码）待现场；Wayland 会话 = `globalHotkeys=false` + 结构化 Unavailable（如实）；macOS = 结构化 Unavailable | R4（Win32/Linux 为验收缺口；macOS 为实现缺口） |
 | macOS 原生菜单栏/交通灯 | macOS | 未实现 | 无实现 | 自绘 MenuBar/标题栏可用 | R4 |
 | GPU 包、CPack Bundle、干净机器启动 | Windows/macOS | CI 变体已构建（package-skia-gpu） | 无干净机器安装/启动记录 | CI 解包冒烟不替代真实验收 | R1 |

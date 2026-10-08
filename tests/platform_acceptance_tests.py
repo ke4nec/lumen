@@ -11,7 +11,8 @@ from check_platform_acceptance import (validate, validate_platform,
                                        validate_frame_allocator_artifact,
                                        validate_frame_allocator_report,
                                        read_frame_allocator_log,
-                                       READER_CASES, PLATFORM_CASES)
+                                       READER_CASES, PLATFORM_CASES, READERS,
+                                       NATIVE_ALLOCATOR_DRIVERS, NATIVE_ALLOCATOR_SOURCES)
 
 
 class EvidenceTests(unittest.TestCase):
@@ -190,13 +191,71 @@ class EvidenceTests(unittest.TestCase):
             log = root / "designer-live.log"
             record = {"platform_checks": {"designer_window_smoke": "pass"},
                       "artifacts": [{"path": log.name, "sha256": ""}]}
-            log.write_text("libEGL warning\n", encoding="utf-8")
-            record["artifacts"][0]["sha256"] = hashlib.sha256(log.read_bytes()).hexdigest()
-            with self.assertRaises(ValueError):
-                validate_designer_window_artifact(record, root)
-            log.write_text("designer_window_smoke pass\n", encoding="utf-8")
+            for content in ("libEGL warning\n", "designer_window_smoke pass-invalid\n",
+                            "warning: designer_window_smoke pass\n",
+                            "designer_window_smoke pass\ndesigner_window_smoke pass\n"):
+                log.write_text(content, encoding="utf-8")
+                with self.subTest(content=content), self.assertRaises(ValueError):
+                    validate_designer_window_artifact(record, root)
+            log.write_text("libEGL warning\r\ndesigner_window_smoke pass\r\n", encoding="utf-8")
             record["artifacts"][0]["sha256"] = hashlib.sha256(log.read_bytes()).hexdigest()
             validate_designer_window_artifact(record, root)
+            record["artifacts"].append(dict(record["artifacts"][0]))
+            with self.assertRaises(ValueError):
+                validate_designer_window_artifact(record, root)
+
+    def test_operator_cli_rejects_valid_but_stale_native_logs_before_archiving(self):
+        for platform in READERS:
+            with self.subTest(platform=platform), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                evidence = root / "evidence"
+                evidence.mkdir()
+                report = dict(self.native_allocator_report(), driver=NATIVE_ALLOCATOR_DRIVERS[platform],
+                              frame_allocator_source=NATIVE_ALLOCATOR_SOURCES[platform])
+                contents = {"frame-allocator-live.log": json.dumps(report) + "\nframe_allocator_smoke pass\n",
+                            "designer-live.log": "designer_window_smoke pass\n"}
+                record = dict(commit="a" * 40, platform=platform, operator="fixture",
+                              recorded_at="2026-10-08T00:00:00Z", os="fixture", desktop="fixture",
+                              gpu_driver="fixture", ime="fixture", application="fixture",
+                              provider={"linux-x11": "atspi", "linux-wayland": "atspi",
+                                        "macos": "nsaccessibility", "windows": "uia"}[platform],
+                              provider_available=True,
+                              readers={name: {"version": "fixture", "checks":
+                                       {key: "pass" for key in READER_CASES}} for name in READERS[platform]},
+                              platform_checks={"frame_allocator_source": "pass", "designer_window_smoke": "pass"},
+                              artifacts=[])
+                for name, content in contents.items():
+                    (root / name).write_text(content, encoding="utf-8")
+                    (evidence / name).write_bytes((root / name).read_bytes())
+                    record["artifacts"].append({"path": name, "sha256":
+                                               hashlib.sha256((evidence / name).read_bytes()).hexdigest()})
+                record_path = evidence / "record.json"
+                record_path.write_text(json.dumps(record), encoding="utf-8")
+                command = [sys.executable, str(Path(__file__).with_name("check_platform_acceptance.py")),
+                           "--platform", platform, "--commit", "a" * 40, "--record", str(record_path),
+                           "--frame-allocator-log", str(root / "frame-allocator-live.log"),
+                           "--designer-log", str(root / "designer-live.log")]
+                archive = root / "archive"
+                matching = subprocess.run(command + ["--archive", str(archive)],
+                                          capture_output=True, text=True, timeout=5)
+                self.assertEqual(matching.returncode, 0, matching.stderr)
+                for name in contents:
+                    self.assertEqual((archive / name).read_bytes(), (root / name).read_bytes())
+                for artifact in record["artifacts"]:
+                    name = artifact["path"]
+                    log = evidence / name
+                    log.write_text("previous run\n" + contents[name], encoding="utf-8")
+                    artifact["sha256"] = hashlib.sha256(log.read_bytes()).hexdigest()
+                    record_path.write_text(json.dumps(record), encoding="utf-8")
+                    validate(record, "a" * 40, platform, evidence)
+                    rejected_archive = root / ("rejected-" + name)
+                    stale = subprocess.run(command + ["--archive", str(rejected_archive)],
+                                           capture_output=True, text=True, timeout=5)
+                    self.assertNotEqual(stale.returncode, 0, stale.stdout)
+                    self.assertIn(name + " artifact does not match the current workflow log", stale.stderr)
+                    self.assertFalse(rejected_archive.exists())
+                    log.write_bytes((root / name).read_bytes())
+                    artifact["sha256"] = hashlib.sha256(log.read_bytes()).hexdigest()
 
     def test_requires_current_commit_reader_cases_and_real_attachments(self):
         with tempfile.TemporaryDirectory() as directory:
