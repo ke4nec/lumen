@@ -38,6 +38,7 @@ jobs:
           cmake -S . -B build-pkg
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_BUILD_PACKAGE=ON
+          -DLUMEN_ENABLE_FRAME_ALLOCATOR=ON
       - name: Build
         run: cmake --build build-pkg --config Release
       - name: Package (CPack)
@@ -60,6 +61,8 @@ jobs:
           test -f "$pkg/lib/cmake/Lumen/LumenConfig.cmake"
           test -f "$pkg/lib/cmake/Lumen/LumenTargets.cmake"
           test -f "$pkg/include/lumen/render/renderer.h"
+          test -f "$pkg/bin/lumen-frame-allocator.dll"
+          test -f "$pkg/share/lumen/licenses/MinHook.txt"
           if [ "${{ runner.os }}" = "Windows" ]; then
             ./$pkg/bin/lumen-counter.exe --headless
             ./$pkg/bin/lumen-settings.exe --headless
@@ -105,6 +108,7 @@ jobs:
           cmake -S . -B build
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
+          -DLUMEN_ENABLE_FRAME_ALLOCATOR=ON
       - name: Build (Debug)
         run: cmake --build build --config Debug
       - name: Test (Debug)
@@ -239,6 +243,7 @@ jobs:
           -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_ENABLE_SKIA=ON
+          -DLUMEN_ENABLE_FRAME_ALLOCATOR=ON
       # 预编译 skia.lib 为 Release/MT 静态 CRT：Windows 上 Skia 构建只支持
       # Release 配置（见根 CMakeLists 注释）。
       - name: Build (Release)

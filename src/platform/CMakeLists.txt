@@ -89,7 +89,25 @@ target_compile_features(lumen-platform PUBLIC cxx_std_20)
 if(LUMEN_ENABLE_FRAME_ALLOCATOR)
   include(CheckCXXSourceCompiles)
   find_package(Threads REQUIRED)
-  if(APPLE)
+  if(WIN32)
+    check_cxx_source_compiles("
+      #include <windows.h>
+      #if defined(_M_ARM64) || defined(_M_ARM64EC) || defined(__aarch64__)
+      #error ARM64 is not supported by MinHook
+      #endif
+      #if !defined(_M_X64) && !defined(_M_IX86) && !defined(__x86_64__) && !defined(__i386__)
+      #error x86 or x64 is required by MinHook
+      #endif
+      int main() { __try { } __finally { } }" LUMEN_HAS_WINDOWS_ALLOCATOR_SEH)
+    if(NOT LUMEN_HAS_WINDOWS_ALLOCATOR_SEH)
+      message(FATAL_ERROR "The Windows allocator profiler requires x86/x64 and MSVC-compatible SEH (MSVC or clang-cl).")
+    endif()
+    include(${PROJECT_SOURCE_DIR}/cmake/NativeFrameAllocatorWin.cmake)
+    add_library(lumen-frame-allocator SHARED native_frame_allocator_win.cpp native_frame_allocator_win.def)
+    target_link_libraries(lumen-frame-allocator PRIVATE lumen-allocator-minhook)
+    set_target_properties(lumen-frame-allocator PROPERTIES
+        PREFIX "" MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  elseif(APPLE)
     if(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS 14.0)
       message(FATAL_ERROR "The optional macOS allocator profiler requires macOS 14 or newer.")
     endif()

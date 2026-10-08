@@ -1,7 +1,18 @@
 #include "lumen/platform/frame_allocator.h"
 
-#if (defined(__linux__) || defined(__APPLE__)) && defined(LUMEN_DESKTOP_FRAME_ALLOCATOR_CLIENT)
+#if (defined(__linux__) || defined(__APPLE__) || defined(_WIN32)) && defined(LUMEN_DESKTOP_FRAME_ALLOCATOR_CLIENT)
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <vector>
+#else
 #include <dlfcn.h>
+#endif
 #include <new>
 #include <utility>
 
@@ -14,7 +25,12 @@ namespace {
 
 using detail::NativeFrameAllocatorApi;
 
-#if defined(__APPLE__)
+#if defined(_WIN32)
+constexpr auto nativeSource = "ntdll/heap";
+constexpr auto busySource = "ntdll/busy";
+constexpr auto invalidBindingsSource = "ntdll/bindings";
+constexpr auto incompleteSource = "ntdll/incomplete";
+#elif defined(__APPLE__)
 constexpr auto nativeSource = "libmalloc/malloc";
 constexpr auto busySource = "libmalloc/busy";
 constexpr auto invalidBindingsSource = "libmalloc/bindings";
@@ -25,6 +41,39 @@ constexpr auto busySource = "glibc/busy";
 constexpr auto invalidBindingsSource = "glibc/bindings";
 constexpr auto incompleteSource = "glibc/incomplete";
 #endif
+
+using Getter = const NativeFrameAllocatorApi* (*)() noexcept;
+
+Getter nativeGetter() {
+#if defined(_WIN32)
+    const auto length = GetEnvironmentVariableW(L"LUMEN_FRAME_ALLOCATOR_DLL", nullptr, 0);
+    if (length == 0) return nullptr;
+    std::vector<wchar_t> configured(length);
+    const auto read = GetEnvironmentVariableW(L"LUMEN_FRAME_ALLOCATOR_DLL", configured.data(), length);
+    if (read == 0 || read >= length) return nullptr;
+    const auto absoluteLength = GetFullPathNameW(configured.data(), 0, nullptr, nullptr);
+    if (absoluteLength == 0) return nullptr;
+    std::vector<wchar_t> absolute(absoluteLength);
+    const auto resolved = GetFullPathNameW(configured.data(), absoluteLength, absolute.data(), nullptr);
+    if (resolved == 0 || resolved >= absoluteLength) return nullptr;
+    const auto module = LoadLibraryExW(absolute.data(), nullptr,
+        LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (module == nullptr) return nullptr;
+    const auto getter = reinterpret_cast<Getter>(GetProcAddress(module, "lumen_native_frame_allocator_v1"));
+    HMODULE pinned{};
+    // Pin before invoking the getter: installed detours keep trampoline pointers.
+    if (getter == nullptr || !GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+            reinterpret_cast<LPCWSTR>(getter), &pinned)) {
+        FreeLibrary(module);
+        return nullptr;
+    }
+    FreeLibrary(module);
+    return getter;
+#else
+    return reinterpret_cast<Getter>(dlsym(RTLD_DEFAULT, "lumen_native_frame_allocator_v1"));
+#endif
+}
 
 struct SdlMemoryFunctions {
     SDL_malloc_func allocate;
@@ -139,9 +188,7 @@ bool validateClientBindings(const NativeFrameAllocatorApi& api) {
 }  // namespace
 
 std::unique_ptr<render::FrameAllocationSource> makeNativeFrameAllocationSource() {
-    using Getter = const NativeFrameAllocatorApi* (*)() noexcept;
-    auto getter = reinterpret_cast<Getter>(
-        dlsym(RTLD_DEFAULT, "lumen_native_frame_allocator_v1"));
+    const auto getter = nativeGetter();
     if (getter == nullptr) return nullptr;
     const auto* api = getter();
     if (api == nullptr || api->version != 1 ||

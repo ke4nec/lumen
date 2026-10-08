@@ -17,7 +17,8 @@
 | Windows | Visual Studio 2022+ 自带 CMake/Ninja/MSVC；无需额外系统包 | Skia 预编译包为 Release/MT 静态 CRT，只能链 Release（见根 `CMakeLists.txt` 注释） |
 | macOS | Xcode CLT 的 clang + CMake 即可；SDL3 经 FetchContent 编译 | CI 见 `.github/workflows/macos.yml` |
 
-固定第三方版本（`cmake/dependencies.cmake`，禁止浮动到 main）：
+固定第三方版本（`cmake/dependencies.cmake` 与可选 profiler 的
+`cmake/NativeFrameAllocatorWin.cmake`，禁止浮动到 main）：
 
 | 依赖 | 版本 | 用途 |
 | --- | --- | --- |
@@ -26,6 +27,7 @@
 | stb | `2c980bb59875b0d32144a71867fbdebb2f77cd20` | 图片解码与 Gallery 图标 PNG 编码 |
 | Skia 预编译 | `m124-08a5439a6b`（Windows `Skia-Windows-Release-x64.zip` / Linux `Skia-Linux-Release-x64.zip`，aseprite/skia） | 可选光栅/GPU；其他平台需 `-DLUMEN_SKIA_ROOT=<目录>` |
 | zlib | `v1.3.1` | 仅 Windows Skia 构建（补 plain zlib 符号） |
+| MinHook | `v1.3.4` / `c3fcafdc10146beb5919319d0683e44e3c30d537` | 仅 Windows x86/x64 `LUMEN_ENABLE_FRAME_ALLOCATOR=ON`；静态链接入独立 profiler DLL，BSD 许可证随可选包安装 |
 
 三桌面 CI 基线（`.github/workflows/`）：
 

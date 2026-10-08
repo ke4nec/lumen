@@ -203,9 +203,29 @@ jobs:
           cmake -S . -B build-live -DLUMEN_BUILD_TESTS=ON
           -DLUMEN_BUILD_EXAMPLES=ON
           -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
+          -DLUMEN_ENABLE_FRAME_ALLOCATOR=ON
       - name: Build live probe, Designer and accessibility provider
         shell: pwsh
-        run: cmake --build build-live --config Release --parallel --target lumen-platform-live-smoke lumen-tests lumen-settings lumen-gallery lumen-designer
+        run: cmake --build build-live --config Release --parallel --target lumen-platform-live-smoke lumen-frame-allocator lumen-frame-allocator-tests lumen-tests lumen-settings lumen-gallery lumen-designer
+      - name: Native heap regression
+        shell: pwsh
+        run: ctest --test-dir build-live --output-on-failure -C Release -R '^native_frame_allocator'
+      - name: Native whole-frame allocation probe
+        shell: pwsh
+        run: |
+          $probe = Get-Item build-live/tests/Release/lumen-platform-live-smoke.exe
+          $allocator = Get-Item build-live/src/platform/Release/lumen-frame-allocator.dll
+          $env:LUMEN_FRAME_ALLOCATOR_DLL = $allocator.FullName
+          try {
+            & $probe.FullName --frame-allocator --seconds $env:LUMEN_LIVE_SECONDS 2>&1 | Tee-Object frame-allocator-live.log
+            $probeExitCode = $LASTEXITCODE
+            if ($probeExitCode -ne 0) { exit $probeExitCode }
+          } finally {
+            Remove-Item Env:LUMEN_FRAME_ALLOCATOR_DLL
+          }
+          python tests/check_platform_acceptance.py --platform windows --frame-allocator-log frame-allocator-live.log --validate-frame-allocator-only
+        env:
+          LUMEN_LIVE_SECONDS: ${{ inputs.seconds }}
       - name: Designer native window smoke
         shell: pwsh
         run: |
@@ -232,13 +252,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Validate Narrator and NVDA evidence for this commit
         shell: pwsh
-        run: python tests/check_platform_acceptance.py --record "$env:LUMEN_ACCEPTANCE_ROOT/$env:GITHUB_SHA/windows/record.json" --commit "$env:GITHUB_SHA" --platform windows --soak-report soak.json --archive acceptance-evidence
+        run: python tests/check_platform_acceptance.py --record "$env:LUMEN_ACCEPTANCE_ROOT/$env:GITHUB_SHA/windows/record.json" --commit "$env:GITHUB_SHA" --platform windows --soak-report soak.json --frame-allocator-log frame-allocator-live.log --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-windows
           path: |
             windows-live.json
+            frame-allocator-live.log
             designer-live.log
             soak.json
             acceptance-evidence/

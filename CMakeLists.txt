@@ -33,8 +33,8 @@ endif()
 option(LUMEN_BUILD_MOBILE_CORE "Configure the SDL-free mobile core" OFF)
 if(LUMEN_ENABLE_FRAME_ALLOCATOR AND
    (LUMEN_BUILD_MOBILE_CORE OR
-    (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")))
-  message(FATAL_ERROR "The frame allocator profiler requires Linux/glibc or macOS desktop.")
+    (NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")))
+  message(FATAL_ERROR "The frame allocator profiler requires Windows, Linux/glibc or macOS desktop.")
 endif()
 # ObjC++ is required for any Apple build that may compile .mm sources
 # (platform native seam, NSAccessibility provider, AppKit tests). Enable it
@@ -130,7 +130,14 @@ if(LUMEN_BUILD_PACKAGE)
   include(CMakePackageConfigHelpers)
 
   if(TARGET lumen-frame-allocator)
-    install(TARGETS lumen-frame-allocator LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(TARGETS lumen-frame-allocator
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    if(WIN32)
+      get_target_property(_lumen_minhook_license lumen-allocator-minhook LUMEN_THIRD_PARTY_LICENSE)
+      install(FILES "${_lumen_minhook_license}"
+          DESTINATION "${CMAKE_INSTALL_DATADIR}/lumen/licenses" RENAME MinHook.txt)
+    endif()
   endif()
 
   # Public headers must resolve from an installed SDK rather than the source

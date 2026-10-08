@@ -1,0 +1,3 @@
+EXPORTS
+    lumen_test_crt_allocate
+    lumen_test_crt_release

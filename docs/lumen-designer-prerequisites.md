@@ -1474,6 +1474,19 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   本批完整 CTest 为默认配置 `1125/1125`、启用 profiler 的 Release `1132/1132`；
   验收解析器 `11` 个 Python 用例通过，本机 Wayland 两窗口回归采集 `133` 个完整帧。
   macOS 原生进程/现场、Windows 后端、完整人工记录与真实 CI 性能结果仍待补齐。
+  Windows 接入批次新增 `ntdll/heap` 可选后端，以
+  `LUMEN_FRAME_ALLOCATOR_DLL` 显式加载并固定 DLL，默认仍不安装钩子。固定提交的
+  MinHook 在 x86/x64 的 Rtl heap 层覆盖静态/动态 CRT、SDL 和跨 DLL 请求；账本
+  识别 CRT 前缀后的用户指针，heap 创建/销毁的内部管理请求受递归保护，SEH
+  退出释放锁与 TLS 标记。CPU Debug、Skia Release、可选包与 Win32 现场门禁已配置。
+  本地 Linux 默认全量 CTest `1126/1126`、启用 profiler 的 Release `1133/1133`；
+  共用账本 `38` 个断言、`6` 个用例，验收解析器 `12` 个 Python 用例通过。
+  Linux Clang 21.1.8 + MinGW 13.0/13.2 的 Windows x64 DLL/client/独立原生测试
+  程序交叉构建通过；Wine 10.0 运行五组测试为 `111` 个断言、`14` 个用例通过。
+  这些是交叉构建和兼容层 headless 证据，不是 MSVC 静态 CRT、原生 Windows
+  运行或登录桌面验收结果；Windows/macOS 原生 CI 与现场、独立 X11、完整人工
+  记录和真实 CI 性能结果仍待补齐。另已修复 Windows 构建误用 POSIX 单实例源码
+  与测试 process id 的问题，单实例按既有 Windows `Unavailable` 契约降级。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。
@@ -1505,6 +1518,6 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 其余问题是实现验收条件，不撤销已记录的 D3 L0 实施授权；预览 fixture 的 scoped heap 读数已补齐，
 但命令流存储分配读数和该探针都不能替代 R6 的生产整帧堆分配统计；当前已具备可注入的
 `FrameAllocationSource` 契约和 unavailable 降级，Linux/glibc 原生后端及本地
-Wayland/Xwayland 单项窗口 smoke 已验证。macOS 后端已实现并通过 SDK 交叉编译，
-其原生运行/现场、Windows 后端、独立 X11 桌面、完整现场结果和真实 CI 的性能
+Wayland/Xwayland 单项窗口 smoke 已验证。macOS/Windows 后端已实现并通过交叉构建，
+Windows 另有 Wine headless 回归；两平台的原生运行/现场、独立 X11 桌面、完整现场结果和真实 CI 的性能
 基线报告仍按已冻结方案补齐。

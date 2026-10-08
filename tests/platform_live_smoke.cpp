@@ -16,7 +16,9 @@
 using namespace lumen;
 
 namespace {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+constexpr auto nativeAllocatorSource = "ntdll/heap";
+#elif defined(__APPLE__)
 constexpr auto nativeAllocatorSource = "libmalloc/malloc";
 #elif defined(__linux__)
 constexpr auto nativeAllocatorSource = "glibc/malloc";

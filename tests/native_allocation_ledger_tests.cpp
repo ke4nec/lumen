@@ -5,6 +5,35 @@
 
 using lumen::platform::detail::NativeAllocationLedger;
 
+TEST_CASE("native ledger locates CRT interior pointers without wrapping ranges", "[native_ledger]") {
+    NativeAllocationLedger<8> ledger;
+    const auto token = ledger.begin();
+    ledger.record(64, 32, 1000);
+    const auto id = ledger.allocationId(64, token);
+    CHECK(ledger.containingAllocationId(64, token) == id);
+    CHECK(ledger.containingAllocationId(95, token) == id);
+    CHECK(ledger.containingAllocationId(63, token) == 0);
+    CHECK(ledger.containingAllocationId(96, token) == 0);
+    ledger.record(128, 0);
+    CHECK(ledger.containingAllocationId(128, token) != 0);
+    CHECK(ledger.containingAllocationId(129, token) == 0);
+    const auto last = std::numeric_limits<std::uintptr_t>::max();
+    ledger.record(last - 8, 9);
+    CHECK(ledger.containingAllocationId(last, token) != 0);
+    CHECK(ledger.containingAllocationId(0, token) == 0);
+    ledger.forgetOwner(1000);
+    CHECK(ledger.containingAllocationId(80, token) == 0);
+    ledger.record(64, 32);
+    CHECK(ledger.containingAllocationId(80, token) != id);
+    ledger.cancel(token);
+    CHECK(ledger.containingAllocationId(80, token) == 0);
+    const auto next = ledger.begin();
+    ledger.record(64, 32);
+    CHECK(ledger.containingAllocationId(80, token) == 0);
+    ledger.invalidate();
+    CHECK(ledger.containingAllocationId(80, next) == 0);
+}
+
 TEST_CASE("native ledger rejects duplicate addresses beyond tombstones", "[native_ledger]") {
     NativeAllocationLedger<8> ledger;
     const auto token = ledger.begin();

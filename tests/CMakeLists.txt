@@ -150,7 +150,29 @@ add_executable(lumen-tests ${LUMEN_TEST_SOURCES})
 
 if(TARGET lumen-frame-allocator)
     find_package(Threads REQUIRED)
-    if(APPLE)
+    if(WIN32)
+        add_executable(lumen-frame-allocator-tests native_frame_allocator_win_tests.cpp)
+        add_library(lumen-allocator-crt-test SHARED native_allocator_crt_win.cpp native_allocator_crt_win.def)
+        set_target_properties(lumen-allocator-crt-test PROPERTIES
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        target_compile_definitions(lumen-frame-allocator-tests PRIVATE
+            LUMEN_NATIVE_CRT_PATH=L"$<TARGET_FILE:lumen-allocator-crt-test>")
+        add_dependencies(lumen-frame-allocator-tests lumen-allocator-crt-test)
+        foreach(_case present absent sdl_untracked tls_exhausted)
+            if(_case STREQUAL "absent")
+                set(_allocator_path "")
+            else()
+                set(_allocator_path "$<TARGET_FILE:lumen-frame-allocator>")
+            endif()
+            add_test(NAME native_frame_allocator_${_case}
+                COMMAND ${CMAKE_COMMAND} -E env "LUMEN_FRAME_ALLOCATOR_DLL=${_allocator_path}"
+                    $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][${_case}]")
+            set_tests_properties(native_frame_allocator_${_case} PROPERTIES TIMEOUT 60)
+        endforeach()
+        add_test(NAME native_frame_allocator_bad_path
+            COMMAND ${CMAKE_COMMAND} -E env "LUMEN_FRAME_ALLOCATOR_DLL=${CMAKE_CURRENT_BINARY_DIR}/missing-profiler.dll"
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][absent]")
+    elseif(APPLE)
         add_executable(lumen-frame-allocator-tests native_frame_allocator_mac_tests.cpp)
         add_library(lumen-shadow-malloc SHARED native_shadow_malloc_mac.cpp)
         target_compile_definitions(lumen-frame-allocator-tests PRIVATE
@@ -213,7 +235,9 @@ if(TARGET lumen-frame-allocator)
     target_link_libraries(lumen-frame-allocator-tests PRIVATE
         Catch2::Catch2WithMain lumen-app lumen-platform SDL3::SDL3
         Threads::Threads ${CMAKE_DL_LIBS})
-    target_compile_options(lumen-frame-allocator-tests PRIVATE -fno-builtin)
+    if(NOT MSVC)
+        target_compile_options(lumen-frame-allocator-tests PRIVATE -fno-builtin)
+    endif()
     add_dependencies(lumen-frame-allocator-tests lumen-frame-allocator)
 endif()
 

@@ -16,8 +16,9 @@ PLATFORM_CASES = {"ime_preedit_commit_cancel", "ime_candidate_position", "clipbo
                   "gpu_present_recovery_state", "soak_resources", "drag_drop_os_receive",
                   "frame_allocator_source", "designer_window_smoke"}
 NATIVE_ALLOCATOR_SOURCES = {"linux-x11": "glibc/malloc", "linux-wayland": "glibc/malloc",
-                            "macos": "libmalloc/malloc"}
-NATIVE_ALLOCATOR_DRIVERS = {"linux-x11": "x11", "linux-wayland": "wayland", "macos": "cocoa"}
+                            "macos": "libmalloc/malloc", "windows": "ntdll/heap"}
+NATIVE_ALLOCATOR_DRIVERS = {"linux-x11": "x11", "linux-wayland": "wayland",
+                            "macos": "cocoa", "windows": "windows"}
 
 
 def validate_frame_allocator_report(report: dict, platform: str) -> None:

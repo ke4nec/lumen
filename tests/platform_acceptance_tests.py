@@ -55,6 +55,18 @@ class EvidenceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_frame_allocator_report(report, "linux-wayland")
 
+    def test_windows_native_allocator_requires_win32_and_heap_together(self):
+        report = dict(self.native_allocator_report(), driver="windows",
+                      frame_allocator_source="ntdll/heap")
+        validate_frame_allocator_report(report, "windows")
+        for key, value in [("driver", "dummy"), ("driver", "cocoa"),
+                           ("frame_allocator_source", "libmalloc/malloc"),
+                           ("frame_allocator_source", "command-storage")]:
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                validate_frame_allocator_report(dict(report, **{key: value}), "windows")
+        with self.assertRaises(ValueError):
+            validate_frame_allocator_report(report, "macos")
+
     def test_native_allocator_pass_requires_one_successful_structured_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -10,7 +10,7 @@
 namespace lumen::platform::detail {
 
 // Allocation-free accounting; the platform hook serializes access, including
-// the native allocator call. Owners identify macOS zones, not C++ ownership.
+// the native allocator call. Owners identify native heaps/zones, not C++ ownership.
 template <std::size_t Capacity = 65536>
 class NativeAllocationLedger {
     static_assert(Capacity > 0 && (Capacity & (Capacity - 1)) == 0);
@@ -71,6 +71,17 @@ class NativeAllocationLedger {
         if (token == 0 || token != activeToken_ || !sample_.complete) return 0;
         const auto* entry = find(address);
         return entry ? entry->allocationId : 0;
+    }
+
+    // Windows CRT debug/alignment headers precede the pointer returned to clients.
+    std::uint64_t containingAllocationId(std::uintptr_t address, std::uint64_t token) noexcept {
+        if (token == 0 || token != activeToken_ || !sample_.complete || address <= tombstone) return 0;
+        if (const auto id = allocationId(address, token)) return id;
+        for (const auto& entry : entries_) {
+            if (entry.address > tombstone && address >= entry.address &&
+                address - entry.address < entry.bytes) return entry.allocationId;
+        }
+        return 0;
     }
 
   private:
