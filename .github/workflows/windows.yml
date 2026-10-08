@@ -2,7 +2,7 @@ name: windows
 
 on:
   push:
-    branches: [master]
+    branches: [master, codex/designer-prerequisites-acceptance]
   pull_request:
 
 # 同分支新提交取消旧运行，节省 Windows 分钟数。

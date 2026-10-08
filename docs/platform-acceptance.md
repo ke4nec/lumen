@@ -5,6 +5,11 @@
 使用 `.github/workflows/platform-acceptance.yml`，仅在已登录的 self-hosted
 桌面 runner 上手动触发。
 
+设计器前置任务的常规门禁也接受独立分支
+`codex/designer-prerequisites-acceptance` 的 push，运行 Linux/Windows/macOS 既有工作流，
+便于在合入前取得本次提交的原生构建、回归与 DP-8 性能报告。
+该分支的常规 CI 不执行人工回环，也不替代下述 self-hosted 桌面验收。
+
 ## Runner 要求
 
 | job | runner labels | 必须存在的会话 |

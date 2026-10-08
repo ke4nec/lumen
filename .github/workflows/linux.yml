@@ -2,7 +2,7 @@ name: linux
 
 on:
   push:
-    branches: [master]
+    branches: [master, codex/designer-prerequisites-acceptance]
   pull_request:
 
 # 同分支新提交取消进行中的旧运行，节省分钟数与排队。

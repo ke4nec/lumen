@@ -2,7 +2,7 @@ name: macos
 
 on:
   push:
-    branches: [master]
+    branches: [master, codex/designer-prerequisites-acceptance]
   pull_request:
 
 # 同分支新提交取消旧运行，节省 macOS 分钟数（单价高于 Linux）。
