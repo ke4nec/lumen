@@ -5,6 +5,10 @@
 // Renderer HUD，也不把 RSS 当作帧分配量。
 
 #include <algorithm>
+#include <array>
+#include <charconv>
+#include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -13,11 +17,15 @@
 #include <memory>
 #include <new>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_preview_frame.h"
+#include "lumen/dsl/design_schema.h"
 #include "lumen/dsl/design_workbench.h"
 #include "lumen/layout/layout.h"
 #include "lumen/render/cpu_renderer.h"
@@ -200,7 +208,12 @@ MemorySample measure(Operation&& operation) {
     g_tracker.peakBytes = 0;
     g_tracker.allocationCount = 0;
     g_tracker.allocatedBytes = 0;
-    operation();
+    try {
+        operation();
+    } catch (...) {
+        g_tracker.enabled = false;
+        throw;
+    }
     const MemorySample sample{g_tracker.allocationCount,
                               g_tracker.allocatedBytes, g_tracker.peakBytes,
                               g_tracker.liveBytes};
@@ -267,7 +280,7 @@ bool checkSample(const char* name, const MemorySample& sample) {
 
 }  // namespace
 
-int main() {
+int runMemoryProbe() {
     auto document = makeDocument(1000);
     lumen::dsl::DesignPreviewWorkbench workbench;
 
@@ -368,4 +381,301 @@ int main() {
         designDocumentPreview.allocatedBytes, designDocumentPreview.peakBytes,
         designDocumentPreview.liveBytes);
     return valid ? 0 : 1;
+}
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
+constexpr std::array<const char*, 9> kPhaseNames{
+    "import", "serialize", "read", "schema", "compile", "layout", "paint",
+    "edit", "outline"};
+
+enum class FixtureKind { L0, Edit, Outline, VirtualList };
+
+struct PhaseSample {
+    double microseconds{0.0};
+    std::size_t allocations{0};
+    std::size_t allocatedBytes{0};
+    bool measured{false};
+};
+
+struct FixtureSample {
+    std::array<PhaseSample, kPhaseNames.size()> phases{};
+    MemorySample heap{};
+    std::uint64_t frameHash{0};
+    std::uint64_t rebuilds{0};
+    std::size_t documentNodes{0};
+    std::size_t renderNodes{0};
+    std::size_t materializedItems{0};
+};
+
+template <typename Operation>
+void measurePhase(FixtureSample& sample, std::size_t phase,
+                  Operation&& operation) {
+    const auto allocations = g_tracker.allocationCount;
+    const auto allocatedBytes = g_tracker.allocatedBytes;
+    const auto begin = Clock::now();
+    operation();
+    sample.phases[phase] = PhaseSample{
+        std::chrono::duration<double, std::micro>(Clock::now() - begin).count(),
+        g_tracker.allocationCount - allocations,
+        g_tracker.allocatedBytes - allocatedBytes, true};
+}
+
+std::size_t countNodes(const lumen::core::RenderNode& node) {
+    std::size_t count = 1;
+    for (const auto& child : node.children) count += countNodes(child);
+    return count;
+}
+
+std::size_t countNodes(const lumen::dsl::DesignPreviewOutlineNode& node) {
+    std::size_t count = 1;
+    for (const auto& child : node.children) count += countNodes(child);
+    return count;
+}
+
+void requireBenchmark(bool condition, const char* message) {
+    if (!condition) throw std::runtime_error{message};
+}
+
+FixtureSample runFixture(FixtureKind kind) {
+    const std::size_t nodes = kind == FixtureKind::L0 ? 12
+                              : kind == FixtureKind::Edit ? 100 : 1000;
+    const auto document = kind == FixtureKind::VirtualList
+                              ? makeVirtualListDocument() : makeDocument(nodes);
+    lumen::dsl::DesignPreviewWorkbench editor;
+    if (kind == FixtureKind::Edit || kind == FixtureKind::Outline) {
+        requireBenchmark(editor.openDocument(document),
+                         "unable to prepare the editor fixture");
+    }
+    const auto editorRebuilds = editor.frame().rebuildCount();
+    auto source = std::make_shared<lumen::core::VirtualListController>();
+    source->setItemCount(1000);
+    source->setEstimatedExtent(32.0F);
+    source->setItemBuilder([](std::size_t index) {
+        auto item = lumen::core::makeText("Design preview item " +
+                                          std::to_string(index));
+        item.key = "design-preview-item-" + std::to_string(index);
+        item.height = 32.0F;
+        return item;
+    });
+    lumen::dsl::MapDesignRuntimeContext context;
+    context.registerTypedReference(
+        lumen::dsl::DesignReferenceKind::VirtualSource, "preview_rows",
+        source.get(), source);
+    std::string importSource{"page baseline { Column(key: \"root\") {"};
+    for (std::size_t index = 1; index < 12; ++index) {
+        importSource += " Text(\"Designer baseline node " +
+                        std::to_string(index) + "\", key: \"node-" +
+                        std::to_string(index) + "\")";
+    }
+    importSource += " } }";
+
+    FixtureSample sample;
+    sample.heap = measure([&] {
+        lumen::dsl::DesignParseResult imported;
+        const auto* activeDocument = &document;
+        if (kind == FixtureKind::L0) {
+            measurePhase(sample, 0, [&] {
+                imported = lumen::dsl::parseLumenSource(importSource,
+                                                        "baseline.lumen");
+                requireBenchmark(imported.ok(), "L0 import failed");
+            });
+            activeDocument = &imported.document;
+        }
+        std::string encoded;
+        measurePhase(sample, 1, [&] {
+            encoded = lumen::dsl::serializeDesignDocument(*activeDocument);
+        });
+        lumen::dsl::DesignReadResult read;
+        measurePhase(sample, 2, [&] {
+            read = lumen::dsl::readDesignDocument(encoded, "baseline.design");
+            requireBenchmark(read.ok() && read.document == *activeDocument,
+                             "document round trip failed");
+        });
+        measurePhase(sample, 3, [&] {
+            requireBenchmark(
+                lumen::dsl::validateDesignDocument(read.document).empty(),
+                "schema validation failed");
+        });
+        lumen::dsl::DesignPreviewFrame frame;
+        measurePhase(sample, 4, [&] {
+            requireBenchmark(frame.update(read.document, context) &&
+                                 frame.diagnostics().empty(),
+                             "preview compilation failed");
+        });
+        sample.documentNodes = frame.trace().nodes.size();
+        requireBenchmark(sample.documentNodes ==
+                             (kind == FixtureKind::VirtualList ? 1 : nodes),
+                         "document fixture shape changed");
+        const auto* renderWidget = &frame.widget();
+        if (kind == FixtureKind::Edit) {
+            measurePhase(sample, 7, [&] {
+                requireBenchmark(editor.setProperty(
+                                     2, "text", stringValue("Edited node")) &&
+                                     editor.dirty(),
+                                 "property edit failed");
+            });
+            renderWidget = &editor.frame().widget();
+        }
+        lumen::core::RenderNode renderNode;
+        measurePhase(sample, 5, [&] {
+            renderNode = lumen::layout::LayoutEngine::layout(
+                *renderWidget, lumen::core::Constraints::tight(
+                                    lumen::core::Size{800.0F, 600.0F}));
+        });
+        lumen::render::CpuRenderer renderer;
+        measurePhase(sample, 6, [&] {
+            renderer.beginFrame(lumen::core::Size{800.0F, 600.0F});
+            lumen::render::paintScene(renderer, renderNode);
+            renderer.endFrame();
+        });
+        sample.frameHash = lumen::render::frameHash(renderer.pixels());
+        sample.renderNodes = countNodes(renderNode);
+        if (kind == FixtureKind::VirtualList) {
+            sample.materializedItems = source->lastMaterializedItems();
+            requireBenchmark(sample.materializedItems > 0 &&
+                                 sample.materializedItems < 50,
+                             "virtual list materialized the whole source");
+        } else {
+            requireBenchmark(sample.renderNodes == nodes,
+                             "render fixture shape changed");
+        }
+        if (kind == FixtureKind::Outline) {
+            measurePhase(sample, 8, [&] {
+                const auto outline = editor.outline();
+                requireBenchmark(outline && countNodes(*outline) == nodes,
+                                 "outline fixture shape changed");
+            });
+        }
+        sample.rebuilds = frame.rebuildCount() +
+                          editor.frame().rebuildCount() - editorRebuilds;
+    });
+    requireBenchmark(checkSample("designer_pipeline", sample.heap),
+                     "invalid scoped heap sample");
+    return sample;
+}
+
+double percentile(std::vector<double> values, double fraction) {
+    std::sort(values.begin(), values.end());
+    const auto index = static_cast<std::size_t>(
+        std::ceil(fraction * static_cast<double>(values.size()))) - 1;
+    return values.at(index);
+}
+
+template <typename Projection>
+double metric(const std::vector<FixtureSample>& samples,
+              Projection&& projection, double fraction = 0.5) {
+    std::vector<double> values;
+    values.reserve(samples.size());
+    for (const auto& sample : samples) {
+        values.push_back(static_cast<double>(projection(sample)));
+    }
+    return percentile(std::move(values), fraction);
+}
+
+void printFixture(const char* name, FixtureKind kind, int warmup,
+                  int iterations) {
+    std::vector<FixtureSample> samples;
+    samples.reserve(static_cast<std::size_t>(iterations));
+    std::optional<FixtureSample> reference;
+    for (int index = 0; index < warmup + iterations; ++index) {
+        const auto sample = runFixture(kind);
+        if (!reference) reference = sample;
+        requireBenchmark(sample.frameHash == reference->frameHash &&
+                             sample.documentNodes == reference->documentNodes &&
+                             sample.renderNodes == reference->renderNodes &&
+                             sample.materializedItems == reference->materializedItems &&
+                             sample.rebuilds == reference->rebuilds,
+                         "fixture output is not deterministic");
+        if (index >= warmup) samples.push_back(sample);
+    }
+    const auto& first = *reference;
+    std::printf("\"%s\":{\"document_nodes\":%zu,\"render_nodes\":%zu,"
+                "\"materialized_items\":%zu,\"rebuilds\":%llu,"
+                "\"frame_hash\":\"%016llx\",\"heap\":{"
+                "\"allocs_p50\":%.0f,\"alloc_bytes_p50\":%.0f,"
+                "\"peak_bytes_p50\":%.0f,\"live_bytes_p50\":%.0f},"
+                "\"phases\":{",
+                name, first.documentNodes, first.renderNodes,
+                first.materializedItems,
+                static_cast<unsigned long long>(first.rebuilds),
+                static_cast<unsigned long long>(first.frameHash),
+                metric(samples, [](const auto& s) { return s.heap.allocationCount; }),
+                metric(samples, [](const auto& s) { return s.heap.allocatedBytes; }),
+                metric(samples, [](const auto& s) { return s.heap.peakBytes; }),
+                metric(samples, [](const auto& s) { return s.heap.liveBytes; }));
+    bool separator = false;
+    for (std::size_t phase = 0; phase < kPhaseNames.size(); ++phase) {
+        if (!first.phases[phase].measured) continue;
+        std::printf("%s\"%s\":{\"p50_us\":%.3f,\"p95_us\":%.3f,"
+                    "\"allocs_p50\":%.0f,\"alloc_bytes_p50\":%.0f}",
+                    separator ? "," : "", kPhaseNames[phase],
+                    metric(samples, [phase](const auto& s) {
+                        return s.phases[phase].microseconds;
+                    }),
+                    metric(samples, [phase](const auto& s) {
+                        return s.phases[phase].microseconds;
+                    }, 0.95),
+                    metric(samples, [phase](const auto& s) {
+                        return s.phases[phase].allocations;
+                    }),
+                    metric(samples, [phase](const auto& s) {
+                        return s.phases[phase].allocatedBytes;
+                    }));
+        separator = true;
+    }
+    std::printf("}}");
+}
+
+int runBenchmark(int warmup, int iterations) {
+    std::printf("{\"schema\":2,\"scope\":\"designer_pipeline_cpp_heap\","
+                "\"toolchain\":\"%s\",\"build_type\":\"%s\","
+                "\"viewport\":[800,600],\"warmup\":%d,\"iterations\":%d,"
+                "\"fixtures\":{", LUMEN_BENCH_TOOLCHAIN,
+                LUMEN_BENCH_BUILD_TYPE, warmup, iterations);
+    printFixture("l0_12", FixtureKind::L0, warmup, iterations);
+    std::printf(",");
+    printFixture("edit_100", FixtureKind::Edit, warmup, iterations);
+    std::printf(",");
+    printFixture("outline_1000", FixtureKind::Outline, warmup, iterations);
+    std::printf(",");
+    printFixture("virtual_list_1000", FixtureKind::VirtualList, warmup, iterations);
+    std::printf("}}\n");
+    return 0;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    if (argc == 1) return runMemoryProbe();
+    if (std::string_view{argv[1]} != "--benchmark") {
+        std::fprintf(stderr, "usage error: expected --benchmark\n");
+        return 2;
+    }
+    int warmup = 3;
+    int iterations = 20;
+    for (int index = 2; index < argc; index += 2) {
+        const std::string_view option{argv[index]};
+        if (index + 1 >= argc ||
+            (option != "--warmup" && option != "--iterations")) {
+            std::fprintf(stderr, "usage error: invalid benchmark option\n");
+            return 2;
+        }
+        const std::string_view text{argv[index + 1]};
+        int value = 0;
+        const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+        if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() ||
+            value < (option == "--warmup" ? 0 : 1) || value > 1000) {
+            std::fprintf(stderr, "usage error: sampling count is out of range\n");
+            return 2;
+        }
+        (option == "--warmup" ? warmup : iterations) = value;
+    }
+    try {
+        return runBenchmark(warmup, iterations);
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "designer benchmark: %s\n", error.what());
+        return 1;
+    }
 }

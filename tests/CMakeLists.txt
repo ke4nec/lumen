@@ -150,10 +150,14 @@ add_executable(lumen-tests ${LUMEN_TEST_SOURCES})
 # F6 设计器性能证据：独立进程安装全局 new/delete 记账，避免污染主测试
 # 进程；只输出预览操作期间的 live/peak heap bytes。
 if(NOT LUMEN_BUILD_MOBILE_CORE)
-    add_executable(lumen-designer-memory-probe designer_memory_probe.cpp)
+    add_executable(lumen-designer-memory-probe
+        ${PROJECT_SOURCE_DIR}/benchmarks/designer_bench.cpp)
     target_link_libraries(lumen-designer-memory-probe PRIVATE
         lumen-dsl lumen-layout lumen-render lumen-widgets)
     target_compile_features(lumen-designer-memory-probe PRIVATE cxx_std_20)
+    target_compile_definitions(lumen-designer-memory-probe PRIVATE
+        LUMEN_BENCH_BUILD_TYPE="$<IF:$<BOOL:$<CONFIG>>,$<CONFIG>,Unspecified>"
+        LUMEN_BENCH_TOOLCHAIN="${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}")
     add_test(NAME designer_memory_peak
         COMMAND lumen-designer-memory-probe)
     set_tests_properties(designer_memory_peak PROPERTIES TIMEOUT 30)
@@ -301,6 +305,13 @@ find_package(Python3 QUIET COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME platform_acceptance_evidence_integrity
         COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/platform_acceptance_tests.py)
+    if(TARGET lumen-designer-memory-probe)
+        add_test(NAME designer_benchmark_report_integrity
+            COMMAND ${Python3_EXECUTABLE} -B
+                ${CMAKE_CURRENT_SOURCE_DIR}/designer_benchmark_tests.py
+                $<TARGET_FILE:lumen-designer-memory-probe>)
+        set_tests_properties(designer_benchmark_report_integrity PROPERTIES TIMEOUT 60)
+    endif()
 endif()
 
 # G-2：崩溃注入冒烟（独立进程 + script 模式断言；POSIX 信号语义）。

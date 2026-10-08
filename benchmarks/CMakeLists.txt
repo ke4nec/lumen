@@ -4,6 +4,16 @@
 # toolchain/commit/platform 允许运行时经环境变量覆盖（见 scene_bench.cpp）。
 add_executable(lumen-scene-bench scene_bench.cpp)
 
+if(NOT LUMEN_BUILD_MOBILE_CORE)
+    add_executable(lumen-designer-bench designer_bench.cpp)
+    target_link_libraries(lumen-designer-bench PRIVATE
+        lumen-dsl lumen-layout lumen-render lumen-widgets)
+    target_compile_features(lumen-designer-bench PRIVATE cxx_std_20)
+    target_compile_definitions(lumen-designer-bench PRIVATE
+        LUMEN_BENCH_BUILD_TYPE="$<IF:$<BOOL:$<CONFIG>>,$<CONFIG>,Unspecified>"
+        LUMEN_BENCH_TOOLCHAIN="${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}")
+endif()
+
 target_include_directories(lumen-scene-bench PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
 target_link_libraries(lumen-scene-bench PRIVATE

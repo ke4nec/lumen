@@ -1025,6 +1025,11 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   `DesignDocument` VirtualList 的 compile/layout/paint fixture 的 scoped heap 读数已由上述探针
   补齐，L2 组合件（如 DataGrid）的真实预览容器仍按应用适配层接入。
   四类 fixture 的性能门禁仍只比较同一环境下的相对基线，不冻结跨机器绝对阈值。
+  F6 采集器现位于 `benchmarks/designer_bench.cpp`：无参数仍提供原内存探针，
+  `--benchmark --warmup N --iterations N` 导出 `l0_12`、`edit_100`、`outline_1000`、
+  `virtual_list_1000` 的阶段 p50/p95、C++ 分配量、scoped heap 峰值、重建数和 frame hash。
+  编辑 fixture 绘制编辑后的预览；重复采样检查文档/渲染节点数、虚拟物化项数和 frame hash。
+  构建类型由 CMake 编译进报告，未指定类型如实报告 `Unspecified`；相对基线门禁接入中。
 
 **验收**：键盘和辅助技术可以完成 D2 的选择/定位与 D3 的属性编辑/保存；高 DPI、高对比
 和字体缩放下布局、命中和语义仍一致；相同输入重复运行产生相同规范化文档和诊断排序。
@@ -1381,10 +1386,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - 工程路径解析统一检查符号链接后的根目录归属，同路径保存也会预检资源类型；另存为拒绝
   资源目标目录和页面目标文件的越界符号链接，失败前不修改根目录外的资源或写入目标页面。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
-  `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `144/144` 通过，
+  `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `145/145` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1114/1114`，
-  Release 配置为 `1116/1116`；移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1115/1115`，
+  Release 配置为 `1117/1117`；当前本地 `build-debug` 没有设置 `CMAKE_BUILD_TYPE`，采集器
+  如实报告 `Unspecified`。移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
   设计 schema，并覆盖 Grid 列/间距、Image 稳定 imageSource、IconId 枚举、控件默认值、
@@ -1410,6 +1416,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   allocator 契约。L2 设计文档节点已登记 schema；探针通过 `MapDesignRuntimeContext`
   注册独立 source lease，真实 controller 资源和具体 widgets controller builder 仍由应用
   适配层按需接入；headless 组合件占位和 lease 路径已接入。
+- F6 四类采集器：`lumen-designer-bench --benchmark` 输出带构建类型的机器可读 JSON，
+  覆盖 12 节点导入、100 节点编辑、1000 节点大纲和 L2 虚拟列表预览。独立进程
+  `designer_benchmark_report_integrity` 的 4 项 Python 测试验证阶段读数、堆峰值、重建数、
+  虚拟化范围、重复 frame hash、旧内存探针兼容和 CLI 错误路径；两个本地配置均通过。
   `designer_performance_tests.cpp` 的 L2 VirtualList fixture 还重复编译同一文档，验证 source
   lease、可见窗口物化数量、RenderNode 和 frame hash 的确定性。R6 已冻结
   `render::FrameAllocationSource` 注入契约：一次 scope 从应用 rebuild/layout/paint 覆盖到
@@ -1433,8 +1443,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 
 ### 10.4 实施期间的评审问题
 
-以下问题已在对应实现阶段记录证据；剩余未闭环项是三桌面现场验收和跨平台真实 allocator
-source 接入：
+以下问题已在对应实现阶段记录证据；剩余未闭环项是 F6 相对性能门禁、三桌面现场验收和
+跨平台真实 allocator source 接入：
 
 1. **已验证**：DP-1 的私有格式、magic、codec、单向导入边界和未知字段策略由正式 schema 与 fixture 固定。
 2. **已验证**：`DesignRuntimeSession` 由预览编译结果持有，lease 覆盖 Widget、RenderNode、交互和异步资源，并在替换/清理时关闭。
