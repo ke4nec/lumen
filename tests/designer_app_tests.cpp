@@ -2658,9 +2658,40 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     REQUIRE(projectStore.save(unsafeManifest.string(), unsafeResourceProject,
                               unsafeDiagnostics));
     REQUIRE(app.loadProjectFile(unsafeManifest.string()));
+    REQUIRE_FALSE(app.projectDiagnostics().empty());
+    CHECK(app.projectDiagnostics().back().code == "project.resource_path");
     CHECK_FALSE(app.saveProjectFile(unsafeManifest.string()));
     REQUIRE_FALSE(app.projectDiagnostics().empty());
     CHECK(app.projectDiagnostics().back().code == "project.resource_path");
+    REQUIRE(app.loadProjectFile(copyManifest.string()));
+
+    auto missingResourceProject = project;
+    missingResourceProject.projectId = "missing.resource";
+    missingResourceProject.name = "Missing resource";
+    missingResourceProject.resources.front().path = "images/missing.png";
+    const auto missingResourceManifest = copyRoot / "missing-resource.lumen-project";
+    std::vector<lumen::dsl::DesignError> missingResourceDiagnostics;
+    REQUIRE(projectStore.save(missingResourceManifest.string(),
+                              missingResourceProject,
+                              missingResourceDiagnostics));
+    REQUIRE(app.loadProjectFile(missingResourceManifest.string()));
+    REQUIRE_FALSE(app.projectDiagnostics().empty());
+    CHECK(app.projectDiagnostics().back().code == "project.resource_missing");
+    REQUIRE(app.loadProjectFile(copyManifest.string()));
+
+    auto directoryResourceProject = project;
+    directoryResourceProject.projectId = "directory.resource";
+    directoryResourceProject.name = "Directory resource";
+    directoryResourceProject.resources.front().path = "images";
+    const auto directoryResourceManifest =
+        copyRoot / "directory-resource.lumen-project";
+    std::vector<lumen::dsl::DesignError> directoryResourceDiagnostics;
+    REQUIRE(projectStore.save(directoryResourceManifest.string(),
+                              directoryResourceProject,
+                              directoryResourceDiagnostics));
+    REQUIRE(app.loadProjectFile(directoryResourceManifest.string()));
+    REQUIRE_FALSE(app.projectDiagnostics().empty());
+    CHECK(app.projectDiagnostics().back().code == "project.resource_type");
     REQUIRE(app.loadProjectFile(copyManifest.string()));
 
     const auto badManifest = copyRoot / "missing-pages.lumen-project";

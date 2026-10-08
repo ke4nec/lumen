@@ -1526,6 +1526,52 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
             {}, {}});
     } else {
         setResourceRoot(root);
+        std::error_code rootCanonicalError;
+        const auto canonicalRoot =
+            std::filesystem::weakly_canonical(root, rootCanonicalError);
+        for (const auto& resource : project_->resources) {
+            const auto resourcePath =
+                projectRelativePath(resource.path, projectFile_);
+            if (resourcePath.empty()) {
+                appendProjectDiagnostic(dsl::DesignError{
+                    "project.resource_path", filename, {},
+                    "resource path must stay inside the project root", {}, {},
+                    0, {}, resource.uri});
+                continue;
+            }
+            std::error_code resourceError;
+            if (!std::filesystem::exists(resourcePath, resourceError)) {
+                appendProjectDiagnostic(dsl::DesignError{
+                    "project.resource_missing", resourcePath.string(), {},
+                    resourceError ? "unable to inspect project resource"
+                                  : "project resource is missing",
+                    {}, {}, 0, {}, resource.uri});
+                continue;
+            }
+            if (!std::filesystem::is_regular_file(resourcePath,
+                                                   resourceError) ||
+                resourceError) {
+                appendProjectDiagnostic(dsl::DesignError{
+                    "project.resource_type", resourcePath.string(), {},
+                    "project resource is not a regular file", {}, {}, 0, {},
+                    resource.uri});
+                continue;
+            }
+            std::error_code sourceCanonicalError;
+            const auto canonicalSource = std::filesystem::weakly_canonical(
+                resourcePath, sourceCanonicalError);
+            const auto relativeSource =
+                canonicalSource.lexically_relative(canonicalRoot);
+            if (rootCanonicalError || sourceCanonicalError ||
+                relativeSource.empty() || relativeSource == ".." ||
+                (relativeSource.begin() != relativeSource.end() &&
+                 *relativeSource.begin() == "..")) {
+                appendProjectDiagnostic(dsl::DesignError{
+                    "project.resource_path", resourcePath.string(), {},
+                    "project resource resolves outside the project root", {},
+                    {}, 0, {}, resource.uri});
+            }
+        }
     }
     for (const auto& page : project_->pages) {
         const auto pagePath = projectPagePath(page);
