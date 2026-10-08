@@ -65,7 +65,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 
 | 环境 | 已核对证据 | 验证边界 |
 | --- | --- | --- |
-| 本地 Linux / GCC / Debug（2026-10-02，源码基线 `42c1da2`） | Debug 全量 `ctest` 1113/1113、Release 全量 `ctest` 1115/1115 通过；Designer/DocumentStore 聚焦回归 Debug/Release 各 143/143 通过；工程保存覆盖同路径 revision 预检、工程另存为路径重定位和失败加载状态回滚 | 本地无三桌面现场会话，不产生真实平台证据；allocator source、IME、读屏、拖入和合成器仍按 platform-acceptance 保持 pending |
+| 本地 Linux / GCC / Debug（2026-10-08，源码基线 `70d0a27`） | Debug 全量 `ctest` 1113/1113、Release 全量 `ctest` 1115/1115 通过；Designer/DocumentStore 聚焦回归 Debug/Release 各 143/143 通过；工程保存覆盖同路径 revision 预检、工程另存为路径重定位、声明资源复制与加载诊断、失败加载状态回滚 | 本地无三桌面现场会话，不产生真实平台证据；allocator source、IME、读屏、拖入和合成器仍按 platform-acceptance 保持 pending |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
 | Linux CI | [linux 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116406) 全部 job 成功，含 Xvfb/llvmpipe GPU、CPU/Skia 包与 AppImage 构建 | GPU 窗口 smoke 显式断言 `backend=skia-gpu`；不替代 Wayland、真实输入法/触控板/合成器及干净桌面包验收 |
