@@ -65,7 +65,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 
 | 环境 | 已核对证据 | 验证边界 |
 | --- | --- | --- |
-| 本地 Linux / GCC / Debug（2026-10-08，源码基线 `70d0a27`） | Debug 全量 `ctest` 1113/1113、Release 全量 `ctest` 1115/1115 通过；Designer/DocumentStore 聚焦回归 Debug/Release 各 143/143 通过；工程保存覆盖同路径 revision 预检、工程另存为路径重定位、声明资源复制与加载诊断、失败加载状态回滚 | 本地无三桌面现场会话，不产生真实平台证据；allocator source、IME、读屏、拖入和合成器仍按 platform-acceptance 保持 pending |
+| 本地 Linux / GCC / Debug（2026-10-08，源码基线 `24de9f6`） | Debug 全量 `ctest` 1114/1114、Release 全量 `ctest` 1116/1116 通过，均包含 Designer/DocumentStore 的 144 项测试；工程保存覆盖同路径 revision 预检、工程另存为路径重定位、声明资源复制与加载诊断、源和目标符号链接越界预检、失败加载状态回滚与诊断保留 | 本地无三桌面现场会话，不产生真实平台证据；allocator source、IME、读屏、拖入和合成器仍按 platform-acceptance 保持 pending |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
 | Linux CI | [linux 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116406) 全部 job 成功，含 Xvfb/llvmpipe GPU、CPU/Skia 包与 AppImage 构建 | GPU 窗口 smoke 显式断言 `backend=skia-gpu`；不替代 Wayland、真实输入法/触控板/合成器及干净桌面包验收 |
@@ -98,7 +98,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
 | R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；`examples/common/example_kit.h` 首批提取 mutedLabel/errorText/statusLine（2026-09-30，两应用逐字节重复收敛为单点）；页面壳（sectionCard 级）仍按需 |
 | R10 文档与证据同步 | 进行中 | 本表与待验收登记即该缺口的 2026-09-30 批次；后续状态变化须同一变更内更新 |
-| R11 D3 L0 可编辑设计器 | L0 应用出口已交付 + headless 已验证 | DP-1=B、DP-3=L0、DP-4=独立 preview/session 已于 2026-10-01 决定；DesignerApp 已接通 12 类型工具箱、属性/命名引用/结构编辑、undo/redo、设计文件和工程文件的打开/保存/另存为/新建路径及文件对话框；工程保存已覆盖全页面 revision 预检、目标工程根重定位、页面失败加载状态回滚和工程根内声明资源复制/越界保护，工程打开会诊断缺失资源/非普通文件/越界符号链接；F6 `designer_memory_peak` 已记录预览打开/编辑重建/VirtualList layout-paint 的 scoped heap 峰值；platform-acceptance 已把四平台真实会话的 `designer_window_smoke` 纳入必检项，现场证据仍待 |
+| R11 D3 L0 可编辑设计器 | L0 应用出口已交付 + headless 已验证 | DP-1=B、DP-3=L0、DP-4=独立 preview/session 已于 2026-10-01 决定；DesignerApp 已接通 12 类型工具箱、属性/命名引用/结构编辑、undo/redo、设计文件和工程文件的打开/保存/另存为/新建路径及文件对话框；工程保存已覆盖全页面 revision 预检、目标工程根重定位、页面失败加载状态回滚与诊断保留、工程根内声明资源复制和源/目标符号链接越界保护，工程打开会诊断缺失资源/非普通文件/越界符号链接；F6 `designer_memory_peak` 已记录预览打开/编辑重建/VirtualList layout-paint 的 scoped heap 峰值；platform-acceptance 已把四平台真实会话的 `designer_window_smoke` 纳入必检项，现场证据仍待 |
 
 ### 预乘 alpha 联调历史记录（2026-09-20）
 
