@@ -1507,8 +1507,6 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
     const auto previousPaths = projectDocumentPaths_;
     const auto previousRevisions = projectDocumentRevisions_;
     const auto previousProjectRevision = projectRevision_;
-    const auto previousDiagnostics = projectDiagnostics_;
-    const auto previousDiagnosticDocumentIds = projectDiagnosticDocumentIds_;
     const auto previousActive = activeProjectDocumentId_;
     const auto previousSourceFile = sourceFile_;
     const auto previousSourceSnapshot = sourceSnapshot_;
@@ -1521,8 +1519,8 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
         projectDocuments_ = previousDocuments;
         projectDocumentPaths_ = previousPaths;
         projectDocumentRevisions_ = previousRevisions;
-        projectDiagnostics_ = previousDiagnostics;
-        projectDiagnosticDocumentIds_ = previousDiagnosticDocumentIds;
+        // Keep the failed load diagnostics without routing them to old pages.
+        projectDiagnosticDocumentIds_.assign(projectDiagnostics_.size(), {});
         activeProjectDocumentId_ = previousActive;
         sourceFile_ = previousSourceFile;
         sourceSnapshot_ = previousSourceSnapshot;
@@ -1604,6 +1602,11 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
         projectDocumentRevisions_[page.documentId] = document.revision;
     }
     if (projectDocuments_.empty()) {
+        if (projectDiagnostics_.empty()) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.pages_missing", filename, {},
+                "project has no loadable pages", {}, {}, 0, {}, {}});
+        }
         restorePreviousProject();
         shell_.markDirty();
         return false;

@@ -2705,10 +2705,30 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     REQUIRE(projectStore.save(badManifest.string(), missingProject,
                               missingDiagnostics));
     CHECK_FALSE(app.loadProjectFile(badManifest.string()));
+    REQUIRE_FALSE(app.projectDiagnostics().empty());
+    CHECK(app.projectDiagnostics().front().code == "store.read");
+    CHECK(app.projectDiagnostics().front().file ==
+          (copyRoot / "missing" / "home.design").string());
     REQUIRE(app.project().has_value());
     CHECK(app.project()->projectId == project.projectId);
     CHECK(app.activeProjectDocumentId() == homeId);
     CHECK(app.workbench().document()->documentId == homeId);
+    CHECK(app.saveProjectFile(copyManifest.string()));
+
+    auto emptyProject = project;
+    emptyProject.projectId = "empty.pages";
+    emptyProject.name = "Empty pages";
+    emptyProject.pages.clear();
+    emptyProject.resources.clear();
+    const auto emptyManifest = copyRoot / "empty-pages.lumen-project";
+    std::vector<lumen::dsl::DesignError> emptyDiagnostics;
+    REQUIRE(projectStore.save(emptyManifest.string(), emptyProject,
+                              emptyDiagnostics));
+    CHECK_FALSE(app.loadProjectFile(emptyManifest.string()));
+    REQUIRE(app.projectDiagnostics().size() == 1);
+    CHECK(app.projectDiagnostics().front().code == "project.pages_missing");
+    REQUIRE(app.project().has_value());
+    CHECK(app.project()->projectId == project.projectId);
     CHECK(app.saveProjectFile(copyManifest.string()));
 }
 

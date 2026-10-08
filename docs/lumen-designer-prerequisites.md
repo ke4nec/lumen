@@ -1328,12 +1328,12 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   hover/press/focus 状态循环与选中节点重绑定、解析/编译/读文件错误保留上一帧、文件 watcher
   有效重载和错误恢复、预览切换保持工作台 frame generation、运行/调试/停止命令、独立预览
   AppShell 状态镜像、画布辅助层开关以及显式会话清理。
-- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `946` 个断言、
+- D3 当前 headless 切片筛选 `build-debug/tests/lumen-tests "[designer][d3]"` 为 `956` 个断言、
   `43` 个测试用例通过，覆盖 L0 声明属性编辑、L1/L2 schema 工具箱插入与默认值面板、命名引用编辑、引用面板、schema 拒绝运行时属性、事务 dirty/revision、
   undo/redo、私有设计文档保存/重开和文件 revision 基线；应用层覆盖属性面板 TextField
   绑定、Ctrl/Cmd+Z、Ctrl/Cmd+Y、Ctrl/Cmd+C/V 结构化节点复制粘贴（含多选跨父节点批量粘贴），多选 Delete/上移/下移，L0–L2 工具箱按钮，以及插入/复制/删除/上移/下移命令的
   语义激活、键盘等价路径、Shift 区间/Ctrl-Cmd 切换多选、画布多选标记、选择恢复、动态虚拟行回选 source 节点、结构编辑后的预览态清理、大纲指针拖拽重排、工具箱拖入画布、诊断导航、私有 `.design` 重开、文件对话框结果回传和从当前文档新建工程；另覆盖画布 zoom/pan/reset 的 RenderNode 几何变换、预览 frame generation 与其对 dirty/revision/undo 的隔离。
-- DP-9 专属筛选 `build-debug/tests/lumen-tests "[designer][dp9]"` 为 `164` 个断言、`8` 个测试用例通过，
+- DP-9 专属筛选 `build-debug/tests/lumen-tests "[designer][dp9]"` 为 `174` 个断言、`8` 个测试用例通过，
   覆盖 manifest round-trip、未知字段、schema 迁移、revision 冲突、跨文档引用端点、损坏恢复，以及
   `DesignerApp` 的工程新建/打开、页面切换、工程页列表、资源清单、工程保存和工程诊断跨文档跳转。
 - D2 示例 smoke 在 Debug/Release 均通过 `designer_headless`、`designer_gallery_headless`、
@@ -1372,10 +1372,12 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - 工程打开失败现在恢复完整会话状态：旧工程、manifest/page revision、活动文档、源快照和资源授权根
   一起回滚；全部页面缺失时，旧工程仍可继续保存。多文档 fixture 增至 `76` 个断言，并保留“部分页面
   有效时展示工程诊断”的既有降级行为。
+  回滚会保留本次失败诊断，并解除与旧页面的导航关联；空页面清单返回 `project.pages_missing`，
+  避免工程打开失败后没有错误原因。
 - 工程另存为同时复制工程根下存在的声明资源，并拒绝绝对路径、越界路径、越界符号链接和非普通文件；
   工程打开时也会诊断缺失资源、非普通文件和越界符号链接，但仍保留有效页面供继续检查；缺失资源
   保留为可诊断的声明，不因另存为静默改写 URI。多文档 fixture 增加资源内容复制、越界路径和缺失资源
-  断言；`[designer][dp9][d3][app]` 为 `135` 个断言、`4` 个测试用例通过。
+  断言；`[designer][dp9][d3][app]` 为 `145` 个断言、`4` 个测试用例通过。
 - 工程路径解析统一检查符号链接后的根目录归属，同路径保存也会预检资源类型；另存为拒绝
   资源目标目录和页面目标文件的越界符号链接，失败前不修改根目录外的资源或写入目标页面。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
