@@ -73,6 +73,10 @@ std::string keyLabel(core::Key key) {
             return "PageDown";
         case core::Key::Backtab:
             return "Backtab";
+        case core::Key::F10:
+            return "F10";
+        case core::Key::Alt:
+            return "Alt";
         case core::Key::None:
             break;
     }

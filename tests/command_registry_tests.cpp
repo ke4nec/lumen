@@ -111,10 +111,29 @@ TEST_CASE("command_binding_label_formats_display_string",
               'q', lumen::core::kModifierCtrl | lumen::core::kModifierGui)) ==
           "Ctrl+Cmd+Q");
     CHECK(lumen::app::bindingLabel(KeyBinding::plain(Key::Escape)) == "Esc");
+    CHECK(lumen::app::bindingLabel(KeyBinding::plain(Key::F10)) == "F10");
+    CHECK(lumen::app::bindingLabel(KeyBinding::plain(Key::Alt)) == "Alt");
     CHECK(lumen::app::bindingLabel(KeyBinding::plain(
               Key::Enter, lumen::core::kModifierShift)) == "Shift+Enter");
     KeyBinding none;
     CHECK(lumen::app::bindingLabel(none).empty());
+}
+
+TEST_CASE("menu_function_key_command_dispatches_while_text_field_is_focused", "[app][commands]") {
+    // Command dispatch design section 4: menu keys do not edit field text.
+    AppShell shell{commandTestConfig()};
+    shell.rebuildIfDirty();
+    const RenderNode* field = findNodeByKeyDeep(shell.root(), "in-field");
+    REQUIRE(field != nullptr);
+    shell.controller().focusNode(*field);
+    REQUIRE(shell.controller().wantsTextInput());
+    shell.state().set("name", "unchanged");
+    int fired = 0;
+    shell.commands().registerCommand(makeCommand("menu", KeyBinding::plain(Key::F10), &fired));
+    shell.keyDown(Key::F10);
+    CHECK(fired == 1);
+    CHECK(shell.state().get("name") == "unchanged");
+    CHECK(shell.controller().wantsTextInput());
 }
 
 TEST_CASE("chord_command_dispatches_from_window_keydown", "[app][commands]") {

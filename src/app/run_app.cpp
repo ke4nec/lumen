@@ -59,10 +59,11 @@ void printFrameDiagnostics(std::uint64_t frames, std::uint32_t partial,
                        " reuploads=" + std::to_string(resources->reuploads);
     }
     std::printf(
-        "[diag] window=%u frames=%llu partial=%u idleTurns=%llu cmds=%llu "
+        "[diag] window=%llu frames=%llu partial=%u idleTurns=%llu cmds=%llu "
         "culled=%llu submitMs=%.2f gpuWaitMs=%.2f buildMs=%.2f "
         "uploads=%llu%s%s%s\n",
-        window.value, static_cast<unsigned long long>(frames), partial,
+        static_cast<unsigned long long>(window.value),
+        static_cast<unsigned long long>(frames), partial,
         static_cast<unsigned long long>(skippedIdleTurns),
         static_cast<unsigned long long>(stats.commandCount),
         static_cast<unsigned long long>(stats.culledCommands), stats.submitMs,

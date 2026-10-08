@@ -213,6 +213,37 @@ TEST_CASE("text_field_focus_input_and_editing", "[interaction]") {
     CHECK_FALSE(controller.wantsTextInput());
 }
 
+TEST_CASE("text_field_menu_keys_preserve_editing_and_remain_unconsumed", "[interaction]") {
+    // Menu controls design section 7.2: F10/Alt belong to the menu path.
+    StateStore store;
+    store.set("name", "ab");
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    Widget ui = withKey(makeTextField("", "Name", {}, {}, 0.0F, "field",
+                                     std::nullopt, std::nullopt, "name"), "field");
+    applyBinds(ui, store);
+    const RenderNode root = layoutOf(ui);
+    controller.pointerDown(root, centerOf(root, "field"));
+    REQUIRE(controller.wantsTextInput());
+    controller.setComposition("ni");
+    const auto caret = controller.caretCodePoints();
+    const auto start = controller.selectionStart();
+    const auto end = controller.selectionEnd();
+
+    CHECK_FALSE(controller.keyDown(root, Key::F10));
+    CHECK_FALSE(controller.keyDown(root, Key::F10, kModifierShift));
+    CHECK_FALSE(controller.keyDown(root, Key::Alt, kModifierAlt));
+    CHECK_FALSE(controller.keyDown(root, Key::Alt));
+    CHECK(controller.wantsTextInput());
+    CHECK(focus.focusedKey() == "field");
+    CHECK(store.get("name") == "ab");
+    CHECK(controller.composition() == "ni");
+    CHECK(controller.caretCodePoints() == caret);
+    CHECK(controller.selectionStart() == start);
+    CHECK(controller.selectionEnd() == end);
+}
+
 TEST_CASE("click_elsewhere_clears_focus", "[interaction]") {
     StateStore store;
     store.set("name", "");

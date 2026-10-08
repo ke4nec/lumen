@@ -1385,6 +1385,9 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
             selection_ = {};
             composingActive_ = false;
             return true;
+        case Key::F10:
+        case Key::Alt:
+            return false;
         case Key::None:
         case Key::Tab:
         case Key::Backtab:
@@ -1394,6 +1397,7 @@ bool InteractionController::keyDown(Key key, KeyModifiers modifiers,
         case Key::PageDown:
             return true;
     }
+    return false;
 }
 
 bool InteractionController::keyDown(const RenderNode& root, Key key,

@@ -15,7 +15,7 @@
 - `invoke(AppShell&)`：动作体（UI 线程）。
 - `enabled()`：动态启用查询（空 = 恒启用）；禁用命令不分发、菜单行派生禁用。
 
-`bindingLabel(KeyBinding)` 从绑定派生展示串（"Ctrl+S"/"Ctrl+Shift+Z"/"Esc"；修饰键顺序 Ctrl/Alt/Shift/Cmd，Gui 显示为 Cmd）。**菜单快捷键列的唯一数据源**——应用不再手写显示串，杜绝显示与行为分叉。
+`bindingLabel(KeyBinding)` 从绑定派生展示串（"Ctrl+S"/"Ctrl+Shift+Z"/"Esc"/"F10"/"Alt"；修饰键顺序 Ctrl/Alt/Shift/Cmd，Gui 显示为 Cmd）。**菜单快捷键列的唯一数据源**——应用不再手写显示串，杜绝显示与行为分叉。
 
 ## 2. 分发顺序（AppShell::keyDown）
 
@@ -45,7 +45,7 @@
 
 ## 4. 字段保护（内建编辑和弦）
 
-字段聚焦（`wantsTextInput`）时，Ctrl/Gui + Z/Y/A/C/X/V（±Shift，无 Alt）归文本编辑路径，命令不分发；其余和弦照常分发。无修饰纯键全部让位给字段（相位 B 在字段消费后不可达）。Alt+字母不受保护（菜单 mnemonic 路径）。
+字段聚焦（`wantsTextInput`）时，Ctrl/Gui + Z/Y/A/C/X/V（±Shift，无 Alt）归文本编辑路径，命令不分发；其余和弦照常分发。普通无修饰编辑键让位给字段；`F10`/`Alt` 不属于文本编辑，字段返回未消费并保持焦点、选区与 IME preedit，允许命令兜底相位继续分发。Alt+字母不受保护（菜单 mnemonic 路径）。
 
 ## 5. 菜单集成（MenuItem::command）
 
