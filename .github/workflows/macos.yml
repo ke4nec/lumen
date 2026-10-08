@@ -24,7 +24,7 @@ jobs:
   # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
   package:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2)
@@ -237,7 +237,7 @@ jobs:
   # 路径验证）。
   skia-gpu:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia arm64)
@@ -393,7 +393,7 @@ jobs:
   # 启动——.app 组装暂限 CPU 主发布件）。
   package-skia:
     runs-on: macos-15
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
@@ -457,7 +457,7 @@ jobs:
   # 冒烟 headless + 软件 GL GPU 一帧——counter 自带回退）。
   package-skia-gpu:
     runs-on: macos-15
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)

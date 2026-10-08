@@ -39,7 +39,7 @@ jobs:
   # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
   package:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2)
@@ -309,7 +309,7 @@ jobs:
 
   skia:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
@@ -420,7 +420,7 @@ jobs:
   # 本地/自托管环境的增强 smoke。
   skia-gpu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       LIBGL_ALWAYS_SOFTWARE: "1"
     steps:
@@ -613,7 +613,7 @@ jobs:
   # M12：Skia 光栅便携包（Release；解包冒烟同 CPU 变体）。
   package-skia:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
@@ -682,7 +682,7 @@ jobs:
   # Windows/macOS GPU 包留待后续——runner 无 GPU）。
   package-skia-gpu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)

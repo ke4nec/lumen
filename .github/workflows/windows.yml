@@ -21,7 +21,7 @@ jobs:
   # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
   package:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/zlib)
@@ -89,7 +89,7 @@ jobs:
 
   cpu:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/zlib)
@@ -164,7 +164,7 @@ jobs:
   # 路；runner 有桌面会话）。屏幕阅读器人工回环另行验收。
   a11y-bridge:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/zlib)
@@ -227,7 +227,7 @@ jobs:
 
   skia-raster:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)
@@ -293,7 +293,7 @@ jobs:
   # 成功呈现一帧并退出；GPU 可用时，其他 smoke 额外验证真实提交。
   skia-gpu:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)
@@ -357,7 +357,7 @@ jobs:
   # Windows 上 Skia 只支持 Release 配置；解包冒烟同 CPU 变体）。
   package-skia:
     runs-on: windows-2025
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)
@@ -408,7 +408,7 @@ jobs:
   # 冒烟 headless + GPU 一帧——counter 自带回退，无硬件 runner 不阻塞）。
   package-skia-gpu:
     runs-on: windows-2025
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)

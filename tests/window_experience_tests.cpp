@@ -40,9 +40,10 @@ int processId() {
 }
 
 fs::path tempPath(const char* tag) {
-    return fs::temp_directory_path() /
-           ("lumen-winxp-" + std::string(tag) + "-" +
-            std::to_string(processId()));
+    // macOS runners can place TMPDIR under a long per-user sandbox path;
+    // keep the resulting AF_UNIX path comfortably below sun_path's limit.
+    return fs::path{"/tmp"} /
+           ("lm-" + std::string(tag) + "-" + std::to_string(processId()));
 }
 
 }  // namespace
@@ -75,7 +76,7 @@ TEST_CASE("window_desc_position_applied_and_reported", "[platform][winxp]") {
 TEST_CASE("single_instance_windows_reports_unavailable", "[core][winxp]") {
     int activations = 0;
     SingleInstanceGuard::Config config;
-    config.appName = "lumen-winxp-test";
+    config.appName = "lumen-si-test";
     config.onActivateRequest = [&] { ++activations; };
     CHECK(SingleInstanceGuard::acquire(config) == SingleInstanceGuard::Status::Unavailable);
     CHECK(SingleInstanceGuard::acquire(config) == SingleInstanceGuard::Status::Unavailable);
