@@ -1029,7 +1029,11 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   `--benchmark --warmup N --iterations N` 导出 `l0_12`、`edit_100`、`outline_1000`、
   `virtual_list_1000` 的阶段 p50/p95、C++ 分配量、scoped heap 峰值、重建数和 frame hash。
   编辑 fixture 绘制编辑后的预览；重复采样检查文档/渲染节点数、虚拟物化项数和 frame hash。
-  构建类型由 CMake 编译进报告，未指定类型如实报告 `Unspecified`；相对基线门禁接入中。
+  构建类型由 CMake 编译进报告，未指定类型如实报告 `Unspecified`。
+  `run_designer_perf_gate.py` 已接入 Linux CPU CI：干净的 `a1e012e` 基线与候选在同一逻辑
+  CPU 交错采样五次，仅接受 Release；逐项比较四类 fixture 的计时、分配/堆峰值、重建数
+  和虚拟化范围，并归档原始报告及门禁结果。10% 相对阈值与 50 微秒计时噪声下限沿用
+  现有 scene 门禁，详见 [`Designer 性能基线`](perf-baselines/designer/README.md)。
 
 **验收**：键盘和辅助技术可以完成 D2 的选择/定位与 D3 的属性编辑/保存；高 DPI、高对比
 和字体缩放下布局、命中和语义仍一致；相同输入重复运行产生相同规范化文档和诊断排序。
@@ -1388,8 +1392,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `145/145` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1115/1115`，
-  Release 配置为 `1117/1117`；当前本地 `build-debug` 没有设置 `CMAKE_BUILD_TYPE`，采集器
+  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1116/1116`，
+  Release 配置为 `1118/1118`；当前本地 `build-debug` 没有设置 `CMAKE_BUILD_TYPE`，采集器
   如实报告 `Unspecified`。移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
@@ -1420,6 +1424,16 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   覆盖 12 节点导入、100 节点编辑、1000 节点大纲和 L2 虚拟列表预览。独立进程
   `designer_benchmark_report_integrity` 的 4 项 Python 测试验证阶段读数、堆峰值、重建数、
   虚拟化范围、重复 frame hash、旧内存探针兼容和 CLI 错误路径；两个本地配置均通过。
+  相对门禁已由 `run_designer_perf_gate.py` 接入 Linux CPU CI；`a1e012e` 为独立的固定
+  Designer 基线，每方五轮、每轮 10 次 warmup 和 300 次测量。原始报告记录源码/二进制
+  摘要、构建 flags、同机 CPU affinity 和测量会话；门禁拒绝缺失指标、异常读数、非 Release、
+  不可比环境和 dirty 基线。`designer_perf_gate_integrity` 的 12 项 Python 测试覆盖相对阈值
+  边界、零基线、堆/重建/虚拟化回退、身份校验、CLI 返回码和交错采样归档。
+  2026-10-08 本地 QEMU/Release 的旧 20 次采样协议及同二进制对照均触发 p95 门禁；
+  提高到 300 次采样后，干净二进制对照的两种比较均通过；基线/候选配对仅 minimum 通过，
+  median 的 L0 paint p50 超限（+25.68%），按现有双重比较规则整体 PASS，阈值未放宽。
+  候选报告如实标记 dirty，原始报告和失败记录见 Designer 基线说明；此结果
+  不代替真实 CI 或三桌面现场验收。
   `designer_performance_tests.cpp` 的 L2 VirtualList fixture 还重复编译同一文档，验证 source
   lease、可见窗口物化数量、RenderNode 和 frame hash 的确定性。R6 已冻结
   `render::FrameAllocationSource` 注入契约：一次 scope 从应用 rebuild/layout/paint 覆盖到
@@ -1443,8 +1457,8 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 
 ### 10.4 实施期间的评审问题
 
-以下问题已在对应实现阶段记录证据；剩余未闭环项是 F6 相对性能门禁、三桌面现场验收和
-跨平台真实 allocator source 接入：
+以下问题已在对应实现阶段记录证据；F6 相对性能门禁已接入，剩余未闭环项是三桌面现场
+验收、跨平台真实 allocator source 接入，以及真实 CI 的性能验收记录：
 
 1. **已验证**：DP-1 的私有格式、magic、codec、单向导入边界和未知字段策略由正式 schema 与 fixture 固定。
 2. **已验证**：`DesignRuntimeSession` 由预览编译结果持有，lease 覆盖 Widget、RenderNode、交互和异步资源，并在替换/清理时关闭。
@@ -1457,4 +1471,4 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 其余问题是实现验收条件，不撤销已记录的 D3 L0 实施授权；预览 fixture 的 scoped heap 读数已补齐，
 但命令流存储分配读数和该探针都不能替代 R6 的生产整帧堆分配统计；当前已具备可注入的
 `FrameAllocationSource` 契约和 unavailable 降级，三桌面真实 allocator source、现场结果和
-性能基线报告仍按已冻结方案补齐。
+真实 CI 的性能基线报告仍按已冻结方案补齐。

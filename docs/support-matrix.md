@@ -65,7 +65,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 
 | 环境 | 已核对证据 | 验证边界 |
 | --- | --- | --- |
-| 本地 Linux / GCC / Debug（2026-10-08，源码基线 `24de9f6`） | Debug 全量 `ctest` 1114/1114、Release 全量 `ctest` 1116/1116 通过，均包含 Designer/DocumentStore 的 144 项测试；工程保存覆盖同路径 revision 预检、工程另存为路径重定位、声明资源复制与加载诊断、源和目标符号链接越界预检、失败加载状态回滚与诊断保留 | 本地无三桌面现场会话，不产生真实平台证据；allocator source、IME、读屏、拖入和合成器仍按 platform-acceptance 保持 pending |
+| 本地 Linux / GCC（2026-10-08，源码基线 `a1e012e` + DP-8 门禁批次） | `build-debug` 全量 `ctest` 1116/1116、Release 全量 `ctest` 1118/1118 通过；前者未设置 `CMAKE_BUILD_TYPE`，采集器如实报告 `Unspecified`。工程资源与失败恢复回归仍覆盖；新增四类 Designer 阶段/堆采集器、报告完整性和性能门禁测试，Linux CPU CI 已配置固定源码的同机对比 | 本地 headless 回归不产生真实平台证据；性能 CI 尚未运行，本地计时另见 Designer 基线；allocator source、IME、读屏、拖入和合成器仍按 platform-acceptance 保持 pending |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
 | Linux CI | [linux 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116406) 全部 job 成功，含 Xvfb/llvmpipe GPU、CPU/Skia 包与 AppImage 构建 | GPU 窗口 smoke 显式断言 `backend=skia-gpu`；不替代 Wayland、真实输入法/触控板/合成器及干净桌面包验收 |
@@ -75,8 +75,12 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 自动化覆盖和人工验收分别记录：M7 的标准 runner 必须实际提交 GPU 帧，Windows/macOS
 工作流尚未像 Linux 一样强制断言这一点。当前性能 CI 已检查 CPU/Skia/GPU
 五类固定场景的 p50/p95、submit/GPU wait、分配量及命令数，门槛为不超过 10%；
-固定基准提交与候选在同一 runner 交替实测，双方三次取中位数并归档完整元数据。
+固定基准提交与候选在同一 runner 交替实测，双方五次，计时按 minimum/median 双重比较，
+分配量取中位数，并归档完整元数据；计时回退还须超过 50 微秒噪声下限。
 旧 `working-tree` 基线仅保留为历史样本，不参与门槛；headless 耗时不包含 present。
+Designer 另有独立的 [DP-8 四类基线](perf-baselines/designer/README.md)，固定 `a1e012e`，
+在 Linux CPU job 同机交错五轮，每轮 10 次 warmup 和 300 次测量，覆盖阶段计时、scoped
+heap、重建次数和虚拟化范围。此处“已配置 CI”不代表真实 CI 已通过或整帧 allocator 已接入。
 
 ### 实现批次与真实平台缺口（2026-09-30）
 

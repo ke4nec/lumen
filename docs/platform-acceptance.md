@@ -146,8 +146,9 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 | macOS 原生菜单栏/交通灯 | macOS | 未实现 | 无实现 | 自绘 MenuBar/标题栏可用 | R4 |
 | GPU 包、CPack Bundle、干净机器启动 | Windows/macOS | CI 变体已构建（package-skia-gpu） | 无干净机器安装/启动记录 | CI 解包冒烟不替代真实验收 | R1 |
 
-本轮源码基线 `24de9f6` 的本地 Debug/Release 全量 CTest（1114/1114、1116/1116）均通过，
-包含 Designer 工程资源复制、加载诊断、源/目标符号链接边界和失败状态回滚回归，
+本轮源码基线 `a1e012e` + DP-8 门禁批次的本地 `build-debug`/Release 全量 CTest
+（1116/1116、1118/1118）均通过；`build-debug` 未指定构建类型，不能作为 Release 性能输入。
+包含 Designer 工程资源、恢复回归和四类性能报告/门禁校验；Linux CPU CI 已配置同机基线，
 但没有新增真实桌面、生产 allocator 或屏幕阅读器证据；因此本表所有平台检查项保持原状态，
 不能把本地 headless 结果写入 `record.json` 的 `pass` 字段。
 

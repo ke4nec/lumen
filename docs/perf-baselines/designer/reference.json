@@ -1,0 +1,8 @@
+{
+  "commit": "a1e012eedf4cd69bb0a25f32cf0c530e761898e0",
+  "repeats": 5,
+  "warmup": 10,
+  "iterations": 300,
+  "tolerance": 0.1,
+  "scope": "Four DP-8 Designer fixtures, CPU renderer, C++ new/delete scoped heap; excludes window present and production frame allocator"
+}

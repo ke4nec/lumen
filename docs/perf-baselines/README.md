@@ -8,6 +8,8 @@
 - `v0.2-cpu-scene.json`：CPU 后端、固定 1080p 卡片网格场景的归档基线。
 - `ci/`：M7 CI 门槛基线，按 CPU、Skia 光栅和 Skia Ganesh GPU 分目录命名，
   覆盖 card-grid、text-heavy、Grid、VirtualList、semantic diff 五个固定场景。
+- [`designer/`](designer/README.md)：DP-8 四类设计器基线；与 scene 基准独立固定源码，
+  Linux CPU CI 同机比较阶段计时、scoped C++ heap、重建次数和虚拟化范围。
 - 生成命令（canonical，参数、viewport、场景、后端、构建类型共同定义基线）：
 
 ```sh

@@ -17,6 +17,7 @@ env:
   # 必须在同一变更中同步更新本变量与 docs/perf-baselines/ci/reference.json
   #（身份守卫按这两个文件的内容摘要比对，否则门禁对一切候选失败）。
   LUMEN_PERF_BASELINE_COMMIT: 8240e6acc5beb3e91f72e1e3b9bddbf5723fa192
+  LUMEN_DESIGNER_PERF_BASELINE_COMMIT: a1e012eedf4cd69bb0a25f32cf0c530e761898e0
   LUMEN_LINUX_DEPS: >-
     cmake ninja-build pkg-config ccache
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev
@@ -266,6 +267,34 @@ jobs:
       - name: Cleanup benchmark intermediates
         if: always()
         run: rm -f bench-cpu-*.json
+      - name: Checkout pinned Designer performance reference
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.LUMEN_DESIGNER_PERF_BASELINE_COMMIT }}
+          path: .designer-perf-reference
+      - name: Build Designer reference with the same toolchain
+        run: |
+          cmake -S .designer-perf-reference -B designer-perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
+          cmake --build designer-perf-reference-build --parallel --target lumen-designer-bench
+      - name: Benchmark (Designer regression gate)
+        run: |
+          python3 -B benchmarks/run_designer_perf_gate.py \
+            --baseline-source .designer-perf-reference --baseline-bin designer-perf-reference-build/benchmarks/lumen-designer-bench \
+            --current-bin build/benchmarks/lumen-designer-bench --output bench-results/designer \
+          || python3 -B benchmarks/run_designer_perf_gate.py \
+            --baseline-source .designer-perf-reference --baseline-bin designer-perf-reference-build/benchmarks/lumen-designer-bench \
+            --current-bin build/benchmarks/lumen-designer-bench --output bench-results/designer-retry
+      - name: Upload Designer benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: designer-benchmark-report
+          path: |
+            bench-results/designer/
+            bench-results/designer-retry/
+          retention-days: 3
+          compression-level: 9
+          overwrite: true
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

@@ -305,6 +305,9 @@ find_package(Python3 QUIET COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME platform_acceptance_evidence_integrity
         COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/platform_acceptance_tests.py)
+    add_test(NAME designer_perf_gate_integrity
+        COMMAND ${Python3_EXECUTABLE} -B
+            ${PROJECT_SOURCE_DIR}/benchmarks/designer_perf_gate_tests.py)
     if(TARGET lumen-designer-memory-probe)
         add_test(NAME designer_benchmark_report_integrity
             COMMAND ${Python3_EXECUTABLE} -B
