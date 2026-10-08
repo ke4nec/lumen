@@ -61,6 +61,19 @@ Raw reports and verdicts remain in the local output directories:
 | 300-iteration identical-binary control | PASS (both estimators) | `/tmp/lumen-designer-perf-gate-2026-10-08-control-300/` |
 | 300-iteration pair | PASS (minimum; median has one timing failure) | `/tmp/lumen-designer-perf-gate-2026-10-08-300/` |
 
+A subsequent clean-checkout comparison on the same local runner passed for
+`580ea50f84e7b8e20affdfddaa3b266b1b3bfffe` against the pinned reference.
+Both revisions were clean, using the canonical five-by-three-hundred protocol.
+Minimum passed; median failed only on `l0_12` paint p95 (753.062us to
+845.033us, +12.21%). The existing combined rule passes this pair; the failure
+is retained without changing the reference, threshold or noise floor.
+Provenance and the exact verdict are summarized in
+[`designer-perf-linux-2026-10-08.json`](../../platform-evidence/designer-perf-linux-2026-10-08.json);
+the ten raw reports and `gate.json` remain at
+`/tmp/lumen-designer-perf-gate-580ea50-clean/`. This is local evidence, with
+the accessibility bridge OFF in both builds, and does not replace hosted CI
+or any native desktop acceptance record.
+
 Build with `-DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_BENCHMARKS=ON`, then run:
 
 ```sh

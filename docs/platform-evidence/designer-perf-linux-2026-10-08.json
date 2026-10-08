@@ -1,0 +1,67 @@
+{
+  "kind": "designer-performance-gate",
+  "recorded_at": "2026-10-08T07:05:36Z",
+  "acceptance_complete": false,
+  "workflow_run": null,
+  "scope": "designer_pipeline_cpp_heap",
+  "baseline": {
+    "commit": "a1e012eedf4cd69bb0a25f32cf0c530e761898e0",
+    "source_dirty": false,
+    "binary_sha256": "a390ec2e4ebc89d2fa7b3b32cc864f6efba76d3a0368b880c3e13a3f65a66d83"
+  },
+  "current": {
+    "commit": "580ea50f84e7b8e20affdfddaa3b266b1b3bfffe",
+    "source_dirty": false,
+    "binary_sha256": "3296de11275bd860dd347f85718ad8fb9e76900db400ffed26aed77b9acc6df6"
+  },
+  "fixture_revision": "26ed3d1aa7d0e32095ecbe8f26babdc89686cf48028bb36dbb152faee341937a",
+  "dependency_revision": "c3bfb72e19eda7c88441cbdcea69f008be3aaccab51cc3eaadbc7888f217b25f",
+  "toolchain": "GNU-15.2.0",
+  "build_type": "Release",
+  "repeats_per_revision": 5,
+  "warmup": 10,
+  "iterations": 300,
+  "measurement_session": "b8407366-de2a-4810-a5b3-e5e79e8cbf8d",
+  "runner": {
+    "os": "Linux",
+    "release": "7.0.0-34-generic",
+    "arch": "x86_64",
+    "cpu": "QEMU Virtual CPU version 2.5+",
+    "cpu_count": 8,
+    "affinity": [0],
+    "runner": "vibe"
+  },
+  "compiler_flags": {
+    "CMAKE_CXX_COMPILER": "/usr/bin/c++",
+    "CMAKE_CXX_FLAGS": "",
+    "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG",
+    "LUMEN_ENABLE_SKIA": "OFF",
+    "LUMEN_ENABLE_GPU": "OFF",
+    "LUMEN_ENABLE_ACCESSIBILITY_BRIDGE": "OFF"
+  },
+  "fixtures": ["l0_12", "edit_100", "outline_1000", "virtual_list_1000"],
+  "verdict": {
+    "passed": true,
+    "tolerance": 0.1,
+    "timing_floor_us": 50,
+    "minimum_passed": true,
+    "median_passed": false,
+    "median_failures": [{
+      "kind": "regression",
+      "fixture": "l0_12",
+      "field": "paint.p95_us",
+      "baseline": 753.062,
+      "current": 845.033,
+      "relative_delta": 0.12212938642502211,
+      "absolute_delta": 91.971
+    }]
+  },
+  "local_reports": "/tmp/lumen-designer-perf-gate-580ea50-clean/",
+  "gate_sha256": "68edfe3f9f14e0f284ccc5e384fd65038d8b94ac463c33f8ec9ae66f6745f2fc",
+  "limitations": [
+    "Local QEMU measurement, not a completed GitHub Actions run",
+    "The combined timing gate passed under minimum; one median timing regression is retained",
+    "Headless C++ heap scope excludes native presentation and production allocator hooks",
+    "No Windows/macOS desktop, IME, reader, clipboard, compositor or soak sign-off"
+  ]
+}

@@ -1034,6 +1034,9 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
   CPU 交错采样五次，仅接受 Release；逐项比较四类 fixture 的计时、分配/堆峰值、重建数
   和虚拟化范围，并归档原始报告及门禁结果。10% 相对阈值与 50 微秒计时噪声下限沿用
   现有 scene 门禁，详见 [`Designer 性能基线`](perf-baselines/designer/README.md)。
+  `580ea50` 与固定基线的干净检出已按此协议完成本地 Linux 对比，minimum 通过、median
+  保留一项 `l0_12` paint p95 +12.21% 回退，联合门禁通过；完整源码/产物身份和限制见
+  [`本地性能证据`](platform-evidence/designer-perf-linux-2026-10-08.json)。该结果不替代真实 CI。
 
 **验收**：键盘和辅助技术可以完成 D2 的选择/定位与 D3 的属性编辑/保存；高 DPI、高对比
 和字体缩放下布局、命中和语义仍一致；相同输入重复运行产生相同规范化文档和诊断排序。
