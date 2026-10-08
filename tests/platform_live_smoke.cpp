@@ -242,12 +242,17 @@ int main(int argc, char** argv) {
             first.allocationSamples > 0 && second.allocationSamples > 0 &&
             !first.allocationIncomplete && !second.allocationIncomplete &&
             first.allocationCount > 0 && second.allocationCount > 0;
+        const bool passed = code == 0 && timedOut && first.presents > 0 && second.presents > 0 && preserved &&
+            (!options.resize || events.resize > 0) && (options.expectedText.empty() || ime) &&
+            (!options.recovery || (first.recoveries == 1 && second.recoveries == 1)) &&
+            (!options.frameAllocator || allocatorVerified);
         std::printf("{\"driver\":\"%s\",\"seconds\":%.3f,\"windows\":2,\"frames\":%u,"
                     "\"resize_events\":%u,\"preedit_events\":%u,\"commit_events\":%u,"
                     "\"composition_end_events\":%u,\"wheel_events\":%u,\"font_available\":%s,"
                     "\"transparent_requested\":%s,\"external_clipboard\":%s,\"ime_verified\":%s,"
                     "\"stress_mib\":%d,\"simulated_recoveries\":%u,\"state_preserved\":%s,"
                     "\"frame_allocator_requested\":%s,\"frame_allocator_verified\":%s,"
+                    "\"frame_allocator_source\":\"%s\","
                     "\"frame_allocator_frames\":%u,\"frame_allocator_allocations\":%llu,"
                     "\"frame_allocator_bytes\":%llu,\"frame_allocator_peak_bytes\":%llu}\n",
                     driver.c_str(), seconds, first.presents + second.presents,
@@ -256,14 +261,13 @@ int main(int argc, char** argv) {
                     options.transparent ? "true" : "false", externalClipboard ? "true" : "false",
                     ime ? "true" : "false", options.stressMiB, first.recoveries + second.recoveries,
                     preserved ? "true" : "false", options.frameAllocator ? "true" : "false",
-                    allocatorVerified ? "true" : "false", first.allocationSamples + second.allocationSamples,
+                    allocatorVerified ? "true" : "false", allocatorVerified ? "glibc/malloc" : "unavailable",
+                    first.allocationSamples + second.allocationSamples,
                     static_cast<unsigned long long>(first.allocationCount + second.allocationCount),
                     static_cast<unsigned long long>(first.allocatedBytes + second.allocatedBytes),
                     static_cast<unsigned long long>(std::max(first.allocationPeak, second.allocationPeak)));
-        return code != 0 || !timedOut || first.presents == 0 || second.presents == 0 || !preserved ||
-            (options.resize && events.resize == 0) || (!options.expectedText.empty() && !ime) ||
-            (options.recovery && (first.recoveries != 1 || second.recoveries != 1)) ||
-            (options.frameAllocator && !allocatorVerified) ? 1 : 0;
+        if (options.frameAllocator && passed) std::puts("frame_allocator_smoke pass");
+        return passed ? 0 : 1;
     } catch (const std::exception& error) {
         std::fprintf(stderr, "live acceptance failed: %s\n", error.what());
         return 2;

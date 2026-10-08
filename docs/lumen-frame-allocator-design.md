@@ -87,6 +87,12 @@ LD_PRELOAD="$PWD/build-release/src/platform/liblumen-frame-allocator.so" \
     build-release/tests/lumen-platform-live-smoke --frame-allocator --seconds 10
 ```
 
+正式附件为 `frame-allocator-live.log`，同时包含 `frame_allocator_source` 与成功后
+才打印的 `frame_allocator_smoke pass` 标记。验收检查器拒绝来源/会话不匹配、
+fake/RSS/命令流数据、重复报告、缺失标记和非法指标；完整人工记录及其附件哈希仍是
+独立必检条件。Linux self-hosted X11/Wayland 工作流已配置该探针和解析步骤，
+未产生实际 workflow 验收结果。单独解析本机日志只证明这一项短 smoke。
+
 本批默认配置全量 CTest 1120/1120，启用 profiler 的 Release 为 1127/1127。
 五组原生独立进程测试为 114 个断言通过（包含重复的无安装/遮蔽用例）。
 

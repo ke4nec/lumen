@@ -15,6 +15,61 @@ PLATFORM_CASES = {"ime_preedit_commit_cancel", "ime_candidate_position", "clipbo
                   "multiwindow_focus_dpi", "window_lifecycle", "transparent_composition",
                   "gpu_present_recovery_state", "soak_resources", "drag_drop_os_receive",
                   "frame_allocator_source", "designer_window_smoke"}
+NATIVE_ALLOCATOR_SOURCES = {"linux-x11": "glibc/malloc", "linux-wayland": "glibc/malloc"}
+
+
+def validate_frame_allocator_report(report: dict, platform: str) -> None:
+    source = NATIVE_ALLOCATOR_SOURCES.get(platform)
+    if source is None:
+        raise ValueError(f"no supported native allocator source for {platform}")
+    driver = "x11" if platform == "linux-x11" else "wayland"
+    if (not isinstance(report, dict) or report.get("driver") != driver or
+        report.get("frame_allocator_requested") is not True or
+        report.get("frame_allocator_verified") is not True or
+        report.get("frame_allocator_source") != source or report.get("state_preserved") is not True):
+        raise ValueError("native allocator report has incomplete or mismatched bindings/session")
+    seconds = report.get("seconds")
+    if isinstance(seconds, bool) or not isinstance(seconds, (float, int)) or not math.isfinite(seconds) or seconds < 1:
+        raise ValueError("invalid native allocator duration")
+    for key in ("windows", "frames", "frame_allocator_frames", "frame_allocator_allocations",
+                "frame_allocator_bytes", "frame_allocator_peak_bytes"):
+        value = report.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(f"invalid native allocator metric: {key}")
+    if (report["windows"] != 2 or report["frame_allocator_frames"] < 2 or
+        report["frame_allocator_frames"] > report["frames"] or
+        report["frame_allocator_peak_bytes"] > report["frame_allocator_bytes"]):
+        raise ValueError("native allocator report did not verify two submitted windows or has invalid peak")
+
+
+def read_frame_allocator_log(path: Path, platform: str) -> None:
+    content = path.read_text(encoding="utf-8")
+    if "frame_allocator_smoke pass" not in content.splitlines():
+        raise ValueError("native allocator log has no successful smoke marker")
+    reports = []
+    for line in content.splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and "frame_allocator_requested" in value:
+            reports.append(value)
+    if len(reports) != 1:
+        raise ValueError("native allocator log requires exactly one structured report")
+    validate_frame_allocator_report(reports[0], platform)
+
+
+def validate_frame_allocator_artifact(record: dict, directory: Path) -> None:
+    if record.get("platform_checks", {}).get("frame_allocator_source") != "pass":
+        return
+    logs = [Path(item["path"]) for item in record.get("artifacts", [])
+            if Path(item["path"]).name == "frame-allocator-live.log"]
+    if len(logs) != 1:
+        raise ValueError("frame_allocator_source requires exactly one frame-allocator-live.log artifact")
+    log = (directory / logs[0]).resolve()
+    if not log.is_relative_to(directory.resolve()) or not log.is_file():
+        raise ValueError("frame-allocator-live.log must be inside the evidence directory")
+    read_frame_allocator_log(log, record.get("platform"))
 
 
 def validate_designer_window_artifact(record: dict, directory: Path) -> None:
@@ -84,17 +139,29 @@ def validate(record: dict, commit: str, platform: str, directory: Path) -> None:
         if path.stat().st_size == 0 or hashlib.sha256(path.read_bytes()).hexdigest() != artifact["sha256"]:
             raise ValueError("empty or mismatched artifact")
     validate_designer_window_artifact(record, directory)
+    validate_frame_allocator_artifact(record, directory)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--record", type=Path, required=True)
-    parser.add_argument("--commit", required=True)
+    parser.add_argument("--record", type=Path)
+    parser.add_argument("--commit")
     parser.add_argument("--platform", choices=READERS, required=True)
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--soak-report", type=Path)
+    parser.add_argument("--frame-allocator-log", type=Path)
+    parser.add_argument("--validate-frame-allocator-only", action="store_true")
     args = parser.parse_args()
     try:
+        if args.frame_allocator_log:
+            read_frame_allocator_log(args.frame_allocator_log, args.platform)
+        if args.validate_frame_allocator_only:
+            if not args.frame_allocator_log:
+                raise ValueError("--validate-frame-allocator-only requires --frame-allocator-log")
+            print(f"validated native allocator smoke: {args.platform}")
+            return
+        if args.record is None or args.commit is None:
+            raise ValueError("operator acceptance requires --record and --commit")
         record = json.loads(args.record.read_text(encoding="utf-8"))
         validate(record, args.commit, args.platform, args.record.parent)
         if args.soak_report:

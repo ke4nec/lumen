@@ -1459,6 +1459,12 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `183` / `175` 个有效 allocator 帧，状态保持且 source 校验通过。短 smoke 的原始
   指标、源码/二进制摘要见 `platform-evidence/frame-allocator-linux-2026-10-08.json`，
   不替代独立 X11 桌面、Windows/macOS 后端、完整现场 record 或实际性能 CI 结果。
+  后续平台门禁要求 `frame_allocator_source=pass` 附唯一的原生探针日志，校验来源、
+  会话、两窗口样本、指标与成功标记，并保持完整人工记录/哈希检查。Linux self-hosted
+  工作流已接入 profiler、日志采集和解析；检查器为 `10` 个 Python 回归用例通过。
+  本机新版 Wayland 日志（`185` 个有效帧）解析通过；不 preload 时探针返回失败、
+  来源 unavailable 且没有成功标记，解析器拒绝。完整 CTest 仍为默认配置
+  `1120/1120`、启用 profiler 的 Release `1127/1127`；没有据此宣称实际 workflow 已通过。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。

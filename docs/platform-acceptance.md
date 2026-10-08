@@ -25,6 +25,11 @@ smoke；该结果必须在记录的 `designer_window_smoke` 项标记为 `pass`�
 `designer_window_smoke pass` 标记；验收检查器会校验该标记和附件哈希。
 Linux job 还加载现有 `LD_PRELOAD` present 故障夹具，确认
 GPU swap 失败和软件 present 失败均进入预期诊断路径。
+Linux 两个 job 还构建并 preload 原生 frame allocator，独立运行双窗口
+`--frame-allocator` 探针，将 JSON 与进程成功后才输出的
+`frame_allocator_smoke pass` 标记保存为 `frame-allocator-live.log`，先校验本次日志，
+再验证人工记录和附件。标记、实际来源、会话 driver、两窗口采样及正数指标均须通过；
+fake/RSS/命令流读数、dummy/offscreen、重复报告或不完整样本不能作为该项 pass。
 
 ## 探针与长时间运行
 
@@ -116,6 +121,7 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
   },
   "artifacts": [
     {"path": "designer-live.log", "sha256": "实际附件 SHA256"},
+    {"path": "frame-allocator-live.log", "sha256": "实际附件 SHA256"},
     {"path": "reader-trace.txt", "sha256": "实际附件 SHA256"}
   ]
 }
@@ -126,6 +132,13 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 检查器只验证记录完整性和归属，不代替人工判断。本机已连接 GNOME/Mutter
 Wayland/Xwayland 执行 allocator 短 smoke；AppKit、Windows 和完整人工回环
 尚未验收，不能据 headless 或单项短 smoke 标记三平台完整验收完成。
+
+`frame_allocator_source=pass` 必须附唯一的 `frame-allocator-live.log`；检查器要求
+支持的生产来源及上述结构化指标。当前已支持的来源仅 Linux/glibc，Windows/macOS
+后端仍缺失，不能把它们的检查项改为 pass。已采集的旧版单项 JSON 诊断不是完整
+record，须用带来源和成功标记的新探针重新采集正式附件。
+可用 `--frame-allocator-log <log> --validate-frame-allocator-only --platform <session>`
+单独检查原生日志；此模式不检查 commit、读屏、浸泡或人工 record，不等同完整验收。
 
 ## 待验收登记（2026-10-02）
 
