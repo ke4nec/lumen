@@ -1430,6 +1430,28 @@ std::filesystem::path DesignerApp::projectRelativePath(
         (within.begin() != within.end() && *within.begin() == "..")) {
         return {};
     }
+    // weakly_canonical leaves a dangling final symlink unresolved.
+    std::error_code linkError;
+    if (std::filesystem::is_symlink(candidate, linkError)) {
+        std::error_code existsError;
+        if (!std::filesystem::exists(candidate, existsError) || existsError) {
+            return {};
+        }
+    }
+    std::error_code rootError;
+    std::error_code candidateError;
+    const auto canonicalRoot =
+        std::filesystem::weakly_canonical(root, rootError);
+    const auto canonicalCandidate =
+        std::filesystem::weakly_canonical(candidate, candidateError);
+    const auto canonicalWithin =
+        canonicalCandidate.lexically_relative(canonicalRoot);
+    if (rootError || candidateError || canonicalWithin.empty() ||
+        canonicalWithin == ".." ||
+        (canonicalWithin.begin() != canonicalWithin.end() &&
+         *canonicalWithin.begin() == "..")) {
+        return {};
+    }
     return candidate;
 }
 
@@ -1526,9 +1548,6 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
             {}, {}});
     } else {
         setResourceRoot(root);
-        std::error_code rootCanonicalError;
-        const auto canonicalRoot =
-            std::filesystem::weakly_canonical(root, rootCanonicalError);
         for (const auto& resource : project_->resources) {
             const auto resourcePath =
                 projectRelativePath(resource.path, projectFile_);
@@ -1556,20 +1575,6 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
                     "project resource is not a regular file", {}, {}, 0, {},
                     resource.uri});
                 continue;
-            }
-            std::error_code sourceCanonicalError;
-            const auto canonicalSource = std::filesystem::weakly_canonical(
-                resourcePath, sourceCanonicalError);
-            const auto relativeSource =
-                canonicalSource.lexically_relative(canonicalRoot);
-            if (rootCanonicalError || sourceCanonicalError ||
-                relativeSource.empty() || relativeSource == ".." ||
-                (relativeSource.begin() != relativeSource.end() &&
-                 *relativeSource.begin() == "..")) {
-                appendProjectDiagnostic(dsl::DesignError{
-                    "project.resource_path", resourcePath.string(), {},
-                    "project resource resolves outside the project root", {},
-                    {}, 0, {}, resource.uri});
             }
         }
     }
@@ -1655,7 +1660,6 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
         std::filesystem::path target;
     };
     std::vector<ResourceCopy> resourceCopies;
-    const auto sourceRoot = projectRootPath(projectFile_);
     for (const auto& resource : projectToSave.resources) {
         const auto source = projectRelativePath(resource.path, projectFile_);
         const auto target = projectRelativePath(resource.path, filename);
@@ -1666,11 +1670,16 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
                 {}, resource.uri});
             return false;
         }
-        if (sameProjectPath(source.string(), target.string())) continue;
         std::error_code resourceError;
-        if (!std::filesystem::exists(source, resourceError) || resourceError) {
-            continue;
+        const bool exists = std::filesystem::exists(source, resourceError);
+        if (resourceError) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.resource_copy", projectFile_, {},
+                "unable to inspect project resource", {}, {}, 0, {},
+                resource.uri});
+            return false;
         }
+        if (!exists) continue;
         if (!std::filesystem::is_regular_file(source, resourceError) ||
             resourceError) {
             appendProjectDiagnostic(dsl::DesignError{
@@ -1679,25 +1688,7 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
                 resource.uri});
             return false;
         }
-        std::error_code rootCanonicalError;
-        std::error_code sourceCanonicalError;
-        const auto canonicalRoot =
-            std::filesystem::weakly_canonical(sourceRoot, rootCanonicalError);
-        const auto canonicalSource = std::filesystem::weakly_canonical(
-            source, sourceCanonicalError);
-        const auto relativeSource =
-            canonicalSource.lexically_relative(canonicalRoot);
-        if (rootCanonicalError || sourceCanonicalError ||
-            relativeSource.empty() ||
-            relativeSource == ".." ||
-            (relativeSource.begin() != relativeSource.end() &&
-             *relativeSource.begin() == "..")) {
-            appendProjectDiagnostic(dsl::DesignError{
-                "project.resource_path", source.string(), {},
-                "project resource resolves outside the project root", {}, {},
-                0, {}, resource.uri});
-            return false;
-        }
+        if (sameProjectPath(source.string(), target.string())) continue;
         resourceCopies.push_back(ResourceCopy{source, target});
     }
     auto nextRevisions = projectDocumentRevisions_;

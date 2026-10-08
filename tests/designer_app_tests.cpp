@@ -2692,6 +2692,7 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     REQUIRE(app.loadProjectFile(directoryResourceManifest.string()));
     REQUIRE_FALSE(app.projectDiagnostics().empty());
     CHECK(app.projectDiagnostics().back().code == "project.resource_type");
+    CHECK_FALSE(app.saveProjectFile(directoryResourceManifest.string()));
     REQUIRE(app.loadProjectFile(copyManifest.string()));
 
     const auto badManifest = copyRoot / "missing-pages.lumen-project";
@@ -2709,6 +2710,108 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     CHECK(app.activeProjectDocumentId() == homeId);
     CHECK(app.workbench().document()->documentId == homeId);
     CHECK(app.saveProjectFile(copyManifest.string()));
+}
+
+TEST_CASE("designer project paths reject source and destination symlink escapes",
+          "[designer][dp9][d3][resource][app]") {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("lumen-designer-project-symlink-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()));
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+    const auto sourceRoot = root / "source";
+    const auto targetRoot = root / "target";
+    const auto outsideRoot = root / "outside";
+    std::filesystem::create_directories(sourceRoot / "images");
+    std::filesystem::create_directories(targetRoot);
+    std::filesystem::create_directories(outsideRoot);
+    writeRawRgba(sourceRoot / "images" / "logo.lumenrgba");
+    {
+        std::ofstream outside(outsideRoot / "logo.lumenrgba");
+        REQUIRE(outside.good());
+        outside << "outside-data";
+    }
+
+    DesignerApp app;
+    app.attach();
+    REQUIRE(app.loadSource("page home { Text(\"Home\") }", "home.lumen"));
+    REQUIRE(app.saveDesignFile((sourceRoot / "home.design").string()));
+    lumen::dsl::DesignProject project;
+    project.projectId = "symlink.project";
+    project.name = "Symlink project";
+    project.root = ".";
+    project.pages = {
+        {app.workbench().document()->documentId, "home.design", "Home"},
+    };
+    project.resources = {
+        {"project://images/logo.lumenrgba", "images/logo.lumenrgba", "image"},
+    };
+    const auto manifest = sourceRoot / "demo.lumen-project";
+    lumen::dsl::ProjectStore store;
+    std::vector<lumen::dsl::DesignError> diagnostics;
+    REQUIRE(store.save(manifest.string(), project, diagnostics));
+
+    SECTION("same path saves reject an escaped resource source") {
+        std::filesystem::remove(sourceRoot / "images" / "logo.lumenrgba");
+        std::error_code error;
+        std::filesystem::create_symlink(outsideRoot / "logo.lumenrgba",
+                                        sourceRoot / "images" / "logo.lumenrgba",
+                                        error);
+        if (error) {
+            SUCCEED("symlinks are unavailable on this platform");
+            return;
+        }
+        REQUIRE(app.loadProjectFile(manifest.string()));
+        REQUIRE(app.projectDiagnostics().size() == 1);
+        CHECK(app.projectDiagnostics().front().code == "project.resource_path");
+        CHECK_FALSE(app.saveProjectFile(manifest.string()));
+        CHECK(app.projectDiagnostics().back().code == "project.resource_path");
+    }
+
+    SECTION("save as rejects an escaped resource destination directory") {
+        REQUIRE(app.loadProjectFile(manifest.string()));
+        REQUIRE(app.projectDiagnostics().empty());
+        std::error_code error;
+        std::filesystem::create_directory_symlink(
+            outsideRoot, targetRoot / "images", error);
+        if (error) {
+            SUCCEED("symlinks are unavailable on this platform");
+            return;
+        }
+        const auto targetManifest = targetRoot / "copy.lumen-project";
+        CHECK_FALSE(app.saveProjectFile(targetManifest.string()));
+        REQUIRE_FALSE(app.projectDiagnostics().empty());
+        CHECK(app.projectDiagnostics().back().code == "project.resource_path");
+        CHECK_FALSE(std::filesystem::exists(targetManifest));
+        CHECK_FALSE(std::filesystem::exists(targetRoot / "home.design"));
+    }
+
+    SECTION("save as rejects an escaped page destination") {
+        REQUIRE(app.loadProjectFile(manifest.string()));
+        std::error_code error;
+        std::filesystem::create_symlink(outsideRoot / "home.design",
+                                        targetRoot / "home.design", error);
+        if (error) {
+            SUCCEED("symlinks are unavailable on this platform");
+            return;
+        }
+        CHECK_FALSE(app.saveProjectFile((targetRoot / "copy.lumen-project").string()));
+        REQUIRE_FALSE(app.projectDiagnostics().empty());
+        CHECK(app.projectDiagnostics().back().code == "project.page");
+        CHECK_FALSE(std::filesystem::exists(outsideRoot / "home.design"));
+    }
+
+    std::ifstream outside(outsideRoot / "logo.lumenrgba");
+    REQUIRE(outside.good());
+    CHECK(std::string{std::istreambuf_iterator<char>{outside},
+                      std::istreambuf_iterator<char>()} == "outside-data");
 }
 
 TEST_CASE("designer project diagnostics switch to the affected document",
