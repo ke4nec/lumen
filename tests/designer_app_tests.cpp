@@ -2528,6 +2528,14 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     std::error_code error;
     std::filesystem::create_directories(root, error);
     REQUIRE_FALSE(error);
+    std::filesystem::create_directories(root / "images", error);
+    REQUIRE_FALSE(error);
+    {
+        std::ofstream resource(root / "images" / "logo.png",
+                               std::ios::binary | std::ios::trunc);
+        REQUIRE(resource.good());
+        resource << "designer-logo";
+    }
     struct Cleanup {
         std::filesystem::path root;
         ~Cleanup() {
@@ -2626,6 +2634,12 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     CHECK(app.projectDiagnostics().empty());
     CHECK(std::filesystem::exists(copyRoot / "home.design"));
     CHECK(std::filesystem::exists(copyRoot / "settings.design"));
+    REQUIRE(std::filesystem::exists(copyRoot / "images" / "logo.png"));
+    std::ifstream copiedResource(copyRoot / "images" / "logo.png",
+                                 std::ios::binary);
+    REQUIRE(copiedResource.good());
+    CHECK(std::string{std::istreambuf_iterator<char>{copiedResource},
+                      std::istreambuf_iterator<char>()} == "designer-logo");
 
     DesignerApp copied;
     copied.attach();
@@ -2634,6 +2648,20 @@ TEST_CASE("designer app opens, switches, and saves a multi document project",
     CHECK(copied.workbench().document()->root.properties.at("text") ==
           lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{
               std::string{"Edited home again"}}});
+
+    auto unsafeResourceProject = project;
+    unsafeResourceProject.projectId = "unsafe.resource";
+    unsafeResourceProject.name = "Unsafe resource";
+    unsafeResourceProject.resources.front().path = "../outside.png";
+    const auto unsafeManifest = copyRoot / "unsafe-resource.lumen-project";
+    std::vector<lumen::dsl::DesignError> unsafeDiagnostics;
+    REQUIRE(projectStore.save(unsafeManifest.string(), unsafeResourceProject,
+                              unsafeDiagnostics));
+    REQUIRE(app.loadProjectFile(unsafeManifest.string()));
+    CHECK_FALSE(app.saveProjectFile(unsafeManifest.string()));
+    REQUIRE_FALSE(app.projectDiagnostics().empty());
+    CHECK(app.projectDiagnostics().back().code == "project.resource_path");
+    REQUIRE(app.loadProjectFile(copyManifest.string()));
 
     const auto badManifest = copyRoot / "missing-pages.lumen-project";
     auto missingProject = project;

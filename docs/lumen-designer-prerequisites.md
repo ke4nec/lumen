@@ -1370,6 +1370,9 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - 工程打开失败现在恢复完整会话状态：旧工程、manifest/page revision、活动文档、源快照和资源授权根
   一起回滚；全部页面缺失时，旧工程仍可继续保存。多文档 fixture 增至 `76` 个断言，并保留“部分页面
   有效时展示工程诊断”的既有降级行为。
+- 工程另存为同时复制工程根下存在的声明资源，并拒绝绝对路径、越界路径、越界符号链接和非普通文件；
+  缺失资源保留为可诊断的声明，不因另存为静默改写 URI。多文档 fixture 增加资源内容复制和越界路径
+  断言。
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `136/136` 通过，
   另有 D2 headless/窗口示例 smoke 通过。

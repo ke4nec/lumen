@@ -98,7 +98,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
 | R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；`examples/common/example_kit.h` 首批提取 mutedLabel/errorText/statusLine（2026-09-30，两应用逐字节重复收敛为单点）；页面壳（sectionCard 级）仍按需 |
 | R10 文档与证据同步 | 进行中 | 本表与待验收登记即该缺口的 2026-09-30 批次；后续状态变化须同一变更内更新 |
-| R11 D3 L0 可编辑设计器 | L0 应用出口已交付 + headless 已验证 | DP-1=B、DP-3=L0、DP-4=独立 preview/session 已于 2026-10-01 决定；DesignerApp 已接通 12 类型工具箱、属性/命名引用/结构编辑、undo/redo、设计文件和工程文件的打开/保存/另存为/新建路径及文件对话框；工程保存已覆盖全页面 revision 预检、目标工程根重定位、完整失败加载状态回滚；F6 `designer_memory_peak` 已记录预览打开/编辑重建/VirtualList layout-paint 的 scoped heap 峰值；platform-acceptance 已把四平台真实会话的 `designer_window_smoke` 纳入必检项，现场证据仍待 |
+| R11 D3 L0 可编辑设计器 | L0 应用出口已交付 + headless 已验证 | DP-1=B、DP-3=L0、DP-4=独立 preview/session 已于 2026-10-01 决定；DesignerApp 已接通 12 类型工具箱、属性/命名引用/结构编辑、undo/redo、设计文件和工程文件的打开/保存/另存为/新建路径及文件对话框；工程保存已覆盖全页面 revision 预检、目标工程根重定位、页面失败加载状态回滚和工程根内声明资源复制/越界保护；F6 `designer_memory_peak` 已记录预览打开/编辑重建/VirtualList layout-paint 的 scoped heap 峰值；platform-acceptance 已把四平台真实会话的 `designer_window_smoke` 纳入必检项，现场证据仍待 |
 
 ### 预乘 alpha 联调历史记录（2026-09-20）
 

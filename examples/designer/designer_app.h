@@ -220,6 +220,9 @@ class DesignerApp {
     [[nodiscard]] std::filesystem::path projectRootPath() const;
     [[nodiscard]] std::filesystem::path projectRootPath(
         const std::string& manifest) const;
+    [[nodiscard]] std::filesystem::path projectRelativePath(
+        const std::string& relative,
+        const std::string& manifest) const;
     [[nodiscard]] std::filesystem::path projectPagePath(
         const dsl::DesignProjectPage& page) const;
     [[nodiscard]] std::filesystem::path projectPagePath(

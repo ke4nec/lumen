@@ -1418,17 +1418,11 @@ std::filesystem::path DesignerApp::projectRootPath(
     return root.lexically_normal();
 }
 
-std::filesystem::path DesignerApp::projectPagePath(
-    const dsl::DesignProjectPage& page) const {
-    return projectPagePath(page, projectFile_);
-}
-
-std::filesystem::path DesignerApp::projectPagePath(
-    const dsl::DesignProjectPage& page,
-    const std::string& manifest) const {
+std::filesystem::path DesignerApp::projectRelativePath(
+    const std::string& relativeText, const std::string& manifest) const {
     const auto root = projectRootPath(manifest);
     if (root.empty()) return {};
-    const auto relative = std::filesystem::path{page.path};
+    const std::filesystem::path relative{relativeText};
     if (relative.empty() || relative.is_absolute()) return {};
     const auto candidate = (root / relative).lexically_normal();
     const auto within = candidate.lexically_relative(root);
@@ -1437,6 +1431,17 @@ std::filesystem::path DesignerApp::projectPagePath(
         return {};
     }
     return candidate;
+}
+
+std::filesystem::path DesignerApp::projectPagePath(
+    const dsl::DesignProjectPage& page) const {
+    return projectPagePath(page, projectFile_);
+}
+
+std::filesystem::path DesignerApp::projectPagePath(
+    const dsl::DesignProjectPage& page,
+    const std::string& manifest) const {
+    return projectRelativePath(page.path, manifest);
 }
 
 void DesignerApp::syncActiveProjectDocument() {
@@ -1599,6 +1604,56 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
         }
         pagePaths[page.documentId] = path;
     }
+    struct ResourceCopy {
+        std::filesystem::path source;
+        std::filesystem::path target;
+    };
+    std::vector<ResourceCopy> resourceCopies;
+    const auto sourceRoot = projectRootPath(projectFile_);
+    for (const auto& resource : projectToSave.resources) {
+        const auto source = projectRelativePath(resource.path, projectFile_);
+        const auto target = projectRelativePath(resource.path, filename);
+        if (source.empty() || target.empty()) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.resource_path", filename, {},
+                "resource path must stay inside the project root", {}, {}, 0,
+                {}, resource.uri});
+            return false;
+        }
+        if (sameProjectPath(source.string(), target.string())) continue;
+        std::error_code resourceError;
+        if (!std::filesystem::exists(source, resourceError) || resourceError) {
+            continue;
+        }
+        if (!std::filesystem::is_regular_file(source, resourceError) ||
+            resourceError) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.resource_copy", source.string(), {},
+                "project resource is not a regular file", {}, {}, 0, {},
+                resource.uri});
+            return false;
+        }
+        std::error_code rootCanonicalError;
+        std::error_code sourceCanonicalError;
+        const auto canonicalRoot =
+            std::filesystem::weakly_canonical(sourceRoot, rootCanonicalError);
+        const auto canonicalSource = std::filesystem::weakly_canonical(
+            source, sourceCanonicalError);
+        const auto relativeSource =
+            canonicalSource.lexically_relative(canonicalRoot);
+        if (rootCanonicalError || sourceCanonicalError ||
+            relativeSource.empty() ||
+            relativeSource == ".." ||
+            (relativeSource.begin() != relativeSource.end() &&
+             *relativeSource.begin() == "..")) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.resource_path", source.string(), {},
+                "project resource resolves outside the project root", {}, {},
+                0, {}, resource.uri});
+            return false;
+        }
+        resourceCopies.push_back(ResourceCopy{source, target});
+    }
     auto nextRevisions = projectDocumentRevisions_;
     auto nextPaths = projectDocumentPaths_;
 
@@ -1628,6 +1683,30 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
                     page.documentId);
                 return false;
             }
+        }
+    }
+
+    for (const auto& resource : resourceCopies) {
+        std::error_code directoryError;
+        std::filesystem::create_directories(resource.target.parent_path(),
+                                            directoryError);
+        if (directoryError) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.resource_directory", resource.target.string(), {},
+                "unable to create project resource directory", {}, {}, 0,
+                {}, {}});
+            return false;
+        }
+        std::error_code copyError;
+        if (!std::filesystem::copy_file(
+                resource.source, resource.target,
+                std::filesystem::copy_options::overwrite_existing,
+                copyError) ||
+            copyError) {
+            appendProjectDiagnostic(dsl::DesignError{
+                "project.resource_copy", resource.target.string(), {},
+                "unable to copy project resource", {}, {}, 0, {}, {}});
+            return false;
         }
     }
 
