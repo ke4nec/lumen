@@ -25,7 +25,7 @@ smoke；该结果必须在记录的 `designer_window_smoke` 项标记为 `pass`�
 `designer_window_smoke pass` 标记；验收检查器会校验该标记和附件哈希。
 Linux job 还加载现有 `LD_PRELOAD` present 故障夹具，确认
 GPU swap 失败和软件 present 失败均进入预期诊断路径。
-Linux 两个 job 还构建并 preload 原生 frame allocator，独立运行双窗口
+Linux 两个 job 和 macOS job 还构建并启动期加载原生 frame allocator，独立运行双窗口
 `--frame-allocator` 探针，将 JSON 与进程成功后才输出的
 `frame_allocator_smoke pass` 标记保存为 `frame-allocator-live.log`，先校验本次日志，
 再验证人工记录和附件。标记、实际来源、会话 driver、两窗口采样及正数指标均须通过；
@@ -134,8 +134,9 @@ Wayland/Xwayland 执行 allocator 短 smoke；AppKit、Windows 和完整人工�
 尚未验收，不能据 headless 或单项短 smoke 标记三平台完整验收完成。
 
 `frame_allocator_source=pass` 必须附唯一的 `frame-allocator-live.log`；检查器要求
-支持的生产来源及上述结构化指标。当前已支持的来源仅 Linux/glibc，Windows/macOS
-后端仍缺失，不能把它们的检查项改为 pass。已采集的旧版单项 JSON 诊断不是完整
+支持的生产来源及上述结构化指标。解析器识别 Linux 的 `glibc/malloc` 与 Cocoa 的
+`libmalloc/malloc`；macOS 后端已实现并通过 SDK 交叉编译，但未取得实际 macOS 运行
+或现场结果，Windows 后端仍缺失，不能把它们的检查项改为 pass。已采集的旧版单项 JSON 诊断不是完整
 record，须用带来源和成功标记的新探针重新采集正式附件。
 可用 `--frame-allocator-log <log> --validate-frame-allocator-only --platform <session>`
 单独检查原生日志；此模式不检查 commit、读屏、浸泡或人工 record，不等同完整验收。
@@ -155,7 +156,7 @@ record，须用带来源和成功标记的新探针重新采集正式附件。
 | 透明合成 | Windows texture 已实测；X11/Wayland/macOS 未验 | headless 已验证（预乘表示一致） | 无真实合成器现场 | 软件窗口不支持逐像素透明时按不透明提交 | R0 |
 | 1 小时双窗口浸泡 | Linux 已做（M14-A）；Windows/macOS 未做 | headless 已验证（恢复用例） | 无登录桌面长时运行 | 模拟 renderer 失效不冒充真实 GPU context loss | R2 |
 | OS 拖入真实 smoke | 三平台 | headless 已验证（M15 契约） | 无真实文件管理器/源应用拖拽现场 | `dragDropStart=false`（SDL 3.2.10 无拖出 API）+ 结构化 Unavailable | R3（本日已纳入 `drag_drop_os_receive` 必检项） |
-| 真实整帧 allocator source | 三平台 | scope/异常生命周期和 Linux/glibc 原生后端已有 headless 回归；GNOME/Mutter Wayland 与 Xwayland 两窗口短 smoke 通过（183/175 个有效 allocator 帧） | Windows/macOS 后端、独立 X11 桌面及完整现场 record 未补齐；短 smoke 不满足全部发布检查项 | 无安装、绑定不完整或容量溢出时 HUD 显示 unavailable；命令流容量和 RSS 不冒充整帧读数 | R6（`frame_allocator_source` 必检项；设计与现场命令见 `lumen-frame-allocator-design.md`） |
+| 真实整帧 allocator source | 三平台 | scope/异常生命周期和 Linux/glibc 原生后端已有 headless 回归；GNOME/Mutter Wayland 与 Xwayland 两窗口短 smoke 通过（183/175 个有效 allocator 帧）；macOS 后端已实现，SDK 14.5/26.1 arm64/x86_64 交叉编译通过 | Windows 后端、macOS 原生运行/现场、独立 X11 桌面及完整 record 未补齐；短 smoke 不满足全部发布检查项 | 无安装、绑定不完整或容量溢出时 HUD 显示 unavailable；命令流容量和 RSS 不冒充整帧读数 | R6（`frame_allocator_source` 必检项；设计与现场命令见 `lumen-frame-allocator-design.md`） |
 | 全局快捷键真实按键 | Windows/Linux X11 | Linux X11 后端已交付（Xvfb XTEST 端到端通过）；Win32 后端已交付（RegisterHotKey，编译级 CI 门禁）；macOS 后端未实现 | X11 桌面真实键盘按键待现场；Win32 真实按键（消息泵→UI 事件、冲突码）待现场；Wayland 会话 = `globalHotkeys=false` + 结构化 Unavailable（如实）；macOS = 结构化 Unavailable | R4（Win32/Linux 为验收缺口；macOS 为实现缺口） |
 | macOS 原生菜单栏/交通灯 | macOS | 未实现 | 无实现 | 自绘 MenuBar/标题栏可用 | R4 |
 | GPU 包、CPack Bundle、干净机器启动 | Windows/macOS | CI 变体已构建（package-skia-gpu） | 无干净机器安装/启动记录 | CI 解包冒烟不替代真实验收 | R1 |

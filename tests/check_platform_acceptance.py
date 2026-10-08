@@ -15,14 +15,16 @@ PLATFORM_CASES = {"ime_preedit_commit_cancel", "ime_candidate_position", "clipbo
                   "multiwindow_focus_dpi", "window_lifecycle", "transparent_composition",
                   "gpu_present_recovery_state", "soak_resources", "drag_drop_os_receive",
                   "frame_allocator_source", "designer_window_smoke"}
-NATIVE_ALLOCATOR_SOURCES = {"linux-x11": "glibc/malloc", "linux-wayland": "glibc/malloc"}
+NATIVE_ALLOCATOR_SOURCES = {"linux-x11": "glibc/malloc", "linux-wayland": "glibc/malloc",
+                            "macos": "libmalloc/malloc"}
+NATIVE_ALLOCATOR_DRIVERS = {"linux-x11": "x11", "linux-wayland": "wayland", "macos": "cocoa"}
 
 
 def validate_frame_allocator_report(report: dict, platform: str) -> None:
     source = NATIVE_ALLOCATOR_SOURCES.get(platform)
     if source is None:
         raise ValueError(f"no supported native allocator source for {platform}")
-    driver = "x11" if platform == "linux-x11" else "wayland"
+    driver = NATIVE_ALLOCATOR_DRIVERS[platform]
     if (not isinstance(report, dict) or report.get("driver") != driver or
         report.get("frame_allocator_requested") is not True or
         report.get("frame_allocator_verified") is not True or

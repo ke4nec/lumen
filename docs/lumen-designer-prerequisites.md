@@ -1465,6 +1465,15 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   本机新版 Wayland 日志（`185` 个有效帧）解析通过；不 preload 时探针返回失败、
   来源 unavailable 且没有成功标记，解析器拒绝。完整 CTest 仍为默认配置
   `1120/1120`、启用 profiler 的 Release `1127/1127`；没有据此宣称实际 workflow 已通过。
+  macOS 接入批次新增可选 `DYLD_INSERT_LIBRARIES` profiler 和 `libmalloc/malloc` 来源，
+  覆盖标准/typed/zone/batch 分配、zone 销毁、原生失败语义和启动期绑定验证；独立
+  原生进程测试、Cocoa 日志检查与 CPU/现场 CI 已配置。Linux/macOS 共用无堆对象账本，
+  删除槽后的重复地址、容量/数值溢出、zone 退休及 scope token 为 `25` 个断言、
+  `5` 个用例通过。SDK 14.5/26.1 的 arm64/x86_64 后端交叉编译通过，SDK 14.5 的
+  两架构 dylib 严格链接通过；SDK/client/native 测试编译检查不等于 macOS 原生运行。
+  本批完整 CTest 为默认配置 `1125/1125`、启用 profiler 的 Release `1132/1132`；
+  验收解析器 `11` 个 Python 用例通过，本机 Wayland 两窗口回归采集 `133` 个完整帧。
+  macOS 原生进程/现场、Windows 后端、完整人工记录与真实 CI 性能结果仍待补齐。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。
@@ -1496,5 +1505,6 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 其余问题是实现验收条件，不撤销已记录的 D3 L0 实施授权；预览 fixture 的 scoped heap 读数已补齐，
 但命令流存储分配读数和该探针都不能替代 R6 的生产整帧堆分配统计；当前已具备可注入的
 `FrameAllocationSource` 契约和 unavailable 降级，Linux/glibc 原生后端及本地
-Wayland/Xwayland 单项窗口 smoke 已验证。Windows/macOS 后端、独立 X11 桌面、完整
-现场结果和真实 CI 的性能基线报告仍按已冻结方案补齐。
+Wayland/Xwayland 单项窗口 smoke 已验证。macOS 后端已实现并通过 SDK 交叉编译，
+其原生运行/现场、Windows 后端、独立 X11 桌面、完整现场结果和真实 CI 的性能
+基线报告仍按已冻结方案补齐。

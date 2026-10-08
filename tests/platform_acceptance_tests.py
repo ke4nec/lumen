@@ -43,6 +43,18 @@ class EvidenceTests(unittest.TestCase):
             with self.subTest(platform=platform), self.assertRaises(ValueError):
                 validate_frame_allocator_report(report, platform)
 
+    def test_macos_native_allocator_requires_cocoa_and_libmalloc_together(self):
+        report = dict(self.native_allocator_report(), driver="cocoa",
+                      frame_allocator_source="libmalloc/malloc")
+        validate_frame_allocator_report(report, "macos")
+        for key, value in [("driver", "wayland"), ("driver", "dummy"),
+                           ("frame_allocator_source", "glibc/malloc"),
+                           ("frame_allocator_source", "command-storage")]:
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                validate_frame_allocator_report(dict(report, **{key: value}), "macos")
+        with self.assertRaises(ValueError):
+            validate_frame_allocator_report(report, "linux-wayland")
+
     def test_native_allocator_pass_requires_one_successful_structured_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

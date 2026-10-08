@@ -16,6 +16,14 @@
 using namespace lumen;
 
 namespace {
+#if defined(__APPLE__)
+constexpr auto nativeAllocatorSource = "libmalloc/malloc";
+#elif defined(__linux__)
+constexpr auto nativeAllocatorSource = "glibc/malloc";
+#else
+constexpr auto nativeAllocatorSource = "unsupported";
+#endif
+
 struct Options {
     int seconds{10};
     int stressMiB{0};
@@ -187,7 +195,7 @@ int main(int argc, char** argv) {
                     if (stats.frameIndex > probe.allocationFrame) {
                         probe.allocationFrame = stats.frameIndex;
                         if (stats.frameAllocationAvailable &&
-                            stats.frameAllocationSource == "glibc/malloc") {
+                            stats.frameAllocationSource == nativeAllocatorSource) {
                             ++probe.allocationSamples;
                             probe.allocationCount += stats.frameAllocationCount;
                             probe.allocatedBytes += stats.frameAllocatedBytes;
@@ -261,7 +269,7 @@ int main(int argc, char** argv) {
                     options.transparent ? "true" : "false", externalClipboard ? "true" : "false",
                     ime ? "true" : "false", options.stressMiB, first.recoveries + second.recoveries,
                     preserved ? "true" : "false", options.frameAllocator ? "true" : "false",
-                    allocatorVerified ? "true" : "false", allocatorVerified ? "glibc/malloc" : "unavailable",
+                    allocatorVerified ? "true" : "false", allocatorVerified ? nativeAllocatorSource : "unavailable",
                     first.allocationSamples + second.allocationSamples,
                     static_cast<unsigned long long>(first.allocationCount + second.allocationCount),
                     static_cast<unsigned long long>(first.allocatedBytes + second.allocatedBytes),

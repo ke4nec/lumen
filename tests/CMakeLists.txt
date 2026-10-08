@@ -11,6 +11,7 @@ set(LUMEN_TEST_SOURCES
     alpha_cpu_tests.cpp
     render_command_tests.cpp
     frame_scheduler_tests.cpp
+    native_allocation_ledger_tests.cpp
     resource_manager_tests.cpp
     interaction_tests.cpp
     wheel_routing_tests.cpp
@@ -149,37 +150,71 @@ add_executable(lumen-tests ${LUMEN_TEST_SOURCES})
 
 if(TARGET lumen-frame-allocator)
     find_package(Threads REQUIRED)
-    add_executable(lumen-frame-allocator-tests native_frame_allocator_tests.cpp)
+    if(APPLE)
+        add_executable(lumen-frame-allocator-tests native_frame_allocator_mac_tests.cpp)
+        add_library(lumen-shadow-malloc SHARED native_shadow_malloc_mac.cpp)
+        target_compile_definitions(lumen-frame-allocator-tests PRIVATE
+            LUMEN_NATIVE_ALLOCATOR_PATH="$<TARGET_FILE:lumen-frame-allocator>")
+        target_compile_options(lumen-frame-allocator-tests PRIVATE -fsized-deallocation)
+        if(LUMEN_HAS_MALLOC_ZONE_OPTIONS)
+            target_compile_definitions(lumen-frame-allocator-tests PRIVATE LUMEN_HAS_MALLOC_ZONE_OPTIONS=1)
+        endif()
+        set_target_properties(lumen-frame-allocator-tests PROPERTIES OSX_DEPLOYMENT_TARGET 14.0)
+        add_test(NAME native_frame_allocator
+            COMMAND ${CMAKE_COMMAND} -E env
+                "DYLD_INSERT_LIBRARIES=$<TARGET_FILE:lumen-frame-allocator>"
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][present]")
+        add_test(NAME native_frame_allocator_absent
+            COMMAND ${CMAKE_COMMAND} -E env DYLD_INSERT_LIBRARIES=
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][absent]")
+        add_test(NAME native_frame_allocator_shadowed
+            COMMAND ${CMAKE_COMMAND} -E env
+                "DYLD_INSERT_LIBRARIES=$<TARGET_FILE:lumen-shadow-malloc>:$<TARGET_FILE:lumen-frame-allocator>"
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][absent]")
+        add_test(NAME native_frame_allocator_sdl_untracked
+            COMMAND ${CMAKE_COMMAND} -E env
+                "DYLD_INSERT_LIBRARIES=$<TARGET_FILE:lumen-frame-allocator>"
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][sdl_untracked]")
+        add_test(NAME native_frame_allocator_late_loaded
+            COMMAND ${CMAKE_COMMAND} -E env DYLD_INSERT_LIBRARIES=
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][late_loaded]")
+        set_tests_properties(native_frame_allocator native_frame_allocator_absent
+            native_frame_allocator_shadowed native_frame_allocator_sdl_untracked
+            native_frame_allocator_late_loaded PROPERTIES TIMEOUT 30)
+    else()
+        add_executable(lumen-frame-allocator-tests native_frame_allocator_tests.cpp)
+        add_library(lumen-shadow-malloc SHARED native_shadow_malloc.cpp)
+        add_test(NAME native_frame_allocator
+            COMMAND ${CMAKE_COMMAND} -E env
+                "LD_PRELOAD=$<TARGET_FILE:lumen-frame-allocator>" LD_BIND_NOW=1
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][present]")
+        add_test(NAME native_frame_allocator_absent
+            COMMAND ${CMAKE_COMMAND} -E env LD_PRELOAD= LD_BIND_NOW=1
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][absent]")
+        add_test(NAME native_frame_allocator_shadowed
+            COMMAND ${CMAKE_COMMAND} -E env
+                "LD_PRELOAD=$<TARGET_FILE:lumen-shadow-malloc>:$<TARGET_FILE:lumen-frame-allocator>"
+                LD_BIND_NOW=1
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][absent]")
+        add_test(NAME native_frame_allocator_sdl_untracked
+            COMMAND ${CMAKE_COMMAND} -E env
+                "LD_PRELOAD=$<TARGET_FILE:lumen-frame-allocator>" LD_BIND_NOW=1
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][sdl_untracked]")
+        add_test(NAME native_frame_allocator_background_probe
+            COMMAND ${CMAKE_COMMAND} -E env
+                "LD_PRELOAD=$<TARGET_FILE:lumen-frame-allocator>" LD_BIND_NOW=1
+                $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][background_probe]")
+        set_tests_properties(native_frame_allocator native_frame_allocator_absent
+            native_frame_allocator_shadowed native_frame_allocator_sdl_untracked
+            native_frame_allocator_background_probe PROPERTIES TIMEOUT 30)
+    endif()
     target_include_directories(lumen-frame-allocator-tests PRIVATE
         ${PROJECT_SOURCE_DIR}/src/platform)
     target_link_libraries(lumen-frame-allocator-tests PRIVATE
         Catch2::Catch2WithMain lumen-app lumen-platform SDL3::SDL3
         Threads::Threads ${CMAKE_DL_LIBS})
     target_compile_options(lumen-frame-allocator-tests PRIVATE -fno-builtin)
-    add_library(lumen-shadow-malloc SHARED native_shadow_malloc.cpp)
-    add_test(NAME native_frame_allocator
-        COMMAND ${CMAKE_COMMAND} -E env
-            "LD_PRELOAD=$<TARGET_FILE:lumen-frame-allocator>" LD_BIND_NOW=1
-            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][present]")
-    add_test(NAME native_frame_allocator_absent
-        COMMAND ${CMAKE_COMMAND} -E env LD_PRELOAD= LD_BIND_NOW=1
-            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][absent]")
-    add_test(NAME native_frame_allocator_shadowed
-        COMMAND ${CMAKE_COMMAND} -E env
-            "LD_PRELOAD=$<TARGET_FILE:lumen-shadow-malloc>:$<TARGET_FILE:lumen-frame-allocator>"
-            LD_BIND_NOW=1
-            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][absent]")
-    add_test(NAME native_frame_allocator_sdl_untracked
-        COMMAND ${CMAKE_COMMAND} -E env
-            "LD_PRELOAD=$<TARGET_FILE:lumen-frame-allocator>" LD_BIND_NOW=1
-            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][sdl_untracked]")
-    add_test(NAME native_frame_allocator_background_probe
-        COMMAND ${CMAKE_COMMAND} -E env
-            "LD_PRELOAD=$<TARGET_FILE:lumen-frame-allocator>" LD_BIND_NOW=1
-            $<TARGET_FILE:lumen-frame-allocator-tests> "[native_allocator][background_probe]")
-    set_tests_properties(native_frame_allocator native_frame_allocator_absent
-        native_frame_allocator_shadowed native_frame_allocator_sdl_untracked
-        native_frame_allocator_background_probe PROPERTIES TIMEOUT 30)
+    add_dependencies(lumen-frame-allocator-tests lumen-frame-allocator)
 endif()
 
 # F6 设计器性能证据：独立进程安装全局 new/delete 记账，避免污染主测试

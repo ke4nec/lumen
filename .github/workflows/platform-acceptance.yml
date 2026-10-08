@@ -153,9 +153,18 @@ jobs:
           cmake -S . -B build-live -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DLUMEN_BUILD_TESTS=ON -DLUMEN_BUILD_EXAMPLES=ON \
+            -DLUMEN_ENABLE_FRAME_ALLOCATOR=ON \
             -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
       - name: Build live probe, Designer and accessibility provider
-        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-tests lumen-settings lumen-gallery lumen-designer
+        run: cmake --build build-live --parallel --target lumen-platform-live-smoke lumen-frame-allocator lumen-frame-allocator-tests lumen-tests lumen-settings lumen-gallery lumen-designer
+      - name: Native allocator headless regression
+        run: ctest --test-dir build-live --output-on-failure -R '^native_frame_allocator'
+      - name: Native whole-frame allocator window probe
+        run: |
+          set -o pipefail
+          DYLD_INSERT_LIBRARIES="$PWD/build-live/src/platform/liblumen-frame-allocator.dylib" \
+            ./build-live/tests/lumen-platform-live-smoke --frame-allocator --seconds "$LUMEN_LIVE_SECONDS" 2>&1 | tee frame-allocator-live.log
+          python3 tests/check_platform_acceptance.py --platform macos --frame-allocator-log frame-allocator-live.log --validate-frame-allocator-only
       - name: Designer native window smoke
         run: |
           set -o pipefail
@@ -167,13 +176,14 @@ jobs:
       - name: One-hour multi-window resize pressure and recovery soak
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate VoiceOver evidence for this commit
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/macos/record.json" --commit "$GITHUB_SHA" --platform macos --soak-report soak.json --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/macos/record.json" --commit "$GITHUB_SHA" --platform macos --soak-report soak.json --frame-allocator-log frame-allocator-live.log --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: platform-acceptance-macos
           path: |
             macos-live.json
+            frame-allocator-live.log
             designer-live.log
             soak.json
             acceptance-evidence/

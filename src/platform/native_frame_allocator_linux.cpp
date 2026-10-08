@@ -1,11 +1,10 @@
 #include "native_frame_allocator_api.h"
+#include "native_allocation_ledger.h"
 
-#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <dlfcn.h>
 #include <limits>
 #include <malloc.h>
@@ -50,72 +49,14 @@ std::atomic<bool> ready{false};
 thread_local bool insideHook{false};
 pthread_mutex_t ledgerMutex = PTHREAD_MUTEX_INITIALIZER;
 
-constexpr std::size_t ledgerCapacity = 65536;
-constexpr std::uintptr_t tombstone = 1;
-struct Entry {
-    std::uintptr_t address;
-    std::uint64_t bytes;
-    std::uint64_t allocationId;
-};
-Entry ledger[ledgerCapacity]{};
-std::uint64_t nextToken{0};
-std::uint64_t activeToken{0};
-NativeAllocationSample sample{};
-
-std::size_t firstSlot(std::uintptr_t address) noexcept {
-    return ((address >> 4) * std::uintptr_t{0x9e3779b1}) & (ledgerCapacity - 1);
-}
-
-Entry* find(std::uintptr_t address) noexcept {
-    if (address == 0) return nullptr;
-    auto slot = firstSlot(address);
-    for (std::size_t i = 0; i < ledgerCapacity; ++i) {
-        auto& entry = ledger[slot];
-        if (entry.address == address) return &entry;
-        if (entry.address == 0) return nullptr;
-        slot = (slot + 1) & (ledgerCapacity - 1);
-    }
-    return nullptr;
-}
-
-bool add(std::uint64_t& target, std::uint64_t bytes) noexcept {
-    if (bytes > std::numeric_limits<std::uint64_t>::max() - target) {
-        sample.complete = false;
-        return false;
-    }
-    target += bytes;
-    return true;
-}
+constinit lumen::platform::detail::NativeAllocationLedger<> ledger;
 
 void record(void* pointer, std::size_t bytes) noexcept {
-    if (activeToken == 0 || !sample.complete || pointer == nullptr) return;
-    const auto address = reinterpret_cast<std::uintptr_t>(pointer);
-    auto slot = firstSlot(address);
-    for (std::size_t i = 0; i < ledgerCapacity; ++i) {
-        auto& entry = ledger[slot];
-        if (entry.address == 0 || entry.address == tombstone) {
-            entry = {address, bytes, sample.allocationCount + 1};
-            if (add(sample.allocationCount, 1) &&
-                add(sample.allocatedBytes, bytes) && add(sample.liveBytes, bytes)) {
-                sample.peakBytes = std::max(sample.peakBytes, sample.liveBytes);
-            }
-            return;
-        }
-        if (entry.address == address) {
-            sample.complete = false;
-            return;
-        }
-        slot = (slot + 1) & (ledgerCapacity - 1);
-    }
-    sample.complete = false;
+    ledger.record(reinterpret_cast<std::uintptr_t>(pointer), bytes);
 }
 
 void forget(std::uintptr_t address) noexcept {
-    if (activeToken == 0 || !sample.complete) return;
-    if (auto* entry = find(address)) {
-        sample.liveBytes -= entry->bytes;
-        entry->address = tombstone;
-    }
+    ledger.forget(address);
 }
 
 // Serialize the native call with its ledger update: another thread cannot free
@@ -149,7 +90,7 @@ Function resolve(const char* name) noexcept {
 void beforeFork() noexcept {
     insideHook = true;
     pthread_mutex_lock(&ledgerMutex);
-    if (activeToken != 0) sample.complete = false;
+    ledger.invalidate();
 }
 
 void afterForkParent() noexcept {
@@ -158,7 +99,7 @@ void afterForkParent() noexcept {
 }
 
 void afterForkChild() noexcept {
-    activeToken = 0;
+    ledger.abandon();
     pthread_mutex_unlock(&ledgerMutex);
     insideHook = false;
 }
@@ -208,24 +149,14 @@ bool bindingsValid() noexcept {
 
 std::uint64_t begin() noexcept {
     pthread_mutex_lock(&ledgerMutex);
-    std::uint64_t token = 0;
-    if (activeToken == 0 && nextToken != std::numeric_limits<std::uint64_t>::max()) {
-        std::memset(ledger, 0, sizeof(ledger));
-        sample = {};
-        sample.complete = true;
-        activeToken = token = ++nextToken;
-    }
+    const auto token = ledger.begin();
     pthread_mutex_unlock(&ledgerMutex);
     return token;
 }
 
 NativeAllocationSample finish(std::uint64_t token) noexcept {
     pthread_mutex_lock(&ledgerMutex);
-    NativeAllocationSample result{};
-    if (token != 0 && activeToken == token) {
-        result = sample;
-        activeToken = 0;
-    }
+    const auto result = ledger.finish(token);
     pthread_mutex_unlock(&ledgerMutex);
     return result;
 }
@@ -234,12 +165,7 @@ void cancel(std::uint64_t token) noexcept { (void)finish(token); }
 
 std::uint64_t allocationId(std::uintptr_t address, std::uint64_t token) noexcept {
     pthread_mutex_lock(&ledgerMutex);
-    std::uint64_t result = 0;
-    if (token != 0 && activeToken == token && sample.complete) {
-        if (const auto* entry = find(address)) {
-            result = entry->allocationId;
-        }
-    }
+    const auto result = ledger.allocationId(address, token);
     pthread_mutex_unlock(&ledgerMutex);
     return result;
 }

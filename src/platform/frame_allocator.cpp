@@ -1,6 +1,6 @@
 #include "lumen/platform/frame_allocator.h"
 
-#if defined(__linux__) && defined(LUMEN_DESKTOP_FRAME_ALLOCATOR_CLIENT)
+#if (defined(__linux__) || defined(__APPLE__)) && defined(LUMEN_DESKTOP_FRAME_ALLOCATOR_CLIENT)
 #include <dlfcn.h>
 #include <new>
 #include <utility>
@@ -13,6 +13,18 @@ namespace lumen::platform {
 namespace {
 
 using detail::NativeFrameAllocatorApi;
+
+#if defined(__APPLE__)
+constexpr auto nativeSource = "libmalloc/malloc";
+constexpr auto busySource = "libmalloc/busy";
+constexpr auto invalidBindingsSource = "libmalloc/bindings";
+constexpr auto incompleteSource = "libmalloc/incomplete";
+#else
+constexpr auto nativeSource = "glibc/malloc";
+constexpr auto busySource = "glibc/busy";
+constexpr auto invalidBindingsSource = "glibc/bindings";
+constexpr auto incompleteSource = "glibc/incomplete";
+#endif
 
 struct SdlMemoryFunctions {
     SDL_malloc_func allocate;
@@ -37,20 +49,21 @@ class NativeFrameAllocationSource final : public render::FrameAllocationSource {
 
     void beginFrame(std::uint64_t) override {
         cancelFrame();
-        bindingsValid_ = sdlFunctions_ == sdlMemoryFunctions();
+        bindingsValid_ = sdlFunctions_ == sdlMemoryFunctions() && api_.bindingsValid();
         if (bindingsValid_) token_ = api_.begin();
     }
 
     render::FrameAllocationStats finishFrame() override {
         const auto token = std::exchange(token_, 0);
-        if (token == 0) return {false, bindingsValid_ ? "glibc/busy" : "glibc/bindings"};
+        if (token == 0) return {false, bindingsValid_ ? busySource : invalidBindingsSource};
         if (sdlFunctions_ != sdlMemoryFunctions()) {
             api_.cancel(token);
-            return {false, "glibc/bindings"};
+            return {false, invalidBindingsSource};
         }
         const auto sample = api_.finish(token);
-        if (!sample.complete) return {false, "glibc/incomplete"};
-        return {true, "glibc/malloc", sample.allocationCount,
+        if (!sample.complete) return {false, incompleteSource};
+        if (!api_.bindingsValid()) return {false, invalidBindingsSource};
+        return {true, nativeSource, sample.allocationCount,
                 sample.allocatedBytes, sample.peakBytes, sample.liveBytes};
     }
 

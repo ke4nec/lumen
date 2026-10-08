@@ -30,6 +30,8 @@ if(NOT LUMEN_BUILD_MOBILE_CORE)
   # A .mm extension makes GCC require cc1objplus before preprocessing its
   # __APPLE__ guard. Non-Apple desktops must not compile the macOS source.
   if(APPLE)
+    set_source_files_properties(frame_allocator.cpp PROPERTIES
+        COMPILE_OPTIONS "-fsized-deallocation")
     list(APPEND LUMEN_PLATFORM_SOURCES native_services_mac.mm)
   endif()
 endif()
@@ -86,32 +88,65 @@ target_compile_features(lumen-platform PUBLIC cxx_std_20)
 
 if(LUMEN_ENABLE_FRAME_ALLOCATOR)
   include(CheckCXXSourceCompiles)
-  check_cxx_source_compiles("
-    #include <cstddef>
-    #include <features.h>
-    #ifndef __GLIBC__
-    #error glibc is required
-    #endif
-    extern \"C\" {
-      void* __libc_malloc(std::size_t) noexcept;
-      void* __libc_calloc(std::size_t, std::size_t) noexcept;
-      void* __libc_realloc(void*, std::size_t) noexcept;
-      void* __libc_memalign(std::size_t, std::size_t) noexcept;
-      void __libc_free(void*) noexcept;
-    }
-    int main() {
-      __libc_free(__libc_realloc(__libc_malloc(1), 2));
-      __libc_free(__libc_calloc(1, 2));
-      __libc_free(__libc_memalign(64, 64));
-    }" LUMEN_HAS_GLIBC_ALLOCATOR_ENTRY_POINTS)
-  if(NOT LUMEN_HAS_GLIBC_ALLOCATOR_ENTRY_POINTS)
-    message(FATAL_ERROR "The frame allocator profiler requires glibc bootstrap entry points.")
-  endif()
   find_package(Threads REQUIRED)
-  # Standalone interposer: linking Lumen/SDL here would recurse through malloc.
-  add_library(lumen-frame-allocator SHARED native_frame_allocator_linux.cpp)
-  target_link_libraries(lumen-frame-allocator PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
-  target_compile_options(lumen-frame-allocator PRIVATE -ftls-model=initial-exec)
-  target_link_options(lumen-frame-allocator PRIVATE -Wl,-Bsymbolic-functions -Wl,-z,defs)
+  if(APPLE)
+    if(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS 14.0)
+      message(FATAL_ERROR "The optional macOS allocator profiler requires macOS 14 or newer.")
+    endif()
+    check_cxx_source_compiles("
+      #include <malloc/malloc.h>
+      #include <AvailabilityMacros.h>
+      int main() {
+        static_assert(MAC_OS_X_VERSION_MAX_ALLOWED >= 140000);
+        return sizeof(malloc_type_id_t) == 8 ? 0 : 1;
+      }" LUMEN_HAS_MAC_ALLOCATOR_SDK)
+    if(NOT LUMEN_HAS_MAC_ALLOCATOR_SDK)
+      message(FATAL_ERROR "The macOS allocator profiler requires the macOS 14 SDK or newer.")
+    endif()
+    check_cxx_source_compiles("
+      #include <malloc/malloc.h>
+      int main() {
+        return sizeof(&malloc_zone_malloc_with_options) +
+               sizeof(&malloc_type_zone_malloc_with_options);
+      }" LUMEN_HAS_MALLOC_ZONE_OPTIONS)
+    add_library(lumen-frame-allocator SHARED native_frame_allocator_mac.cpp)
+    target_compile_options(lumen-frame-allocator PRIVATE -fno-builtin)
+    if(LUMEN_HAS_MALLOC_ZONE_OPTIONS)
+      target_compile_definitions(lumen-frame-allocator PRIVATE LUMEN_HAS_MALLOC_ZONE_OPTIONS=1)
+    endif()
+    # No dependency on Lumen/SDL; no install-time injection into applications.
+    set_target_properties(lumen-frame-allocator PROPERTIES
+        OSX_DEPLOYMENT_TARGET 14.0
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES)
+  else()
+    check_cxx_source_compiles("
+      #include <cstddef>
+      #include <features.h>
+      #ifndef __GLIBC__
+      #error glibc is required
+      #endif
+      extern \"C\" {
+        void* __libc_malloc(std::size_t) noexcept;
+        void* __libc_calloc(std::size_t, std::size_t) noexcept;
+        void* __libc_realloc(void*, std::size_t) noexcept;
+        void* __libc_memalign(std::size_t, std::size_t) noexcept;
+        void __libc_free(void*) noexcept;
+      }
+      int main() {
+        __libc_free(__libc_realloc(__libc_malloc(1), 2));
+        __libc_free(__libc_calloc(1, 2));
+        __libc_free(__libc_memalign(64, 64));
+      }" LUMEN_HAS_GLIBC_ALLOCATOR_ENTRY_POINTS)
+    if(NOT LUMEN_HAS_GLIBC_ALLOCATOR_ENTRY_POINTS)
+      message(FATAL_ERROR "The frame allocator profiler requires glibc bootstrap entry points.")
+    endif()
+    # Standalone interposer: linking Lumen/SDL here would recurse through malloc.
+    add_library(lumen-frame-allocator SHARED native_frame_allocator_linux.cpp)
+    target_link_libraries(lumen-frame-allocator PRIVATE ${CMAKE_DL_LIBS})
+    target_compile_options(lumen-frame-allocator PRIVATE -ftls-model=initial-exec)
+    target_link_options(lumen-frame-allocator PRIVATE -Wl,-Bsymbolic-functions -Wl,-z,defs)
+  endif()
+  target_link_libraries(lumen-frame-allocator PRIVATE Threads::Threads)
   target_compile_features(lumen-frame-allocator PRIVATE cxx_std_20)
 endif()
