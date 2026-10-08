@@ -1392,8 +1392,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - 结果：设计器专属筛选 `build-debug/tests/lumen-tests "[designer][f6]"` 为 `402` 个断言、
   `31` 个测试用例通过；标准 `ctest -R 'designer|document store'` 为 `145/145` 通过，
   另有 D2 headless/窗口示例 smoke 通过。
-  未筛选的完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1116/1116`，
-  Release 配置为 `1118/1118`；当前本地 `build-debug` 没有设置 `CMAKE_BUILD_TYPE`，采集器
+  帧 allocator scope 生命周期修复后的完整
+  `ctest --test-dir build-debug --output-on-failure -C Debug` 为 `1120/1120`，
+  Release 配置为 `1122/1122`；`[app][r6]` 为 `184` 个断言、`14` 个用例通过。
+  当前本地 `build-debug` 没有设置 `CMAKE_BUILD_TYPE`，采集器
   如实报告 `Unspecified`。移动端 seam 和三桌面真实平台 smoke 仍按支持矩阵单独验收。
 - P1 语义边界：`.lumen` 仍是 12 个冻结节点的单向导入；设计文档 codec 使用
   `lumen.design` magic、schemaVersion=1、字符串化节点 ID 和未知字段保留；L1 静态、L2 动态与首批 L3 组合件节点已登记私有
@@ -1440,6 +1442,13 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `Renderer::submit`，没有平台 allocator source 时 HUD 显示 unavailable；命令流容量和进程
   RSS 不得冒充整帧读数。`app_shell_tests.cpp` 的 fake source 已覆盖提交帧、无绘制帧取消、
   重新标脏和 HUD 快照。
+  帧 scope 现以 RAII 捕获开始时的 source；重建、录制/提交或报告抛异常时取消同一实例，
+  帧内切换 source 只作用于下一帧。`cancelFrame()` 为幂等 `noexcept` 清理；`beginFrame()`
+  失败必须保持非活动状态，失败尝试可复用 frameIndex，source 不得把它当作唯一分配批次标识。
+  这是 source 接口变更：调用方的自定义实现须将 `cancelFrame()` override 改为
+  `noexcept`，并允许重复取消及报告失败后取消。
+  headless 回归覆盖 build/submit/report 失败后重试及重建回调内切换 source；这些生命周期
+  证据仍不替代三桌面真实 allocator 接入与现场验收。
 - F6 预览恢复：`DesignPreviewFrame` 保留同一文档最后一次成功编译的 Widget、Trace、
   SourceMap 和 session；引用缺失时接收带 trace 的占位帧并保留 Placeholder 诊断，schema/
   compile 失败则保留旧帧；替换成功编译会关闭旧 session，文档身份变化时清除旧帧。

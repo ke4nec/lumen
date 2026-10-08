@@ -143,11 +143,15 @@ class FrameAllocationSource {
     virtual ~FrameAllocationSource() = default;
 
     // Starts a scope for one candidate frame. Scopes are never nested.
+    // A failed begin must not leave a scope active. frameIndex can be reused
+    // after a failed attempt; it is not an allocation-generation identifier.
     virtual void beginFrame(std::uint64_t frameIndex) = 0;
     // Finishes a submitted frame and returns its scoped allocator telemetry.
+    // If reporting throws, the caller cancels the attempt before propagating.
     [[nodiscard]] virtual FrameAllocationStats finishFrame() = 0;
-    // Discards a scope when no visible frame was submitted.
-    virtual void cancelFrame() = 0;
+    // Discards idle/failed attempts, including after finishFrame() threw.
+    // Cleanup must be idempotent and safe during exception unwinding.
+    virtual void cancelFrame() noexcept = 0;
 };
 
 // 目标 surface 重建描述（plan §3.1 resetSurface）。nativeWindow 是不透明

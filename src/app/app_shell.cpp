@@ -23,6 +23,36 @@
 namespace lumen::app {
 namespace {
 
+class FrameAllocationScope {
+  public:
+    FrameAllocationScope(render::FrameAllocationSource* source,
+                         std::uint64_t frameIndex) : source_(source) {
+        if (source_ != nullptr) source_->beginFrame(frameIndex);
+    }
+
+    ~FrameAllocationScope() { cancel(); }
+
+    FrameAllocationScope(const FrameAllocationScope&) = delete;
+    FrameAllocationScope& operator=(const FrameAllocationScope&) = delete;
+
+    [[nodiscard]] bool active() const { return source_ != nullptr; }
+
+    [[nodiscard]] render::FrameAllocationStats finish() {
+        auto stats = source_->finishFrame();
+        source_ = nullptr;
+        return stats;
+    }
+
+    void cancel() noexcept {
+        if (auto* source = std::exchange(source_, nullptr)) {
+            source->cancelFrame();
+        }
+    }
+
+  private:
+    render::FrameAllocationSource* source_;
+};
+
 // 自定义标题栏（lumen-titlebar-design §4.1）：无 onClick 也消费指针的
 // 输入控件（点击聚焦/切换/拖动/展开）——命中即排除窗口拖拽。
 bool consumesPointerInput(const core::RenderNode& node) {
@@ -835,9 +865,7 @@ std::uint64_t AppShell::renderFrame(bool forceFullRepaint) {
 }
 
 void AppShell::paintFrame(bool forceFullRepaint) {
-    if (frameAllocationSource_ != nullptr) {
-        frameAllocationSource_->beginFrame(frameIndex_);
-    }
+    FrameAllocationScope allocationScope(frameAllocationSource_, frameIndex_);
     // R6：帧阶段采样（默认关闭零开销）——rebuild 区段含两次
     // rebuildIfDirty（交互快照收敛）；布局耗时在其内部按调用累计。
     std::optional<std::chrono::steady_clock::time_point> statsRebuildStart;
@@ -898,9 +926,7 @@ void AppShell::paintFrame(bool forceFullRepaint) {
                            optionsChanged || motionPaint || blendPaint ||
                            tooltipPaint || portalPaint;
     if (!needPaint) {
-        if (frameAllocationSource_ != nullptr) {
-            frameAllocationSource_->cancelFrame();
-        }
+        allocationScope.cancel();
         if (semanticsNeedsPush_) {
             pushSemantics();
         }
@@ -999,8 +1025,8 @@ void AppShell::paintFrame(bool forceFullRepaint) {
         ++partialRepaintCount_;
     }
     renderer.submit(commands, info);
-    if (frameAllocationSource_ != nullptr) {
-        frameAllocationStats_ = frameAllocationSource_->finishFrame();
+    if (allocationScope.active()) {
+        frameAllocationStats_ = allocationScope.finish();
     }
     frameHashValid_ = false;
     frameIndex_ += 1;

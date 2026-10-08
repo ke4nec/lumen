@@ -14,6 +14,7 @@
 #include <limits>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 
 #include <cstdlib>
@@ -79,6 +80,7 @@ class FakeFrameAllocationSource final
     : public lumen::render::FrameAllocationSource {
   public:
     void beginFrame(std::uint64_t frameIndex) override {
+        REQUIRE_FALSE(active);
         ++begins;
         lastFrameIndex = frameIndex;
         active = true;
@@ -87,13 +89,13 @@ class FakeFrameAllocationSource final
     lumen::render::FrameAllocationStats finishFrame() override {
         REQUIRE(active);
         active = false;
+        if (failReporting) throw std::runtime_error("allocator report failed");
         ++finishes;
         return lumen::render::FrameAllocationStats{
             true, "fake-allocator", 7, 4096, 3072, 1024};
     }
 
-    void cancelFrame() override {
-        REQUIRE(active);
+    void cancelFrame() noexcept override {
         active = false;
         ++cancels;
     }
@@ -103,6 +105,7 @@ class FakeFrameAllocationSource final
     std::size_t cancels{0};
     std::uint64_t lastFrameIndex{0};
     bool active{false};
+    bool failReporting{false};
 };
 
 class VisibilityHost final : public lumen::platform::ApplicationHost {
@@ -792,6 +795,7 @@ namespace {
 class RecordingRenderer final : public lumen::render::Renderer {
   public:
     void beginFrame(Size viewport) override {
+        if (failSubmit) throw std::runtime_error("renderer submit failed");
         frames += 1;
         lastViewport = viewport;
     }
@@ -806,6 +810,7 @@ class RecordingRenderer final : public lumen::render::Renderer {
 
     std::uint64_t frames{0};
     Size lastViewport{};
+    bool failSubmit{false};
 };
 
 }  // namespace
@@ -1563,6 +1568,107 @@ TEST_CASE("frame allocation source scopes submitted frames only",
     CHECK(source.cancels == 1);
     shell.setFrameAllocationSource(nullptr);
     CHECK_FALSE(shell.frameDebugSnapshot().frameAllocationAvailable);
+}
+
+TEST_CASE("frame allocation scope cancels a failed rebuild and permits retry",
+          "[app][r6]") {
+    bool failBuild = true;
+    ShellConfig config;
+    config.build = [&] {
+        if (failBuild) throw std::runtime_error("build failed");
+        return lumen::core::makeText("content");
+    };
+    AppShell shell(config);
+    FakeFrameAllocationSource source;
+    shell.setFrameAllocationSource(&source);
+
+    REQUIRE_THROWS_AS(shell.renderFrame(), std::runtime_error);
+    CHECK_FALSE(source.active);
+    CHECK(source.begins == 1);
+    CHECK(source.cancels == 1);
+    CHECK(source.finishes == 0);
+    CHECK_FALSE(shell.frameDebugSnapshot().frameAllocationAvailable);
+
+    failBuild = false;
+    CHECK(shell.renderFrame() != 0);
+    CHECK(source.begins == 2);
+    CHECK(source.lastFrameIndex == 0);
+    CHECK(source.finishes == 1);
+    CHECK(source.cancels == 1);
+}
+
+TEST_CASE("frame allocation scope cancels a failed submit and permits retry",
+          "[app][r6]") {
+    ShellConfig config;
+    config.build = [] { return lumen::core::makeText("content"); };
+    AppShell shell(config);
+    RecordingRenderer renderer;
+    renderer.failSubmit = true;
+    shell.setRenderer(&renderer);
+    FakeFrameAllocationSource source;
+    shell.setFrameAllocationSource(&source);
+
+    REQUIRE_THROWS_AS(shell.renderFrame(), std::runtime_error);
+    CHECK_FALSE(source.active);
+    CHECK(source.cancels == 1);
+    CHECK(source.finishes == 0);
+    CHECK(renderer.frames == 0);
+
+    renderer.failSubmit = false;
+    CHECK(shell.renderFrame() == 0);
+    CHECK(source.begins == 2);
+    CHECK(source.lastFrameIndex == 0);
+    CHECK(source.finishes == 1);
+    CHECK(source.cancels == 1);
+    CHECK(renderer.frames == 1);
+}
+
+TEST_CASE("frame allocation reporting failure has idempotent cleanup",
+          "[app][r6]") {
+    ShellConfig config;
+    config.build = [] { return lumen::core::makeText("content"); };
+    AppShell shell(config);
+    FakeFrameAllocationSource source;
+    source.failReporting = true;
+    shell.setFrameAllocationSource(&source);
+
+    REQUIRE_THROWS_AS(shell.renderFrame(), std::runtime_error);
+    CHECK_FALSE(source.active);
+    CHECK(source.begins == 1);
+    CHECK(source.cancels == 1);
+    CHECK(source.finishes == 0);
+
+    source.failReporting = false;
+    CHECK(shell.renderFrame() != 0);
+    CHECK(source.finishes == 1);
+    CHECK(source.cancels == 1);
+}
+
+TEST_CASE("frame allocation source replacement applies to the next attempt",
+          "[app][r6]") {
+    FakeFrameAllocationSource first;
+    FakeFrameAllocationSource second;
+    ShellConfig config;
+    config.build = [] { return lumen::core::makeText("content"); };
+    config.onRebuilt = [&](AppShell& shell) {
+        shell.setFrameAllocationSource(&second);
+    };
+    AppShell shell(config);
+    shell.setFrameAllocationSource(&first);
+
+    CHECK(shell.renderFrame() != 0);
+    CHECK(first.begins == 1);
+    CHECK(first.finishes == 1);
+    CHECK_FALSE(first.active);
+    CHECK(second.begins == 0);
+    CHECK(second.finishes == 0);
+
+    shell.markDirty();
+    CHECK(shell.renderFrame() != 0);
+    CHECK(first.begins == 1);
+    CHECK(second.begins == 1);
+    CHECK(second.finishes == 1);
+    CHECK_FALSE(second.active);
 }
 
 // 像素采样（CPU framebuffer；datagrid_tests 同模式）。

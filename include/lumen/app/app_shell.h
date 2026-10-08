@@ -221,6 +221,7 @@ class AppShell {
     // 后端不共享 framebuffer：切换即失效绘制缓存并全量重绘。
     void setRenderer(render::Renderer* renderer);
     // 注入调用方拥有的整帧分配遥测源；不注入时 HUD 明确显示来源缺失。
+    // 源必须活到当前 paintFrame 返回；帧内更换源只影响下一帧。
     void setFrameAllocationSource(render::FrameAllocationSource* source);
     // M1：正式字体事实注入（布局/绘制/命中测试/IME 查询共享）。
     void setFontManager(std::shared_ptr<const text::FontManager> fonts);
