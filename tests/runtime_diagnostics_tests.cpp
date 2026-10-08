@@ -11,7 +11,11 @@
 #include <string>
 #include <system_error>
 
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "lumen/app/app_shell.h"
 #include "lumen/diagnostics/runtime_diagnostics.h"
@@ -25,10 +29,18 @@ using lumen::diagnostics::RuntimeDiagnosticsOptions;
 
 namespace {
 
+int processId() {
+#if defined(_WIN32)
+    return ::_getpid();
+#else
+    return ::getpid();
+#endif
+}
+
 fs::path freshDirectory(const char* tag) {
     fs::path dir = fs::temp_directory_path() /
                    ("lumen-diag-" + std::string(tag) + "-" +
-                    std::to_string(::getpid()));
+                    std::to_string(processId()));
     std::error_code ec;
     fs::remove_all(dir, ec);
     fs::create_directories(dir, ec);
@@ -163,7 +175,7 @@ TEST_CASE("run_app_reports_diagnostics_summary_via_callback",
     // onDiagnosticsStarted 回调是唯一可靠通道。
     namespace fs = std::filesystem;
     const fs::path dir = fs::temp_directory_path() /
-                         ("lumen-diag-runapp-" + std::to_string(::getpid()));
+                         ("lumen-diag-runapp-" + std::to_string(processId()));
     std::error_code ec;
     fs::remove_all(dir, ec);
     fs::create_directories(dir, ec);

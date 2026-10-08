@@ -18,6 +18,7 @@
   - `SecondaryActivated`：已有实例且激活请求（`"activate\n"`）送达——应用即刻退出。
   - `SecondaryNotifyFailed`/`Unavailable`：结构化降级，**允许应用继续运行**（不因助手失败丢窗口）。
 - **实现**：unix domain socket（`XDG_RUNTIME_DIR|TMPDIR|/tmp` + `lumen-<app>.single-instance`）；先 connect（判 Secondary）后 bind；崩溃残留 socket 文件由 `unlink` 兜底恢复（测试锁定）。socket 目录可注入（headless 确定性/并行隔离）。
+- Windows 当前返回 `Unavailable`，不创建监听线程或调用激活回调；应用按既有降级契约继续运行。POSIX 源码仅在 Linux/macOS 分支编译，Windows 命名锁/激活实现仍在按需池。
 - **边界**：纯本地 IPC——unix socket 无网络栈参与，不构成网络能力承诺（路线图 §1.2）；并发 bind 竞态（双 Primary）与 Windows 命名锁 seam 为已知限制（薄助手定位，按需增强）。
 
 ## 3. 任务栏进度（未实施，按需池）

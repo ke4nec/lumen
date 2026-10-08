@@ -13,7 +13,11 @@
 #include <system_error>
 #include <thread>
 
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "lumen/core/preferences.h"
 #include "lumen/core/single_instance.h"
@@ -27,10 +31,18 @@ using lumen::platform::WindowDesc;
 
 namespace {
 
+int processId() {
+#if defined(_WIN32)
+    return ::_getpid();
+#else
+    return ::getpid();
+#endif
+}
+
 fs::path tempPath(const char* tag) {
     return fs::temp_directory_path() /
            ("lumen-winxp-" + std::string(tag) + "-" +
-            std::to_string(::getpid()));
+            std::to_string(processId()));
 }
 
 }  // namespace
@@ -59,6 +71,17 @@ TEST_CASE("window_desc_position_applied_and_reported", "[platform][winxp]") {
     CHECK_FALSE(plainMetrics->positioned);
 }
 
+#if defined(_WIN32)
+TEST_CASE("single_instance_windows_reports_unavailable", "[core][winxp]") {
+    int activations = 0;
+    SingleInstanceGuard::Config config;
+    config.appName = "lumen-winxp-test";
+    config.onActivateRequest = [&] { ++activations; };
+    CHECK(SingleInstanceGuard::acquire(config) == SingleInstanceGuard::Status::Unavailable);
+    CHECK(SingleInstanceGuard::acquire(config) == SingleInstanceGuard::Status::Unavailable);
+    CHECK(activations == 0);
+}
+#else
 TEST_CASE("single_instance_primary_and_secondary_activation",
           "[core][winxp]") {
     const fs::path dir = tempPath("guard");
@@ -98,6 +121,8 @@ TEST_CASE("single_instance_stale_socket_recovered", "[core][winxp]") {
     CHECK(SingleInstanceGuard::acquire(config) ==
           SingleInstanceGuard::Status::Primary);
 }
+
+#endif
 
 TEST_CASE("position_memory_preferences_roundtrip", "[core][winxp]") {
     // 位置记忆的应用侧模式（G-7 消费）：保存 → 重建 → 回放。

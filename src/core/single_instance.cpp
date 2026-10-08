@@ -5,6 +5,13 @@
 
 #include "lumen/core/single_instance.h"
 
+#if defined(_WIN32)
+namespace lumen::core {
+SingleInstanceGuard::Status SingleInstanceGuard::acquire(const Config&) {
+    return Status::Unavailable;
+}
+}  // namespace lumen::core
+#else
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -128,3 +135,4 @@ SingleInstanceGuard::Status SingleInstanceGuard::acquire(
 }
 
 }  // namespace lumen::core
+#endif

@@ -12,7 +12,11 @@
 #include <string>
 #include <system_error>
 
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "lumen/core/preferences.h"
 
@@ -21,10 +25,18 @@ using lumen::core::Preferences;
 
 namespace {
 
+int processId() {
+#if defined(_WIN32)
+    return ::_getpid();
+#else
+    return ::getpid();
+#endif
+}
+
 fs::path tempPath(const char* tag) {
     return fs::temp_directory_path() /
            ("lumen-prefs-" + std::string(tag) + "-" +
-            std::to_string(::getpid()));
+            std::to_string(processId()));
 }
 
 }  // namespace
