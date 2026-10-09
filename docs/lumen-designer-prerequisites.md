@@ -701,7 +701,10 @@ struct NodeSchema {
 - registry 中所有 L0 属性都能被 `serializeDesignDocument` 消费；
 - 新增 Widget 字段未登记时守护测试失败。C++20 没有标准字段反射，不能把“字段计数对照”
   写成自动发现；`widgetFieldInventory()` 维护明确的 `WidgetFieldInventory`（把结构、声明、
-  运行时引用、预览和派生字段分栏），测试逐项核对注册表的文档别名与持久化分类。若采用
+  运行时引用、预览和派生字段分栏），测试逐项核对注册表的文档别名与持久化分类。
+  测试另以显式列出的 74 个 Widget 成员执行 C++20 structured binding，成员新增/删除
+  即编译失败，包括利用已有 padding 而不改变 sizeof 的布尔字段；这只守护聚合成员数量，
+  不自动推导字段名、文档别名或持久化策略，更新成员时仍须人工同步清单。若采用
   clang 工具生成清单，生成器版本和生成文件也必须纳入构建证据；
 - 现有 43 项 P1 边界回归和完整 DSL 测试保持通过。
 
@@ -1592,3 +1595,6 @@ smoke，退出 0 且成功标记唯一；[日志及身份摘要](platform-eviden
 本轮检查器回归 `python3 -B tests/platform_acceptance_tests.py` 为 17/17，通过四平台
 遗漏/待验拒绝、逐读屏器 Designer 流程、缺失浸泡报告及当前日志匹配检查；默认本地
 完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 1133/1133 通过。
+P2 字段守护复查补上 Widget 聚合成员数的编译期检查；在临时头文件中新增未登记布尔
+字段后，sizeof 仍为 856B，但真实 schema 测试编译因 74 个 binding 对应 75 个成员而失败。
+正常源码的 P2 切片为 8 个测试、7596 个断言通过，完整本地 CTest 1133/1133 通过。

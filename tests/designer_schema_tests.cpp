@@ -471,6 +471,30 @@ TEST_CASE("designer schema validates types, enums, ranges and structure",
 
 TEST_CASE("designer schema inventory covers registry persistence categories",
           "[designer][p2]") {
+    // Prerequisites §4.10 P2.3: the explicit inventory must be reviewed when
+    // Widget gains or loses a member. Structured binding checks aggregate
+    // arity at compile time; this does not discover names or persistence roles.
+    // In particular, a bool added in existing padding must fail this guard
+    // even when sizeof(Widget) and the schema registry remain unchanged.
+    lumen::core::Widget widget;
+    [[maybe_unused]] const auto& [
+        type, key, width, height, flex, shrinkWrap, alignContentStart,
+        reserveIconSpace, windowDrag, scrollAxis, padding, margin, color,
+        radius, mainAxis, crossAxis, spacing, stackAlignment, text, textStyle,
+        placeholder, obscure, readOnly, multiline, semanticsLabel,
+        semanticsValue, semanticsRole, semanticsActions, checked,
+        indeterminate, scrollOffset, gridColumnCount, gridMinColumnWidth,
+        gridColumnGap, gridRowGap, imageId, imageSource, themeOverride,
+        virtualSource, virtualCacheExtent, collectionSelectionMode,
+        showFocusRing, gridColumnSpan, gridRowSpan, collectionColumns,
+        collectionRow, collectionShowHeader, listPart, treePart, treeDepth,
+        splitterSource, splitterHorizontal, buttonVariant, controlSize,
+        enabled, invalid, selected, showScrollbar, scrollbarAutoHide, icon,
+        elevation, transitionAlpha, styleOverrides, progressIndeterminate,
+        iconRotation, iconLeading, clipRounded, excludeFromSemantics,
+        excludeFromFocus, bind, bindPrefix, onClick, stackPosition, children
+    ] = widget;
+
     const auto& inventory = widgetFieldInventory();
     REQUIRE(inventory.size() == 85);
 
