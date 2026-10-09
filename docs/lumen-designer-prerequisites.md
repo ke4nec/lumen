@@ -997,6 +997,19 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
 命令行 dump、测试 fixture 和 GUI 错误面板应消费同一结构化诊断；格式化为文本只是展示
 层。这样 D1 的运行时诊断和 D2/D3 的文档诊断可以共享过滤、复制和定位行为。
 
+`read.io`、`store.read`、codec 读取错误和 `project.read`/`project.codec.*` 归属 read；
+迁移失败归属 migrate，版本/身份/schema 校验归属 schema；文件写入、备份、替换和
+外部 revision 冲突归属 save。读取入口不能把 `store.*` 全部覆盖为 save；保存时的
+校验仍保留实际阶段，但 recoverability 标记为 block-save。存储诊断保留实际文件来源，
+主文件和 `.bak` 的迁移/schema 错误分别定位，不用 `<design>`/`<project>` 代替路径。
+去重 key 按字段长度编码，文件或 documentId 含换行也不会与另一组位置字段碰撞。
+
+`lumen-designer --headless --dump-diagnostics --file <path>` 输出一行
+`diagnostics_json [...]`，使用 `serializeDesignDiagnostics` 序列化 GUI 聚合后的同一份
+诊断（包括工程错误），保留上述所有字段、expected/found、nodeId 和 occurrences。
+JSON 转义换行、引号、反斜线和控制字符，保留输入排序；同一输入重复输出一致。
+窗口模式也支持该选项，`--watch` 每次重载后输出当前诊断；正常运行不默认导出 JSON。
+
 ### 4.17 G-D16：资源信任边界与异步生命周期
 
 设计器打开的文件可能来自项目目录之外，文档中的资源路径、字体、图片、主题和 controller
@@ -1675,5 +1688,18 @@ revision；未访问页面从工程加载快照建立干净会话，同页切换
 undo/redo 分支；另存后的普通保存写回新工程根。成功打开独立源/设计文件或单页另存
 则退出工程，避免旧活动 documentId 接收独立页面或普通保存误写旧工程；失败不退出。
 三个 `[project-session]` 回归为 300 个断言通过，默认完整 CTest 1147/1147、Release
-`[designer]` 为 156 个用例、11287 个断言通过。本轮源码仍需其自己的三平台 CI，
-未用上一批通过结果替代，也未增加人工现场验收记录。
+`[designer]` 为 156 个用例、11287 个断言通过。`a592118` 的
+[Windows](https://github.com/ke4nec/lumen/actions/runs/37946377217)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/37946377159) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/37946377270) 常规 CI 全部通过，
+Windows 七个 job 全部成功；未增加人工现场验收记录。
+
+G-D15 诊断出口复查复现了读取/迁移错误被统一标为 save、`.lumen` 读取失败落入
+compile 的问题；阶段回归在旧实现上有 22 个失败断言。现按错误来源保留 read /
+migrate / schema / reference / compile / save，保存拒绝标记 block-save，主文件和
+备份的迁移/schema 诊断分别保留实际路径。位置去重也改为长度编码，避免换行字段
+碰撞。CLI 的显式 `--dump-diagnostics` 使用 GUI 同一份聚合诊断并输出完整 JSON，
+工程读取失败不再只打印工作台的零条诊断。六个 `[diagnostic-stage]` 用例、163 个
+断言通过；CLI 检查覆盖缺失文件、解析失败、未来工程版本、正常 gallery、JSON 字段
+完整性和重复输入的输出一致性。默认完整 CTest 1154/1154、Release `[designer]`
+162 个用例、11453 个断言通过；这些仍是 headless 证据，源码需另行取得三平台 CI。

@@ -72,6 +72,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | GitHub 三桌面 CI（2026-10-09，`85314c0`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37928701758)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37928701730)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37928701716) 全部 job 通过；Windows SDL3 DLL、默认系统字体冷扫描与 MSVC Debug Widget 预算门禁已修复，三平台含 Designer smoke 和原生 allocator 回归 | 属于该提交的常规 CI 证据；没有 self-hosted platform-acceptance 运行、Designer 人工编辑/读屏或完整桌面 record |
 | GitHub 三桌面 CI（2026-10-09，`74a568c`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37937789284)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37937789425)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37937789233) 全部 job 通过，Windows 七个 job 全通过；包含字段守护、冲突恢复和撤销合并边界 | 结果只归属该提交，不覆盖后续加载/编辑发布修复；没有新的完整人工桌面记录 |
 | GitHub 三桌面 CI（2026-10-09，`09705d9`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37941712087)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37941712200)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37941712074) 全部 job 通过，Windows 七个 job 全通过；覆盖加载/编辑发布修复 | 结果只归属该提交，不覆盖后续工程页会话修复；没有新的完整人工桌面记录 |
+| GitHub 三桌面 CI（2026-10-09，`a592118`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37946377217)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37946377159)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37946377270) 全部 job 通过，Windows 七个 job 全通过；覆盖工程页会话修复 | 结果只归属该提交，不覆盖后续诊断修复；没有新的完整人工桌面记录 |
 | 本地 GNOME/Wayland Designer（2026-10-09，`85314c0` 运行时源码） | 指定原生 Wayland driver，`gallery.design` 双窗口三帧 smoke 退出 0，唯一完整 `designer_window_smoke pass` 行；[原始日志与身份摘要](platform-evidence/designer-wayland-2026-10-09.json) 已保留 | 工作树含文档/验收脚本改动，运行时源码与提交一致；仅窗口启动，没有编辑/保存/重开、Inspector 操作、IME、读屏、高 DPI、GPU 或一小时浸泡验收 |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
@@ -112,7 +113,12 @@ session，应用的普通保存目标也保留；离线引用占位作为成功�
 undo/redo，工程保存/另存只推进所有页面的保存检查点；快照不缓存运行时 frame，
 失败切页保留原页面。独立打开/单页另存成功后退出工程并采用独立保存目标。
 本轮 `[project-session]` 3 个用例、300 个断言，默认完整 CTest 1147/1147、Release
-Designer 156/156 通过；三平台 CI 尚待该修复提交的运行结果，完整人工记录仍待验。
+Designer 156/156 通过；`a592118` 三平台 CI 通过，完整人工记录仍待验。
+诊断阶段现按实际错误来源保留 read/migrate/schema/save，并保留主文件或 `.bak`
+来源；保存拒绝标记 block-save。显式 `--dump-diagnostics` 输出 GUI 聚合诊断的完整
+JSON，工程错误也计入 CLI 数量；位置去重不再受换行字段碰撞影响。本轮阶段回归
+6 个用例、163 个断言及 CLI 结构化输出检查通过，完整 CTest 1154/1154、Release
+Designer 162/162 通过，三平台 CI 和完整人工现场记录仍按各自提交/现场证据登记。
 
 ### 实现批次与真实平台缺口（2026-09-30）
 

@@ -1,6 +1,7 @@
 #include "lumen/dsl/design_editor.h"
 
 #include <algorithm>
+#include <locale>
 #include <sstream>
 #include <utility>
 
@@ -10,23 +11,35 @@ namespace lumen::dsl {
 namespace {
 
 [[nodiscard]] DesignDiagnosticStage stageForCode(std::string_view code) {
-    if (code.rfind("store.read", 0) == 0 || code.rfind("codec.", 0) == 0) {
+    if (code == "codec.schema_version") return DesignDiagnosticStage::Schema;
+    if (code.rfind("read.", 0) == 0 || code.rfind("store.read", 0) == 0 ||
+        code.rfind("codec.", 0) == 0 || code == "project.read" ||
+        code.rfind("project.codec", 0) == 0) {
         return DesignDiagnosticStage::Read;
     }
     if (code.rfind("parse.", 0) == 0 || code == "compile.dsl") {
         return DesignDiagnosticStage::Parse;
     }
-    if (code.rfind("store.migration", 0) == 0) {
+    if (code.rfind("store.migration", 0) == 0 ||
+        code.rfind("project.migration", 0) == 0) {
         return DesignDiagnosticStage::Migrate;
     }
-    if (code.rfind("schema.", 0) == 0 || code == "store.schema_version") {
+    if (code.rfind("schema.", 0) == 0 || code == "store.schema_version" ||
+        code == "store.document_id") {
         return DesignDiagnosticStage::Schema;
     }
     if (code.rfind("reference.", 0) == 0 || code.rfind("ref.", 0) == 0) {
         return DesignDiagnosticStage::Reference;
     }
-    if (code.rfind("store.", 0) == 0) {
+    if (code.rfind("store.", 0) == 0 || code == "project.write" ||
+        code == "project.backup" || code == "project.rename" ||
+        code == "project.revision_conflict" ||
+        code == "project.resource_copy" || code == "project.resource_directory" ||
+        code == "project.page_directory") {
         return DesignDiagnosticStage::Save;
+    }
+    if (code.rfind("project.", 0) == 0) {
+        return DesignDiagnosticStage::Schema;
     }
     return DesignDiagnosticStage::Compile;
 }
@@ -84,6 +97,41 @@ namespace {
     }
     return !selection.captured.has_value() ||
            selection.ids.contains(*selection.captured);
+}
+
+void writeJsonString(std::ostream& out, std::string_view text) {
+    constexpr char hex[] = "0123456789abcdef";
+    out << '"';
+    for (const unsigned char character : text) {
+        switch (character) {
+            case '"': out << "\\\""; break;
+            case '\\': out << "\\\\"; break;
+            case '\n': out << "\\n"; break;
+            case '\r': out << "\\r"; break;
+            case '\t': out << "\\t"; break;
+            default:
+                if (character < 0x20) {
+                    out << "\\u00" << hex[character >> 4]
+                        << hex[character & 0xf];
+                } else {
+                    out << static_cast<char>(character);
+                }
+                break;
+        }
+    }
+    out << '"';
+}
+
+void writeSourceSpan(std::ostream& out,
+                     const std::optional<DesignSourceSpan>& span) {
+    if (!span.has_value()) {
+        out << "null";
+        return;
+    }
+    out << "{\"begin\":{\"line\":" << span->begin.line
+        << ",\"column\":" << span->begin.column
+        << "},\"end\":{\"line\":" << span->end.line
+        << ",\"column\":" << span->end.column << "}}";
 }
 
 }  // namespace
@@ -427,8 +475,17 @@ void DesignDocumentHistory::clear() {
 
 std::string DesignDiagnostic::key() const {
     std::ostringstream out;
-    out << code << '\n' << file << '\n' << documentId << '\n' << property
-        << '\n' << nodeId << '\n' << nodePath;
+    out.imbue(std::locale::classic());
+    const auto field = [&out](const std::string& value) {
+        out << value.size() << ':' << value;
+    };
+    field(code);
+    field(file);
+    field(documentId);
+    field(property);
+    out << ':' << nodeId << ':';
+    field(nodePath);
+    out << ':' << sourceSpan.has_value();
     if (sourceSpan.has_value()) {
         out << '\n' << sourceSpan->begin.line << ':'
             << sourceSpan->begin.column << '-'
@@ -475,6 +532,62 @@ void appendDesignDiagnostic(std::vector<DesignDiagnostic>& diagnostics,
         }
     }
     diagnostics.push_back(std::move(diagnostic));
+}
+
+std::string serializeDesignDiagnostics(
+    const std::vector<DesignDiagnostic>& diagnostics) {
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out << '[';
+    bool first = true;
+    for (const auto& diagnostic : diagnostics) {
+        if (!first) out << ',';
+        first = false;
+        out << "{\"code\":";
+        writeJsonString(out, diagnostic.code);
+        out << ",\"severity\":";
+        const char* severity = diagnostic.severity == DesignDiagnosticSeverity::Info
+            ? "info" : diagnostic.severity == DesignDiagnosticSeverity::Warning
+                ? "warning" : "error";
+        writeJsonString(out, severity);
+        out << ",\"stage\":";
+        writeJsonString(out, designDiagnosticStageName(diagnostic.stage));
+        out << ",\"message\":";
+        writeJsonString(out, diagnostic.message);
+        out << ",\"expected\":";
+        writeJsonString(out, diagnostic.expected);
+        out << ",\"found\":";
+        writeJsonString(out, diagnostic.found);
+        out << ",\"file\":";
+        writeJsonString(out, diagnostic.file);
+        out << ",\"sourceSpan\":";
+        writeSourceSpan(out, diagnostic.sourceSpan);
+        out << ",\"documentId\":";
+        writeJsonString(out, diagnostic.documentId);
+        out << ",\"nodeId\":" << diagnostic.nodeId << ",\"nodePath\":";
+        writeJsonString(out, diagnostic.nodePath);
+        out << ",\"property\":";
+        writeJsonString(out, diagnostic.property);
+        out << ",\"related\":[";
+        bool firstRelated = true;
+        for (const auto& related : diagnostic.related) {
+            if (!firstRelated) out << ',';
+            firstRelated = false;
+            out << "{\"file\":";
+            writeJsonString(out, related.file);
+            out << ",\"sourceSpan\":";
+            writeSourceSpan(out, related.sourceSpan);
+            out << ",\"nodeId\":" << related.nodeId << ",\"label\":";
+            writeJsonString(out, related.label);
+            out << '}';
+        }
+        out << "],\"recoverability\":";
+        writeJsonString(out,
+            designDiagnosticRecoverabilityName(diagnostic.recoverability));
+        out << ",\"occurrences\":" << diagnostic.occurrences << '}';
+    }
+    out << ']';
+    return out.str();
 }
 
 const char* designDiagnosticStageName(DesignDiagnosticStage stage) {

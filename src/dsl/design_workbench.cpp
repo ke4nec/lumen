@@ -145,7 +145,7 @@ bool DesignPreviewWorkbench::openDesignFile(
     const std::string& filename, DesignRuntimeContext* context) {
     const auto loaded = documentStore_.load(filename);
     if (!loaded.ok()) {
-        setStoreDiagnostics(loaded.diagnostics);
+        setStoreDiagnostics(loaded.diagnostics, filename);
         return false;
     }
     const bool opened =
@@ -154,7 +154,9 @@ bool DesignPreviewWorkbench::openDesignFile(
     resetHistory(true);
     loadedRevision_ = loaded.revision;
     hasLoadedRevision_ = true;
-    if (!loaded.diagnostics.empty()) setStoreDiagnostics(loaded.diagnostics);
+    if (!loaded.diagnostics.empty()) {
+        setStoreDiagnostics(loaded.diagnostics, filename);
+    }
     return true;
 }
 
@@ -617,7 +619,7 @@ bool DesignPreviewWorkbench::saveDesignFileAtRevision(
     }
     std::vector<DesignError> errors;
     if (!documentStore_.save(filename, *document_, errors, expectedRevision)) {
-        setStoreDiagnostics(errors);
+        setStoreDiagnostics(errors, filename, true);
         return false;
     }
     const auto saved = documentStore_.load(filename);
@@ -745,15 +747,18 @@ void DesignPreviewWorkbench::setEditError(std::string message) {
 }
 
 void DesignPreviewWorkbench::setStoreDiagnostics(
-    const std::vector<DesignError>& errors) {
+    const std::vector<DesignError>& errors, const std::string& filename,
+    bool saving) {
     diagnostics_.clear();
     for (const auto& error : errors) {
-        auto diagnostic = DesignDiagnostic::fromError(
-            error, error.code.rfind("store.", 0) == 0
-                       ? std::optional<DesignDiagnosticStage>{
-                             DesignDiagnosticStage::Save}
-                       : std::nullopt);
-        if (diagnostic.file.empty()) diagnostic.file = sourceFile_;
+        auto diagnostic = DesignDiagnostic::fromError(error);
+        if (saving) {
+            diagnostic.recoverability = DesignDiagnosticRecoverability::BlockSave;
+            if (document_.has_value()) diagnostic.documentId = document_->documentId;
+        }
+        if (diagnostic.file.empty() || diagnostic.file == "<design>") {
+            diagnostic.file = filename;
+        }
         appendDesignDiagnostic(diagnostics_, std::move(diagnostic));
     }
 }

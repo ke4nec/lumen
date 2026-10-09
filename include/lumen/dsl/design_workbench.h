@@ -208,7 +208,9 @@ class DesignPreviewWorkbench {
     void resetHistory(bool saved);
     void restoreSelection(const DesignSelection& selection);
     void setEditError(std::string message);
-    void setStoreDiagnostics(const std::vector<DesignError>& errors);
+    void setStoreDiagnostics(
+        const std::vector<DesignError>& errors, const std::string& filename,
+        bool saving = false);
     void setFrameDiagnostics(const std::string& sourceFile);
     [[nodiscard]] bool saveDesignFileAtRevision(
         const std::string& filename,

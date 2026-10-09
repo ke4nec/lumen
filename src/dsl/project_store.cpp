@@ -728,7 +728,8 @@ ProjectLoadResult ProjectStore::load(const std::string& path) const {
         if (parsed.project.projectId.empty()) return std::optional<DesignProject>{};
         return std::optional{std::move(parsed.project)};
     };
-    const auto prepare = [&](DesignProject project, bool recovered,
+    const auto prepare = [&](DesignProject project, const std::string& sourceFile,
+                             bool recovered,
                              std::uint64_t revision,
                              std::vector<DesignError> diagnostics) {
         ProjectLoadResult result;
@@ -737,20 +738,28 @@ ProjectLoadResult ProjectStore::load(const std::string& path) const {
         result.revision = revision;
         result.migrated = result.project.schemaVersion != kCurrentProjectSchemaVersion;
         result.diagnostics = std::move(diagnostics);
+        const auto firstNewDiagnostic = result.diagnostics.size();
         if (!migrate(result.project, result.diagnostics)) {
             result.project = {};
-            return result;
+        } else {
+            const auto schemaDiagnostics = validate(result.project, sourceFile);
+            result.diagnostics.insert(result.diagnostics.end(), schemaDiagnostics.begin(),
+                                      schemaDiagnostics.end());
+            if (!schemaDiagnostics.empty()) result.project = {};
         }
-        const auto schemaDiagnostics = validate(result.project, "<project>");
-        result.diagnostics.insert(result.diagnostics.end(), schemaDiagnostics.begin(),
-                                  schemaDiagnostics.end());
-        if (!schemaDiagnostics.empty()) result.project = {};
+        for (auto index = firstNewDiagnostic;
+             index < result.diagnostics.size(); ++index) {
+            auto& diagnostic = result.diagnostics[index];
+            if (diagnostic.file.empty() || diagnostic.file == "<project>") {
+                diagnostic.file = sourceFile;
+            }
+        }
         return result;
     };
 
     std::vector<DesignError> primaryDiagnostics;
     if (const auto primary = read(path, primaryDiagnostics); primary.has_value()) {
-        auto result = prepare(*primary, false, fileRevision(path).value_or(0),
+        auto result = prepare(*primary, path, false, fileRevision(path).value_or(0),
                               std::move(primaryDiagnostics));
         if (result.ok()) return result;
         primaryDiagnostics = std::move(result.diagnostics);
@@ -763,7 +772,7 @@ ProjectLoadResult ProjectStore::load(const std::string& path) const {
     }
     std::vector<DesignError> backupDiagnostics;
     if (const auto recovered = read(backup, backupDiagnostics); recovered.has_value()) {
-        auto result = prepare(*recovered, true, fileRevision(path).value_or(0),
+        auto result = prepare(*recovered, backup, true, fileRevision(path).value_or(0),
                               std::move(primaryDiagnostics));
         result.diagnostics.insert(result.diagnostics.end(), backupDiagnostics.begin(),
                                   backupDiagnostics.end());

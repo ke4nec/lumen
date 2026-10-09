@@ -177,7 +177,8 @@ DocumentLoadResult DocumentStore::load(const std::string& path) const {
     namespace fs = std::filesystem;
 
     const auto prepare = [&](const DesignReadResult& read,
-                             bool recovered, std::uint64_t revision,
+                             const std::string& sourceFile, bool recovered,
+                             std::uint64_t revision,
                              std::vector<DesignError> diagnostics) {
         DocumentLoadResult result;
         result.document = read.document;
@@ -185,6 +186,7 @@ DocumentLoadResult DocumentStore::load(const std::string& path) const {
         result.revision = revision;
         result.migrated = result.document.schemaVersion != kCurrentSchemaVersion;
         result.diagnostics = std::move(diagnostics);
+        const auto firstNewDiagnostic = result.diagnostics.size();
         bool valid = read.ok();
         if (valid && !migrate(result.document, result.diagnostics)) {
             valid = false;
@@ -207,13 +209,20 @@ DocumentLoadResult DocumentStore::load(const std::string& path) const {
                 result.document = {};
             }
         }
+        for (auto index = firstNewDiagnostic;
+             index < result.diagnostics.size(); ++index) {
+            auto& diagnostic = result.diagnostics[index];
+            if (diagnostic.file.empty() || diagnostic.file == "<design>") {
+                diagnostic.file = sourceFile;
+            }
+        }
         return std::pair{std::move(result), valid};
     };
 
     const auto primary = readFile(path);
     std::vector<DesignError> primaryDiagnostics;
     if (primary.ok()) {
-        auto [result, valid] = prepare(primary, false,
+        auto [result, valid] = prepare(primary, path, false,
                                        fileRevision(path).value_or(0), {});
         if (valid) return result;
         primaryDiagnostics = std::move(result.diagnostics);
@@ -234,7 +243,7 @@ DocumentLoadResult DocumentStore::load(const std::string& path) const {
                                   false, false};
     }
     auto [result, valid] = prepare(
-        recovered, true, fileRevision(path).value_or(0),
+        recovered, backup, true, fileRevision(path).value_or(0),
         std::move(primaryDiagnostics));
     (void)valid;
     return result;

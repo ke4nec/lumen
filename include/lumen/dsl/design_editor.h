@@ -248,6 +248,11 @@ struct DesignDiagnostic {
 void appendDesignDiagnostic(std::vector<DesignDiagnostic>& diagnostics,
                             DesignDiagnostic diagnostic);
 
+// Stable JSON for CLI dumps and fixture artifacts. Input ordering and all
+// structured fields are retained; strings are escaped without display parsing.
+[[nodiscard]] std::string serializeDesignDiagnostics(
+    const std::vector<DesignDiagnostic>& diagnostics);
+
 [[nodiscard]] const char* designDiagnosticStageName(
     DesignDiagnosticStage stage);
 [[nodiscard]] const char* designDiagnosticRecoverabilityName(

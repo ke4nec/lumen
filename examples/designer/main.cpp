@@ -19,6 +19,7 @@ namespace {
 struct Options {
     bool headless{false};
     bool watch{false};
+    bool dumpDiagnostics{false};
     std::uint64_t maxFrames{0};
     std::string filename{};
     std::string error{};
@@ -31,6 +32,8 @@ Options parseOptions(int argc, char** argv) {
             options.headless = true;
         } else if (std::strcmp(argv[index], "--watch") == 0) {
             options.watch = true;
+        } else if (std::strcmp(argv[index], "--dump-diagnostics") == 0) {
+            options.dumpDiagnostics = true;
         } else if (std::strcmp(argv[index], "--max-frames") == 0 &&
                    index + 1 < argc) {
             const char* begin = argv[++index];
@@ -77,19 +80,30 @@ bool isProjectFile(const std::string& filename) {
     return extension == ".lumen-project" || extension == ".lumenproject";
 }
 
+void dumpDiagnostics(const lumen::designer_app::DesignerApp& app) {
+    std::printf("diagnostics_json %s\n",
+                lumen::dsl::serializeDesignDiagnostics(app.diagnostics()).c_str());
+}
+
 int runHeadless(lumen::designer_app::DesignerApp& app,
-                bool requestedFileLoaded) {
+                bool requestedFileLoaded, bool dump) {
     app.shell().setView(lumen::core::Size{1280.0F, 800.0F});
     const auto frame = app.shell().renderFrame();
     std::printf("frame0 %016llx\n",
                 static_cast<unsigned long long>(frame));
     std::printf("document %d\n", app.workbench().document().has_value() ? 1 : 0);
-    std::printf("diagnostics %zu\n", app.workbench().diagnostics().size());
+    std::printf("diagnostics %zu\n", app.diagnostics().size());
+    if (dump) dumpDiagnostics(app);
     return app.workbench().frame().hasFrame() && requestedFileLoaded ? 0 : 1;
 }
 
 int runWindowed(lumen::designer_app::DesignerApp& app,
                 const Options& designerOptions, bool requestedFileLoaded) {
+    if (designerOptions.dumpDiagnostics) {
+        app.shell().setView(lumen::core::Size{1280.0F, 800.0F});
+        (void)app.shell().renderFrame();
+        dumpDiagnostics(app);
+    }
     // A requested startup document is part of the window smoke contract. A
     // later watch reload may still keep the last valid frame in the session.
     if (!requestedFileLoaded && !designerOptions.watch) return 1;
@@ -128,7 +142,8 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
         watcher.emplace(designerOptions.filename);
         std::printf("watching %s for changes\n",
                     designerOptions.filename.c_str());
-        runOptions.poll = [&watcher, &app](lumen::app::AppShell&,
+        runOptions.poll = [&watcher, &app,
+                           dump = designerOptions.dumpDiagnostics](lumen::app::AppShell&,
                                            std::uint64_t /*nowMs*/) {
             if (!watcher.has_value()) return false;
             if (!watcher->poll()) return false;
@@ -139,6 +154,10 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
                                            : app.loadFile(watcher->filename()));
             std::printf(loaded ? "ui reloaded\n"
                                : "ui reload failed (kept previous UI)\n");
+            if (dump) {
+                (void)app.shell().renderFrame();
+                dumpDiagnostics(app);
+            }
             return true;
         };
     }
@@ -181,7 +200,7 @@ int main(int argc, char** argv) {
     }
     try {
         return options.headless
-                   ? runHeadless(app, requestedFileLoaded)
+                   ? runHeadless(app, requestedFileLoaded, options.dumpDiagnostics)
                    : runWindowed(app, options, requestedFileLoaded);
     } catch (const std::exception& error) {
         std::fprintf(stderr, "fatal: %s\n", error.what());

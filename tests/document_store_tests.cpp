@@ -267,6 +267,7 @@ TEST_CASE("document store migration failure blocks publication",
     CHECK(result.document.root.id == 0);
     REQUIRE_FALSE(result.diagnostics.empty());
     CHECK(result.diagnostics.front().code == "store.migration_failed");
+    CHECK(result.diagnostics.front().file == path.string());
 }
 
 TEST_CASE("document store converts throwing migrations to diagnostics",
@@ -290,6 +291,7 @@ TEST_CASE("document store converts throwing migrations to diagnostics",
     CHECK(result.document.root.id == 0);
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics.front().code == "store.migration_exception");
+    CHECK(result.diagnostics.front().file == path.string());
     CHECK(result.diagnostics.front().message.find("injected migration exception") !=
           std::string::npos);
 
@@ -321,6 +323,40 @@ TEST_CASE("document store rejects migrations that remove document identity",
     CHECK(result.document.root.id == 0);
     REQUIRE_FALSE(result.diagnostics.empty());
     CHECK(result.diagnostics.front().code == "store.document_id");
+    CHECK(result.diagnostics.front().file == path.string());
+}
+
+TEST_CASE("document store migration diagnostics distinguish primary and recovery files",
+          "[designer][p5][diagnostic-stage]") {
+    const auto dir = tempPath("migration-origins");
+    struct Cleanup {
+        fs::path dir;
+        ~Cleanup() {
+            std::error_code error;
+            fs::remove_all(dir, error);
+        }
+    } cleanup{dir};
+    fs::create_directories(dir);
+    const auto path = (dir / "legacy.design").string();
+    const auto backup = DocumentStore::backupPath(path);
+    const auto source = legacyVersionZero(sampleDocument());
+    REQUIRE_FALSE(source.empty());
+    std::ofstream(path) << source;
+    std::ofstream(backup) << source;
+    DocumentStore store;
+    store.registerMigration(0, [](DesignDocument&,
+        std::vector<lumen::dsl::DesignError>& diagnostics) {
+        diagnostics.push_back({"store.migration_failed", "<design>", {},
+                               "injected failure"});
+        return false;
+    });
+    const auto result = store.load(path);
+    REQUIRE_FALSE(result.ok());
+    REQUIRE(result.diagnostics.size() == 2);
+    CHECK(result.diagnostics[0].file == path);
+    CHECK(result.diagnostics[1].file == backup);
+    CHECK(result.diagnostics[0].code == "store.migration_failed");
+    CHECK(result.diagnostics[1].code == "store.migration_failed");
 }
 
 TEST_CASE("document store temporary names do not reuse legacy process-local paths",

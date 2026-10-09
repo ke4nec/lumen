@@ -14,6 +14,91 @@ using lumen::dsl::DesignSelectionMode;
 using lumen::dsl::DesignNode;
 using lumen::dsl::DesignValue;
 
+// Prerequisites §4.16: operation diagnostics retain the real failing stage,
+// while rejected reads/saves preserve the active editable document.
+TEST_CASE("designer file diagnostics distinguish reads schema checks and saves",
+          "[designer][f6][diagnostic][diagnostic-stage]") {
+    const auto root = std::filesystem::temp_directory_path() /
+        ("lumen-diagnostic-stage-" +
+         std::to_string(std::chrono::steady_clock::now()
+                            .time_since_epoch().count()));
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+    std::filesystem::create_directories(root);
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource("page current { Text(\"Current\") }"));
+    const auto currentFile = root / "current.design";
+    REQUIRE(workbench.saveDesignFile(currentFile.string()));
+    const auto original = *workbench.document();
+    REQUIRE(workbench.selectNode(original.root.id));
+    REQUIRE(workbench.setProperty(original.root.id, "text",
+        DesignValue{DesignValue::Variant{std::string{"Editing"}}}));
+    const auto before = *workbench.document();
+    const auto selection = workbench.selection();
+    const auto revision = workbench.documentRevision();
+    const auto generation = workbench.frame().generation();
+    const auto runtime = workbench.frame().session();
+    auto expectedStage = lumen::dsl::DesignDiagnosticStage::Read;
+    auto expectedRecovery =
+        lumen::dsl::DesignDiagnosticRecoverability::KeepLastFrame;
+    std::string expectedFile;
+    std::string expectedCode;
+    SECTION("missing lumen source") {
+        expectedFile = (root / "missing.lumen").string();
+        expectedCode = "read.io";
+        REQUIRE_FALSE(workbench.openLumenFile(expectedFile));
+    }
+    SECTION("missing design file") {
+        expectedFile = (root / "missing.design").string();
+        expectedCode = "store.read";
+        REQUIRE_FALSE(workbench.openDesignFile(expectedFile));
+    }
+    SECTION("future document schema") {
+        auto future = original;
+        future.schemaVersion = 2;
+        expectedFile = (root / "future.design").string();
+        {
+            std::ofstream file(expectedFile);
+            file << serializeDesignDocument(future);
+            REQUIRE(file.good());
+        }
+        expectedStage = lumen::dsl::DesignDiagnosticStage::Schema;
+        expectedCode = "codec.schema_version";
+        REQUIRE_FALSE(workbench.openDesignFile(expectedFile));
+    }
+    SECTION("failed save") {
+        expectedFile = (root / "missing-parent" / "save.design").string();
+        expectedStage = lumen::dsl::DesignDiagnosticStage::Save;
+        expectedRecovery =
+            lumen::dsl::DesignDiagnosticRecoverability::BlockSave;
+        expectedCode = "store.write";
+        REQUIRE_FALSE(workbench.saveDesignFile(expectedFile));
+    }
+    REQUIRE_FALSE(workbench.diagnostics().empty());
+    const auto& diagnostic = workbench.diagnostics().front();
+    CHECK(diagnostic.code == expectedCode);
+    CHECK(diagnostic.stage == expectedStage);
+    CHECK(diagnostic.recoverability == expectedRecovery);
+    CHECK(diagnostic.file == expectedFile);
+    if (expectedRecovery == lumen::dsl::DesignDiagnosticRecoverability::BlockSave) {
+        CHECK(diagnostic.documentId == original.documentId);
+    }
+    CHECK(workbench.document() == before);
+    CHECK(workbench.selection() == selection);
+    CHECK(workbench.documentRevision() == revision);
+    CHECK(workbench.frame().generation() == generation);
+    CHECK(workbench.frame().session() == runtime);
+    CHECK(workbench.dirty());
+    REQUIRE(workbench.undo());
+    CHECK(workbench.document() == original);
+    CHECK_FALSE(workbench.dirty());
+}
+
 TEST_CASE("designer edit snapshots reactivate histories without retaining runtime sessions",
           "[designer][dp9][d3][project-session]") {
     DesignPreviewWorkbench workbench;

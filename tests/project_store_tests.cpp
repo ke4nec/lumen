@@ -93,6 +93,39 @@ TEST_CASE("project store migrates version zero without rewriting source",
                       std::istreambuf_iterator<char>()} == source);
 }
 
+TEST_CASE("project store migration diagnostics distinguish primary and recovery files",
+          "[designer][dp9][diagnostic-stage]") {
+    const auto path = projectPath("migration-origins");
+    struct Cleanup {
+        fs::path dir;
+        ~Cleanup() {
+            std::error_code error;
+            fs::remove_all(dir, error);
+        }
+    } cleanup{path.parent_path()};
+    const auto backup = ProjectStore::backupPath(path.string());
+    auto source = serializeDesignProject(sampleProject());
+    const auto marker = std::string{"\"schemaVersion\":1"};
+    REQUIRE(source.find(marker) != std::string::npos);
+    source.replace(source.find(marker), marker.size(), "\"schemaVersion\":0");
+    std::ofstream(path) << source;
+    std::ofstream(backup) << source;
+    ProjectStore store;
+    store.registerMigration(0, [](DesignProject&,
+                                 std::vector<DesignError>& diagnostics) {
+        diagnostics.push_back({"project.migration_failed", "<project>", {},
+                               "injected failure"});
+        return false;
+    });
+    const auto result = store.load(path.string());
+    REQUIRE_FALSE(result.ok());
+    REQUIRE(result.diagnostics.size() == 2);
+    CHECK(result.diagnostics[0].file == path.string());
+    CHECK(result.diagnostics[1].file == backup);
+    CHECK(result.diagnostics[0].code == "project.migration_failed");
+    CHECK(result.diagnostics[1].code == "project.migration_failed");
+}
+
 TEST_CASE("project store isolates revisions and validates cross document refs",
           "[designer][dp9]") {
     const auto path = projectPath("validation");

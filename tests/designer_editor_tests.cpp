@@ -3,6 +3,7 @@
 #include <set>
 
 #include "lumen/dsl/design_editor.h"
+#include "lumen/dsl/design_codec.h"
 
 using lumen::dsl::DesignDiagnostic;
 using lumen::dsl::DesignDiagnosticRecoverability;
@@ -499,4 +500,110 @@ TEST_CASE("designer diagnostics have stable stages and deduplicate by location",
                  "Button"});
     CHECK(dsl.stage == DesignDiagnosticStage::Parse);
     CHECK(dsl.code == "parse.error");
+}
+
+TEST_CASE("designer diagnostic stages cover document and project storage origins",
+          "[designer][f6][diagnostic][diagnostic-stage]") {
+    const std::vector<std::pair<std::string, DesignDiagnosticStage>> origins{
+        {"read.io", DesignDiagnosticStage::Read},
+        {"codec.schema_version", DesignDiagnosticStage::Schema},
+        {"store.read", DesignDiagnosticStage::Read},
+        {"store.migration_missing", DesignDiagnosticStage::Migrate},
+        {"store.schema_version", DesignDiagnosticStage::Schema},
+        {"store.document_id", DesignDiagnosticStage::Schema},
+        {"store.revision_conflict", DesignDiagnosticStage::Save},
+        {"project.read", DesignDiagnosticStage::Read},
+        {"project.codec", DesignDiagnosticStage::Read},
+        {"project.codec.expected_token", DesignDiagnosticStage::Read},
+        {"project.migration_exception", DesignDiagnosticStage::Migrate},
+        {"project.schema_version", DesignDiagnosticStage::Schema},
+        {"project.document_id", DesignDiagnosticStage::Schema},
+        {"project.root", DesignDiagnosticStage::Schema},
+        {"project.write", DesignDiagnosticStage::Save},
+        {"project.backup", DesignDiagnosticStage::Save},
+        {"project.rename", DesignDiagnosticStage::Save},
+        {"project.revision_conflict", DesignDiagnosticStage::Save},
+    };
+    for (const auto& [code, stage] : origins) {
+        INFO(code);
+        const auto diagnostic = DesignDiagnostic::fromError(
+            DesignError{code, "page", {}, "failure"});
+        CHECK(diagnostic.code == code);
+        CHECK(diagnostic.stage == stage);
+        CHECK(diagnostic.recoverability ==
+              (stage == DesignDiagnosticStage::Save
+                   ? DesignDiagnosticRecoverability::BlockSave
+                   : DesignDiagnosticRecoverability::KeepLastFrame));
+    }
+    const auto savingSchema = DesignDiagnostic::fromError(
+        DesignError{"schema.invalid_property", "page", {}, "failure"},
+        DesignDiagnosticStage::Save);
+    CHECK(savingSchema.stage == DesignDiagnosticStage::Save);
+    CHECK(savingSchema.recoverability ==
+          DesignDiagnosticRecoverability::BlockSave);
+}
+
+TEST_CASE("designer diagnostics preserve distinct tuple locations during deduplication",
+          "[designer][f6][diagnostic][diagnostic-stage]") {
+    const auto original = DesignDiagnostic::fromError(
+        DesignError{"reference.missing", "page.design", SourcePos{4, 7},
+                    "missing", {}, {}, 2, "root.children[0]", "bind"});
+    std::vector<DesignDiagnostic> diagnostics;
+    appendDesignDiagnostic(diagnostics, original);
+    for (std::size_t field = 0; field != 7; ++field) {
+        auto distinct = original;
+        switch (field) {
+            case 0: distinct.code = "reference.type"; break;
+            case 1: distinct.file = "other.design"; break;
+            case 2: distinct.documentId = "other-page"; break;
+            case 3: distinct.nodeId = 3; break;
+            case 4: distinct.nodePath = "root.children[1]"; break;
+            case 5: distinct.property = "onClick"; break;
+            case 6: distinct.sourceSpan->end.column = 8; break;
+        }
+        appendDesignDiagnostic(diagnostics, std::move(distinct));
+    }
+    CHECK(diagnostics.size() == 8);
+    appendDesignDiagnostic(diagnostics, original);
+    CHECK(diagnostics.size() == 8);
+    CHECK(diagnostics.front().occurrences == 2);
+
+    auto first = original;
+    first.file = "page\npart";
+    first.documentId = "document";
+    auto second = original;
+    second.file = "page";
+    second.documentId = "part\ndocument";
+    CHECK(first.key() != second.key());
+    appendDesignDiagnostic(diagnostics, first);
+    appendDesignDiagnostic(diagnostics, second);
+    CHECK(diagnostics.size() == 10);
+}
+
+TEST_CASE("designer diagnostic JSON preserves escaped text and structured locations",
+          "[designer][f6][diagnostic][diagnostic-stage]") {
+    auto diagnostic = DesignDiagnostic::fromError(
+        DesignError{"reference.missing", "page\\\".design", SourcePos{4, 7},
+                    "引用\n\t\"missing\"", "expected", "found", 2,
+                    "root.children[0]", "bind"});
+    diagnostic.documentId = "page\rID";
+    diagnostic.severity = lumen::dsl::DesignDiagnosticSeverity::Warning;
+    diagnostic.sourceSpan->end = SourcePos{5, 9};
+    diagnostic.related.push_back({"definitions.design", std::nullopt, 8,
+                                  std::string{"definition\x01"}});
+    diagnostic.occurrences = 3;
+    const auto json = lumen::dsl::serializeDesignDiagnostics({diagnostic});
+    REQUIRE(lumen::dsl::isValidDesignJsonValue(json));
+    CHECK(json.find("\"severity\":\"warning\"") != std::string::npos);
+    CHECK(json.find("\"stage\":\"reference\"") != std::string::npos);
+    CHECK(json.find("\"message\":\"引用\\n\\t\\\"missing\\\"\"") !=
+          std::string::npos);
+    CHECK(json.find("\"sourceSpan\":{\"begin\":{\"line\":4,\"column\":7},"
+                    "\"end\":{\"line\":5,\"column\":9}}") !=
+          std::string::npos);
+    CHECK(json.find("\"recoverability\":\"placeholder\"") != std::string::npos);
+    CHECK(json.find("\"occurrences\":3") != std::string::npos);
+    CHECK(json.find("\"label\":\"definition\\u0001\"") != std::string::npos);
+    CHECK(lumen::dsl::serializeDesignDiagnostics({}) == "[]");
+    CHECK(lumen::dsl::serializeDesignDiagnostics({diagnostic}) == json);
 }
