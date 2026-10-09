@@ -73,6 +73,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | GitHub 三桌面 CI（2026-10-09，`74a568c`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37937789284)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37937789425)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37937789233) 全部 job 通过，Windows 七个 job 全通过；包含字段守护、冲突恢复和撤销合并边界 | 结果只归属该提交，不覆盖后续加载/编辑发布修复；没有新的完整人工桌面记录 |
 | GitHub 三桌面 CI（2026-10-09，`09705d9`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37941712087)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37941712200)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37941712074) 全部 job 通过，Windows 七个 job 全通过；覆盖加载/编辑发布修复 | 结果只归属该提交，不覆盖后续工程页会话修复；没有新的完整人工桌面记录 |
 | GitHub 三桌面 CI（2026-10-09，`a592118`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37946377217)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37946377159)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37946377270) 全部 job 通过，Windows 七个 job 全通过；覆盖工程页会话修复 | 结果只归属该提交，不覆盖后续诊断修复；没有新的完整人工桌面记录 |
+| GitHub 三桌面 CI（2026-10-09，`f930129`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37950109487)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37950109507)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37950109511) 全部通过，覆盖诊断阶段、来源和 CLI JSON 修复 | 结果只归属该提交；取消的重复运行不计通过，没有新的完整人工桌面记录 |
 | 本地 GNOME/Wayland Designer（2026-10-09，`85314c0` 运行时源码） | 指定原生 Wayland driver，`gallery.design` 双窗口三帧 smoke 退出 0，唯一完整 `designer_window_smoke pass` 行；[原始日志与身份摘要](platform-evidence/designer-wayland-2026-10-09.json) 已保留 | 工作树含文档/验收脚本改动，运行时源码与提交一致；仅窗口启动，没有编辑/保存/重开、Inspector 操作、IME、读屏、高 DPI、GPU 或一小时浸泡验收 |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
@@ -119,6 +120,11 @@ Designer 156/156 通过；`a592118` 三平台 CI 通过，完整人工记录仍�
 JSON，工程错误也计入 CLI 数量；位置去重不再受换行字段碰撞影响。本轮阶段回归
 6 个用例、163 个断言及 CLI 结构化输出检查通过，完整 CTest 1154/1154、Release
 Designer 162/162 通过，三平台 CI 和完整人工现场记录仍按各自提交/现场证据登记。
+G-D14 手柄改用设计坐标和完整按下/松开位移，Stack 的嵌套偏移、padding/margin
+与 flow 布局偏移不误写位置；流式节点只调整尺寸，不被父节点当前自然尺寸截断。
+视图变更取消拖拽，旧文档 revision 不得提交。新增六组 DPI/zoom、八个方向、
+框选/辅助层和 undo/redo 的应用回归，默认完整 CTest 1159/1159、Release Designer
+167/167 通过；本批仍需自己的三平台 CI，人工现场状态未变。
 
 ### 实现批次与真实平台缺口（2026-09-30）
 

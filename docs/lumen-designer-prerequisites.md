@@ -961,6 +961,18 @@ RTL/方向设置不能通过“看起来相同”的屏幕像素值回写文档�
 200% DPI 以及两个 zoom 值下按变换后的 RenderNode 中心点击，验证选择仍回到同一个
 DocumentId，且视图操作不产生文档 revision。
 
+手柄会话在按下点建立锚点，越过拖拽阈值后仍计算完整位移；Move 仅更新临时辅助层，
+Drop 使用实际松开位置，以一次属性事务提交。计算使用父容器的设计坐标，扣除父
+padding 和子 margin，再按 zoom 换算；嵌套容器偏移和画布 pan 不进入 Stack 子节点
+的 left/top。流式节点和根节点按自身尺寸吸附，布局对齐偏移和 pan 不参与尺寸
+网格，也不写入位置属性；向西/北拖动同样调整尺寸，位置仍由布局管理。网格保持
+8 个设计单位，吸附半径沿用 Theme 的逻辑像素 token 并除以 zoom；临时框和手柄
+反向换算到画布逻辑坐标。
+会话中切换 zoom/pan/DPI 或重置视图先取消拖拽；文档身份、revision 或主选区变化
+使旧会话失效，不能在松开时覆盖新状态。100%/125%/200% DPI 与 1/1.21 zoom 的
+交叉组合已有框选、辅助框、根/嵌套 Stack 拖拽和取消/undo/redo 的 headless 回归；
+另覆盖八个方向手柄、父 padding/子 margin 和没有父容器的根节点尺寸调整。
+
 ### 4.16 G-D15：统一诊断和恢复模型
 
 #### 诊断结构
@@ -1703,3 +1715,18 @@ migrate / schema / reference / compile / save，保存拒绝标记 block-save，
 断言通过；CLI 检查覆盖缺失文件、解析失败、未来工程版本、正常 gallery、JSON 字段
 完整性和重复输入的输出一致性。默认完整 CTest 1154/1154、Release `[designer]`
 162 个用例、11453 个断言通过；这些仍是 headless 证据，源码需另行取得三平台 CI。
+
+`f930129` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/37950109487)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/37950109507) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/37950109511) 常规 CI 全部通过，
+覆盖上述诊断修复；同提交被并发规则取消的重复运行未记为成功。现场记录仍待补齐。
+
+G-D14 手柄坐标复查在旧实现的 12 组根/嵌套 Stack 与 DPI/zoom 组合中复现 48 个
+失败断言：首段拖动位移丢失，嵌套父容器偏移误写 left/top，缩放后的逻辑坐标参与
+设计网格吸附。现保留完整按下/松开位移，在设计坐标中计算并反向绘制临时辅助层。
+追加居中 Column 八个方向和根节点回归；流式父节点的自然尺寸不能作为子尺寸增长
+的硬上限，尺寸吸附不带布局偏移。新增五个应用用例，覆盖六组 DPI/zoom 的点选、
+框选、辅助框、手柄预览与提交、padding/margin、取消、undo/redo 和旧 revision 拒绝。
+新增用例与原流式手柄回归共 6 个用例、901 个断言通过；默认完整 CTest 1159/1159
+（110.23s），Release `[designer]` 为 167 个用例、12337 个断言通过。三平台 CI
+需按本批提交另行确认；未增加人工 DPI、编辑、输入法或读屏验收记录。

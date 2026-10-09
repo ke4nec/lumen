@@ -381,6 +381,11 @@ class DesignerApp {
     core::Offset canvasResizePointer_{};
     CanvasResizePreview canvasResizeStart_{};
     CanvasResizePreview canvasResizePreview_{};
+    core::Offset canvasResizeCoordinateOrigin_{};
+    core::Size canvasResizeLimits_{};
+    float canvasResizeZoom_{1.0F};
+    std::string canvasResizeDocumentId_{};
+    std::uint64_t canvasResizeRevision_{0};
     bool canvasResizePositionEditable_{false};
     std::map<std::string, core::StateStore::ObserverId> propertyObservers_{};
     bool syncingPropertyState_{false};

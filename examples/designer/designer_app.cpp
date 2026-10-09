@@ -2852,32 +2852,80 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
                                  ? findDesignNode(workbench_.document()->root,
                                                   location->parent)
                                  : nullptr;
+        const auto parentKey = parent == nullptr ? std::string{}
+                                                 : previewKeyForNodeId(parent->id);
+        const auto* parentRender = parent == nullptr ? nullptr
+            : core::findNodeByKey(shell_.root(), parentKey);
         canvasResizePositionEditable_ =
-            parent != nullptr && parent->type == "Stack";
+            parent != nullptr && parent->type == "Stack" && parentRender != nullptr;
+        canvasResizeZoom_ = canvasTransform_.zoom();
+        // G-D14 §4.15: resize in the parent's design coordinates, then
+        // convert the temporary guide back to canvas logical coordinates.
+        auto referenceOrigin = renderOrigin;
+        auto referenceSize = core::Size{
+            canvasNode->size.width - canvasNode->padding.horizontal(),
+            canvasNode->size.height - canvasNode->padding.vertical()};
+        if (canvasResizePositionEditable_) {
+            float margin = 0.0F;
+            if (const auto* declaration =
+                    findDesignNode(workbench_.document()->root, *selected);
+                declaration != nullptr) {
+                const auto value = declaration->properties.find("margin");
+                if (value != declaration->properties.end()) {
+                    if (const auto* number = std::get_if<double>(&value->second.value)) {
+                        margin = static_cast<float>(*number) * canvasResizeZoom_;
+                    }
+                }
+            }
+            referenceOrigin = core::absoluteOffset(shell_.root(), parentKey) +
+                core::Offset{parentRender->padding.left + margin,
+                             parentRender->padding.top + margin};
+            referenceSize = core::Size{
+                parentRender->size.width - parentRender->padding.horizontal() -
+                    margin * 2.0F,
+                parentRender->size.height - parentRender->padding.vertical() -
+                    margin * 2.0F};
+        }
+        // Flow layout owns position and may grow with its child. Keep the
+        // canvas budget rather than using its current intrinsic size as a cap.
+        canvasResizeCoordinateOrigin_ = referenceOrigin - contentOrigin;
+        canvasResizeLimits_ = core::Size{
+            std::max(0.0F, referenceSize.width / canvasResizeZoom_),
+            std::max(0.0F, referenceSize.height / canvasResizeZoom_)};
         canvasResizeActive_ = true;
         canvasResizeId_ = *selected;
         canvasResizeHandle_ = handle;
-        canvasResizePointer_ = position;
+        canvasResizePointer_ = shell_.controller().dragAnchor();
+        canvasResizeDocumentId_ = workbench_.document()->documentId;
+        canvasResizeRevision_ = workbench_.documentRevision();
         canvasResizeStart_ = CanvasResizePreview{
             *selected,
-            renderOrigin.x - contentOrigin.x,
-            renderOrigin.y - contentOrigin.y,
-            renderNode->size.width,
-            renderNode->size.height};
+            (renderOrigin.x - referenceOrigin.x) / canvasResizeZoom_,
+            (renderOrigin.y - referenceOrigin.y) / canvasResizeZoom_,
+            renderNode->size.width / canvasResizeZoom_,
+            renderNode->size.height / canvasResizeZoom_};
         canvasResizePreview_ = canvasResizeStart_;
         shell_.markDirty();
         return;
     }
     if (!canvasResizeActive_) return;
-    const auto* canvasNode =
-        core::findNodeByKey(shell_.root(), "designer-canvas");
-    if (canvasNode == nullptr) return;
-    const float canvasWidth =
-        std::max(0.0F, canvasNode->size.width - canvasNode->padding.horizontal());
-    const float canvasHeight =
-        std::max(0.0F, canvasNode->size.height - canvasNode->padding.vertical());
-    if (phase == core::DragPhase::Move) {
-        const core::Offset delta = position - canvasResizePointer_;
+    if (!workbench_.document().has_value() ||
+        workbench_.document()->documentId != canvasResizeDocumentId_ ||
+        workbench_.documentRevision() != canvasResizeRevision_ ||
+        workbench_.selection().primary != canvasResizeId_) {
+        endCanvasResizeSession();
+        shell_.markDirty();
+        return;
+    }
+    const float canvasWidth = canvasResizeLimits_.width;
+    const float canvasHeight = canvasResizeLimits_.height;
+    // The grid stays in design units; the snap radius stays in logical pixels.
+    const float threshold = shell_.theme().designerCanvas.snapThreshold /
+                            canvasResizeZoom_;
+    if (phase == core::DragPhase::Move || phase == core::DragPhase::Drop) {
+        const auto logicalDelta = position - canvasResizePointer_;
+        const core::Offset delta{logicalDelta.x / canvasResizeZoom_,
+                                 logicalDelta.y / canvasResizeZoom_};
         CanvasResizePreview next = canvasResizeStart_;
         const bool moveLeft = canvasResizeHandle_.find('w') != std::string::npos;
         const bool moveRight = canvasResizeHandle_.find('e') != std::string::npos;
@@ -2885,37 +2933,56 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
         const bool moveBottom = canvasResizeHandle_.find('s') != std::string::npos;
         const float right = canvasResizeStart_.x + canvasResizeStart_.width;
         const float bottom = canvasResizeStart_.y + canvasResizeStart_.height;
-        if (moveLeft) {
-            float edge = snapCanvasCoordinate(
-                canvasResizeStart_.x + delta.x, canvasWidth,
-                shell_.theme().designerCanvas.snapThreshold);
-            edge = std::clamp(edge, 0.0F, right - 4.0F);
-            next.x = canvasResizePositionEditable_ ? edge : canvasResizeStart_.x;
-            next.width = std::max(4.0F, right - edge);
-        } else if (moveRight) {
-            float edge = snapCanvasCoordinate(
-                right + delta.x, canvasWidth,
-                shell_.theme().designerCanvas.snapThreshold);
-            edge = std::clamp(edge, next.x + 4.0F, canvasWidth);
-            next.width = std::max(4.0F, edge - next.x);
-        }
-        if (moveTop) {
-            float edge = snapCanvasCoordinate(
-                canvasResizeStart_.y + delta.y, canvasHeight,
-                shell_.theme().designerCanvas.snapThreshold);
-            edge = std::clamp(edge, 0.0F, bottom - 4.0F);
-            next.y = canvasResizePositionEditable_ ? edge : canvasResizeStart_.y;
-            next.height = std::max(4.0F, bottom - edge);
-        } else if (moveBottom) {
-            float edge = snapCanvasCoordinate(
-                bottom + delta.y, canvasHeight,
-                shell_.theme().designerCanvas.snapThreshold);
-            edge = std::clamp(edge, next.y + 4.0F, canvasHeight);
-            next.height = std::max(4.0F, edge - next.y);
+        if (!canvasResizePositionEditable_) {
+            if (moveLeft || moveRight) {
+                const float width = canvasResizeStart_.width +
+                                    (moveLeft ? -delta.x : delta.x);
+                next.width = std::clamp(
+                    snapCanvasCoordinate(width, canvasWidth, threshold),
+                    4.0F, std::max(4.0F, canvasWidth));
+            }
+            if (moveTop || moveBottom) {
+                const float height = canvasResizeStart_.height +
+                                     (moveTop ? -delta.y : delta.y);
+                next.height = std::clamp(
+                    snapCanvasCoordinate(height, canvasHeight, threshold),
+                    4.0F, std::max(4.0F, canvasHeight));
+            }
+        } else {
+            if (moveLeft) {
+                float edge = snapCanvasCoordinate(
+                    canvasResizeStart_.x + delta.x, canvasWidth,
+                    threshold);
+                edge = std::clamp(edge, 0.0F, std::max(0.0F, right - 4.0F));
+                next.x = edge;
+                next.width = std::max(4.0F, right - edge);
+            } else if (moveRight) {
+                float edge = snapCanvasCoordinate(
+                    right + delta.x, canvasWidth,
+                    threshold);
+                edge = std::clamp(edge, next.x + 4.0F,
+                                  std::max(next.x + 4.0F, canvasWidth));
+                next.width = std::max(4.0F, edge - next.x);
+            }
+            if (moveTop) {
+                float edge = snapCanvasCoordinate(
+                    canvasResizeStart_.y + delta.y, canvasHeight,
+                    threshold);
+                edge = std::clamp(edge, 0.0F, std::max(0.0F, bottom - 4.0F));
+                next.y = edge;
+                next.height = std::max(4.0F, bottom - edge);
+            } else if (moveBottom) {
+                float edge = snapCanvasCoordinate(
+                    bottom + delta.y, canvasHeight,
+                    threshold);
+                edge = std::clamp(edge, next.y + 4.0F,
+                                  std::max(next.y + 4.0F, canvasHeight));
+                next.height = std::max(4.0F, edge - next.y);
+            }
         }
         canvasResizePreview_ = next;
         shell_.markDirty();
-        return;
+        if (phase == core::DragPhase::Move) return;
     }
     if (phase != core::DragPhase::Drop) return;
     const auto preview = canvasResizePreview_;
@@ -2924,10 +2991,9 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
     endCanvasResizeSession();
 
     std::vector<std::pair<std::string, dsl::DesignValue>> properties;
-    const float zoom = canvasTransform_.zoom();
-    const auto number = [zoom](float value) {
+    const auto number = [](float value) {
         return dsl::DesignValue{dsl::DesignValue::Variant{
-            static_cast<double>(std::max(0.0F, value / zoom))}};
+            static_cast<double>(std::max(0.0F, value))}};
     };
     if (handleName.find('e') != std::string::npos ||
         handleName.find('w') != std::string::npos) {
@@ -2939,11 +3005,11 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
     }
     if (positionEditable && handleName.find('w') != std::string::npos) {
         properties.emplace_back(
-            "left", number(preview.x - canvasTransform_.pan().x));
+            "left", number(preview.x));
     }
     if (positionEditable && handleName.find('n') != std::string::npos) {
         properties.emplace_back(
-            "top", number(preview.y - canvasTransform_.pan().y));
+            "top", number(preview.y));
     }
     if (!properties.empty() &&
         workbench_.setProperties(preview.id, std::move(properties))) {
@@ -2959,6 +3025,11 @@ void DesignerApp::endCanvasResizeSession() {
     canvasResizePointer_ = {};
     canvasResizeStart_ = {};
     canvasResizePreview_ = {};
+    canvasResizeCoordinateOrigin_ = {};
+    canvasResizeLimits_ = {};
+    canvasResizeZoom_ = 1.0F;
+    canvasResizeDocumentId_.clear();
+    canvasResizeRevision_ = 0;
     canvasResizePositionEditable_ = false;
 }
 
@@ -3164,6 +3235,7 @@ void DesignerApp::cycleDensity() {
 }
 
 void DesignerApp::cycleDpi() {
+    shell_.pointerCancel();
     constexpr float kScales[] = {1.0F, 1.25F, 2.0F};
     constexpr std::size_t kScaleCount = sizeof(kScales) / sizeof(kScales[0]);
     std::size_t next = 0;
@@ -3185,6 +3257,7 @@ void DesignerApp::adjustCanvasZoom(float factor) {
     if (!std::isfinite(factor) || factor <= 0.0F) return;
     const float next = std::clamp(canvasTransform_.zoom() * factor, 0.5F, 2.0F);
     if (next == canvasTransform_.zoom()) return;
+    shell_.pointerCancel();
     (void)canvasTransform_.setZoom(next);
     refreshDocumentUi();
     shell_.markDirty();
@@ -3192,6 +3265,8 @@ void DesignerApp::adjustCanvasZoom(float factor) {
 
 void DesignerApp::panCanvas(core::Offset delta) {
     if (!std::isfinite(delta.x) || !std::isfinite(delta.y)) return;
+    if (delta == core::Offset{}) return;
+    shell_.pointerCancel();
     const auto current = canvasTransform_.pan();
     (void)canvasTransform_.setPan(current + delta);
     shell_.markDirty();
@@ -3201,6 +3276,7 @@ void DesignerApp::resetCanvasView() {
     const bool changed = canvasTransform_.zoom() != 1.0F ||
                          canvasTransform_.pan() != core::Offset{};
     if (!changed) return;
+    shell_.pointerCancel();
     (void)canvasTransform_.setZoom(1.0F);
     (void)canvasTransform_.setPan({});
     refreshDocumentUi();
@@ -3836,10 +3912,12 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
             float selectedHeight = selectedNode->size.height;
             if (canvasResizeActive_ && selectedId.has_value() &&
                 canvasResizePreview_.id == *selectedId) {
-                selectedX = canvasResizePreview_.x;
-                selectedY = canvasResizePreview_.y;
-                selectedWidth = canvasResizePreview_.width;
-                selectedHeight = canvasResizePreview_.height;
+                selectedX = canvasResizeCoordinateOrigin_.x +
+                            canvasResizePreview_.x * canvasResizeZoom_;
+                selectedY = canvasResizeCoordinateOrigin_.y +
+                            canvasResizePreview_.y * canvasResizeZoom_;
+                selectedWidth = canvasResizePreview_.width * canvasResizeZoom_;
+                selectedHeight = canvasResizePreview_.height * canvasResizeZoom_;
             }
             if (selectedWidth > 0.0F && selectedHeight > 0.0F) {
                 auto vertical = makeBar(tokens.guideThickness, *contentHeight,
