@@ -1373,6 +1373,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   Apple SDK 交叉编译检查通过；本机完整 Debug `1128/1128`、Release `1135/1135` 通过。
   GPU 构建修复固定 Skia 版本不支持的 `MakeTrans`，线段先旋转再平移，保持图标中心位置；
   原生 Windows/macOS 运行与现场验收仍需对应平台证据，交叉编译不代表原生运行通过。
+- 同日 Windows MSVC CI 给出的编译错误已据实修复：工程存储关闭 `windows.h` 的
+  `min/max` 宏，诊断模块在 Windows 使用 `<io.h>` 与 `_write`，终止处理器显式包含
+  标准信号及异常声明。两份实现的 Windows 交叉编译通过，完整 Debug `1128/1128`、
+  Release `1135/1135` 通过；MSVC 原生结果由后续独立验收分支 CI 确认。
 - 后续增量提交 `322af90` 将上述三条命令行失败路径加入包内 smoke；`35af740` 让
   `FileWatcher` 把文件删除和重新出现视为可观察变化，并在删除时走统一的旧帧保留诊断、
   恢复后重新加载路径。Debug/Release Designer 相关 CTest 均为 `142/142`，watch fixture

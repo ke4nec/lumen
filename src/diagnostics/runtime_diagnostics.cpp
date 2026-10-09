@@ -5,9 +5,12 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <exception>
 #include <filesystem>
 #include <mutex>
 #include <utility>
@@ -15,15 +18,15 @@
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#if defined(_WIN32)
+#include <io.h>
+#else
 #include <unistd.h>
+#include <signal.h>
+#endif
 
 #if defined(LUMEN_HAVE_EXECINFO)
 #include <execinfo.h>
-#endif
-
-#if !defined(_WIN32)
-#include <csignal>
-#include <signal.h>
 #endif
 
 namespace lumen::diagnostics {
@@ -39,7 +42,11 @@ inline void rawWrite(int fd, const char* data, std::size_t bytes) {
     if (bytes == 0) {
         return;
     }
+#if defined(_WIN32)
+    (void)::_write(fd, data, static_cast<unsigned int>(bytes));
+#else
     (void)::write(fd, data, bytes);
+#endif
 }
 
 inline int rawOpenForTrunc(const char* path) {
