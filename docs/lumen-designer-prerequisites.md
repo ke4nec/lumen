@@ -1366,6 +1366,13 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   consumer smoke 均通过。包内失败路径覆盖未知选项、缺失 `--file` 值和选项误作文件名，均要求
   非零退出与稳定 `usage error`。
   包内 Designer smoke 同时校验 `frame0`、`document 1` 和 `diagnostics 0`，不会把带诊断的可恢复预览当作干净 fixture。
+- 2026-10-09 桌面 CI 回归复核：包内 smoke 在切换工作目录前规范化包路径，实际安装树的
+  相对路径调用从 `FileNotFoundError` 修复为通过，绝对路径调用和三种 CLI 错误路径同时通过。
+  ComboBox 键盘用例在菜单关闭重建后重新查找字段，避免使用失效的 `RenderNode` 指针；
+  macOS allocator 用例改为在构建回调中验证采样激活，并继续验证退出解绑、异常恢复和重新获取。
+  Apple SDK 交叉编译检查通过；本机完整 Debug `1128/1128`、Release `1135/1135` 通过。
+  GPU 构建修复固定 Skia 版本不支持的 `MakeTrans`，线段先旋转再平移，保持图标中心位置；
+  原生 Windows/macOS 运行与现场验收仍需对应平台证据，交叉编译不代表原生运行通过。
 - 后续增量提交 `322af90` 将上述三条命令行失败路径加入包内 smoke；`35af740` 让
   `FileWatcher` 把文件删除和重新出现视为可观察变化，并在删除时走统一的旧帧保留诊断、
   恢复后重新加载路径。Debug/Release Designer 相关 CTest 均为 `142/142`，watch fixture

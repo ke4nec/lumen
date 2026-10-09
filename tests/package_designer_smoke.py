@@ -15,7 +15,7 @@ def main() -> None:
     )
     if len(packages) != 1:
         raise ValueError(f"expected one unpacked package, found {packages}")
-    package = packages[0]
+    package = packages[0].resolve()
     examples = package / "share" / "doc" / "lumen" / "examples"
     for fixture in ("gallery.lumen", "gallery.design"):
         path = examples / fixture

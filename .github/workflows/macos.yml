@@ -24,7 +24,7 @@ jobs:
   # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
   package:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2)
@@ -180,6 +180,7 @@ jobs:
           ctest --test-dir build --output-on-failure -C Debug --timeout 120 2>&1 | tee ctest-diag.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
+            python3 -B tests/ci_diagnostics.py --log ctest-diag.log
             python3 - <<'PY'
           import re
           log = open('ctest-diag.log', errors='replace').read()
@@ -237,7 +238,7 @@ jobs:
   # 路径验证）。
   skia-gpu:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia arm64)
@@ -266,7 +267,7 @@ jobs:
           -DLUMEN_ENABLE_SKIA=ON
           -DLUMEN_ENABLE_GPU=ON
       - name: Build
-        run: cmake --build build-gpu --config Release
+        run: python3 -B tests/ci_diagnostics.py -- cmake --build build-gpu --config Release
       - name: ccache stats
         if: always()
         run: ccache --show-stats || true
@@ -277,6 +278,7 @@ jobs:
           ctest --test-dir build-gpu --output-on-failure -C Release --timeout 180 2>&1 | tee ctest-diag.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
+            python3 -B tests/ci_diagnostics.py --log ctest-diag.log
             python3 - <<'PY'
           import re
           log = open('ctest-diag.log', errors='replace').read()
@@ -393,7 +395,7 @@ jobs:
   # 启动——.app 组装暂限 CPU 主发布件）。
   package-skia:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
@@ -457,7 +459,7 @@ jobs:
   # 冒烟 headless + 软件 GL GPU 一帧——counter 自带回退）。
   package-skia-gpu:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)

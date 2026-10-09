@@ -169,6 +169,8 @@ TEST_CASE("combo_box_keyboard_navigation_and_escape", "[widgets][combo]") {
                                   lumen::core::kModifierAlt));
     CHECK(harness.combo.isOpen());
     CHECK(harness.combo.handleKey(shell, Key::Escape));
+    field2 = findByKeyDeep(shell.root(), "fruit-combo:field");
+    REQUIRE(field2 != nullptr);
     shell.controller().focusNode(*field2);
     CHECK_FALSE(harness.combo.handleKey(shell, Key::Down,
                                         lumen::core::kModifierCtrl));

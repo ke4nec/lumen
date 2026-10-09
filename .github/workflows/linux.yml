@@ -39,7 +39,7 @@ jobs:
   # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
   package:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2)
@@ -309,7 +309,7 @@ jobs:
 
   skia:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
@@ -351,6 +351,7 @@ jobs:
           ctest --test-dir build-skia --output-on-failure -C Release 2>&1 | tee ctest-diag.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
+            python3 -B tests/ci_diagnostics.py --log ctest-diag.log
             python3 - <<'PY'
           import re
           log = open('ctest-diag.log', errors='replace').read()
@@ -420,7 +421,7 @@ jobs:
   # 本地/自托管环境的增强 smoke。
   skia-gpu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       LIBGL_ALWAYS_SOFTWARE: "1"
     steps:
@@ -454,7 +455,7 @@ jobs:
           -DLUMEN_ENABLE_SKIA=ON
           -DLUMEN_ENABLE_GPU=ON
       - name: Build
-        run: cmake --build build-gpu --config Release
+        run: python3 -B tests/ci_diagnostics.py -- cmake --build build-gpu --config Release
       - name: ccache stats
         if: always()
         run: ccache --show-stats || true
@@ -465,6 +466,7 @@ jobs:
           ctest --test-dir build-gpu --output-on-failure -C Release --timeout 120 2>&1 | tee ctest-diag.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
+            python3 -B tests/ci_diagnostics.py --log ctest-diag.log
             python3 - <<'PY'
           import re
           log = open('ctest-diag.log', errors='replace').read()
@@ -613,7 +615,7 @@ jobs:
   # M12：Skia 光栅便携包（Release；解包冒烟同 CPU 变体）。
   package-skia:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
@@ -682,7 +684,7 @@ jobs:
   # Windows/macOS GPU 包留待后续——runner 无 GPU）。
   package-skia-gpu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)

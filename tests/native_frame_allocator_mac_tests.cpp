@@ -349,9 +349,17 @@ TEST_CASE("macOS scope tokens and capacity recover without retaining partial res
 TEST_CASE("macOS AppShell and runApp use and detach native scopes", "[native_allocator][present]") {
     auto source = lumen::platform::makeNativeFrameAllocationSource();
     REQUIRE(source != nullptr);
+    const auto* api = nativeApi();
+    REQUIRE(api != nullptr);
+    bool autoScopeActive = false;
     lumen::app::ShellConfig config;
     config.initialView = {200, 150};
-    config.build = [] { return lumen::core::makeText("native macOS allocations"); };
+    config.build = [&] {
+        const auto token = api->begin();
+        autoScopeActive = token == 0;
+        api->cancel(token);
+        return lumen::core::makeText("native macOS allocations");
+    };
     lumen::app::AppShell shell(config);
     shell.setFrameStatsCapture(true);
     shell.setFrameAllocationSource(source.get());
@@ -365,8 +373,9 @@ TEST_CASE("macOS AppShell and runApp use and detach native scopes", "[native_all
     lumen::platform::FakeApplicationHost host;
     lumen::app::RunOptions options;
     options.maxFrames = 1;
+    autoScopeActive = false;
     CHECK(lumen::app::runApp(shell, host, options) == 0);
-    CHECK(shell.frameDebugSnapshot().frameAllocationAvailable);
+    CHECK(autoScopeActive);
     shell.markDirty();
     (void)shell.renderFrame();
     CHECK_FALSE(shell.frameDebugSnapshot().frameAllocationAvailable);
@@ -378,6 +387,7 @@ TEST_CASE("macOS AppShell and runApp use and detach native scopes", "[native_all
     shell.markDirty();
     (void)shell.renderFrame();
     CHECK_FALSE(shell.frameDebugSnapshot().frameAllocationAvailable);
+    CHECK(lumen::platform::makeNativeFrameAllocationSource() != nullptr);
 }
 
 TEST_CASE("macOS fork invalidates telemetry and resets the child's lock and scope", "[native_allocator][present]") {

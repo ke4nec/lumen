@@ -42,7 +42,12 @@ int processId() {
 fs::path tempPath(const char* tag) {
     // macOS runners can place TMPDIR under a long per-user sandbox path;
     // keep the resulting AF_UNIX path comfortably below sun_path's limit.
-    return fs::path{"/tmp"} /
+#if defined(__APPLE__)
+    const fs::path root{"/tmp"};
+#else
+    const fs::path root = fs::temp_directory_path();
+#endif
+    return root /
            ("lm-" + std::string(tag) + "-" + std::to_string(processId()));
 }
 

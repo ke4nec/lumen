@@ -581,12 +581,10 @@ class SkiaGpuRenderer final : public Renderer {
                     unioned.addCircle(x0, y0, half);
                     continue;
                 }
-                SkMatrix matrix = SkMatrix::MakeTrans((x0 + x1) * 0.5F,
-                                                      (y0 + y1) * 0.5F);
-                SkMatrix rotation;
-                rotation.setRotate(
+                SkMatrix matrix;
+                matrix.setRotate(
                     std::atan2(dy, dx) * 180.0F / 3.14159265F);
-                matrix.postConcat(rotation);
+                matrix.postTranslate((x0 + x1) * 0.5F, (y0 + y1) * 0.5F);
                 // 胶囊按半线宽外伸：SkRRect 完全含于 rect，不外伸则圆帽
                 // 被吃进段内（顶点只剩相切，弧线呈串珠状；短段还会触发
                 // radii 均匀缩放塌陷）；L+2h ≥ 2h 恒不触发缩放。
