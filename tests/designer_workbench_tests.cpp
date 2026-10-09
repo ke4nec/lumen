@@ -225,6 +225,51 @@ TEST_CASE("designer save as does not reuse the source revision",
     CHECK(reopened.diagnostics().front().code == "store.revision_conflict");
 }
 
+TEST_CASE("designer explicit overwrite checks the observed external revision",
+          "[designer][d3][p5][conflict]") {
+    const auto path = std::filesystem::temp_directory_path() /
+        ("lumen-overwrite-" + std::to_string(std::chrono::steady_clock::now()
+            .time_since_epoch().count()) + ".design");
+    struct Cleanup {
+        std::filesystem::path path;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove(path, error);
+            std::filesystem::remove(path.string() + ".bak", error);
+        }
+    } cleanup{path};
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource("page local { Text(\"Original\") }"));
+    REQUIRE(workbench.saveDesignFile(path.string()));
+    REQUIRE(workbench.setProperty(1, "text", DesignValue{std::string{"Local"}}));
+    auto external = *workbench.document();
+    external.root.properties["text"] = DesignValue{std::string{"External"}};
+    std::ofstream(path, std::ios::binary | std::ios::trunc)
+        << lumen::dsl::serializeDesignDocument(external);
+    CHECK_FALSE(workbench.saveDesignFile(path.string()));
+    const auto observed = lumen::dsl::DocumentStore::revision(path.string());
+    REQUIRE(observed.has_value());
+    const auto local = *workbench.document();
+    const auto revision = workbench.documentRevision();
+    external.pageName = "external-again";
+    std::ofstream(path, std::ios::binary | std::ios::trunc)
+        << lumen::dsl::serializeDesignDocument(external);
+    CHECK_FALSE(workbench.overwriteDesignFile(path.string(), *observed));
+    CHECK(*workbench.document() == local);
+    CHECK(workbench.documentRevision() == revision);
+    CHECK(workbench.dirty());
+    CHECK(lumen::dsl::DocumentStore{}.load(path.string()).document == external);
+    const auto current = lumen::dsl::DocumentStore::revision(path.string());
+    REQUIRE(current.has_value());
+    REQUIRE(workbench.overwriteDesignFile(path.string(), *current));
+    CHECK_FALSE(workbench.dirty());
+    CHECK(workbench.canUndo());
+    CHECK(lumen::dsl::DocumentStore{}.load(path.string()).document == local);
+    CHECK(lumen::dsl::DocumentStore{}.load(path.string() + ".bak").document == external);
+    REQUIRE(workbench.undo());
+    CHECK(workbench.dirty());
+}
+
 TEST_CASE("designer D3 workbench rejects runtime preview properties",
           "[designer][d3]") {
     DesignPreviewWorkbench workbench;

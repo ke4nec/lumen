@@ -922,6 +922,8 @@ void DesignerApp::registerCommands() {
     action("designer.duplicate", [this] { duplicateSelectedNode(); });
     action("designer.remove", [this] { removeSelectedNode(); });
     action("designer.stop", [this] { stopPreview(); });
+    action("designer.conflict-reload", [this] { resolveSaveConflict(false); });
+    action("designer.conflict-overwrite", [this] { resolveSaveConflict(true); });
 }
 
 void DesignerApp::setResourceRoot(std::filesystem::path root) {
@@ -1199,6 +1201,12 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:save-as"] = [this] {
         (void)shell_.invokeCommand("designer.save-as");
     };
+    shell_.handlers()["designer:conflict-reload"] = [this] {
+        (void)shell_.invokeCommand("designer.conflict-reload");
+    };
+    shell_.handlers()["designer:conflict-overwrite"] = [this] {
+        (void)shell_.invokeCommand("designer.conflict-overwrite");
+    };
     shell_.handlers()["designer:run"] = [this] {
         (void)shell_.invokeCommand("designer.run");
     };
@@ -1422,6 +1430,7 @@ bool DesignerApp::loadDesignFile(const std::string& filename) {
     sourceFile_ = filename;
     const bool loaded = workbench_.openDesignFile(filename, &runtimeContext_);
     if (loaded) {
+        saveConflict_.reset();
         sourceSnapshot_ = workbench_.document().has_value()
                               ? dsl::serializeDesignDocument(
                                     *workbench_.document())
@@ -1437,14 +1446,71 @@ bool DesignerApp::loadDesignFile(const std::string& filename) {
 bool DesignerApp::saveDesignFile(const std::string& filename) {
     const bool saved = workbench_.saveDesignFile(filename);
     if (saved) {
+        saveConflict_.reset();
         sourceFile_ = filename;
         sourceSnapshot_ = workbench_.document().has_value()
                               ? dsl::serializeDesignDocument(
                                     *workbench_.document())
                               : std::string{};
-        shell_.markDirty();
+    } else if (!workbench_.diagnostics().empty() &&
+               workbench_.diagnostics().front().code == "store.revision_conflict") {
+        captureSaveConflict(filename, false);
     }
+    shell_.markDirty();
     return saved;
+}
+
+void DesignerApp::captureSaveConflict(const std::string& filename, bool project) {
+    SaveConflict conflict;
+    conflict.filename = filename;
+    conflict.project = project;
+    conflict.revision = dsl::DocumentStore::revision(filename);
+    conflict.canOverwrite = conflict.revision.has_value();
+    if (project && project_.has_value()) {
+        for (const auto& page : project_->pages) {
+            const auto path = projectPagePath(page, filename);
+            const auto revision = path.empty() ? std::nullopt
+                : dsl::DocumentStore::revision(path.string());
+            if (revision.has_value()) {
+                conflict.pageRevisions[page.documentId] = *revision;
+            } else {
+                conflict.canOverwrite = false;
+            }
+        }
+    }
+    saveConflict_ = std::move(conflict);
+    shell_.markDirty();
+}
+
+void DesignerApp::resolveSaveConflict(bool overwrite) {
+    if (!saveConflict_.has_value()) return;
+    // Loading/saving can clear or replace the pending conflict. Keep the
+    // user's observed revision snapshot alive throughout this action.
+    const SaveConflict conflict = *saveConflict_;
+    if (overwrite && !conflict.canOverwrite) return;
+    bool resolved = false;
+    if (!overwrite) {
+        resolved = conflict.project ? loadProjectFile(conflict.filename)
+                                    : loadDesignFile(conflict.filename);
+    } else if (conflict.project) {
+        resolved = saveProjectFileAtConflict(conflict.filename, &conflict);
+        if (!resolved) captureSaveConflict(conflict.filename, true);
+    } else {
+        resolved = workbench_.overwriteDesignFile(conflict.filename,
+                                                   *conflict.revision);
+        if (resolved) {
+            sourceFile_ = conflict.filename;
+            sourceSnapshot_ = dsl::serializeDesignDocument(*workbench_.document());
+        } else {
+            captureSaveConflict(conflict.filename, false);
+        }
+    }
+    if (resolved) saveConflict_.reset();
+    statusMessage_ = resolved
+        ? (overwrite ? "Saved local changes over external changes"
+                     : "Reloaded external changes; local edits discarded")
+        : "Conflict unresolved; review the file and choose again";
+    shell_.markDirty();
 }
 
 void DesignerApp::appendProjectDiagnostic(dsl::DesignError diagnostic,
@@ -1531,6 +1597,7 @@ bool DesignerApp::switchProjectDocument(const std::string& documentId) {
     syncActiveProjectDocument();
     if (!workbench_.openDocument(found->second, &runtimeContext_)) return false;
     activeProjectDocumentId_ = documentId;
+    saveConflict_.reset();
     sourceFile_ = path->second;
     sourceSnapshot_ = dsl::serializeDesignDocument(found->second);
     sourceFocusLine_ = 0;
@@ -1586,6 +1653,9 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
     projectDocuments_.clear();
     projectDocumentPaths_.clear();
     projectDocumentRevisions_.clear();
+    // The first switch must not sync the previous workbench into freshly
+    // loaded pages when reloading the same project/document ids.
+    activeProjectDocumentId_.clear();
 
     const auto root = projectRootPath();
     if (root.empty()) {
@@ -1672,10 +1742,28 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
 }
 
 bool DesignerApp::saveProjectFile(const std::string& filename) {
+    const bool saved = saveProjectFileAtConflict(filename, nullptr);
+    if (saved) {
+        saveConflict_.reset();
+    } else if (!projectDiagnostics_.empty() &&
+               (projectDiagnostics_.back().code == "project.revision_conflict" ||
+                projectDiagnostics_.back().code == "store.revision_conflict")) {
+        captureSaveConflict(filename, true);
+    }
+    shell_.markDirty();
+    return saved;
+}
+
+bool DesignerApp::saveProjectFileAtConflict(
+    const std::string& filename, const SaveConflict* approvedConflict) {
     if (!project_.has_value()) return false;
     syncActiveProjectDocument();
     std::vector<dsl::DesignError> diagnostics;
     const bool samePath = sameProjectPath(projectFile_, filename);
+    if (approvedConflict != nullptr &&
+        (!samePath || !approvedConflict->project ||
+         !approvedConflict->canOverwrite ||
+         approvedConflict->filename != filename)) return false;
     const auto targetRoot = projectRootPath(filename);
     if (targetRoot.empty()) {
         appendProjectDiagnostic(dsl::DesignError{
@@ -1743,14 +1831,19 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
         resourceCopies.push_back(ResourceCopy{source, target});
     }
     auto nextRevisions = projectDocumentRevisions_;
+    const auto expectedProjectRevision = approvedConflict != nullptr
+        ? *approvedConflict->revision : projectRevision_;
+    if (approvedConflict != nullptr) {
+        nextRevisions = approvedConflict->pageRevisions;
+    }
     auto nextPaths = projectDocumentPaths_;
 
     // Check every input revision before writing any page. A later page
     // conflict must not leave earlier pages from the same project partially
     // saved.
     if (samePath) {
-        const auto manifest = projectStore_.load(filename);
-        if (!manifest.ok() || manifest.revision != projectRevision_) {
+        const auto manifestRevision = dsl::DocumentStore::revision(filename);
+        if (!manifestRevision.has_value() || *manifestRevision != expectedProjectRevision) {
             appendProjectDiagnostic(dsl::DesignError{
                 "project.revision_conflict", filename, {},
                 "project manifest changed after it was loaded", {}, {}, 0,
@@ -1758,11 +1851,11 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
             return false;
         }
         for (const auto& page : projectToSave.pages) {
-            const auto revision = projectDocumentRevisions_.find(page.documentId);
-            if (revision == projectDocumentRevisions_.end()) continue;
-            const auto current = projectDocumentStore_.load(
+            const auto revision = nextRevisions.find(page.documentId);
+            if (revision == nextRevisions.end()) continue;
+            const auto current = dsl::DocumentStore::revision(
                 pagePaths.at(page.documentId).string());
-            if (!current.ok() || current.revision != revision->second) {
+            if (!current.has_value() || *current != revision->second) {
                 appendProjectDiagnostic(dsl::DesignError{
                     "store.revision_conflict",
                     pagePaths.at(page.documentId).string(), {},
@@ -1836,7 +1929,7 @@ bool DesignerApp::saveProjectFile(const std::string& filename) {
     }
     if (!projectStore_.save(filename, projectToSave, diagnostics,
                             samePath
-                                ? std::optional<std::uint64_t>{projectRevision_}
+                                ? std::optional<std::uint64_t>{expectedProjectRevision}
                                 : std::nullopt)) {
         for (auto diagnostic : diagnostics) {
             appendProjectDiagnostic(std::move(diagnostic));
@@ -1919,6 +2012,7 @@ bool DesignerApp::loadFile(const std::string& filename) {
     sourceFile_ = filename;
     const bool loaded = workbench_.openLumenFile(filename, &runtimeContext_);
     if (loaded) {
+        saveConflict_.reset();
         sourceSnapshot_ = readSourceFile(filename).value_or(
             workbench_.document().has_value()
                 ? dsl::serializeDesignDocument(*workbench_.document())
@@ -1937,6 +2031,7 @@ bool DesignerApp::loadSource(const std::string& source, std::string filename) {
     const bool loaded =
         workbench_.openLumenSource(source, filename, &runtimeContext_);
     if (loaded) {
+        saveConflict_.reset();
         sourceSnapshot_ = source;
         sourceFocusLine_ = 0;
         resetPreviewState();
@@ -4194,11 +4289,51 @@ core::Widget DesignerApp::buildDiagnosticsPanel() {
     auto list = core::makeVirtualList(&diagnosticsController_,
                                       "designer-diagnostic-list");
     list.flex = 1.0F;
+    std::vector<core::Widget> rows;
+    rows.push_back(std::move(status));
+    float panelHeight = 96.0F;
+    if (saveConflict_.has_value()) {
+        // Designer conflict design §2: text states both consequences, while
+        // ordinary Theme button variants and focus rings carry the actions.
+        const auto index = theme.metrics.baseIndex;
+        rows.push_back(core::makeText(
+            saveConflict_->project
+                ? "Project changed. Reload discards local edits; overwrite replaces the manifest and every page."
+                : "External file changed. Reload discards local edits; overwrite replaces external edits.",
+            theme.typography.caption, {}, 0.0F, "designer-conflict-notice"));
+        auto reload = core::withFocusRing(core::makeButton(
+            saveConflict_->project ? "Reload external project" : "Reload external file",
+            theme.typography.label, {}, 0.0F,
+            "designer-conflict-reload", {}, {}, "designer:conflict-reload"));
+        auto saveAs = core::withFocusRing(core::makeButton(
+            "Save as", theme.typography.label, {}, 0.0F,
+            "designer-conflict-save-as", {}, {}, "designer:save-as"));
+        auto overwrite = core::withFocusRing(core::withVariant(core::makeButton(
+            saveConflict_->project ? "Overwrite external project" : "Overwrite external file",
+            theme.typography.label, {}, 0.0F,
+            "designer-conflict-overwrite", {}, {}, "designer:conflict-overwrite"),
+            core::ButtonVariant::Danger));
+        overwrite.enabled = saveConflict_->canOverwrite;
+        const float gap = theme.metrics.controlGap[index];
+        const float available = std::max(0.0F, shell_.view().width -
+            theme.metrics.controlPaddingX[index] * 2.0F);
+        const float minColumnWidth = theme.metrics.textFieldMinWidth[index] * 2.0F;
+        const int columns = std::clamp(
+            static_cast<int>((available + gap) / (minColumnWidth + gap)), 1, 3);
+        rows.push_back(core::makeGrid(
+            {std::move(reload), std::move(saveAs), std::move(overwrite)},
+            columns, minColumnWidth, gap, gap, "designer-conflict-actions"));
+        const int actionRows = (3 + columns - 1) / columns;
+        panelHeight += theme.metrics.minHeight[index] * static_cast<float>(actionRows) +
+                       theme.typography.caption.fontSize * 2.0F +
+                       gap * static_cast<float>(actionRows + 1);
+    }
+    rows.push_back(std::move(list));
     auto panel = core::makeColumn(
-        {std::move(status), std::move(list)}, core::MainAxisAlignment::Start,
+        std::move(rows), core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Stretch, 4.0F,
         core::EdgeInsets::symmetric(12.0F, 8.0F), {}, "designer-diagnostics",
-        std::nullopt, 96.0F);
+        std::nullopt, panelHeight);
     panel.color = theme.colors.surfaceSunken;
     return panel;
 }

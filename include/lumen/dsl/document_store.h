@@ -41,6 +41,10 @@ class DocumentStore {
                                 std::nullopt) const;
 
     [[nodiscard]] static std::string backupPath(const std::string& path);
+    // Content revision for an explicit overwrite decision, including a
+    // malformed primary. Missing/unreadable files return no revision.
+    [[nodiscard]] static std::optional<std::uint64_t> revision(
+        const std::string& path);
 
   private:
     [[nodiscard]] bool migrate(DesignDocument& document,

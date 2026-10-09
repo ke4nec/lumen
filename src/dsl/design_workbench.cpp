@@ -556,16 +556,27 @@ bool DesignPreviewWorkbench::redo() {
 }
 
 bool DesignPreviewWorkbench::saveDesignFile(const std::string& filename) {
+    const auto expected = hasLoadedRevision_ &&
+                                  sameDocumentPath(sourceFile_, filename)
+                              ? std::optional<std::uint64_t>{loadedRevision_}
+                              : std::nullopt;
+    return saveDesignFileAtRevision(filename, expected);
+}
+
+bool DesignPreviewWorkbench::overwriteDesignFile(
+    const std::string& filename, std::uint64_t observedRevision) {
+    return saveDesignFileAtRevision(filename, observedRevision);
+}
+
+bool DesignPreviewWorkbench::saveDesignFileAtRevision(
+    const std::string& filename,
+    std::optional<std::uint64_t> expectedRevision) {
     if (!document_.has_value()) {
         setEditError("no design document is open");
         return false;
     }
     std::vector<DesignError> errors;
-    const auto expected = hasLoadedRevision_ &&
-                                  sameDocumentPath(sourceFile_, filename)
-                              ? std::optional<std::uint64_t>{loadedRevision_}
-                              : std::nullopt;
-    if (!documentStore_.save(filename, *document_, errors, expected)) {
+    if (!documentStore_.save(filename, *document_, errors, expectedRevision)) {
         setStoreDiagnostics(errors);
         return false;
     }

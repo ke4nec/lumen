@@ -105,6 +105,10 @@ class DesignPreviewWorkbench {
     [[nodiscard]] bool undo();
     [[nodiscard]] bool redo();
     [[nodiscard]] bool saveDesignFile(const std::string& filename);
+    // The caller must obtain an explicit overwrite decision for this
+    // observed external revision. A later external change still conflicts.
+    [[nodiscard]] bool overwriteDesignFile(const std::string& filename,
+                                           std::uint64_t observedRevision);
 
     [[nodiscard]] bool dirty() const { return history_.dirty(); }
     [[nodiscard]] bool canUndo() const { return history_.canUndo(); }
@@ -167,6 +171,9 @@ class DesignPreviewWorkbench {
     void restoreSelection(const DesignSelection& selection);
     void setEditError(std::string message);
     void setStoreDiagnostics(const std::vector<DesignError>& errors);
+    [[nodiscard]] bool saveDesignFileAtRevision(
+        const std::string& filename,
+        std::optional<std::uint64_t> expectedRevision);
 
     std::optional<DesignDocument> document_{};
     DesignPreviewFrame frame_{};

@@ -122,6 +122,10 @@ std::string DocumentStore::backupPath(const std::string& path) {
     return path + ".bak";
 }
 
+std::optional<std::uint64_t> DocumentStore::revision(const std::string& path) {
+    return fileRevision(path);
+}
+
 DesignError DocumentStore::errorAt(const std::string& code,
                                    const std::string& file,
                                    const std::string& message) {

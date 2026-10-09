@@ -886,6 +886,10 @@ DocumentTransaction {
    `documentRevision` 增长；保存成功后才推进 `savedRevision`，另存为应记录新的路径。
 5. 外部文件在编辑期间发生变化时，保存必须检测文件身份/修改代数，提供重新载入、另存
    和覆盖三个明确动作；不能静默覆盖外部修改。
+   Designer 的诊断面板已接通这三个动作；明确覆盖仅接受冲突出现时观察到的外部
+   revision，观察后再次变化仍拒绝。工程覆盖同时预检 manifest 与全部页面，重载不再
+   把旧工作台写入刚加载的同 ID 页面。交互、视觉与失败边界见
+   [`文件冲突恢复规范`](lumen-designer-file-conflict-design.md)。
 
 **验收**：属性校验失败、引用失效、父子约束失败、重排索引过期时事务整体回滚；连续
 undo/redo 后 DOM、选择、SourceMap 和编译结果一致；保存后重新打开与 `savedRevision` 对齐；
@@ -1598,3 +1602,15 @@ smoke，退出 0 且成功标记唯一；[日志及身份摘要](platform-eviden
 P2 字段守护复查补上 Widget 聚合成员数的编译期检查；在临时头文件中新增未登记布尔
 字段后，sizeof 仍为 856B，但真实 schema 测试编译因 74 个 binding 对应 75 个成员而失败。
 正常源码的 P2 切片为 8 个测试、7596 个断言通过，完整本地 CTest 1133/1133 通过。
+保存冲突复查还补齐了 §4.14 第 5 条的应用出口：单文档/工程均显示重载、另存、明确
+覆盖；取消另存、重载失败和再次外部修改保留本地文档与冲突入口，覆盖沿用合法备份及
+单文件原子替换。修复同工程重载时旧工作台误写新页面的加载顺序，新增 headless fixture
+覆盖三动作、语义 Activate、Tab/Enter、字体/高对比后的动作布局、后页和 manifest 的
+二次冲突不先写前页；不把这些自动化结果标记为三桌面人工验收。
+本轮 `[conflict]` 为 3 个用例、318 个断言通过，完整默认 CTest 1136/1136 通过；
+Release `[designer]` 为 145 个用例、10614 个断言通过。新增冲突恢复规范和独立 HTML
+对照稿，后者已用 Chrome headless 渲染并检查。此前 `a342661` 的
+[Windows](https://github.com/ke4nec/lumen/actions/runs/37932612284)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/37932612330) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/37932612291) 常规 CI 全部通过；
+该结果归属此前验收检查器批次，不作为本轮冲突恢复代码的 CI 通过证据。

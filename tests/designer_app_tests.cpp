@@ -3094,6 +3094,249 @@ TEST_CASE("designer app routes file dialog commands through one path",
           "File dialog failed: cancelled");
 }
 
+TEST_CASE("designer file conflict actions preserve edits until explicitly resolved",
+          "[designer][d3][app][conflict][a11y]") {
+    // File conflict design §1-§3, prerequisites §4.14 rule 5.
+    const auto root = std::filesystem::temp_directory_path() /
+        ("lumen-designer-conflict-" + std::to_string(std::chrono::steady_clock::now()
+            .time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+    const auto path = root / "source.design";
+    lumen::dsl::DocumentStore store;
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource("page source { Text(\"Original\") }"));
+    REQUIRE(app.saveDesignFile(path.string()));
+    REQUIRE(app.workbench().setProperty(1, "text",
+        lumen::dsl::DesignValue{std::string{"Local"}}));
+    const auto local = *app.workbench().document();
+    const auto selection = app.workbench().selection();
+    const auto revision = app.workbench().documentRevision();
+    auto external = local;
+    external.root.properties["text"] = lumen::dsl::DesignValue{std::string{"External"}};
+    std::vector<lumen::dsl::DesignError> errors;
+    REQUIRE(store.save(path.string(), external, errors));
+    CHECK_FALSE(app.saveDesignFile(path.string()));
+    CHECK(*app.workbench().document() == local);
+    CHECK(app.workbench().selection() == selection);
+    CHECK(app.workbench().documentRevision() == revision);
+    CHECK(app.workbench().dirty());
+    CHECK(store.load(path.string()).document == external);
+    (void)app.shell().renderFrame();
+    const auto snapshot = app.shell().buildSemanticsSnapshot();
+    for (const auto* key : {"designer-conflict-reload", "designer-conflict-save-as",
+                            "designer-conflict-overwrite"}) {
+        const auto* button = findNodeByKey(app.shell().root(), key);
+        REQUIRE(button != nullptr);
+        const auto* semantic = snapshot.find(button->identity);
+        REQUIRE(semantic != nullptr);
+        CHECK(semantic->role == SemanticsRole::Button);
+        CHECK((semantic->actions & kActionActivate) != 0);
+        CHECK_FALSE(semantic->label.empty());
+    }
+    const auto activate = [&](const char* key) {
+        (void)app.shell().renderFrame();
+        const auto* button = findNodeByKey(app.shell().root(), key);
+        REQUIRE(button != nullptr);
+        const std::string identity = button->identity;
+        CHECK(app.shell().performAccessibilityAction(identity, kActionActivate) ==
+              lumen::accessibility::SemanticsActionStatus::Handled);
+    };
+
+    SECTION("explicit overwrite retains backup and undo history") {
+        activate("designer-conflict-overwrite");
+        CHECK(store.load(path.string()).document == local);
+        CHECK(store.load(path.string() + ".bak").document == external);
+        CHECK_FALSE(app.workbench().dirty());
+        CHECK(app.workbench().canUndo());
+        (void)app.shell().renderFrame();
+        CHECK(findNodeByKey(app.shell().root(), "designer-conflict-notice") == nullptr);
+    }
+    SECTION("a later external edit needs a fresh overwrite decision") {
+        external.pageName = "external-again";
+        REQUIRE(store.save(path.string(), external, errors));
+        activate("designer-conflict-overwrite");
+        CHECK(store.load(path.string()).document == external);
+        CHECK(*app.workbench().document() == local);
+        CHECK(app.workbench().dirty());
+        (void)app.shell().renderFrame();
+        CHECK(findNodeByKey(app.shell().root(), "designer-conflict-notice") != nullptr);
+        activate("designer-conflict-overwrite");
+        CHECK(store.load(path.string()).document == local);
+        CHECK_FALSE(app.workbench().dirty());
+    }
+    SECTION("reload explicitly discards edits and history") {
+        activate("designer-conflict-reload");
+        CHECK(*app.workbench().document() == external);
+        CHECK_FALSE(app.workbench().dirty());
+        CHECK_FALSE(app.workbench().canUndo());
+    }
+    SECTION("failed reload preserves the document and recovery actions") {
+        const auto frame = app.workbench().frame().widget();
+        std::ofstream(path, std::ios::trunc) << "truncated";
+        std::filesystem::remove(path.string() + ".bak");
+        activate("designer-conflict-reload");
+        CHECK(*app.workbench().document() == local);
+        CHECK(app.workbench().dirty());
+        CHECK(app.workbench().frame().widget() == frame);
+        (void)app.shell().renderFrame();
+        CHECK(findNodeByKey(app.shell().root(), "designer-conflict-notice") != nullptr);
+    }
+    SECTION("save as cancellation keeps conflict and successful copy resolves it") {
+        bool requested = false;
+        app.setFileDialogRequester([&](bool forSave, const std::string&) {
+            requested = forSave;
+            return std::string{};
+        });
+        activate("designer-conflict-save-as");
+        CHECK(requested);
+        app.handleFileDialogResult({});
+        (void)app.shell().renderFrame();
+        CHECK(findNodeByKey(app.shell().root(), "designer-conflict-notice") != nullptr);
+        activate("designer-conflict-save-as");
+        const auto copy = root / "copy.design";
+        app.handleFileDialogResult({copy.string()});
+        CHECK(store.load(copy.string()).document == local);
+        CHECK(store.load(path.string()).document == external);
+        CHECK_FALSE(app.workbench().dirty());
+        (void)app.shell().renderFrame();
+        CHECK(findNodeByKey(app.shell().root(), "designer-conflict-notice") == nullptr);
+    }
+    SECTION("switching document clears stale overwrite action") {
+        REQUIRE(app.loadSource("page other { Text(\"Other\") }"));
+        REQUIRE(app.shell().invokeCommand("designer.conflict-overwrite"));
+        CHECK(app.workbench().document()->pageName == "other");
+        CHECK(store.load(path.string()).document == external);
+        (void)app.shell().renderFrame();
+        CHECK(findNodeByKey(app.shell().root(), "designer-conflict-notice") == nullptr);
+    }
+    SECTION("keyboard actions remain visible after font and contrast changes") {
+        app.shell().handlers().at("designer:font-scale")();
+        app.shell().handlers().at("designer:font-scale")();
+        app.shell().handlers().at("designer:contrast")();
+        app.shell().setView(Size{900.0F, 900.0F});
+        (void)app.shell().renderFrame();
+        const auto* actions = findNodeByKey(app.shell().root(), "designer-conflict-actions");
+        REQUIRE(actions != nullptr);
+        CHECK(actions->type == lumen::core::WidgetType::Grid);
+        const auto* panel = findNodeByKey(app.shell().root(), "designer-diagnostics");
+        REQUIRE(panel != nullptr);
+        const lumen::core::Rect panelRect{
+            absoluteOffset(app.shell().root(), panel->key), panel->size};
+        for (const auto* key : {"designer-conflict-reload", "designer-conflict-save-as",
+                                "designer-conflict-overwrite"}) {
+            const auto* action = findNodeByKey(app.shell().root(), key);
+            REQUIRE(action != nullptr);
+            const lumen::core::Rect buttonRect{
+                absoluteOffset(app.shell().root(), key), action->size};
+            CHECK(buttonRect.left() >= panelRect.left());
+            CHECK(buttonRect.right() <= panelRect.right());
+            CHECK(buttonRect.bottom() <= panelRect.bottom());
+        }
+        const auto* button = findNodeByKey(app.shell().root(), "designer-conflict-reload");
+        REQUIRE(button != nullptr);
+        app.shell().controller().focusNode(*button);
+        app.shell().keyDown(Key::Tab);
+        CHECK(app.shell().focus().focusedKey() == "designer-conflict-save-as");
+        app.shell().keyDown(Key::Tab);
+        CHECK(app.shell().focus().focusedKey() == "designer-conflict-overwrite");
+        app.shell().keyDown(Key::Enter);
+        CHECK(store.load(path.string()).document == local);
+        CHECK_FALSE(app.workbench().dirty());
+    }
+}
+
+TEST_CASE("designer project overwrite rechecks all observed page revisions",
+          "[designer][d3][dp9][app][conflict]") {
+    const auto root = std::filesystem::temp_directory_path() /
+        ("lumen-project-conflict-" + std::to_string(std::chrono::steady_clock::now()
+            .time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+    DesignerApp seed;
+    seed.attach();
+    REQUIRE(seed.loadSource("page first { Text(\"First\") }"));
+    REQUIRE(seed.saveDesignFile((root / "first.design").string()));
+    const auto firstId = seed.workbench().document()->documentId;
+    REQUIRE(seed.loadSource("page second { Text(\"Second\") }"));
+    REQUIRE(seed.saveDesignFile((root / "second.design").string()));
+    const auto secondId = seed.workbench().document()->documentId;
+    lumen::dsl::DesignProject project;
+    project.projectId = "conflict-project";
+    project.name = "Conflict project";
+    project.root = ".";
+    project.pages = {{firstId, "first.design", "First"},
+                     {secondId, "second.design", "Second"}};
+    const auto manifest = root / "demo.lumen-project";
+    lumen::dsl::ProjectStore projectStore;
+    lumen::dsl::DocumentStore store;
+    std::vector<lumen::dsl::DesignError> errors;
+    REQUIRE(projectStore.save(manifest.string(), project, errors));
+    DesignerApp app;
+    app.attach();
+    REQUIRE(app.loadProjectFile(manifest.string()));
+    REQUIRE(app.workbench().setProperty(1, "text",
+        lumen::dsl::DesignValue{std::string{"Local first"}}));
+    const auto originalFirst = store.load((root / "first.design").string()).document;
+    auto externalSecond = store.load((root / "second.design").string()).document;
+    externalSecond.pageName = "external-second";
+    REQUIRE(store.save((root / "second.design").string(), externalSecond, errors));
+    CHECK_FALSE(app.saveProjectFile(manifest.string()));
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-conflict-notice") != nullptr);
+
+    SECTION("explicit overwrite saves local pages") {
+        REQUIRE(app.shell().invokeCommand("designer.conflict-overwrite"));
+        CHECK_FALSE(app.workbench().dirty());
+        CHECK(store.load((root / "first.design").string()).document.root.properties.at("text") ==
+              lumen::dsl::DesignValue{std::string{"Local first"}});
+        CHECK(store.load((root / "second.design").string()).document.pageName == "second");
+        CHECK(store.load((root / "second.design.bak").string()).document == externalSecond);
+    }
+    SECTION("a later second page edit does not write the first page") {
+        externalSecond.pageName = "external-again";
+        REQUIRE(store.save((root / "second.design").string(), externalSecond, errors));
+        REQUIRE(app.shell().invokeCommand("designer.conflict-overwrite"));
+        CHECK(store.load((root / "first.design").string()).document == originalFirst);
+        CHECK(store.load((root / "second.design").string()).document == externalSecond);
+        CHECK(app.workbench().dirty());
+    }
+    SECTION("a later manifest edit does not write either page") {
+        project.name = "External manifest";
+        REQUIRE(projectStore.save(manifest.string(), project, errors));
+        REQUIRE(app.shell().invokeCommand("designer.conflict-overwrite"));
+        CHECK(store.load((root / "first.design").string()).document == originalFirst);
+        CHECK(store.load((root / "second.design").string()).document == externalSecond);
+        CHECK(projectStore.load(manifest.string()).project.name == "External manifest");
+        CHECK(app.workbench().dirty());
+    }
+    SECTION("reload selects the external project pages") {
+        REQUIRE(app.shell().invokeCommand("designer.conflict-reload"));
+        CHECK_FALSE(app.workbench().dirty());
+        CHECK(app.workbench().document()->root.properties.at("text") ==
+              lumen::dsl::DesignValue{std::string{"First"}});
+        REQUIRE(app.switchProjectDocument(secondId));
+        CHECK(app.workbench().document()->pageName == "external-second");
+    }
+}
+
 TEST_CASE("designer app creates a project from the current document",
           "[designer][dp9][d3][app]") {
     const auto root = std::filesystem::temp_directory_path() /

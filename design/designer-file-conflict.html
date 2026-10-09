@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen Designer · 文件冲突恢复</title>
+<style>
+/* Theme::dark roles and Comfortable Metrics; no new visual tokens. */
+:root { color-scheme:dark; --surface:#27272e; --sunken:#2e2e36; --text:#f1f1f4;
+  --secondary:#a1a1aa; --border:#3b3b45; --danger:#e05a60; --focus:#96b9fa;
+  font:14px/1.5 system-ui,sans-serif; }
+body { margin:0; padding:32px; background:var(--surface); color:var(--text); }
+main { max-width:1000px; margin:auto; } h1 { font-size:20px; }
+.panel { padding:12px; background:var(--sunken); border:1px solid var(--border); }
+.caption { font-size:12px; color:var(--secondary); margin:0 0 8px; }
+.actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+button { min-height:40px; padding:6px 12px; border:1px solid var(--border);
+  border-radius:6px; background:var(--surface); color:var(--text); font:inherit; cursor:pointer; }
+button.danger { background:var(--danger); color:#000; }
+button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+#result { min-height:40px; } a { color:var(--focus); }
+@media(max-width:850px) { .actions { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:550px) { .actions { grid-template-columns:1fr; } }
+</style>
+<main>
+<h1>Designer · 外部文件修改</h1>
+<p>本地有未保存的属性修改；磁盘文件已被其他编辑器更新。</p>
+<section class="panel" aria-label="文件冲突恢复">
+<p class="caption">Save failed / gallery.design</p>
+<p>External file changed. Reload discards local edits; overwrite replaces external edits.</p>
+<div class="actions">
+<button data-result="读取外部文件；成功后丢弃本地修改并重置历史。">Reload external file</button>
+<button data-result="打开另存对话框；取消时保留本地修改和冲突入口。">Save as</button>
+<button class="danger" data-result="保存本地声明；磁盘内容再次变化时拒绝，保留外部文件并要求重新选择。">Overwrite external file</button>
+</div>
+<p id="result" class="caption" role="status" aria-live="polite">可用 Tab 导航、Enter 或空格选择动作。此页面为交互对照稿。</p>
+</section>
+<p><a href="../docs/lumen-designer-file-conflict-design.md">恢复契约与验收说明</a></p>
+</main>
+<script>
+for (const button of document.querySelectorAll('button')) {
+  button.addEventListener('click', () => {
+    document.getElementById('result').textContent = button.dataset.result;
+  });
+}
+</script>
+</html>

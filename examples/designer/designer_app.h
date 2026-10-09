@@ -93,6 +93,14 @@ class DesignerApp {
                                 const std::string& error = {});
 
   private:
+    struct SaveConflict {
+        std::string filename{};
+        bool project{false};
+        std::optional<std::uint64_t> revision{};
+        std::map<std::string, std::uint64_t> pageRevisions{};
+        bool canOverwrite{false};
+    };
+
     class OfflineRuntimeContext final : public dsl::DesignRuntimeContext {
       public:
         explicit OfflineRuntimeContext(DesignerApp* owner) : owner_(owner) {}
@@ -186,6 +194,10 @@ class DesignerApp {
     void requestNewProjectFile();
     void requestSaveFile();
     void requestSaveAsFile();
+    void captureSaveConflict(const std::string& filename, bool project);
+    void resolveSaveConflict(bool overwrite);
+    [[nodiscard]] bool saveProjectFileAtConflict(
+        const std::string& filename, const SaveConflict* approvedConflict);
     [[nodiscard]] bool startPreview(bool debug);
     void stopPreview();
     void insertNodeType(std::string type);
@@ -331,6 +343,7 @@ class DesignerApp {
     std::vector<dsl::DesignNode> clipboardNodes_{};
     FileDialogRequester fileDialogRequester_{};
     PendingFileDialog pendingFileDialog_{PendingFileDialog::None};
+    std::optional<SaveConflict> saveConflict_{};
     bool darkMode_{true};
     style::ControlDensity density_{style::ControlDensity::Comfortable};
     float deviceScale_{1.0F};
