@@ -101,6 +101,100 @@ TEST_CASE("designer D2 workbench clears all session data explicitly",
     CHECK_FALSE(workbench.outline().has_value());
 }
 
+// P5 §4.13 and G-D15 §4.16: a rejected open cannot publish a candidate
+// document, clear the current frame, or detach the current save revision.
+TEST_CASE("designer rejected opens preserve the complete editing session",
+          "[designer][d2][d3][load-atomic]") {
+    const auto root = std::filesystem::temp_directory_path() /
+        ("lumen-rejected-open-" + std::to_string(std::chrono::steady_clock::now()
+            .time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+    const auto path = (root / "current.design").string();
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page current { Text(\"Original\", key: \"current\") }"));
+    REQUIRE(workbench.saveDesignFile(path));
+    REQUIRE(workbench.openDesignFile(path));
+    const auto id = workbench.document()->root.id;
+    REQUIRE(workbench.selectNode(id));
+    REQUIRE(workbench.setProperty(id, "text", DesignValue{std::string{"Local"}}));
+    const auto before = *workbench.document();
+    const auto selection = workbench.selection();
+    const auto revision = workbench.documentRevision();
+    const auto generation = workbench.frame().generation();
+    const auto rebuilds = workbench.frame().rebuildCount();
+    const auto widget = workbench.frame().widget();
+    const auto session = workbench.frame().session();
+    REQUIRE(session);
+    auto invalid = before;
+    std::string diagnosticFile;
+    SECTION("an invalid same-document DOM is rejected") {
+        invalid.root.type = "Unknown";
+        diagnosticFile = "<design>";
+        CHECK_FALSE(workbench.openDocument(invalid));
+    }
+    SECTION("another document's compile failure keeps the active frame") {
+        invalid.documentId = "other-document";
+        invalid.root.type = "Unknown";
+        diagnosticFile = "other.design";
+        CHECK_FALSE(workbench.openDesignSource(
+            lumen::dsl::serializeDesignDocument(invalid), diagnosticFile));
+    }
+    SECTION("a schema-valid file with duplicate runtime keys is rejected") {
+        invalid.documentId = "other-document";
+        invalid.root.type = "Column";
+        invalid.root.properties.clear();
+        invalid.root.children = {DesignNode{2, "Text"}, DesignNode{3, "Text"}};
+        for (auto& child : invalid.root.children) {
+            child.properties["key"] = DesignValue{std::string{"duplicate"}};
+        }
+        diagnosticFile = (root / "other.design").string();
+        lumen::dsl::DocumentStore store;
+        std::vector<lumen::dsl::DesignError> errors;
+        REQUIRE(store.save(diagnosticFile, invalid, errors));
+        CHECK_FALSE(workbench.openDesignFile(diagnosticFile));
+    }
+    REQUIRE(workbench.document() == before);
+    CHECK(workbench.selection() == selection);
+    CHECK(workbench.documentRevision() == revision);
+    CHECK(workbench.dirty());
+    CHECK(workbench.canUndo());
+    CHECK_FALSE(workbench.canRedo());
+    CHECK(workbench.frame().hasFrame());
+    CHECK(workbench.frame().generation() == generation);
+    CHECK(workbench.frame().rebuildCount() == rebuilds + 1);
+    CHECK(workbench.frame().widget() == widget);
+    CHECK(workbench.frame().documentId() == before.documentId);
+    CHECK(workbench.frame().session() == session);
+    CHECK(session->active());
+    REQUIRE_FALSE(workbench.diagnostics().empty());
+    CHECK(workbench.diagnostics().front().file == diagnosticFile);
+    CHECK(workbench.diagnostics().front().documentId == invalid.documentId);
+    REQUIRE(workbench.undo());
+    CHECK_FALSE(workbench.dirty());
+    CHECK(workbench.document()->root.properties.at("text") ==
+          DesignValue{std::string{"Original"}});
+    REQUIRE(workbench.redo());
+    CHECK(workbench.document() == before);
+
+    auto external = before;
+    external.pageName = "External";
+    lumen::dsl::DocumentStore store;
+    std::vector<lumen::dsl::DesignError> errors;
+    REQUIRE(store.save(path, external, errors));
+    CHECK_FALSE(workbench.saveDesignFile(path));
+    REQUIRE_FALSE(workbench.diagnostics().empty());
+    CHECK(workbench.diagnostics().front().code == "store.revision_conflict");
+    CHECK(store.load(path).document == external);
+}
+
 TEST_CASE("designer D2 workbench reports file read failures",
           "[designer][d2]") {
     DesignPreviewWorkbench workbench;
@@ -112,6 +206,44 @@ TEST_CASE("designer D2 workbench reports file read failures",
           "/lumen/this-file-does-not-exist/design.lumen");
     CHECK_FALSE(workbench.document().has_value());
     CHECK_FALSE(workbench.frame().hasFrame());
+}
+
+TEST_CASE("designer opens offline placeholders as a new document session",
+          "[designer][d2][load-atomic]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource("page current { Text(\"Original\") }"));
+    REQUIRE(workbench.selectNode(workbench.document()->root.id));
+    REQUIRE(workbench.setProperty(workbench.document()->root.id, "text",
+                                 DesignValue{std::string{"Local"}}));
+    const auto session = workbench.frame().session();
+    REQUIRE(session);
+    const auto generation = workbench.frame().generation();
+    const auto rebuilds = workbench.frame().rebuildCount();
+    lumen::dsl::MapDesignRuntimeContext context;
+    const std::string source =
+        "page offline { Button(\"Save\", onClick: missing, key: \"save\") }";
+    const auto candidate = lumen::dsl::parseLumenSource(source, "offline.lumen");
+    REQUIRE(candidate.ok());
+    REQUIRE(workbench.openLumenSource(source, "offline.lumen", &context));
+    CHECK(workbench.document() == candidate.document);
+    CHECK_FALSE(workbench.dirty());
+    CHECK_FALSE(workbench.canUndo());
+    CHECK_FALSE(workbench.canRedo());
+    CHECK(workbench.selection().ids.empty());
+    CHECK(workbench.frame().documentId() == candidate.document.documentId);
+    CHECK(workbench.frame().generation() == generation + 1);
+    CHECK(workbench.frame().rebuildCount() == rebuilds + 1);
+    CHECK_FALSE(session->active());
+    CHECK_FALSE(workbench.frame().widget().enabled);
+    CHECK(workbench.frame().widget().invalid);
+    CHECK(workbench.frame().widget().onClick.empty());
+    REQUIRE(workbench.frame().session());
+    CHECK(workbench.frame().session()->active());
+    REQUIRE(workbench.diagnostics().size() == 1);
+    CHECK(workbench.diagnostics().front().code == "reference.missing");
+    CHECK(workbench.diagnostics().front().file == "offline.lumen");
+    CHECK(workbench.diagnostics().front().documentId ==
+          candidate.document.documentId);
 }
 
 TEST_CASE("designer D3 workbench edits L0 declarations with history and saves",

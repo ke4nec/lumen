@@ -23,6 +23,22 @@ void DesignPreviewFrame::setDiagnostics(
 
 bool DesignPreviewFrame::update(const DesignDocument& document,
                                 DesignRuntimeContext& context) {
+    return updateInternal(document, context, false);
+}
+
+bool DesignPreviewFrame::tryReplaceDocument(const DesignDocument& document,
+                                           DesignRuntimeContext& context) {
+    return updateInternal(document, context, true);
+}
+
+bool DesignPreviewFrame::tryReplaceDocument(const DesignDocument& document) {
+    DesignRuntimeContext context;
+    return tryReplaceDocument(document, context);
+}
+
+bool DesignPreviewFrame::updateInternal(const DesignDocument& document,
+                                       DesignRuntimeContext& context,
+                                       bool preserveOnFailure) {
     ++rebuildCount_;
     const auto compiled = compileDesignDocument(document, context);
     setDiagnostics(compiled.diagnostics, document.documentId);
@@ -40,7 +56,7 @@ bool DesignPreviewFrame::update(const DesignDocument& document,
             ++generation_;
             return false;
         }
-        if (!sameDocument(document.documentId)) {
+        if (!preserveOnFailure && !sameDocument(document.documentId)) {
             const auto errors = compiled.diagnostics;
             clear();
             setDiagnostics(errors, document.documentId);

@@ -169,12 +169,25 @@ bool DesignPreviewWorkbench::openDocument(DesignDocument document,
 bool DesignPreviewWorkbench::openDocumentInternal(
     DesignDocument document, DesignRuntimeContext* context,
     std::string sourceFile) {
+    if (sourceFile.empty()) sourceFile = "<design>";
+    const bool compiled = context == nullptr
+                              ? frame_.tryReplaceDocument(document)
+                              : frame_.tryReplaceDocument(document, *context);
+    diagnostics_ = frame_.diagnostics();
+    for (auto& diagnostic : diagnostics_) {
+        if (diagnostic.file.empty() || diagnostic.file == "<design>") {
+            diagnostic.file = sourceFile;
+        }
+    }
+    if (!compiled && !recoverablePreviewFailure(frame_, diagnostics_)) {
+        return false;
+    }
     document_ = std::move(document);
-    sourceFile_ = sourceFile.empty() ? "<design>" : std::move(sourceFile);
+    sourceFile_ = std::move(sourceFile);
     loadedRevision_ = 0;
     hasLoadedRevision_ = false;
     selection_.setDocument(*document_);
-    return updateFrame(context);
+    return true;
 }
 
 bool DesignPreviewWorkbench::refresh(DesignRuntimeContext* context) {

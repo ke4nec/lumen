@@ -40,6 +40,8 @@ struct DesignPreviewOutlineNode {
 // undo/redo can rebuild component previews without owning the adapter.
 class DesignPreviewWorkbench {
   public:
+    // Open publishes a valid compilation or an inspectable offline
+    // placeholder. A fatal failure preserves the entire current session.
     [[nodiscard]] bool openLumenSource(
         const std::string& source, std::string filename = "<memory>",
         DesignRuntimeContext* context = nullptr);

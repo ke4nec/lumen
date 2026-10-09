@@ -903,9 +903,11 @@ TEST_CASE("designer app mirrors running preview into an independent shell",
     (void)app.previewShell().renderFrame();
     CHECK(app.previewShell().frameDebugSnapshot().nodeCount > 0);
 
-    auto broken = *app.workbench().document();
+    const auto beforeRejectedOpen = *app.workbench().document();
+    auto broken = beforeRejectedOpen;
     broken.root.type = "Unknown";
     CHECK_FALSE(app.workbench().openDocument(std::move(broken)));
+    CHECK(app.workbench().document() == beforeRejectedOpen);
     run = findNodeByKey(app.shell().root(), "designer-run");
     REQUIRE(run != nullptr);
     CHECK(app.shell().performAccessibilityAction(
@@ -915,7 +917,7 @@ TEST_CASE("designer app mirrors running preview into an independent shell",
     (void)app.previewShell().renderFrame();
     CHECK(findNodeByKey(app.previewShell().root(), "title") != nullptr);
     CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
-          "Run failed  /  kept previous preview");
+          "Preview running  /  current session");
 
     const auto* stop = findNodeByKey(app.shell().root(), "designer-stop");
     REQUIRE(stop != nullptr);
@@ -2652,6 +2654,72 @@ TEST_CASE("designer app reopens private design files",
     CHECK(app.workbench().frame().generation() == generation);
     REQUIRE(app.workbench().diagnostics().size() == 1);
     CHECK(app.workbench().diagnostics().front().file == path.string());
+}
+
+TEST_CASE("designer rejected file opens keep the current save destination",
+          "[designer][d3][app][load-atomic]") {
+    const auto root = std::filesystem::temp_directory_path() /
+        ("lumen-app-rejected-open-" + std::to_string(std::chrono::steady_clock::now()
+            .time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+    const auto currentPath = (root / "current.design").string();
+    DesignerApp app;
+    app.attach();
+    REQUIRE(app.loadSource("page current { Text(\"Original\") }"));
+    REQUIRE(app.saveDesignFile(currentPath));
+    REQUIRE(app.workbench().setProperty(app.workbench().document()->root.id,
+        "text", lumen::dsl::DesignValue{std::string{"Local"}}));
+    const auto before = *app.workbench().document();
+    const auto revision = app.workbench().documentRevision();
+    const auto generation = app.workbench().frame().generation();
+    const std::string invalidSource =
+        "page other { Column { Text(\"A\", key: \"dup\")"
+        " Text(\"B\", key: \"dup\") } }";
+    lumen::dsl::DocumentStore store;
+    std::string rejectedPath;
+    std::optional<std::uint64_t> rejectedRevision;
+    SECTION("private design file") {
+        const auto parsed = lumen::dsl::parseLumenSource(invalidSource);
+        REQUIRE(parsed.ok());
+        rejectedPath = (root / "other.design").string();
+        std::vector<lumen::dsl::DesignError> errors;
+        REQUIRE(store.save(rejectedPath, parsed.document, errors));
+        rejectedRevision = store.revision(rejectedPath);
+        CHECK_FALSE(app.loadDesignFile(rejectedPath));
+    }
+    SECTION("imported lumen file") {
+        rejectedPath = (root / "other.lumen").string();
+        {
+            std::ofstream output(rejectedPath);
+            output << invalidSource;
+        }
+        rejectedRevision = store.revision(rejectedPath);
+        CHECK_FALSE(app.loadFile(rejectedPath));
+    }
+    SECTION("source string") {
+        CHECK_FALSE(app.loadSource(invalidSource, "other.design"));
+    }
+    REQUIRE(app.workbench().document() == before);
+    CHECK(app.workbench().documentRevision() == revision);
+    CHECK(app.workbench().frame().generation() == generation);
+    CHECK(app.workbench().dirty());
+    REQUIRE_FALSE(app.workbench().diagnostics().empty());
+    CHECK(app.workbench().diagnostics().front().code ==
+          "compile.duplicate_runtime_identity");
+    REQUIRE(app.shell().invokeCommand("designer.save"));
+    CHECK_FALSE(app.workbench().dirty());
+    CHECK(store.load(currentPath).document == before);
+    if (!rejectedPath.empty()) {
+        REQUIRE(rejectedRevision.has_value());
+        CHECK(store.revision(rejectedPath) == rejectedRevision);
+    }
 }
 
 TEST_CASE("designer app opens, switches, and saves a multi document project",

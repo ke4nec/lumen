@@ -20,6 +20,13 @@ class DesignPreviewFrame {
                               DesignRuntimeContext& context);
     [[nodiscard]] bool update(const DesignDocument& document);
 
+    // Attempts an open without clearing the active document's frame on a
+    // fatal compile failure. A traced reference placeholder can still replace
+    // it; the caller must adopt that candidate document along with the frame.
+    [[nodiscard]] bool tryReplaceDocument(const DesignDocument& document,
+                                          DesignRuntimeContext& context);
+    [[nodiscard]] bool tryReplaceDocument(const DesignDocument& document);
+
     void clear();
 
     [[nodiscard]] bool hasFrame() const { return hasFrame_; }
@@ -44,6 +51,9 @@ class DesignPreviewFrame {
     }
 
   private:
+    [[nodiscard]] bool updateInternal(const DesignDocument& document,
+                                      DesignRuntimeContext& context,
+                                      bool preserveOnFailure);
     [[nodiscard]] bool sameDocument(std::string_view documentId) const;
     void setDiagnostics(const std::vector<DesignError>& errors,
                         std::string_view documentId);
