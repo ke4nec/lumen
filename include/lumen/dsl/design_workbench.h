@@ -33,6 +33,34 @@ struct DesignPreviewOutlineNode {
     bool operator==(const DesignPreviewOutlineNode&) const = default;
 };
 
+// A page's declaration edit state. Runtime frames, controllers and borrowed
+// contexts are deliberately absent; activation recompiles in the live context.
+class DesignWorkbenchSession {
+  public:
+    explicit DesignWorkbenchSession(
+        DesignDocument document, std::string sourceFile = "<design>",
+        std::optional<std::uint64_t> loadedRevision = std::nullopt)
+        : document_(std::move(document)), sourceFile_(std::move(sourceFile)),
+          loadedRevision_(loadedRevision) {}
+
+    [[nodiscard]] const DesignDocument& document() const { return document_; }
+    // Call only after successfully saving this exact declaration snapshot.
+    void markSaved(std::string filename, std::uint64_t revision) {
+        sourceFile_ = std::move(filename);
+        loadedRevision_ = revision;
+        history_.markSaved();
+    }
+
+  private:
+    DesignDocument document_{};
+    DesignSelection selection_{};
+    DesignDocumentHistory history_{};
+    std::string sourceFile_{};
+    std::optional<std::uint64_t> loadedRevision_{};
+
+    friend class DesignPreviewWorkbench;
+};
+
 // Headless D2 model. It owns the document being inspected and composes the
 // preview frame, document selection, outline, and read-only property views.
 // Runtime contexts are borrowed for open/refresh. An optional edit context can
@@ -55,6 +83,14 @@ class DesignPreviewWorkbench {
         const std::string& filename, DesignRuntimeContext* context = nullptr);
     [[nodiscard]] bool openDocument(
         DesignDocument document, DesignRuntimeContext* context = nullptr);
+    [[nodiscard]] std::optional<DesignWorkbenchSession> snapshotSession() const;
+    // A rejected activation preserves the currently active edit state/frame.
+    [[nodiscard]] bool restoreSession(
+        const DesignWorkbenchSession& session,
+        DesignRuntimeContext* context = nullptr);
+    // For a coordinated project save performed by another DocumentStore.
+    // The caller must have successfully saved the current document snapshot.
+    void markSaved(std::string filename, std::uint64_t revision);
     [[nodiscard]] bool refresh(DesignRuntimeContext* context = nullptr);
 
     void setEditRuntimeContext(DesignRuntimeContext* context) {

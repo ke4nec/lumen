@@ -229,6 +229,7 @@ class DesignerApp {
     [[nodiscard]] static float snapCanvasCoordinate(float value, float maximum,
                                                      float threshold);
     void refreshDocumentUi();
+    void clearProjectSession();
     void syncActiveProjectDocument();
     [[nodiscard]] std::filesystem::path projectRootPath() const;
     [[nodiscard]] std::filesystem::path projectRootPath(
@@ -394,7 +395,7 @@ class DesignerApp {
     std::optional<dsl::DesignProject> project_{};
     std::string projectFile_{};
     std::uint64_t projectRevision_{0};
-    std::map<std::string, dsl::DesignDocument> projectDocuments_{};
+    std::map<std::string, dsl::DesignWorkbenchSession> projectSessions_{};
     std::map<std::string, std::string> projectDocumentPaths_{};
     std::map<std::string, std::uint64_t> projectDocumentRevisions_{};
     std::vector<dsl::DesignError> projectDiagnostics_{};

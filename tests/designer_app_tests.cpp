@@ -2722,6 +2722,220 @@ TEST_CASE("designer rejected file opens keep the current save destination",
     }
 }
 
+// DP-9 and prerequisites §4.14: pages own independent edit histories and
+// selection; saving advances checkpoints without replacing those histories.
+TEST_CASE("designer project pages retain their edit sessions across switches and saves",
+          "[designer][dp9][d3][app][project-session]") {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("lumen-project-session-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch().count()));
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup{root};
+    std::filesystem::create_directories(root);
+    lumen::dsl::DocumentStore documents;
+    lumen::dsl::ProjectStore projects;
+    std::vector<lumen::dsl::DesignError> diagnostics;
+    auto home = lumen::dsl::parseLumenSource(
+        "page home { Column { Text(\"Home\") Text(\"Detail\") } }",
+        "home.lumen");
+    auto settings = lumen::dsl::parseLumenSource(
+        "page settings { Column { Text(\"Settings\") Text(\"Detail\") } }",
+        "settings.lumen");
+    REQUIRE(home.ok());
+    REQUIRE(settings.ok());
+    const auto homeId = home.document.documentId;
+    const auto settingsId = settings.document.documentId;
+    const auto homeNode = home.document.root.children[0].id;
+    const auto settingsNode = settings.document.root.children[1].id;
+    const auto homePath = root / "home.design";
+    const auto settingsPath = root / "settings.design";
+    REQUIRE(documents.save(homePath.string(), home.document, diagnostics));
+    REQUIRE(documents.save(settingsPath.string(), settings.document, diagnostics));
+    lumen::dsl::DesignProject project;
+    project.projectId = "session-project";
+    project.name = "Session project";
+    project.root = ".";
+    project.pages = {{homeId, "home.design", "Home"},
+                     {settingsId, "settings.design", "Settings"}};
+    const auto manifest = root / "session.lumen-project";
+    REQUIRE(projects.save(manifest.string(), project, diagnostics));
+    DesignerApp app;
+    app.attach();
+    REQUIRE(app.loadProjectFile(manifest.string()));
+    REQUIRE(app.workbench().selectNode(homeNode));
+    REQUIRE(app.workbench().setProperty(homeNode, "text",
+        lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{
+            std::string{"Home edited"}}}));
+    const auto homeEdited = *app.workbench().document();
+    REQUIRE(app.workbench().setProperty(homeNode, "width",
+        lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{180.0}}));
+    const auto homeRedo = *app.workbench().document();
+    REQUIRE(app.workbench().undo());
+    const auto homeRevision = app.workbench().documentRevision();
+    const auto homeSelection = app.workbench().selection();
+
+    SECTION("rejected activation keeps the active page and its edit session") {
+        auto broken = settings.document;
+        for (auto& child : broken.root.children) {
+            child.properties["key"] = lumen::dsl::DesignValue{
+                lumen::dsl::DesignValue::Variant{std::string{"duplicate"}}};
+        }
+        REQUIRE(documents.save(settingsPath.string(), broken, diagnostics));
+        REQUIRE(app.loadProjectFile(manifest.string()));
+        REQUIRE(app.workbench().selectNode(homeNode));
+        REQUIRE(app.workbench().setProperty(homeNode, "text",
+            lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{
+                std::string{"Still editing home"}}}));
+        const auto before = *app.workbench().document();
+        const auto selection = app.workbench().selection();
+        const auto revision = app.workbench().documentRevision();
+        const auto frame = app.workbench().frame().generation();
+        const auto runtime = app.workbench().frame().session();
+        REQUIRE_FALSE(app.switchProjectDocument(settingsId));
+        CHECK(app.activeProjectDocumentId() == homeId);
+        CHECK(app.workbench().document() == before);
+        CHECK(app.workbench().selection() == selection);
+        CHECK(app.workbench().documentRevision() == revision);
+        CHECK(app.workbench().frame().generation() == frame);
+        CHECK(app.workbench().frame().session() == runtime);
+        CHECK(app.workbench().dirty());
+        REQUIRE(app.workbench().undo());
+        CHECK(app.workbench().document() == home.document);
+        CHECK_FALSE(app.workbench().dirty());
+    }
+
+    SECTION("a standalone open leaves the project and changes the save target") {
+        const auto standalone = root / "standalone.design";
+        auto document = home.document;
+        document.documentId = "standalone-page";
+        REQUIRE(documents.save(standalone.string(), document, diagnostics));
+        const auto before = documents.revision(homePath.string());
+        SECTION("design file") {
+            REQUIRE(app.loadDesignFile(standalone.string()));
+        }
+        SECTION("lumen source") {
+            REQUIRE(app.loadSource("page standalone { Text(\"Standalone\") }",
+                                   (root / "standalone.lumen").string()));
+            REQUIRE(app.saveDesignFile(standalone.string()));
+        }
+        SECTION("lumen file") {
+            const auto lumenFile = root / "standalone.lumen";
+            {
+                std::ofstream source(lumenFile);
+                source << "page standalone { Text(\"Standalone\") }";
+                REQUIRE(source.good());
+            }
+            REQUIRE(app.loadFile(lumenFile.string()));
+            REQUIRE(app.saveDesignFile(standalone.string()));
+        }
+        SECTION("single page save as") {
+            REQUIRE(app.saveDesignFile(standalone.string()));
+        }
+        CHECK_FALSE(app.project().has_value());
+        CHECK(app.activeProjectDocumentId().empty());
+        REQUIRE(app.workbench().setProperty(app.workbench().document()->root.id,
+            "width", lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{
+                240.0}}));
+        const auto edited = *app.workbench().document();
+        REQUIRE(app.shell().invokeCommand("designer.save"));
+        CHECK(documents.load(standalone.string()).document == edited);
+        CHECK(documents.revision(homePath.string()) == before);
+        CHECK_FALSE(app.switchProjectDocument(homeId));
+    }
+
+    SECTION("switches isolate colliding node ids and keep both history branches") {
+        const auto generation = app.workbench().frame().generation();
+        REQUIRE(app.switchProjectDocument(homeId));
+        CHECK(app.workbench().frame().generation() == generation);
+        CHECK(app.workbench().dirty());
+        CHECK(app.workbench().canUndo());
+        CHECK(app.workbench().canRedo());
+        REQUIRE(app.switchProjectDocument(settingsId));
+        CHECK(app.workbench().selection().ids ==
+              std::set<lumen::dsl::DesignNodeId>{settings.document.root.id});
+        CHECK_FALSE(app.workbench().dirty());
+        CHECK_FALSE(app.workbench().canUndo());
+        REQUIRE(app.workbench().selectNode(settingsNode));
+        REQUIRE(app.workbench().setProperty(settingsNode, "text",
+            lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{
+                std::string{"Settings edited"}}}));
+        const auto settingsEdited = *app.workbench().document();
+        const auto settingsSelection = app.workbench().selection();
+        REQUIRE(app.switchProjectDocument(homeId));
+        CHECK(app.workbench().document() == homeEdited);
+        CHECK(app.workbench().selection() == homeSelection);
+        CHECK(app.workbench().documentRevision() == homeRevision);
+        CHECK(app.workbench().dirty());
+        CHECK(app.workbench().canUndo());
+        CHECK(app.workbench().canRedo());
+        REQUIRE(app.workbench().redo());
+        CHECK(app.workbench().document() == homeRedo);
+        REQUIRE(app.workbench().undo());
+        REQUIRE(app.workbench().undo());
+        CHECK(app.workbench().document() == home.document);
+        CHECK_FALSE(app.workbench().dirty());
+        REQUIRE(app.switchProjectDocument(settingsId));
+        CHECK(app.workbench().document() == settingsEdited);
+        CHECK(app.workbench().selection() == settingsSelection);
+        CHECK(app.workbench().dirty());
+        REQUIRE(app.workbench().undo());
+        CHECK(app.workbench().document() == settings.document);
+        CHECK_FALSE(app.workbench().dirty());
+    }
+
+    SECTION("save and save as keep every page's undo redo and saved checkpoint") {
+        REQUIRE(app.switchProjectDocument(settingsId));
+        REQUIRE(app.workbench().selectNode(settingsNode));
+        REQUIRE(app.workbench().setProperty(settingsNode, "text",
+            lumen::dsl::DesignValue{lumen::dsl::DesignValue::Variant{
+                std::string{"Settings edited"}}}));
+        const auto settingsEdited = *app.workbench().document();
+        const auto settingsSelection = app.workbench().selection();
+        std::string target = manifest.string();
+        SECTION("save") {}
+        SECTION("save as") {
+            target = (root / "copy" / "session.lumen-project").string();
+        }
+        REQUIRE(app.saveProjectFile(target));
+        CHECK_FALSE(app.workbench().dirty());
+        CHECK(app.workbench().selection() == settingsSelection);
+        REQUIRE(app.workbench().undo());
+        CHECK(app.workbench().document() == settings.document);
+        CHECK(app.workbench().dirty());
+        REQUIRE(app.workbench().redo());
+        CHECK(app.workbench().document() == settingsEdited);
+        CHECK_FALSE(app.workbench().dirty());
+        REQUIRE(app.switchProjectDocument(homeId));
+        CHECK(app.workbench().document() == homeEdited);
+        CHECK(app.workbench().selection() == homeSelection);
+        CHECK(app.workbench().documentRevision() == homeRevision);
+        CHECK_FALSE(app.workbench().dirty());
+        CHECK(app.workbench().canUndo());
+        CHECK(app.workbench().canRedo());
+        REQUIRE(app.workbench().redo());
+        CHECK(app.workbench().document() == homeRedo);
+        CHECK(app.workbench().dirty());
+        REQUIRE(app.workbench().undo());
+        CHECK_FALSE(app.workbench().dirty());
+        REQUIRE(app.workbench().undo());
+        CHECK(app.workbench().document() == home.document);
+        CHECK(app.workbench().dirty());
+        REQUIRE(app.shell().invokeCommand("designer.save"));
+        CHECK_FALSE(app.workbench().dirty());
+        const auto targetRoot = std::filesystem::path{target}.parent_path();
+        CHECK(documents.load((targetRoot / "home.design").string()).document ==
+              home.document);
+        CHECK(documents.load((targetRoot / "settings.design").string()).document ==
+              settingsEdited);
+    }
+}
+
 TEST_CASE("designer app opens, switches, and saves a multi document project",
           "[designer][dp9][d3][app]") {
     const auto root = std::filesystem::temp_directory_path() /

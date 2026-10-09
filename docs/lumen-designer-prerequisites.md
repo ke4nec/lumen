@@ -896,6 +896,12 @@ DocumentTransaction {
    内部滚动状态或画布 overlay。
 4. `documentRevision` 与 `savedRevision` 分离。预览状态、诊断刷新和运行时绑定更新不使
    `documentRevision` 增长；保存成功后才推进 `savedRevision`，另存为应记录新的路径。
+   DP-9 工程中的每页分别保存 DOM、选择、命令历史、保存检查点和文件 revision；
+   切页不能重置 dirty 或丢失 undo/redo，重新选择当前页不重建会话。工程保存/另存
+   成功后更新全部页面的保存检查点与路径，仍能撤销回保存前、重做到保存后的状态。
+   编辑快照不持有运行时 frame、controller 或借用 context；切页在活动 context 中
+   编译新的预览，失败保留原页面和 session。成功打开独立 `.lumen`/`.design`，或
+   将单页保存为 `.design`，进入独立文档会话并退出工程；失败不改变工程或保存目标。
 5. 外部文件在编辑期间发生变化时，保存必须检测文件身份/修改代数，提供重新载入、另存
    和覆盖三个明确动作；不能静默覆盖外部修改。
    Designer 的诊断面板已接通这三个动作；明确覆盖仅接受冲突出现时观察到的外部
@@ -1655,3 +1661,19 @@ frame、session、DOM、选择、documentRevision、dirty、undo/redo 和原分�
 Windows 七个 job 均通过。该提交包含字段守护、冲突恢复和合并边界修复；之后的
 加载/编辑发布修复需要其自己的 CI 结果。`4443908` 的 Windows 运行被新提交的并发
 规则取消，未登记为成功；该批 Linux/macOS 均成功。常规 CI 仍不替代现场编辑/读屏。
+
+`09705d9` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/37941712087)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/37941712200) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/37941712074) 常规 CI 全部通过。
+该结果已覆盖加载/编辑发布修复，Windows 七个 job 全部成功；没有新增人工平台记录。
+
+DP-9/§4.14 工程会话复查复现了切页和保存重置撤销栈的问题。现以
+`DesignWorkbenchSession` 按 documentId 保存声明、选择、历史、保存检查点与文件
+revision；未访问页面从工程加载快照建立干净会话，同页切换直接保留当前状态。
+切页只在活动 context 中重编译预览，快照不延长旧 runtime session 的寿命；失败切页
+保留原页面、历史和 frame。工程保存/另存成功后更新所有页面的检查点，保留原
+undo/redo 分支；另存后的普通保存写回新工程根。成功打开独立源/设计文件或单页另存
+则退出工程，避免旧活动 documentId 接收独立页面或普通保存误写旧工程；失败不退出。
+三个 `[project-session]` 回归为 300 个断言通过，默认完整 CTest 1147/1147、Release
+`[designer]` 为 156 个用例、11287 个断言通过。本轮源码仍需其自己的三平台 CI，
+未用上一批通过结果替代，也未增加人工现场验收记录。

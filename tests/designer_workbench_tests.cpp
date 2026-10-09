@@ -14,6 +14,110 @@ using lumen::dsl::DesignSelectionMode;
 using lumen::dsl::DesignNode;
 using lumen::dsl::DesignValue;
 
+TEST_CASE("designer edit snapshots reactivate histories without retaining runtime sessions",
+          "[designer][dp9][d3][project-session]") {
+    DesignPreviewWorkbench workbench;
+    CHECK_FALSE(workbench.snapshotSession().has_value());
+    REQUIRE(workbench.openLumenSource(
+        "page home { Text(\"Home\") }", "home.lumen"));
+    const auto original = *workbench.document();
+    REQUIRE(workbench.selectNode(original.root.id));
+    REQUIRE(workbench.setProperty(original.root.id, "text",
+        DesignValue{DesignValue::Variant{std::string{"Edited home"}}}));
+    const auto edited = *workbench.document();
+    REQUIRE(workbench.setProperty(original.root.id, "width",
+        DesignValue{DesignValue::Variant{160.0}}));
+    const auto redo = *workbench.document();
+    REQUIRE(workbench.undo());
+    const auto selection = workbench.selection();
+    const auto revision = workbench.documentRevision();
+    const auto session = workbench.snapshotSession();
+    REQUIRE(session.has_value());
+    const auto oldRuntime = workbench.frame().session();
+    REQUIRE(oldRuntime != nullptr);
+    REQUIRE(workbench.openLumenSource("page settings { Text(\"Settings\") }"));
+    CHECK_FALSE(oldRuntime->active());
+    REQUIRE(workbench.restoreSession(*session));
+    CHECK(workbench.frame().session() != oldRuntime);
+    CHECK(workbench.frame().session()->active());
+    CHECK(workbench.document() == edited);
+    CHECK(workbench.selection() == selection);
+    CHECK(workbench.documentRevision() == revision);
+    CHECK(workbench.dirty());
+    CHECK(workbench.canUndo());
+    CHECK(workbench.canRedo());
+
+    SECTION("restored history still replays the exact original branches") {
+        REQUIRE(workbench.redo());
+        CHECK(workbench.document() == redo);
+        REQUIRE(workbench.undo());
+        REQUIRE(workbench.undo());
+        CHECK(workbench.document() == original);
+        CHECK_FALSE(workbench.dirty());
+    }
+    SECTION("a fatal candidate cannot replace the restored session") {
+        auto invalid = original;
+        invalid.documentId = "invalid-session";
+        invalid.root.type = "Unknown";
+        const lumen::dsl::DesignWorkbenchSession bad{invalid, "bad.design"};
+        const auto frame = workbench.frame().generation();
+        const auto runtime = workbench.frame().session();
+        REQUIRE_FALSE(workbench.restoreSession(bad));
+        CHECK(workbench.document() == edited);
+        CHECK(workbench.selection() == selection);
+        CHECK(workbench.documentRevision() == revision);
+        CHECK(workbench.frame().generation() == frame);
+        CHECK(workbench.frame().session() == runtime);
+        CHECK(runtime->active());
+        CHECK(workbench.dirty());
+        CHECK(workbench.canUndo());
+        CHECK(workbench.canRedo());
+        REQUIRE_FALSE(workbench.diagnostics().empty());
+        CHECK(workbench.diagnostics().front().file == "bad.design");
+        REQUIRE(workbench.redo());
+        CHECK(workbench.document() == redo);
+    }
+}
+
+TEST_CASE("designer edit snapshots retain the original file conflict revision",
+          "[designer][dp9][d3][project-session]") {
+    const auto path = std::filesystem::temp_directory_path() /
+        ("lumen-session-revision-" +
+         std::to_string(std::chrono::steady_clock::now()
+                            .time_since_epoch().count()) + ".design");
+    struct Cleanup {
+        std::filesystem::path path;
+        ~Cleanup() {
+            std::error_code error;
+            std::filesystem::remove(path, error);
+            std::filesystem::remove(path.string() + ".bak", error);
+        }
+    } cleanup{path};
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource("page home { Text(\"Home\") }"));
+    REQUIRE(workbench.saveDesignFile(path.string()));
+    REQUIRE(workbench.setProperty(workbench.document()->root.id, "text",
+        DesignValue{DesignValue::Variant{std::string{"Local"}}}));
+    const auto session = workbench.snapshotSession();
+    REQUIRE(session.has_value());
+    auto external = session->document();
+    external.pageName = "External";
+    lumen::dsl::DocumentStore store;
+    std::vector<lumen::dsl::DesignError> diagnostics;
+    REQUIRE(store.save(path.string(), external, diagnostics));
+    const auto externalRevision = store.revision(path.string());
+    REQUIRE(workbench.openLumenSource("page other { Text(\"Other\") }"));
+    REQUIRE(workbench.restoreSession(*session));
+    REQUIRE_FALSE(workbench.saveDesignFile(path.string()));
+    CHECK(workbench.document() == session->document());
+    CHECK(workbench.dirty());
+    CHECK(workbench.canUndo());
+    REQUIRE_FALSE(workbench.diagnostics().empty());
+    CHECK(workbench.diagnostics().front().code == "store.revision_conflict");
+    CHECK(store.revision(path.string()) == externalRevision);
+    CHECK(store.load(path.string()).document == external);
+}
+
 TEST_CASE("designer D2 workbench exposes outline properties and trace selection",
           "[designer][d2]") {
     DesignPreviewWorkbench workbench;

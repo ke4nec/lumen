@@ -1429,6 +1429,7 @@ bool DesignerApp::loadDesignFile(const std::string& filename) {
     statusMessage_.clear();
     const bool loaded = workbench_.openDesignFile(filename, &runtimeContext_);
     if (loaded) {
+        clearProjectSession();
         sourceFile_ = filename;
         saveConflict_.reset();
         sourceSnapshot_ = workbench_.document().has_value()
@@ -1446,6 +1447,7 @@ bool DesignerApp::loadDesignFile(const std::string& filename) {
 bool DesignerApp::saveDesignFile(const std::string& filename) {
     const bool saved = workbench_.saveDesignFile(filename);
     if (saved) {
+        clearProjectSession();
         saveConflict_.reset();
         sourceFile_ = filename;
         sourceSnapshot_ = workbench_.document().has_value()
@@ -1581,25 +1583,43 @@ std::filesystem::path DesignerApp::projectPagePath(
 }
 
 void DesignerApp::syncActiveProjectDocument() {
-    if (activeProjectDocumentId_.empty() || !workbench_.document().has_value()) {
+    if (activeProjectDocumentId_.empty() || !workbench_.document().has_value() ||
+        workbench_.document()->documentId != activeProjectDocumentId_) {
         return;
     }
-    projectDocuments_[activeProjectDocumentId_] = *workbench_.document();
+    projectSessions_.insert_or_assign(activeProjectDocumentId_,
+                                      *workbench_.snapshotSession());
+}
+
+void DesignerApp::clearProjectSession() {
+    if (!project_.has_value()) return;
+    project_.reset();
+    projectFile_.clear();
+    projectRevision_ = 0;
+    projectSessions_.clear();
+    projectDocumentPaths_.clear();
+    projectDocumentRevisions_.clear();
+    projectDiagnostics_.clear();
+    projectDiagnosticDocumentIds_.clear();
+    activeProjectDocumentId_.clear();
+    setResourceRoot({});
 }
 
 bool DesignerApp::switchProjectDocument(const std::string& documentId) {
     if (!project_.has_value()) return false;
-    const auto found = projectDocuments_.find(documentId);
+    const auto found = projectSessions_.find(documentId);
     const auto path = projectDocumentPaths_.find(documentId);
-    if (found == projectDocuments_.end() || path == projectDocumentPaths_.end()) {
+    if (found == projectSessions_.end() || path == projectDocumentPaths_.end()) {
         return false;
     }
+    if (activeProjectDocumentId_ == documentId && workbench_.document() &&
+        workbench_.document()->documentId == documentId) return true;
     syncActiveProjectDocument();
-    if (!workbench_.openDocument(found->second, &runtimeContext_)) return false;
+    if (!workbench_.restoreSession(found->second, &runtimeContext_)) return false;
     activeProjectDocumentId_ = documentId;
     saveConflict_.reset();
     sourceFile_ = path->second;
-    sourceSnapshot_ = dsl::serializeDesignDocument(found->second);
+    sourceSnapshot_ = dsl::serializeDesignDocument(found->second.document());
     sourceFocusLine_ = 0;
     resetPreviewState();
     refreshDocumentUi();
@@ -1618,7 +1638,7 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
     }
     const auto previousProject = project_;
     const auto previousProjectFile = projectFile_;
-    const auto previousDocuments = projectDocuments_;
+    const auto previousSessions = projectSessions_;
     const auto previousPaths = projectDocumentPaths_;
     const auto previousRevisions = projectDocumentRevisions_;
     const auto previousProjectRevision = projectRevision_;
@@ -1631,7 +1651,7 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
         project_ = previousProject;
         projectFile_ = previousProjectFile;
         projectRevision_ = previousProjectRevision;
-        projectDocuments_ = previousDocuments;
+        projectSessions_ = previousSessions;
         projectDocumentPaths_ = previousPaths;
         projectDocumentRevisions_ = previousRevisions;
         // Keep the failed load diagnostics without routing them to old pages.
@@ -1650,7 +1670,7 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
     projectRevision_ = loaded.revision;
     projectDiagnostics_ = loaded.diagnostics;
     projectDiagnosticDocumentIds_.assign(projectDiagnostics_.size(), {});
-    projectDocuments_.clear();
+    projectSessions_.clear();
     projectDocumentPaths_.clear();
     projectDocumentRevisions_.clear();
     // The first switch must not sync the previous workbench into freshly
@@ -1715,11 +1735,12 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
                 page.documentId);
             continue;
         }
-        projectDocuments_[page.documentId] = document.document;
+        projectSessions_.emplace(page.documentId, dsl::DesignWorkbenchSession{
+            document.document, pagePath.string(), document.revision});
         projectDocumentPaths_[page.documentId] = pagePath.string();
         projectDocumentRevisions_[page.documentId] = document.revision;
     }
-    if (projectDocuments_.empty()) {
+    if (projectSessions_.empty()) {
         if (projectDiagnostics_.empty()) {
             appendProjectDiagnostic(dsl::DesignError{
                 "project.pages_missing", filename, {},
@@ -1730,8 +1751,8 @@ bool DesignerApp::loadProjectFile(const std::string& filename) {
         return false;
     }
     const auto& first = project_->pages.front().documentId;
-    const auto active = projectDocuments_.contains(first) ? first
-                                                           : projectDocuments_.begin()->first;
+    const auto active = projectSessions_.contains(first) ? first
+                                                           : projectSessions_.begin()->first;
     if (!switchProjectDocument(active)) {
         restorePreviousProject();
         shell_.markDirty();
@@ -1784,9 +1805,9 @@ bool DesignerApp::saveProjectFileAtConflict(
     dsl::DesignProject projectToSave = *project_;
     std::map<std::string, std::filesystem::path> pagePaths;
     for (const auto& page : projectToSave.pages) {
-        const auto document = projectDocuments_.find(page.documentId);
+        const auto document = projectSessions_.find(page.documentId);
         const auto path = projectPagePath(page, filename);
-        if (document == projectDocuments_.end() || path.empty()) {
+        if (document == projectSessions_.end() || path.empty()) {
             appendProjectDiagnostic(dsl::DesignError{
                 "project.page", filename, {}, "project page is not loaded", {}, {},
                 0, {}, {}});
@@ -1892,7 +1913,7 @@ bool DesignerApp::saveProjectFileAtConflict(
     }
 
     for (auto& page : projectToSave.pages) {
-        const auto document = projectDocuments_.find(page.documentId);
+        const auto document = projectSessions_.find(page.documentId);
         const auto path = pagePaths.at(page.documentId);
         const auto revision = nextRevisions.find(page.documentId);
         if (!path.parent_path().empty()) {
@@ -1913,14 +1934,14 @@ bool DesignerApp::saveProjectFileAtConflict(
                 ? std::optional<std::uint64_t>{revision->second}
                 : std::nullopt;
         if (!projectDocumentStore_.save(
-                path.string(), document->second, diagnostics,
+                path.string(), document->second.document(), diagnostics,
                 expectedRevision)) {
             for (auto diagnostic : diagnostics) {
                 appendProjectDiagnostic(std::move(diagnostic), page.documentId);
             }
             return false;
         }
-        page.pageName = document->second.pageName;
+        page.pageName = document->second.document().pageName;
         const auto saved = projectDocumentStore_.load(path.string());
         if (saved.ok()) {
             nextRevisions[page.documentId] = saved.revision;
@@ -1943,24 +1964,16 @@ bool DesignerApp::saveProjectFileAtConflict(
     const auto savedProject = projectStore_.load(filename);
     projectRevision_ = savedProject.revision;
     setResourceRoot(targetRoot);
+    for (auto& [id, session] : projectSessions_) {
+        session.markSaved(projectDocumentPaths_.at(id),
+                          projectDocumentRevisions_.at(id));
+    }
     if (!activeProjectDocumentId_.empty()) {
         const auto activePath = projectDocumentPaths_.find(activeProjectDocumentId_);
         if (activePath != projectDocumentPaths_.end()) {
-            if (!workbench_.openDesignFile(activePath->second,
-                                           &runtimeContext_)) {
-                for (const auto& diagnostic : workbench_.diagnostics()) {
-                    appendProjectDiagnostic(
-                        dsl::DesignError{diagnostic.code, diagnostic.file,
-                                         diagnostic.sourceSpan.has_value()
-                                             ? diagnostic.sourceSpan->begin
-                                             : dsl::SourcePos{},
-                                         diagnostic.message, {}, {},
-                                         diagnostic.nodeId, diagnostic.nodePath,
-                                         diagnostic.property},
-                        activeProjectDocumentId_);
-                }
-                return false;
-            }
+            workbench_.markSaved(activePath->second,
+                projectDocumentRevisions_.at(activeProjectDocumentId_));
+            sourceFile_ = activePath->second;
             sourceSnapshot_ = dsl::serializeDesignDocument(
                 *workbench_.document());
             refreshDocumentUi();
@@ -2011,6 +2024,7 @@ bool DesignerApp::loadFile(const std::string& filename) {
     statusMessage_.clear();
     const bool loaded = workbench_.openLumenFile(filename, &runtimeContext_);
     if (loaded) {
+        clearProjectSession();
         sourceFile_ = filename;
         saveConflict_.reset();
         sourceSnapshot_ = readSourceFile(filename).value_or(
@@ -2030,6 +2044,7 @@ bool DesignerApp::loadSource(const std::string& source, std::string filename) {
     const bool loaded =
         workbench_.openLumenSource(source, filename, &runtimeContext_);
     if (loaded) {
+        clearProjectSession();
         sourceFile_ = filename.empty() ? "<memory>" : filename;
         saveConflict_.reset();
         sourceSnapshot_ = source;
@@ -2189,7 +2204,7 @@ void DesignerApp::activateDiagnostic(std::size_t index) {
     bool switchedDocument = false;
     if (project_.has_value() && !diagnostic.documentId.empty() &&
         diagnostic.documentId != activeProjectDocumentId_ &&
-        projectDocuments_.contains(diagnostic.documentId)) {
+        projectSessions_.contains(diagnostic.documentId)) {
         if (!switchProjectDocument(diagnostic.documentId)) return;
         switchedDocument = true;
     }
@@ -2216,7 +2231,7 @@ bool DesignerApp::diagnosticActionable(std::size_t index) const {
     return diagnosticTarget(index).has_value() ||
            (project_.has_value() && !diagnostic.documentId.empty() &&
             diagnostic.documentId != activeProjectDocumentId_ &&
-            projectDocuments_.contains(diagnostic.documentId));
+            projectSessions_.contains(diagnostic.documentId));
 }
 
 void DesignerApp::registerSelectionHandlers(const dsl::DesignNode& node) {

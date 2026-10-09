@@ -166,6 +166,38 @@ bool DesignPreviewWorkbench::openDocument(DesignDocument document,
     return opened;
 }
 
+std::optional<DesignWorkbenchSession>
+DesignPreviewWorkbench::snapshotSession() const {
+    if (!document_.has_value()) return std::nullopt;
+    DesignWorkbenchSession session{
+        *document_, sourceFile_, hasLoadedRevision_
+            ? std::optional<std::uint64_t>{loadedRevision_} : std::nullopt};
+    session.selection_ = selection_.state();
+    session.history_ = history_;
+    return session;
+}
+
+bool DesignPreviewWorkbench::restoreSession(
+    const DesignWorkbenchSession& session, DesignRuntimeContext* context) {
+    if (!openDocumentInternal(session.document_, context, session.sourceFile_)) {
+        return false;
+    }
+    history_ = session.history_;
+    loadedRevision_ = session.loadedRevision_.value_or(0);
+    hasLoadedRevision_ = session.loadedRevision_.has_value();
+    restoreSelection(session.selection_);
+    return true;
+}
+
+void DesignPreviewWorkbench::markSaved(std::string filename,
+                                       std::uint64_t revision) {
+    if (!document_.has_value()) return;
+    sourceFile_ = std::move(filename);
+    loadedRevision_ = revision;
+    hasLoadedRevision_ = true;
+    history_.markSaved();
+}
+
 bool DesignPreviewWorkbench::openDocumentInternal(
     DesignDocument document, DesignRuntimeContext* context,
     std::string sourceFile) {
@@ -588,11 +620,8 @@ bool DesignPreviewWorkbench::saveDesignFileAtRevision(
         setStoreDiagnostics(errors);
         return false;
     }
-    sourceFile_ = filename;
     const auto saved = documentStore_.load(filename);
-    loadedRevision_ = saved.revision;
-    hasLoadedRevision_ = true;
-    history_.markSaved();
+    markSaved(filename, saved.revision);
     diagnostics_.clear();
     return true;
 }
