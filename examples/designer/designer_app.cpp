@@ -4036,6 +4036,7 @@ core::Widget DesignerApp::buildPropertiesPanel() {
                     "designer-reference-field:" +
                         std::to_string(*selected) + ":" + property.name,
                     168.0F, std::nullopt, bind);
+                field.semanticsLabel = property.name + " reference";
                 field.flex = 1.0F;
                 auto row = core::makeRow(
                     {core::makeText(property.name, theme.typography.caption,
@@ -4058,6 +4059,7 @@ core::Widget DesignerApp::buildPropertiesPanel() {
                     "designer-property-field:" + std::to_string(*selected) +
                         ":" + property.name,
                     168.0F, std::nullopt, bind);
+                field.semanticsLabel = property.name;
                 field.flex = 1.0F;
                 auto row = core::makeRow(
                     {core::makeText(property.name, theme.typography.caption,

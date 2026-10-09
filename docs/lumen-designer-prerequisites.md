@@ -1529,6 +1529,9 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 - F6 无障碍基线：`designer_accessibility_tests.cpp` 从 L0 设计文档编译并布局语义树，验证
   稳定的 role/label/value、bounds、Button 激活动作和重复布局确定性；三桌面读屏和真正的
   设计器面板键盘流程仍属于 D2/D3 应用出口。
+- D3 属性面板的可编辑字段现在以实际属性名提供稳定语义 label，引用字段明确标记为
+  reference；DesignerApp 回归通过语义聚焦、SetValue、文档 undo 和重建后 label/value
+  保持不变（18 个断言）。
 - F6 选择隔离：`DesignSelectionModel` 将会话选择绑定到当前 `documentId`；切换文档时清除
   旧节点 ID、主节点、锚点和拖拽捕获，避免不同文档复用节点 ID 导致选择串用。
 - 决策记录：DP-1=B、DP-2=与阶段 A 并行但平台验收仍为门槛、DP-3=L0、DP-4=独立 preview/session、DP-5=规范化输出 + SourceMap、DP-6=扩展字段保留且无法保留时拒绝保存、DP-7=离线默认 + 显式授权、DP-8=四类 fixture 相对基线、DP-9=A（工程 manifest + 多文档会话），均于 2026-10-01 决定。现有完整 CTest 结果仍不等同于设计器真实平台验收；D3 应用的

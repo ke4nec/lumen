@@ -27,6 +27,8 @@
 #include "lumen/style/state.h"
 
 using lumen::accessibility::kActionActivate;
+using lumen::accessibility::kActionFocus;
+using lumen::accessibility::kActionSetValue;
 using lumen::accessibility::SemanticsRole;
 using lumen::core::Key;
 using lumen::core::Offset;
@@ -206,6 +208,52 @@ TEST_CASE("designer app exposes the D2 shell and semantic controls",
     }
     CHECK(hasButton);
     REQUIRE(app.workbench().selection().primary.has_value());
+}
+
+TEST_CASE("designer property fields expose stable semantics and set values",
+          "[designer][d3][app][a11y]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Text(\"Original\", key: \"title\") }",
+        "a11y-property.lumen"));
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    const auto nodeId = app.workbench().document()->root.id;
+    const std::string fieldKey =
+        "designer-property-field:" + std::to_string(nodeId) + ":text";
+    const auto* field = findNodeByKey(app.shell().root(), fieldKey);
+    REQUIRE(field != nullptr);
+    const std::string fieldIdentity = field->identity;
+    const auto before = app.shell().buildSemanticsSnapshot();
+    const auto* beforeNode = before.find(fieldIdentity);
+    REQUIRE(beforeNode != nullptr);
+    CHECK(beforeNode->role == SemanticsRole::TextField);
+    CHECK(beforeNode->label == "text");
+    CHECK(beforeNode->value == "Original");
+
+    CHECK(app.shell().performAccessibilityAction(fieldIdentity, kActionFocus) ==
+          lumen::accessibility::SemanticsActionStatus::Handled);
+    CHECK(app.shell().performAccessibilityAction(fieldIdentity, kActionSetValue,
+                                                 "Changed") ==
+          lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.shell().renderFrame();
+    const auto after = app.shell().buildSemanticsSnapshot();
+    const auto* afterNode = after.find(fieldIdentity);
+    REQUIRE(afterNode != nullptr);
+    CHECK(afterNode->label == "text");
+    CHECK(afterNode->value == "Changed");
+    CHECK(app.workbench().dirty());
+    REQUIRE(app.undo());
+    CHECK_FALSE(app.workbench().dirty());
+    (void)app.shell().renderFrame();
+    const auto restored = app.shell().buildSemanticsSnapshot();
+    REQUIRE(restored.find(fieldIdentity) != nullptr);
+    CHECK(restored.find(fieldIdentity)->label == "text");
+    CHECK(restored.find(fieldIdentity)->value == "Original");
 }
 
 TEST_CASE("designer app selects preview nodes and keeps the last frame on errors",
