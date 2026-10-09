@@ -74,6 +74,16 @@ the ten raw reports and `gate.json` remain at
 the accessibility bridge OFF in both builds, and does not replace hosted CI
 or any native desktop acceptance record.
 
+Hosted Linux CI on 2026-10-09 passed the Designer gate for clean candidate
+`cbd2025353c5dc67864d5e940da9f852a603c7b6` against the pinned reference.
+The [CPU job](https://github.com/ke4nec/lumen/actions/runs/37873377729/job/113636250291)
+reports success for the reference checkout, same-toolchain build, Designer
+regression gate, and report upload. Detailed metrics and any retry verdicts
+are in its `designer-benchmark-report` artifact, retained for three days;
+the public job result alone does not identify which timing estimator passed.
+This is hosted gate evidence, with desktop and production allocator
+acceptance still recorded separately.
+
 Build with `-DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_BENCHMARKS=ON`, then run:
 
 ```sh

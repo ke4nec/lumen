@@ -1377,6 +1377,10 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   `min/max` 宏，诊断模块在 Windows 使用 `<io.h>` 与 `_write`，终止处理器显式包含
   标准信号及异常声明。两份实现的 Windows 交叉编译通过，完整 Debug `1128/1128`、
   Release `1135/1135` 通过；MSVC 原生结果由后续独立验收分支 CI 确认。
+- 同日旧版 OpenGL 图标回归：对实际桌面 GL 3.0 以下上下文关闭固定 Skia 版本的
+  tessellation/atlas 路径，保留胶囊并集和单次 alpha 混合。完整 GPU CTest
+  `1156/1156`、默认 GL 与强制 OpenGL 2.1 的视觉读回各 `106` 个断言、`4` 个用例
+  通过；macOS GPU 实现的 Apple SDK 编译检查通过。Linux CI 已加入旧 GL 视觉回归。
 - 后续增量提交 `322af90` 将上述三条命令行失败路径加入包内 smoke；`35af740` 让
   `FileWatcher` 把文件删除和重新出现视为可观察变化，并在删除时走统一的旧帧保留诊断、
   恢复后重新加载路径。Debug/Release Designer 相关 CTest 均为 `142/142`，watch fixture
@@ -1452,6 +1456,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   median 的 L0 paint p50 超限（+25.68%），按现有双重比较规则整体 PASS，阈值未放宽。
   候选报告如实标记 dirty，原始报告和失败记录见 Designer 基线说明；此结果
   不代替真实 CI 或三桌面现场验收。
+  2026-10-09 独立验收分支的干净提交 `cbd2025` 已通过
+  [Linux CPU CI](https://github.com/ke4nec/lumen/actions/runs/37873377729/job/113636250291)：
+  固定 Designer 基线 checkout、同工具链构建、四类 fixture 相对门禁及报告归档步骤均成功。
+  这是实际 hosted CI 门禁证据；逐项指标以 `designer-benchmark-report` 归档为准，
+  不把 C++ scoped heap 采集扩大为生产整帧 allocator 或人工桌面验收。
   `designer_performance_tests.cpp` 的 L2 VirtualList fixture 还重复编译同一文档，验证 source
   lease、可见窗口物化数量、RenderNode 和 frame hash 的确定性。R6 已冻结
   `render::FrameAllocationSource` 注入契约：一次 scope 从应用 rebuild/layout/paint 覆盖到
@@ -1519,8 +1528,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 
 ### 10.4 实施期间的评审问题
 
-以下问题已在对应实现阶段记录证据；F6 相对性能门禁已接入，剩余未闭环项是三桌面现场
-验收、跨平台真实 allocator source 接入，以及真实 CI 的性能验收记录：
+以下问题已在对应实现阶段记录证据；F6 相对性能门禁已通过 Linux hosted CI，剩余
+未闭环项是三桌面现场验收和平台 allocator 的原生运行证据。2026-10-09 的
+[macOS CPU CI](https://github.com/ke4nec/lumen/actions/runs/37873377722/job/113636249974)
+已通过包括原生 allocator 独立进程用例的完整 CTest；Windows MSVC 修复正在验收。
+历史批次中的“待补”按下述最新结果更新，人工窗口及读屏结果仍须单独记录：
 
 1. **已验证**：DP-1 的私有格式、magic、codec、单向导入边界和未知字段策略由正式 schema 与 fixture 固定。
 2. **已验证**：`DesignRuntimeSession` 由预览编译结果持有，lease 覆盖 Widget、RenderNode、交互和异步资源，并在替换/清理时关闭。
@@ -1534,5 +1546,6 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 但命令流存储分配读数和该探针都不能替代 R6 的生产整帧堆分配统计；当前已具备可注入的
 `FrameAllocationSource` 契约和 unavailable 降级，Linux/glibc 原生后端及本地
 Wayland/Xwayland 单项窗口 smoke 已验证。macOS/Windows 后端已实现并通过交叉构建，
-Windows 另有 Wine headless 回归；两平台的原生运行/现场、独立 X11 桌面、完整现场结果和真实 CI 的性能
-基线报告仍按已冻结方案补齐。
+Windows 另有 Wine headless 回归；macOS 已有原生 CPU CI 回归，Linux hosted CI 已有
+实际性能门禁通过记录。Windows 原生运行、两平台现场、独立 X11 桌面和完整现场结果
+仍按已冻结方案补齐。
