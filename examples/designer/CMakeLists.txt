@@ -23,6 +23,18 @@ if(LUMEN_ENABLE_GPU)
   target_link_libraries(lumen-designer PRIVATE OpenGL::GL)
 endif()
 
+if(WIN32)
+  # SDL3 builds as a shared library; keep the DLL next to the Designer so
+  # CTest can launch the build-tree executable without an installed runtime.
+  add_custom_command(
+    TARGET lumen-designer
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3>
+            $<TARGET_FILE_DIR:lumen-designer>
+    COMMAND_EXPAND_LISTS
+  )
+endif()
+
 if(LUMEN_BUILD_TESTS)
   add_test(NAME designer_headless COMMAND lumen-designer --headless)
   set_tests_properties(designer_headless PROPERTIES TIMEOUT 20)
