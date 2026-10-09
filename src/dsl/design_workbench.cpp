@@ -173,12 +173,7 @@ bool DesignPreviewWorkbench::openDocumentInternal(
     const bool compiled = context == nullptr
                               ? frame_.tryReplaceDocument(document)
                               : frame_.tryReplaceDocument(document, *context);
-    diagnostics_ = frame_.diagnostics();
-    for (auto& diagnostic : diagnostics_) {
-        if (diagnostic.file.empty() || diagnostic.file == "<design>") {
-            diagnostic.file = sourceFile;
-        }
-    }
+    setFrameDiagnostics(sourceFile);
     if (!compiled && !recoverablePreviewFailure(frame_, diagnostics_)) {
         return false;
     }
@@ -655,6 +650,22 @@ bool DesignPreviewWorkbench::applyEdit(std::string label,
     }
     transaction.setSelectionAfter(afterSelection);
 
+    auto prepared = editContext_ == nullptr
+                        ? frame_.prepareDocument(after)
+                        : frame_.prepareDocument(after, *editContext_);
+    const bool recoverable = !prepared.trace.nodes.empty() &&
+        !prepared.diagnostics.empty() &&
+        std::all_of(prepared.diagnostics.begin(), prepared.diagnostics.end(),
+                    [](const DesignError& error) {
+                        return error.code.rfind("reference.", 0) == 0 ||
+                               error.code.rfind("component.", 0) == 0;
+                    });
+    if (!prepared.ok() && !recoverable) {
+        (void)frame_.tryReplaceDocument(after, std::move(prepared));
+        setFrameDiagnostics(sourceFile_);
+        return false;
+    }
+
     auto committedDocument = before;
     auto committedSelection = beforeSelection;
     if (!history_.commit(committedDocument, committedSelection,
@@ -664,17 +675,8 @@ bool DesignPreviewWorkbench::applyEdit(std::string label,
     }
     document_ = std::move(committedDocument);
     restoreSelection(committedSelection);
-    const bool compiled = updateFrame(editContext_);
-    if (!compiled && !recoverablePreviewFailure(frame_, diagnostics_)) {
-        auto rollbackDocument = *document_;
-        auto rollbackSelection = selection_.state();
-        if (history_.undo(rollbackDocument, rollbackSelection)) {
-            document_ = std::move(rollbackDocument);
-            restoreSelection(rollbackSelection);
-        }
-        setEditError("edited document could not be previewed");
-        return false;
-    }
+    (void)frame_.tryReplaceDocument(*document_, std::move(prepared));
+    setFrameDiagnostics(sourceFile_);
     return true;
 }
 
@@ -731,13 +733,17 @@ bool DesignPreviewWorkbench::updateFrame(DesignRuntimeContext* context) {
     const bool compiled = context == nullptr
                               ? frame_.update(*document_)
                               : frame_.update(*document_, *context);
+    setFrameDiagnostics(sourceFile_);
+    return compiled;
+}
+
+void DesignPreviewWorkbench::setFrameDiagnostics(const std::string& sourceFile) {
     diagnostics_ = frame_.diagnostics();
     for (auto& diagnostic : diagnostics_) {
         if (diagnostic.file.empty() || diagnostic.file == "<design>") {
-            diagnostic.file = sourceFile_;
+            diagnostic.file = sourceFile;
         }
     }
-    return compiled;
 }
 
 void DesignPreviewWorkbench::setError(const DesignError& error) {

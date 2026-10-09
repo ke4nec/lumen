@@ -173,6 +173,7 @@ class DesignPreviewWorkbench {
     void restoreSelection(const DesignSelection& selection);
     void setEditError(std::string message);
     void setStoreDiagnostics(const std::vector<DesignError>& errors);
+    void setFrameDiagnostics(const std::string& sourceFile);
     [[nodiscard]] bool saveDesignFileAtRevision(
         const std::string& filename,
         std::optional<std::uint64_t> expectedRevision);

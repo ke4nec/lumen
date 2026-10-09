@@ -882,6 +882,9 @@ DocumentTransaction {
 
 1. 命令先在副本或可回滚草稿上校验，全部成功后一次提交 DOM；失败不改变文档、选择或
    dirty 状态。
+   属性/结构候选还先准备一次预览编译，schema 合法但编译失败的候选不能进入历史或
+   清除已有 redo 分支。准备阶段只增加 rebuildCount，发布成功才更新 frame generation；
+   非法候选保留当前 session，报告具体编译 code、节点和属性，而不是先提交再 undo。
 2. 一次用户意图只有一个 undo 单元：一次拖动、一次多选属性修改、一次结构重排和一次
    粘贴分别形成一个事务；连续文本输入/拖动是否合并由 `mergeKey` 和时间窗口决定。
    `DesignDocumentHistory` 使用单调时钟，以相邻成功提交之间不超过 750ms 的空闲间隔
@@ -1638,3 +1641,17 @@ P5/G-D15 加载路径复查修正了编译前发布候选 DOM 的顺序；另外
 正向断言。`[load-atomic]` 为 3 个用例、169 个断言通过，完整默认 CTest 1142/1142，
 Release `[designer]` 151 个用例、10893 个断言通过。此前应用用例依赖无效 DOM 被加载
 来制造 Run 失败，现按拒绝加载契约验证 Run 继续使用有效文档；未隐藏加载诊断。
+G-D13/G-D15 编辑路径复查另复现了“失败编辑替换已有 redo 分支”：临时回归在旧实现中
+redo 返回 false 且 DOM 不等于原分支，两个断言失败。现在候选编译准备与发布分离，
+编译失败不提交历史；成功提交直接发布已准备的结果，不二次编译或重复计数。失败保留
+frame、session、DOM、选择、documentRevision、dirty、undo/redo 和原分支，并保留
+`compile.duplicate_runtime_identity` 的节点/属性诊断。`[edit-atomic]` 为 2 个用例、
+94 个断言通过；完整默认 CTest 1144/1144，Release `[designer]` 为 153 个用例、
+10987 个断言通过。
+
+`74a568c` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/37937789284)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/37937789425) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/37937789233) 常规 CI 全部通过；
+Windows 七个 job 均通过。该提交包含字段守护、冲突恢复和合并边界修复；之后的
+加载/编辑发布修复需要其自己的 CI 结果。`4443908` 的 Windows 运行被新提交的并发
+规则取消，未登记为成功；该批 Linux/macOS 均成功。常规 CI 仍不替代现场编辑/读屏。

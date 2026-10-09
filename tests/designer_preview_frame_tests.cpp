@@ -79,6 +79,54 @@ TEST_CASE("designer preview frame keeps the last good compile on failure",
     CHECK(frame.session()->active());
 }
 
+TEST_CASE("designer prepared compilation publishes once or retains the frame",
+          "[designer][f6][edit-atomic]") {
+    const auto parsed = parseLumenSource(
+        "page preview { Text(\"Before\", key: \"label\") }");
+    REQUIRE(parsed.ok());
+    DesignPreviewFrame frame;
+    REQUIRE(frame.update(parsed.document));
+    const auto widget = frame.widget();
+    const auto generation = frame.generation();
+    const auto rebuilds = frame.rebuildCount();
+    const auto session = frame.session();
+    REQUIRE(session);
+    auto changed = parsed.document;
+    bool valid = true;
+    SECTION("valid compilation stays unpublished until committed") {
+        changed.root.properties["text"] =
+            lumen::dsl::DesignValue{std::string{"After"}};
+    }
+    SECTION("fatal compilation keeps the previous session alive") {
+        valid = false;
+        changed.root.type = "Unknown";
+    }
+    auto prepared = frame.prepareDocument(changed);
+    CHECK(prepared.ok() == valid);
+    const auto candidateSession = prepared.session;
+    REQUIRE(candidateSession);
+    CHECK(frame.rebuildCount() == rebuilds + 1);
+    CHECK(frame.generation() == generation);
+    CHECK(frame.widget() == widget);
+    CHECK(frame.session() == session);
+    CHECK(session->active());
+    CHECK(frame.tryReplaceDocument(changed, std::move(prepared)) == valid);
+    CHECK(frame.rebuildCount() == rebuilds + 1);
+    if (valid) {
+        CHECK(frame.generation() == generation + 1);
+        CHECK(frame.widget().text == "After");
+        CHECK_FALSE(session->active());
+        CHECK(frame.session() == candidateSession);
+        CHECK(candidateSession->active());
+    } else {
+        CHECK(frame.generation() == generation);
+        CHECK(frame.widget() == widget);
+        CHECK(frame.session() == session);
+        CHECK(session->active());
+        CHECK_FALSE(candidateSession->active());
+    }
+}
+
 TEST_CASE("designer preview frame closes replaced sessions and advances generation",
           "[designer][f6][diagnostic]") {
     const auto parsed = parseLumenSource(

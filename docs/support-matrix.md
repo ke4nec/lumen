@@ -70,6 +70,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | 本地 Linux / GCC（2026-10-08，`580ea50`） | 默认配置全量 CTest 1128/1128，启用 Linux profiler 的 Release 全量 1135/1135；菜单键回归修复前复现 Release 段错误，修复后 27 个断言通过。干净提交与 `a1e012e` 的四类 DP-8 对比按既定 minimum/median 联合规则通过；median 的 `l0_12` paint p95 +12.21% 回退保留 | 本地性能证据见 `platform-evidence/designer-perf-linux-2026-10-08.json`；无新的原生 Windows/macOS CI 或完整桌面记录，不能推进“真实平台已验证”或“可发布”状态 |
 | GitHub Linux/macOS CI（2026-10-09，`cebe883`） | [Linux](https://github.com/ke4nec/lumen/actions/runs/37875132290) 与 [macOS](https://github.com/ke4nec/lumen/actions/runs/37875132300) 全部 job 通过，覆盖 CPU、Skia/GPU 和三种安装包；Linux CPU 包含真实 DP-8 同机性能门禁，macOS CPU 包含五组原生 allocator 独立进程回归 | 结果仅属于该提交；Windows 同批因测试文件的 `windows.h` min/max 宏污染编译失败，修复后另行验收。原生进程及安装包 CI 不替代登录桌面、IME、读屏、合成器和完整人工 record |
 | GitHub 三桌面 CI（2026-10-09，`85314c0`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37928701758)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37928701730)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37928701716) 全部 job 通过；Windows SDL3 DLL、默认系统字体冷扫描与 MSVC Debug Widget 预算门禁已修复，三平台含 Designer smoke 和原生 allocator 回归 | 属于该提交的常规 CI 证据；没有 self-hosted platform-acceptance 运行、Designer 人工编辑/读屏或完整桌面 record |
+| GitHub 三桌面 CI（2026-10-09，`74a568c`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37937789284)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37937789425)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37937789233) 全部 job 通过，Windows 七个 job 全通过；包含字段守护、冲突恢复和撤销合并边界 | 结果只归属该提交，不覆盖后续加载/编辑发布修复；没有新的完整人工桌面记录 |
 | 本地 GNOME/Wayland Designer（2026-10-09，`85314c0` 运行时源码） | 指定原生 Wayland driver，`gallery.design` 双窗口三帧 smoke 退出 0，唯一完整 `designer_window_smoke pass` 行；[原始日志与身份摘要](platform-evidence/designer-wayland-2026-10-09.json) 已保留 | 工作树含文档/验收脚本改动，运行时源码与提交一致；仅窗口启动，没有编辑/保存/重开、Inspector 操作、IME、读屏、高 DPI、GPU 或一小时浸泡验收 |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
@@ -103,6 +104,9 @@ undo/redo 及新的 redo 分支打断合并。可控时钟用例覆盖暂停、�
 session，应用的普通保存目标也保留；离线引用占位作为成功打开建立新会话。
 新回归已复现旧实现在编译失败后替换 DOM 的问题，修复后本地默认 CTest
 1142/1142、Release Designer 151/151 通过，仍不替代真实平台编辑/读屏记录。
+编辑候选现在只准备一次编译，通过后才提交历史并发布；编译失败保留已有 redo 分支，
+具体错误仍带节点和属性。暂存编译与发布的重建/帧代数、session 生命周期及历史回归
+为 headless 证据，默认 CTest 1144/1144、Release Designer 153/153 通过，现场状态未变。
 
 ### 实现批次与真实平台缺口（2026-09-30）
 

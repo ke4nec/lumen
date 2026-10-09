@@ -39,9 +39,32 @@ bool DesignPreviewFrame::tryReplaceDocument(const DesignDocument& document) {
 bool DesignPreviewFrame::updateInternal(const DesignDocument& document,
                                        DesignRuntimeContext& context,
                                        bool preserveOnFailure) {
+    return publishPrepared(document.documentId,
+                           prepareDocument(document, context),
+                           preserveOnFailure);
+}
+
+DesignCompileResult DesignPreviewFrame::prepareDocument(
+    const DesignDocument& document, DesignRuntimeContext& context) {
     ++rebuildCount_;
-    const auto compiled = compileDesignDocument(document, context);
-    setDiagnostics(compiled.diagnostics, document.documentId);
+    return compileDesignDocument(document, context);
+}
+
+DesignCompileResult DesignPreviewFrame::prepareDocument(
+    const DesignDocument& document) {
+    DesignRuntimeContext context;
+    return prepareDocument(document, context);
+}
+
+bool DesignPreviewFrame::tryReplaceDocument(const DesignDocument& document,
+                                           DesignCompileResult prepared) {
+    return publishPrepared(document.documentId, std::move(prepared), true);
+}
+
+bool DesignPreviewFrame::publishPrepared(std::string_view documentId,
+                                        DesignCompileResult compiled,
+                                        bool preserveOnFailure) {
+    setDiagnostics(compiled.diagnostics, documentId);
     if (!compiled.ok()) {
         // Reference failures still produce a traced placeholder Widget. Keep
         // it as the current frame so an offline preview remains inspectable.
@@ -51,15 +74,15 @@ bool DesignPreviewFrame::updateInternal(const DesignDocument& document,
             trace_ = compiled.trace;
             sourceMap_ = compiled.sourceMap;
             session_ = compiled.session;
-            documentId_ = document.documentId;
+            documentId_ = documentId;
             hasFrame_ = true;
             ++generation_;
             return false;
         }
-        if (!preserveOnFailure && !sameDocument(document.documentId)) {
+        if (!preserveOnFailure && !sameDocument(documentId)) {
             const auto errors = compiled.diagnostics;
             clear();
-            setDiagnostics(errors, document.documentId);
+            setDiagnostics(errors, documentId);
         }
         if (compiled.session) compiled.session->close();
         return false;
@@ -70,7 +93,7 @@ bool DesignPreviewFrame::updateInternal(const DesignDocument& document,
     trace_ = compiled.trace;
     sourceMap_ = compiled.sourceMap;
     session_ = compiled.session;
-    documentId_ = document.documentId;
+    documentId_ = documentId;
     hasFrame_ = true;
     ++generation_;
     return true;

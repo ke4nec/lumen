@@ -419,6 +419,71 @@ TEST_CASE("designer D3 workbench rejects runtime preview properties",
     CHECK(workbench.diagnostics().front().code == "editor.rejected");
 }
 
+// G-D13/G-D15: a candidate that passes schema but fails compilation must not
+// enter history or replace an already existing redo branch.
+TEST_CASE("designer fatal edits preserve undo redo and the active frame",
+          "[designer][d3][edit-atomic]") {
+    DesignPreviewWorkbench workbench;
+    REQUIRE(workbench.openLumenSource(
+        "page current { Column { Text(\"First\", key: \"first\")"
+        " Text(\"Second\", key: \"second\") } }"));
+    const auto original = *workbench.document();
+    const auto first = workbench.document()->root.children[0].id;
+    const auto second = workbench.document()->root.children[1].id;
+    REQUIRE(workbench.selectNode(second));
+    REQUIRE(workbench.setProperty(first, "text",
+                                 DesignValue{std::string{"First edited"}}));
+    const auto firstEdit = *workbench.document();
+    REQUIRE(workbench.setProperty(second, "text",
+                                 DesignValue{std::string{"Second edited"}}));
+    const auto secondEdit = *workbench.document();
+    SECTION("failure preserves an existing redo branch") {
+        REQUIRE(workbench.undo());
+    }
+    SECTION("failure does not create a new redo branch") {
+        CHECK_FALSE(workbench.canRedo());
+    }
+    const auto before = *workbench.document();
+    const auto selection = workbench.selection();
+    const auto revision = workbench.documentRevision();
+    const auto canRedo = workbench.canRedo();
+    const auto widget = workbench.frame().widget();
+    const auto trace = workbench.frame().trace();
+    const auto generation = workbench.frame().generation();
+    const auto rebuilds = workbench.frame().rebuildCount();
+    const auto session = workbench.frame().session();
+    REQUIRE(session);
+    CHECK_FALSE(workbench.setProperty(second, "key",
+                                     DesignValue{std::string{"first"}}));
+    CHECK(workbench.document() == before);
+    CHECK(workbench.selection() == selection);
+    CHECK(workbench.documentRevision() == revision);
+    CHECK(workbench.dirty());
+    CHECK(workbench.canUndo());
+    CHECK(workbench.canRedo() == canRedo);
+    CHECK(workbench.frame().hasFrame());
+    CHECK(workbench.frame().widget() == widget);
+    CHECK(workbench.frame().trace() == trace);
+    CHECK(workbench.frame().generation() == generation);
+    CHECK(workbench.frame().rebuildCount() == rebuilds + 1);
+    CHECK(workbench.frame().session() == session);
+    CHECK(session->active());
+    REQUIRE(workbench.diagnostics().size() == 1);
+    CHECK(workbench.diagnostics().front().code ==
+          "compile.duplicate_runtime_identity");
+    CHECK(workbench.diagnostics().front().nodeId == second);
+    CHECK(workbench.diagnostics().front().property == "key");
+    if (canRedo) {
+        REQUIRE(workbench.redo());
+        CHECK(workbench.document() == secondEdit);
+    }
+    REQUIRE(workbench.undo());
+    CHECK(workbench.document() == firstEdit);
+    REQUIRE(workbench.undo());
+    CHECK(workbench.document() == original);
+    CHECK_FALSE(workbench.dirty());
+}
+
 TEST_CASE("designer D3 workbench applies structural edits with selection history",
           "[designer][d3]") {
     DesignPreviewWorkbench workbench;

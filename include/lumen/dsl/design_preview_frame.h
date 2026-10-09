@@ -26,6 +26,14 @@ class DesignPreviewFrame {
     [[nodiscard]] bool tryReplaceDocument(const DesignDocument& document,
                                           DesignRuntimeContext& context);
     [[nodiscard]] bool tryReplaceDocument(const DesignDocument& document);
+    // Compile a candidate once without publishing it. Preparation records a
+    // rebuild attempt; publishing that result must not compile or count again.
+    [[nodiscard]] DesignCompileResult prepareDocument(
+        const DesignDocument& document, DesignRuntimeContext& context);
+    [[nodiscard]] DesignCompileResult prepareDocument(
+        const DesignDocument& document);
+    [[nodiscard]] bool tryReplaceDocument(const DesignDocument& document,
+                                          DesignCompileResult prepared);
 
     void clear();
 
@@ -54,6 +62,9 @@ class DesignPreviewFrame {
     [[nodiscard]] bool updateInternal(const DesignDocument& document,
                                       DesignRuntimeContext& context,
                                       bool preserveOnFailure);
+    [[nodiscard]] bool publishPrepared(std::string_view documentId,
+                                       DesignCompileResult prepared,
+                                       bool preserveOnFailure);
     [[nodiscard]] bool sameDocument(std::string_view documentId) const;
     void setDiagnostics(const std::vector<DesignError>& errors,
                         std::string_view documentId);
