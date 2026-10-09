@@ -241,7 +241,10 @@ class DesignerGateTests(unittest.TestCase):
     def test_reference_pin_matches_ci(self):
         manifest = json.loads(runner.MANIFEST.read_text())
         workflow = SCRIPT.parent.parent / ".github/workflows/linux.yml"
-        self.assertIn(f"LUMEN_DESIGNER_PERF_BASELINE_COMMIT: {manifest['commit']}", workflow.read_text())
+        self.assertIn(
+            f"LUMEN_DESIGNER_PERF_BASELINE_COMMIT: {manifest['commit']}",
+            workflow.read_text(encoding="utf-8"),
+        )
 
 
 if __name__ == "__main__":

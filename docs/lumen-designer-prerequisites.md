@@ -1389,6 +1389,9 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   原文选区，修复 preedit 长度变化导致提交残留选中文字或删除尾文的问题。模型、字段交互
   和实际 DesignerApp 回归覆盖更新/取消/原子提交/撤销；`[ime]` 五个用例、92 个断言通过。
   全量本地默认配置 CTest `1132/1132`；原生系统输入法和候选框仍须现场验收。
+- DesignerApp 的文档级撤销/重做、打开/保存、预览运行/调试和结构移动快捷键已注册到
+  `AppShell::CommandRegistry`；Ctrl/Cmd 双平台绑定共享同一动作，字段内建编辑和弦由
+  registry 的字段保护规则处理。组合输入期间历史命令动态禁用，提交或取消后恢复。
 - 后续增量提交 `322af90` 将上述三条命令行失败路径加入包内 smoke；`35af740` 让
   `FileWatcher` 把文件删除和重新出现视为可观察变化，并在删除时走统一的旧帧保留诊断、
   恢复后重新加载路径。Debug/Release Designer 相关 CTest 均为 `142/142`，watch fixture

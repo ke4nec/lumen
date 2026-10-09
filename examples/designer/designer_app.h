@@ -146,6 +146,7 @@ class DesignerApp {
 
     [[nodiscard]] static app::ShellConfig configFor(DesignerApp* self);
     [[nodiscard]] static app::ShellConfig previewConfigFor(DesignerApp* self);
+    void registerCommands();
     [[nodiscard]] core::Widget buildUi();
     [[nodiscard]] core::Widget buildPreviewWindow();
     [[nodiscard]] core::Widget buildToolbar();

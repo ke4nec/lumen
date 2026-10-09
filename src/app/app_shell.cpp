@@ -724,7 +724,8 @@ bool AppShell::dispatchCommand(core::Key key, core::KeyModifiers modifiers,
             // 字段聚焦时内建编辑和弦仍归字段；字段不消费的 F10/Alt
             // 仍可进入命令兜底相位。
             if (fieldFocused && chordPhase &&
-                isBuiltinEditChord(spec.binding)) {
+                isBuiltinEditChord(spec.binding) &&
+                !spec.allowWhenTextFieldFocused) {
                 return false;
             }
             return true;

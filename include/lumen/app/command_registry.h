@@ -81,6 +81,9 @@ struct CommandSpec {
     std::string domain{};  // FocusDomain 时的 FocusScope key
     std::function<void(AppShell&)> invoke{};
     std::function<bool()> enabled{};  // 空 = 恒启用
+    // 文本字段通常保留内建编辑和弦；文档级 undo/redo 等命令可显式
+    // 声明仍在字段聚焦时接收该和弦。
+    bool allowWhenTextFieldFocused{false};
 };
 
 class CommandRegistry {

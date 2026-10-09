@@ -833,6 +833,81 @@ DesignerApp::DesignerApp()
         if (id == "guides") toggleCanvasGuides();
         shell_.markDirty();
     };
+    registerCommands();
+}
+
+void DesignerApp::registerCommands() {
+    const auto chord = [this](const std::string& id, char key,
+                              core::KeyModifiers modifiers,
+                              std::function<void()> action,
+                              std::function<bool()> enabled = {},
+                              bool allowWhenTextFieldFocused = false) {
+        app::CommandSpec spec;
+        spec.id = id;
+        spec.binding = app::KeyBinding::chord(key, modifiers);
+        spec.invoke = [action = std::move(action)](app::AppShell&) { action(); };
+        spec.enabled = std::move(enabled);
+        spec.allowWhenTextFieldFocused = allowWhenTextFieldFocused;
+        shell_.commands().registerCommand(std::move(spec));
+    };
+    const auto ctrl = core::kModifierCtrl;
+    const auto gui = core::kModifierGui;
+    const auto registerBoth = [&](const std::string& id, char key,
+                                  core::KeyModifiers modifiers,
+                                  std::function<void()> action,
+                                  std::function<bool()> enabled = {}) {
+        const bool allowWhenTextFieldFocused =
+            id == "designer.undo" || id == "designer.redo" ||
+            id == "designer.redo-shift";
+        chord(id, key, modifiers | ctrl, action, enabled,
+              allowWhenTextFieldFocused);
+        chord(id + ".gui", key, modifiers | gui, std::move(action),
+              std::move(enabled), allowWhenTextFieldFocused);
+    };
+    const auto plainBoth = [&](const std::string& id, core::Key key,
+                               std::function<void()> action) {
+        app::CommandSpec ctrlSpec;
+        ctrlSpec.id = id;
+        ctrlSpec.binding = app::KeyBinding::plain(key, ctrl);
+        ctrlSpec.invoke = [action](app::AppShell&) { action(); };
+        shell_.commands().registerCommand(std::move(ctrlSpec));
+        app::CommandSpec guiSpec;
+        guiSpec.id = id + ".gui";
+        guiSpec.binding = app::KeyBinding::plain(key, gui);
+        guiSpec.invoke = [action = std::move(action)](app::AppShell&) {
+            action();
+        };
+        shell_.commands().registerCommand(std::move(guiSpec));
+    };
+    const auto historyEnabled = [this] {
+        return !shell_.controller().composingActive();
+    };
+    registerBoth("designer.undo", 'z', core::kModifierNone,
+                 [this] { (void)undo(); }, historyEnabled);
+    registerBoth("designer.redo", 'y', core::kModifierNone,
+                 [this] { (void)redo(); }, historyEnabled);
+    registerBoth("designer.redo-shift", 'z', core::kModifierShift,
+                 [this] { (void)redo(); }, historyEnabled);
+    registerBoth("designer.open", 'o', core::kModifierNone,
+                 [this] { requestOpenFile(); });
+    registerBoth("designer.new-project", 'n', core::kModifierShift,
+                 [this] { requestNewProjectFile(); });
+    registerBoth("designer.copy", 'c', core::kModifierNone,
+                 [this] { copySelectedNode(); });
+    registerBoth("designer.paste", 'v', core::kModifierNone,
+                 [this] { pasteCopiedNode(); });
+    registerBoth("designer.save", 's', core::kModifierNone,
+                 [this] { requestSaveFile(); });
+    registerBoth("designer.save-as", 's', core::kModifierShift,
+                 [this] { requestSaveAsFile(); });
+    registerBoth("designer.run", 'r', core::kModifierNone,
+                 [this] { (void)startPreview(false); });
+    registerBoth("designer.debug", 'd', core::kModifierNone,
+                 [this] { (void)startPreview(true); });
+    plainBoth("designer.move-up", core::Key::Up,
+              [this] { moveSelectedNode(-1); });
+    plainBoth("designer.move-down", core::Key::Down,
+              [this] { moveSelectedNode(1); });
 }
 
 void DesignerApp::setResourceRoot(std::filesystem::path root) {
@@ -856,8 +931,6 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
     config.build = [self] { return self->buildUi(); };
     config.onKey = [self](app::AppShell& shell, core::Key key,
                           core::KeyModifiers modifiers, char keyChar) {
-        const bool ctrlLike =
-            (modifiers & (core::kModifierCtrl | core::kModifierGui)) != 0;
         const std::string& focused = shell.focus().focusedKey();
         const bool editingProperty =
             focused.starts_with("designer-property-field:") ||
@@ -891,70 +964,6 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                 "Route: " + self->navigatorPreviewController_.current();
             shell.markDirty();
             return true;
-        }
-        if (ctrlLike && (modifiers & core::kModifierAlt) == 0) {
-            const char lower = static_cast<char>(
-                std::tolower(static_cast<unsigned char>(keyChar)));
-            if ((lower == 'z' || lower == 'y') &&
-                shell.controller().composingActive()) {
-                return true;
-            }
-            if (lower == 'z') {
-                (void)self->undo();
-                return true;
-            }
-            if (lower == 'y') {
-                (void)self->redo();
-                return true;
-            }
-            if (lower == 'o') {
-                self->requestOpenFile();
-                return true;
-            }
-            if (lower == 'n' && (modifiers & core::kModifierShift) != 0) {
-                self->requestNewProjectFile();
-                return true;
-            }
-            if (!editingProperty && lower == 'c') {
-                self->copySelectedNode();
-                return true;
-            }
-            if (!editingProperty && lower == 'v') {
-                self->pasteCopiedNode();
-                return true;
-            }
-            if (lower == 's') {
-                if ((modifiers & core::kModifierShift) != 0) {
-                    self->requestSaveAsFile();
-                } else {
-                    self->requestSaveFile();
-                }
-                return true;
-            }
-            if (!editingProperty && lower == 'r') {
-                (void)self->startPreview(false);
-                return true;
-            }
-            if (!editingProperty && lower == 'd') {
-                (void)self->startPreview(true);
-                return true;
-            }
-            if (!editingProperty && (keyChar == '+' || keyChar == '=')) {
-                self->adjustCanvasZoom(1.1F);
-                return true;
-            }
-            if (!editingProperty && keyChar == '-') {
-                self->adjustCanvasZoom(1.0F / 1.1F);
-                return true;
-            }
-            if (!editingProperty && key == core::Key::Up) {
-                self->moveSelectedNode(-1);
-                return true;
-            }
-            if (!editingProperty && key == core::Key::Down) {
-                self->moveSelectedNode(1);
-                return true;
-            }
         }
         if (!editingProperty && key == core::Key::Delete &&
             (modifiers & core::kModifierAlt) == 0) {
