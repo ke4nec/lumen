@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -120,6 +121,13 @@ class DesignDocumentTransaction {
 
 class DesignDocumentHistory {
   public:
+    using Clock = std::chrono::steady_clock;
+    using TimeSource = std::function<Clock::time_point()>;
+    static constexpr auto kMergeWindow = std::chrono::milliseconds{750};
+
+    // An injected monotonic clock keeps merge-window checks deterministic.
+    explicit DesignDocumentHistory(TimeSource timeSource = {});
+
     [[nodiscard]] DesignDocumentTransaction begin(
         const DesignDocument& document,
         const DesignSelection& selection = {}) const;
@@ -131,7 +139,10 @@ class DesignDocumentHistory {
     [[nodiscard]] bool redo(DesignDocument& document,
                             DesignSelection& selection);
 
-    void markSaved() { savedRevision_ = documentRevision_; }
+    void markSaved() {
+        savedRevision_ = documentRevision_;
+        mergeable_ = false;
+    }
     void clear();
 
     [[nodiscard]] bool canUndo() const { return cursor_ != 0; }
@@ -161,6 +172,7 @@ class DesignDocumentHistory {
         std::string label{};
         std::set<DesignNodeId> affectedIds{};
         std::string mergeKey{};
+        Clock::time_point committedAt{};
         std::vector<DesignDocumentCommand> commands{};
     };
 
@@ -169,6 +181,8 @@ class DesignDocumentHistory {
     std::uint64_t documentRevision_{0};
     std::uint64_t savedRevision_{0};
     std::uint64_t nextRevision_{1};
+    TimeSource timeSource_{};
+    bool mergeable_{false};
 };
 
 enum class DesignDiagnosticSeverity : std::uint8_t {

@@ -260,7 +260,9 @@ TEST_CASE("designer history merges commands and clears redo branches",
           "[designer][f6][transaction]") {
     auto document = sampleDocument();
     DesignSelection selection;
-    DesignDocumentHistory history;
+    DesignDocumentHistory history{[] {
+        return DesignDocumentHistory::Clock::time_point{};
+    }};
 
     auto first = history.begin(document, selection);
     REQUIRE(first.apply(renameCommand("", "a", "typing")));
@@ -281,6 +283,141 @@ TEST_CASE("designer history merges commands and clears redo branches",
     REQUIRE(history.commit(document, selection, std::move(branch)));
     CHECK_FALSE(history.canRedo());
     CHECK(document.pageName == "branch");
+}
+
+// G-D13 / prerequisites §4.14: merge keys and inactivity windows jointly
+// define a continuous editing intent; history navigation ends that intent.
+TEST_CASE("designer history merges only within the inactivity window",
+          "[designer][f6][transaction][merge]") {
+    using namespace std::chrono_literals;
+    auto document = sampleDocument();
+    DesignSelection selection;
+    auto now = DesignDocumentHistory::Clock::time_point{1s};
+    DesignDocumentHistory history{[&now] { return now; }};
+    auto rename = [&](std::string from, std::string to) {
+        auto transaction = history.begin(document, selection);
+        REQUIRE(transaction.apply(renameCommand(from, to, "typing")));
+        REQUIRE(history.commit(document, selection, std::move(transaction)));
+    };
+
+    rename("", "a");
+    now += 750ms;
+    rename("a", "ab");
+    now += 750ms;
+    rename("ab", "abc");
+    CHECK(history.undoSize() == 1);
+
+    SECTION("a pause starts a separate undo unit") {
+        now += 751ms;
+    }
+    SECTION("a clock regression does not extend the intent") {
+        now -= 1ms;
+    }
+    rename("abc", "abcd");
+    CHECK(history.undoSize() == 2);
+    REQUIRE(history.undo(document, selection));
+    CHECK(document.pageName == "abc");
+    REQUIRE(history.undo(document, selection));
+    CHECK(document.pageName.empty());
+    REQUIRE(history.redo(document, selection));
+    CHECK(document.pageName == "abc");
+    REQUIRE(history.redo(document, selection));
+    CHECK(document.pageName == "abcd");
+}
+
+TEST_CASE("designer history navigation breaks command merging",
+          "[designer][f6][transaction][merge]") {
+    auto document = sampleDocument();
+    DesignSelection selection;
+    DesignDocumentHistory history{[] {
+        return DesignDocumentHistory::Clock::time_point{};
+    }};
+    auto first = history.begin(document, selection);
+    REQUIRE(first.apply(renameCommand("", "a", "typing")));
+    REQUIRE(history.commit(document, selection, std::move(first)));
+
+    SECTION("undo followed by a new branch preserves the previous unit") {
+        auto separate = history.begin(document, selection);
+        REQUIRE(separate.apply(renameCommand("a", "other")));
+        REQUIRE(history.commit(document, selection, std::move(separate)));
+        REQUIRE(history.undo(document, selection));
+    }
+    SECTION("redo does not resume the previous editing intent") {
+        REQUIRE(history.undo(document, selection));
+        REQUIRE(history.redo(document, selection));
+    }
+    auto next = history.begin(document, selection);
+    REQUIRE(next.apply(renameCommand("a", "ab", "typing")));
+    REQUIRE(history.commit(document, selection, std::move(next)));
+    CHECK(history.undoSize() == 2);
+    CHECK_FALSE(history.canRedo());
+    REQUIRE(history.undo(document, selection));
+    CHECK(document.pageName == "a");
+    REQUIRE(history.undo(document, selection));
+    CHECK(document.pageName.empty());
+}
+
+TEST_CASE("designer merging requires one key and a continuous editing target",
+          "[designer][f6][transaction][merge]") {
+    auto document = sampleDocument();
+    DesignSelection selection;
+    DesignDocumentHistory history{[] {
+        return DesignDocumentHistory::Clock::time_point{};
+    }};
+    auto first = history.begin(document, selection);
+    REQUIRE(first.apply(renameCommand("", "a", "typing")));
+    SECTION("a previous transaction with an unmergeable command stays separate") {
+        REQUIRE(first.apply(renameCommand("a", "initial")));
+    }
+    REQUIRE(history.commit(document, selection, std::move(first)));
+    const auto before = document;
+
+    SECTION("a new transaction with an unmergeable command stays separate") {
+        auto next = history.begin(document, selection);
+        REQUIRE(next.apply(renameCommand(before.pageName, "ab", "typing")));
+        REQUIRE(next.apply(renameCommand("ab", "final")));
+        REQUIRE(history.commit(document, selection, std::move(next)));
+    }
+    SECTION("differently keyed commands stay separate") {
+        auto next = history.begin(document, selection);
+        REQUIRE(next.apply(renameCommand(before.pageName, "ab", "typing")));
+        REQUIRE(next.apply(renameCommand("ab", "final", "other")));
+        REQUIRE(history.commit(document, selection, std::move(next)));
+    }
+    SECTION("changing selection ends the previous intent") {
+        selection = DesignSelection{{2}, 2, 2, std::nullopt, "properties"};
+        auto next = history.begin(document, selection);
+        REQUIRE(next.apply(renameCommand(before.pageName, "ab", "typing")));
+        REQUIRE(history.commit(document, selection, std::move(next)));
+    }
+    SECTION("changing affected nodes ends the previous intent") {
+        DesignDocumentCommand editText;
+        editText.affectedIds = {2};
+        editText.mergeKey = "typing";
+        editText.apply = [](DesignDocument& candidate) {
+            candidate.root.children[0].properties["text"] =
+                lumen::dsl::DesignValue{std::string{"changed"}};
+            return true;
+        };
+        editText.revert = [](DesignDocument& candidate) {
+            candidate.root.children[0].properties.erase("text");
+            return true;
+        };
+        auto next = history.begin(document, selection);
+        REQUIRE(next.apply(std::move(editText)));
+        REQUIRE(history.commit(document, selection, std::move(next)));
+    }
+    if (document == before) {
+        // Exercises the first section: a mixed previous transaction.
+        auto next = history.begin(document, selection);
+        REQUIRE(next.apply(renameCommand(before.pageName, "ab", "typing")));
+        REQUIRE(history.commit(document, selection, std::move(next)));
+    }
+    CHECK(history.undoSize() == 2);
+    REQUIRE(history.undo(document, selection));
+    CHECK(document == before);
+    REQUIRE(history.undo(document, selection));
+    CHECK(document.pageName.empty());
 }
 
 TEST_CASE("designer history does not merge across a saved revision",

@@ -283,6 +283,9 @@ bool DesignDocumentTransaction::apply(DesignDocumentCommand command) {
     return true;
 }
 
+DesignDocumentHistory::DesignDocumentHistory(TimeSource timeSource)
+    : timeSource_(std::move(timeSource)) {}
+
 DesignDocumentTransaction DesignDocumentHistory::begin(
     const DesignDocument& document, const DesignSelection& selection) const {
     return DesignDocumentTransaction(document, selection, documentRevision_);
@@ -305,8 +308,8 @@ bool DesignDocumentHistory::commit(
         return false;
     }
 
-    if (cursor_ < entries_.size()) entries_.erase(entries_.begin() + cursor_,
-                                                    entries_.end());
+    const bool branched = cursor_ < entries_.size();
+    if (branched) entries_.erase(entries_.begin() + cursor_, entries_.end());
 
     Entry entry;
     entry.before = transaction.before_;
@@ -315,6 +318,7 @@ bool DesignDocumentHistory::commit(
     entry.selectionAfter = transaction.selectionAfter_;
     entry.beforeRevision = documentRevision_;
     entry.afterRevision = nextRevision_++;
+    entry.committedAt = timeSource_ ? timeSource_() : Clock::now();
     entry.label = transaction.label_;
     if (entry.label.empty() && !transaction.commands_.empty()) {
         entry.label = transaction.commands_.front().label;
@@ -323,16 +327,30 @@ bool DesignDocumentHistory::commit(
     for (const auto& command : entry.commands) {
         entry.affectedIds.insert(command.affectedIds.begin(),
                                  command.affectedIds.end());
-        if (entry.mergeKey.empty()) entry.mergeKey = command.mergeKey;
+    }
+    // A transaction containing any unmergeable or differently keyed command
+    // must remain a separate undo unit.
+    entry.mergeKey = entry.commands.front().mergeKey;
+    if (!std::all_of(entry.commands.begin(), entry.commands.end(),
+                     [&entry](const DesignDocumentCommand& command) {
+                         return command.mergeKey == entry.mergeKey;
+                     })) {
+        entry.mergeKey.clear();
     }
 
-    if (cursor_ != 0 && !entry.mergeKey.empty() &&
+    if (!branched && mergeable_ && cursor_ != 0 && !entry.mergeKey.empty() &&
         entries_[cursor_ - 1].afterRevision != savedRevision_ &&
-        entries_[cursor_ - 1].mergeKey == entry.mergeKey) {
+        entries_[cursor_ - 1].mergeKey == entry.mergeKey &&
+        entries_[cursor_ - 1].affectedIds == entry.affectedIds &&
+        entries_[cursor_ - 1].after == entry.before &&
+        entries_[cursor_ - 1].selectionAfter == entry.selectionBefore &&
+        entry.committedAt >= entries_[cursor_ - 1].committedAt &&
+        entry.committedAt - entries_[cursor_ - 1].committedAt <= kMergeWindow) {
         Entry& previous = entries_[cursor_ - 1];
         previous.after = entry.after;
         previous.selectionAfter = entry.selectionAfter;
         previous.afterRevision = entry.afterRevision;
+        previous.committedAt = entry.committedAt;
         previous.label = entry.label.empty() ? previous.label : entry.label;
         previous.affectedIds.insert(entry.affectedIds.begin(),
                                     entry.affectedIds.end());
@@ -350,6 +368,7 @@ bool DesignDocumentHistory::commit(
     document = committed.after;
     selection = committed.selectionAfter;
     documentRevision_ = committed.afterRevision;
+    mergeable_ = !committed.mergeKey.empty();
     return true;
 }
 
@@ -369,6 +388,7 @@ bool DesignDocumentHistory::undo(DesignDocument& document,
     selection = entry.selectionBefore;
     documentRevision_ = entry.beforeRevision;
     --cursor_;
+    mergeable_ = false;
     return true;
 }
 
@@ -391,6 +411,7 @@ bool DesignDocumentHistory::redo(DesignDocument& document,
     selection = entry.selectionAfter;
     documentRevision_ = entry.afterRevision;
     ++cursor_;
+    mergeable_ = false;
     return true;
 }
 
@@ -401,6 +422,7 @@ void DesignDocumentHistory::clear() {
     // publish into the new history epoch.
     documentRevision_ = nextRevision_++;
     savedRevision_ = documentRevision_;
+    mergeable_ = false;
 }
 
 std::string DesignDiagnostic::key() const {

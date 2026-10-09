@@ -880,6 +880,11 @@ DocumentTransaction {
    dirty 状态。
 2. 一次用户意图只有一个 undo 单元：一次拖动、一次多选属性修改、一次结构重排和一次
    粘贴分别形成一个事务；连续文本输入/拖动是否合并由 `mergeKey` 和时间窗口决定。
+   `DesignDocumentHistory` 使用单调时钟，以相邻成功提交之间不超过 750ms 的空闲间隔
+   判断连续操作；合并后的提交会刷新这个窗口。事务内所有命令必须使用相同的非空
+   `mergeKey`，且相邻事务的受影响节点集合、文档快照和选择状态连续。含空 key 或不同
+   key 的事务保持独立；保存、成功 undo/redo、新建 redo 分支和选择/目标变化均打断合并。
+   时钟回退也不合并，测试可注入时钟，不依赖实际等待。
 3. undo/redo 只重放 DOM 命令，并重新编译预览；不能重放业务回调、网络请求、controller
    内部滚动状态或画布 overlay。
 4. `documentRevision` 与 `savedRevision` 分离。预览状态、诊断刷新和运行时绑定更新不使
@@ -1112,8 +1117,9 @@ DocumentStore、0→1 迁移、未知字段保留、原子保存和 `.bak` 恢�
 schema 失败均尝试有效恢复副本。F6 已增加设计器
 应用层的 `DesignDocumentTransaction`/`DesignDocumentHistory`、会话级 `DesignSelectionModel`
 （含基于稳定文档遍历的范围选择）
-和统一 `DesignDiagnostic` 基础契约；事务覆盖副本提交、失败回滚、mergeKey（保存 revision
-会阻断跨保存合并）、undo/redo、选择恢复及 document/saved revision，诊断覆盖阶段、source
+和统一 `DesignDiagnostic` 基础契约；事务覆盖副本提交、失败回滚、mergeKey 与 750ms
+空闲窗口（保存、undo/redo 和目标变化会阻断合并）、undo/redo、选择恢复及
+document/saved revision，诊断覆盖阶段、source
 span、恢复策略和稳定去重。F6
 同时通过 `DesignDocumentEditor` 提供 schema 门控的声明属性/运行时引用编辑，编辑成功或清除时
 移除失效的属性 source span，拒绝 `PreviewOnly` 和错误引用值。
@@ -1614,3 +1620,9 @@ Release `[designer]` 为 145 个用例、10614 个断言通过。新增冲突恢
 [Linux](https://github.com/ke4nec/lumen/actions/runs/37932612330) 和
 [macOS](https://github.com/ke4nec/lumen/actions/runs/37932612291) 常规 CI 全部通过；
 该结果归属此前验收检查器批次，不作为本轮冲突恢复代码的 CI 通过证据。
+G-D13 合并边界复查补齐了 §4.14 第 2 条：相同 `mergeKey` 现在还受 750ms 空闲窗口、
+相同目标与连续选择约束，混合 key/空 key 的多命令事务不合并，保存和成功 undo/redo
+打断连续操作。三个可控时钟回归用例为 109 个断言通过；临时将相同用例链接到未修复的
+history 实现时，3/3 用例失败（27 个断言失败），证明确能检出旧行为。完整默认 CTest
+1139/1139 通过，Release `[designer]` 为 148 个用例、10723 个断言通过；未改变空 key
+的属性提交、结构编辑或一次拖动的事务粒度，也未生成新的人工平台证据。
