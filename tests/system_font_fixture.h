@@ -7,6 +7,9 @@
 //（windows-2025 上 system_fonts_cover_latin_and_cjk 超时、
 // cpu_renderer_system_fonts_draw_real_glyphs 跑满 106s）。
 //
+// 直接运行 lumen-tests 时可在同一进程复用。catch_discover_tests 令 CTest
+// 为每个用例启动独立进程，缓存不跨用例共享；使用此默认目录夹具的用例
+// 必须带 [system-fonts-slow]，获得已有的 600s 冷扫描超时预算。
 // 管理器加载后只读（位图/GDI 缓存内部自带互斥），用例间共享安全；
 // 无系统字体时缓存 nullptr，各用例保持原有的 SKIP/SUCCEED 行为。
 // 显式目录的用例（如缺失目录失败路径、fixture 隔离目录）不受影响，

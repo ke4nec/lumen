@@ -1543,12 +1543,21 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 ### 10.4 实施期间的评审问题
 
 以下问题已在对应实现阶段记录证据；F6 相对性能门禁已通过 Linux hosted CI，剩余
-未闭环项是三桌面现场验收和平台 allocator 的原生运行证据。2026-10-09 的
+未闭环项是三桌面现场验收；Windows/macOS allocator 的原生 CTest 证据已补齐。2026-10-09 的
 [macOS CI](https://github.com/ke4nec/lumen/actions/runs/37875132300)（`cebe883`）
 已全部通过，包括原生 allocator 独立进程 CTest、GPU 和三种安装包；
 [Linux CI](https://github.com/ke4nec/lumen/actions/runs/37875132290) 同批全部通过。
 Windows 同批定位到文档存储测试的 `windows.h` min/max 宏污染，已补 `NOMINMAX`，
-交叉对象编译通过，MSVC 结果由后续 CI 确认。
+交叉对象编译通过。后续 `55dc741` 为 build-tree Designer 复制 `SDL3.dll`，修复
+Windows headless/window smoke 的加载失败；`df57528` 补齐默认系统字体用例的
+600s 冷扫描标签，并将漏同步的 M17 Debug Widget 预算由 952B 更新为 960B
+（Release 仍为 856B）。该提交的
+[Windows CI](https://github.com/ke4nec/lumen/actions/runs/37926334886) 七个 job 全部通过，
+包含 CPU、UIA、Skia raster/GPU、三个安装包和 Designer headless/window smoke；
+[macOS CI](https://github.com/ke4nec/lumen/actions/runs/37926334943) 全部通过。
+[Linux CPU CI](https://github.com/ke4nec/lumen/actions/runs/37926334927/job/113806065498)
+包含 CTest 和 Designer 相对性能门禁通过；同批 Linux Skia 的 CTest 通过，通用
+scene 性能门禁失败，不能据此宣称该次 Linux 全矩阵通过。
 历史批次中的“待补”按下述最新结果更新，人工窗口及读屏结果仍须单独记录：
 
 1. **已验证**：DP-1 的私有格式、magic、codec、单向导入边界和未知字段策略由正式 schema 与 fixture 固定。
@@ -1563,6 +1572,6 @@ Windows 同批定位到文档存储测试的 `windows.h` min/max 宏污染，已
 但命令流存储分配读数和该探针都不能替代 R6 的生产整帧堆分配统计；当前已具备可注入的
 `FrameAllocationSource` 契约和 unavailable 降级，Linux/glibc 原生后端及本地
 Wayland/Xwayland 单项窗口 smoke 已验证。macOS/Windows 后端已实现并通过交叉构建，
-Windows 另有 Wine headless 回归；macOS 已有原生 CPU CI 回归，Linux hosted CI 已有
-实际性能门禁通过记录。Windows 原生运行、两平台现场、独立 X11 桌面和完整现场结果
+Windows 另有 Wine headless 回归；Windows/macOS 已有原生 CPU CI 回归，Linux hosted CI 已有
+实际性能门禁通过记录。Windows/macOS 现场、独立 X11 桌面和完整现场结果
 仍按已冻结方案补齐。
