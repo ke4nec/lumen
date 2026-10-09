@@ -1,0 +1,51 @@
+{
+  "kind": "designer_native_window_smoke",
+  "recorded_at": "2026-10-09T12:43:56.391186+00:00",
+  "source_commit": "85314c0125e2bb4da461fa47e1b02592628d6896",
+  "source_dirty": true,
+  "working_tree_status": [
+    " M README.md",
+    " M docs/lumen-visual-system-design.md",
+    " M tests/check_platform_acceptance.py",
+    " M tests/platform_acceptance_tests.py",
+    "?? design/designer.html"
+  ],
+  "runtime_sources_match_commit": true,
+  "runtime_source_differences": [],
+  "platform": "linux-wayland",
+  "os": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
+  "desktop": "GNOME Shell 50.1",
+  "requested_video_driver": "wayland",
+  "wayland_display": "wayland-0",
+  "build_directory": "build-debug",
+  "cmake_options": {
+    "CMAKE_BUILD_TYPE": "",
+    "LUMEN_ENABLE_ACCESSIBILITY_BRIDGE": "OFF",
+    "LUMEN_ENABLE_GPU": "OFF",
+    "LUMEN_ENABLE_SKIA": "OFF"
+  },
+  "executable_sha256": "488aec761e915d0bbaaa2134ac02501dde9e58cbd399ec04d1d78183835df1c4",
+  "document": "examples/designer/gallery.design",
+  "document_sha256": "81d5bdd6691b19e20e8f324af49b8872e1a5637a26559307e24f6cfda002a6c8",
+  "arguments": [
+    "--file",
+    "examples/designer/gallery.design",
+    "--max-frames",
+    "3"
+  ],
+  "exit_code": 0,
+  "elapsed_seconds": 1.587,
+  "log": "libEGL warning: failed to get driver name for fd -1\n\nlibEGL warning: MESA-LOADER: failed to retrieve device information\n\nlibEGL warning: failed to get driver name for fd -1\n\nMESA: error: ZINK: failed to choose pdev\nlibEGL warning: egl: failed to create dri2 screen\ndesigner_window_smoke pass\n",
+  "log_sha256": "745a755e8460da36f770d960f2242ac0db7c5f1d3f105db8af5723fad7ffff5e",
+  "designer_window_smoke": "pass",
+  "acceptance_complete": false,
+  "limitations": [
+    "Local single-case smoke; no self-hosted workflow run or operator record.",
+    "IME, screen readers, Inspector interactions, editing/save/reopen, high DPI and one-hour soak were not exercised.",
+    "Working tree contains documentation and acceptance-checker edits; application/runtime sources match source_commit.",
+    "CMAKE_BUILD_TYPE is unspecified; this is not a Release performance measurement.",
+    "EGL/ZINK initialization warnings were logged; this smoke does not verify hardware GPU presentation."
+  ],
+  "workflow_run": null,
+  "framework_renderer": "CpuRenderer"
+}

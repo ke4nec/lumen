@@ -69,6 +69,8 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | 本地 Linux / GCC（2026-10-08，`e46d693` + 原生 allocator 批次） | 默认配置全量 CTest 1120/1120；启用 profiler 的 Release 全量 1127/1127，通过五组独立进程原生测试；GNOME/Mutter 50.1 Wayland 和 Xwayland 两窗口短 smoke 通过，183/175 个有效原生 allocator 帧 | 实际 glibc 原生读数已有单项窗口证据，见 `platform-evidence/frame-allocator-linux-2026-10-08.json`；该源码批次未提交时采集且无完整 workflow/人工 record，不替代独立 X11 桌面、Windows/macOS、输入法、读屏、浸泡或真实 CI 的完整验收 |
 | 本地 Linux / GCC（2026-10-08，`580ea50`） | 默认配置全量 CTest 1128/1128，启用 Linux profiler 的 Release 全量 1135/1135；菜单键回归修复前复现 Release 段错误，修复后 27 个断言通过。干净提交与 `a1e012e` 的四类 DP-8 对比按既定 minimum/median 联合规则通过；median 的 `l0_12` paint p95 +12.21% 回退保留 | 本地性能证据见 `platform-evidence/designer-perf-linux-2026-10-08.json`；无新的原生 Windows/macOS CI 或完整桌面记录，不能推进“真实平台已验证”或“可发布”状态 |
 | GitHub Linux/macOS CI（2026-10-09，`cebe883`） | [Linux](https://github.com/ke4nec/lumen/actions/runs/37875132290) 与 [macOS](https://github.com/ke4nec/lumen/actions/runs/37875132300) 全部 job 通过，覆盖 CPU、Skia/GPU 和三种安装包；Linux CPU 包含真实 DP-8 同机性能门禁，macOS CPU 包含五组原生 allocator 独立进程回归 | 结果仅属于该提交；Windows 同批因测试文件的 `windows.h` min/max 宏污染编译失败，修复后另行验收。原生进程及安装包 CI 不替代登录桌面、IME、读屏、合成器和完整人工 record |
+| GitHub 三桌面 CI（2026-10-09，`85314c0`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37928701758)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37928701730)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37928701716) 全部 job 通过；Windows SDL3 DLL、默认系统字体冷扫描与 MSVC Debug Widget 预算门禁已修复，三平台含 Designer smoke 和原生 allocator 回归 | 属于该提交的常规 CI 证据；没有 self-hosted platform-acceptance 运行、Designer 人工编辑/读屏或完整桌面 record |
+| 本地 GNOME/Wayland Designer（2026-10-09，`85314c0` 运行时源码） | 指定原生 Wayland driver，`gallery.design` 双窗口三帧 smoke 退出 0，唯一完整 `designer_window_smoke pass` 行；[原始日志与身份摘要](platform-evidence/designer-wayland-2026-10-09.json) 已保留 | 工作树含文档/验收脚本改动，运行时源码与提交一致；仅窗口启动，没有编辑/保存/重开、Inspector 操作、IME、读屏、高 DPI、GPU 或一小时浸泡验收 |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
 | Linux CI | [linux 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116406) 全部 job 成功，含 Xvfb/llvmpipe GPU、CPU/Skia 包与 AppImage 构建 | GPU 窗口 smoke 显式断言 `backend=skia-gpu`；不替代 Wayland、真实输入法/触控板/合成器及干净桌面包验收 |
@@ -87,6 +89,8 @@ heap、重建次数和虚拟化范围。`cebe883` 的 Linux CPU job 已通过该
 配置工作流或通过性能门禁不替代生产整帧 allocator 和真实窗口验收。
 真实平台工作流还校验人工记录中的 Designer/allocator 附件与本次运行日志的 SHA256
 一致，并要求 Designer 成功标记为唯一完整行；有效旧日志不能替代本次提交的窗口证据。
+完整记录还须覆盖 Inspector 操作、Designer 编辑/保存/重开及 DPI/主题检查，并由各
+必检读屏器完成 Designer 选择/定位和属性编辑/保存；遗漏这些流程或省略浸泡报告均拒绝。
 
 ### 实现批次与真实平台缺口（2026-09-30）
 
@@ -103,12 +107,12 @@ heap、重建次数和虚拟化范围。`cebe883` 的 Linux CPU job 已通过该
 | R3 OS 拖放 | 接口已存在 + headless 已验证 | OS 拖入归一化事件与应用内重排/列拖序 headless 契约通过；三桌面真实拖入 smoke 待现场（`drag_drop_os_receive` 已纳入必检清单）；拖出结构化不可用（SDL 3.2.10） |
 | R4 桌面系统集成 | 部分接口已存在 | 全屏/置顶/OS 模态/托盘契约与 SDL 实现已有（headless 已验证）；全局快捷键 Linux X11 后端已交付（Xvfb XTEST 端到端）+ Win32 后端交付（RegisterHotKey + 消息专用窗口；**编译级验证 = windows.yml，真实按键验收待现场**；平台经 createPlatformBackend 分发）；Wayland/macOS 结构化不可用；macOS 原生菜单栏/交通灯未实现 |
 | R5 文本与剪贴板深度 | headless 已验证 | G-3 剪贴板 MIME 数据层/图片与自定义格式/变更广播有 headless 断言；三桌面真实 IME 与跨应用复制粘贴待现场 |
-| R6 开发者诊断 | dump 与调试图层已交付（headless 已验证） | `dumpRenderTree`/`dumpSemanticsTree`/`dumpStyleTree` + settings/gallery 三旗标 + 帧读数 HUD + bounds/damage 调试图层 + inspector 悬停检视图层（`--inspector`；信息面板 + 命中高亮；同日修复 HUD 经 overlay 槽位吞输入的缺陷——全部纯绘制层）2026-09-30 交付；HUD 已接入命令流 vector 存储分配计数/字节/峰值，并冻结 `FrameAllocationSource` 整帧 scope 契约和 unavailable 降级；Linux/glibc 可选原生 profiler 已有真实 C/C++/SDL headless 回归与 Wayland/Xwayland 单项 smoke；macOS 原生 CPU CI 已通过，Windows 已有交叉构建和 Wine headless 回归（来源与限制见 `lumen-frame-allocator-design.md`）；Windows 原生 CI、三桌面完整现场记录仍待补齐，命令流读数和 RSS 均不得替代整帧统计；inspector 钉住态与样式明细已交付（点击钉住/Esc 解钉，主键捕获为调试契约） |
+| R6 开发者诊断 | dump 与调试图层已交付（headless 已验证） | `dumpRenderTree`/`dumpSemanticsTree`/`dumpStyleTree` + settings/gallery 三旗标 + 帧读数 HUD + bounds/damage 调试图层 + inspector 悬停检视图层（`--inspector`；信息面板 + 命中高亮；同日修复 HUD 经 overlay 槽位吞输入的缺陷——全部纯绘制层）2026-09-30 交付；HUD 已接入命令流 vector 存储分配计数/字节/峰值，并冻结 `FrameAllocationSource` 整帧 scope 契约和 unavailable 降级；Linux/glibc 可选原生 profiler 已有真实 C/C++/SDL headless 回归与 Wayland/Xwayland 单项 smoke；macOS/Windows 原生 CPU CI 已通过（来源与限制见 `lumen-frame-allocator-design.md`）；三桌面完整现场记录仍待补齐，命令流读数和 RSS 均不得替代整帧统计；inspector 钉住态与样式明细已交付（点击钉住/Esc 解钉，主键捕获为调试契约），现场 `inspector_tree_overlay` 现为必检 |
 | R7 控件细节 | 按需池交付中 | 已交付 auto-hide 滚动条、Splitter 塌缩/KeepRatio、DataGrid 筛选接线、可编辑 ComboBox、DialogHost 便利层、ColorPicker、Grid 跨行列、菜单 F10/裸 Alt 单键切换 + 打开态 Alt+mnemonic 顶级切换、List/Tree 行内编辑（2026-09-30）；RTL 镜像、双轴联滚、触摸长按唤起等在池 |
 | R8 复杂文本 | 未启动（按需） | 保持 UAX#9 子集 + 逐 grapheme shaping；HarfBuzz/完整 UBA/TextSpan 待产品需求触发 |
 | R9 框架使用效率 | 部分交付 | `examples/template` 脚手架与 Gallery 样本已有；`examples/common/example_kit.h` 首批提取 mutedLabel/errorText/statusLine（2026-09-30，两应用逐字节重复收敛为单点）；页面壳（sectionCard 级）仍按需 |
 | R10 文档与证据同步 | 进行中 | 本表与待验收登记即该缺口的 2026-09-30 批次；后续状态变化须同一变更内更新 |
-| R11 D3 L0 可编辑设计器 | L0 应用出口已交付 + headless 已验证 | DP-1=B、DP-3=L0、DP-4=独立 preview/session 已于 2026-10-01 决定；DesignerApp 已接通 12 类型工具箱、属性/命名引用/结构编辑、undo/redo、设计文件和工程文件的打开/保存/另存为/新建路径及文件对话框；工程保存已覆盖全页面 revision 预检、目标工程根重定位、页面失败加载状态回滚与诊断保留、工程根内声明资源复制和源/目标符号链接越界保护，工程打开会诊断缺失资源/非普通文件/越界符号链接；F6 `designer_memory_peak` 已记录预览打开/编辑重建/VirtualList layout-paint 的 scoped heap 峰值；platform-acceptance 已把四平台真实会话的 `designer_window_smoke` 纳入必检项，现场证据仍待 |
+| R11 D3 L0 可编辑设计器 | L0 应用出口已交付 + headless 已验证 | DP-1=B、DP-3=L0、DP-4=独立 preview/session 已于 2026-10-01 决定；DesignerApp 已接通 12 类型工具箱、属性/命名引用/结构编辑、undo/redo、设计文件和工程文件的打开/保存/另存为/新建路径及文件对话框；工程保存已覆盖全页面 revision 预检、目标工程根重定位、页面失败加载状态回滚与诊断保留、工程根内声明资源复制和源/目标符号链接越界保护，工程打开会诊断缺失资源/非普通文件/越界符号链接；F6 `designer_memory_peak` 已记录预览打开/编辑重建/VirtualList layout-paint 的 scoped heap 峰值；platform-acceptance 要求四平台的原生窗口 smoke、编辑/保存/重开、DPI/主题和 Designer 自身读屏流程，本机 Wayland 单项启动已通过，完整现场证据仍待 |
 
 ### 预乘 alpha 联调历史记录（2026-09-20）
 

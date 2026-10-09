@@ -10,11 +10,12 @@ import shutil
 READERS = {"linux-x11": {"Orca"}, "linux-wayland": {"Orca"},
            "macos": {"VoiceOver"}, "windows": {"Narrator", "NVDA"}}
 READER_CASES = {"read", "focus", "activate", "value", "editing", "dialog",
-                "resize", "close_reopen"}
+                "resize", "close_reopen", "designer_select_locate", "designer_edit_save"}
 PLATFORM_CASES = {"ime_preedit_commit_cancel", "ime_candidate_position", "clipboard_cross_app",
                   "multiwindow_focus_dpi", "window_lifecycle", "transparent_composition",
                   "gpu_present_recovery_state", "soak_resources", "drag_drop_os_receive",
-                  "frame_allocator_source", "designer_window_smoke"}
+                  "frame_allocator_source", "designer_window_smoke", "inspector_tree_overlay",
+                  "designer_edit_save_reopen", "designer_dpi_theme"}
 NATIVE_ALLOCATOR_SOURCES = {"linux-x11": "glibc/malloc", "linux-wayland": "glibc/malloc",
                             "macos": "libmalloc/malloc", "windows": "ntdll/heap"}
 NATIVE_ALLOCATOR_DRIVERS = {"linux-x11": "x11", "linux-wayland": "wayland",
@@ -98,11 +99,15 @@ def validate_designer_window_artifact(record: dict, directory: Path) -> None:
     read_designer_window_log(evidence_log(record, directory, "designer-live.log"))
 
 
-def validate_platform(record: dict, soak: dict, platform: str) -> None:
+def validate_platform_checks(record: dict, platform: str) -> None:
     required = PLATFORM_CASES | ({"font_cold_start", "touchpad"} if platform == "windows" else set())
-    for case in required:
+    for case in sorted(required):
         if record.get("platform_checks", {}).get(case) != "pass":
             raise ValueError(f"platform/{case} not passed")
+
+
+def validate_platform(record: dict, soak: dict, platform: str) -> None:
+    validate_platform_checks(record, platform)
     driver = {"linux-x11": "x11", "linux-wayland": "wayland", "macos": "cocoa", "windows": "windows"}[platform]
     for key in ("seconds", "windows", "frames", "resize_events", "stress_mib", "simulated_recoveries"):
         value = soak.get(key)
@@ -121,6 +126,7 @@ def validate(record: dict, commit: str, platform: str, directory: Path) -> None:
         raise ValueError("evidence must identify the exact 40-character source commit")
     if record.get("platform") != platform or platform not in READERS:
         raise ValueError("wrong desktop session")
+    validate_platform_checks(record, platform)
     for key in ("operator", "recorded_at", "os", "desktop", "gpu_driver", "ime", "application"):
         if not isinstance(record.get(key), str) or not record[key].strip():
             raise ValueError(f"missing {key}")
@@ -176,6 +182,8 @@ def main() -> None:
             return
         if args.record is None or args.commit is None:
             raise ValueError("operator acceptance requires --record and --commit")
+        if args.soak_report is None:
+            raise ValueError("operator acceptance requires --soak-report")
         record = json.loads(args.record.read_text(encoding="utf-8"))
         validate(record, args.commit, args.platform, args.record.parent)
         if args.frame_allocator_log:
@@ -183,8 +191,7 @@ def main() -> None:
                                  "frame-allocator-live.log")
         if args.designer_log:
             validate_current_log(record, args.record.parent, args.designer_log, "designer-live.log")
-        if args.soak_report:
-            validate_platform(record, json.loads(args.soak_report.read_text(encoding="utf-8")), args.platform)
+        validate_platform(record, json.loads(args.soak_report.read_text(encoding="utf-8")), args.platform)
         if args.archive:
             args.archive.mkdir(parents=True, exist_ok=True)
             shutil.copy2(args.record, args.archive / "record.json")

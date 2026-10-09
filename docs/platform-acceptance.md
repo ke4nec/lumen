@@ -94,6 +94,23 @@ Linux/macOS 常规 CPU CI 启用原生桥，其他默认 OFF 构建继续覆盖�
 3. Windows：分别用 Narrator 和 NVDA 完成同样的焦点、激活和值设置回环；`a11y`
    CTest 只验证 UIA 客户端链路，不替代这一步。
 
+设计器前置任务 §6.1、§6.3 和 §4.18 还要求以下现场流程；仅启动三个帧的
+`designer_window_smoke` 不能替代它们。使用本次构建，并在临时副本上编辑，保留
+逐步操作、实际结果和录像/读屏日志；每个平台的记录均须包含：
+
+| 检查项 | 操作和通过条件 |
+| --- | --- |
+| `inspector_tree_overlay` | 启动 `lumen-gallery --inspector --bounds-overlay --damage-overlay --frame-overlay`；悬停检查最深节点，点击钉住、Esc 解钉，触发 resize 和控件更新；核对树/样式、bounds/damage 和帧 HUD 与实际窗口一致 |
+| `designer_edit_save_reopen` | 打开 `gallery.design` 副本，选中 L0 节点、修改属性、undo/redo，插入/复制/重排/删除节点；保存后关闭并重开，核对最终声明、节点身份和预览；无效属性输入不得留下半提交文档 |
+| `designer_dpi_theme` | 调整真实窗口 DPI/显示器缩放并 resize，切换 Designer 的 DPI、Font 和 Contrast；核对画布命中、大纲/属性/错误面板布局及语义位置；预览环境切换不得使文档 dirty |
+
+每个必检读屏器还须在 Designer 自身完成 `designer_select_locate`（只用键盘和读屏
+从大纲选择节点、定位属性和诊断，确认名称、选中状态、只读状态与焦点播报）及
+`designer_edit_save`（导航到属性字段，完成文本/IME 编辑、undo/redo 和保存，确认值、
+dirty/保存状态和预览反馈）。Windows 的 Narrator 和 NVDA 分别记录，settings/Gallery
+的同类回环不能代替 Designer 的结果。`inspector_tree_overlay` 等人工项没有自动
+成功标记；检查器验证记录完整性，实际通过仍由验收人观察并签署。
+
 每次验收应保留 workflow run URL、artifact JSON、OS/桌面环境、显示服务器、
 GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 headless job 不得更新
 [`support-matrix.md`](support-matrix.md) 的“真实平台已验证”状态。
@@ -111,7 +128,7 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
   "desktop": "桌面/合成器及版本",
   "gpu_driver": "GPU 型号、驱动及版本",
   "ime": "输入法及版本",
-  "application": "本次构建的 lumen-settings/lumen-gallery",
+  "application": "本次构建的 lumen-settings/lumen-gallery/lumen-designer",
   "provider": "atspi",
   "provider_available": false,
   "platform_checks": {
@@ -120,7 +137,8 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
     "window_lifecycle": "pending", "transparent_composition": "pending",
     "gpu_present_recovery_state": "pending", "soak_resources": "pending",
     "drag_drop_os_receive": "pending", "frame_allocator_source": "pending",
-    "designer_window_smoke": "pending"
+    "designer_window_smoke": "pending", "inspector_tree_overlay": "pending",
+    "designer_edit_save_reopen": "pending", "designer_dpi_theme": "pending"
   },
   "readers": {
     "Orca": {
@@ -128,7 +146,8 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
       "checks": {
         "read": "pending", "focus": "pending", "activate": "pending",
         "value": "pending", "editing": "pending", "dialog": "pending",
-        "resize": "pending", "close_reopen": "pending"
+        "resize": "pending", "close_reopen": "pending",
+        "designer_select_locate": "pending", "designer_edit_save": "pending"
       }
     }
   },
@@ -152,10 +171,15 @@ Wayland/Xwayland 执行 allocator 短 smoke；AppKit、Windows 和完整人工�
 交叉编译及 `cebe883` 的
 [原生 CPU CI](https://github.com/ke4nec/lumen/actions/runs/37875132300/job/113642094536)，
 Windows x64 已完成交叉构建并在 Wine 中通过五组独立进程回归，原生 Windows CI
-及两平台现场结果仍待补齐，不能把它们的现场检查项改为 pass。旧版单项 JSON 诊断不是完整
+也已于 `85314c0` 通过；同提交的 [Windows](https://github.com/ke4nec/lumen/actions/runs/37928701758)、
+[macOS](https://github.com/ke4nec/lumen/actions/runs/37928701716) 和
+[Linux](https://github.com/ke4nec/lumen/actions/runs/37928701730) 常规 CI 全部通过。
+Windows/macOS 现场结果仍待补齐，不能把它们的现场检查项改为 pass。旧版单项 JSON 诊断不是完整
 record，须用带来源和成功标记的新探针重新采集正式附件。
 可用 `--frame-allocator-log <log> --validate-frame-allocator-only --platform <session>`
 单独检查原生日志；此模式不检查 commit、读屏、浸泡或人工 record，不等同完整验收。
+完整人工验收必须提供 `--soak-report`，并通过全部平台检查项及读屏检查项；省略
+浸泡报告或只提供窗口 smoke 的记录不会打印完整验收成功，也不会归档为通过。
 
 ## 待验收登记（2026-10-02）
 
@@ -172,7 +196,8 @@ record，须用带来源和成功标记的新探针重新采集正式附件。
 | 透明合成 | Windows texture 已实测；X11/Wayland/macOS 未验 | headless 已验证（预乘表示一致） | 无真实合成器现场 | 软件窗口不支持逐像素透明时按不透明提交 | R0 |
 | 1 小时双窗口浸泡 | Linux 已做（M14-A）；Windows/macOS 未做 | headless 已验证（恢复用例） | 无登录桌面长时运行 | 模拟 renderer 失效不冒充真实 GPU context loss | R2 |
 | OS 拖入真实 smoke | 三平台 | headless 已验证（M15 契约） | 无真实文件管理器/源应用拖拽现场 | `dragDropStart=false`（SDL 3.2.10 无拖出 API）+ 结构化 Unavailable | R3（本日已纳入 `drag_drop_os_receive` 必检项） |
-| 真实整帧 allocator source | 三平台 | 三平台后端均已实现；Linux scope/异常生命周期已有 headless 回归，GNOME/Mutter Wayland 与 Xwayland 两窗口短 smoke 通过（183/175 个有效 allocator 帧）；macOS SDK 14.5/26.1 arm64/x86_64 交叉编译及 `cebe883` 原生 CPU CI 五组进程回归通过；Windows x64 交叉构建和 Wine 五组进程回归通过 | 原生 Windows CI、两平台现场、独立 X11 桌面及完整 record 未补齐；Wine 和短 smoke 不满足全部发布检查项 | 无安装、绑定不完整或容量溢出时 HUD 显示 unavailable；命令流容量和 RSS 不冒充整帧读数 | R6（`frame_allocator_source` 必检项；设计与现场命令见 `lumen-frame-allocator-design.md`） |
+| 真实整帧 allocator source | 三平台 | 三平台后端均已实现；Linux scope/异常生命周期已有 headless 回归，GNOME/Mutter Wayland 与 Xwayland 两窗口短 smoke 通过（183/175 个有效 allocator 帧）；macOS SDK 14.5/26.1 arm64/x86_64 交叉编译及原生 CPU CI 五组进程回归通过；Windows x64 交叉构建、Wine 和 `85314c0` 原生 CI 通过 | 两平台现场、独立 X11 桌面及完整 record 未补齐；Wine 和短 smoke 不满足全部发布检查项 | 无安装、绑定不完整或容量溢出时 HUD 显示 unavailable；命令流容量和 RSS 不冒充整帧读数 | R6（`frame_allocator_source` 必检项；设计与现场命令见 `lumen-frame-allocator-design.md`） |
+| Inspector 与 Designer 编辑/读屏 | 三平台（Linux 分 X11/Wayland） | 大纲/属性/诊断、事务保存、环境预览和语义已有 headless 回归；常规三平台 CI 的 Designer smoke 已通过 | 无完整现场操作和 Designer 读屏记录；三帧启动不覆盖编辑/保存/重开、高 DPI 和 Inspector 操作 | 保留旧预览、诊断定位、只读/离线占位沿用已验证契约 | R6 / R11（上述三个平台项和两个读屏项均为必检） |
 | 全局快捷键真实按键 | Windows/Linux X11 | Linux X11 后端已交付（Xvfb XTEST 端到端通过）；Win32 后端已交付（RegisterHotKey，编译级 CI 门禁）；macOS 后端未实现 | X11 桌面真实键盘按键待现场；Win32 真实按键（消息泵→UI 事件、冲突码）待现场；Wayland 会话 = `globalHotkeys=false` + 结构化 Unavailable（如实）；macOS = 结构化 Unavailable | R4（Win32/Linux 为验收缺口；macOS 为实现缺口） |
 | macOS 原生菜单栏/交通灯 | macOS | 未实现 | 无实现 | 自绘 MenuBar/标题栏可用 | R4 |
 | GPU 包、CPack Bundle、干净机器启动 | Windows/macOS | CI 变体已构建（package-skia-gpu） | 无干净机器安装/启动记录 | CI 解包冒烟不替代真实验收 | R1 |

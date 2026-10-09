@@ -1558,6 +1558,10 @@ Windows headless/window smoke 的加载失败；`df57528` 补齐默认系统字�
 [Linux CPU CI](https://github.com/ke4nec/lumen/actions/runs/37926334927/job/113806065498)
 包含 CTest 和 Designer 相对性能门禁通过；同批 Linux Skia 的 CTest 通过，通用
 scene 性能门禁失败，不能据此宣称该次 Linux 全矩阵通过。
+后续 `85314c0` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/37928701758)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/37928701730) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/37928701716) 全部 job 通过，
+Linux scene 门禁在该批通过；这三个结果均归属 `85314c0`，不自动覆盖后续提交。
 历史批次中的“待补”按下述最新结果更新，人工窗口及读屏结果仍须单独记录：
 
 1. **已验证**：DP-1 的私有格式、magic、codec、单向导入边界和未知字段策略由正式 schema 与 fixture 固定。
@@ -1575,3 +1579,16 @@ Wayland/Xwayland 单项窗口 smoke 已验证。macOS/Windows 后端已实现并
 Windows 另有 Wine headless 回归；Windows/macOS 已有原生 CPU CI 回归，Linux hosted CI 已有
 实际性能门禁通过记录。Windows/macOS 现场、独立 X11 桌面和完整现场结果
 仍按已冻结方案补齐。
+
+2026-10-09 按 §6.1、§6.3、§4.18 出口复查发现，现场检查器仅强制 Designer 三帧
+启动，尚未要求实际 Inspector 操作、编辑/保存/重开、DPI/主题和 Designer 自身的读屏
+流程。现已把这三个平台项及两个逐读屏器项接入必检集合，并同步现场操作说明及支持
+矩阵；完整 CLI 验收还必须提供一小时浸泡报告，省略报告或平台检查项不能归档为通过。
+这是验收完整性的修复，未把这些人工项改为已验证。
+本机 GNOME/Wayland 已用 `85314c0` 的运行时源码执行 `gallery.design` 双窗口三帧
+smoke，退出 0 且成功标记唯一；[日志及身份摘要](platform-evidence/designer-wayland-2026-10-09.json)
+保留工作树改动、二进制/文档/日志哈希及 EGL 警告。该单项结果不替代 Inspector 操作、
+编辑闭环、输入法、读屏、高 DPI、GPU 或完整 self-hosted 现场 record。
+本轮检查器回归 `python3 -B tests/platform_acceptance_tests.py` 为 17/17，通过四平台
+遗漏/待验拒绝、逐读屏器 Designer 流程、缺失浸泡报告及当前日志匹配检查；默认本地
+完整 `ctest --test-dir build-debug --output-on-failure -C Debug` 为 1133/1133 通过。

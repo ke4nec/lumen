@@ -24,6 +24,31 @@ class EvidenceTests(unittest.TestCase):
                     frame_allocator_frames=99, frame_allocator_allocations=640,
                     frame_allocator_bytes=9000, frame_allocator_peak_bytes=4000)
 
+    def operator_record(self, root, platform="linux-x11"):
+        """Complete synthetic evidence for validation tests, never a live sign-off."""
+        report = dict(self.native_allocator_report(), driver=NATIVE_ALLOCATOR_DRIVERS[platform],
+                      frame_allocator_source=NATIVE_ALLOCATOR_SOURCES[platform])
+        contents = {"trace.txt": "unit fixture only",
+                    "frame-allocator-live.log": json.dumps(report) + "\nframe_allocator_smoke pass\n",
+                    "designer-live.log": "designer_window_smoke pass\n"}
+        record = dict(commit="a" * 40, platform=platform, operator="fixture",
+                      recorded_at="2026-10-09T00:00:00Z", os="fixture", desktop="fixture",
+                      gpu_driver="fixture", ime="fixture", application="settings/gallery/designer",
+                      provider={"linux-x11": "atspi", "linux-wayland": "atspi",
+                                "macos": "nsaccessibility", "windows": "uia"}[platform],
+                      provider_available=True,
+                      readers={name: {"version": "fixture", "checks":
+                               {key: "pass" for key in READER_CASES}} for name in READERS[platform]},
+                      platform_checks={key: "pass" for key in PLATFORM_CASES}, artifacts=[])
+        if platform == "windows":
+            record["platform_checks"].update(font_cold_start="pass", touchpad="pass")
+        for name, content in contents.items():
+            path = root / name
+            path.write_text(content, encoding="utf-8")
+            record["artifacts"].append({"path": name,
+                                       "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+        return record
+
     def test_native_allocator_report_requires_real_source_session_and_metrics(self):
         report = self.native_allocator_report()
         validate_frame_allocator_report(report, "linux-wayland")
@@ -99,23 +124,14 @@ class EvidenceTests(unittest.TestCase):
     def test_operator_record_enforces_native_allocator_artifact_and_its_hash(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            record = dict(commit="a" * 40, platform="linux-wayland", operator="fixture",
-                          recorded_at="2026-10-08T00:00:00Z", os="fixture", desktop="fixture",
-                          gpu_driver="fixture", ime="fixture", application="fixture",
-                          provider="atspi", provider_available=True,
-                          readers={"Orca": {"version": "fixture", "checks":
-                                   {key: "pass" for key in READER_CASES}}},
-                          platform_checks={"frame_allocator_source": "pass"},
-                          artifacts=[{"path": "trace.txt", "sha256": ""}])
-            (root / "trace.txt").write_text("unit fixture only", encoding="utf-8")
-            record["artifacts"][0]["sha256"] = hashlib.sha256((root / "trace.txt").read_bytes()).hexdigest()
+            record = self.operator_record(root, "linux-wayland")
+            artifact = next(item for item in record["artifacts"]
+                            if item["path"] == "frame-allocator-live.log")
+            record["artifacts"].remove(artifact)
             with self.assertRaises(ValueError):
                 validate(record, "a" * 40, "linux-wayland", root)
             log = root / "frame-allocator-live.log"
-            log.write_text(json.dumps(self.native_allocator_report()) +
-                           "\nframe_allocator_smoke pass\n", encoding="utf-8")
-            record["artifacts"].append({"path": log.name,
-                                       "sha256": hashlib.sha256(log.read_bytes()).hexdigest()})
+            record["artifacts"].append(artifact)
             validate(record, "a" * 40, "linux-wayland", root)
             log.write_text("changed", encoding="utf-8")
             with self.assertRaises(ValueError):
@@ -185,6 +201,69 @@ class EvidenceTests(unittest.TestCase):
                                                    designer_window_smoke=value)}
                 validate_platform(invalid, soak, "linux-x11")
 
+    def test_designer_startup_cannot_replace_inspector_editing_or_dpi_acceptance(self):
+        # Prerequisites §6.1, §6.3 and §4.18 require actual user flows after startup.
+        for platform in READERS:
+            record = {"platform_checks": {key: "pass" for key in PLATFORM_CASES}}
+            if platform == "windows":
+                record["platform_checks"].update(font_cold_start="pass", touchpad="pass")
+            soak = dict(driver=NATIVE_ALLOCATOR_DRIVERS[platform], seconds=3600, windows=2,
+                        frames=100, resize_events=20, stress_mib=64, simulated_recoveries=2,
+                        state_preserved=True)
+            validate_platform(record, soak, platform)
+            for case in ("inspector_tree_overlay", "designer_edit_save_reopen", "designer_dpi_theme"):
+                for value in ("pending", None):
+                    invalid = copy.deepcopy(record)
+                    if value is None:
+                        del invalid["platform_checks"][case]
+                    else:
+                        invalid["platform_checks"][case] = value
+                    with self.subTest(platform=platform, case=case, value=value):
+                        with self.assertRaisesRegex(ValueError, f"platform/{case} not passed"):
+                            validate_platform(invalid, soak, platform)
+
+    def test_each_reader_must_complete_designer_selection_and_editing(self):
+        # Settings/Gallery reader results cannot satisfy Designer's §4.18 exit.
+        for platform in READERS:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                record = self.operator_record(root, platform)
+                validate(record, "a" * 40, platform, root)
+                for reader in READERS[platform]:
+                    for case in ("designer_select_locate", "designer_edit_save"):
+                        for value in ("pending", None):
+                            invalid = copy.deepcopy(record)
+                            if value is None:
+                                del invalid["readers"][reader]["checks"][case]
+                            else:
+                                invalid["readers"][reader]["checks"][case] = value
+                            with self.subTest(platform=platform, reader=reader, case=case, value=value):
+                                with self.assertRaisesRegex(ValueError, f"{reader}/{case} not passed"):
+                                    validate(invalid, "a" * 40, platform, root)
+
+    def test_operator_validation_requires_platform_checks_even_without_soak_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = self.operator_record(root)
+            validate(record, "a" * 40, "linux-x11", root)
+            del record["platform_checks"]
+            with self.assertRaisesRegex(ValueError, "platform/.* not passed"):
+                validate(record, "a" * 40, "linux-x11", root)
+
+    def test_operator_cli_requires_soak_before_archiving(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record_path = root / "record.json"
+            record_path.write_text(json.dumps(self.operator_record(root)), encoding="utf-8")
+            archive = root / "archive"
+            command = [sys.executable, str(Path(__file__).with_name("check_platform_acceptance.py")),
+                       "--platform", "linux-x11", "--commit", "a" * 40, "--record", str(record_path),
+                       "--archive", str(archive)]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("operator acceptance requires --soak-report", result.stderr)
+            self.assertFalse(archive.exists())
+
     def test_designer_window_smoke_requires_success_marker_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -210,31 +289,22 @@ class EvidenceTests(unittest.TestCase):
                 root = Path(directory)
                 evidence = root / "evidence"
                 evidence.mkdir()
-                report = dict(self.native_allocator_report(), driver=NATIVE_ALLOCATOR_DRIVERS[platform],
-                              frame_allocator_source=NATIVE_ALLOCATOR_SOURCES[platform])
-                contents = {"frame-allocator-live.log": json.dumps(report) + "\nframe_allocator_smoke pass\n",
-                            "designer-live.log": "designer_window_smoke pass\n"}
-                record = dict(commit="a" * 40, platform=platform, operator="fixture",
-                              recorded_at="2026-10-08T00:00:00Z", os="fixture", desktop="fixture",
-                              gpu_driver="fixture", ime="fixture", application="fixture",
-                              provider={"linux-x11": "atspi", "linux-wayland": "atspi",
-                                        "macos": "nsaccessibility", "windows": "uia"}[platform],
-                              provider_available=True,
-                              readers={name: {"version": "fixture", "checks":
-                                       {key: "pass" for key in READER_CASES}} for name in READERS[platform]},
-                              platform_checks={"frame_allocator_source": "pass", "designer_window_smoke": "pass"},
-                              artifacts=[])
-                for name, content in contents.items():
-                    (root / name).write_text(content, encoding="utf-8")
-                    (evidence / name).write_bytes((root / name).read_bytes())
-                    record["artifacts"].append({"path": name, "sha256":
-                                               hashlib.sha256((evidence / name).read_bytes()).hexdigest()})
+                record = self.operator_record(evidence, platform)
+                contents = {name: (evidence / name).read_text(encoding="utf-8") for name in
+                            ("frame-allocator-live.log", "designer-live.log")}
+                for name in contents:
+                    (root / name).write_bytes((evidence / name).read_bytes())
+                soak = dict(driver=NATIVE_ALLOCATOR_DRIVERS[platform], seconds=3600, windows=2,
+                            frames=100, resize_events=20, stress_mib=64, simulated_recoveries=2,
+                            state_preserved=True)
+                (root / "soak.json").write_text(json.dumps(soak), encoding="utf-8")
                 record_path = evidence / "record.json"
                 record_path.write_text(json.dumps(record), encoding="utf-8")
                 command = [sys.executable, str(Path(__file__).with_name("check_platform_acceptance.py")),
                            "--platform", platform, "--commit", "a" * 40, "--record", str(record_path),
                            "--frame-allocator-log", str(root / "frame-allocator-live.log"),
-                           "--designer-log", str(root / "designer-live.log")]
+                           "--designer-log", str(root / "designer-live.log"),
+                           "--soak-report", str(root / "soak.json")]
                 archive = root / "archive"
                 matching = subprocess.run(command + ["--archive", str(archive)],
                                           capture_output=True, text=True, timeout=5)
@@ -243,6 +313,8 @@ class EvidenceTests(unittest.TestCase):
                     self.assertEqual((archive / name).read_bytes(), (root / name).read_bytes())
                 for artifact in record["artifacts"]:
                     name = artifact["path"]
+                    if name not in contents:
+                        continue
                     log = evidence / name
                     log.write_text("previous run\n" + contents[name], encoding="utf-8")
                     artifact["sha256"] = hashlib.sha256(log.read_bytes()).hexdigest()
@@ -260,15 +332,7 @@ class EvidenceTests(unittest.TestCase):
     def test_requires_current_commit_reader_cases_and_real_attachments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "trace.txt").write_text("test fixture only", encoding="utf-8")
-            record = dict(commit="a" * 40, platform="linux-x11", operator="fixture",
-                          recorded_at="2026-09-22T00:00:00Z", os="Linux", desktop="X11",
-                          gpu_driver="fixture", ime="fixture", application="settings",
-                          provider="atspi", provider_available=True,
-                          readers={"Orca": {"version": "fixture", "checks":
-                                   {key: "pass" for key in READER_CASES}}},
-                          artifacts=[{"path": "trace.txt", "sha256":
-                                      hashlib.sha256((root / "trace.txt").read_bytes()).hexdigest()}])
+            record = self.operator_record(root)
             validate(record, "a" * 40, "linux-x11", root)
             for field, value in [("commit", "b" * 40), ("platform", "linux-wayland"),
                                  ("provider_available", False), ("artifacts", []),
