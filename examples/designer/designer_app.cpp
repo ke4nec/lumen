@@ -895,6 +895,10 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
         if (ctrlLike && (modifiers & core::kModifierAlt) == 0) {
             const char lower = static_cast<char>(
                 std::tolower(static_cast<unsigned char>(keyChar)));
+            if ((lower == 'z' || lower == 'y') &&
+                shell.controller().composingActive()) {
+                return true;
+            }
             if (lower == 'z') {
                 (void)self->undo();
                 return true;
@@ -957,7 +961,9 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
             self->removeSelectedNode();
             return true;
         }
-        if (self->outlineController_.handleKey(key, modifiers, keyChar)) {
+        if ((focused == "designer-outline" ||
+             focused.starts_with("designer-outline:")) &&
+            self->outlineController_.handleKey(key, modifiers, keyChar)) {
             return true;
         }
         return false;

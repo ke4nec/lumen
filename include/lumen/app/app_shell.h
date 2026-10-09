@@ -586,6 +586,8 @@ class AppShell {
     std::size_t lastCaret_{0};
     std::size_t lastSelectionStart_{0};
     std::size_t lastSelectionEnd_{0};
+    std::size_t lastCompositionReplacementEnd_{0};
+    bool lastHasCompositionReplacement_{false};
     std::string lastComposition_{};
     float caretAlpha_{1.0F};
     float lastCaretAlpha_{1.0F};

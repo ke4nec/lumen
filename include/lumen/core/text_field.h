@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "lumen/core/render_node.h"
 #include "lumen/text/text_layout.h"
 
@@ -15,7 +17,8 @@ struct TextFieldDisplay {
 
 [[nodiscard]] TextFieldDisplay textFieldDisplay(
     const RenderNode& node, const std::string& composition = {},
-    std::size_t selectionStart = 0);
+    std::size_t selectionStart = 0,
+    std::optional<std::size_t> compositionReplacementEnd = std::nullopt);
 [[nodiscard]] TextStyle textFieldLayoutStyle(const RenderNode& node);
 [[nodiscard]] float textFieldWrapWidth(const RenderNode& node);
 [[nodiscard]] Offset textFieldTextOrigin(

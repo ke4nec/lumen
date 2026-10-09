@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -393,6 +394,13 @@ class InteractionController {
     // preedit 字符串（绘制/诊断用；绝不进入 StateStore）。
     [[nodiscard]] const std::string& composition() const {
         return composition_;
+    }
+    // 组合输入开始时的原文选区终点，供绘制和候选框定位共享替换范围。
+    [[nodiscard]] std::optional<std::size_t> compositionReplacementEnd() const {
+        if (!composingActive_) {
+            return std::nullopt;
+        }
+        return selectionBeforeComposition_.end();
     }
     // 焦点字段的 bind key（"" 表示无编辑焦点）。
     [[nodiscard]] const std::string& focusedBind() const {

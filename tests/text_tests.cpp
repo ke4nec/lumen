@@ -265,6 +265,29 @@ TEST_CASE("editing_value_compose_commit_cancel", "[text]") {
     CHECK(cancelled.caret() == 2);
 }
 
+TEST_CASE("ime_commit_replaces_original_selection_after_preedit_updates",
+          "[text][ime]") {
+    TextSelection selection{5, 2};
+    std::string expected = "abZf";
+    SECTION("middle insertion keeps trailing text") {
+        selection = TextSelection{3, 3};
+        expected = "abcZdef";
+    }
+    const TextEditingValue original{"abcdef", selection};
+    const auto preview = original.compose("nihao-long").compose("h");
+    CHECK(preview.text() == original.text());
+    SECTION("restore retains the original replacement range") {
+        TextEditingValue restored{preview.text()};
+        restored.restore(preview.selection(), preview.composingActive(),
+                         preview.composing(), selection);
+        CHECK(restored.commitComposition("Z").text() == expected);
+        CHECK(restored.cancelComposition().selection() == selection);
+    }
+    CHECK(preview.commitComposition("Z").text() == expected);
+    CHECK(preview.commitComposition("Z").caret() == selection.start() + 1);
+    CHECK(preview.cancelComposition().selection() == selection);
+}
+
 // --- 字体回退 ---
 
 TEST_CASE("font_manager_falls_back_across_families", "[text]") {
@@ -1128,6 +1151,38 @@ TEST_CASE("textfield_ime_commit_is_single_undo_entry",
     controller.cancelComposition();
     controller.keyDown(Key::None, kModifierCtrl, 'z');
     CHECK(store.get("f").empty());
+}
+
+TEST_CASE("textfield_ime_replaces_selected_text_without_trailing_loss",
+          "[text][interaction][ime]") {
+    StateStore store;
+    HandlerRegistry handlers;
+    FocusManager focus;
+    InteractionController controller(store, handlers, focus);
+    store.set("f", "abcdef");
+    Widget ui = makeContainer(withKey(
+        makeTextField("abcdef", {}, {}, {}, 0.0F, "field"), "field"));
+    ui.children[0].bind = "f";
+    const auto root = layoutOf(ui);
+    controller.pointerDown(root, centerOf(root, "field"));
+    controller.keyDown(Key::End);
+    controller.keyDown(Key::Left);
+    for (int i = 0; i < 3; ++i) {
+        controller.keyDown(Key::Left, kModifierShift);
+    }
+    REQUIRE(controller.selectionStart() == 2);
+    REQUIRE(controller.selectionEnd() == 5);
+    controller.setComposition("nihao-long");
+    controller.setComposition("h");
+    CHECK(store.get("f") == "abcdef");
+    CHECK_FALSE(controller.canUndo());
+    controller.textInput("\xE4\xBD\xA0\xE5\xA5\xBD");
+    CHECK(store.get("f") == "ab\xE4\xBD\xA0\xE5\xA5\xBD" "f");
+    CHECK(controller.caretGraphemes() == 4);
+    CHECK_FALSE(controller.composingActive());
+    controller.keyDown(Key::None, kModifierCtrl, 'z');
+    CHECK(store.get("f") == "abcdef");
+    CHECK_FALSE(controller.canUndo());
 }
 
 TEST_CASE("readonly_field_rejects_undo_redo", "[text][interaction]") {

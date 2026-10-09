@@ -84,7 +84,7 @@ class TextEditingValue {
 
     // 进入/更新 preedit：替换当前 composing（首次进入时占据选区位置）。
     [[nodiscard]] TextEditingValue compose(const std::string& preedit) const;
-    // 提交 composing（用 committed 替换 preedit，光标落在其后）。
+    // 提交时替换进入组合输入前的原文选区，光标落在 committed 之后。
     [[nodiscard]] TextEditingValue commitComposition(
         const std::string& committed) const;
     // 取消 composing：preedit 消失，文档与选区回到进入前状态。
@@ -94,8 +94,12 @@ class TextEditingValue {
     void clamp();
 
     // 恢复编辑状态（交互层从 store 文本重建值时用；夹取后生效）。
+    // 四参数保留进入组合输入前的原文选区；三参数沿用 composing 作该范围。
     TextEditingValue& restore(TextSelection selection, bool composingActive,
                               TextSelection composing);
+    TextEditingValue& restore(TextSelection selection, bool composingActive,
+                              TextSelection composing,
+                              TextSelection selectionBeforeComposition);
 
   private:
     std::string text_{};
@@ -104,7 +108,7 @@ class TextEditingValue {
     bool composingActive_{false};
     // preedit 的 grapheme 数（composing 坐标空间的限界）。
     std::size_t composingGraphemes_{0};
-    // 进入 composing 前的选区（cancelComposition 恢复）。
+    // 进入 composing 前的原文选区（提交替换、取消恢复）。
     TextSelection savedSelection_{};
 };
 

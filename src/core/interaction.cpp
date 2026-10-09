@@ -146,7 +146,8 @@ InteractionController::InteractionController(StateStore& store,
 
 text::TextEditingValue InteractionController::buildValue() const {
     text::TextEditingValue value{store_.get(focusedBind_)};
-    value.restore(selection_, composingActive_, composing_);
+    value.restore(selection_, composingActive_, composing_,
+                  selectionBeforeComposition_);
     return value;
 }
 
@@ -1211,10 +1212,7 @@ void InteractionController::commitComposition(const std::string& text) {
 
 void InteractionController::cancelComposition() {
     if (composingActive_ && !focusedBind_.empty()) {
-        // buildValue() reconstructs the editing value for each event, so its
-        // internal saved selection does not survive a preedit update.
-        commitValue(text::TextEditingValue{store_.get(focusedBind_),
-                                           selectionBeforeComposition_});
+        commitValue(buildValue().cancelComposition());
     }
     composingActive_ = false;
     composing_ = {};

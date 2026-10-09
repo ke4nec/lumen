@@ -22,9 +22,19 @@ void TextEditingValue::clamp() {
 TextEditingValue& TextEditingValue::restore(TextSelection selection,
                                             bool composingActive,
                                             TextSelection composing) {
+    return restore(selection, composingActive, composing, composing);
+}
+
+TextEditingValue& TextEditingValue::restore(
+    TextSelection selection, bool composingActive, TextSelection composing,
+    TextSelection selectionBeforeComposition) {
     selection_ = selection;
     composing_ = composing;
     composingActive_ = composingActive;
+    composingGraphemes_ = composingActive
+                              ? composing.end() - composing.start()
+                              : 0;
+    savedSelection_ = selectionBeforeComposition;
     clamp();
     return *this;
 }
@@ -232,10 +242,10 @@ TextEditingValue TextEditingValue::commitComposition(
     if (!composingActive_) {
         return insertText(committed);
     }
-    // 用 committed 替换 composing 区间。
+    // preedit 不落 text；提交只替换进入组合输入前的原文选区。
     TextEditingValue next;
-    const std::size_t start = composing_.base;
-    const std::size_t end = composing_.end();
+    const std::size_t start = savedSelection_.start();
+    const std::size_t end = savedSelection_.end();
     next.text_ = graphemeSubstring(text_, 0, start) + committed +
                  graphemeSubstring(text_, end, graphemeCount(text_));
     const std::size_t caret = start + graphemeCount(committed);

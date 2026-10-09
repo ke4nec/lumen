@@ -319,7 +319,10 @@ void paintTextField(Sink& sink, const RenderNode& node, Offset origin,
     const ScopedClip<Sink> clip{sink, rect};
     const auto display = core::textFieldDisplay(
         node, field.focused ? options.composition : std::string{},
-        options.selectionStart);
+        options.selectionStart,
+        field.focused && options.hasCompositionReplacement
+            ? std::optional<std::size_t>{options.compositionReplacementEnd}
+            : std::nullopt);
     const bool showingPlaceholder = display.showingPlaceholder;
     const auto compositionGraphemes = display.compositionLength;
     const auto insertAt = display.compositionStart;

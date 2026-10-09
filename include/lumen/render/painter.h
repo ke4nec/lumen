@@ -25,6 +25,9 @@ struct PaintOptions {
     std::size_t selectionEnd{0};
     bool hasSelection{false};
     std::string composition{};
+    // 原文选区终点；组合输入期间 preedit 替换该范围，而不是只插入。
+    std::size_t compositionReplacementEnd{0};
+    bool hasCompositionReplacement{false};
     // Paint-only portals suppress their original location; no extra input tree.
     std::span<const std::string> suppressedIdentities{};
 };

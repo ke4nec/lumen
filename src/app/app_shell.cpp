@@ -912,6 +912,11 @@ void AppShell::paintFrame(bool forceFullRepaint) {
     options.selectionEnd = controller_.selectionEnd();
     options.hasSelection = controller_.hasSelection();
     options.composition = controller_.composition();
+    if (const auto replacementEnd = controller_.compositionReplacementEnd();
+        replacementEnd.has_value()) {
+        options.compositionReplacementEnd = *replacementEnd;
+        options.hasCompositionReplacement = true;
+    }
 
     const std::string& focusedIdentity = focus_.focusedIdentity();
     const bool optionsChanged =
@@ -919,6 +924,8 @@ void AppShell::paintFrame(bool forceFullRepaint) {
         options.caretGraphemes != lastCaret_ ||
         options.selectionStart != lastSelectionStart_ ||
         options.selectionEnd != lastSelectionEnd_ ||
+        options.compositionReplacementEnd != lastCompositionReplacementEnd_ ||
+        options.hasCompositionReplacement != lastHasCompositionReplacement_ ||
         options.composition != lastComposition_ ||
         caretAlpha_ != lastCaretAlpha_;
     const bool needPaint = forceFullRepaint || fullRepaintPending_ ||
@@ -944,6 +951,8 @@ void AppShell::paintFrame(bool forceFullRepaint) {
             options.caretGraphemes != lastCaret_ ||
             options.selectionStart != lastSelectionStart_ ||
             options.selectionEnd != lastSelectionEnd_ ||
+            options.compositionReplacementEnd != lastCompositionReplacementEnd_ ||
+            options.hasCompositionReplacement != lastHasCompositionReplacement_ ||
             options.composition != lastComposition_ ||
             caretAlpha_ != lastCaretAlpha_) {
             addNodeRect(damage, focusedIdentity, focus_.focusedKey());
@@ -1040,6 +1049,8 @@ void AppShell::paintFrame(bool forceFullRepaint) {
     lastCaret_ = options.caretGraphemes;
     lastSelectionStart_ = options.selectionStart;
     lastSelectionEnd_ = options.selectionEnd;
+    lastCompositionReplacementEnd_ = options.compositionReplacementEnd;
+    lastHasCompositionReplacement_ = options.hasCompositionReplacement;
     lastComposition_ = options.composition;
     lastCaretAlpha_ = caretAlpha_;
     framePainted_ = true;
@@ -1730,7 +1741,8 @@ core::Rect AppShell::focusedTextRect() const {
         return core::Rect{};
     }
     const auto display = core::textFieldDisplay(
-        *found, controller_.composition(), controller_.selectionStart());
+        *found, controller_.composition(), controller_.selectionStart(),
+        controller_.compositionReplacementEnd());
     const auto layout = text::TextLayout::layout(
         display.text, core::textFieldLayoutStyle(*found),
         core::textFieldWrapWidth(*found), textFontSource());

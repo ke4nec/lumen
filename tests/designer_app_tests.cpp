@@ -1098,6 +1098,89 @@ TEST_CASE("designer app edits declaration properties and routes undo redo",
     CHECK(app.workbench().dirty());
 }
 
+// Designer prerequisites section 4.18: IME preview is not a document edit.
+TEST_CASE("designer property IME preserves preedit and commits one transaction",
+          "[designer][d3][app][ime]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Text(\"Original\", key: \"title\") }",
+        "ime-property.lumen"));
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    const auto nodeId = app.workbench().document()->root.id;
+    const std::string fieldKey =
+        "designer-property-field:" + std::to_string(nodeId) + ":text";
+    const auto* field = findNodeByKey(app.shell().root(), fieldKey);
+    REQUIRE(field != nullptr);
+    const auto point = absoluteOffset(app.shell().root(), fieldKey) +
+                       Offset{field->size.width * 0.5F,
+                              field->size.height * 0.5F};
+    app.shell().pointerDown(point);
+    app.shell().pointerUp(point);
+    REQUIRE(app.shell().focus().focusedKey() == fieldKey);
+    app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'a');
+    REQUIRE(app.shell().controller().selectionStart() == 0);
+    REQUIRE(app.shell().controller().selectionEnd() == 8);
+    const auto original =
+        lumen::dsl::serializeDesignDocument(*app.workbench().document());
+    const auto revision = app.workbench().documentRevision();
+
+    app.shell().textEditing("ni");
+    (void)app.shell().renderFrame();
+    app.shell().textEditing("nihao");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().composingActive());
+    CHECK(app.shell().controller().composition() == "nihao");
+    CHECK(lumen::dsl::serializeDesignDocument(*app.workbench().document()) ==
+          original);
+    CHECK(app.workbench().documentRevision() == revision);
+    CHECK_FALSE(app.workbench().dirty());
+    CHECK_FALSE(app.workbench().canUndo());
+
+    SECTION("native cancellation does not create history") {
+        app.shell().textEditing("");
+    }
+    SECTION("Escape cancellation does not create history") {
+        app.shell().keyDown(Key::Escape);
+    }
+    SECTION("commit is atomic and history keys wait for composition") {
+        const std::string committed = "\xE4\xBD\xA0\xE5\xA5\xBD";
+        app.shell().textInput(committed);
+        (void)app.shell().renderFrame();
+        CHECK(std::get<std::string>(
+                  app.workbench().document()->root.properties.at("text").value) ==
+              committed);
+        CHECK(app.workbench().documentRevision() == revision + 1);
+        CHECK(app.workbench().dirty());
+        const auto afterCommit =
+            lumen::dsl::serializeDesignDocument(*app.workbench().document());
+
+        app.shell().textEditing("zai");
+        for (const char historyKey : {'z', 'y'}) {
+            for (const auto modifiers : {lumen::core::kModifierCtrl,
+                                         lumen::core::kModifierGui}) {
+                app.shell().keyDown(Key::None, modifiers, historyKey);
+                (void)app.shell().renderFrame();
+                CHECK(lumen::dsl::serializeDesignDocument(
+                          *app.workbench().document()) == afterCommit);
+                CHECK(app.shell().controller().composition() == "zai");
+            }
+        }
+        app.shell().keyDown(Key::Escape);
+        app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'z');
+        (void)app.shell().renderFrame();
+    }
+
+    CHECK_FALSE(app.shell().controller().composingActive());
+    CHECK(app.shell().controller().composition().empty());
+    CHECK(lumen::dsl::serializeDesignDocument(*app.workbench().document()) ==
+          original);
+    CHECK_FALSE(app.workbench().dirty());
+    CHECK_FALSE(app.workbench().canUndo());
+}
+
 TEST_CASE("designer app edits a shared multi-selection property in one transaction",
           "[designer][d3][app][selection]") {
     DesignerApp app;

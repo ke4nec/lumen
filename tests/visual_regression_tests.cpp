@@ -97,6 +97,14 @@ TEST_CASE("empty_password_field_shows_preedit_and_placeholder", "[visual][regres
     CHECK(display.text != "中文");
 }
 
+TEST_CASE("textfield_preedit_replaces_original_selection_in_display",
+          "[visual][ime]") {
+    auto field = layoutControl(makeTextField("abcdef"), style::Theme::dark());
+    const auto display = textFieldDisplay(field, "h", 3, 5);
+    CHECK(display.compositionStart == 2);
+    CHECK(display.text == "abhf");
+}
+
 TEST_CASE("choice_targets_reserve_focus_space_without_resizing_parts", "[visual][regression]") {
     for (const auto density : {style::ControlDensity::Compact, style::ControlDensity::Comfortable,
                                style::ControlDensity::Touch}) {

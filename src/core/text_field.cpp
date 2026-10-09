@@ -21,7 +21,9 @@ std::string obscureText(const std::string& value) {
 
 TextFieldDisplay textFieldDisplay(const RenderNode& node,
                                   const std::string& composition,
-                                  std::size_t selectionStart) {
+                                  std::size_t selectionStart,
+                                  std::optional<std::size_t>
+                                      compositionReplacementEnd) {
     TextFieldDisplay result;
     result.showingPlaceholder = node.text.empty() && composition.empty() &&
                                 !node.placeholder.empty();
@@ -34,9 +36,13 @@ TextFieldDisplay textFieldDisplay(const RenderNode& node,
                                   : 0;
     if (result.compositionLength > 0) {
         const auto& display = result.text;
+        const std::size_t replacementEnd = std::max(
+            result.compositionStart,
+            std::min(compositionReplacementEnd.value_or(result.compositionStart),
+                     text::graphemeCount(display)));
         result.text = text::graphemeSubstring(display, 0, result.compositionStart) +
                       (node.obscure ? obscureText(composition) : composition) +
-                      text::graphemeSubstring(display, result.compositionStart,
+                      text::graphemeSubstring(display, replacementEnd,
                                               text::graphemeCount(display));
     }
     return result;

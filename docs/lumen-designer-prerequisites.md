@@ -1005,6 +1005,9 @@ recoverability  // continue / placeholder / keep-last-frame / block-save
 - 画布提供键盘等价路径：聚焦节点、方向键移动/重排、Shift 多选、Delete、Escape 取消、
   Ctrl/Cmd+Z/Y、复制/粘贴和属性面板导航。命令名称与 `CommandRegistry` 保持单一数据源，
   IME 文本输入走现有编辑事务，不把 preedit 写入 DOM。
+  大纲键盘导航只在大纲焦点域内消费，属性和引用字段的全选、光标移动仍走文本编辑路径。
+  组合输入期间 Ctrl/Cmd+Z/Y 不改文档历史；提交仅替换进入组合输入前的原文选区，
+  不能用 preedit 长度裁切原文。取消恢复该选区，提交只产生一个可撤销的文档事务。
 - headless 每个用户流程都要有确定性 DOM/diagnostic 输出；预览 frame hash 排除时间、
   指针地址和异步到达顺序等非声明因素。`--frame-overlay` 这类实时读数只能显式开启，
   关闭态不得改变既有 frame hash 或性能基线。
@@ -1381,6 +1384,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
   tessellation/atlas 路径，保留胶囊并集和单次 alpha 混合。完整 GPU CTest
   `1156/1156`、默认 GL 与强制 OpenGL 2.1 的视觉读回各 `106` 个断言、`4` 个用例
   通过；macOS GPU 实现的 Apple SDK 编译检查通过。Linux CI 已加入旧 GL 视觉回归。
+- 2026-10-09 键盘/IME 评审：属性字段 Ctrl/Cmd+A 和方向键不再被大纲消费；
+  组合输入期间文档撤销/重做等待提交或取消。共享编辑模型和交互层保留进入组合输入前的
+  原文选区，修复 preedit 长度变化导致提交残留选中文字或删除尾文的问题。模型、字段交互
+  和实际 DesignerApp 回归覆盖更新/取消/原子提交/撤销；`[ime]` 五个用例、92 个断言通过。
+  全量本地默认配置 CTest `1132/1132`；原生系统输入法和候选框仍须现场验收。
 - 后续增量提交 `322af90` 将上述三条命令行失败路径加入包内 smoke；`35af740` 让
   `FileWatcher` 把文件删除和重新出现视为可观察变化，并在删除时走统一的旧帧保留诊断、
   恢复后重新加载路径。Debug/Release Designer 相关 CTest 均为 `142/142`，watch fixture
@@ -1530,8 +1538,11 @@ RuntimeContext 解析状态（替身 / 已解析 / 缺失），`ref.missing` 以
 
 以下问题已在对应实现阶段记录证据；F6 相对性能门禁已通过 Linux hosted CI，剩余
 未闭环项是三桌面现场验收和平台 allocator 的原生运行证据。2026-10-09 的
-[macOS CPU CI](https://github.com/ke4nec/lumen/actions/runs/37873377722/job/113636249974)
-已通过包括原生 allocator 独立进程用例的完整 CTest；Windows MSVC 修复正在验收。
+[macOS CI](https://github.com/ke4nec/lumen/actions/runs/37875132300)（`cebe883`）
+已全部通过，包括原生 allocator 独立进程 CTest、GPU 和三种安装包；
+[Linux CI](https://github.com/ke4nec/lumen/actions/runs/37875132290) 同批全部通过。
+Windows 同批定位到文档存储测试的 `windows.h` min/max 宏污染，已补 `NOMINMAX`，
+交叉对象编译通过，MSVC 结果由后续 CI 确认。
 历史批次中的“待补”按下述最新结果更新，人工窗口及读屏结果仍须单独记录：
 
 1. **已验证**：DP-1 的私有格式、magic、codec、单向导入边界和未知字段策略由正式 schema 与 fixture 固定。
