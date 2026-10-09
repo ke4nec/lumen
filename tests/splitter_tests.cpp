@@ -378,11 +378,12 @@ TEST_CASE("splitter_widget_size_budget", "[core][widgets][splitter]") {
     // → +8B = 840B；同批 clipRounded bool（圆角裁剪声明，框架化角部
     // 例外）触发对齐 → 848B（Debug 工具链调试迭代器开销分档同集合
     // 规则）；M17（2026-09-30）scrollbarAutoHide/塌缩标志 bool 簇再越
-    // 对齐 → 856B。
+    // 对齐 → 856B；windows-2025 当前 MSVC Debug STL 实测为 960B，
+    // 仅计入工具链分档，不放宽 Release 门禁。
 #ifdef NDEBUG
     CHECK(sizeof(Widget) <= 856);
 #else
-    CHECK(sizeof(Widget) <= 952);
+    CHECK(sizeof(Widget) <= 960);
 #endif
 }
 

@@ -253,7 +253,7 @@ TEST_CASE("cpu_renderer_system_fonts_draw_real_glyphs",
 }
 
 TEST_CASE("system_font_layout_keeps_ltr_visual_order",
-          "[text][system-fonts]") {
+          "[text][system-fonts][system-fonts-slow]") {
     const auto fonts = loadSystemFonts();
     if (fonts == nullptr) {
         SUCCEED("environment has no system fonts; nothing to lay out");
@@ -276,7 +276,7 @@ TEST_CASE("system_font_layout_keeps_ltr_visual_order",
 }
 
 TEST_CASE("system_font_advance_is_not_pixel_quantized",
-          "[text][system-fonts]") {
+          "[text][system-fonts][system-fonts-slow]") {
     // 横向步进曾取 GDI GGO_METRICS 的 gmCellIncX——整数量化步进逐字形
     // 累积把字距系统性撑歪（标题栏 "L u m e n" 肉眼可辨，渲染 PNG 评审
     // 定位）。现在度量与位图同源走字体设计值（stb hmtx 分数步进），
@@ -307,7 +307,7 @@ TEST_CASE("system_font_advance_is_not_pixel_quantized",
 }
 
 TEST_CASE("system_font_bitmap_subpixel_shift_resamples_coverage",
-          "[text][system-fonts]") {
+          "[text][system-fonts][system-fonts-slow]") {
     // 横向子像素位移把小数 pen 偏移并入光栅（1/4px 量化）：位移前后
     // 位图必须非空、覆盖率重采样有差异,且总墨量近似守恒（面积不变,
     // 只是相位移动）。曾经把码点错传进 shift 参数——位图全空,本测试

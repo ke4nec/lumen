@@ -574,7 +574,7 @@ tree.showFocusRing = true;
 3. **TreeController**：扁平化正确性（嵌套展开/折叠序）、惰性 hasChildren、展开后 extent 缓存 key 命中、collapseAll/expandAll 防护上限、Left/Right 键盘折叠/父级跳转。
 4. **TreeListController**：列宽分配（固定+权重+minWidth）、表头粘性（滚动后表头 y 不变）、表头点击回调、隐藏列。
 5. **语义/键盘一致性**：激活（点击≡Enter≡语义 Activate）、选择变化语义 flag、treeitem expanded value、Expand/Collapse 语义 action ≡ 键盘。
-6. **回归**：既有 ListView/VirtualList 行为与帧哈希不变；Widget 体积静态断言（Release `sizeof(Widget)` ≤ 824，Debug ≤ 928；包含后续 Splitter 指针，ListPart、TreePart/depth 使用既有 padding——工具链调试迭代器开销）。
+6. **回归**：既有 ListView/VirtualList 行为与帧哈希不变；Widget 体积静态断言（Release `sizeof(Widget)` ≤ 856，Debug ≤ 960；包含后续 Splitter、M17 字段，Debug 预算反映 windows-2025 当前 MSVC STL 调试迭代器开销）。
 7. **局部 damage 与全帧逐像素一致**（AppShell 真实帧管线，M3 模式）。
 8. `list_visual_tests.cpp`：三档密度/整行命中、真实按压与完整焦点 identity、屏外导航、Tab 单一停靠点、禁用元数据/整表禁用、自动空态、ThemeScope/字体缩放/高对比、分隔线与增量帧一致性。
 9. `tree_visual_tests.cpp`：整行选中底色/标记/焦点像素、层级箭头与叶槽、密度/ControlSize/ThemeScope、独立 chevron、折叠焦点恢复、Tab/语义展开折叠、禁用/空态、有界展开与万项按需物化、边框裁剪与局部重绘一致性。

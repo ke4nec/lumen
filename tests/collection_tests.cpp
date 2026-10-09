@@ -856,13 +856,13 @@ TEST_CASE("list_widget_stays_within_size_budget", "[collection]") {
     // + iconRotation float → +8B = 840B；同批 clipRounded bool（圆角
     // 裁剪声明，框架化角部例外）触发对齐 → 848B；M17（2026-09-30）
     // scrollbarAutoHide/塌缩标志 bool 簇再越对齐 → 856B。Debug 构建的
-    // MSVC STL _ITERATOR_DEBUG_LEVEL=2 令每个容器（std::string/
-    // std::vector）膨胀 +8B，属工具链开销而非 Widget 声明增长，故按
-    // 构建模式分别断言。
+    // MSVC STL _ITERATOR_DEBUG_LEVEL=2 令容器布局在 windows-2025 当前
+    // 镜像再增加 8B（实测 960B），属工具链开销而非 Widget 声明增长，故
+    // 按构建模式分别断言。
 #ifdef NDEBUG
     CHECK(sizeof(Widget) <= 856);
 #else
-    CHECK(sizeof(Widget) <= 952);
+    CHECK(sizeof(Widget) <= 960);
 #endif
 }
 

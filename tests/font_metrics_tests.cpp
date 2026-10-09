@@ -32,7 +32,7 @@
 using namespace lumen;
 
 TEST_CASE("system_font_text_clip_preserves_cjk_and_mixed_ink",
-          "[text][system-fonts][render]") {
+          "[text][system-fonts][system-fonts-slow][render]") {
     auto loaded = test::sharedSystemFonts();
     if (!loaded) {
         SKIP("No system fonts available");
@@ -153,7 +153,7 @@ TEST_CASE("skia_text_clip_preserves_fallback_and_emoji_ink",
 
 #ifdef _WIN32
 TEST_CASE("gdi_family_validation_accepts_localized_aliases_and_weights",
-          "[text][system-fonts]") {
+          "[text][system-fonts][system-fonts-slow]") {
     const auto fonts = test::sharedSystemFonts();
     REQUIRE(fonts);
     for (const std::string family : {"Microsoft YaHei", "microsoft yahei", "Segoe UI"}) {
