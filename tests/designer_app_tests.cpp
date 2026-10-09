@@ -2362,6 +2362,11 @@ TEST_CASE("designer app routes structural keyboard commands",
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    REQUIRE(app.shell().commands().find("designer.undo") != nullptr);
+    REQUIRE(app.shell().commands().find("designer.redo") != nullptr);
+    REQUIRE(app.shell().commands().find("designer.save") != nullptr);
+    REQUIRE(app.shell().commands().find("designer.run") != nullptr);
+    REQUIRE(app.shell().commands().find("designer.move-down") != nullptr);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
