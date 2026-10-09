@@ -837,6 +837,16 @@ DesignerApp::DesignerApp()
 }
 
 void DesignerApp::registerCommands() {
+    const auto action = [this](const std::string& id,
+                               std::function<void()> callback) {
+        app::CommandSpec spec;
+        spec.id = id;
+        spec.label = id;
+        spec.invoke = [callback = std::move(callback)](app::AppShell&) {
+            callback();
+        };
+        shell_.commands().registerCommand(std::move(spec));
+    };
     const auto chord = [this](const std::string& id, char key,
                               core::KeyModifiers modifiers,
                               std::function<void()> action,
@@ -908,6 +918,10 @@ void DesignerApp::registerCommands() {
               [this] { moveSelectedNode(-1); });
     plainBoth("designer.move-down", core::Key::Down,
               [this] { moveSelectedNode(1); });
+    action("designer.add-text", [this] { insertTextNode(); });
+    action("designer.duplicate", [this] { duplicateSelectedNode(); });
+    action("designer.remove", [this] { removeSelectedNode(); });
+    action("designer.stop", [this] { stopPreview(); });
 }
 
 void DesignerApp::setResourceRoot(std::filesystem::path root) {
@@ -1153,28 +1167,47 @@ void DesignerApp::attach() {
         [this] { toggleCanvasGuides(); };
     shell_.handlers()["designer:preview-state"] =
         [this] { cyclePreviewState(); };
-    shell_.handlers()["designer:add-text"] = [this] { insertTextNode(); };
+    shell_.handlers()["designer:add-text"] = [this] {
+        (void)shell_.invokeCommand("designer.add-text");
+    };
     shell_.handlers()["designer:duplicate"] =
-        [this] { duplicateSelectedNode(); };
-    shell_.handlers()["designer:copy"] = [this] { copySelectedNode(); };
-    shell_.handlers()["designer:paste"] = [this] { pasteCopiedNode(); };
-    shell_.handlers()["designer:remove"] = [this] { removeSelectedNode(); };
-    shell_.handlers()["designer:move-up"] = [this] { moveSelectedNode(-1); };
-    shell_.handlers()["designer:move-down"] =
-        [this] { moveSelectedNode(1); };
-    shell_.handlers()["designer:open"] = [this] { requestOpenFile(); };
-    shell_.handlers()["designer:new-project"] =
-        [this] { requestNewProjectFile(); };
-    shell_.handlers()["designer:save"] = [this] { requestSaveFile(); };
-    shell_.handlers()["designer:save-as"] =
-        [this] { requestSaveAsFile(); };
+        [this] { (void)shell_.invokeCommand("designer.duplicate"); };
+    shell_.handlers()["designer:copy"] = [this] {
+        (void)shell_.invokeCommand("designer.copy");
+    };
+    shell_.handlers()["designer:paste"] = [this] {
+        (void)shell_.invokeCommand("designer.paste");
+    };
+    shell_.handlers()["designer:remove"] = [this] {
+        (void)shell_.invokeCommand("designer.remove");
+    };
+    shell_.handlers()["designer:move-up"] = [this] {
+        (void)shell_.invokeCommand("designer.move-up");
+    };
+    shell_.handlers()["designer:move-down"] = [this] {
+        (void)shell_.invokeCommand("designer.move-down");
+    };
+    shell_.handlers()["designer:open"] = [this] {
+        (void)shell_.invokeCommand("designer.open");
+    };
+    shell_.handlers()["designer:new-project"] = [this] {
+        (void)shell_.invokeCommand("designer.new-project");
+    };
+    shell_.handlers()["designer:save"] = [this] {
+        (void)shell_.invokeCommand("designer.save");
+    };
+    shell_.handlers()["designer:save-as"] = [this] {
+        (void)shell_.invokeCommand("designer.save-as");
+    };
     shell_.handlers()["designer:run"] = [this] {
-        (void)startPreview(false);
+        (void)shell_.invokeCommand("designer.run");
     };
     shell_.handlers()["designer:debug"] = [this] {
-        (void)startPreview(true);
+        (void)shell_.invokeCommand("designer.debug");
     };
-    shell_.handlers()["designer:stop"] = [this] { stopPreview(); };
+    shell_.handlers()["designer:stop"] = [this] {
+        (void)shell_.invokeCommand("designer.stop");
+    };
     shell_.handlers()["designer:tab-canvas"] = [this] {
         centerTab_ = CenterTab::Canvas;
         shell_.markDirty();
