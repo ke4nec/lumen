@@ -651,6 +651,25 @@ TEST_CASE("gpu_icon_readback_paints_stroke_and_keeps_gaps", "[gpu][visual]") {
         CHECK(colorDistance(
             samplePixel(immediate, 64, 96, 16.0F, 8.0F, scale),
             background) <= 8);
+
+        // GPU 平价 §3.1：交叠胶囊只能合成一次，折点不得比线身更深。
+        render::RenderCommandList translucentCommands;
+        translucentCommands.drawRect(Rect::fromXYWH(0, 0, 64, 96), background);
+        translucentCommands.drawIcon(
+            {{{0.25F, 0.75F}, {0.75F, 0.75F}, {0.75F, 0.25F}}},
+            checkBox, Color{240, 240, 240, 128}, 4.0F);
+        renderer->submit(translucentCommands, info);
+        REQUIRE(render::skiaGpuRendererAlive(*renderer));
+        const auto translucent = readBackFramebuffer(64, 96);
+        const Color blended{132, 132, 134, 255};
+        for (const Offset point : {Offset{0.5F, 0.75F},
+                                   Offset{0.75F, 0.75F}}) {
+            const auto joint = anchorOn(point, checkBox);
+            CAPTURE(point.x, point.y);
+            CHECK(colorDistance(
+                samplePixel(translucent, 64, 96, joint.x, joint.y, scale),
+                blended) <= 8);
+        }
     }
 }
 

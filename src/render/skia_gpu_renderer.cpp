@@ -46,6 +46,7 @@
 #include "include/ports/SkFontMgr_fontconfig.h"
 #endif
 #include "include/gpu/GrBackendSurface.h"
+#include "include/gpu/GrContextOptions.h"
 #include "include/gpu/GrDirectContext.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
 
@@ -123,7 +124,15 @@ class SkiaGpuRenderer final : public Renderer {
             fail(diagnostics, "GrGLMakeNativeInterface returned null");
             return;
         }
-        grContext_ = GrDirectContexts::MakeGL(interface);
+        GrContextOptions options;
+        int glMajor = 0;
+        if (interface->fStandard == kGL_GrGLStandard &&
+            (!SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &glMajor) ||
+             glMajor < 3)) {
+            // Skia M124's tessellation/atlas shaders require GLSL 1.30.
+            options.fDisableTessellationPathRenderer = true;
+        }
+        grContext_ = GrDirectContexts::MakeGL(interface, options);
         if (grContext_ == nullptr) {
             fail(diagnostics, "GrDirectContexts::MakeGL returned null");
             return;

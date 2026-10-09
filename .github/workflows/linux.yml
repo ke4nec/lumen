@@ -489,6 +489,14 @@ jobs:
           PY
           fi
           exit "$status"
+      - name: Legacy OpenGL visual regression (llvmpipe)
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          MESA_GL_VERSION_OVERRIDE: "2.1"
+          MESA_GLSL_VERSION_OVERRIDE: "120"
+        run: >
+          python3 -B tests/ci_diagnostics.py -- xvfb-run -a
+          ./build-gpu/tests/lumen-tests "[gpu][visual]"
       - name: Windowed GPU smoke (Xvfb + llvmpipe)
         run: >
           xvfb-run -a cmake

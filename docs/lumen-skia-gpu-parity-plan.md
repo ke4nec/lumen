@@ -110,6 +110,16 @@ cpu_renderer.cpp 快照 :1154-1166)。这注释描述的缺陷正是 GPU 后端�
 > 判定,首版缺陷恰好落其盲区(90° 折角不受影响、弧线中心线墨量仍在)——
 > 建议后续补 CPU/GPU 全帧墨量分布对比锚。
 
+> **2026-10-09 CI 复核**:macOS 的填充胶囊并集仍触发 Skia M124 的
+> atlas 路径着色器错误,图标锚点读回为背景。Linux llvmpipe 强制
+> OpenGL 2.1 / GLSL 1.20 可复现该路径生成的 GLSL 1.10 着色器引用
+> 不受支持的 `gl_VertexID` 与位运算。按实际桌面 GL 上下文版本,
+> 对 3.0 以下设置 `GrContextOptions::fDisableTessellationPathRenderer`,
+> 同时排除依赖该能力的 atlas 路径,由 Ganesh 选择兼容路径。
+> 胶囊几何、并集覆盖与单次混合保持原契约。Linux GPU CI 额外以
+> OpenGL 2.1 运行现有 `[gpu][visual]` 像素读回测试,避免只在默认
+> 较新 GL 上验收而遗漏旧上下文。
+
 1. **原点设备对齐**:`box.origin.x = lround(box.origin.x * scale) / scale`
    (y 同式)。这是与 `CpuRenderer::drawIcon`(cpu_renderer.cpp 快照
    :764-772)共同约定的一致性口径——逻辑居中产生的半像素原点(如
@@ -352,7 +362,9 @@ FBO0 上按 damage 矩形 `Save/ClipRect` 局部重绘——难点在"保留 dam
 4. 再以 `IconId::Busy`(3/4 圆弧)重复锚点断言——弧线是 cap/join 与
    曲线覆盖的更敏感探针;
 5. 追加即时路径覆盖:经基类默认适配器 `Renderer::submit` 之外,直接调用
-   覆写后的 `drawIcon`(验证 §3.3 覆写生效)。
+   覆写后的 `drawIcon`(验证 §3.3 覆写生效);
+6. 半透明折线在段中点与共享端点均读回一次 alpha 混合后的颜色,
+   检查胶囊交叠不会加深折点;默认 GL 与 OpenGL 2.1 均执行此断言。
 
 ### 5.2 `gpu_shadow_readback_blur_offset_and_falloff`(新增)
 
