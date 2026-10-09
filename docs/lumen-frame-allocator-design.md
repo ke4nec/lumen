@@ -152,7 +152,8 @@ fork 期间的请求不保证可计数，因此父进程当前 scope 标为 inco
 独立测试还覆盖不经原生 family 的 SDL 回调拒绝，以及工厂校验期间后台对象存活。
 macOS 独立进程用例另覆盖 typed/zone/batch/销毁、新线程 TLS、reallocf、晚加载和
 新 SDK options 在旧运行时的降级；常规 macOS CPU CI 和 Cocoa 现场工作流已启用。
-这些 macOS 用例尚未在本机执行，配置 CI 不代表已有 CI 结果。
+2026-10-09 的原生 macOS CPU CI 已通过这些独立进程用例，具体提交和运行记录见下文；
+本机交叉编译与 Cocoa 现场验收分别登记。
 Windows 独立进程用例覆盖 heap/零大小/失败 realloc、heap 销毁、SEH 恢复、静态 CRT
 辅助 DLL、对齐 C++/SDL、新线程、跨线程释放、scope 冲突和容量恢复、AppShell/runApp，
 并单独验证缺失/错误 DLL 路径、SDL VirtualAlloc bypass、TLS 槽耗尽的降级。
@@ -182,8 +183,8 @@ Wayland 183 个有效 allocator 帧，Xwayland 175 个有效帧，原生 source 
 [`frame-allocator-linux-2026-10-08.json`](platform-evidence/frame-allocator-linux-2026-10-08.json)。
 这是 source_dirty 的 CPU 诊断，Xwayland 不代表独立 X11 桌面；缺少完整 workflow、
 提交归属、驱动、人工回环和浸泡记录，不使平台发布验收整体通过。macOS 后端已有
-SDK 14.5 / 26.1 的 arm64/x86_64 交叉编译检查；实际 macOS/Windows 运行、窗口验收
-和真实性能 CI 结果仍按支持矩阵逐批登记。
+SDK 14.5 / 26.1 的 arm64/x86_64 交叉编译检查；后续原生 CI 与窗口验收
+按支持矩阵逐批登记。
 
 macOS 接入批次本地默认配置全量 CTest `1125/1125`，启用 Linux profiler 的 Release
 为 `1132/1132`；共用账本为 25 个断言，解析器为 11 个 Python 用例通过。本机
@@ -192,8 +193,11 @@ Wayland 两窗口回归采集 133 个完整 allocator 帧并通过日志验证�
 后端以 `-Wall -Wextra -Wpedantic -Werror` 编译，SDK 26.1 增加
 `-DLUMEN_HAS_MALLOC_ZONE_OPTIONS=1`。SDK 14.5 的 dylib 还通过 ld64.lld 21.1.8
 `-undefined error` 链接，检查实际 `__interpose` 段和原生导入符号。
-SDK/client/native 用例的编译检查是构建证据；macOS 原生用例尚未执行，Cocoa 窗口
-及 CI 结果仍待验，不能把交叉编译标记为 `frame_allocator_source=pass`。
+SDK/client/native 用例的编译检查是构建证据，不能把交叉编译标记为
+`frame_allocator_source=pass`。后续干净提交 `cebe883` 的
+[macOS CPU CI](https://github.com/ke4nec/lumen/actions/runs/37875132300/job/113642094536)
+已通过完整 CTest，包括注入 profiler、无安装、符号遮蔽、SDL 未追踪回调和晚加载
+五组独立进程回归。Cocoa 双窗口探针、VoiceOver、输入法和完整现场 record 仍待验收。
 
 Windows 接入批次本地默认配置全量 CTest `1126/1126`、启用 Linux profiler 的
 Release `1133/1133`；共用账本 `38` 个断言、`6` 个用例，验收解析器 `12` 个 Python
@@ -204,4 +208,5 @@ getter，可选安装脚本的 DLL/MinHook 许可证路径已检查。
 Wine 10.0 的五组独立进程测试共 `111` 个断言、`14` 个用例通过，包括真实 heap
 分配失败的 SEH 清理与原生调用之后 GetLastError 保持。Wine/GNU runtime 不能
 验证 MSVC `/MT[d]` 或原生 Windows：实际 MSVC CPU Debug、Skia Release、Windows
-登录桌面和 macOS 原生/窗口结果仍待相应 runner，不使正式平台 record 通过。
+登录桌面结果仍待相应 runner；macOS 原生进程结果见上文，窗口结果仍待验收。
+这些证据不使正式平台 record 通过。
