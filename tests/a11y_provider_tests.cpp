@@ -962,7 +962,11 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     REQUIRE(value->get_CurrentValue(&current) == S_OK);
     CHECK(bstrToUtf8(current) == "Title");
     SysFreeString(current);
-    REQUIRE(value->SetValue(L"Renamed") == S_OK);
+    BSTR renamed = SysAllocString(L"Renamed");
+    REQUIRE(renamed != nullptr);
+    const HRESULT setValueResult = value->SetValue(renamed);
+    SysFreeString(renamed);
+    REQUIRE(setValueResult == S_OK);
     (void)app.shell().renderFrame();
     REQUIRE(app.workbench().document().has_value());
     const auto& edited = *app.workbench().document();
