@@ -1052,9 +1052,10 @@ void DesignerApp::attach() {
     outlineController_.onActivated = [this](const std::string& key) {
         const auto id = outlineModel_.idForKey(key);
         if (id.has_value()) {
-            (void)workbench_.selectNode(*id);
-            applyPreviewState();
-            shell_.markDirty();
+            // Pointer, keyboard and accessibility activation must update the
+            // document selection and the outline selection together. Updating
+            // only the workbench is overwritten by the next buildUi sync.
+            selectNode(*id);
         }
     };
     referencesController_.setSelectionMode(widgets::SelectionMode::None);

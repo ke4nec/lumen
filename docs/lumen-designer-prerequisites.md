@@ -1075,6 +1075,9 @@ nodePath、imageSource 和可用的 source span；不泄漏资源的宿主绝对
   Ctrl/Cmd+Z/Y、复制/粘贴和属性面板导航。命令名称与 `CommandRegistry` 保持单一数据源，
   IME 文本输入走现有编辑事务，不把 preedit 写入 DOM。
   大纲键盘导航只在大纲焦点域内消费，属性和引用字段的全选、光标移动仍走文本编辑路径。
+  大纲行的辅助技术/键盘激活与普通节点定位共用选择路径，同步 DocumentId 选区与
+  大纲 current/selected；随后重建不能被旧大纲选区覆盖。属性字段随所选节点更新，
+  选择/定位不改 DOM、revision、dirty 或文档历史。
   组合输入期间 Ctrl/Cmd+Z/Y 不改文档历史；提交仅替换进入组合输入前的原文选区，
   不能用 preedit 长度裁切原文。取消恢复该选区，提交只产生一个可撤销的文档事务。
   Escape 在有组合输入时先取消输入并保留字段焦点，不执行预览组件的关闭/路由返回；
@@ -1815,3 +1818,14 @@ allocator 帧，状态保持。日志、产物身份与构建开关见
 原生桥/Skia/GPU 开关关闭，未覆盖真实 IME、读屏、编辑/保存/重开、高 DPI 或一小时浸泡。
 F0–F6、13 类 fixture 与四个桌面会话的当前出口复核见
 [`阶段验收对照`](lumen-designer-prerequisites-acceptance.md)；完整现场记录仍缺，目标未完成。
+
+§4.18 原生 AT-SPI 出口复查在旧实现复现：大纲行 `activate` 回执成功，但下一次
+UI 重建把 DocumentId 选择恢复为旧大纲选区，所激活节点的属性字段不可达。
+两个节点分支的应用回归在旧实现共 8 个失败断言。现大纲 `onActivated` 调用已有
+`selectNode` 路径，同步 workbench 与大纲 current/selected，避免重建回退。
+新增应用用例 52 个断言通过，覆盖选中状态、属性焦点/编辑及 undo/redo，选择动作
+保持 DOM/revision/dirty/history；连同键盘与 IME 回归，Release 五用例、612 个断言通过。
+默认配置完整 CTest 1170/1170（54.47s）、启用 allocator 的 Release 1177/1177
+（30.48s）、原生无障碍桥构建 1171/1171（54.30s）。本机 Wayland 隔离总线的
+AT-SPI 重测已确认大纲 selected、对应 text 属性字段和 FOCUSED 状态；协议动作与
+语义反馈的单项检查不替代 Orca 实际播报或正式现场签署。本批代码仍需自己的 CI。

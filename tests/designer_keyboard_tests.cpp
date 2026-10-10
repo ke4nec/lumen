@@ -1,15 +1,82 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <set>
 #include <string>
 
 #include "designer_app.h"
+#include "lumen/accessibility/bridge.h"
 #include "lumen/core/render_node.h"
 
 using lumen::core::Key;
 using lumen::core::Size;
 using lumen::core::findNodeByKey;
 using lumen::designer_app::DesignerApp;
+
+// Prerequisites §4.18: a reader's activation must survive the UI rebuild.
+TEST_CASE("designer accessible outline activation selects and locates its declaration",
+          "[designer][d3][app][outline-accessibility]") {
+    const auto targetIndex = GENERATE(0U, 1U);
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    DesignerApp app;
+    app.attach();
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page accessible { Column(key: \"root\") {"
+        " Text(\"First\", key: \"first\")"
+        " Button(\"Second\", key: \"second\") } }", "accessible-outline.lumen"));
+    (void)app.shell().renderFrame();
+    const auto before = *app.workbench().document();
+    const auto revision = app.workbench().documentRevision();
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    const auto target = outline->children.at(targetIndex);
+    const std::string rowKey = "designer-outline:item:" + target.path;
+    const auto* row = findNodeByKey(app.shell().root(), rowKey);
+    REQUIRE(row != nullptr);
+    REQUIRE(app.shell().performAccessibilityAction(
+                row->identity, lumen::accessibility::kActionActivate) ==
+            lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().selection().primary == target.id);
+    CHECK(app.workbench().selection().ids ==
+          std::set<lumen::dsl::DesignNodeId>{target.id});
+    row = findNodeByKey(app.shell().root(), rowKey);
+    REQUIRE(row != nullptr);
+    CHECK(row->selected);
+    CHECK(app.workbench().document() == before);
+    CHECK(app.workbench().documentRevision() == revision);
+    CHECK_FALSE(app.workbench().dirty());
+    CHECK_FALSE(app.workbench().canUndo());
+    const std::string fieldKey = "designer-property-field:" +
+                                 std::to_string(target.id) + ":text";
+    const auto* field = findNodeByKey(app.shell().root(), fieldKey);
+    REQUIRE(field != nullptr);
+    REQUIRE(app.shell().performAccessibilityAction(
+                field->identity, lumen::accessibility::kActionFocus) ==
+            lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.shell().renderFrame();
+    CHECK(app.shell().focus().focusedKey() == fieldKey);
+    field = findNodeByKey(app.shell().root(), fieldKey);
+    REQUIRE(field != nullptr);
+    REQUIRE(app.shell().performAccessibilityAction(
+                field->identity, lumen::accessibility::kActionSetValue,
+                "Accessible edit") ==
+            lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.shell().renderFrame();
+    const auto edited = *app.workbench().document();
+    CHECK(std::get<std::string>(edited.root.children.at(targetIndex)
+                                   .properties.at("text").value) == "Accessible edit");
+    CHECK(app.workbench().dirty());
+    CHECK(app.workbench().selection().primary == target.id);
+    REQUIRE(app.undo());
+    CHECK(app.workbench().document() == before);
+    CHECK_FALSE(app.workbench().dirty());
+    REQUIRE(app.redo());
+    CHECK(app.workbench().document() == edited);
+    CHECK(app.workbench().selection().primary == target.id);
+}
 
 // Prerequisites §4.7 / §4.18: preview text edits own their keyboard history.
 TEST_CASE("designer preview text keys do not alter document structure or history",
