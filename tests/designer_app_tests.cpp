@@ -25,6 +25,7 @@
 #include "lumen/dsl/design_schema.h"
 #include "lumen/dsl/project_store.h"
 #include "lumen/style/state.h"
+#include "lumen/style/theme.h"
 
 using lumen::accessibility::kActionActivate;
 using lumen::accessibility::kActionFocus;
@@ -2221,6 +2222,27 @@ TEST_CASE("designer app resolves offline ThemeScope references",
     const auto& preview = app.workbench().frame().widget().children.back();
     CHECK(preview.type == lumen::core::WidgetType::ThemeScope);
     CHECK(preview.themeOverride != nullptr);
+    REQUIRE(preview.themeOverride != nullptr);
+    const auto lightPageBackground =
+        static_cast<const lumen::style::Theme*>(preview.themeOverride)
+            ->colors.pageBackground;
+    CHECK(lightPageBackground == lumen::style::Theme::light().colors.pageBackground);
+
+    app.shell().state().set(referenceKey, "dark");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.back().references.at(
+              "theme") == "dark");
+    CHECK(app.workbench().diagnostics().empty());
+    REQUIRE(app.workbench().frame().hasFrame());
+    REQUIRE(!app.workbench().frame().widget().children.empty());
+    const auto& darkPreview = app.workbench().frame().widget().children.back();
+    REQUIRE(darkPreview.themeOverride != nullptr);
+    const auto darkPageBackground =
+        static_cast<const lumen::style::Theme*>(darkPreview.themeOverride)
+            ->colors.pageBackground;
+    CHECK(darkPageBackground == lumen::style::Theme::dark().colors.pageBackground);
+    CHECK(darkPageBackground != lightPageBackground);
 
     app.shell().state().set(referenceKey, "missing_theme");
     (void)app.shell().renderFrame();
