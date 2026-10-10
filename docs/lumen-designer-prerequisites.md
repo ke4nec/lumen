@@ -1842,4 +1842,9 @@ ValuePattern `SetValue` 验证 Designer 文档事务已提交且 dirty 状态改
 `tests/a11y_provider_tests.cpp` 的 `[a11y][live][designer]`，与通用 UIA provider
 测试共用 WM_GETOBJECT/语义 action 链；未设置 live 变量时保持 headless 安全跳过。
 本地 Linux `[a11y]` 回归为 25 个用例、459 个断言通过；Windows 原生编译和桌面回环
-需由下一次 Windows CI 运行确认，仍不等同 Narrator/NVDA 人工播报验收。
+`f021fe8` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/38025281805)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/38025281836) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/38025281766) CI 均成功，Windows
+`a11y-bridge` 的 live UIA 测试步骤也成功；完整 job/提交归属见
+[`CI 证据`](platform-evidence/designer-ci-2026-10-10-f021fe8.json)。这仍不等同
+Narrator/NVDA 人工播报验收。

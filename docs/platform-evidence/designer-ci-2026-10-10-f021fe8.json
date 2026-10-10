@@ -1,0 +1,72 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-10T05:12:57Z",
+  "source_commit": "f021fe8f030adf5b9d2dc9c8a7618af9e13f2ee7",
+  "purpose": "Windows UIA Designer outline/property live smoke and desktop CI",
+  "runs": {
+    "windows": {
+      "id": 38025281805,
+      "head_sha": "f021fe8f030adf5b9d2dc9c8a7618af9e13f2ee7",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38025281805",
+      "jobs": {
+        "package": "success",
+        "cpu": "success",
+        "a11y-bridge": {
+          "conclusion": "success",
+          "live_step": "Test (Debug, incl. live UIA window smoke)",
+          "live_step_conclusion": "success",
+          "job_url": "https://github.com/ke4nec/lumen/actions/runs/38025281805/job/114134767985"
+        },
+        "skia-raster": "success",
+        "skia-gpu": "success",
+        "package-skia": "success",
+        "package-skia-gpu": "success"
+      }
+    },
+    "linux": {
+      "id": 38025281836,
+      "head_sha": "f021fe8f030adf5b9d2dc9c8a7618af9e13f2ee7",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38025281836",
+      "jobs": {
+        "package": "success",
+        "cpu": "success",
+        "skia": "success",
+        "skia-gpu": "success",
+        "mobile-core": "success",
+        "package-skia": "success",
+        "package-skia-gpu": "success"
+      }
+    },
+    "macos": {
+      "id": 38025281766,
+      "head_sha": "f021fe8f030adf5b9d2dc9c8a7618af9e13f2ee7",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38025281766",
+      "jobs": {
+        "package": "success",
+        "cpu": "success",
+        "skia-gpu": "success",
+        "mobile-core": "success",
+        "package-skia": "success",
+        "package-skia-gpu": "success"
+      }
+    }
+  },
+  "local": {
+    "build": "build-debug lumen-tests",
+    "focused_test": "[a11y]",
+    "cases": 25,
+    "assertions": 459,
+    "result": "passed"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The live test verifies UIA protocol and Designer outline/property transaction through a real HWND; it is not Narrator or NVDA speech sign-off.",
+    "No Windows operator record was supplied for IME, clipboard, DPI, clean-machine package startup, or one-hour soak."
+  ]
+}

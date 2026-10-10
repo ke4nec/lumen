@@ -33,6 +33,10 @@
 - `dc57970` 的原生 AT-SPI 协议复查已在当前提交内容上完成：大纲激活后目标行
   `selected=true`，属性 `text` 字段存在且获得 `FOCUSED`；[记录](platform-evidence/designer-atspi-2026-10-10.json)
   明确标注没有启动 Orca，因此不宣称读屏播报通过。
+- `f021fe8` 的 Windows UIA Designer 专用回环已在三平台 CI 通过：真实 HWND 上查找
+  `Text  [title]` TreeItem 并 Invoke，随后通过 Edit/ValuePattern 读写 `text` 属性；
+  Windows `a11y-bridge` 的 live 步骤成功。完整运行与 job 归属见
+  [`UIA Designer CI 证据`](platform-evidence/designer-ci-2026-10-10-f021fe8.json)。
 
 ## 2. 阶段与 fixture 对照
 
@@ -78,7 +82,7 @@ Windows 或 macOS 的登录桌面和验收人可用。
 | --- | --- | --- |
 | Linux X11 | Linux hosted CI/headless；旧 Xvfb/Xwayland 回归 | 独立 X11 桌面、Orca、完整同提交 record 与附件 |
 | Linux Wayland | 原生 Designer 短窗口和 `glibc/malloc` 双窗口短探针 | Inspector 操作、编辑/保存/重开、实际 DPI/主题、IME、Orca、跨应用输入/剪贴板、GPU/合成器及一小时浸泡的完整记录 |
-| Windows | MSVC、UIA 自动化链路、CPU/Skia/GPU 回退与三个便携包 CI | 登录 Win32 桌面、真实 IME、Narrator 和 NVDA、干净机器包验证、完整 record；额外 `font_cold_start` 与 `touchpad` 项 |
+| Windows | MSVC、UIA 自动化链路、Designer 大纲/属性 UIA live 回环、CPU/Skia/GPU 回退与三个便携包 CI | 登录 Win32 桌面、真实 IME、Narrator 和 NVDA、干净机器包验证、完整 record；额外 `font_cold_start` 与 `touchpad` 项 |
 | macOS | 原生 CPU/NSAccessibility/allocator CTest 与包/Skia CI | 登录 Aqua 桌面、真实 IME、VoiceOver、干净机器包验证、完整 record |
 
 每份正式记录必须标明真实被测 40 位提交、验收人、时间、OS/桌面、GPU/驱动、IME、
