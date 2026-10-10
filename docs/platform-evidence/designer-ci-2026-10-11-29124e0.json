@@ -1,0 +1,36 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-10T22:29:59Z",
+  "source_commit": "29124e0f2055102043a95d8a94b3082e7c370c08",
+  "purpose": "Review coverage for offline ThemeScope light-to-dark reference replacement and session-owned theme lifetimes",
+  "runs": {
+    "windows": {
+      "id": 38090140775,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38090140775",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully, including live UIA window smoke"
+    },
+    "linux": {
+      "id": 38090140766,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38090140766",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38090140799,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38090140799",
+      "jobs": "6/6 successful",
+      "provider_job": "cpu completed successfully; macOS provider tests included"
+    }
+  },
+  "local": {
+    "full_debug_ctest": "1171/1171 passed (121.03s)",
+    "designer_app_tests": "51 cases, 2963 assertions passed",
+    "theme_scope_test": "1 case, 27 assertions passed",
+    "platform_acceptance_checker": "17/17 passed"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted CI verifies the application and protocol paths but does not provide a signed-in Windows, Linux, or macOS desktop acceptance record.",
+    "The evidence does not replace Narrator/NVDA/Orca/VoiceOver speech, IME, cross-application clipboard, DPI, GPU recovery, clean-machine package, or complete manual desktop acceptance."
+  ]
+}

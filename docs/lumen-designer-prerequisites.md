@@ -1903,3 +1903,9 @@ typed `Theme` handle，未知主题保留 `reference.missing` 诊断。ThemeScop
 设计器应用筛选 51 用例/2953 断言、平台验收脚本 17/17 均通过。三平台 hosted CI
 全部通过，原始摘要见 [`bea6fdb CI 证据`](platform-evidence/designer-ci-2026-10-11-bea6fdb.json)。
 这仍不替代登录桌面的真实 IME、读屏、剪贴板、高 DPI、干净机器和完整人工现场记录。
+
+`29124e0` 的 review 回归补齐了 `light`→`dark` ThemeScope 替换：测试读取两个 typed
+Theme 的实际 `pageBackground`，确认 session 替换后预览主题色切换，仍保留未知主题的
+`reference.missing` 诊断；本机 Debug 完整 CTest 1171/1171、设计器应用筛选 51 用例/
+2963 断言、平台验收脚本 17/17 均通过。三平台 hosted CI 全部通过，原始摘要见
+[`29124e0 CI 证据`](platform-evidence/designer-ci-2026-10-11-29124e0.json)。

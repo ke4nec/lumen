@@ -87,6 +87,11 @@
   [Linux](https://github.com/ke4nec/lumen/actions/runs/38086809031) 和
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38086809299) CI 全部通过，完整归属见
   [`bea6fdb CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-bea6fdb.json)。
+- `29124e0` 的 review 补齐了 ThemeScope 的 `light`→`dark` 替换回归：测试验证文档引用、
+  `themeOverride` 的 session 替换、主题色实际切换和未知主题诊断。[Windows](https://github.com/ke4nec/lumen/actions/runs/38090140775)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38090140766) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38090140799) CI 全部通过，完整归属见
+  [`29124e0 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-29124e0.json)。
 
 ## 2. 阶段与 fixture 对照
 
