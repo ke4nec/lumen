@@ -56,9 +56,15 @@ std::wstring toWide(const std::string& utf8) {
     }
     const int count = MultiByteToWideChar(
         CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
+    if (count <= 0) {
+        return {};
+    }
     std::wstring wide(static_cast<std::size_t>(count), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()),
-                        wide.data(), count);
+    if (MultiByteToWideChar(CP_UTF8, 0, utf8.data(),
+                            static_cast<int>(utf8.size()), wide.data(), count) ==
+        0) {
+        return {};
+    }
     return wide;
 }
 
@@ -68,9 +74,15 @@ std::string toUtf8(const wchar_t* wide) {
     }
     const int count =
         WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
-    std::string utf8(static_cast<std::size_t>(count - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8.data(), count, nullptr,
-                        nullptr);
+    if (count <= 1) {
+        return {};
+    }
+    std::string utf8(static_cast<std::size_t>(count), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8.data(), count, nullptr,
+                            nullptr) == 0) {
+        return {};
+    }
+    utf8.resize(static_cast<std::size_t>(count - 1));
     return utf8;
 }
 

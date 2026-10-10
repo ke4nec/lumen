@@ -1861,3 +1861,6 @@ Orca 与 D1/D2/D3 的正式桌面现场出口。
 review 时用 `1840bbe` 的旧 provider 与同一个新 fixture 临时重链接，回归明确在
 缺少 Text 接口处失败；新实现的通用与 Designer AT-SPI 回归顺序通过。启用原生桥
 的本机 Debug 完整 CTest 1171/1171（118.82s）通过。
+`afc2134` 推送后的 Windows、Linux、macOS CI 均通过；Linux CPU 的通用和 Designer
+AT-SPI live 步骤、Windows `a11y-bridge` 的 UIA Designer live 步骤均有本次提交归属，
+摘要见 [`afc2134 CI 证据`](platform-evidence/designer-ci-2026-10-10-afc2134.json)。

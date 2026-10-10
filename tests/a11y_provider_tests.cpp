@@ -1,7 +1,8 @@
 // M13 原生无障碍 provider（docs/lumen-accessibility-provider-design.md）
 // 测试：工厂按编译事实分流（未编入安全降级）、Fake host 能力如实上报、
 // Windows UIA provider 的 COM 直驱断言（fragment 导航/属性映射/pattern
-// 回灌/事件/运行时 id 稳定/重入安全）——全部 headless，不依赖真实 AT。
+// 回灌/事件/运行时 id 稳定/重入安全）默认 headless；live 标记再走真实 HWND
+// 和 UIA client，不依赖屏幕阅读器。
 //
 // 命名遵循项目测试规范（行为命名，*_tests.cpp）。
 
@@ -9,6 +10,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdlib>
+#include <chrono>
+#include <filesystem>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -201,9 +204,15 @@ std::string bstrToUtf8(BSTR value) {
     }
     const int count = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0,
                                           nullptr, nullptr);
-    std::string utf8(static_cast<std::size_t>(count - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, value, -1, utf8.data(), count, nullptr,
-                        nullptr);
+    if (count <= 1) {
+        return {};
+    }
+    std::string utf8(static_cast<std::size_t>(count), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, value, -1, utf8.data(), count,
+                            nullptr, nullptr) == 0) {
+        return {};
+    }
+    utf8.resize(static_cast<std::size_t>(count - 1));
     return utf8;
 }
 
@@ -949,6 +958,8 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     const auto targetId = outline->children.front().id;
     CHECK(app.workbench().selection().primary == targetId);
     CHECK_FALSE(app.workbench().dirty());
+    REQUIRE(app.workbench().document().has_value());
+    const auto originalDocument = *app.workbench().document();
 
     // The selected declaration exposes a real Edit control. SetValue must
     // travel through UIA -> AppShell -> DesignerApp's document transaction.
@@ -962,7 +973,7 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     REQUIRE(value->get_CurrentValue(&current) == S_OK);
     CHECK(bstrToUtf8(current) == "Title");
     SysFreeString(current);
-    BSTR renamed = SysAllocString(L"Renamed");
+    BSTR renamed = SysAllocString(L"\u91CD\u547D\U0001F642e\u0301");
     REQUIRE(renamed != nullptr);
     const HRESULT setValueResult = value->SetValue(renamed);
     SysFreeString(renamed);
@@ -973,8 +984,51 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     REQUIRE(edited.root.children.size() == 1);
     CHECK(std::get<std::string>(edited.root.children.front()
                                     .properties.at("text")
-                                    .value) == "Renamed");
+                                    .value) == "重命名🙂e\xCC\x81");
     CHECK(app.workbench().dirty());
+
+    BSTR editedValue{nullptr};
+    REQUIRE(value->get_CurrentValue(&editedValue) == S_OK);
+    CHECK(bstrToUtf8(editedValue) == "重命名🙂e\xCC\x81");
+    SysFreeString(editedValue);
+
+    REQUIRE(app.undo());
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(*app.workbench().document() == originalDocument);
+    CHECK(app.workbench().selection().primary == targetId);
+
+    REQUIRE(app.redo());
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(std::get<std::string>(app.workbench().document()->root.children.front()
+                                    .properties.at("text")
+                                    .value) == "重命名🙂e\xCC\x81");
+    CHECK(app.workbench().selection().primary == targetId);
+
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("lumen-uia-designer-" +
+                       std::to_string(std::chrono::steady_clock::now()
+                                          .time_since_epoch()
+                                          .count()) +
+                       ".design");
+    REQUIRE(app.saveDesignFile(path.string()));
+    CHECK_FALSE(app.workbench().dirty());
+
+    designer_app::DesignerApp reopened;
+    reopened.attach();
+    REQUIRE(reopened.loadDesignFile(path.string()));
+    REQUIRE(reopened.workbench().document().has_value());
+    CHECK(reopened.workbench().document()->documentId ==
+          originalDocument.documentId);
+    CHECK(reopened.workbench().document()->root.children.front().id == targetId);
+    CHECK(std::get<std::string>(reopened.workbench().document()
+                                    ->root.children.front()
+                                    .properties.at("text")
+                                    .value) == "重命名🙂e\xCC\x81");
+    std::error_code cleanupError;
+    std::filesystem::remove(path, cleanupError);
+    std::filesystem::remove(path.string() + ".bak", cleanupError);
 }
 
 #endif  // defined(_WIN32) && defined(LUMEN_ACCESSIBILITY_PROVIDER_UIA)

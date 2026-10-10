@@ -44,6 +44,13 @@
   增加显式执行步骤；fixture 不创建 SDL 窗口，不据此声明 Orca 或现场验收完成。
   本机桥开启的 Debug 完整 CTest 1171/1171（118.82s）、通用和 Designer 原生协议
   回归均通过；旧 `1840bbe` provider 临时重链接同一 fixture，明确因缺少 Text 接口失败。
+- `afc2134` 的三平台 CI 已全部通过：
+  [Windows](https://github.com/ke4nec/lumen/actions/runs/38034652598)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38034652593) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38034652615)。Linux CPU
+  明确通过通用与 Designer AT-SPI 两个 live 步骤，Windows `a11y-bridge` 通过
+  UIA Designer live 步骤；完整摘要见
+  [`afc2134 CI 原始摘要`](platform-evidence/designer-ci-2026-10-10-afc2134.json)。
 
 ## 2. 阶段与 fixture 对照
 
