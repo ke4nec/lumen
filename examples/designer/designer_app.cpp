@@ -17,6 +17,7 @@
 #include "lumen/dsl/design_codec.h"
 #include "lumen/dsl/project_store.h"
 #include "lumen/core/icon_id.h"
+#include "lumen/style/theme.h"
 #include "lumen/widgets/splitter.h"
 
 namespace lumen::designer_app {
@@ -511,7 +512,17 @@ bool DesignerApp::OfflineRuntimeContext::resolveReferenceForNode(
             out = dsl::DesignReference{kind, name, source, source.get()};
             return true;
         }
-        case dsl::DesignReferenceKind::Theme:
+        case dsl::DesignReferenceKind::Theme: {
+            // ThemeScope references must remain deterministic and offline.
+            // Keep the Theme value in the preview session instead of exposing
+            // a shell-owned pointer or consulting application state.
+            if (name != "light" && name != "dark") return false;
+            auto themeData = style::makeThemeScopeData(
+                name == "light" ? style::Theme::light()
+                                : style::Theme::dark());
+            out = dsl::DesignReference{kind, name, themeData, themeData.get()};
+            return true;
+        }
         case dsl::DesignReferenceKind::Component:
             return false;
     }
@@ -4307,6 +4318,8 @@ core::Widget DesignerApp::buildPropertiesPanel() {
                     addSourceReference("virtualSource");
                 } else if (node->type == "Splitter") {
                     addSourceReference("splitterSource");
+                } else if (node->type == "ThemeScope") {
+                    addSourceReference("theme");
                 }
             }
         }

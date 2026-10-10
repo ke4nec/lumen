@@ -2173,6 +2173,61 @@ TEST_CASE("designer app previews its first L3 DataGrid component",
     CHECK(app.workbench().outline()->children.back().type == "DataGrid");
 }
 
+TEST_CASE("designer app resolves offline ThemeScope references",
+          "[designer][d3][app][theme]") {
+    DesignerApp app;
+    app.attach();
+    lumen::accessibility::RecordingAccessibilityBridge bridge;
+    app.shell().setAccessibilityBridge(&bridge);
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    const auto selectRoot = app.shell().handlers().find(
+        "designer:select:" + std::to_string(initial->id));
+    REQUIRE(selectRoot != app.shell().handlers().end());
+    selectRoot->second();
+    (void)app.shell().renderFrame();
+
+    const auto* toolbox = findNodeByKey(
+        app.shell().root(), "designer-toolbox:ThemeScope");
+    REQUIRE(toolbox != nullptr);
+    CHECK(app.shell().performAccessibilityAction(
+              toolbox->identity, kActionActivate) ==
+          lumen::accessibility::SemanticsActionStatus::Handled);
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(!outline->children.empty());
+    const auto themeId = outline->children.back().id;
+    CHECK(outline->children.back().type == "ThemeScope");
+    const auto referenceKey =
+        "designer:reference:" + std::to_string(themeId) + ":theme";
+    REQUIRE(findNodeByKey(
+                app.shell().root(),
+                "designer-reference-field:" + std::to_string(themeId) +
+                    ":theme") != nullptr);
+
+    app.shell().state().set(referenceKey, "light");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.back().references.at(
+              "theme") == "light");
+    CHECK(app.workbench().diagnostics().empty());
+    REQUIRE(app.workbench().frame().hasFrame());
+    REQUIRE(!app.workbench().frame().widget().children.empty());
+    const auto& preview = app.workbench().frame().widget().children.back();
+    CHECK(preview.type == lumen::core::WidgetType::ThemeScope);
+    CHECK(preview.themeOverride != nullptr);
+
+    app.shell().state().set(referenceKey, "missing_theme");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().diagnostics().size() == 1);
+    CHECK(app.workbench().diagnostics().front().code == "reference.missing");
+}
+
 TEST_CASE("designer app previews toolbar and statusbar components",
           "[designer][d3][app][designer-l3]") {
     DesignerApp app;
