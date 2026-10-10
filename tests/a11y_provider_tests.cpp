@@ -804,10 +804,10 @@ TEST_CASE("uia_dispatch_reentrancy_keeps_identity_copies", "[a11y]") {
     REQUIRE(invoke->Invoke() == S_OK);
     REQUIRE(calls.size() == 1);
     CHECK(calls[0].nodeId == "btn-ok");
-    // 节点已移除：残留引用上的再次 Invoke 仍以拷贝 id 安全分发。
-    REQUIRE(invoke->Invoke() == S_OK);
-    REQUIRE(calls.size() == 2);
-    CHECK(calls[1].nodeId == "btn-ok");
+    // 节点已移除：残留引用安全降级为 UIA 的 element-not-available，
+    // 不再把已删除的 Designer action 报告为成功。
+    CHECK(invoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE);
+    REQUIRE(calls.size() == 1);
     // 已移除节点不再提供 pattern。
     ComPtr<IUnknown> stale;
     CHECK(FAILED(simple->GetPatternProvider(UIA_InvokePatternId, &stale)));
