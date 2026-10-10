@@ -1867,3 +1867,7 @@ AT-SPI live 步骤、Windows `a11y-bridge` 的 UIA Designer live 步骤均有本
 随后 `70b8944` 修正 Windows UIA live 回环的 Unicode 输入后，Windows、Linux、macOS
 再次全部通过；Windows `a11y-bridge` live UIA Designer、Linux 两个 AT-SPI live 步骤
 均有明确成功结果，摘要见 [`70b8944 CI 证据`](platform-evidence/designer-ci-2026-10-11-70b8944.json)。
+
+`8684d9a` 继续收紧 UIA ValuePattern 的事务契约：TextField 的 `SetValue` 自动先执行
+Focus，禁用、节点失效和未处理事务返回明确 UIA 错误码；Windows live UIA Designer、Linux
+和 macOS CI 均通过，摘要见 [`8684d9a CI 证据`](platform-evidence/designer-ci-2026-10-11-8684d9a.json)。

@@ -1,0 +1,38 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-10T17:26:33Z",
+  "source_commit": "8684d9a11125e402c795633e906a442b69e07b37",
+  "purpose": "UIA ValuePattern focus ordering and transaction failure HRESULT gate",
+  "runs": {
+    "windows": {
+      "id": 38070079400,
+      "head_sha": "8684d9a11125e402c795633e906a442b69e07b37",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38070079400",
+      "live_steps": ["Test (Debug, incl. live UIA window smoke)"]
+    },
+    "linux": {
+      "id": 38070079318,
+      "head_sha": "8684d9a11125e402c795633e906a442b69e07b37",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38070079318"
+    },
+    "macos": {
+      "id": 38070079310,
+      "head_sha": "8684d9a11125e402c795633e906a442b69e07b37",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38070079310"
+    }
+  },
+  "local": {
+    "focused_designer_ctest": "174/174",
+    "full_debug_ctest": "1170/1170",
+    "platform_acceptance_checker": "17/17",
+    "designer_benchmark_report": "4/4"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted UIA provider and Designer client tests do not replace Narrator or NVDA speech sign-off.",
+    "No operator record was supplied for IME, clipboard, DPI, clean-machine package startup, or one-hour soak."
+  ]
+}

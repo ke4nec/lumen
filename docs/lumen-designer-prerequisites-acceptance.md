@@ -57,6 +57,11 @@
   的两个 AT-SPI live 步骤和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38065376361)
   均成功。完整提交归属见
   [`70b8944 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-70b8944.json)。
+- `8684d9a` 进一步修正 Windows UIA `ValuePattern.SetValue`：TextField 自动先聚焦，
+  事务未处理时返回 UIA 错误码；[Windows](https://github.com/ke4nec/lumen/actions/runs/38070079400)
+  的 live UIA Designer 步骤、[Linux](https://github.com/ke4nec/lumen/actions/runs/38070079318)
+  和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38070079310) 均成功。完整提交归属见
+  [`8684d9a CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-8684d9a.json)。
 
 ## 2. 阶段与 fixture 对照
 
