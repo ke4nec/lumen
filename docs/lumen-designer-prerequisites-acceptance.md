@@ -1,6 +1,6 @@
 # 设计器前置任务阶段出口复核
 
-> 核对日期：2026-10-10。最近被测运行时提交：`dc57970d8a938dba803b0ede502626cef013bfe6`；一小时浸泡单项归属 `ab43fec9a5f47b5dbafc47a7b4db1d85d82b8a7a`。
+> 核对日期：2026-10-11。最近被测运行时提交：`dc57970d8a938dba803b0ede502626cef013bfe6`；一小时浸泡单项归属 `ab43fec9a5f47b5dbafc47a7b4db1d85d82b8a7a`。
 > 本记录按 [`前置任务`](lumen-designer-prerequisites.md) §6、§10.2 核对出口。
 > F0–F6 的实现与 headless 证据已有；D1/D2/D3 的完整桌面现场出口尚未闭环。
 
@@ -62,6 +62,13 @@
   的 live UIA Designer 步骤、[Linux](https://github.com/ke4nec/lumen/actions/runs/38070079318)
   和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38070079310) 均成功。完整提交归属见
   [`8684d9a CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-8684d9a.json)。
+- `be32bbf` 将 Windows UIA `Invoke/Toggle`、`SetFocus` 的禁用、未处理和节点失效结果
+  统一映射为 UIA HRESULT；首轮 Windows 回归暴露旧的重入测试仍期望已删除节点返回 `S_OK`。
+  `32090be` 已改为断言 `UIA_E_ELEMENTNOTAVAILABLE`，并在三平台重新通过：
+  [Windows](https://github.com/ke4nec/lumen/actions/runs/38075459327)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38075459364)、
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38075459330)。完整提交、旧失败归因和本地
+  验证见 [`32090be CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-32090be.json)。
 
 ## 2. 阶段与 fixture 对照
 

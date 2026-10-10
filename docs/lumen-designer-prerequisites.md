@@ -1871,3 +1871,12 @@ AT-SPI live 步骤、Windows `a11y-bridge` 的 UIA Designer live 步骤均有本
 `8684d9a` 继续收紧 UIA ValuePattern 的事务契约：TextField 的 `SetValue` 自动先执行
 Focus，禁用、节点失效和未处理事务返回明确 UIA 错误码；Windows live UIA Designer、Linux
 和 macOS CI 均通过，摘要见 [`8684d9a CI 证据`](platform-evidence/designer-ci-2026-10-11-8684d9a.json)。
+
+`be32bbf` 将同一回执契约扩展到 Windows UIA `Invoke/Toggle` 与 `SetFocus`：禁用、未处理
+和节点失效分别返回对应 HRESULT，避免屏幕阅读器把被拒绝的 Designer 操作播报为成功。
+首轮 Windows 回归发现旧的重入测试仍期待已删除节点为 `S_OK`；`32090be` 已修正该断言，
+并以同一提交通过 Windows `a11y-bridge`、Linux、macOS 全部 job。当前提交本地 Debug
+CTest 为 1170/1170，`[a11y]` 为 25 个用例、459 个断言，平台验收脚本 17/17，Designer
+benchmark 4/4；结构化归属见 [`32090be CI 证据`](platform-evidence/designer-ci-2026-10-11-32090be.json)。
+这些 hosted/协议结果仍不替代 Narrator/NVDA、IME、剪贴板、高 DPI、干净机器和完整人工
+现场记录。

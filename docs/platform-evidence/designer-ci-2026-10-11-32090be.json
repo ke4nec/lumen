@@ -1,0 +1,46 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-10T18:46:21Z",
+  "source_commit": "32090bee69d76cc3f51062ff3f736e555f8d03e9",
+  "purpose": "UIA Invoke and Toggle transaction HRESULTs, stale Designer provider handling, and live gate regression",
+  "runs": {
+    "windows": {
+      "id": 38075459327,
+      "head_sha": "32090bee69d76cc3f51062ff3f736e555f8d03e9",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38075459327",
+      "live_steps": ["Test (Debug, incl. live UIA window smoke)"]
+    },
+    "linux": {
+      "id": 38075459364,
+      "head_sha": "32090bee69d76cc3f51062ff3f736e555f8d03e9",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38075459364"
+    },
+    "macos": {
+      "id": 38075459330,
+      "head_sha": "32090bee69d76cc3f51062ff3f736e555f8d03e9",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38075459330"
+    }
+  },
+  "superseded_runs": [
+    {
+      "id": 38074180962,
+      "head_sha": "be32bbfaea6f8cd98d80b9e44e054ad539e93f18",
+      "conclusion": "failure",
+      "reason": "uia_dispatch_reentrancy_keeps_identity_copies still expected S_OK after the provider correctly returned UIA_E_ELEMENTNOTAVAILABLE for a removed node"
+    }
+  ],
+  "local": {
+    "focused_a11y_tests": "25 test cases, 459 assertions",
+    "full_debug_ctest": "1170/1170",
+    "platform_acceptance_checker": "17/17",
+    "designer_benchmark_report": "4/4"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted UIA provider and Designer client tests do not replace Narrator or NVDA speech sign-off.",
+    "No operator record was supplied for IME, clipboard, DPI, clean-machine package startup, or one-hour soak."
+  ]
+}
