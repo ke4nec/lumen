@@ -529,8 +529,8 @@ class UiaNodeProvider final : public RefCounted,
 
     HRESULT STDMETHODCALLTYPE SetFocus() override {
         // AT 请求聚焦 → 语义 Focus action（FocusManager 路径）。
-        dispatchAction(kActionFocus, {});
-        return S_OK;
+        const auto status = dispatchAction(kActionFocus, {});
+        return hresultForAction(status);
     }
 
     HRESULT STDMETHODCALLTYPE get_BoundingRectangle(UiaRect* out) override {
@@ -590,8 +590,28 @@ class UiaNodeProvider final : public RefCounted,
     }
 
     HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR value) override {
-        dispatchAction(kActionSetValue, toUtf8(value));
-        return S_OK;
+        const SemanticsNode* node = lookup();
+        if (node == nullptr) {
+            return UIA_E_ELEMENTNOTAVAILABLE;
+        }
+        if ((node->flags & kSemanticsEnabled) == 0) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        if ((node->actions & kActionSetValue) == 0) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        // UIA clients are allowed to set a value without separately calling
+        // SetFocus.  Keep the provider contract identical to AT-SPI and the
+        // keyboard path: establish the field editing focus first, then
+        // dispatch the value transaction.
+        if (node->role == SemanticsRole::TextField) {
+            const auto focusStatus = dispatchAction(kActionFocus, {});
+            if (focusStatus != SemanticsActionStatus::Handled) {
+                return hresultForAction(focusStatus);
+            }
+        }
+        const auto status = dispatchAction(kActionSetValue, toUtf8(value));
+        return hresultForAction(status);
     }
 
     // get_IsReadOnly 由 IValueProvider/IRangeValueProvider 共用（C++ 单
@@ -656,13 +676,35 @@ class UiaNodeProvider final : public RefCounted,
 
     HRESULT STDMETHODCALLTYPE SetValue(double value) override {
         // 语义 SetValue 为字符串（strtof 解析）；固定三位小数无残尾。
+        const SemanticsNode* node = lookup();
+        if (node == nullptr) {
+            return UIA_E_ELEMENTNOTAVAILABLE;
+        }
+        if ((node->flags & kSemanticsEnabled) == 0) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        if ((node->actions & kActionSetValue) == 0) {
+            return UIA_E_NOTSUPPORTED;
+        }
         char buffer[32];
         std::snprintf(buffer, sizeof(buffer), "%.3f", value);
-        dispatchAction(kActionSetValue, buffer);
-        return S_OK;
+        const auto status = dispatchAction(kActionSetValue, buffer);
+        return hresultForAction(status);
     }
 
   private:
+    static HRESULT hresultForAction(SemanticsActionStatus status) {
+        switch (status) {
+            case SemanticsActionStatus::Handled:
+                return S_OK;
+            case SemanticsActionStatus::NodeMissing:
+                return UIA_E_ELEMENTNOTAVAILABLE;
+            case SemanticsActionStatus::NotHandled:
+                return UIA_E_INVALIDOPERATION;
+        }
+        return UIA_E_INVALIDOPERATION;
+    }
+
     [[nodiscard]] const SemanticsNode* lookup() const {
         if (state_->detached.load()) {
             return nullptr;
@@ -671,12 +713,16 @@ class UiaNodeProvider final : public RefCounted,
         return it == state_->nodes.end() ? nullptr : &it->second;
     }
 
-    void dispatchAction(std::uint32_t action, const std::string& value) {
+    SemanticsActionStatus dispatchAction(std::uint32_t action,
+                                         const std::string& value) {
         // dispatch 可同步触发重建/推送：先拷贝 id，之后不再读树状态。
         const std::string id = nodeId_;
-        if (!state_->detached.load() && state_->dispatch) {
-            state_->dispatch(id, action, value, 0.0F);
+        if (state_->detached.load() || !state_->dispatch) {
+            return state_->detached.load()
+                       ? SemanticsActionStatus::NodeMissing
+                       : SemanticsActionStatus::NotHandled;
         }
+        return state_->dispatch(id, action, value, 0.0F);
     }
 
     static double parsePercent(const std::string& raw) {

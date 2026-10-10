@@ -503,10 +503,12 @@ TEST_CASE("uia_toggle_value_and_range_patterns_roundtrip", "[a11y]") {
     REQUIRE(value->get_IsReadOnly(&readOnly) == S_OK);
     CHECK(readOnly == FALSE);
     REQUIRE(value->SetValue(L"changed") == S_OK);
-    REQUIRE(calls.size() == 2);
+    REQUIRE(calls.size() == 3);
     CHECK(calls[1].nodeId == "name-field");
-    CHECK(calls[1].action == accessibility::kActionSetValue);
-    CHECK(calls[1].value == "changed");
+    CHECK(calls[1].action == accessibility::kActionFocus);
+    CHECK(calls[2].nodeId == "name-field");
+    CHECK(calls[2].action == accessibility::kActionSetValue);
+    CHECK(calls[2].value == "changed");
 
     // 滑条：0..100 百分比契约；SetValue 以可解析字符串回灌。
     ComPtr<IRawElementProviderFragment> slider =
@@ -528,9 +530,43 @@ TEST_CASE("uia_toggle_value_and_range_patterns_roundtrip", "[a11y]") {
     CHECK(minimum == Catch::Approx(0.0));
     CHECK(maximum == Catch::Approx(100.0));
     REQUIRE(range->SetValue(55.0) == S_OK);
-    REQUIRE(calls.size() == 3);
-    CHECK(calls[2].action == accessibility::kActionSetValue);
-    CHECK(calls[2].value == "55.000");
+    REQUIRE(calls.size() == 4);
+    CHECK(calls[3].action == accessibility::kActionSetValue);
+    CHECK(calls[3].value == "55.000");
+}
+
+TEST_CASE("uia_value_pattern_reports_focus_and_dispatch_failures",
+          "[a11y]") {
+    std::vector<DispatchCall> calls;
+    accessibility::PlatformAccessibilityHost host = makeHost(&calls);
+    host.dispatch = [&calls](const std::string& nodeId, std::uint32_t action,
+                             const std::string& value, float scrollDeltaY) {
+        calls.push_back(DispatchCall{nodeId, action, value, scrollDeltaY});
+        return action == accessibility::kActionFocus
+                   ? accessibility::SemanticsActionStatus::NotHandled
+                   : accessibility::SemanticsActionStatus::Handled;
+    };
+    accessibility::uia::UiaAccessibilityBridge bridge(host, nullptr);
+    SemanticsTree tree = makeTree();
+    bridge.updateTree(tree, fullDiffOf(tree), "");
+
+    ComPtr<IRawElementProviderFragment> field =
+        bridge.fragmentForTesting("name-field");
+    ComPtr<IRawElementProviderSimple> simple;
+    REQUIRE(field->QueryInterface(IID_PPV_ARGS(&simple)) == S_OK);
+    ComPtr<IUnknown> pattern;
+    REQUIRE(simple->GetPatternProvider(UIA_ValuePatternId, &pattern) == S_OK);
+    ComPtr<IValueProvider> value;
+    REQUIRE(pattern->QueryInterface(IID_PPV_ARGS(&value)) == S_OK);
+    CHECK(value->SetValue(L"rejected") == UIA_E_INVALIDOPERATION);
+    REQUIRE(calls.size() == 1);
+    CHECK(calls.front().action == accessibility::kActionFocus);
+
+    calls.clear();
+    tree.nodes.at("name-field").flags = 0;
+    bridge.updateTree(tree, SemanticsDiff{{}, {}, {"name-field"}}, "");
+    CHECK(value->SetValue(L"disabled") == UIA_E_ELEMENTNOTENABLED);
+    CHECK(calls.empty());
 }
 
 TEST_CASE("uia_events_follow_tree_diffs_and_focus", "[a11y]") {
@@ -965,11 +1001,6 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     // travel through UIA -> AppShell -> DesignerApp's document transaction.
     auto field = findByNameAndType(L"text", UIA_EditControlTypeId);
     REQUIRE(field != nullptr);
-    // UIA ValuePattern writes use the same focused-bind guard as keyboard
-    // editing. Establish the property-field focus through the client before
-    // issuing SetValue, matching the Designer's accessible workflow.
-    REQUIRE(field->SetFocus() == S_OK);
-    (void)app.shell().renderFrame();
     ComPtr<IUIAutomationValuePattern> value;
     REQUIRE(field->GetCurrentPatternAs(UIA_ValuePatternId,
                                        IID_PPV_ARGS(&value)) == S_OK);
