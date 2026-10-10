@@ -1880,3 +1880,7 @@ CTest 为 1170/1170，`[a11y]` 为 25 个用例、459 个断言，平台验收�
 benchmark 4/4；结构化归属见 [`32090be CI 证据`](platform-evidence/designer-ci-2026-10-11-32090be.json)。
 这些 hosted/协议结果仍不替代 Narrator/NVDA、IME、剪贴板、高 DPI、干净机器和完整人工
 现场记录。
+
+NSAccessibility 的 Designer 属性写入也已统一为跨平台事务：`TextField` 的 `AXValue`
+写入先建立 Focus，再提交 SetValue；焦点事务拒绝时不提交值，数值控件仍走直接 SetValue。
+macOS provider 回归覆盖成功顺序与焦点失败短路；真实 VoiceOver/桌面现场仍按平台出口待验。

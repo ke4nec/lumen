@@ -118,10 +118,18 @@ class NsAccessibilityBridge::Impl {
     NSWindow* window{nil};
     bool attached{false};
 
-    void dispatchValue(const std::string& id, const std::string& value) {
-        if (host.dispatch) {
-            (void)host.dispatch(id, kActionSetValue, value, 0.0F);
+    bool dispatchValue(const std::string& id, const std::string& value,
+                       bool focusFirst) {
+        if (!host.dispatch) {
+            return false;
         }
+        if (focusFirst &&
+            host.dispatch(id, kActionFocus, {}, 0.0F) !=
+                SemanticsActionStatus::Handled) {
+            return false;
+        }
+        return host.dispatch(id, kActionSetValue, value, 0.0F) ==
+               SemanticsActionStatus::Handled;
     }
     void activate(const std::string& id) {
         if (host.dispatch) {
@@ -270,7 +278,11 @@ NsAccessibilityBridge::Impl::~Impl() { detach(); }
         const char* utf8 = [value UTF8String];
         text = utf8 != nullptr ? utf8 : "";
     }
-    bridge->dispatchValue(target, text);
+    // VoiceOver writes AXValue without a separate focus request.  Keep the
+    // TextField transaction identical to UIA and AT-SPI: establish editing
+    // focus first, then commit the value.  Numeric controls retain their
+    // direct value path.
+    bridge->dispatchValue(target, text, node.role == SemanticsRole::TextField);
 }
 
 - (NSArray*)accessibilityActionNames {
