@@ -9,6 +9,7 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "lumen/render/cpu_renderer.h"
@@ -241,6 +242,71 @@ TEST_CASE("resource_manager_uploads_and_reuploads_survive_device_rebuild",
     REQUIRE(frame4.size() == 1);
     CHECK(frame4.commands()[0].type == CommandType::UnloadImage);
     CHECK(frame4.commands()[0].image == id);
+}
+
+TEST_CASE("resource uploads and unloads are independent for shared renderers",
+          "[resource][resource-consumers]") {
+    ResourceManager manager;
+    const auto handle = manager.registerImage(solidImage(2, 2, 77));
+    const auto id = manager.imageId(handle);
+    lumen::render::ResourceUploadCursor first;
+    lumen::render::ResourceUploadCursor second;
+    CpuRenderer rendererA;
+    CpuRenderer rendererB;
+    for (const auto& [cursor, renderer] : {
+             std::pair{&first, &rendererA}, std::pair{&second, &rendererB}}) {
+        RenderCommandList commands;
+        manager.appendUploads(commands, *cursor);
+        REQUIRE(commands.size() == 1);
+        CHECK(commands.commands()[0].type == CommandType::UploadImage);
+        CHECK(commands.commands()[0].image == id);
+        commands.drawImage(id, lumen::core::Rect::fromXYWH(0, 0, 2, 2));
+        FrameInfo info;
+        info.viewport = {2.0F, 2.0F};
+        renderer->submit(commands, info);
+        REQUIRE(renderer->pixels().rgba.size() == 16);
+        CHECK(renderer->pixels().rgba[0] == 77);
+        RenderCommandList idle;
+        manager.appendUploads(idle, *cursor);
+        CHECK(idle.empty());
+    }
+    first.invalidate();
+    RenderCommandList replaced;
+    manager.appendUploads(replaced, first);
+    REQUIRE(replaced.size() == 1);
+    CHECK(replaced.commands()[0].type == CommandType::UploadImage);
+    RenderCommandList unaffected;
+    manager.appendUploads(unaffected, second);
+    CHECK(unaffected.empty());
+    manager.handleDeviceRebuilt();
+    for (auto* cursor : {&first, &second}) {
+        RenderCommandList restored;
+        manager.appendUploads(restored, *cursor);
+        REQUIRE(restored.size() == 1);
+        CHECK(restored.commands()[0].type == CommandType::UploadImage);
+        CHECK(restored.commands()[0].image == id);
+    }
+    manager.release(handle);
+    for (auto* cursor : {&first, &second}) {
+        RenderCommandList released;
+        manager.appendUploads(released, *cursor);
+        REQUIRE(released.size() == 1);
+        CHECK(released.commands()[0].type == CommandType::UnloadImage);
+        CHECK(released.commands()[0].image == id);
+        RenderCommandList idle;
+        manager.appendUploads(idle, *cursor);
+        CHECK(idle.empty());
+    }
+    const auto next = manager.registerImage(solidImage(2, 2, 88));
+    RenderCommandList upload;
+    manager.appendUploads(upload, first);
+    REQUIRE(upload.size() == 1);
+    CHECK(upload.commands()[0].image == manager.imageId(next));
+    RenderCommandList detached;
+    first.clear(detached);
+    REQUIRE(detached.size() == 1);
+    CHECK(detached.commands()[0].type == CommandType::UnloadImage);
+    CHECK(detached.commands()[0].image == manager.imageId(next));
 }
 
 TEST_CASE("resource_manager_upload_commands_replay_into_renderer", "[resource]") {

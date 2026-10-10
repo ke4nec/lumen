@@ -12,6 +12,11 @@ namespace {
 constexpr std::uint64_t kImageIdBase = 0x4000000000000000ULL;
 }
 
+void ResourceUploadCursor::clear(RenderCommandList& list) {
+    for (const ImageId id : uploaded_) list.unloadImage(id);
+    invalidate();
+}
+
 ResourceManager::ResourceManager() : ResourceManager(Config{}) {}
 
 ResourceManager::ResourceManager(Config config) : config_(config) {
@@ -268,6 +273,7 @@ void ResourceManager::appendUploads(RenderCommandList& list) {
 }
 
 void ResourceManager::handleDeviceRebuilt() {
+    ++deviceGeneration_;
     for (auto& slot : slots_) {
         if (slot.state == ResourceState::Ready) {
             slot.needsUpload = true;
@@ -275,6 +281,29 @@ void ResourceManager::handleDeviceRebuilt() {
             diagnostics_.reuploads += 1;
         }
     }
+}
+
+void ResourceManager::appendUploads(RenderCommandList& list,
+                                    ResourceUploadCursor& cursor) {
+    const bool rebuilt = cursor.manager_ != this ||
+                         cursor.deviceGeneration_ != deviceGeneration_;
+    std::set<ImageId> current;
+    for (std::size_t index = 0; index != slots_.size(); ++index) {
+        auto& slot = slots_[index];
+        if (slot.state != ResourceState::Ready) continue;
+        const auto id = imageId(makeHandle(slot, index));
+        current.insert(id);
+        if (rebuilt || !cursor.uploaded_.contains(id)) {
+            list.uploadImage(id, slot.pixels);
+            diagnostics_.uploads += 1;
+        }
+    }
+    for (const ImageId id : cursor.uploaded_) {
+        if (!current.contains(id)) list.unloadImage(id);
+    }
+    cursor.uploaded_ = std::move(current);
+    cursor.manager_ = this;
+    cursor.deviceGeneration_ = deviceGeneration_;
 }
 
 ResourceState ResourceManager::state(ResourceHandle handle) const {

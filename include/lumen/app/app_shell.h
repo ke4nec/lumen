@@ -543,6 +543,7 @@ class AppShell {
     std::shared_ptr<const text::FontManager> textFonts_{};
     // M14-C：可选资源层（upload 命令前置；pump 由 runApp 驱动）。
     std::shared_ptr<render::ResourceManager> resourceManager_{};
+    render::ResourceUploadCursor resourceUploadCursor_{};
     core::InteractionController controller_{state_, handlers_, focus_};
     style::Theme theme_{style::Theme::dark()};
     accessibility::AccessibilitySettings accessibility_{};

@@ -183,6 +183,7 @@ void AppShell::setRenderer(render::Renderer* renderer) {
         return;
     }
     externalRenderer_ = renderer;
+    resourceUploadCursor_.invalidate();
     // 两个后端不共享 framebuffer 内容；目标切换即失效绘制缓存，回到
     // CPU 时不能呈现外部渲染器使用前的像素。
     framePainted_ = false;
@@ -978,7 +979,9 @@ void AppShell::paintFrame(bool forceFullRepaint) {
     const auto buildStart = std::chrono::steady_clock::now();
     render::RenderCommandList commands;
     if (resourceManager_ != nullptr) {
-        resourceManager_->appendUploads(commands);
+        resourceManager_->appendUploads(commands, resourceUploadCursor_);
+    } else {
+        resourceUploadCursor_.clear(commands);
     }
     commands.extend(render::recordScene(root_, options, textFontSource()));
     if (overlayRoot_.has_value()) {

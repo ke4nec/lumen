@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <condition_variable>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -51,6 +52,26 @@ struct ResourceHandle {
 // 未就绪资源的固定占位外观（plan §3.3：Loading/Failed/Cancelled/Evicted
 // 均绘制它）：应用在 `pixels(handle) == nullptr` 时以目标矩形填充此色。
 inline constexpr core::Color kResourcePlaceholderColor{47, 47, 55, 255};
+
+// Each renderer owns an independent upload history even when CPU resources
+// are shared across windows. Invalidate after replacing that renderer.
+class ResourceManager;
+
+class ResourceUploadCursor {
+  public:
+    void invalidate() {
+        uploaded_.clear();
+        manager_ = nullptr;
+        deviceGeneration_ = 0;
+    }
+    void clear(RenderCommandList& list);
+
+  private:
+    friend class ResourceManager;
+    std::set<ImageId> uploaded_{};
+    const ResourceManager* manager_{nullptr};
+    std::uint64_t deviceGeneration_{0};
+};
 
 class ResourceManager {
   public:
@@ -113,6 +134,8 @@ class ResourceManager {
 
     // 把 pending 的 upload/unload 增量追加进命令列表（每帧调用一次）。
     void appendUploads(RenderCommandList& list);
+    // Shared-window path: each consumer receives its own upload/unload delta.
+    void appendUploads(RenderCommandList& list, ResourceUploadCursor& cursor);
 
     // GPU 设备重建：全部 Ready 资源重新排队上传（ImageId 不变）。
     void handleDeviceRebuilt();
@@ -172,6 +195,7 @@ class ResourceManager {
     bool shuttingDown_{false};
 
     std::uint64_t cacheBytes_{0};
+    std::uint64_t deviceGeneration_{1};
     mutable std::uint64_t useCounter_{0};
     Diagnostics diagnostics_{};
 };

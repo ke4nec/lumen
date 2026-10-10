@@ -926,12 +926,12 @@ void DesignerApp::registerCommands() {
     action("designer.conflict-overwrite", [this] { resolveSaveConflict(true); });
 }
 
+DesignerApp::~DesignerApp() {
+    clearImageResources();
+}
+
 void DesignerApp::setResourceRoot(std::filesystem::path root) {
-    for (const auto& [uri, handle] : imageResources_) {
-        (void)uri;
-        resourceManager_->release(handle);
-    }
-    imageResources_.clear();
+    clearImageResources();
     resourcePolicy_ = dsl::DesignResourcePolicy{};
     if (!root.empty()) resourcePolicy_.allowRoot("project", std::move(root));
     resourcePolicy_.allowKind(dsl::DesignResourceKind::Image);
@@ -2287,15 +2287,42 @@ void DesignerApp::collectImageResources(
             }
             if (reference.has_value()) {
                 activeUris.insert(reference->uri());
+                imageResourceAliases_[uri] = reference->uri();
                 if (!imageResources_.contains(reference->uri())) {
                     const auto root = resourcePolicy_.roots().find(reference->scheme);
                     if (root != resourcePolicy_.roots().end()) {
                         const auto filename =
                             (root->second / reference->relativePath).string();
-                        imageResources_.emplace(
-                            reference->uri(),
-                            resourceManager_->requestImage(filename));
+                        const auto handle = resourceManager_->requestImage(filename);
+                        imageResources_.emplace(reference->uri(),
+                            ImageResource{handle, imageToken_});
+                        // Closing a compilation cancels pending work without
+                        // capturing the application or its borrowed context.
+                        workbench_.frame().session()->onClose(
+                            [manager = std::weak_ptr{resourceManager_}, handle] {
+                                if (const auto resources = manager.lock();
+                                    resources && resources->state(handle) ==
+                                        render::ResourceState::Loading) {
+                                    resources->release(handle);
+                                }
+                            });
                     }
+                }
+                const auto resource = imageResources_.find(reference->uri());
+                if (resource != imageResources_.end() &&
+                    resourceManager_->state(resource->second.handle) ==
+                        render::ResourceState::Failed) {
+                    auto diagnostic = dsl::DesignDiagnostic::fromError(
+                        dsl::DesignError{"resource.load_failed", sourceFile_, {},
+                            "image could not be read or decoded", {}, {}, node.id,
+                            path, "imageSource"},
+                        dsl::DesignDiagnosticStage::Reference);
+                    diagnostic.documentId = workbench_.document()->documentId;
+                    diagnostic.sourceSpan =
+                        workbench_.frame().sourceMap().propertySpan(node.id, "imageSource");
+                    diagnostic.recoverability =
+                        dsl::DesignDiagnosticRecoverability::Placeholder;
+                    dsl::appendDesignDiagnostic(diagnostics_, std::move(diagnostic));
                 }
             }
         }
@@ -2315,10 +2342,48 @@ void DesignerApp::collectImageResources(
     }
 }
 
+void DesignerApp::clearImageResources() {
+    for (const auto& [uri, resource] : imageResources_) {
+        (void)uri;
+        resourceManager_->release(resource.handle);
+    }
+    imageResources_.clear();
+    imageResourceAliases_.clear();
+    if (imageGeneration_) imageGeneration_->close();
+    imageGeneration_.reset();
+    imageToken_ = {};
+    imageFrameGeneration_ = 0;
+}
+
 void DesignerApp::syncImageResources() {
     diagnostics_ = workbench_.diagnostics();
     std::set<std::string> activeUris;
-    if (workbench_.document().has_value()) {
+    const auto& frame = workbench_.frame();
+    const auto& session = frame.session();
+    const bool active = workbench_.document().has_value() && frame.hasFrame() &&
+                        frame.documentId() == workbench_.document()->documentId &&
+                        session && session->active();
+    if (!active) {
+        clearImageResources();
+    } else if (!imageGeneration_ || imageFrameGeneration_ != frame.generation()) {
+        if (imageGeneration_) imageGeneration_->close();
+        imageGeneration_.emplace(frame.documentId(), session->generation());
+        imageToken_ = imageGeneration_->beginCompile();
+        imageFrameGeneration_ = frame.generation();
+        // Ready immutable pixels can be adopted by the new compilation; only
+        // a matching URI under the current authorization root will use them.
+        for (auto it = imageResources_.begin(); it != imageResources_.end();) {
+            if (resourceManager_->ready(it->second.handle)) {
+                it->second.token = imageToken_;
+                ++it;
+            } else {
+                resourceManager_->release(it->second.handle);
+                it = imageResources_.erase(it);
+            }
+        }
+    }
+    imageResourceAliases_.clear();
+    if (active) {
         collectImageResources(workbench_.document()->root, "root", activeUris);
     }
     for (std::size_t index = 0; index < projectDiagnostics_.size(); ++index) {
@@ -2335,7 +2400,7 @@ void DesignerApp::syncImageResources() {
             ++it;
             continue;
         }
-        resourceManager_->release(it->second);
+        resourceManager_->release(it->second.handle);
         it = imageResources_.erase(it);
     }
 }
@@ -2344,11 +2409,14 @@ void DesignerApp::applyImageResources(core::Widget& widget) const {
     if (widget.type == core::WidgetType::Image &&
         !widget.imageSource.empty()) {
         const auto uri = imageUriForSource(widget.imageSource);
-        const auto found = imageResources_.find(uri);
-        widget.imageId = found != imageResources_.end() &&
-                                 resourceManager_->ready(found->second)
-                             ? resourceManager_->imageId(found->second)
-                             : 0;
+        const auto alias = imageResourceAliases_.find(uri);
+        const auto found = alias == imageResourceAliases_.end()
+            ? imageResources_.end() : imageResources_.find(alias->second);
+        const auto& session = workbench_.frame().session();
+        widget.imageId = found != imageResources_.end() && imageGeneration_ &&
+                        session && imageGeneration_->accepts(found->second.token, *session) &&
+                        resourceManager_->ready(found->second.handle)
+            ? resourceManager_->imageId(found->second.handle) : 0;
     }
     for (auto& child : widget.children) applyImageResources(child);
 }

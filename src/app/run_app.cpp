@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <memory>
 #include <optional>
+#include <set>
 #include <utility>
 
 #include "lumen/core/windowing.h"
@@ -508,29 +509,26 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
         // 事件携带的 window 路由）。完成 → 标脏 + 请求资源帧：应用 build
         // 从 manager 取 imageId/占位，占位→就绪的翻页由此自动发生，应
         // 用层无需拼接不可观测的轮询状态。
+        std::set<render::ResourceManager*> pumpedResources;
         for (auto& runtime : runtimes) {
             if (!runtime.active || !runtime.app.options.resourceManager) {
                 continue;
             }
+            const auto manager = runtime.app.options.resourceManager;
+            if (!pumpedResources.insert(manager.get()).second) continue;
             const auto completions =
-                runtime.app.options.resourceManager->pumpCompletions();
+                manager->pumpCompletions();
             for (const auto& completion : completions) {
-                WindowRuntime* target = &runtime;
-                if (completion.window.valid()) {
-                    const auto match = std::find_if(
-                        runtimes.begin(), runtimes.end(),
-                        [&completion](const WindowRuntime& item) {
-                            return item.active && item.id == completion.window;
-                        });
-                    if (match != runtimes.end()) {
-                        target = &*match;
+                for (auto& target : runtimes) {
+                    if (!target.active || target.app.options.resourceManager != manager ||
+                        (completion.window.valid() && target.id != completion.window)) {
+                        continue;
                     }
+                    target.app.shell->markDirty();
+                    target.scheduler->requestFrame(render::FrameReason::Resource,
+                                                   target.id);
                 }
-                target->app.shell->markDirty();
-                target->scheduler->requestFrame(render::FrameReason::Resource,
-                                                target->id);
             }
-            break;  // pump 消费的是管理器全局队列，一次即可。
         }
         HostEvent event;
         while (host.pollEvent(event)) {

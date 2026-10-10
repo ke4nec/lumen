@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -1017,6 +1018,80 @@ TEST_CASE("run_app_resource_completions_drive_frames", "[app]") {
           lumen::render::ResourceState::Ready);
     // 第二帧即资源帧：上传命令已被消费（内部 CPU renderer 统计）。
     CHECK(shell.stats().uploads >= 1);
+}
+
+TEST_CASE("run_app routes resource completions to each sharing window and every manager",
+          "[app][multi-window][resource-consumers]") {
+    bool targeted = false;
+    bool separate = false;
+    SECTION("untargeted shared completion updates both windows") {}
+    SECTION("targeted completion updates only its live window") { targeted = true; }
+    SECTION("distinct managers are both pumped") { separate = true; }
+    FakeApplicationHost host;
+    auto firstManager = std::make_shared<lumen::render::ResourceManager>();
+    auto secondManager = separate
+        ? std::make_shared<lumen::render::ResourceManager>() : firstManager;
+    const auto filename = writeRawRgba("lumen-resource-windows.lumenrgba", 2, 2, 200);
+    lumen::render::ResourceHandle firstHandle;
+    lumen::render::ResourceHandle secondHandle;
+    int firstPresents = 0;
+    int secondPresents = 0;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{3};
+    ShellConfig firstConfig;
+    firstConfig.caretBlink = false;
+    firstConfig.build = [&] {
+        return lumen::core::makeImage(firstManager->ready(firstHandle)
+            ? firstManager->imageId(firstHandle) : 0, "shared", 8.0F, 8.0F);
+    };
+    firstConfig.onAnimate = [&](AppShell&, std::uint64_t) {
+        if (!firstHandle.valid() && firstPresents == 1 && secondPresents == 1) {
+            firstHandle = firstManager->requestImage(filename,
+                targeted ? lumen::core::WindowId{1} : lumen::core::WindowId{});
+            secondHandle = separate ? secondManager->requestImage(filename) : firstHandle;
+        }
+        if ((firstPresents >= 2 && secondPresents >= (targeted ? 1 : 2)) ||
+            std::chrono::steady_clock::now() >= deadline) host.pushQuit();
+        return false;
+    };
+    ShellConfig secondConfig;
+    secondConfig.caretBlink = false;
+    secondConfig.build = [&] {
+        return lumen::core::makeImage(secondManager->ready(secondHandle)
+            ? secondManager->imageId(secondHandle) : 0, "shared", 8.0F, 8.0F);
+    };
+    AppShell first{std::move(firstConfig)};
+    AppShell second{std::move(secondConfig)};
+    const auto optionsFor = [&](AppShell& shell, int& presents,
+                                std::shared_ptr<lumen::render::ResourceManager> manager) {
+        RunOptions options;
+        options.windowDesc.width = 8;
+        options.windowDesc.height = 8;
+        options.idleWaitMs = 1;
+        options.nativeAccessibility = false;
+        options.resourceManager = std::move(manager);
+        options.rendererFactory = [&shell, &presents](auto&, auto&) {
+            RendererSetup setup;
+            setup.present = [&shell, &presents] {
+                ++presents;
+                if (presents > 1) {
+                    REQUIRE(shell.pixels().rgba.size() >= 4);
+                    CHECK(shell.pixels().rgba[0] == 200);
+                }
+                return true;
+            };
+            return setup;
+        };
+        return options;
+    };
+    auto firstOptions = optionsFor(first, firstPresents, firstManager);
+    auto secondOptions = optionsFor(second, secondPresents, secondManager);
+    REQUIRE(lumen::app::runApp({{&first, std::move(firstOptions)},
+                                {&second, std::move(secondOptions)}}, host) == 0);
+    CHECK(firstPresents == 2);
+    CHECK(secondPresents == (targeted ? 1 : 2));
+    CHECK(firstManager->diagnostics().loads == 1);
+    CHECK(secondManager->diagnostics().loads == 1);
+    std::remove(filename.c_str());
 }
 
 TEST_CASE("run_app_requeues_resources_after_renderer_replacement", "[app]") {

@@ -96,6 +96,11 @@ GPU 对象只在 Renderer 所属线程创建和销毁。
 未就绪资源绘制固定占位内容，失败信息进入诊断统计但不能阻塞事件循环。资源
 缓存必须有字节上限、取消语义、设备重建后的重新上传和析构时的队列清理。
 
+桌面多窗口共享同一 CPU 缓存时，各 renderer 通过独立 `ResourceUploadCursor` 接收
+upload/unload 增量；一个窗口消费上传不能使另一 renderer 缺失纹理。替换 renderer
+使该 cursor 失效，设备恢复推进上传代数。无指定窗口的完成通知所有共享 manager 的
+活动窗口，有 WindowId 的完成只通知匹配目标；每个独立 manager 每轮 pump 一次。
+
 ## 4. 分阶段实施路线
 
 ### 阶段 7A：冻结基线与测量设施

@@ -40,6 +40,7 @@ class DesignerApp {
         std::function<std::string(bool forSave, const std::string& defaultName)>;
 
     DesignerApp();
+    ~DesignerApp();
 
     void attach();
     [[nodiscard]] bool loadFile(const std::string& filename);
@@ -303,6 +304,7 @@ class DesignerApp {
         const dsl::DesignDiagnostic& diagnostic);
 
     void syncImageResources();
+    void clearImageResources();
     void collectImageResources(const dsl::DesignNode& node,
                                const std::string& path,
                                std::set<std::string>& activeUris);
@@ -393,7 +395,15 @@ class DesignerApp {
     dsl::DesignResourceAuthorizer resourceAuthorizer_{resourcePolicy_};
     std::shared_ptr<render::ResourceManager> resourceManager_{
         std::make_shared<render::ResourceManager>()};
-    std::map<std::string, render::ResourceHandle> imageResources_{};
+    struct ImageResource {
+        render::ResourceHandle handle{};
+        dsl::DesignPreviewToken token{};
+    };
+    std::map<std::string, ImageResource> imageResources_{};
+    std::map<std::string, std::string> imageResourceAliases_{};
+    std::optional<dsl::DesignPreviewGeneration> imageGeneration_{};
+    dsl::DesignPreviewToken imageToken_{};
+    std::uint64_t imageFrameGeneration_{0};
     std::vector<dsl::DesignDiagnostic> diagnostics_{};
     dsl::ProjectStore projectStore_{};
     dsl::DocumentStore projectDocumentStore_{};

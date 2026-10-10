@@ -1045,6 +1045,20 @@ JSON 转义换行、引号、反斜线和控制字符，保留输入排序；同
 引用类型和过期异步结果均有稳定诊断；关闭预览窗口后没有回调触及已销毁的 context；同一
 文档在不同会话中只因资源表不同而产生可解释的预览差异，DOM 序列化保持一致。
 
+图片应用出口按声明 URI 保存授权后的规范 URI 映射；授权根内的符号链接别名与真实
+路径共用句柄，编辑画布和独立预览使用同一映射。读取/解码失败产生每个引用节点的
+`resource.load_failed`（reference / placeholder），保留设计文件、documentId、nodeId、
+nodePath、imageSource 和可用的 source span；不泄漏资源的宿主绝对路径。重建按当前
+结果重新聚合诊断，不按帧数累加 occurrences。待完成请求带文档/session/编译 token，
+编译关闭以只捕获 weak ResourceManager 和句柄的回调取消工作；过期结果由资源句柄
+代数丢弃。已就绪的不可变像素可以由仍授权、URI 匹配的新编译接收，新 token 验证后
+才写入预览。撤销授权或销毁应用释放其所有句柄，不改变声明、dirty 或历史。
+
+两个窗口共享 CPU 资源缓存，但 renderer 的上传状态独立。每个 AppShell 持有
+`ResourceUploadCursor`，独立接收 upload/unload；替换 renderer 或设备恢复会重新上传。
+无指定窗口的完成事件通知所有共享该 manager 的活动窗口；有 WindowId 的事件只通知
+该活动窗口，已关闭目标不回投另一窗口。多个 manager 每轮分别 pump 一次。
+
 ### 4.18 设计器自身的可访问性、键盘和性能前置
 
 这部分不是框架核心缺口，但若不先写成验收条件，D3 很容易只对鼠标和单一 DPI 可用。
@@ -1730,3 +1744,22 @@ G-D14 手柄坐标复查在旧实现的 12 组根/嵌套 Stack 与 DPI/zoom 组�
 新增用例与原流式手柄回归共 6 个用例、901 个断言通过；默认完整 CTest 1159/1159
 （110.23s），Release `[designer]` 为 167 个用例、12337 个断言通过。三平台 CI
 需按本批提交另行确认；未增加人工 DPI、编辑、输入法或读屏验收记录。
+
+`f209ed2` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/37955899483)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/37955899724) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/37955899492) 常规 CI 全部通过，
+覆盖上述手柄坐标修复；完整人工现场记录仍待补齐。
+
+G-D16 图片出口复查在旧实现上复现别名占位、失败诊断缺失与旧会话请求保留，
+三个回归共 11 个失败断言。授权后的规范 URI 现通过别名映射回填节点；失败读取/
+解码按引用节点聚合稳定诊断。待完成请求随编译 session 关闭取消，替换文档不能接收
+旧结果；已就绪且仍获授权的不可变像素可由新编译接收。撤销资源根或销毁应用均释放
+句柄，晚到回调只持有 weak manager 和句柄，不持有应用或 context。
+补充 CPU 像素验证又复现独立预览的 6 个失败断言：共享 manager 的全局 upload 队列
+被第一个窗口耗尽。现每个 renderer 使用独立上传游标，完成事件按指定窗口路由或
+通知全部共享窗口，并分别 pump 不同 manager；覆盖双窗口实际像素、定向通知、设备
+恢复、释放、授权撤销、ready 复用和销毁后的结果丢弃，DOM、dirty 与历史不变。
+别名用例包含不需要符号链接权限的分支，Windows 也必检两个预览的实际像素。
+默认配置完整 CTest 1166/1166，启用 allocator 的 Release 完整 CTest 1173/1173，
+Release `[designer],[resource-consumers]` 174 个用例、12655 个断言通过；本批源码仍需
+自己的三平台 CI，未增加人工编辑、输入法、读屏或完整现场记录。
