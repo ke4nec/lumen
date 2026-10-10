@@ -1864,3 +1864,6 @@ review 时用 `1840bbe` 的旧 provider 与同一个新 fixture 临时重链接�
 `afc2134` 推送后的 Windows、Linux、macOS CI 均通过；Linux CPU 的通用和 Designer
 AT-SPI live 步骤、Windows `a11y-bridge` 的 UIA Designer live 步骤均有本次提交归属，
 摘要见 [`afc2134 CI 证据`](platform-evidence/designer-ci-2026-10-10-afc2134.json)。
+随后 `70b8944` 修正 Windows UIA live 回环的 Unicode 输入后，Windows、Linux、macOS
+再次全部通过；Windows `a11y-bridge` live UIA Designer、Linux 两个 AT-SPI live 步骤
+均有明确成功结果，摘要见 [`70b8944 CI 证据`](platform-evidence/designer-ci-2026-10-11-70b8944.json)。

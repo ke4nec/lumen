@@ -51,6 +51,12 @@
   明确通过通用与 Designer AT-SPI 两个 live 步骤，Windows `a11y-bridge` 通过
   UIA Designer live 步骤；完整摘要见
   [`afc2134 CI 原始摘要`](platform-evidence/designer-ci-2026-10-10-afc2134.json)。
+- `70b8944` 修正 Windows live UIA Unicode 回环输入后，三平台 CI 再次全部通过：
+  [Windows](https://github.com/ke4nec/lumen/actions/runs/38065376351) 的
+  `a11y-bridge` live UIA Designer 步骤、[Linux](https://github.com/ke4nec/lumen/actions/runs/38065376373)
+  的两个 AT-SPI live 步骤和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38065376361)
+  均成功。完整提交归属见
+  [`70b8944 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-70b8944.json)。
 
 ## 2. 阶段与 fixture 对照
 

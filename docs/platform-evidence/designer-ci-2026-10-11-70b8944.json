@@ -1,0 +1,42 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-10T16:12:00Z",
+  "source_commit": "70b8944119bcc05593bc0f970b7c43a1c002b69e",
+  "purpose": "Windows UIA Designer transaction regression and Linux AT-SPI Designer protocol gate",
+  "runs": {
+    "windows": {
+      "id": 38065376351,
+      "head_sha": "70b8944119bcc05593bc0f970b7c43a1c002b69e",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38065376351",
+      "live_steps": ["Test (Debug, incl. live UIA window smoke)"]
+    },
+    "linux": {
+      "id": 38065376373,
+      "head_sha": "70b8944119bcc05593bc0f970b7c43a1c002b69e",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38065376373",
+      "live_steps": [
+        "Native AT-SPI registry and client round-trip",
+        "Native AT-SPI Designer outline and property round-trip"
+      ]
+    },
+    "macos": {
+      "id": 38065376361,
+      "head_sha": "70b8944119bcc05593bc0f970b7c43a1c002b69e",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38065376361"
+    }
+  },
+  "local": {
+    "build": "build-a11y Debug lumen-tests",
+    "focused_ctest_before_windows_literal_fix": "173/173",
+    "designer_atspi": "passed",
+    "old_provider_regression": "failed at missing Text interface as expected"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted protocol/UIA tests do not replace Narrator, NVDA, Orca, or VoiceOver speech sign-off.",
+    "No operator record was supplied for IME, clipboard, DPI, clean-machine package startup, or one-hour soak."
+  ]
+}
