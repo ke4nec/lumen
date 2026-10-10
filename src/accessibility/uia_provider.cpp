@@ -529,6 +529,16 @@ class UiaNodeProvider final : public RefCounted,
 
     HRESULT STDMETHODCALLTYPE SetFocus() override {
         // AT 请求聚焦 → 语义 Focus action（FocusManager 路径）。
+        const SemanticsNode* node = lookup();
+        if (node == nullptr) {
+            return UIA_E_ELEMENTNOTAVAILABLE;
+        }
+        if ((node->flags & kSemanticsEnabled) == 0) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        if ((node->actions & kActionFocus) == 0) {
+            return UIA_E_NOTSUPPORTED;
+        }
         const auto status = dispatchAction(kActionFocus, {});
         return hresultForAction(status);
     }
@@ -556,8 +566,22 @@ class UiaNodeProvider final : public RefCounted,
 
     // --- IInvokeProvider ---
     HRESULT STDMETHODCALLTYPE Invoke() override {
-        dispatchAction(kActionActivate, {});
-        return S_OK;
+        // UIA clients need the transaction result: returning S_OK for a
+        // disabled or stale Designer item makes Narrator/NVDA report an
+        // activation that the application rejected.  Keep Invoke and
+        // ValuePattern on the same action-to-HRESULT contract.
+        const SemanticsNode* node = lookup();
+        if (node == nullptr) {
+            return UIA_E_ELEMENTNOTAVAILABLE;
+        }
+        if ((node->flags & kSemanticsEnabled) == 0) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        if ((node->actions & kActionActivate) == 0) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        const auto status = dispatchAction(kActionActivate, {});
+        return hresultForAction(status);
     }
 
     // --- IToggleProvider（语义勾选状态；Toggle 即 Activate 同路径） ---

@@ -454,6 +454,70 @@ TEST_CASE("uia_invoke_pattern_dispatches_activate_on_ui_thread", "[a11y]") {
     CHECK(groupPattern == nullptr);
 }
 
+TEST_CASE("uia_invoke_pattern_reports_dispatch_failures", "[a11y]") {
+    std::vector<DispatchCall> calls;
+    accessibility::PlatformAccessibilityHost host = makeHost(&calls);
+    host.dispatch = [&calls](const std::string& nodeId, std::uint32_t action,
+                             const std::string& value, float scrollDeltaY) {
+        calls.push_back(DispatchCall{nodeId, action, value, scrollDeltaY});
+        if (nodeId == "btn-ok") {
+            return accessibility::SemanticsActionStatus::NotHandled;
+        }
+        return accessibility::SemanticsActionStatus::Handled;
+    };
+    accessibility::uia::UiaAccessibilityBridge bridge(host, nullptr);
+    const SemanticsTree tree = makeTree();
+    bridge.updateTree(tree, fullDiffOf(tree), "");
+
+    ComPtr<IRawElementProviderFragment> ok = bridge.fragmentForTesting("btn-ok");
+    ComPtr<IRawElementProviderSimple> simple;
+    REQUIRE(ok->QueryInterface(IID_PPV_ARGS(&simple)) == S_OK);
+    ComPtr<IUnknown> pattern;
+    REQUIRE(simple->GetPatternProvider(UIA_InvokePatternId, &pattern) == S_OK);
+    REQUIRE(pattern != nullptr);
+    ComPtr<IInvokeProvider> invoke;
+    REQUIRE(pattern->QueryInterface(IID_PPV_ARGS(&invoke)) == S_OK);
+    CHECK(invoke->Invoke() == UIA_E_INVALIDOPERATION);
+    REQUIRE(calls.size() == 1);
+    CHECK(calls.front().nodeId == "btn-ok");
+    CHECK(calls.front().action == accessibility::kActionActivate);
+
+    calls.clear();
+    ComPtr<IRawElementProviderFragment> cancel =
+        bridge.fragmentForTesting("btn-cancel");
+    ComPtr<IRawElementProviderSimple> cancelSimple;
+    REQUIRE(cancel->QueryInterface(IID_PPV_ARGS(&cancelSimple)) == S_OK);
+    ComPtr<IUnknown> cancelPattern;
+    REQUIRE(cancelSimple->GetPatternProvider(UIA_InvokePatternId,
+                                             &cancelPattern) == S_OK);
+    ComPtr<IInvokeProvider> cancelInvoke;
+    REQUIRE(cancelPattern->QueryInterface(IID_PPV_ARGS(&cancelInvoke)) == S_OK);
+    CHECK(cancelInvoke->Invoke() == UIA_E_ELEMENTNOTENABLED);
+    CHECK(calls.empty());
+
+    host.dispatch = [&calls](const std::string& nodeId, std::uint32_t action,
+                             const std::string& value, float scrollDeltaY) {
+        calls.push_back(DispatchCall{nodeId, action, value, scrollDeltaY});
+        return accessibility::SemanticsActionStatus::NodeMissing;
+    };
+    // The bridge owns the dispatch functor copied at construction, so use a
+    // second bridge to exercise the stale transaction result.
+    accessibility::uia::UiaAccessibilityBridge staleBridge(host, nullptr);
+    staleBridge.updateTree(tree, fullDiffOf(tree), "");
+    ok =
+        staleBridge.fragmentForTesting("btn-ok");
+    ComPtr<IRawElementProviderSimple> okSimple;
+    REQUIRE(ok->QueryInterface(IID_PPV_ARGS(&okSimple)) == S_OK);
+    ComPtr<IUnknown> okPattern;
+    REQUIRE(okSimple->GetPatternProvider(UIA_InvokePatternId, &okPattern) ==
+            S_OK);
+    ComPtr<IInvokeProvider> staleInvoke;
+    REQUIRE(okPattern->QueryInterface(IID_PPV_ARGS(&staleInvoke)) == S_OK);
+    CHECK(staleInvoke->Invoke() == UIA_E_ELEMENTNOTAVAILABLE);
+    REQUIRE(calls.size() == 1);
+    CHECK(calls.front().action == accessibility::kActionActivate);
+}
+
 TEST_CASE("uia_toggle_value_and_range_patterns_roundtrip", "[a11y]") {
     std::vector<DispatchCall> calls;
     accessibility::uia::UiaAccessibilityBridge bridge(makeHost(&calls),

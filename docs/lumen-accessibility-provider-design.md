@@ -96,7 +96,7 @@ SDL3 只有消息泵钩子（`SDL_SetWindowsMessageHook`，Peek 循环内），�
 
 注：`IRawElementProviderFragmentRoot` 与 `IRawElementProviderFragment` 在 C++ 绑定中**平行**（各自仅继承 IUnknown）；根对象两者皆实现，`acquireFragment` 对 rootId 走 `static_cast<IRawElementProviderFragment*>` 基子对象。
 
-`ProviderOptions_ServerSideProvider`；`Fragment::SetFocus` → dispatch `kActionFocus`（AT 聚焦请求走 FocusManager 路径）。
+`ProviderOptions_ServerSideProvider`；`Fragment::SetFocus` → dispatch `kActionFocus`（AT 聚焦请求走 FocusManager 路径，禁用/不支持/事务拒绝返回对应 UIA 错误码）。
 
 ### 5.3 映射表
 
@@ -122,7 +122,7 @@ SDL3 只有消息泵钩子（`SDL_SetWindowsMessageHook`，Peek 循环内），�
 
 | 条件 | Pattern | 行为 |
 | --- | --- | --- |
-| actions ∋ Activate | Invoke | Invoke → dispatch(Activate) |
+| actions ∋ Activate | Invoke | Invoke → dispatch(Activate)，将未处理/节点失效映射为 `UIA_E_INVALIDOPERATION` / `UIA_E_ELEMENTNOTAVAILABLE`；Toggle 共用此回执 |
 | role ∈ {Checkbox, Switch, Radio} | Toggle | ToggleState 读 checked；Toggle ≡ Activate |
 | role == TextField 且 ∋ SetValue | Value | 值读写；IsReadOnly = 不声明 SetValue；SetValue 自动先 dispatch(Focus)，再 dispatch(SetValue)，并把未处理结果映射为 UIA 错误码 |
 | role ∈ {Slider, ProgressBar, Splitter} | RangeValue | 0..100（min/max 固定，值 strtof 解析语义 value）；SetValue → `"%.3f"` 字符串 dispatch（`InteractionController::setSliderValue/setSplitterValue` strtof 解析），禁用/不支持/事务拒绝返回对应 UIA 错误码 |
