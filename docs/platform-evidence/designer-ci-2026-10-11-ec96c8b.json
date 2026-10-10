@@ -1,0 +1,36 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-10T19:46:58Z",
+  "source_commit": "ec96c8b0901e16d63b60e6b8ea69057df1db600f",
+  "purpose": "NSAccessibility TextField AXValue Focus-to-SetValue transaction ordering and focus-failure short-circuit",
+  "runs": {
+    "windows": {
+      "id": 38079559702,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38079559702",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully, including live UIA window smoke"
+    },
+    "linux": {
+      "id": 38079559708,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38079559708",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38079559793,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38079559793",
+      "jobs": "6/6 successful",
+      "provider_job": "cpu completed successfully; NSAccessibility provider tests included"
+    }
+  },
+  "local": {
+    "full_debug_ctest": "1170/1170 passed",
+    "focused_accessibility_tests": "25 cases, 459 assertions",
+    "platform_acceptance_checker": "17/17 passed",
+    "designer_benchmark_report": "4/4 passed"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Linux local checks do not compile the macOS Objective-C++ provider; macOS provider coverage is attributed to the hosted macOS CPU job.",
+    "Hosted CI and protocol tests do not replace VoiceOver, Narrator/NVDA, IME, clipboard, DPI, clean-machine package, or complete desktop acceptance records."
+  ]
+}

@@ -1884,3 +1884,9 @@ benchmark 4/4；结构化归属见 [`32090be CI 证据`](platform-evidence/desig
 NSAccessibility 的 Designer 属性写入也已统一为跨平台事务：`TextField` 的 `AXValue`
 写入先建立 Focus，再提交 SetValue；焦点事务拒绝时不提交值，数值控件仍走直接 SetValue。
 macOS provider 回归覆盖成功顺序与焦点失败短路；真实 VoiceOver/桌面现场仍按平台出口待验。
+
+`ec96c8b` 的三平台 hosted CI 已全部通过；macOS CPU job 实际编译并执行
+NSAccessibility provider 回归，Windows `a11y-bridge` 也完成 live UIA smoke。完整运行与本机
+1170/1170 CTest、25 个无障碍用例/459 个断言、平台检查器 17/17、Designer benchmark 4/4
+结果见 [`ec96c8b CI 证据`](platform-evidence/designer-ci-2026-10-11-ec96c8b.json)。
+这些结果仍不替代 VoiceOver/Narrator/NVDA、IME、剪贴板、高 DPI、干净机器和完整人工现场记录。

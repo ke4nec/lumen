@@ -69,6 +69,12 @@
   [Linux](https://github.com/ke4nec/lumen/actions/runs/38075459364)、
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38075459330)。完整提交、旧失败归因和本地
   验证见 [`32090be CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-32090be.json)。
+- `ec96c8b` 将 macOS NSAccessibility 的 TextField `AXValue` 写入统一为
+  Focus → SetValue 事务；焦点被拒绝时不提交值，数值控件保持直接 SetValue 路径。
+  macOS provider 回归覆盖成功顺序和失败短路；[Windows](https://github.com/ke4nec/lumen/actions/runs/38079559702)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38079559708) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38079559793) CI 全部通过，完整归属见
+  [`ec96c8b CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-ec96c8b.json)。
 
 ## 2. 阶段与 fixture 对照
 
