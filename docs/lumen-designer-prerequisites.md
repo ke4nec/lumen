@@ -1072,6 +1072,9 @@ nodePath、imageSource 和可用的 source span；不泄漏资源的宿主绝对
   大纲键盘导航只在大纲焦点域内消费，属性和引用字段的全选、光标移动仍走文本编辑路径。
   组合输入期间 Ctrl/Cmd+Z/Y 不改文档历史；提交仅替换进入组合输入前的原文选区，
   不能用 preedit 长度裁切原文。取消恢复该选区，提交只产生一个可撤销的文档事务。
+  Escape 在有组合输入时先取消输入并保留字段焦点，不执行预览组件的关闭/路由返回；
+  组合输入结束后的返回动作与按钮使用同一预览刷新路径，同步编辑器和独立预览，
+  不改变声明、文档 revision 或历史。
 - headless 每个用户流程都要有确定性 DOM/diagnostic 输出；预览 frame hash 排除时间、
   指针地址和异步到达顺序等非声明因素。`--frame-overlay` 这类实时读数只能显式开启，
   关闭态不得改变既有 frame hash 或性能基线。
@@ -1763,3 +1766,18 @@ G-D16 图片出口复查在旧实现上复现别名占位、失败诊断缺失�
 默认配置完整 CTest 1166/1166，启用 allocator 的 Release 完整 CTest 1173/1173，
 Release `[designer],[resource-consumers]` 174 个用例、12655 个断言通过；本批源码仍需
 自己的三平台 CI，未增加人工编辑、输入法、读屏或完整现场记录。
+
+`379275f` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/38012556962)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/38012556969) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/38012556957) 常规 CI 全部通过，
+覆盖图片会话与双窗口上传修复；Windows 七个 job 全部成功。
+Linux CPU 的 Designer 相对性能门禁、通用 CPU/Skia/GPU 性能门禁及三种包内
+Designer fixture smoke 步骤均成功；这些仍是 hosted 证据。
+
+§4.18 键盘出口复查在属性和命名引用字段中复现 10 个失败断言：Navigator 已进入
+子路由时，Escape 被返回动作提前消费，组合输入和原文选区未恢复，返回后的路由
+标签也继续显示旧值。现组合输入的 Escape 优先取消并保持字段焦点与路由；结束后
+再次返回走按钮共用的预览刷新路径，同步编辑器和独立预览。新增两字段分支的应用
+回归为 50 个断言通过，Release `[designer][ime]` 两用例、112 个断言通过；默认
+配置完整 CTest 1167/1167（34.91s）、启用 allocator 的 Release 完整 CTest
+1174/1174（13.43s）。上述结果属于本批 headless 验证，真实输入法/读屏与现场仍待验。

@@ -947,6 +947,13 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
     config.build = [self] { return self->buildUi(); };
     config.onKey = [self](app::AppShell& shell, core::Key key,
                           core::KeyModifiers modifiers, char keyChar) {
+        // Prerequisites §4.18: IME cancellation precedes component Escape
+        // handling so it preserves the field's original selection and route.
+        if (key == core::Key::Escape && shell.controller().composingActive()) {
+            shell.cancelComposition();
+            shell.markDirty();
+            return true;
+        }
         const std::string& focused = shell.focus().focusedKey();
         const bool editingProperty =
             focused.starts_with("designer-property-field:") ||
@@ -978,6 +985,7 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
             self->navigatorPreviewController_.handleBack(false)) {
             self->statusMessage_ =
                 "Route: " + self->navigatorPreviewController_.current();
+            self->refreshDocumentUi();
             shell.markDirty();
             return true;
         }

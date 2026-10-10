@@ -1231,6 +1231,85 @@ TEST_CASE("designer property IME preserves preedit and commits one transaction",
     CHECK_FALSE(app.workbench().canUndo());
 }
 
+// Prerequisites §4.18: cancelling preedit precedes preview route navigation.
+TEST_CASE("designer Escape cancels field composition before navigating the preview",
+          "[designer][d3][app][ime][ime-routing]") {
+    bool referenceField = false;
+    SECTION("declaration property") {}
+    SECTION("named reference") { referenceField = true; }
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\") {"
+        " Text(\"Original\", key: \"title\")"
+        " Button(\"Save\", onClick: save, key: \"save\") } }",
+        "ime-route.lumen"));
+    (void)app.shell().renderFrame();
+    app.shell().handlers().at("designer:toolbox:Navigator")();
+    (void)app.shell().renderFrame();
+    const auto& children = app.workbench().document()->root.children;
+    REQUIRE(children.size() == 3);
+    const auto navigatorId = children.back().id;
+    const auto fieldNodeId = children[referenceField ? 1 : 0].id;
+    const std::string prefix = "designer:component:Navigator:" +
+                               std::to_string(navigatorId) + ":";
+    // The route rebuild registers a replacement callback; retain this call's
+    // function just as the production handler dispatch does.
+    auto routeAction = app.shell().handlers().at(prefix + "route:details");
+    routeAction();
+    app.shell().handlers().at("designer:select:" + std::to_string(fieldNodeId))();
+    app.shell().handlers().at("designer:run")();
+    (void)app.shell().renderFrame();
+    (void)app.previewShell().renderFrame();
+    const std::string fieldKey =
+        (referenceField ? "designer-reference-field:" : "designer-property-field:") +
+        std::to_string(fieldNodeId) + (referenceField ? ":onClick" : ":text");
+    const auto* field = findNodeByKey(app.shell().root(), fieldKey);
+    REQUIRE(field != nullptr);
+    app.shell().controller().focusNode(*field);
+    REQUIRE(app.shell().focus().focusedKey() == fieldKey);
+    app.shell().keyDown(Key::None, lumen::core::kModifierCtrl, 'a');
+    const auto selectionStart = app.shell().controller().selectionStart();
+    const auto selectionEnd = app.shell().controller().selectionEnd();
+    REQUIRE(selectionEnd > selectionStart);
+    const auto before = *app.workbench().document();
+    const auto revision = app.workbench().documentRevision();
+    const auto dirty = app.workbench().dirty();
+    const auto canUndo = app.workbench().canUndo();
+    app.shell().textEditing("nihao");
+    REQUIRE(app.shell().controller().composingActive());
+    app.shell().keyDown(Key::Escape);
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.shell().controller().composingActive());
+    CHECK(app.shell().controller().composition().empty());
+    CHECK(app.shell().controller().selectionStart() == selectionStart);
+    CHECK(app.shell().controller().selectionEnd() == selectionEnd);
+    CHECK(app.shell().focus().focusedKey() == fieldKey);
+    const auto* route = findNodeByKey(app.shell().root(), prefix + "navigator-route");
+    REQUIRE(route != nullptr);
+    CHECK(route->text == "Route: details");
+    const auto* previewRoute = findNodeByKey(
+        app.previewShell().root(), prefix + "navigator-route");
+    REQUIRE(previewRoute != nullptr);
+    CHECK(previewRoute->text == "Route: details");
+    CHECK(app.workbench().document() == before);
+    CHECK(app.workbench().documentRevision() == revision);
+    CHECK(app.workbench().dirty() == dirty);
+    CHECK(app.workbench().canUndo() == canUndo);
+    app.shell().keyDown(Key::Escape);
+    (void)app.shell().renderFrame();
+    (void)app.previewShell().renderFrame();
+    route = findNodeByKey(app.shell().root(), prefix + "navigator-route");
+    REQUIRE(route != nullptr);
+    CHECK(route->text == "Route: home");
+    previewRoute = findNodeByKey(app.previewShell().root(), prefix + "navigator-route");
+    REQUIRE(previewRoute != nullptr);
+    CHECK(previewRoute->text == "Route: home");
+    CHECK(app.workbench().document() == before);
+    CHECK(app.workbench().documentRevision() == revision);
+}
+
 TEST_CASE("designer app edits a shared multi-selection property in one transaction",
           "[designer][d3][app][selection]") {
     DesignerApp app;

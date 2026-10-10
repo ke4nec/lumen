@@ -75,6 +75,7 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | GitHub 三桌面 CI（2026-10-09，`a592118`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37946377217)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37946377159)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37946377270) 全部 job 通过，Windows 七个 job 全通过；覆盖工程页会话修复 | 结果只归属该提交，不覆盖后续诊断修复；没有新的完整人工桌面记录 |
 | GitHub 三桌面 CI（2026-10-09，`f930129`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37950109487)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37950109507)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37950109511) 全部通过，覆盖诊断阶段、来源和 CLI JSON 修复 | 结果只归属该提交；取消的重复运行不计通过，没有新的完整人工桌面记录 |
 | GitHub 三桌面 CI（2026-10-09，`f209ed2`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37955899483)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37955899724)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37955899492) 全部通过，覆盖 DPI/zoom、嵌套布局与手柄坐标修复 | 结果只归属该提交，不覆盖后续图片会话与双窗口上传修复；没有新的完整人工桌面记录 |
+| GitHub 三桌面 CI（2026-10-10，`379275f`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/38012556962)、[Linux](https://github.com/ke4nec/lumen/actions/runs/38012556969) 和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38012556957) 全部通过，Windows 七个 job 全通过；覆盖图片会话与双窗口上传修复，Linux 含 Designer 相对性能门禁 | 结果只归属该提交，不覆盖后续 Escape 修复；没有新的完整人工桌面记录 |
 | 本地 GNOME/Wayland Designer（2026-10-09，`85314c0` 运行时源码） | 指定原生 Wayland driver，`gallery.design` 双窗口三帧 smoke 退出 0，唯一完整 `designer_window_smoke pass` 行；[原始日志与身份摘要](platform-evidence/designer-wayland-2026-10-09.json) 已保留 | 工作树含文档/验收脚本改动，运行时源码与提交一致；仅窗口启动，没有编辑/保存/重开、Inspector 操作、IME、读屏、高 DPI、GPU 或一小时浸泡验收 |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
@@ -132,8 +133,13 @@ G-D16 图片资源按授权后的规范 URI 共享句柄并保留声明别名；
 upload/unload，完成通知覆盖全部共享窗口或指定的活动窗口，不同 manager 分别 pump。
 实际 CPU 像素与 session 回归均通过，Windows 双预览像素分支不需要符号链接权限。
 默认配置完整 CTest 1166/1166、启用 allocator 的 Release 完整 CTest 1173/1173，
-Release `[designer],[resource-consumers]` 174 个用例、12655 个断言通过；本批三平台 CI
-仍需另行核对，完整人工现场记录未增加。
+Release `[designer],[resource-consumers]` 174 个用例、12655 个断言通过；`379275f`
+三平台 CI 全通过，完整人工现场记录未增加。
+Escape 在有输入法组合态时现先取消输入，保留属性/引用字段的原文选区与焦点，
+后续返回再刷新编辑器和独立预览的路由标签；声明、revision 和历史保持一致。
+两字段分支的应用回归 50 个断言、Release `[designer][ime]` 两用例 112 个断言通过，
+默认配置完整 CTest 1167/1167、启用 allocator 的 Release 完整 CTest 1174/1174；
+这仍是本批 headless 证据，不替代真实输入法或完整桌面记录。
 
 ### 实现批次与真实平台缺口（2026-09-30）
 
