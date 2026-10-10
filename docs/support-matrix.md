@@ -77,6 +77,8 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | GitHub 三桌面 CI（2026-10-09，`f209ed2`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/37955899483)、[Linux](https://github.com/ke4nec/lumen/actions/runs/37955899724)、[macOS](https://github.com/ke4nec/lumen/actions/runs/37955899492) 全部通过，覆盖 DPI/zoom、嵌套布局与手柄坐标修复 | 结果只归属该提交，不覆盖后续图片会话与双窗口上传修复；没有新的完整人工桌面记录 |
 | GitHub 三桌面 CI（2026-10-10，`379275f`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/38012556962)、[Linux](https://github.com/ke4nec/lumen/actions/runs/38012556969) 和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38012556957) 全部通过，Windows 七个 job 全通过；覆盖图片会话与双窗口上传修复，Linux 含 Designer 相对性能门禁 | 结果只归属该提交，不覆盖后续 Escape 修复；没有新的完整人工桌面记录 |
 | GitHub 三桌面 CI（2026-10-10，`55ed4d4`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/38014011564)、[Linux](https://github.com/ke4nec/lumen/actions/runs/38014011555) 和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38014011590) 全部通过，Windows 七个 job 全通过；覆盖 Escape/输入法返回修复 | 结果只归属该提交，不覆盖后续快捷键焦点修复；没有新的完整人工桌面记录 |
+| GitHub 三桌面 CI（2026-10-10，`ab43fec`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/38015411485)、[Linux](https://github.com/ke4nec/lumen/actions/runs/38015411609) 和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38015411570) 全部通过，Windows 七个 job、三平台各三个 Designer fixture smoke 和 Linux Designer 相对性能门禁成功；[完整摘要](platform-evidence/designer-ci-2026-10-10.json) | 覆盖预览文本与文档快捷键焦点隔离；只归属该提交，没有新的完整人工桌面记录 |
+| 本地 GNOME/Wayland Release（2026-10-10，`ab43fec` 运行时源码） | Designer 三帧原生窗口 smoke 与 `glibc/malloc` 双窗口短探针退出 0；3.024s、102 次呈现、101 个有效 allocator 帧、状态保持；[日志与产物身份](platform-evidence/designer-wayland-2026-10-10.json) | 原生桥/Skia/GPU 关闭，仅两项短检查；没有 IME、读屏、人工编辑/保存/重开、高 DPI、GPU 或一小时浸泡签署 |
 | 本地 GNOME/Wayland Designer（2026-10-09，`85314c0` 运行时源码） | 指定原生 Wayland driver，`gallery.design` 双窗口三帧 smoke 退出 0，唯一完整 `designer_window_smoke pass` 行；[原始日志与身份摘要](platform-evidence/designer-wayland-2026-10-09.json) 已保留 | 工作树含文档/验收脚本改动，运行时源码与提交一致；仅窗口启动，没有编辑/保存/重开、Inspector 操作、IME、读屏、高 DPI、GPU 或一小时浸泡验收 |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
@@ -145,7 +147,9 @@ Escape 在有输入法组合态时现先取消输入，保留属性/引用字段
 文档撤销，所有文本字段聚焦时禁止方向快捷键重排节点。两个应用用例的 Ctrl /
 Command 与文档 redo 分支回归为 448 个断言通过，连同输入法回归为四用例、560 个
 断言通过。默认配置完整 CTest 1169/1169、启用 allocator 的 Release 完整 CTest
-1176/1176；本批仍需自己的 CI，完整人工现场状态未变。
+1176/1176；`ab43fec` 的三平台 CI 现已通过，完整人工现场状态未变。
+逐阶段、13 类 fixture 与四个桌面会话的出口复核见
+[`设计器阶段验收对照`](lumen-designer-prerequisites-acceptance.md)。
 
 ### 实现批次与真实平台缺口（2026-09-30）
 

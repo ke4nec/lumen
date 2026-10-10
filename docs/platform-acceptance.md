@@ -165,6 +165,12 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
 Wayland/Xwayland 执行 allocator 短 smoke；AppKit、Windows 和完整人工回环
 尚未验收，不能据 headless 或单项短 smoke 标记三平台完整验收完成。
 
+2026-10-10 又以 `ab43fec` 运行时源码完成 GNOME/Wayland Release Designer 三帧
+窗口及 `glibc/malloc` 双窗口短检查，日志与产物身份见
+[`原生单项证据`](platform-evidence/designer-wayland-2026-10-10.json)。这些构建关闭了
+原生无障碍桥、Skia 和 GPU，仍未签署人工项。F0–F6 与完整四会话出口的当前对照见
+[`设计器阶段验收复核`](lumen-designer-prerequisites-acceptance.md)。
+
 `frame_allocator_source=pass` 必须附唯一的 `frame-allocator-live.log`；检查器要求
 支持的生产来源及上述结构化指标。解析器识别 Linux 的 `glibc/malloc`、Cocoa 的
 `libmalloc/malloc` 和 Win32 的 `ntdll/heap`。三平台后端已实现；macOS 已通过 SDK

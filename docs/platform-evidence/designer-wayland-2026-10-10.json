@@ -1,0 +1,91 @@
+{
+  "kind": "designer_native_short_checks",
+  "recorded_at": "2026-10-10T02:37:26.040785+00:00",
+  "source_commit": "ab43fec9a5f47b5dbafc47a7b4db1d85d82b8a7a",
+  "source_dirty": true,
+  "working_tree_status": [
+    " M README.md",
+    " M docs/lumen-visual-system-design.md",
+    "?? design/designer.html"
+  ],
+  "runtime_sources_match_commit": true,
+  "runtime_source_differences": [],
+  "platform": "linux-wayland",
+  "os": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
+  "desktop": "GNOME Shell 50.1",
+  "requested_video_driver": "wayland",
+  "wayland_display": "wayland-0",
+  "build_directory": "build-release",
+  "cmake_options": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "LUMEN_ENABLE_ACCESSIBILITY_BRIDGE": "OFF",
+    "LUMEN_ENABLE_FRAME_ALLOCATOR": "ON",
+    "LUMEN_ENABLE_GPU": "OFF",
+    "LUMEN_ENABLE_SKIA": "OFF"
+  },
+  "framework_renderer": "CpuRenderer",
+  "checks": {
+    "designer_window_smoke": {
+      "result": "pass",
+      "exit_code": 0,
+      "executable": "build-release/examples/designer/lumen-designer",
+      "executable_sha256": "9cd798711a8214ac2745f03ea4d71b718bb874415bb1ed8bbcd44a0e7ac60a2e",
+      "arguments": [
+        "--file",
+        "examples/designer/gallery.design",
+        "--max-frames",
+        "3"
+      ],
+      "log": "libEGL warning: failed to get driver name for fd -1\n\nlibEGL warning: MESA-LOADER: failed to retrieve device information\n\nlibEGL warning: failed to get driver name for fd -1\n\nMESA: error: ZINK: failed to choose pdev\nlibEGL warning: egl: failed to create dri2 screen\ndesigner_window_smoke pass\n",
+      "log_sha256": "745a755e8460da36f770d960f2242ac0db7c5f1d3f105db8af5723fad7ffff5e",
+      "document_sha256": "81d5bdd6691b19e20e8f324af49b8872e1a5637a26559307e24f6cfda002a6c8"
+    },
+    "frame_allocator_source": {
+      "result": "pass",
+      "exit_code": 0,
+      "executable": "build-release/tests/lumen-platform-live-smoke",
+      "executable_sha256": "de39764c1e90ee2f1ae1225d120fb7c3311cfcb40bea1411414f20599a5f7776",
+      "arguments": [
+        "--frame-allocator",
+        "--seconds",
+        "3"
+      ],
+      "log": "libEGL warning: failed to get driver name for fd -1\n\nlibEGL warning: MESA-LOADER: failed to retrieve device information\n\nlibEGL warning: failed to get driver name for fd -1\n\nMESA: error: ZINK: failed to choose pdev\nlibEGL warning: egl: failed to create dri2 screen\n{\"driver\":\"wayland\",\"seconds\":3.024,\"windows\":2,\"frames\":102,\"resize_events\":0,\"preedit_events\":0,\"commit_events\":0,\"composition_end_events\":3,\"wheel_events\":0,\"font_available\":true,\"transparent_requested\":false,\"external_clipboard\":false,\"ime_verified\":false,\"stress_mib\":0,\"simulated_recoveries\":0,\"state_preserved\":true,\"frame_allocator_requested\":true,\"frame_allocator_verified\":true,\"frame_allocator_source\":\"glibc/malloc\",\"frame_allocator_frames\":101,\"frame_allocator_allocations\":415637,\"frame_allocator_bytes\":70455621,\"frame_allocator_peak_bytes\":914877}\nframe_allocator_smoke pass\n",
+      "log_sha256": "3f4680161c1d129c359f4faac3a8e3efe663972f96e1dc19a4150f42661b7f0d",
+      "report": {
+        "driver": "wayland",
+        "seconds": 3.024,
+        "windows": 2,
+        "frames": 102,
+        "resize_events": 0,
+        "preedit_events": 0,
+        "commit_events": 0,
+        "composition_end_events": 3,
+        "wheel_events": 0,
+        "font_available": true,
+        "transparent_requested": false,
+        "external_clipboard": false,
+        "ime_verified": false,
+        "stress_mib": 0,
+        "simulated_recoveries": 0,
+        "state_preserved": true,
+        "frame_allocator_requested": true,
+        "frame_allocator_verified": true,
+        "frame_allocator_source": "glibc/malloc",
+        "frame_allocator_frames": 101,
+        "frame_allocator_allocations": 415637,
+        "frame_allocator_bytes": 70455621,
+        "frame_allocator_peak_bytes": 914877
+      },
+      "allocator_library_sha256": "5e5fd44596bd880e8ab183e9284ab348ca3aeeb8f97c76f5963b1f5fcb3e265a"
+    }
+  },
+  "acceptance_complete": false,
+  "workflow_run": null,
+  "limitations": [
+    "Short native CPU window and allocator checks only; no operator record or self-hosted workflow.",
+    "IME, readers, Inspector interaction, editing/save/reopen, high DPI, cross-application clipboard and one-hour soak are not proven by these logs.",
+    "The accessibility bridge, Skia and GPU build options are OFF; hardware GPU presentation is not verified.",
+    "Pre-existing README, visual-system documentation and Designer mockup changes are outside the tested runtime source."
+  ]
+}

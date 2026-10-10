@@ -1800,4 +1800,18 @@ Ctrl/Cmd+Up/Down 在字段编辑时重排文档。现任何文本字段聚焦时
 属性/引用字段的声明撤销及未变化的 DOM、revision、选择与历史。两个用例、448 个
 断言通过；连同输入法回归的 Release 筛选四用例、560 个断言通过。默认配置完整
 CTest 1169/1169（43.03s）、启用 allocator 的 Release 完整 CTest 1176/1176
-（19.20s）；本批仍需自己的 CI 与真实桌面键盘/输入法证据。
+（19.20s）；真实桌面键盘/输入法证据仍待补齐。
+
+`ab43fec` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/38015411485)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/38015411609) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/38015411570) 常规 CI 全部通过，
+Windows 七个 job 全成功，三平台各三个 Designer fixture smoke 与 Linux Designer
+相对性能门禁明确成功；完整提交/job/关键步骤结果见
+[`CI 摘要`](platform-evidence/designer-ci-2026-10-10.json)。
+同源码的本机 GNOME/Wayland Release 原生 Designer 三帧 smoke 与
+`glibc/malloc` 双窗口短探针也退出 0；后者 3.024s、102 次呈现、101 个有效
+allocator 帧，状态保持。日志、产物身份与构建开关见
+[`原生单项证据`](platform-evidence/designer-wayland-2026-10-10.json)。
+原生桥/Skia/GPU 开关关闭，未覆盖真实 IME、读屏、编辑/保存/重开、高 DPI 或一小时浸泡。
+F0–F6、13 类 fixture 与四个桌面会话的当前出口复核见
+[`阶段验收对照`](lumen-designer-prerequisites-acceptance.md)；完整现场记录仍缺，目标未完成。
