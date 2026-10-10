@@ -965,6 +965,11 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     // travel through UIA -> AppShell -> DesignerApp's document transaction.
     auto field = findByNameAndType(L"text", UIA_EditControlTypeId);
     REQUIRE(field != nullptr);
+    // UIA ValuePattern writes use the same focused-bind guard as keyboard
+    // editing. Establish the property-field focus through the client before
+    // issuing SetValue, matching the Designer's accessible workflow.
+    REQUIRE(field->SetFocus() == S_OK);
+    (void)app.shell().renderFrame();
     ComPtr<IUIAutomationValuePattern> value;
     REQUIRE(field->GetCurrentPatternAs(UIA_ValuePatternId,
                                        IID_PPV_ARGS(&value)) == S_OK);

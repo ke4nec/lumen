@@ -121,6 +121,8 @@ jobs:
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             python -B tests/ci_diagnostics.py --log ctest-diag.log
+            echo '--- failed live UIA test output ---'
+            awk '/uia_live_designer_outline_and_property_round_trip/{show=1} show{print} /Test #/{if (show && !/uia_live_designer_outline_and_property_round_trip/) exit}' ctest-diag.log || true
             python3 - <<'PY'
           import re
           log = open('ctest-diag.log', errors='replace').read()
@@ -192,6 +194,9 @@ jobs:
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             python -B tests/ci_diagnostics.py --log ctest-diag.log
+            echo '--- failed live UIA test output ---'
+            awk '/uia_live_designer_outline_and_property_round_trip/{show=1} show{print} /Test #/{if (show && !/uia_live_designer_outline_and_property_round_trip/) exit}' ctest-diag.log || true
+            ctest --test-dir build-a11y -C Debug --output-on-failure -VV -R uia_live_designer_outline_and_property_round_trip || true
             python3 - <<'PY'
           import re
           log = open('ctest-diag.log', errors='replace').read()
