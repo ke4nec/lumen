@@ -227,9 +227,9 @@ jobs:
       - name: Headless settings smoke
         run: ./build/examples/settings/lumen-settings --headless
       - name: Windowed smoke (Xvfb)
-        run: xvfb-run -a timeout 5 ./build/examples/counter/lumen-counter || test $? -eq 124
+        run: bash tests/windowed_smoke.sh counter ./build/examples/counter/lumen-counter
       - name: Windowed settings smoke (Xvfb)
-        run: xvfb-run -a timeout 5 ./build/examples/settings/lumen-settings || test $? -eq 124
+        run: bash tests/windowed_smoke.sh settings ./build/examples/settings/lumen-settings
       # M7 性能门槛：固定场景逐项比较 p50/p95、分配量、命令数和
       # submit/GPU wait；同场景三次运行仍须保持 frame_hash 一致。
       - name: Checkout pinned performance reference
@@ -375,7 +375,7 @@ jobs:
           fi
           exit "$status"
       - name: Windowed Skia smoke (Xvfb)
-        run: xvfb-run -a timeout 5 ./build-skia/examples/counter/lumen-counter --renderer skia || test $? -eq 124
+        run: bash tests/windowed_smoke.sh skia-counter ./build-skia/examples/counter/lumen-counter --renderer skia
       - name: Checkout pinned performance reference
         uses: actions/checkout@v5
         with:
