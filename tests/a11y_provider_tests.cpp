@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "designer_app.h"
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/app/app_shell.h"
@@ -808,6 +809,168 @@ TEST_CASE("uia_live_window_end_to_end_via_uia_client", "[a11y][live]") {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+}
+
+// The generic provider smoke above proves WM_GETOBJECT and pattern plumbing,
+// but it does not exercise the Designer's own outline and property bindings.
+// Keep this live check on the same real HWND/UIA path so a provider regression
+// cannot leave the Windows Designer gate green while the app tree is broken.
+TEST_CASE("uia_live_designer_outline_and_property_round_trip",
+          "[a11y][live][designer]") {
+    if (std::getenv("LUMEN_UIA_LIVE_SMOKE") == nullptr) {
+        return;
+    }
+    struct ComInit {
+        HRESULT hr;
+        explicit ComInit()
+            : hr(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)) {}
+        ~ComInit() {
+            if (SUCCEEDED(hr)) CoUninitialize();
+        }
+    } comInit;
+    REQUIRE(SUCCEEDED(comInit.hr));
+
+    struct WindowGuard {
+        HWND hwnd{nullptr};
+        static LRESULT CALLBACK proc(HWND hwnd, UINT message, WPARAM wp,
+                                     LPARAM lp) {
+            return DefWindowProcW(hwnd, message, wp, lp);
+        }
+        WindowGuard() {
+            const wchar_t className[] = L"LumenDesignerUiaSmoke";
+            WNDCLASSW wc{};
+            wc.lpfnWndProc = proc;
+            wc.hInstance = GetModuleHandleW(nullptr);
+            wc.lpszClassName = className;
+            RegisterClassW(&wc);
+            hwnd = CreateWindowExW(0, className, L"Lumen Designer UIA smoke",
+                                   WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
+                                   CW_USEDEFAULT, 1280, 800, nullptr, nullptr,
+                                   wc.hInstance, nullptr);
+            if (hwnd != nullptr) {
+                ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+                UpdateWindow(hwnd);
+            }
+        }
+        ~WindowGuard() {
+            if (hwnd != nullptr) DestroyWindow(hwnd);
+        }
+    } window;
+    REQUIRE(window.hwnd != nullptr);
+
+    designer_app::DesignerApp app;
+    app.attach();
+    REQUIRE(app.loadSource(
+        "page designer { Column(key: \"root\") {"
+        " Text(\"Title\", key: \"title\") } }",
+        "windows-uia-designer.lumen"));
+    app.shell().setView(core::Size{1280.0F, 800.0F});
+
+    accessibility::PlatformAccessibilityHost host;
+    host.nativeWindow = window.hwnd;
+    host.deviceScale = 1.0F;
+    host.applicationName = "Lumen Designer";
+    host.activateWindow = [&window] {
+        SetForegroundWindow(window.hwnd);
+        return true;
+    };
+    host.dispatch = [&app](const std::string& nodeId, std::uint32_t action,
+                           const std::string& value, float scrollDeltaY) {
+        return app.shell().performAccessibilityAction(nodeId, action, value,
+                                                      scrollDeltaY);
+    };
+    std::string diagnostics;
+    accessibility::uia::UiaAccessibilityBridge bridge(host, &diagnostics);
+    REQUIRE(bridge.available());
+    app.shell().setAccessibilityBridge(&bridge);
+    (void)app.shell().renderFrame();
+
+    ComPtr<IUIAutomation> automation;
+    REQUIRE(CoCreateInstance(CLSID_CUIAutomation, nullptr,
+                             CLSCTX_INPROC_SERVER,
+                             IID_PPV_ARGS(&automation)) == S_OK);
+    ComPtr<IUIAutomationElement> root;
+    REQUIRE(automation->ElementFromHandle(window.hwnd, &root) == S_OK);
+    REQUIRE(root != nullptr);
+
+    const auto findByNameAndType = [&](const wchar_t* name,
+                                       CONTROLTYPEID type)
+        -> ComPtr<IUIAutomationElement> {
+        VARIANT nameValue;
+        VariantInit(&nameValue);
+        nameValue.vt = VT_BSTR;
+        nameValue.bstrVal = SysAllocString(name);
+        ComPtr<IUIAutomationCondition> nameCondition;
+        const HRESULT nameResult = automation->CreatePropertyCondition(
+            UIA_NamePropertyId, nameValue, &nameCondition);
+        VariantClear(&nameValue);
+        CHECK(nameResult == S_OK);
+        if (FAILED(nameResult)) return {};
+
+        VARIANT typeValue;
+        VariantInit(&typeValue);
+        typeValue.vt = VT_I4;
+        typeValue.lVal = static_cast<LONG>(type);
+        ComPtr<IUIAutomationCondition> typeCondition;
+        const HRESULT typeResult = automation->CreatePropertyCondition(
+            UIA_ControlTypePropertyId, typeValue, &typeCondition);
+        VariantClear(&typeValue);
+        CHECK(typeResult == S_OK);
+        if (FAILED(typeResult)) return {};
+
+        ComPtr<IUIAutomationCondition> condition;
+        const HRESULT andResult = automation->CreateAndCondition(
+            nameCondition.Get(), typeCondition.Get(), &condition);
+        CHECK(andResult == S_OK);
+        if (FAILED(andResult)) return {};
+        ComPtr<IUIAutomationElement> result;
+        const HRESULT findResult = root->FindFirst(
+            TreeScope_Descendants, condition.Get(), &result);
+        CHECK(findResult == S_OK);
+        if (FAILED(findResult)) return {};
+        return result;
+    };
+
+    // TreeController exposes the declaration label as a TreeItem. Invoking it
+    // must select the same stable DocumentId used by the editor.
+    auto outlineItem = findByNameAndType(L"Text  [title]",
+                                         UIA_TreeItemControlTypeId);
+    REQUIRE(outlineItem != nullptr);
+    ComPtr<IUIAutomationInvokePattern> invoke;
+    REQUIRE(outlineItem->GetCurrentPatternAs(UIA_InvokePatternId,
+                                              IID_PPV_ARGS(&invoke)) == S_OK);
+    REQUIRE(invoke != nullptr);
+    REQUIRE(invoke->Invoke() == S_OK);
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() == 1);
+    const auto targetId = outline->children.front().id;
+    CHECK(app.workbench().selection().primary == targetId);
+    CHECK_FALSE(app.workbench().dirty());
+
+    // The selected declaration exposes a real Edit control. SetValue must
+    // travel through UIA -> AppShell -> DesignerApp's document transaction.
+    auto field = findByNameAndType(L"text", UIA_EditControlTypeId);
+    REQUIRE(field != nullptr);
+    ComPtr<IUIAutomationValuePattern> value;
+    REQUIRE(field->GetCurrentPatternAs(UIA_ValuePatternId,
+                                       IID_PPV_ARGS(&value)) == S_OK);
+    REQUIRE(value != nullptr);
+    BSTR current{nullptr};
+    REQUIRE(value->get_CurrentValue(&current) == S_OK);
+    CHECK(bstrToUtf8(current) == "Title");
+    SysFreeString(current);
+    REQUIRE(value->SetValue(L"Renamed") == S_OK);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    const auto& edited = *app.workbench().document();
+    REQUIRE(edited.root.children.size() == 1);
+    CHECK(std::get<std::string>(edited.root.children.front()
+                                    .properties.at("text")
+                                    .value) == "Renamed");
+    CHECK(app.workbench().dirty());
 }
 
 #endif  // defined(_WIN32) && defined(LUMEN_ACCESSIBILITY_PROVIDER_UIA)

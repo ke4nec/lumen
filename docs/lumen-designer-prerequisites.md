@@ -1834,3 +1834,12 @@ AT-SPI 重测已确认大纲 selected、对应 text 属性字段和 FOCUSED 状�
 [Linux](https://github.com/ke4nec/lumen/actions/runs/38019639226) 和
 [macOS](https://github.com/ke4nec/lumen/actions/runs/38019639093) 常规 CI 全部通过，
 Windows 七个 job 全成功；修复后的三平台提交归属与关键步骤已重新验证。
+
+Windows Designer 门禁随后补上了真实 UIA 客户端到应用语义树的专用回环：在
+`LUMEN_UIA_LIVE_SMOKE=1` 的桌面测试中创建真实 HWND，查找大纲的 `Text  [title]`
+TreeItem 并执行 Invoke，随后查找选中节点的 `text` Edit 控件，读回原值并通过
+ValuePattern `SetValue` 验证 Designer 文档事务已提交且 dirty 状态改变。该用例位于
+`tests/a11y_provider_tests.cpp` 的 `[a11y][live][designer]`，与通用 UIA provider
+测试共用 WM_GETOBJECT/语义 action 链；未设置 live 变量时保持 headless 安全跳过。
+本地 Linux `[a11y]` 回归为 25 个用例、459 个断言通过；Windows 原生编译和桌面回环
+需由下一次 Windows CI 运行确认，仍不等同 Narrator/NVDA 人工播报验收。
