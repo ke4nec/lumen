@@ -37,6 +37,13 @@
   `Text  [title]` TreeItem 并 Invoke，随后通过 Edit/ValuePattern 读写 `text` 属性；
   Windows `a11y-bridge` 的 live 步骤成功。完整运行与 job 归属见
   [`UIA Designer CI 证据`](platform-evidence/designer-ci-2026-10-10-f021fe8.json)。
+- Linux Designer AT-SPI 专用回归已补齐最小文本值接口，入口为
+  `tests/designer_atspi_live_tests.py` 与 `lumen-designer-atspi-live-app`。生产 D-Bus
+  provider 上覆盖大纲选择、Unicode 属性读写/事件、空串/非法范围、非字段与禁用字段
+  拒写；应用端验证声明事务、undo/redo、dirty、保存重开与稳定 ID。Linux CPU CI
+  增加显式执行步骤；fixture 不创建 SDL 窗口，不据此声明 Orca 或现场验收完成。
+  本机桥开启的 Debug 完整 CTest 1171/1171（118.82s）、通用和 Designer 原生协议
+  回归均通过；旧 `1840bbe` provider 临时重链接同一 fixture，明确因缺少 Text 接口失败。
 
 ## 2. 阶段与 fixture 对照
 

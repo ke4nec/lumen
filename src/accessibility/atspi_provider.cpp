@@ -9,11 +9,14 @@
 #include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "lumen/core/utf8.h"
 
 #if defined(LUMEN_HAS_DBUS)
 #include <dbus/dbus.h>
@@ -112,6 +115,12 @@ std::string hexHash(std::uint64_t value) {
 }
 
 #if defined(LUMEN_HAS_DBUS)
+
+dbus_int32_t textCharacterCount(const std::string& text) {
+    return static_cast<dbus_int32_t>(std::min(
+        core::utf8Length(text),
+        static_cast<std::size_t>(std::numeric_limits<dbus_int32_t>::max())));
+}
 
 void appendString(DBusMessageIter* iter, const std::string& value) {
     const char* text = value.c_str();
@@ -344,6 +353,8 @@ constexpr char kIntrospectionXml[] =
     "<interface name='org.a11y.atspi.Accessible'/>"
     "<interface name='org.a11y.atspi.Action'/>"
     "<interface name='org.a11y.atspi.Component'/>"
+    "<interface name='org.a11y.atspi.Text'/>"
+    "<interface name='org.a11y.atspi.EditableText'/>"
     "<interface name='org.a11y.atspi.Value'/>"
     "<interface name='org.a11y.atspi.Application'/>"
     "</node>";
@@ -500,6 +511,11 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
                     const dbus_int32_t count = static_cast<dbus_int32_t>(current->children.size());
                     dbus_message_iter_append_basic(&variant, DBUS_TYPE_INT32, &count);
                     dbus_message_iter_close_container(out, &variant);
+                } else if (propertyInterface != nullptr &&
+                           std::strcmp(propertyInterface, "org.a11y.atspi.Text") == 0 &&
+                           std::strcmp(property, "CharacterCount") == 0 &&
+                           current->role == SemanticsRole::TextField) {
+                    appendVariantInt32(out, textCharacterCount(current->value));
                 } else if (std::strcmp(property, "CurrentValue") == 0) {
                     double value = 0.0;
                     try { value = std::stod(current->value); } catch (...) {}
@@ -564,10 +580,17 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
                 if (current != nullptr) {
                     DBusMessageIter entry;
                     dbus_message_iter_open_container(&array, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
-                    appendString(&entry, "Name");
-                    appendVariantString(&entry, displayNameFor(
-                        *current, impl->tree.rootId,
-                        impl->host.applicationName));
+                    if (propertyInterface != nullptr &&
+                        std::strcmp(propertyInterface, "org.a11y.atspi.Text") == 0 &&
+                        current->role == SemanticsRole::TextField) {
+                        appendString(&entry, "CharacterCount");
+                        appendVariantInt32(&entry, textCharacterCount(current->value));
+                    } else {
+                        appendString(&entry, "Name");
+                        appendVariantString(&entry, displayNameFor(
+                            *current, impl->tree.rootId,
+                            impl->host.applicationName));
+                    }
                     dbus_message_iter_close_container(&array, &entry);
                 }
                 dbus_message_iter_close_container(out, &array);
@@ -667,6 +690,12 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
                 appendString(&array, "org.a11y.atspi.Accessible");
                 if (isRoot) appendString(&array, "org.a11y.atspi.Application");
                 if (node->actions != 0) appendString(&array, "org.a11y.atspi.Action");
+                if (node->role == SemanticsRole::TextField) {
+                    appendString(&array, "org.a11y.atspi.Text");
+                    if ((node->actions & kActionSetValue) != 0) {
+                        appendString(&array, "org.a11y.atspi.EditableText");
+                    }
+                }
                 if (node->role == SemanticsRole::Slider || node->role == SemanticsRole::ProgressBar || node->role == SemanticsRole::Splitter) appendString(&array, "org.a11y.atspi.Value");
                 appendString(&array, "org.a11y.atspi.Component");
                 dbus_message_iter_close_container(out, &array);
@@ -762,6 +791,59 @@ DBusHandlerResult handleMessage(DBusConnection* connection, DBusMessage* request
             });
         }
     }
+    if (node->role == SemanticsRole::TextField &&
+        std::strcmp(interface, "org.a11y.atspi.Text") == 0) {
+        if (std::strcmp(member, "GetText") == 0) {
+            dbus_int32_t start = 0;
+            dbus_int32_t end = -1;
+            if (!dbus_message_get_args(request, nullptr,
+                                       DBUS_TYPE_INT32, &start,
+                                       DBUS_TYPE_INT32, &end,
+                                       DBUS_TYPE_INVALID) ||
+                start < 0 || end < -1 || (end >= 0 && end < start)) {
+                return replyError(connection, request, DBUS_ERROR_INVALID_ARGS,
+                                  "GetText requires an ordered character range");
+            }
+            const std::string text = node->value;
+            // AT-SPI offsets count Unicode code points, never UTF-8 bytes or
+            // the grapheme positions used by the editor's caret.
+            const auto begin = core::utf8OffsetAt(text, start);
+            const auto finish = end < 0
+                                    ? text.size()
+                                    : core::utf8OffsetAt(text, end);
+            return replyValue(connection, request, [&text, begin, finish](DBusMessageIter* out) {
+                appendString(out, text.substr(begin, finish - begin));
+            });
+        }
+    }
+    if (std::strcmp(interface, "org.a11y.atspi.EditableText") == 0 &&
+        std::strcmp(member, "SetTextContents") == 0) {
+        const char* text = nullptr;
+        if (!dbus_message_get_args(request, nullptr, DBUS_TYPE_STRING, &text,
+                                   DBUS_TYPE_INVALID)) {
+            return replyError(connection, request, DBUS_ERROR_INVALID_ARGS,
+                              "SetTextContents requires text");
+        }
+        // Mirror UIA Value: establish the field's editing focus before writing
+        // through the same semantic transaction. Copy data before dispatch,
+        // whose handler may synchronously publish a new tree.
+        const std::string id = impl->idAt(path);
+        const std::string contents = text != nullptr ? text : "";
+        const bool writable = node->role == SemanticsRole::TextField &&
+                              (node->actions & kActionSetValue) != 0 &&
+                              (node->flags & kSemanticsEnabled) != 0;
+        bool handled = false;
+        if (writable && impl->host.dispatch &&
+            impl->host.dispatch(id, kActionFocus, {}, 0.0F) ==
+                SemanticsActionStatus::Handled) {
+            handled = impl->host.dispatch(id, kActionSetValue, contents, 0.0F) ==
+                      SemanticsActionStatus::Handled;
+        }
+        return replyValue(connection, request, [handled](DBusMessageIter* out) {
+            dbus_bool_t success = handled ? TRUE : FALSE;
+            dbus_message_iter_append_basic(out, DBUS_TYPE_BOOLEAN, &success);
+        });
+    }
     if (std::strcmp(interface, "org.a11y.atspi.Value") == 0 &&
         std::strcmp(member, "GetCurrentValue") == 0) {
         double value = 0.0;
@@ -786,7 +868,8 @@ const DBusObjectPathVTable kObjectPathVtable = {nullptr, objectPathMessage,
 void emitSignal(AtspiAccessibilityBridge::Impl* impl, const char* path,
                 const char* interface, const char* member,
                 const char* signature, const std::string& property,
-                const std::string& value = {}, dbus_int32_t detail1 = 0) {
+                const std::string& value = {}, dbus_int32_t detail1 = 0,
+                dbus_int32_t detail2 = 0) {
     if (!impl->connected || impl->connection == nullptr) return;
     DBusMessage* signal = dbus_message_new_signal(path, interface, member);
     if (signal == nullptr) return;
@@ -794,7 +877,6 @@ void emitSignal(AtspiAccessibilityBridge::Impl* impl, const char* path,
     dbus_message_iter_init_append(signal, &args);
     if (std::strcmp(signature, "property") == 0) {
         appendString(&args, property);
-        dbus_int32_t detail2 = 0;
         dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &detail1);
         dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &detail2);
         if (property == "accessible-value") {
@@ -805,7 +887,6 @@ void emitSignal(AtspiAccessibilityBridge::Impl* impl, const char* path,
         dbus_message_iter_close_container(&args, &dict);
     } else {
         appendString(&args, property);
-        dbus_int32_t detail2 = 0;
         dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &detail1);
         dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &detail2);
         if (std::strcmp(signature, "children") == 0) {
@@ -813,7 +894,7 @@ void emitSignal(AtspiAccessibilityBridge::Impl* impl, const char* path,
             dbus_message_iter_open_container(&args, DBUS_TYPE_VARIANT, "(so)", &variant);
             appendObjectReference(&variant, impl->uniqueName.c_str(), value.c_str());
             dbus_message_iter_close_container(&args, &variant);
-        } else appendVariantString(&args, "");
+        } else appendVariantString(&args, std::strcmp(signature, "text") == 0 ? value : "");
         DBusMessageIter dict;
         dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
         dbus_message_iter_close_container(&args, &dict);
@@ -923,12 +1004,33 @@ void AtspiAccessibilityBridge::updateTree(const SemanticsTree& tree,
             const auto* node = tree.find(id);
             if (node != nullptr) {
                 const std::string path = impl_->pathFor(id);
+                const auto* old = previous.find(id);
                 emitSignal(impl_.get(), path.c_str(),
                            "org.a11y.atspi.Event.Object", "PropertyChange",
                            "property", "accessible-name", node->label);
-                emitSignal(impl_.get(), path.c_str(),
-                           "org.a11y.atspi.Event.Object", "PropertyChange",
-                           "property", "accessible-value", node->value);
+                if (node->role == SemanticsRole::TextField) {
+                    // The snapshot has no edit spans: replace the whole value
+                    // with Unicode offsets and a string payload (see
+                    // docs/lumen-accessibility-provider-design.md §6).
+                    if (old != nullptr && old->value != node->value) {
+                        if (!old->value.empty()) {
+                            emitSignal(impl_.get(), path.c_str(),
+                                       "org.a11y.atspi.Event.Object", "TextChanged",
+                                       "text", "delete", old->value, 0,
+                                       textCharacterCount(old->value));
+                        }
+                        if (!node->value.empty()) {
+                            emitSignal(impl_.get(), path.c_str(),
+                                       "org.a11y.atspi.Event.Object", "TextChanged",
+                                       "text", "insert", node->value, 0,
+                                       textCharacterCount(node->value));
+                        }
+                    }
+                } else {
+                    emitSignal(impl_.get(), path.c_str(),
+                               "org.a11y.atspi.Event.Object", "PropertyChange",
+                               "property", "accessible-value", node->value);
+                }
             }
         }
     }

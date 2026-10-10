@@ -1848,3 +1848,16 @@ ValuePattern `SetValue` 验证 Designer 文档事务已提交且 dirty 状态改
 `a11y-bridge` 的 live UIA 测试步骤也成功；完整 job/提交归属见
 [`CI 证据`](platform-evidence/designer-ci-2026-10-10-f021fe8.json)。这仍不等同
 Narrator/NVDA 人工播报验收。
+
+§4.18 的 Linux Designer 原生协议门禁新增专用 libatspi 客户端回环。复查发现生产
+AT-SPI provider 原先只暴露数值 Value 接口，属性 TextField 无法从原生客户端读取或
+写入文本。现按无障碍 provider 设计 §6 实现最小 Text/EditableText 值接口：Unicode
+字符范围与计数、Focus → SetValue 事务、boolean 写入回执和文本删除/插入事件。
+`tests/designer_atspi_live_tests.py` 驱动生产 D-Bus provider 与 DesignerApp 大纲/属性，
+并由应用端验证 DocumentId 选择、dirty、undo/redo、临时文件保存/重开后的 ID 与值；
+覆盖空串、中文、emoji、组合字符、非法范围以及静态标签/禁用字段拒绝写入。
+Linux CPU workflow 明确运行此项；fixture 不创建 SDL 窗口，自动化协议证据不替代
+Orca 与 D1/D2/D3 的正式桌面现场出口。
+review 时用 `1840bbe` 的旧 provider 与同一个新 fixture 临时重链接，回归明确在
+缺少 Text 接口处失败；新实现的通用与 Designer AT-SPI 回归顺序通过。启用原生桥
+的本机 Debug 完整 CTest 1171/1171（118.82s）通过。

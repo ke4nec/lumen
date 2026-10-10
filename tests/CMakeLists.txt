@@ -303,6 +303,18 @@ endif()
 if(LUMEN_ENABLE_ACCESSIBILITY_BRIDGE AND UNIX AND NOT APPLE)
     add_executable(lumen-atspi-live-app atspi_live_app.cpp)
     target_link_libraries(lumen-atspi-live-app PRIVATE lumen-app lumen-widgets)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT LUMEN_BUILD_MOBILE_CORE)
+        add_executable(lumen-designer-atspi-live-app
+            designer_atspi_live_app.cpp
+            ${PROJECT_SOURCE_DIR}/examples/designer/designer_app.cpp
+            ${PROJECT_SOURCE_DIR}/examples/designer/file_watcher.cpp)
+        target_link_libraries(lumen-designer-atspi-live-app PRIVATE
+            lumen-app lumen-widgets lumen-layout lumen-render lumen-text
+            lumen-platform lumen-dsl SDL3::SDL3)
+        target_compile_features(lumen-designer-atspi-live-app PRIVATE cxx_std_20)
+        target_include_directories(lumen-designer-atspi-live-app PRIVATE
+            ${PROJECT_SOURCE_DIR}/examples/designer)
+    endif()
     target_compile_definitions(lumen-tests PRIVATE
         LUMEN_ACCESSIBILITY_PROVIDER_ATSPI=1)
     target_include_directories(lumen-tests PRIVATE

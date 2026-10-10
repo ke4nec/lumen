@@ -48,7 +48,7 @@ M5 已完成语义契约收口（identity diff、invalid/hidden flags、语义 a
 
 **非目标（第一版明确不做）**
 
-- Text pattern（文本编辑的逐字/选区暴露）——TextField 以 Value pattern 值读写闭环；富文本属按需评估池。
+- UIA Text pattern、文本选区/光标/按词导航——UIA TextField 以 Value pattern 值读写闭环；AT-SPI 通过最小 Text/EditableText 接口读写整个字段值，字符范围只支持 GetText。富文本属按需评估池。
 - Scroll pattern/滚动事件——语义 Scroll action 为增量（deltaY），UIA ScrollAmount 语义不匹配；AT 用焦点导航+页面级阅读替代。
 - Selection pattern（List/Tree 多选语义）——单选激活经 Invoke 闭环；多选暴露留按需。
 - 跨窗口聚合的单一 provider（当前每窗口一个桥，runApp 已支持多窗口）。
@@ -153,10 +153,13 @@ Linux 侧走 org.a11y.Bus D-Bus 协议（Qt/GTK 同款；仓库已有 libdbus �
 | org.a11y.atspi.Accessible | GetRole/GetRoleName/GetName/GetDescription/GetChildAtIndex/GetChildren/GetChildCount/GetParent/GetApplication/GetState（enabled/focusable/focused/checked/selected/visible/invalid→标准状态枚举） |
 | org.a11y.atspi.Component | GetExtents（CoordType SCREEN/WINDOW；deviceScale 换算，窗口原点经宿主窗口位置）/Contains |
 | org.a11y.atspi.Action | GetActions（n_actions=1 "activate"/"focus"/"set value" 按 actions 位）/DoAction → dispatch |
-| org.a11y.atspi.Value | 当前值/极值（Slider/ProgressBar/Splitter 0..100；TextField 值字符串经 EditableText？——首版 Value 只覆盖数值控件） |
+| org.a11y.atspi.Value | 当前值/极值（Slider/ProgressBar/Splitter 0..100，只覆盖数值控件） |
+| org.a11y.atspi.Text | TextField 的 GetText(start, end) 与 CharacterCount 属性；从语义 value 读取，范围按 Unicode 码点，end=-1 读到末尾，越界夹紧，负 start/非法 end/倒序范围返回 InvalidArgs |
+| org.a11y.atspi.EditableText | 仅声明 SetValue 的 TextField 暴露；SetTextContents 返回 boolean，启用字段先 dispatch(Focus)，成功后 dispatch(SetValue)，沿已有编辑事务；禁用、只读或非字段拒绝写入 |
 | org.a11y.atspi.Socket/Embed | 桌面嵌入路径（AT 侧主动 Embed，应用侧只需响应） |
 
-- **事件**：children-changed（结构）、property-change（accessible-name/value/state）、focus（state-changed:focused）经总线信号广播。
+- **事件**：children-changed（结构）、property-change（accessible-name/value/state）、focus（state-changed:focused）经总线信号广播。TextField 值改变发送 text-changed:delete/insert：语义快照不携带编辑区间，因此以 offset=0 删除旧全文再插入新全文；length 按码点计算，variant 为对应字符串，空串不发送该方向事件。文本字段不发送数值 accessible-value 事件。
+- **文本协议依据**：[GNOME Text.xml](https://github.com/GNOME/at-spi2-core/blob/main/xml/Text.xml)、[EditableText.xml](https://github.com/GNOME/at-spi2-core/blob/main/xml/EditableText.xml) 与 [Event.xml](https://github.com/GNOME/at-spi2-core/blob/main/xml/Event.xml)。当前最小字段值接口不承诺光标、选区、文本属性、字词/行粒度或其他 EditableText 操作；字段密码值仍以语义层已经隐藏的 value 为准。
 - **窗口激活（M13 2026-09-23 补齐）**：屏幕阅读器以 window:activate 切换“当前应用”上下文，只发 state-changed:focused 不会开始播报。`noteWindowActive`（宿主 WindowFocusGained/Lost → runApp → AppShell 转发）发 `org.a11y.atspi.Event.Window` 的 `Activate`/`Deactivate` 信号 + 根节点 `state-changed:active`（线格式按 libatspi 客户端注册 "window:activate" 生成的 match 规则实测比对）。`Component.GrabFocus` 按平台惯例（atk_component_grab_focus）同时经 `PlatformAccessibilityHost.activateWindow`（runApp 接宿主 `raiseWindow`）抬升所属窗口；窗口根路径只做激活（语义根无 focus action，向根派发会搅乱后续控件焦点）。Wayland 焦点授予由合成器策略决定（xdg-activation），X11/XWayland 可直接置前。
 - **角色/名称映射修正（2026-09-23）**：AtspiRole 数值以 libatspi `Atspi.Role` 实测枚举为准（旧表多处错位：Button=41 实为 POPUP_MENU、List=35 实为 MENU_ITEM、ProgressBar=38 实为 PAGE_TAB_LIST 等，屏幕阅读器按错角色播报）；Switch 用原生 SWITCH(130)。根节点名三通道（GetName 成员/`Properties.Get("Name")`——libatspi get_name() 实际走这条/GetAll）统一返回应用名（宿主窗口标题）；语义根 label 通常为空。`AppShell::performAccessibilityAction` 对 Handled 的 AT 派发显式标脏（AT 路径无宿主事件伴随帧请求，否则 FOCUSED 状态永不上报），runApp 的 a11y pump 按 `hasPendingFrame` 合并请求一帧。
 - **线程**：D-Bus 连接在 UI 线程的 `AccessibilityBridge::pump()` 内 `dbus_connection_dispatch`，由 `runApp` 在 SDL 事件轮询前调用，保持“UI 线程拥有”不变量。
@@ -165,6 +168,7 @@ Linux 侧走 org.a11y.Bus D-Bus 协议（Qt/GTK 同款；仓库已有 libdbus �
   使用系统注册表与 libatspi 客户端验证注册、窗口激活（GrabFocus → activateWindow → window:activate）、焦点、按钮、数值回灌。Socket 位于
   `/org/a11y/atspi/accessible/root`，Application.Id 为 int32，GetState 返回两段
   uint32 位图；Cache.GetItems 返回空缓存，客户端按需查询对象。此测试不替代 Orca。
+- **Designer 协议回归**：`dbus-run-session -- /usr/bin/python3 -B tests/designer_atspi_live_tests.py <build>/tests/lumen-designer-atspi-live-app` 在 Linux CPU CI 执行。libatspi 客户端驱动生产 provider 与真实 DesignerApp/AppShell：大纲激活、selected/焦点、属性全文读写、空串、中文/emoji/组合字符范围和计数、文本事件、非字段/禁用字段拒写。应用端另验证 DocumentId 选择、dirty、undo/redo、保存与重开后的文档/节点 ID 和声明值。此 fixture 不创建 SDL 窗口，不覆盖 Orca、显示器或人工桌面签署。
 - **Orca 回环（M13 Linux 验收工具，2026-09-23）**：`tests/atspi_orca_loop.py`
   （隔离 dbus 会话 + 真 Orca `--replace --debug` + `SDL_VIDEODRIVER=x11`，调用
   方式见文件头）。在 GNOME Wayland + XWayland 桌面实测通过：根对象以应用名
