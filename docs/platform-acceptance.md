@@ -73,8 +73,8 @@ AT-SPI live 冒烟互补，面向读屏器在场驱动；调用方式与前置�
 | 平台 | 脚本 | 读屏器证据 |
 | --- | --- | --- |
 | Linux（X11） | `tests/atspi_orca_loop.py` | Orca debug 日志（专属 script + 事件消费 + SPEECH OUTPUT） |
-| Windows | `tests/uia_reader_loop.py` | NVDA controller client 探活 + 摘要播报；讲述人进程探活；语音人工记录 |
-| macOS | `tests/voiceover_loop.py` | VoiceOver 进程探活；语音人工记录 |
+| Windows | `tests/uia_reader_loop.py` | NVDA controller client 探活 + 摘要播报；讲述人进程探活；协议回环含文本 Edit ValuePattern；语音人工记录 |
+| macOS | `tests/voiceover_loop.py` | VoiceOver 进程探活；协议回环含 AXTextField 文本编辑；语音人工记录 |
 
 工作流不再接受 `confirmed` 自报。配置仓库变量 `LUMEN_ACCEPTANCE_ROOT` 为
 runner 本地证据目录，按 `<root>/<40 位提交>/<platform>/record.json` 存放记录，
@@ -89,9 +89,9 @@ Linux/macOS 常规 CPU CI 启用原生桥，其他默认 OFF 构建继续覆盖�
 1. Linux：在 counter/settings 窗口中用 Orca 顺序导航语义焦点，激活按钮，修改
    文本字段或滑块值，确认窗口 resize 后焦点和名称保持；分别在 X11 和 Wayland
    job 记录 JSON artifact。
-2. macOS：用 VoiceOver 导航同一组控件，完成 press、value set 和窗口关闭/重开，
+2. macOS：用 VoiceOver 导航同一组控件，完成 press、value set、文本编辑和窗口关闭/重开，
    确认焦点变化通知没有丢失。
-3. Windows：分别用 Narrator 和 NVDA 完成同样的焦点、激活和值设置回环；`a11y`
+3. Windows：分别用 Narrator 和 NVDA 完成同样的焦点、激活、值设置和文本编辑回环；`a11y`
    CTest 只验证 UIA 客户端链路，不替代这一步。
 
 设计器前置任务 §6.1、§6.3 和 §4.18 还要求以下现场流程；仅启动三个帧的

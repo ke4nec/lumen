@@ -19,7 +19,8 @@
 #   2. 焦点导航：侧栏按钮 SetFocus → GetFocusedElement 名称一致。
 #   3. 激活：InvokePattern ≡ 读屏器路由点击 → 路由切换（树更新）。
 #   4. 值设置：Slider RangeValue.SetValue(80) → 回读一致。
-#   5. NVDA/讲述人探活与摘要播报（如在场）。
+#   5. 文本编辑：Edit ValuePattern.SetValue → 回读一致。
+#   6. NVDA/讲述人探活与摘要播报（如在场）。
 import ctypes
 import json
 import subprocess
@@ -47,8 +48,10 @@ def main():
         IUIAutomation,
         IUIAutomationInvokePattern,
         IUIAutomationRangeValuePattern,
+        IUIAutomationValuePattern,
         TreeScope_Children,
         TreeScope_Descendants,
+        UIA_EditControlTypeId,
         UIA_ButtonControlTypeId,
         UIA_ControlTypePropertyId,
         UIA_InvokePatternId,
@@ -56,6 +59,7 @@ def main():
         UIA_ProcessIdPropertyId,
         UIA_RangeValuePatternId,
         UIA_SliderControlTypeId,
+        UIA_ValuePatternId,
     )
 
     uia = CreateObject(CUIAutomation, interface=IUIAutomation)
@@ -124,6 +128,18 @@ def main():
         eventually(lambda: abs(range_value.CurrentValue - 80) < 0.01,
                    timeout=6)
         print("value set: 80")
+
+        # 文本编辑：Edit ValuePattern 与 Designer 属性字段共用 UIA
+        # SetValue 回执路径，读屏器可据此播报新值。
+        edit_condition = uia.CreateProperty_condition(
+            UIA_ControlTypePropertyId, UIA_EditControlTypeId)
+        edit = eventually(
+            lambda: window.FindFirst(TreeScope_Descendants, edit_condition))
+        value = edit.GetCurrentPattern(
+            UIA_ValuePatternId).QueryInterface(IUIAutomationValuePattern)
+        value.SetValue("Reader edit")
+        eventually(lambda: value.CurrentValue == "Reader edit", timeout=6)
+        print("text edited: Reader edit")
     finally:
         app.terminate()
         try:
@@ -132,7 +148,7 @@ def main():
             app.kill()
 
     summary = {"platform": "windows", "provider": "uia",
-               "protocol_loop": ["focus", "activate", "value"]}
+               "protocol_loop": ["focus", "activate", "value", "edit"]}
 
     # NVDA 探活（在场则播报一句摘要；不在场跳过，不视为失败）。
     try:
@@ -156,7 +172,7 @@ def main():
 
     print(json.dumps(summary, ensure_ascii=False))
     print("UIA reader round-trip passed "
-          "(focus / activate / value); speech evidence is human-recorded per "
+          "(focus / activate / value / edit); speech evidence is human-recorded per "
           "docs/platform-acceptance.md")
 
 

@@ -200,7 +200,7 @@ macOS 侧以 AppKit `NSAccessibilityElement` 树挂到 SDL 窗口 contentView：
 - **真实窗口端到端**（`LUMEN_UIA_LIVE_SMOKE=1` 启用，默认跳过）：真实 Win32 窗口 + UIA 客户端 `CUIAutomation::ElementFromHandle` → FindFirst("OK") → Invoke → dispatch 回执——完整链路（子类应答/UIA core/代理层）不依赖屏幕阅读器。
 - **Recording bridge 回归**：既有语义契约测试不变（工厂未编入断言移入分流用例）。
 - **未启用开关**：全量套件与 v0.3 现状一致（选项默认 OFF；OFF 构建全绿）。
-- **人工验收（M13 出口）**：讲述人/NVDA、Orca、VoiceOver 各完成焦点导航/激活/值设置回环。
+- **人工验收（M13 出口）**：讲述人/NVDA、Orca、VoiceOver 各完成焦点导航/激活/值设置/文本编辑回环。
 
 ## 9. 性能与体积预算
 

@@ -21,7 +21,8 @@
 #   2. 焦点导航：侧栏按钮 kAXFocusedAttribute=true → 回读一致。
 #   3. 激活：kAXPressAction ≡ 读屏器路由点击 → 路由切换（树更新）。
 #   4. 值设置：AXSlider AXValue 置 80 → 回读一致。
-#   5. VoiceOver 进程探活。
+#   5. 文本编辑：AXTextField AXValue 写入 → 回读一致。
+#   6. VoiceOver 进程探活。
 import json
 import subprocess
 import sys
@@ -121,6 +122,17 @@ def main():
                 attribute(slider, AX.kAXValueAttribute) or ""),
             timeout=6)
         print("value set: 80")
+
+        # 文本编辑：AXValue 写入会让 NSAccessibility provider 先建立
+        # TextField 焦点，再提交 SetValue；这正是 VoiceOver 属性编辑路径。
+        text_field = find(AX.kAXTextFieldRole)
+        assert AX.AXUIElementSetAttributeValue(
+            text_field, AX.kAXValueAttribute, "VoiceOver edit") == 0
+        eventually(
+            lambda: attribute(text_field, AX.kAXValueAttribute) ==
+            "VoiceOver edit",
+            timeout=6)
+        print("text edited: VoiceOver edit")
     finally:
         app.terminate()
         try:
@@ -133,10 +145,10 @@ def main():
     print("voiceover alive:", voiceover)
     print(json.dumps({"platform": "macos", "provider": "nsaccessibility",
                       "voiceover_alive": voiceover,
-                      "protocol_loop": ["focus", "activate", "value"]},
+                      "protocol_loop": ["focus", "activate", "value", "edit"]},
                      ensure_ascii=False))
     print("VoiceOver round-trip passed "
-          "(focus / activate / value); speech evidence is human-recorded "
+          "(focus / activate / value / edit); speech evidence is human-recorded "
           "per docs/platform-acceptance.md")
 
 

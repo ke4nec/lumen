@@ -1890,3 +1890,7 @@ NSAccessibility provider 回归，Windows `a11y-bridge` 也完成 live UIA smoke
 1170/1170 CTest、25 个无障碍用例/459 个断言、平台检查器 17/17、Designer benchmark 4/4
 结果见 [`ec96c8b CI 证据`](platform-evidence/designer-ci-2026-10-11-ec96c8b.json)。
 这些结果仍不替代 VoiceOver/Narrator/NVDA、IME、剪贴板、高 DPI、干净机器和完整人工现场记录。
+
+平台读屏回环脚本现也覆盖文本编辑：Windows 使用 Edit `ValuePattern.SetValue`，macOS
+使用 `AXTextField` 的 `AXValue` 写入并回读；这两条协议路径与 Designer 属性事务保持一致。
+脚本仍需在登录的 Win32/Aqua 会话中运行，进程探活和协议成功不替代人工语音记录。
