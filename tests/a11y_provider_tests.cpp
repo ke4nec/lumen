@@ -21,6 +21,7 @@
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/app/app_shell.h"
+#include "lumen/dsl/design_document.h"
 #include "lumen/platform/fake_host.h"
 
 #if defined(__linux__) && defined(LUMEN_ACCESSIBILITY_PROVIDER_ATSPI)
@@ -973,6 +974,13 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
         "page designer { Column(key: \"root\") {"
         " Text(\"Title\", key: \"title\") } }",
         "windows-uia-designer.lumen"));
+    auto document = *app.workbench().document();
+    dsl::DesignNode themeScope{2, "ThemeScope"};
+    themeScope.properties["key"] = dsl::DesignValue{
+        dsl::DesignValue::Variant{std::string{"theme-scope"}}};
+    themeScope.references["theme"] = "light";
+    document.root.children.push_back(std::move(themeScope));
+    REQUIRE(app.workbench().openDocument(std::move(document)));
     app.shell().setView(core::Size{1280.0F, 800.0F});
 
     accessibility::PlatformAccessibilityHost host;
@@ -1054,9 +1062,10 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
 
     const auto outline = app.workbench().outline();
     REQUIRE(outline.has_value());
-    REQUIRE(outline->children.size() == 1);
+    REQUIRE(outline->children.size() == 2);
     const auto targetId = outline->children.front().id;
     CHECK(app.workbench().selection().primary == targetId);
+
     CHECK_FALSE(app.workbench().dirty());
     REQUIRE(app.workbench().document().has_value());
     const auto originalDocument = *app.workbench().document();
@@ -1081,7 +1090,7 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     (void)app.shell().renderFrame();
     REQUIRE(app.workbench().document().has_value());
     const auto& edited = *app.workbench().document();
-    REQUIRE(edited.root.children.size() == 1);
+    REQUIRE(edited.root.children.size() == 2);
     CHECK(std::get<std::string>(edited.root.children.front()
                                     .properties.at("text")
                                     .value) == "重命名🙂e\xCC\x81");
@@ -1106,6 +1115,52 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
                                     .value) == "重命名🙂e\xCC\x81");
     CHECK(app.workbench().selection().primary == targetId);
 
+    // ThemeScope's reference editor must use the same UIA ValuePattern
+    // transaction path as declaration fields, including document history.
+    auto themeItem = findByNameAndType(L"ThemeScope  [theme-scope]",
+                                       UIA_TreeItemControlTypeId);
+    REQUIRE(themeItem != nullptr);
+    ComPtr<IUIAutomationInvokePattern> themeInvoke;
+    REQUIRE(themeItem->GetCurrentPatternAs(UIA_InvokePatternId,
+                                            IID_PPV_ARGS(&themeInvoke)) == S_OK);
+    REQUIRE(themeInvoke != nullptr);
+    REQUIRE(themeInvoke->Invoke() == S_OK);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    const auto themeId = app.workbench().document()->root.children.back().id;
+    CHECK(app.workbench().selection().primary == themeId);
+    auto themeField = findByNameAndType(L"theme reference", UIA_EditControlTypeId);
+    REQUIRE(themeField != nullptr);
+    ComPtr<IUIAutomationValuePattern> themeValue;
+    REQUIRE(themeField->GetCurrentPatternAs(UIA_ValuePatternId,
+                                             IID_PPV_ARGS(&themeValue)) == S_OK);
+    REQUIRE(themeValue != nullptr);
+    BSTR currentTheme{nullptr};
+    REQUIRE(themeValue->get_CurrentValue(&currentTheme) == S_OK);
+    CHECK(bstrToUtf8(currentTheme) == "light");
+    SysFreeString(currentTheme);
+    BSTR darkTheme = SysAllocString(L"dark");
+    REQUIRE(darkTheme != nullptr);
+    REQUIRE(themeValue->SetValue(darkTheme) == S_OK);
+    SysFreeString(darkTheme);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.back().references.at("theme") ==
+          "dark");
+    CHECK(app.workbench().diagnostics().empty());
+    REQUIRE(app.undo());
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.back().references.at("theme") ==
+          "light");
+    CHECK(app.workbench().selection().primary == themeId);
+    REQUIRE(app.redo());
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.back().references.at("theme") ==
+          "dark");
+    CHECK(app.workbench().selection().primary == themeId);
+
     const auto path = std::filesystem::temp_directory_path() /
                       ("lumen-uia-designer-" +
                        std::to_string(std::chrono::steady_clock::now()
@@ -1126,6 +1181,8 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
                                     ->root.children.front()
                                     .properties.at("text")
                                     .value) == "重命名🙂e\xCC\x81");
+    CHECK(reopened.workbench().document()->root.children.back().references.at(
+              "theme") == "dark");
     std::error_code cleanupError;
     std::filesystem::remove(path, cleanupError);
     std::filesystem::remove(path.string() + ".bak", cleanupError);
