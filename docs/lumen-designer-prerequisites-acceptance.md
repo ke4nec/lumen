@@ -75,6 +75,11 @@
   [Linux](https://github.com/ke4nec/lumen/actions/runs/38079559708) 和
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38079559793) CI 全部通过，完整归属见
   [`ec96c8b CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-ec96c8b.json)。
+- `3e3d413` 将 Windows UIA 与 macOS VoiceOver 平台回环脚本扩展到 TextField/Edit
+  的文本写入和回读，使读屏协议检查覆盖 Designer 属性事务；[Windows](https://github.com/ke4nec/lumen/actions/runs/38082885424)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38082885410) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38082885433) CI 全部通过，完整归属见
+  [`3e3d413 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-3e3d413.json)。
 
 ## 2. 阶段与 fixture 对照
 

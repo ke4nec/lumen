@@ -1894,3 +1894,4 @@ NSAccessibility provider 回归，Windows `a11y-bridge` 也完成 live UIA smoke
 平台读屏回环脚本现也覆盖文本编辑：Windows 使用 Edit `ValuePattern.SetValue`，macOS
 使用 `AXTextField` 的 `AXValue` 写入并回读；这两条协议路径与 Designer 属性事务保持一致。
 脚本仍需在登录的 Win32/Aqua 会话中运行，进程探活和协议成功不替代人工语音记录。
+`3e3d413` 的三平台 hosted CI 全部通过，运行记录见 [`3e3d413 CI 证据`](platform-evidence/designer-ci-2026-10-11-3e3d413.json)。

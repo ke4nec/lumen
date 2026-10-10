@@ -1,0 +1,33 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-10T20:37:28Z",
+  "source_commit": "3e3d4135dbf220157cd636045e9a2c541478b4dc",
+  "purpose": "Extend Windows UIA and macOS VoiceOver protocol loops with TextField/Edit value round-trips",
+  "runs": {
+    "windows": {
+      "id": 38082885424,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38082885424",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully, including live UIA window smoke"
+    },
+    "linux": {
+      "id": 38082885410,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38082885410",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38082885433,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38082885433",
+      "jobs": "6/6 successful",
+      "provider_job": "cpu completed successfully; NSAccessibility provider tests included"
+    }
+  },
+  "local": {
+    "python_protocol_scripts": "tests/uia_reader_loop.py and tests/voiceover_loop.py parsed successfully with Python AST"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The reader loops require a logged-in Win32 or Aqua desktop, installed reader, and platform permissions; this CI run does not execute them.",
+    "Protocol success and reader process probes do not replace human speech evidence, IME, clipboard, DPI, clean-machine package, or complete desktop acceptance records."
+  ]
+}
