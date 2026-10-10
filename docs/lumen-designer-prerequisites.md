@@ -411,6 +411,11 @@ DP-1 已于 2026-10-01 选择 **B：设计器私有格式 + `.lumen` 单向导�
 preview/session：运行时状态不写回设计文档；若以后需要持久化预览状态，也必须使用独立
 session 文件并与文档 revision 分离。
 
+画布内预览文本框的 Delete 和 Ctrl/Cmd+Z/Y/Shift+Z 只编辑预览值与文本历史，
+不会删除节点、撤销文档编辑或清除文档 redo 分支。属性/命名引用字段仍采用文档级
+撤销/重做；Ctrl/Cmd+Up/Down 的结构重排在任何文本字段聚焦时禁用，字段保留光标/
+选区处理。字段失焦后文档结构命令恢复，文件保存和运行等非文本命令仍可分发。
+
 **验收**：切换 hover/press/focus、主题、DPI、字体缩放、绑定值和滚动位置后保存，重开
 文档仍得到相同声明初值；切换预览状态不进入 undo 栈；运行时业务状态更新不覆盖未保存的
 设计器编辑。
@@ -1781,3 +1786,18 @@ Designer fixture smoke 步骤均成功；这些仍是 hosted 证据。
 回归为 50 个断言通过，Release `[designer][ime]` 两用例、112 个断言通过；默认
 配置完整 CTest 1167/1167（34.91s）、启用 allocator 的 Release 完整 CTest
 1174/1174（13.43s）。上述结果属于本批 headless 验证，真实输入法/读屏与现场仍待验。
+
+`55ed4d4` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/38014011564)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/38014011555) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/38014011590) 常规 CI 全部通过，
+Windows 七个 job 全通过，覆盖上述 Escape/输入法返回修复；这些仍是 hosted 证据。
+
+G-D12 / §4.18 焦点出口复查在旧实现复现 17 个失败断言：画布内预览 TextField 的
+Delete 删除了设计节点，Ctrl/Cmd+Z/Y/Shift+Z 改动文档历史而非预览文本，
+Ctrl/Cmd+Up/Down 在字段编辑时重排文档。现任何文本字段聚焦时均阻断结构重排和
+节点删除；画布字段使用自身文本历史，只有属性/命名引用字段接收文档撤销/重做。
+应用回归分别验证 Ctrl 与 Command、已有文档 redo 分支、文本删除/undo/redo、
+属性/引用字段的声明撤销及未变化的 DOM、revision、选择与历史。两个用例、448 个
+断言通过；连同输入法回归的 Release 筛选四用例、560 个断言通过。默认配置完整
+CTest 1169/1169（43.03s）、启用 allocator 的 Release 完整 CTest 1176/1176
+（19.20s）；本批仍需自己的 CI 与真实桌面键盘/输入法证据。

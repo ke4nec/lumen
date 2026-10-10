@@ -880,17 +880,25 @@ void DesignerApp::registerCommands() {
         ctrlSpec.id = id;
         ctrlSpec.binding = app::KeyBinding::plain(key, ctrl);
         ctrlSpec.invoke = [action](app::AppShell&) { action(); };
+        ctrlSpec.enabled = [this] { return !shell_.controller().wantsTextInput(); };
         shell_.commands().registerCommand(std::move(ctrlSpec));
         app::CommandSpec guiSpec;
         guiSpec.id = id + ".gui";
         guiSpec.binding = app::KeyBinding::plain(key, gui);
+        guiSpec.enabled = [this] { return !shell_.controller().wantsTextInput(); };
         guiSpec.invoke = [action = std::move(action)](app::AppShell&) {
             action();
         };
         shell_.commands().registerCommand(std::move(guiSpec));
     };
     const auto historyEnabled = [this] {
-        return !shell_.controller().composingActive();
+        if (shell_.controller().composingActive()) return false;
+        const auto& focused = shell_.focus().focusedKey();
+        // Only declaration editors opt into document history. A text field
+        // in the canvas owns its preview value and local text undo/redo.
+        return !shell_.controller().wantsTextInput() ||
+               focused.starts_with("designer-property-field:") ||
+               focused.starts_with("designer-reference-field:");
     };
     registerBoth("designer.undo", 'z', core::kModifierNone,
                  [this] { (void)undo(); }, historyEnabled);
@@ -955,9 +963,7 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
             return true;
         }
         const std::string& focused = shell.focus().focusedKey();
-        const bool editingProperty =
-            focused.starts_with("designer-property-field:") ||
-            focused.starts_with("designer-reference-field:");
+        const bool editingText = shell.controller().wantsTextInput();
         if (self->dialogPreviewController_.handleKey(shell, key, modifiers,
                                                      keyChar)) {
             return true;
@@ -989,7 +995,7 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
             shell.markDirty();
             return true;
         }
-        if (!editingProperty && key == core::Key::Delete &&
+        if (!editingText && key == core::Key::Delete &&
             (modifiers & core::kModifierAlt) == 0) {
             self->removeSelectedNode();
             return true;

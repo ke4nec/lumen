@@ -99,6 +99,7 @@ set(LUMEN_TEST_SOURCES
     designer_app_tests.cpp
     designer_canvas_tests.cpp
     designer_image_resources_tests.cpp
+    designer_keyboard_tests.cpp
     document_store_tests.cpp
     project_store_tests.cpp
     example_kit_tests.cpp
