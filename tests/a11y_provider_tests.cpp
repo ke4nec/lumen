@@ -978,7 +978,7 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     REQUIRE(value->get_CurrentValue(&current) == S_OK);
     CHECK(bstrToUtf8(current) == "Title");
     SysFreeString(current);
-    BSTR renamed = SysAllocString(L"\u91CD\u547D\U0001F642e\u0301");
+    BSTR renamed = SysAllocString(L"\u91CD\u547D\u540D\U0001F642e\u0301");
     REQUIRE(renamed != nullptr);
     const HRESULT setValueResult = value->SetValue(renamed);
     SysFreeString(renamed);
