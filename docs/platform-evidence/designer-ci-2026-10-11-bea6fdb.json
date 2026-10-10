@@ -1,0 +1,36 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-10T21:35:32Z",
+  "source_commit": "bea6fdb98aaac84be7d427be52891c87e4423f91",
+  "purpose": "Offline ThemeScope light/dark typed references, editable theme binding, preview lifetime, and missing-reference diagnostics",
+  "runs": {
+    "windows": {
+      "id": 38086809224,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38086809224",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully, including live UIA window smoke"
+    },
+    "linux": {
+      "id": 38086809031,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38086809031",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38086809299,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38086809299",
+      "jobs": "6/6 successful",
+      "provider_job": "cpu completed successfully; macOS provider tests included"
+    }
+  },
+  "local": {
+    "full_debug_ctest": "1171/1171 passed (120.57s)",
+    "designer_app_tests": "51 cases, 2953 assertions passed",
+    "theme_scope_test": "1 case, 17 assertions passed",
+    "platform_acceptance_checker": "17/17 passed"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted CI verifies the application and protocol paths but does not provide a signed-in Windows, Linux, or macOS desktop acceptance record.",
+    "The evidence does not replace Narrator/NVDA/Orca/VoiceOver speech, IME, cross-application clipboard, DPI, GPU recovery, clean-machine package, or complete manual desktop acceptance." 
+  ]
+}

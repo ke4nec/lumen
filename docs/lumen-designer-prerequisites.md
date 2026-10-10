@@ -1895,3 +1895,11 @@ NSAccessibility provider 回归，Windows `a11y-bridge` 也完成 live UIA smoke
 使用 `AXTextField` 的 `AXValue` 写入并回读；这两条协议路径与 Designer 属性事务保持一致。
 脚本仍需在登录的 Win32/Aqua 会话中运行，进程探活和协议成功不替代人工语音记录。
 `3e3d413` 的三平台 hosted CI 全部通过，运行记录见 [`3e3d413 CI 证据`](platform-evidence/designer-ci-2026-10-11-3e3d413.json)。
+
+`bea6fdb` 补齐了 ThemeScope 的离线引用闭环：Designer 属性面板为 ThemeScope 节点
+提供 `theme` 引用字段，离线 RuntimeContext 对 `light`/`dark` 返回带 session 生命周期的
+typed `Theme` handle，未知主题保留 `reference.missing` 诊断。ThemeScope 应用回归验证
+文档引用、预览 `themeOverride`、诊断和字段可达性；本机 Debug 完整 CTest 1171/1171、
+设计器应用筛选 51 用例/2953 断言、平台验收脚本 17/17 均通过。三平台 hosted CI
+全部通过，原始摘要见 [`bea6fdb CI 证据`](platform-evidence/designer-ci-2026-10-11-bea6fdb.json)。
+这仍不替代登录桌面的真实 IME、读屏、剪贴板、高 DPI、干净机器和完整人工现场记录。

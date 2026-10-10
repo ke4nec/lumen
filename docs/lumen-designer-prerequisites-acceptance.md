@@ -80,6 +80,13 @@
   [Linux](https://github.com/ke4nec/lumen/actions/runs/38082885410) 和
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38082885433) CI 全部通过，完整归属见
   [`3e3d413 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-3e3d413.json)。
+- `bea6fdb` 将 Designer 离线 `RuntimeContext` 的 `ThemeScope` 引用接入稳定的
+  `light`/`dark` typed handle，并让 ThemeScope 节点在属性面板暴露可编辑的 `theme`
+  引用字段；应用回归覆盖成功预览、`themeOverride` 生命周期和未知主题的
+  `reference.missing` 诊断。[Windows](https://github.com/ke4nec/lumen/actions/runs/38086809224)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38086809031) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38086809299) CI 全部通过，完整归属见
+  [`bea6fdb CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-bea6fdb.json)。
 
 ## 2. 阶段与 fixture 对照
 
