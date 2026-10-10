@@ -2244,6 +2244,34 @@ TEST_CASE("designer app resolves offline ThemeScope references",
     CHECK(darkPageBackground == lumen::style::Theme::dark().colors.pageBackground);
     CHECK(darkPageBackground != lightPageBackground);
 
+    REQUIRE(app.undo());
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.back().references.at(
+              "theme") == "light");
+    CHECK(app.workbench().diagnostics().empty());
+    REQUIRE(app.workbench().frame().hasFrame());
+    REQUIRE(!app.workbench().frame().widget().children.empty());
+    const auto& undonePreview =
+        app.workbench().frame().widget().children.back();
+    REQUIRE(undonePreview.themeOverride != nullptr);
+    CHECK(static_cast<const lumen::style::Theme*>(undonePreview.themeOverride)
+              ->colors.pageBackground == lightPageBackground);
+
+    REQUIRE(app.redo());
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.back().references.at(
+              "theme") == "dark");
+    CHECK(app.workbench().diagnostics().empty());
+    REQUIRE(app.workbench().frame().hasFrame());
+    REQUIRE(!app.workbench().frame().widget().children.empty());
+    const auto& redonePreview =
+        app.workbench().frame().widget().children.back();
+    REQUIRE(redonePreview.themeOverride != nullptr);
+    CHECK(static_cast<const lumen::style::Theme*>(redonePreview.themeOverride)
+              ->colors.pageBackground == darkPageBackground);
+
     app.shell().state().set(referenceKey, "missing_theme");
     (void)app.shell().renderFrame();
     REQUIRE(app.workbench().diagnostics().size() == 1);
