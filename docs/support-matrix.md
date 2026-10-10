@@ -78,7 +78,10 @@ Linux 优先读取 [portal 标准键](https://flatpak.github.io/xdg-desktop-port
 | GitHub 三桌面 CI（2026-10-10，`379275f`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/38012556962)、[Linux](https://github.com/ke4nec/lumen/actions/runs/38012556969) 和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38012556957) 全部通过，Windows 七个 job 全通过；覆盖图片会话与双窗口上传修复，Linux 含 Designer 相对性能门禁 | 结果只归属该提交，不覆盖后续 Escape 修复；没有新的完整人工桌面记录 |
 | GitHub 三桌面 CI（2026-10-10，`55ed4d4`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/38014011564)、[Linux](https://github.com/ke4nec/lumen/actions/runs/38014011555) 和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38014011590) 全部通过，Windows 七个 job 全通过；覆盖 Escape/输入法返回修复 | 结果只归属该提交，不覆盖后续快捷键焦点修复；没有新的完整人工桌面记录 |
 | GitHub 三桌面 CI（2026-10-10，`ab43fec`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/38015411485)、[Linux](https://github.com/ke4nec/lumen/actions/runs/38015411609) 和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38015411570) 全部通过，Windows 七个 job、三平台各三个 Designer fixture smoke 和 Linux Designer 相对性能门禁成功；[完整摘要](platform-evidence/designer-ci-2026-10-10.json) | 覆盖预览文本与文档快捷键焦点隔离；只归属该提交，没有新的完整人工桌面记录 |
+| GitHub 三桌面 CI（2026-10-10，`dc57970`） | [Windows](https://github.com/ke4nec/lumen/actions/runs/38019639083)、[Linux](https://github.com/ke4nec/lumen/actions/runs/38019639226) 和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38019639093) 全部通过，Windows 七个 job 全通过；覆盖无障碍大纲激活与文档选择同步修复 | 结果只归属该提交；没有新的完整人工桌面记录 |
 | 本地 GNOME/Wayland Release（2026-10-10，`ab43fec` 运行时源码） | Designer 三帧原生窗口 smoke 与 `glibc/malloc` 双窗口短探针退出 0；3.024s、102 次呈现、101 个有效 allocator 帧、状态保持；[日志与产物身份](platform-evidence/designer-wayland-2026-10-10.json) | 原生桥/Skia/GPU 关闭，仅两项短检查；没有 IME、读屏、人工编辑/保存/重开、高 DPI、GPU 或一小时浸泡签署 |
+| 本地 GNOME/Wayland 一小时浸泡（2026-10-10，`ab43fec`） | 3600.03s、双窗口、304763 帧、79934 次 resize、64 MiB 压力、两次恢复且 `state_preserved=true`；[结构化报告](platform-evidence/designer-wayland-soak-2026-10-10.json) | 仅原生压力/恢复单项；没有完整 operator record、IME、读屏、Inspector/编辑保存、高 DPI、GPU/透明合成签署 |
+| 本地 GNOME/Wayland AT-SPI 协议（2026-10-10，`dc57970`） | Designer 大纲激活同步 selected DocumentId，属性 text 字段存在并获得 FOCUSED；[记录](platform-evidence/designer-atspi-2026-10-10.json) | 未启动 Orca；协议反馈不等同实际语音播报，仍无完整人工平台记录 |
 | 本地 GNOME/Wayland Designer（2026-10-09，`85314c0` 运行时源码） | 指定原生 Wayland driver，`gallery.design` 双窗口三帧 smoke 退出 0，唯一完整 `designer_window_smoke pass` 行；[原始日志与身份摘要](platform-evidence/designer-wayland-2026-10-09.json) 已保留 | 工作树含文档/验收脚本改动，运行时源码与提交一致；仅窗口启动，没有编辑/保存/重开、Inspector 操作、IME、读屏、高 DPI、GPU 或一小时浸泡验收 |
 | 本地 Windows / VS 2026 / CPU | Debug 与 Release 构建成功；全量 CTest 各 779/779，通过；日志在 `build-debug/Testing/Temporary/LastTest.log`、`build-release/Testing/Temporary/LastTest.log` | 本次测试使用默认 OFF 的 GPU、Skia 和原生无障碍开关；包含历史移动接缝回归，不代表移动设备验收；测试代码仍有 MSVC 警告 |
 | Windows CI | [windows 运行记录](https://github.com/ke4nec/lumen/actions/runs/35684116368) 全部 job 成功，含 UIA 开关 ON + live smoke、Skia/GPU 与打包 | UIA 客户端冒烟不替代讲述人/NVDA；GPU 不可用时用例可跳过，不能仅凭绿色 job 认定实际 GPU 提交 |
@@ -362,3 +365,7 @@ Skia/GPU Release 779/779，无跳过；详见
   `LumenConfig.cmake`/`LumenTargets.cmake`（包含 SDL3 头文件和运行时目标）；
   因此运行时 AppImage/`.app` 与外部 SDK 的职责保持分离。
 - 移动方向暂不实现并冻结；M9 只保留状态说明，不作为桌面版本的待完成项。
+`dc57970` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/38019639083)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/38019639226) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/38019639093) CI 全部通过，
+Windows 七个 job 全通过；结果只归属该提交。

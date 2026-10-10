@@ -1,0 +1,70 @@
+{
+  "kind": "designer_native_atspi_selection_focus",
+  "recorded_at": "2026-10-10T03:36:04.637938+00:00",
+  "source_commit": "dc57970d8a938dba803b0ede502626cef013bfe6",
+  "source_dirty": true,
+  "runtime_sources_match_commit": true,
+  "platform": "linux-wayland",
+  "os": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
+  "desktop": "GNOME Shell 50.1",
+  "framework_renderer": "CpuRenderer",
+  "build_directory": "build-a11y",
+  "cmake_options": {
+    "CMAKE_BUILD_TYPE": "",
+    "LUMEN_ENABLE_ACCESSIBILITY_BRIDGE": "ON",
+    "LUMEN_ENABLE_GPU": "OFF",
+    "LUMEN_ENABLE_SKIA": "OFF"
+  },
+  "provider": "atspi",
+  "provider_available": true,
+  "executable_sha256": "aee545f84731f6fc40f21342bf722d04eb376ff777b933e8d856cd979e53a52a",
+  "fixture_sha256": "afb24153c13c537ffb9c72eea69fcd6956aedc8e1cca928f02b4e9ceb620b14e",
+  "semantic_node_count": 122,
+  "protocol_checks": [
+    {
+      "selection_target": "Text  [title]",
+      "selected_after_activate": true
+    },
+    {
+      "text_property_present": true
+    },
+    {
+      "selection": "Text  [title]",
+      "selected": true,
+      "property_field": "text",
+      "focused": true,
+      "reader_verified": false
+    }
+  ],
+  "semantic_feedback": [
+    {
+      "name": "Text  [title]",
+      "role": "tree item",
+      "actions": [
+        "activate",
+        "focus"
+      ],
+      "focused": false,
+      "selected": true
+    },
+    {
+      "name": "text",
+      "role": "entry",
+      "actions": [
+        "focus"
+      ],
+      "focused": true,
+      "selected": false
+    }
+  ],
+  "probe_log_sha256": "3ec8c0b7a4fc3b9142820c13fd90714cafa035959ed62ab9e5b125a1f24485c0",
+  "probe_exit_code": 0,
+  "reader_verified": false,
+  "acceptance_complete": false,
+  "workflow_run": null,
+  "limitations": [
+    "Isolated D-Bus session queried the real Designer through the existing Wayland compositor; Orca was not launched.",
+    "Protocol activation, selection and property focus only; actual reader speech, native IME, text input, saving/reopening and monitor DPI were not signed off.",
+    "The accessibility build has no explicit configuration type and GPU/Skia are OFF; it is not a Release performance or GPU result."
+  ]
+}

@@ -1828,4 +1828,9 @@ UI 重建把 DocumentId 选择恢复为旧大纲选区，所激活节点的属�
 默认配置完整 CTest 1170/1170（54.47s）、启用 allocator 的 Release 1177/1177
 （30.48s）、原生无障碍桥构建 1171/1171（54.30s）。本机 Wayland 隔离总线的
 AT-SPI 重测已确认大纲 selected、对应 text 属性字段和 FOCUSED 状态；协议动作与
-语义反馈的单项检查不替代 Orca 实际播报或正式现场签署。本批代码仍需自己的 CI。
+语义反馈的单项检查不替代 Orca 实际播报或正式现场签署。
+
+`dc57970` 的 [Windows](https://github.com/ke4nec/lumen/actions/runs/38019639083)、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/38019639226) 和
+[macOS](https://github.com/ke4nec/lumen/actions/runs/38019639093) 常规 CI 全部通过，
+Windows 七个 job 全成功；修复后的三平台提交归属与关键步骤已重新验证。

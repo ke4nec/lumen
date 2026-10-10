@@ -1,0 +1,50 @@
+{
+  "kind": "designer_wayland_soak",
+  "recorded_at": "2026-10-10T03:29:23.385086+00:00",
+  "source_commit": "ab43fec9a5f47b5dbafc47a7b4db1d85d82b8a7a",
+  "platform": "linux-wayland",
+  "os": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
+  "desktop": "GNOME Shell 50.1",
+  "driver": "wayland",
+  "executable_sha256": "de39764c1e90ee2f1ae1225d120fb7c3311cfcb40bea1411414f20599a5f7776",
+  "arguments": [
+    "--seconds",
+    "3600",
+    "--resize-burst",
+    "--stress-mib",
+    "64",
+    "--inject-recovery"
+  ],
+  "report": {
+    "driver": "wayland",
+    "seconds": 3600.03,
+    "windows": 2,
+    "frames": 304763,
+    "resize_events": 79934,
+    "preedit_events": 0,
+    "commit_events": 0,
+    "composition_end_events": 10,
+    "wheel_events": 0,
+    "font_available": true,
+    "transparent_requested": false,
+    "external_clipboard": false,
+    "ime_verified": false,
+    "stress_mib": 64,
+    "simulated_recoveries": 2,
+    "state_preserved": true,
+    "frame_allocator_requested": false,
+    "frame_allocator_verified": false,
+    "frame_allocator_source": "unavailable",
+    "frame_allocator_frames": 0,
+    "frame_allocator_allocations": 0,
+    "frame_allocator_bytes": 0,
+    "frame_allocator_peak_bytes": 0
+  },
+  "log_sha256": "49261eec7e23ee228251a03c4d88f5a3ad48dea56ef583d2a4a870a2bc265f4b",
+  "exit_code": 0,
+  "acceptance_complete": false,
+  "limitations": [
+    "Native one-hour resize/pressure/recovery probe only; no operator record, IME, reader, Inspector, edit/save/reopen, DPI, clipboard, GPU or transparent-composition sign-off.",
+    "The probe predates dc57970 but exercises unaffected platform-live-smoke code; its source identity is recorded explicitly."
+  ]
+}

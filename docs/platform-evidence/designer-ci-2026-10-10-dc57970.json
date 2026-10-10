@@ -1,0 +1,363 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-10T03:41:08.737737+00:00",
+  "source_commit": "dc57970d8a938dba803b0ede502626cef013bfe6",
+  "runs": {
+    "windows": {
+      "id": 38019639083,
+      "name": "windows",
+      "head_sha": "dc57970d8a938dba803b0ede502626cef013bfe6",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639083",
+      "created_at": "2026-10-10T03:10:40Z",
+      "updated_at": "2026-10-10T03:32:00Z",
+      "jobs": [
+        {
+          "id": 114117549281,
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639083/job/114117549281",
+          "steps": [
+            {
+              "name": "Designer fixture smoke",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549373,
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639083/job/114117549373",
+          "steps": [
+            {
+              "name": "Test (Debug)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549394,
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639083/job/114117549394",
+          "steps": [
+            {
+              "name": "Test (includes forced CPU fallback and presentation)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549457,
+          "name": "a11y-bridge",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639083/job/114117549457",
+          "steps": [
+            {
+              "name": "Test (Debug, incl. live UIA window smoke)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549473,
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639083/job/114117549473",
+          "steps": [
+            {
+              "name": "Designer fixture smoke",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549566,
+          "name": "skia-raster",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639083/job/114117549566",
+          "steps": [
+            {
+              "name": "Test (Release, incl. CPU/Skia consistency)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549568,
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639083/job/114117549568",
+          "steps": [
+            {
+              "name": "Designer fixture smoke",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "id": 38019639226,
+      "name": "linux",
+      "head_sha": "dc57970d8a938dba803b0ede502626cef013bfe6",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639226",
+      "created_at": "2026-10-10T03:10:40Z",
+      "updated_at": "2026-10-10T03:21:45Z",
+      "jobs": [
+        {
+          "id": 114117550063,
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639226/job/114117550063",
+          "steps": [
+            {
+              "name": "Benchmark (CPU regression gate)",
+              "status": "completed",
+              "conclusion": "success"
+            },
+            {
+              "name": "Checkout pinned Designer performance reference",
+              "status": "completed",
+              "conclusion": "success"
+            },
+            {
+              "name": "Build Designer reference with the same toolchain",
+              "status": "completed",
+              "conclusion": "success"
+            },
+            {
+              "name": "Benchmark (Designer regression gate)",
+              "status": "completed",
+              "conclusion": "success"
+            },
+            {
+              "name": "Upload Designer benchmark report",
+              "status": "completed",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Checkout pinned Designer performance reference",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117550145,
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639226/job/114117550145",
+          "steps": [
+            {
+              "name": "Designer fixture smoke",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117550167,
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639226/job/114117550167",
+          "steps": [
+            {
+              "name": "Test (GPU submit + fallback on software GL)",
+              "status": "completed",
+              "conclusion": "success"
+            },
+            {
+              "name": "Benchmark (GPU regression gate, llvmpipe)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117550202,
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639226/job/114117550202",
+          "steps": [
+            {
+              "name": "Designer fixture smoke",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117550209,
+          "name": "mobile-core",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639226/job/114117550209",
+          "steps": [
+            {
+              "name": "Test (headless, no desktop session)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117550243,
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639226/job/114117550243",
+          "steps": [
+            {
+              "name": "Designer fixture smoke",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117550310,
+          "name": "skia",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639226/job/114117550310",
+          "steps": [
+            {
+              "name": "Test (incl. CPU/Skia consistency)",
+              "status": "completed",
+              "conclusion": "success"
+            },
+            {
+              "name": "Benchmark (Skia regression gate)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ]
+    },
+    "macos": {
+      "id": 38019639093,
+      "name": "macos",
+      "head_sha": "dc57970d8a938dba803b0ede502626cef013bfe6",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639093",
+      "created_at": "2026-10-10T03:10:40Z",
+      "updated_at": "2026-10-10T03:23:53Z",
+      "jobs": [
+        {
+          "id": 114117549417,
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639093/job/114117549417",
+          "steps": [
+            {
+              "name": "Test (Debug)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549623,
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639093/job/114117549623",
+          "steps": [
+            {
+              "name": "Designer fixture smoke",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549629,
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639093/job/114117549629",
+          "steps": [
+            {
+              "name": "Test (GPU submit + CPU fallback)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549630,
+          "name": "mobile-core",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639093/job/114117549630",
+          "steps": [
+            {
+              "name": "Test (headless)",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549637,
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639093/job/114117549637",
+          "steps": [
+            {
+              "name": "Designer fixture smoke",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "id": 114117549723,
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success",
+          "html_url": "https://github.com/ke4nec/lumen/actions/runs/38019639093/job/114117549723",
+          "steps": [
+            {
+              "name": "Designer fixture smoke",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted CI/headless evidence does not replace four desktop operator records, real IME or reader speech.",
+    "Historical mobile-core jobs are not mobile acceptance."
+  ]
+}

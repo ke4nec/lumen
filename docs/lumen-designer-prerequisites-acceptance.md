@@ -1,12 +1,13 @@
 # 设计器前置任务阶段出口复核
 
-> 核对日期：2026-10-10。被测运行时提交：`ab43fec9a5f47b5dbafc47a7b4db1d85d82b8a7a`。
+> 核对日期：2026-10-10。最近被测运行时提交：`dc57970d8a938dba803b0ede502626cef013bfe6`；一小时浸泡单项归属 `ab43fec9a5f47b5dbafc47a7b4db1d85d82b8a7a`。
 > 本记录按 [`前置任务`](lumen-designer-prerequisites.md) §6、§10.2 核对出口。
 > F0–F6 的实现与 headless 证据已有；D1/D2/D3 的完整桌面现场出口尚未闭环。
 
 ## 1. 当前可追溯证据
 
-- 默认配置完整 CTest 1169/1169、启用 allocator 的 Release 完整 CTest 1176/1176；
+- 默认配置完整 CTest 1170/1170、启用 allocator 的 Release 完整 CTest 1177/1177，
+  原生无障碍桥配置 1171/1171；
   两配置各注册 186 个 Designer/文档存储/工程存储用例。默认配置构建类型为空，不能称为
   Release 性能输入。
 - [Windows CI](https://github.com/ke4nec/lumen/actions/runs/38015411485) 七个 job 全成功；
@@ -16,11 +17,22 @@
   完整提交归属、job/关键步骤结果见
   [`CI 原始摘要`](platform-evidence/designer-ci-2026-10-10.json)。历史 mobile-core job
   不扩大桌面范围，也不是移动端验收。
+  无障碍大纲修复后的 [Windows](https://github.com/ke4nec/lumen/actions/runs/38019639083)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38019639226) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38019639093) 也全部通过；
+  [该批完整摘要](platform-evidence/designer-ci-2026-10-10-dc57970.json) 保留 job 与关键步骤。
 - 本机 GNOME/Wayland 的 Release Designer 三帧窗口 smoke 与原生 allocator 短探针退出 0；
   后者为 3.024s、两个窗口、102 次呈现、101 个有效 allocator 帧，来源为 `glibc/malloc`，
   `state_preserved=true`。日志、产物/fixture SHA256、构建开关和限制见
   [`原生单项证据`](platform-evidence/designer-wayland-2026-10-10.json)。
   这次构建的原生无障碍桥、Skia 和 GPU 均关闭。
+- `ab43fec` 的同一 Wayland Release 探针已完成一小时压力回环：3600.03 秒、两个窗口、
+  304763 帧、79934 次 resize、64 MiB 压力、两次模拟恢复，`state_preserved=true`；
+  [结构化报告](platform-evidence/designer-wayland-soak-2026-10-10.json) 明确保留了
+  探针提交和限制。它是原生浸泡单项证据，不是完整人工平台记录。
+- `dc57970` 的原生 AT-SPI 协议复查已在当前提交内容上完成：大纲激活后目标行
+  `selected=true`，属性 `text` 字段存在且获得 `FOCUSED`；[记录](platform-evidence/designer-atspi-2026-10-10.json)
+  明确标注没有启动 Orca，因此不宣称读屏播报通过。
 
 ## 2. 阶段与 fixture 对照
 
