@@ -1909,3 +1909,10 @@ Theme 的实际 `pageBackground`，确认 session 替换后预览主题色切换
 `reference.missing` 诊断；本机 Debug 完整 CTest 1171/1171、设计器应用筛选 51 用例/
 2963 断言、平台验收脚本 17/17 均通过。三平台 hosted CI 全部通过，原始摘要见
 [`29124e0 CI 证据`](platform-evidence/designer-ci-2026-10-11-29124e0.json)。
+
+`5252506` 的 review 继续验证 ThemeScope 引用事务：`light`→`dark` 替换后执行 undo/redo，
+文档引用、诊断和预览 `themeOverride` 的实际页面背景色分别恢复并重做，确认 session
+生命周期与文档历史同步；本机 Debug 完整 CTest 1171/1171（120.78s）、设计器应用筛选
+51 用例/2979 断言、ThemeScope 定向用例 1/43、平台验收脚本 17/17 均通过。Windows
+七个 job、Linux 七个 job、macOS 六个 job 全部通过，原始摘要见
+[`5252506 CI 证据`](platform-evidence/designer-ci-2026-10-11-5252506.json)。

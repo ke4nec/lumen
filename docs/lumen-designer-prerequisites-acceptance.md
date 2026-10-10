@@ -92,6 +92,13 @@
   [Linux](https://github.com/ke4nec/lumen/actions/runs/38090140766) 和
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38090140799) CI 全部通过，完整归属见
   [`29124e0 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-29124e0.json)。
+- `5252506` 的 review 继续验证 ThemeScope 引用事务：`light`→`dark` 替换后的 undo/redo
+  同步恢复并重做文档引用、诊断和预览实际主题色；本机 Debug 完整 CTest 1171/1171、
+  设计器应用筛选 51 用例/2979 断言、ThemeScope 定向用例 1/43、平台验收脚本 17/17 均通过。
+  [Windows](https://github.com/ke4nec/lumen/actions/runs/38093296872)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38093296901) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38093296871) CI 全部通过，完整归属见
+  [`5252506 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-5252506.json)。
 
 ## 2. 阶段与 fixture 对照
 
