@@ -2092,3 +2092,9 @@ UIA 元素，超时同样保留底层 COM 错误。这样 platform-acceptance �
 桌面的读屏语音和完整人工 record。
 三平台 hosted CI 的提交归属见
 [`2343f5d CI 证据`](platform-evidence/designer-ci-2026-10-12-2343f5d.json)。
+
+随后将同一策略扩展到 Linux `tests/atspi_orca_loop.py` 和 macOS
+`tests/voiceover_loop.py`：AT-SPI/AXAPI 语义树重建后，焦点、路由激活、滑块和文本值步骤
+都会重新取得当前节点，`eventually` 会保留最后一次底层对象错误。三条通用读屏脚本均已
+通过语法检查，平台验收检查器保持 `22/22`；这只降低协议回环的瞬态失败率，实际 Orca/
+VoiceOver 语音仍需登录桌面现场观察。

@@ -52,15 +52,24 @@ def pump(seconds):
 
 def eventually(predicate, timeout=10):
     deadline = time.monotonic() + timeout
+    last_error = None
     while time.monotonic() < deadline:
         for _ in range(20):
             if not GLib.MainContext.default().pending():
                 break
             GLib.MainContext.default().iteration(False)
-        result = predicate()
-        if result:
-            return result
+        try:
+            result = predicate()
+        except Exception as error:  # AT-SPI objects may expire during tree rebuilds.
+            last_error = error
+        else:
+            if result:
+                return result
         time.sleep(0.05)
+    if last_error is not None:
+        raise AssertionError(
+            "native AT-SPI round-trip timed out after transient object errors"
+        ) from last_error
     raise AssertionError("native AT-SPI round-trip timed out")
 
 
@@ -133,32 +142,53 @@ def main():
             return next((n for n in descendants(desktop)
                          if n.get_name() == label), None)
 
-        # 焦点导航。
+        # 焦点导航：每次重建后重新取得当前节点，避免复用失效对象。
         for label in ["Overview", "Buttons"]:
-            node = eventually(lambda l=label: find(l), timeout=12)
-            assert node.get_component_iface().grab_focus(), label
-            eventually(lambda n=node: n.get_state_set().contains(
-                Atspi.StateType.FOCUSED), 12)
+            def focus_current():
+                node = find(label)
+                return node is not None and node.get_component_iface().grab_focus()
+
+            eventually(focus_current, timeout=12)
+
+            def focused_current():
+                node = find(label)
+                return node is not None and node.get_state_set().contains(
+                    Atspi.StateType.FOCUSED)
+
+            eventually(focused_current, 12)
             print("focused:", label)
 
         # 激活（路由切换）。
-        nav = eventually(lambda: find("Buttons"), timeout=8)
-        assert nav.get_action_iface().do_action(0)
+        def activate(label):
+            def action():
+                node = find(label)
+                return node is not None and node.get_action_iface().do_action(0)
+
+            eventually(action, timeout=8)
+
+        activate("Buttons")
         pump(2.5)
         print("activated route")
 
         # 值设置。
-        to_feedback = eventually(lambda: find("Feedback"), timeout=8)
-        assert to_feedback.get_action_iface().do_action(0)
+        activate("Feedback")
         pump(2.5)
 
         def find_slider():
             return next((n for n in descendants(desktop)
                          if n.get_role_name() == "slider"), None)
 
-        slider = eventually(find_slider, timeout=8)
-        assert slider.get_value_iface().set_current_value(80)
-        eventually(lambda: slider.get_value_iface().get_current_value() == 80, 6)
+        def set_slider():
+            slider = find_slider()
+            return slider is not None and slider.get_value_iface().set_current_value(80)
+
+        eventually(set_slider, timeout=8)
+
+        def read_slider():
+            slider = find_slider()
+            return slider is not None and slider.get_value_iface().get_current_value() == 80
+
+        eventually(read_slider, 6)
         print("value set: 80")
 
         # 给 Orca 队列留排空时间（隔离会话内为亚秒级）。

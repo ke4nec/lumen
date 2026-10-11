@@ -250,6 +250,11 @@
   完整桌面验收。
   本轮三平台 hosted CI 均通过，运行归属见 [`2343f5d CI 证据`](platform-evidence/designer-ci-2026-10-12-2343f5d.json)。
 
+- Linux Orca 与 macOS VoiceOver 的通用协议回环也已收紧瞬态处理：AT-SPI/AXAPI 树更新后
+  重新查找当前焦点、路由、滑块和文本节点，并把底层对象错误保留到超时诊断；三条读屏脚本
+  语法检查通过，平台验收单测保持 `22/22`。这不改变 Orca/VoiceOver 语音、真实输入法或
+  完整桌面 `record.json` 的 pending 状态。
+
 
 ## 2. 阶段与 fixture 对照
 

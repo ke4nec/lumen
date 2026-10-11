@@ -33,11 +33,18 @@ import ApplicationServices as AX
 
 def eventually(predicate, timeout=12.0, interval=0.2):
     deadline = time.monotonic() + timeout
+    last_error = None
     while time.monotonic() < deadline:
-        result = predicate()
-        if result:
-            return result
+        try:
+            result = predicate()
+        except Exception as error:  # AX elements can expire during tree rebuilds.
+            last_error = error
+        else:
+            if result:
+                return result
         time.sleep(interval)
+    if last_error is not None:
+        raise AssertionError("AXAPI round-trip timed out after transient object errors") from last_error
     raise AssertionError("AXAPI round-trip timed out")
 
 
@@ -50,16 +57,20 @@ def attribute(element, name):
 
 
 def children(element):
-    kids = attribute(element, AX.kAXChildrenAttribute)
-    if kids is None:
+    try:
+        kids = attribute(element, AX.kAXChildrenAttribute)
+        return [] if kids is None else list(kids)
+    except Exception:
         return []
-    return list(kids)
 
 
 def descendants(element):
     yield element
     for child in children(element):
-        yield from descendants(child)
+        try:
+            yield from descendants(child)
+        except Exception:
+            continue
 
 
 def press(element):
@@ -81,17 +92,16 @@ def main():
         window = eventually(first_window, timeout=25)
         print("window registered")
 
+        def find_once(role, title=None):
+            for node in descendants(window):
+                if attribute(node, AX.kAXRoleAttribute) != role:
+                    continue
+                if title is None or attribute(node, AX.kAXTitleAttribute) == title:
+                    return node
+            return None
+
         def find(role, title=None):
-            def lookup():
-                for node in descendants(window):
-                    if attribute(node, AX.kAXRoleAttribute) != role:
-                        continue
-                    if title is None:
-                        return node
-                    if attribute(node, AX.kAXTitleAttribute) == title:
-                        return node
-                return None
-            return eventually(lookup)
+            return eventually(lambda: find_once(role, title))
 
         # 注册核对：控件映射在位。
         assert find(AX.kAXButtonRole) is not None, "no buttons"
@@ -99,39 +109,66 @@ def main():
 
         # 焦点导航：kAXFocusedAttribute=true → 回读一致。
         for title in ["Overview", "Buttons"]:
-            node = find(AX.kAXButtonRole, title)
-            AX.AXUIElementSetAttributeValue(
-                node, AX.kAXFocusedAttribute, True)
-            eventually(
-                lambda n=node: attribute(n, AX.kAXFocusedAttribute) is True,
-                timeout=8)
+            def focus_current():
+                node = find_once(AX.kAXButtonRole, title)
+                return node is not None and AX.AXUIElementSetAttributeValue(
+                    node, AX.kAXFocusedAttribute, True) == 0
+
+            eventually(focus_current, timeout=8)
+
+            def focused_current():
+                node = find_once(AX.kAXButtonRole, title)
+                return node is not None and attribute(
+                    node, AX.kAXFocusedAttribute) is True
+
+            eventually(focused_current, timeout=8)
             print("focused:", title)
 
         # 激活（路由切换）：Buttons → Feedback 两跳，树随路由更新。
-        assert press(find(AX.kAXButtonRole, "Buttons"))
+        def activate(title):
+            def action():
+                node = find_once(AX.kAXButtonRole, title)
+                return node is not None and press(node)
+
+            eventually(action)
+
+        activate("Buttons")
         time.sleep(2.0)
-        assert press(find(AX.kAXButtonRole, "Feedback"))
+        activate("Feedback")
         time.sleep(2.0)
         print("activated route")
 
         # 值设置：AXSlider AXValue 置 80 并回读（值以字符串承载）。
-        slider = find(AX.kAXSliderRole)
-        AX.AXUIElementSetAttributeValue(slider, AX.kAXValueAttribute, "80")
-        eventually(
-            lambda: "80" in str(
-                attribute(slider, AX.kAXValueAttribute) or ""),
-            timeout=6)
+        def set_slider():
+            slider = find_once(AX.kAXSliderRole)
+            return slider is not None and AX.AXUIElementSetAttributeValue(
+                slider, AX.kAXValueAttribute, "80") == 0
+
+        eventually(set_slider)
+
+        def read_slider():
+            slider = find_once(AX.kAXSliderRole)
+            return slider is not None and "80" in str(
+                attribute(slider, AX.kAXValueAttribute) or "")
+
+        eventually(read_slider, timeout=6)
         print("value set: 80")
 
         # 文本编辑：AXValue 写入会让 NSAccessibility provider 先建立
         # TextField 焦点，再提交 SetValue；这正是 VoiceOver 属性编辑路径。
-        text_field = find(AX.kAXTextFieldRole)
-        assert AX.AXUIElementSetAttributeValue(
-            text_field, AX.kAXValueAttribute, "VoiceOver edit") == 0
-        eventually(
-            lambda: attribute(text_field, AX.kAXValueAttribute) ==
-            "VoiceOver edit",
-            timeout=6)
+        def set_text():
+            text_field = find_once(AX.kAXTextFieldRole)
+            return text_field is not None and AX.AXUIElementSetAttributeValue(
+                text_field, AX.kAXValueAttribute, "VoiceOver edit") == 0
+
+        eventually(set_text)
+
+        def read_text():
+            text_field = find_once(AX.kAXTextFieldRole)
+            return text_field is not None and attribute(
+                text_field, AX.kAXValueAttribute) == "VoiceOver edit"
+
+        eventually(read_text, timeout=6)
         print("text edited: VoiceOver edit")
     finally:
         app.terminate()
