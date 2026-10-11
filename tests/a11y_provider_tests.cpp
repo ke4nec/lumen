@@ -975,7 +975,7 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
         " Text(\"Title\", key: \"title\") } }",
         "windows-uia-designer.lumen"));
     auto document = *app.workbench().document();
-    dsl::DesignNode themeScope{2, "ThemeScope"};
+    dsl::DesignNode themeScope{3, "ThemeScope"};
     themeScope.properties["key"] = dsl::DesignValue{
         dsl::DesignValue::Variant{std::string{"theme-scope"}}};
     themeScope.references["theme"] = "light";
