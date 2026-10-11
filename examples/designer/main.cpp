@@ -412,6 +412,124 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
         return 1;
     }
 
+    const auto invokeHandler = [&app](const std::string& name) {
+        const auto found = app.shell().handlers().find(name);
+        if (found == app.shell().handlers().end()) return false;
+        found->second();
+        return true;
+    };
+    // Leaving a declaration field is part of the structural command flow;
+    // release its text-input domain before invoking keyboard-equivalent moves.
+    app.shell().controller().releaseFieldFocus();
+    app.shell().focus().clearFocus();
+    const auto rootId = app.workbench().document()->root.id;
+    if (!invokeHandler("designer:select:" + std::to_string(rootId))) {
+        std::fprintf(stderr, "designer acceptance root selection handler is missing\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (app.workbench().selection().primary != rootId) {
+        std::fprintf(stderr, "designer acceptance root selection failed\n");
+        return 1;
+    }
+    const auto rootChildCountBefore = app.workbench().document()->root.children.size();
+    if (!invokeHandler("designer:add-text")) {
+        std::fprintf(stderr, "designer acceptance insert handler is missing\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (app.workbench().document()->root.children.size() !=
+            rootChildCountBefore + 1 ||
+        !app.workbench().selection().primary.has_value()) {
+        std::fprintf(stderr, "designer acceptance insert did not commit\n");
+        return 1;
+    }
+    const auto insertedId = *app.workbench().selection().primary;
+    if (findNodeById(app.workbench().document()->root, insertedId) == nullptr) {
+        std::fprintf(stderr, "designer acceptance inserted node is missing\n");
+        return 1;
+    }
+    if (!invokeHandler("designer:duplicate")) {
+        std::fprintf(stderr, "designer acceptance duplicate handler is missing\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (app.workbench().document()->root.children.size() !=
+            rootChildCountBefore + 2 ||
+        !app.workbench().selection().primary.has_value()) {
+        std::fprintf(stderr, "designer acceptance duplicate did not commit\n");
+        return 1;
+    }
+    const auto duplicateId = *app.workbench().selection().primary;
+    if (duplicateId == insertedId ||
+        findNodeById(app.workbench().document()->root, duplicateId) == nullptr) {
+        std::fprintf(stderr, "designer acceptance duplicate identity is invalid\n");
+        return 1;
+    }
+    const auto revisionBeforeCopy = app.workbench().documentRevision();
+    if (!invokeHandler("designer:copy")) {
+        std::fprintf(stderr, "designer acceptance copy handler is missing\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (app.workbench().documentRevision() != revisionBeforeCopy ||
+        app.workbench().dirty() == false || !invokeHandler("designer:paste")) {
+        std::fprintf(stderr, "designer acceptance copy/paste setup failed\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (app.workbench().document()->root.children.size() !=
+            rootChildCountBefore + 3 ||
+        !app.workbench().selection().primary.has_value()) {
+        std::fprintf(stderr, "designer acceptance paste did not commit\n");
+        return 1;
+    }
+    const auto pastedId = *app.workbench().selection().primary;
+    if (pastedId == insertedId || pastedId == duplicateId ||
+        findNodeById(app.workbench().document()->root, pastedId) == nullptr) {
+        std::fprintf(stderr, "designer acceptance paste identity is invalid\n");
+        return 1;
+    }
+    const auto indexOf = [&app](dsl::DesignNodeId id) {
+        const auto& children = app.workbench().document()->root.children;
+        for (std::size_t index = 0; index < children.size(); ++index) {
+            if (children[index].id == id) return index;
+        }
+        return children.size();
+    };
+    const auto pastedIndex = indexOf(pastedId);
+    if (pastedIndex == 0 || !invokeHandler("designer:move-up")) {
+        std::fprintf(stderr, "designer acceptance move-up setup failed\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (indexOf(pastedId) != pastedIndex - 1 ||
+        app.workbench().selection().primary != pastedId ||
+        !invokeHandler("designer:move-down")) {
+        std::fprintf(stderr,
+                     "designer acceptance reorder did not commit (before=%zu after=%zu selected=%llu)\n",
+                     pastedIndex, indexOf(pastedId),
+                     static_cast<unsigned long long>(
+                         app.workbench().selection().primary.value_or(0)));
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (indexOf(pastedId) != pastedIndex ||
+        !invokeHandler("designer:remove")) {
+        std::fprintf(stderr, "designer acceptance remove setup failed\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (app.workbench().document()->root.children.size() !=
+            rootChildCountBefore + 2 ||
+        findNodeById(app.workbench().document()->root, pastedId) != nullptr ||
+        !app.workbench().dirty() || !app.workbench().diagnostics().empty()) {
+        std::fprintf(stderr, "designer acceptance structural edit did not commit\n");
+        return 1;
+    }
+    const auto finalRootChildCount =
+        app.workbench().document()->root.children.size();
+
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const std::filesystem::path saved =
         std::filesystem::temp_directory_path() /
@@ -435,6 +553,9 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
     const auto& reopenedDocument = *reopened.workbench().document();
     const auto* reopenedText = findFirstTextNode(reopenedDocument.root);
     const auto* reopenedTheme = findNodeById(reopenedDocument.root, themeId);
+    const auto* reopenedInserted = findNodeById(reopenedDocument.root, insertedId);
+    const auto* reopenedDuplicate = findNodeById(reopenedDocument.root, duplicateId);
+    const auto* reopenedPasted = findNodeById(reopenedDocument.root, pastedId);
     std::string reopenedValue;
     if (reopenedText != nullptr) {
         const auto value = reopenedText->properties.find("text");
@@ -450,6 +571,9 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
         reopenedValue != editedText || reopenedTheme == nullptr ||
         reopenedTheme->references.find("theme") == reopenedTheme->references.end() ||
         reopenedTheme->references.at("theme") != "dark" ||
+        reopenedInserted == nullptr || reopenedDuplicate == nullptr ||
+        reopenedPasted != nullptr ||
+        reopenedDocument.root.children.size() != finalRootChildCount ||
         !reopened.diagnostics().empty()) {
         std::fprintf(stderr, "designer acceptance reopen changed declaration\n");
         std::filesystem::remove(saved, cleanup);
@@ -461,6 +585,7 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
     std::printf("designer_acceptance selected %llu\n",
                 static_cast<unsigned long long>(nodeId));
     std::printf("designer_acceptance theme_reference pass\n");
+    std::printf("designer_acceptance structure_edit pass\n");
     std::printf("designer_acceptance edit_save_reopen pass\n");
     return 0;
 }

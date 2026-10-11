@@ -103,6 +103,10 @@ def read_designer_window_log(path: Path) -> None:
         raise ValueError(
             "designer-live.log requires exactly one ThemeScope reference marker"
         )
+    if lines.count("designer_acceptance structure_edit pass") != 1:
+        raise ValueError(
+            "designer-live.log requires exactly one Designer structure-edit marker"
+        )
 
 
 def validate_designer_window_artifact(record: dict, directory: Path) -> None:

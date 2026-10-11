@@ -33,6 +33,7 @@ class EvidenceTests(unittest.TestCase):
                     "designer-live.log":
                         "designer_acceptance dpi_theme pass\n"
                         "designer_acceptance theme_reference pass\n"
+                        "designer_acceptance structure_edit pass\n"
                         "designer_acceptance edit_save_reopen pass\n"
                         "designer_window_smoke pass\n"}
         record = dict(commit="a" * 40, platform=platform, operator="fixture",
@@ -279,6 +280,7 @@ class EvidenceTests(unittest.TestCase):
                             "designer_window_smoke pass\n",
                             "designer_acceptance dpi_theme pass\n"
                             "designer_acceptance theme_reference pass\n"
+                            "designer_acceptance structure_edit pass\n"
                             "designer_acceptance edit_save_reopen pass\n"
                             "designer_window_smoke pass\n"
                             "designer_acceptance dpi_theme pass\n",
@@ -297,6 +299,7 @@ class EvidenceTests(unittest.TestCase):
                 "libEGL warning\r\n"
                 "designer_acceptance dpi_theme pass\r\n"
                 "designer_acceptance theme_reference pass\r\n"
+                "designer_acceptance structure_edit pass\r\n"
                 "designer_acceptance edit_save_reopen pass\r\n"
                 "designer_window_smoke pass\r\n",
                 encoding="utf-8")

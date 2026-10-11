@@ -28,9 +28,10 @@ Linux 两个 job 使用当前会话的 SDL video driver，不启动 Xvfb 或 dum
 `lumen-designer --file examples/designer/gallery.design --max-frames 3`，验证设计器
 编辑器/预览双窗口在真实桌面会话中创建并完成原生窗口 smoke；日志必须同时包含
 `designer_acceptance dpi_theme pass`、`designer_acceptance edit_save_reopen pass`、
-`designer_acceptance theme_reference pass` 与 `designer_window_smoke pass`，并把
+`designer_acceptance theme_reference pass`、`designer_acceptance structure_edit pass` 与
+`designer_window_smoke pass`，并把
 `designer-live.log` 随平台 artifact 归档。日志必须包含 Designer 进程成功退出后输出的
-四个成功标记；验收检查器会校验标记和附件哈希。每个标记必须是唯一的完整日志行；人工附件必须与本次 workflow 的 `designer-live.log`
+五个成功标记；验收检查器会校验标记和附件哈希。每个标记必须是唯一的完整日志行；人工附件必须与本次 workflow 的 `designer-live.log`
 逐字节匹配，不能以此前通过的日志替代。
 其中 `dpi_theme` 自动回环会在 1024×640 与 1600×900 视口间 resize，切换 Designer
 DPI、字体缩放和高对比度，检查大纲/画布/属性/诊断面板的渲染与语义边界，并确认
