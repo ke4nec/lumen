@@ -181,6 +181,9 @@
   并校验两份日志各自唯一的 UIA JSON 协议摘要及完整协议集合；缺少 Designer 专用日志或
   使用其他运行的日志都会被拒绝。该规则只强化证据归属，不把协议回环、进程探活或自动
   摘要当作 Narrator/NVDA 语音通过。
+- `43be45f` 的 Windows、Linux、macOS 常规 CI 全部通过（Windows 7/7、Linux 7/7、macOS
+  6/6）；平台验收检查器与对应 CTest 均为 17/17，通过摘要见
+  [`43be45f CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-43be45f.json)。
 
 ## 2. 阶段与 fixture 对照
 

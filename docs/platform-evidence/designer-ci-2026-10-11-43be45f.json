@@ -1,0 +1,39 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T12:32:09Z",
+  "source_commit": "43be45f",
+  "source_commit_full": "43be45f20e86615b469a4c9bff599c9b5fdef63a",
+  "purpose": "Bind Windows UIA reader protocol logs to operator evidence records",
+  "runs": {
+    "windows": {
+      "id": 38138052130,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38138052130",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38138052146,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38138052146",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU and package jobs completed successfully"
+    },
+    "macos": {
+      "id": 38138052091,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38138052091",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU and package jobs completed successfully"
+    }
+  },
+  "local": {
+    "platform_acceptance_checker": "17/17 passed",
+    "platform_acceptance_ctest": "platform_acceptance_evidence_integrity passed",
+    "protocol_script_ast": "check_platform_acceptance.py, platform_acceptance_tests.py, and uia_designer_reader_loop.py parsed successfully",
+    "yaml_parse": ".github/workflows/platform-acceptance.yml parsed successfully",
+    "protocol_scope": "Windows records now require unique UIA summaries for generic and Designer-specific reader loops"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The checker binds protocol logs and their hashes but does not provide a signed-in desktop speech observation.",
+    "Narrator/NVDA speech, real IME, drag/drop, Inspector, DPI/主题, clean-machine packaging, and one-hour soak remain operator platform checks."
+  ]
+}

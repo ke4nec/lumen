@@ -2013,3 +2013,5 @@ UIA smoke；平台验收检查器 17/17、Designer UIA 脚本 AST 和 platform-a
 `designer_select_locate/designer_edit_save` 协议集合。这样 `readers` 字段和通用附件不能
 绕过 Designer 专用回环；日志哈希仍按本次现场 workflow 匹配。该检查仍只证明 UIA 协议
 覆盖，不把 NVDA/Narrator 语音、IME、Inspector、DPI/主题、拖拽或 soak 标为完成。
+`43be45f` 的 Windows 7/7、Linux 7/7、macOS 6/6 常规 CI 和平台验收 CTest 17/17
+均通过；运行与限制登记在 [`43be45f CI 证据`](platform-evidence/designer-ci-2026-10-11-43be45f.json)。
