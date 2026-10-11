@@ -2068,3 +2068,11 @@ smoke 后启动生产 Designer、执行 AT-SPI D-Bus 选择/编辑/保存回环�
 可用；`check_platform_acceptance.py` 现在要求 Linux `record.json` 登记并按 SHA256
 绑定该日志，且严格校验唯一的 X11/Wayland 协议摘要。这只加强协议日志与当前提交的
 绑定，不能把自动回环升级为 Orca 语音或完整现场 `record.json`。
+
+同一阶段补齐 macOS 现场路径：新增
+`tests/voiceover_designer_reader_loop.py`，直接通过 NSAccessibility AXAPI 启动生产
+Designer 窗口，完成 Text/ThemeScope 选择与 AXValue 编辑、Save 和 JSON 保存回读；
+`.github/workflows/platform-acceptance.yml` 的 macOS job 归档
+`ax-designer-live.log`，检查器要求其登记并绑定唯一 `nsaccessibility` 协议摘要。
+`voiceover_alive` 只表示 VoiceOver 进程探活，不能替代语音播报、真实 IME 或完整
+macOS `record.json`。

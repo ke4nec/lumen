@@ -12,6 +12,7 @@ from check_platform_acceptance import (validate, validate_platform,
                                        validate_frame_allocator_report,
                                        read_frame_allocator_log,
                                        read_linux_designer_protocol_log,
+                                       read_macos_designer_protocol_log,
                                        READER_CASES, PLATFORM_CASES, READERS,
                                        NATIVE_ALLOCATOR_DRIVERS, NATIVE_ALLOCATOR_SOURCES)
 
@@ -64,6 +65,16 @@ class EvidenceTests(unittest.TestCase):
                     "platform": platform, "provider": "atspi-dbus",
                     "protocol_loop": ["designer_select_locate", "designer_edit_save"],
                     "theme_reference": "light -> dark", "windowed": True
+                }) + "\n"
+            )
+        if platform == "macos":
+            contents["ax-designer-live.log"] = (
+                "NSAccessibility production Designer selection / Unicode text / ThemeScope / save passed\n"
+                + json.dumps({
+                    "platform": "macos", "provider": "nsaccessibility",
+                    "protocol_loop": ["designer_select_locate", "designer_edit_save"],
+                    "theme_reference": "light -> dark", "windowed": True,
+                    "voiceover_alive": False,
                 }) + "\n"
             )
         record = dict(commit="a" * 40, platform=platform, operator="fixture",
@@ -379,6 +390,26 @@ class EvidenceTests(unittest.TestCase):
                     path.write_text(json.dumps(invalid) + "\n", encoding="utf-8")
                     with self.assertRaises(ValueError):
                         read_linux_designer_protocol_log(path, "linux-x11")
+
+    def test_macos_designer_ax_log_requires_windowed_protocol_summary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ax-designer-live.log"
+            valid = {
+                "platform": "macos", "provider": "nsaccessibility",
+                "protocol_loop": ["designer_select_locate", "designer_edit_save"],
+                "theme_reference": "light -> dark", "windowed": True,
+            }
+            path.write_text(json.dumps(valid) + "\n", encoding="utf-8")
+            read_macos_designer_protocol_log(path)
+            for key, value in (("platform", "linux-x11"),
+                               ("provider", "atspi-dbus"),
+                               ("windowed", False),
+                               ("theme_reference", "light")):
+                with self.subTest(key=key, value=value):
+                    invalid = dict(valid, **{key: value})
+                    path.write_text(json.dumps(invalid) + "\n", encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        read_macos_designer_protocol_log(path)
 
     def test_operator_cli_rejects_valid_but_stale_native_logs_before_archiving(self):
         for platform in READERS:

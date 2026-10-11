@@ -207,6 +207,10 @@ Linux X11/Wayland 的 `designer_window_smoke=pass` 还必须附唯一的
 `windowed=true` 必须与现场会话一致。该附件由
 `.github/workflows/platform-acceptance.yml` 的 Linux job 生成；它证明 AT-SPI 协议
 路径，不替代 Orca 语音观察。
+macOS 的 `designer_window_smoke=pass` 还必须附唯一的 `ax-designer-live.log`；其中只能
+有一条 `provider=nsaccessibility` 的生产窗口摘要，并校验同一组 Designer 选择、
+Unicode/ThemeScope 编辑和保存回读协议。该附件由 macOS self-hosted job 生成，
+`voiceover_alive` 只作进程探活，VoiceOver 播报仍由验收人观察。
 可用 `--frame-allocator-log <log> --validate-frame-allocator-only --platform <session>`
 单独检查原生日志；此模式不检查 commit、读屏、浸泡或人工 record，不等同完整验收。
 完整人工验收必须提供 `--soak-report`，并通过全部平台检查项及读屏检查项；省略

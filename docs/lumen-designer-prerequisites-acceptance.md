@@ -232,6 +232,11 @@
   窗口，属于协议证据绑定；Orca 播报、IME、Inspector、DPI/主题、拖拽和 soak 仍需现场
   记录，未因工作流接线而标记为通过。
 
+- macOS 现场接线同步新增 `voiceover_designer_reader_loop.py`：生产 Designer AXAPI
+  回环输出 `ax-designer-live.log`，检查器要求 macOS `record.json` 登记该附件并验证
+  唯一的 `nsaccessibility` 选择/编辑/保存摘要。`voiceover_alive` 只作进程探活；
+  VoiceOver 播报、IME、Inspector、DPI/主题、拖拽和 soak 仍需人工现场记录。
+
 
 ## 2. 阶段与 fixture 对照
 

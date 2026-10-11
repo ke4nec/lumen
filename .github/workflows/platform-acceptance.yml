@@ -190,6 +190,14 @@ jobs:
           set -o pipefail
           if ! ./build-live/examples/designer/lumen-designer --acceptance --file "$PWD/examples/designer/gallery.design" 2>&1 | tee designer-live.log; then exit 1; fi
           if ! ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 2>&1 | tee -a designer-live.log; then exit 1; fi
+      - name: Native NSAccessibility production Designer protocol loop
+        run: |
+          set -o pipefail
+          python3 -B -c 'import ApplicationServices'
+          python3 -B tests/voiceover_designer_reader_loop.py \
+            ./build-live/examples/designer/lumen-designer \
+            "$PWD/tests/fixtures/designer_atspi_window.design" \
+            2>&1 | tee ax-designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee macos-live.json
       - name: Headless NSAccessibility regression
@@ -197,7 +205,7 @@ jobs:
       - name: One-hour multi-window resize pressure and recovery soak
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate VoiceOver evidence for this commit
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/macos/record.json" --commit "$GITHUB_SHA" --platform macos --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/macos/record.json" --commit "$GITHUB_SHA" --platform macos --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --ax-designer-log ax-designer-live.log --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -206,6 +214,7 @@ jobs:
             macos-live.json
             frame-allocator-live.log
             designer-live.log
+            ax-designer-live.log
             soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log

@@ -188,6 +188,35 @@ def validate_linux_designer_artifacts(record: dict, directory: Path) -> None:
     )
 
 
+def read_macos_designer_protocol_log(path: Path) -> None:
+    """Require the production macOS Designer NSAccessibility summary."""
+    summaries = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and value.get("provider") == "nsaccessibility":
+            summaries.append(value)
+    if len(summaries) != 1:
+        raise ValueError(f"{path.name} requires exactly one AX Designer protocol summary")
+    summary = summaries[0]
+    if (summary.get("platform") != "macos" or
+            summary.get("protocol_loop") != ["designer_select_locate", "designer_edit_save"] or
+            summary.get("theme_reference") != "light -> dark" or
+            summary.get("windowed") is not True):
+        raise ValueError(f"{path.name} has incomplete macOS Designer AX coverage")
+
+
+def validate_macos_designer_artifacts(record: dict, directory: Path) -> None:
+    """Bind macOS operator records to the production Designer AX loop."""
+    if record.get("platform") != "macos":
+        return
+    read_macos_designer_protocol_log(
+        evidence_log(record, directory, "ax-designer-live.log")
+    )
+
+
 def validate_platform_checks(record: dict, platform: str) -> None:
     required = PLATFORM_CASES | ({"font_cold_start", "touchpad"} if platform == "windows" else set())
     for case in sorted(required):
@@ -247,6 +276,7 @@ def validate(record: dict, commit: str, platform: str, directory: Path) -> None:
     validate_designer_window_artifact(record, directory)
     validate_frame_allocator_artifact(record, directory)
     validate_linux_designer_artifacts(record, directory)
+    validate_macos_designer_artifacts(record, directory)
     validate_windows_reader_artifacts(record, directory)
 
 
@@ -260,6 +290,7 @@ def main() -> None:
     parser.add_argument("--frame-allocator-log", type=Path)
     parser.add_argument("--designer-log", type=Path)
     parser.add_argument("--atspi-designer-log", type=Path)
+    parser.add_argument("--ax-designer-log", type=Path)
     parser.add_argument("--validate-frame-allocator-only", action="store_true")
     args = parser.parse_args()
     try:
@@ -271,6 +302,8 @@ def main() -> None:
             read_linux_designer_protocol_log(
                 args.atspi_designer_log, args.platform
             )
+        if args.ax_designer_log:
+            read_macos_designer_protocol_log(args.ax_designer_log)
         if args.validate_frame_allocator_only:
             if not args.frame_allocator_log:
                 raise ValueError("--validate-frame-allocator-only requires --frame-allocator-log")
@@ -291,6 +324,11 @@ def main() -> None:
             validate_current_log(
                 record, args.record.parent, args.atspi_designer_log,
                 "atspi-designer-live.log"
+            )
+        if args.ax_designer_log:
+            validate_current_log(
+                record, args.record.parent, args.ax_designer_log,
+                "ax-designer-live.log"
             )
         validate_platform(record, json.loads(args.soak_report.read_text(encoding="utf-8")), args.platform)
         if args.archive:
