@@ -2076,3 +2076,10 @@ Designer 窗口，完成 Text/ThemeScope 选择与 AXValue 编辑、Save 和 JSO
 `ax-designer-live.log`，检查器要求其登记并绑定唯一 `nsaccessibility` 协议摘要。
 `voiceover_alive` 只表示 VoiceOver 进程探活，不能替代语音播报、真实 IME 或完整
 macOS `record.json`。
+
+本轮 Windows Designer 门禁复查收紧了 UIA 现场回环：语义树重建期间的瞬时 COM/UIA
+对象失效现在由 `uia_designer_reader_loop.py` 的统一重试处理，属性写入、结构命令、重开
+读回以及 `Source`/`ThemeScope` 选中态均重新查询当前元素，超时保留底层瞬态错误作为诊断。
+新增的平台验收单测覆盖该重试路径，平台验收检查器测试为 `21/21`；这改善现场稳定性，仍
+不把 UIA 协议回执升级为 Narrator/NVDA 语音、IME、Inspector、DPI/主题、拖拽、soak 或
+完整 `record.json` 通过。

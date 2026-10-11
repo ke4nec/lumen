@@ -237,6 +237,12 @@
   唯一的 `nsaccessibility` 选择/编辑/保存摘要。`voiceover_alive` 只作进程探活；
   VoiceOver 播报、IME、Inspector、DPI/主题、拖拽和 soak 仍需人工现场记录。
 
+- Windows Designer UIA 回环的现场稳定性复查已完成：`uia_designer_reader_loop.py` 对语义树
+  重建期间的瞬时 COM/UIA 失效统一重试，属性写入、结构命令、重开读回及诊断
+  `Source`/`ThemeScope` 选中态都从当前树重新查询；超时会保留底层异常。平台验收单测
+  `21/21` 通过。该修复只降低现场回环的瞬态失败率，不改变 Narrator/NVDA 语音、真实
+  IME、Inspector、DPI/主题、拖拽、soak 和完整 `record.json` 的 pending 状态。
+
 
 ## 2. 阶段与 fixture 对照
 

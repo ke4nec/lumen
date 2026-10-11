@@ -23,11 +23,20 @@ import time
 
 def eventually(predicate, timeout=12.0, interval=0.2):
     deadline = time.monotonic() + timeout
+    last_error = None
     while time.monotonic() < deadline:
-        result = predicate()
-        if result:
-            return result
+        try:
+            result = predicate()
+        except Exception as error:  # UIA elements can expire during tree rebuilds.
+            last_error = error
+        else:
+            if result:
+                return result
         time.sleep(interval)
+    if last_error is not None:
+        raise AssertionError(
+            "UIA Designer round-trip timed out after transient UIA errors"
+        ) from last_error
     raise AssertionError("UIA Designer round-trip timed out")
 
 
@@ -157,13 +166,26 @@ def main():
         pattern.QueryInterface(IUIAutomationInvokePattern).Invoke()
 
     def invoke_named(window, name):
-        element = eventually(
-            lambda: find(window, UIA_ButtonControlTypeId, name))
-        invoke(element)
+        def activate():
+            element = find(window, UIA_ButtonControlTypeId, name)
+            if element is None:
+                return False
+            invoke(element)
+            return True
 
-    def focus_and_invoke(element):
-        assert element.SetFocus() == 0
-        invoke(element)
+        eventually(activate)
+
+    def focus_and_invoke(lookup):
+        def activate():
+            element = lookup()
+            if element is None:
+                return False
+            if element.SetFocus() != 0:
+                return False
+            invoke(element)
+            return True
+
+        eventually(activate, timeout=8)
 
     edited = "读屏 Designer 编辑🙂e\u0301"
     with tempfile.TemporaryDirectory(prefix="lumen-uia-designer-") as directory:
@@ -173,25 +195,35 @@ def main():
 
         app, window = launch(target)
         try:
-            text_item = eventually(
+            focus_and_invoke(
                 lambda: find_prefix(window, UIA_TreeItemControlTypeId, "Text  [")
             )
-            focus_and_invoke(text_item)
-            field = eventually(
-                lambda: find(window, UIA_EditControlTypeId, "text")
-            )
-            value = field.GetCurrentPattern(UIA_ValuePatternId).QueryInterface(
-                IUIAutomationValuePattern)
-            original_value = value.CurrentValue
+
+            def read_text():
+                current = find(window, UIA_EditControlTypeId, "text")
+                if current is None:
+                    return None
+                return current.GetCurrentPattern(UIA_ValuePatternId).QueryInterface(
+                    IUIAutomationValuePattern).CurrentValue
+
+            original_value = eventually(read_text)
             assert original_value
-            value.SetValue(edited)
-            eventually(lambda: value.CurrentValue == edited)
+
+            def write_text():
+                current = find(window, UIA_EditControlTypeId, "text")
+                if current is None:
+                    return False
+                current.GetCurrentPattern(UIA_ValuePatternId).QueryInterface(
+                    IUIAutomationValuePattern).SetValue(edited)
+                return True
+
+            eventually(write_text)
+            eventually(lambda: read_text() == edited)
             print("designer selection/edit: passed")
 
-            root_item = eventually(
+            focus_and_invoke(
                 lambda: find_prefix(window, UIA_TreeItemControlTypeId, "Column  [")
             )
-            focus_and_invoke(root_item)
             initial_tree_items = count(window, UIA_TreeItemControlTypeId)
             invoke_named(window, "Add Text")
             eventually(
@@ -220,18 +252,17 @@ def main():
 
         reopened, reopened_window = launch(target)
         try:
-            reopened_item = eventually(
+            focus_and_invoke(
                 lambda: find_prefix(
                     reopened_window, UIA_TreeItemControlTypeId, "Text  ["
                 )
             )
-            focus_and_invoke(reopened_item)
-            reopened_field = eventually(
+            eventually(
                 lambda: find(reopened_window, UIA_EditControlTypeId, "text")
+                .GetCurrentPattern(UIA_ValuePatternId)
+                .QueryInterface(IUIAutomationValuePattern)
+                .CurrentValue == edited
             )
-            reopened_value = reopened_field.GetCurrentPattern(
-                UIA_ValuePatternId).QueryInterface(IUIAutomationValuePattern)
-            eventually(lambda: reopened_value.CurrentValue == edited)
             print("designer reopen: passed")
         finally:
             close(reopened)
@@ -240,22 +271,24 @@ def main():
         make_missing_reference_copy(source_path, diagnostic_target)
         diagnostic_app, diagnostic_window = launch(diagnostic_target)
         try:
-            diagnostic = eventually(
+            focus_and_invoke(
                 lambda: find_contains(
-                    diagnostic_window, UIA_ButtonControlTypeId,
-                    "reference.missing"))
-            focus_and_invoke(diagnostic)
-            source_tab = eventually(
-                lambda: find(diagnostic_window, UIA_ButtonControlTypeId, "Source"))
-            selected = source_tab.GetCurrentPropertyValue(
-                UIA_SelectionItemIsSelectedPropertyId)
-            assert bool(selected)
-            theme_item = eventually(
-                lambda: find_prefix(
-                    diagnostic_window, UIA_TreeItemControlTypeId, "ThemeScope  ["))
-            theme_selected = theme_item.GetCurrentPropertyValue(
-                UIA_SelectionItemIsSelectedPropertyId)
-            assert bool(theme_selected)
+                    diagnostic_window, UIA_ButtonControlTypeId, "reference.missing"
+                )
+            )
+            eventually(
+                lambda: bool(
+                    find(diagnostic_window, UIA_ButtonControlTypeId, "Source")
+                    .GetCurrentPropertyValue(UIA_SelectionItemIsSelectedPropertyId)
+                )
+            )
+            eventually(
+                lambda: bool(
+                    find_prefix(
+                        diagnostic_window, UIA_TreeItemControlTypeId, "ThemeScope  ["
+                    ).GetCurrentPropertyValue(UIA_SelectionItemIsSelectedPropertyId)
+                )
+            )
             print("designer diagnostic locate: passed")
         finally:
             close(diagnostic_app)
