@@ -1963,3 +1963,14 @@ Focus/SetValue 将 `theme` 写入 `light` 与 `dark`，校验离线预览的实�
 验收检查器 17/17 通过，Windows 七个 job、Linux 七个 job、macOS 六个 job均成功，最终摘要见
 [`30b2d90 CI 证据`](platform-evidence/designer-ci-2026-10-11-30b2d90.json)。该自动回环仍不替代
 三桌面登录环境中的读屏、IME、DPI 和人工 Designer 现场记录。
+
+`ac910bd` 将生产验收补齐到 `designer_dpi_theme` 的自动前置回环：在不改变文档
+revision/dirty 的条件下，DesignerApp 依次经历 1024×640、1600×900 视口 resize，
+DPI 100%→125%→200%→100%、字体 100%→125%→150%→100% 和高对比度开关；每一步都
+检查大纲、画布、属性、诊断面板的渲染节点及语义 bounds 为有效尺寸，恢复默认环境后再
+执行编辑保存回环。日志新增并由检查器强制唯一的 `designer_acceptance dpi_theme pass`。
+本机 Debug CTest 1172/1172（124.40s）、平台验收检查器 17/17 通过；Windows 七个 job、
+Linux 七个 job、macOS 六个 job均成功，Windows `a11y-bridge` 也成功，摘要见
+[`ac910bd CI 证据`](platform-evidence/designer-ci-2026-10-11-ac910bd.json)。该自动检查
+增强了 Windows 门禁的状态隔离证据，仍不替代真实显示器 DPI/resize、画布命中、Narrator/
+NVDA/Orca/VoiceOver、IME 和完整人工 Designer 现场记录。

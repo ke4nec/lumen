@@ -140,6 +140,15 @@
   [Linux](https://github.com/ke4nec/lumen/actions/runs/38112946315) 和
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38112946344) CI 全部通过，完整归属见
   [`30b2d90 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-30b2d90.json)。
+- `ac910bd` 将生产回环补齐到 DPI/主题环境隔离：自动 resize 1024×640/1600×900，
+  切换 DPI、字体缩放、高对比度并逐步核对四个 Designer 面板的渲染/语义 bounds，确认
+  文档 revision 与 dirty 保持不变后恢复默认环境；日志新增唯一 `dpi_theme pass` marker，
+  与 ThemeScope、编辑保存回环一起由检查器强制要求。本机完整 Debug CTest 1172/1172、
+  平台验收检查器 17/17 通过。[Windows](https://github.com/ke4nec/lumen/actions/runs/38117565094)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38117565061) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38117565110) CI 全部通过，完整归属见
+  [`ac910bd CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-ac910bd.json)。真实显示器
+  DPI/resize、画布命中和读屏人工验收仍按 §3 保持 pending。
 
 ## 2. 阶段与 fixture 对照
 

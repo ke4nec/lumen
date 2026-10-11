@@ -1,0 +1,39 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T06:41:24Z",
+  "source_commit": "ac910bd",
+  "source_commit_full": "ac910bd58139063c4485879f931991306e5b0fe0",
+  "purpose": "Production DesignerApp DPI/theme environment round-trip with resize, semantic bounds, and document state isolation",
+  "runs": {
+    "windows": {
+      "id": 38117565094,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38117565094",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38117565061,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38117565061",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU completed successfully"
+    },
+    "macos": {
+      "id": 38117565110,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38117565110",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU completed successfully"
+    }
+  },
+  "local": {
+    "designer_acceptance": "passed: resize, DPI, font scale, high contrast, semantic panel bounds, document revision/dirty isolation, ThemeScope reference, edit/save/reopen",
+    "designer_acceptance_ctest": "1/1 passed",
+    "full_debug_ctest": "1172/1172 passed (124.40s)",
+    "platform_acceptance_checker": "17/17 passed",
+    "acceptance_markers": "dpi_theme, theme_reference, edit_save_reopen, and window smoke markers are each unique and required"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The automated DPI/theme round-trip validates production state isolation and semantic layout bounds but does not emulate a physical monitor DPI change or signed-in desktop input.",
+    "VoiceOver/Narrator/NVDA/Orca speech, real IME, cross-application clipboard, inspector overlays, GPU recovery, clean-machine packaging, and one-hour soak remain separate manual platform checks."
+  ]
+}
