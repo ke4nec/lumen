@@ -117,6 +117,28 @@ def main():
                     pass
                 else:
                     raise AssertionError(f"invalid text range accepted: {start}, {end}")
+
+            theme_item = eventually(lambda: find(
+                "ThemeScope  [theme-scope]", Atspi.Role.TREE_ITEM))
+            theme_action = theme_item.get_action_iface()
+            assert theme_action is not None
+            theme_activate = next(
+                index for index in range(theme_action.get_n_actions())
+                if theme_action.get_action_name(index) == "activate")
+            assert theme_action.do_action(theme_activate)
+            eventually(lambda: theme_item.get_state_set().contains(
+                Atspi.StateType.SELECTED))
+
+            theme_field = eventually(lambda: find(
+                "theme reference", Atspi.Role.ENTRY))
+            assert theme_field.get_text_iface() is not None
+            assert theme_field.get_editable_text_iface() is not None
+            get_theme = lambda: Atspi.Text.get_text(theme_field, 0, -1)
+            assert get_theme() == "light"
+            assert Atspi.EditableText.set_text_contents(theme_field, "dark")
+            eventually(lambda: get_theme() == "dark")
+            eventually(lambda: theme_field.get_state_set().contains(
+                Atspi.StateType.FOCUSED))
             assert app.poll() is None
             # Wait for the application-side history/save/reopen assertions to
             # finish before terminating its D-Bus event pump.
@@ -133,7 +155,7 @@ def main():
                 raise
         assert output.is_file()
         print("AT-SPI Designer selection / Unicode text and events / "
-              "document history / save-reopen passed")
+              "ThemeScope reference / document history / save-reopen passed")
 
 
 if __name__ == "__main__":
