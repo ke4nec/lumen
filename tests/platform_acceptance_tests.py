@@ -36,6 +36,25 @@ class EvidenceTests(unittest.TestCase):
                         "designer_acceptance structure_edit pass\n"
                         "designer_acceptance edit_save_reopen pass\n"
                         "designer_window_smoke pass\n"}
+        if platform == "windows":
+            contents.update({
+                "uia-reader-live.log":
+                    "window registered: fixture\n"
+                    "UIA reader round-trip passed (focus / activate / value / edit);\n"
+                    + json.dumps({
+                        "platform": "windows", "provider": "uia",
+                        "protocol_loop": ["focus", "activate", "value", "edit"]
+                    }) + "\n",
+                "uia-designer-live.log":
+                    "designer selection/edit: passed\n"
+                    "designer structure commands: passed\n"
+                    "designer save: passed\n"
+                    "designer reopen: passed\n"
+                    + json.dumps({
+                        "platform": "windows", "provider": "uia",
+                        "protocol_loop": ["designer_select_locate", "designer_edit_save"]
+                    }) + "\n"
+            })
         record = dict(commit="a" * 40, platform=platform, operator="fixture",
                       recorded_at="2026-10-09T00:00:00Z", os="fixture", desktop="fixture",
                       gpu_driver="fixture", ime="fixture", application="settings/gallery/designer",
@@ -234,6 +253,25 @@ class EvidenceTests(unittest.TestCase):
                 root = Path(directory)
                 record = self.operator_record(root, platform)
                 validate(record, "a" * 40, platform, root)
+                if platform == "windows":
+                    for name in ("uia-reader-live.log", "uia-designer-live.log"):
+                        artifact = next(item for item in record["artifacts"]
+                                        if item["path"] == name)
+                        path = root / name
+                        path.write_text("{\"platform\": \"windows\", \"provider\": \"uia\"}\n",
+                                        encoding="utf-8")
+                        artifact["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+                        with self.subTest(platform=platform, artifact=name):
+                            with self.assertRaisesRegex(ValueError, name):
+                                validate(record, "a" * 40, platform, root)
+                        path.write_text(
+                            "{\"platform\": \"windows\", \"provider\": \"uia\", "
+                            "\"protocol_loop\": "
+                            + ("[\"focus\", \"activate\", \"value\", \"edit\"]"
+                               if name == "uia-reader-live.log" else
+                               "[\"designer_select_locate\", \"designer_edit_save\"]")
+                            + "}\n", encoding="utf-8")
+                        artifact["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
                 for reader in READERS[platform]:
                     for case in ("designer_select_locate", "designer_edit_save"):
                         for value in ("pending", None):

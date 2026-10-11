@@ -123,6 +123,10 @@ Windows 的 `uia_designer_reader_loop.py` 会在临时 `.design` 副本上启动
 `designer_select_locate`/`designer_edit_save` 协议结果。它与 `uia_reader_loop.py` 一起由
 Windows 现场 workflow 执行；UIA 协议和读屏器进程探活不等于 Narrator/NVDA 的语音通过，
 语音内容仍须由验收人观察并写入本次提交的 `record.json`。
+Windows 的 `record.json` 还必须把本次 workflow 生成的 `uia-reader-live.log` 和
+`uia-designer-live.log` 作为附件登记；验收检查器会解析两份日志各自唯一的 UIA JSON
+协议摘要并核对协议集合，防止只填读屏字段而漏掉 Designer 专用回环。两份日志的附件
+哈希也必须与本次现场 workflow 的文件一致。
 
 每次验收应保留 workflow run URL、artifact JSON、OS/桌面环境、显示服务器、
 GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 headless job 不得更新

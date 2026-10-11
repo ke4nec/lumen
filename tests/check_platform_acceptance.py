@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 import re
 import shutil
+from typing import Dict, List, Tuple
 
 READERS = {"linux-x11": {"Orca"}, "linux-wayland": {"Orca"},
            "macos": {"VoiceOver"}, "windows": {"Narrator", "NVDA"}}
@@ -116,6 +117,42 @@ def validate_designer_window_artifact(record: dict, directory: Path) -> None:
     read_designer_window_log(evidence_log(record, directory, "designer-live.log"))
 
 
+def _read_protocol_json(path: Path) -> List[Dict]:
+    """Read the single structured summary emitted by a reader loop."""
+    summaries = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and value.get("provider") == "uia":
+            summaries.append(value)
+    if len(summaries) != 1:
+        raise ValueError(f"{path.name} requires exactly one UIA protocol summary")
+    return summaries
+
+
+def read_windows_reader_protocol_log(path: Path, expected: Tuple[str, ...]) -> None:
+    """Require a current Windows UIA reader loop protocol summary."""
+    summary = _read_protocol_json(path)[0]
+    if summary.get("platform") != "windows" or summary.get("protocol_loop") != list(expected):
+        raise ValueError(f"{path.name} has incomplete Windows UIA protocol coverage")
+
+
+def validate_windows_reader_artifacts(record: dict, directory: Path) -> None:
+    """Bind both generic and Designer-specific UIA loops to Windows evidence."""
+    if record.get("platform") != "windows":
+        return
+    read_windows_reader_protocol_log(
+        evidence_log(record, directory, "uia-reader-live.log"),
+        ("focus", "activate", "value", "edit"),
+    )
+    read_windows_reader_protocol_log(
+        evidence_log(record, directory, "uia-designer-live.log"),
+        ("designer_select_locate", "designer_edit_save"),
+    )
+
+
 def validate_platform_checks(record: dict, platform: str) -> None:
     required = PLATFORM_CASES | ({"font_cold_start", "touchpad"} if platform == "windows" else set())
     for case in sorted(required):
@@ -174,6 +211,7 @@ def validate(record: dict, commit: str, platform: str, directory: Path) -> None:
             raise ValueError("empty or mismatched artifact")
     validate_designer_window_artifact(record, directory)
     validate_frame_allocator_artifact(record, directory)
+    validate_windows_reader_artifacts(record, directory)
 
 
 def main() -> None:

@@ -2006,3 +2006,10 @@ UIA smoke；平台验收检查器 17/17、Designer UIA 脚本 AST 和 platform-a
 通过，运行归属见 [`72735f4 CI 证据`](platform-evidence/designer-ci-2026-10-11-72735f4.json)。
 这只证明新入口可追溯且能在登录 Windows 会话中执行，尚未产生本次提交的 Narrator/NVDA
 语音 record，也不改变 Inspector、IME、DPI/主题、拖拽和 soak 的 pending 状态。
+
+随后收紧 Windows 证据绑定：`check_platform_acceptance.py` 现在要求 Windows
+`record.json` 登记本次 workflow 的 `uia-reader-live.log` 与 `uia-designer-live.log`，并
+逐份校验唯一 UIA JSON 协议摘要及 `focus/activate/value/edit`、
+`designer_select_locate/designer_edit_save` 协议集合。这样 `readers` 字段和通用附件不能
+绕过 Designer 专用回环；日志哈希仍按本次现场 workflow 匹配。该检查仍只证明 UIA 协议
+覆盖，不把 NVDA/Narrator 语音、IME、Inspector、DPI/主题、拖拽或 soak 标为完成。

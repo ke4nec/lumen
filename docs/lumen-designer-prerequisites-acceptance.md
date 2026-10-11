@@ -176,6 +176,11 @@
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38133455736) 常规 CI 全部通过，完整归属见
   [`72735f4 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-72735f4.json)。UIA 协议和进程
   探活仍不替代 Narrator/NVDA 语音人工记录及完整桌面出口。
+- 后续 review 收紧了 Windows 证据绑定：`check_platform_acceptance.py` 要求 Windows
+  `record.json` 同时登记本次 workflow 的 `uia-reader-live.log` 与 `uia-designer-live.log`，
+  并校验两份日志各自唯一的 UIA JSON 协议摘要及完整协议集合；缺少 Designer 专用日志或
+  使用其他运行的日志都会被拒绝。该规则只强化证据归属，不把协议回环、进程探活或自动
+  摘要当作 Narrator/NVDA 语音通过。
 
 ## 2. 阶段与 fixture 对照
 
