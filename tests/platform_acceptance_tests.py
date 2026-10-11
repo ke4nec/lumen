@@ -1,4 +1,5 @@
 import copy
+import ast
 import hashlib
 import json
 import subprocess
@@ -18,6 +19,13 @@ from check_platform_acceptance import (validate, validate_platform,
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_reader_protocol_scripts_parse(self):
+        for name in ("uia_reader_loop.py", "uia_designer_reader_loop.py",
+                     "designer_atspi_window_live_tests.py", "voiceover_loop.py",
+                     "voiceover_designer_reader_loop.py"):
+            with self.subTest(script=name):
+                ast.parse((Path(__file__).parent / name).read_text(encoding="utf-8"))
+
     @staticmethod
     def native_allocator_report():
         return dict(driver="wayland", seconds=3.0, windows=2, frames=100,

@@ -78,17 +78,18 @@ AT-SPI live 冒烟互补，面向读屏器在场驱动；调用方式与前置�
 
 | 平台 | 脚本 | 读屏器证据 |
 | --- | --- | --- |
-| Linux（X11） | `tests/atspi_orca_loop.py` | Orca debug 日志（专属 script + 事件消费 + SPEECH OUTPUT） |
+| Linux（X11/Wayland） | `tests/atspi_orca_loop.py`、`tests/designer_atspi_window_live_tests.py` | Orca debug 日志（专属 script + 事件消费 + SPEECH OUTPUT）；Designer 专用 AT-SPI D-Bus 选择/编辑/保存协议摘要 |
 | Windows | `tests/uia_reader_loop.py`、`tests/uia_designer_reader_loop.py` | 通用控件与 Designer 专用 UIA 协议回环；NVDA controller client/讲述人进程探活；语音人工记录 |
-| macOS | `tests/voiceover_loop.py` | VoiceOver 进程探活；协议回环含 AXTextField 文本编辑；语音人工记录 |
+| macOS | `tests/voiceover_loop.py`、`tests/voiceover_designer_reader_loop.py` | VoiceOver 进程探活；Designer 专用 NSAccessibility 选择/编辑/保存协议摘要；语音人工记录 |
 
 工作流不再接受 `confirmed` 自报。配置仓库变量 `LUMEN_ACCEPTANCE_ROOT` 为
 runner 本地证据目录，按 `<root>/<40 位提交>/<platform>/record.json` 存放记录，
 platform 为 `linux-x11`、`linux-wayland`、`macos` 或 `windows`。
 缺失记录、提交/会话不匹配、未通过项目或附件哈希不匹配均失败；验证后连同附件上传。
-探针完成后，把本次工作区的两份 live 日志复制到对应证据目录并登记 SHA256；
+探针完成后，把本次工作区的各平台 live 日志复制到对应证据目录并登记 SHA256；
 人工回环记录可在后续一小时 soak 期间补齐。工作流最终通过 `--designer-log` 和
-`--frame-allocator-log` 核对本次日志，附件准备必须在最终验证步骤前完成。
+`--frame-allocator-log` 以及 Linux `--atspi-designer-log`/macOS `--ax-designer-log`
+核对本次日志，附件准备必须在最终验证步骤前完成。
 Linux/macOS 常规 CPU CI 启用原生桥，其他默认 OFF 构建继续覆盖降级路径。
 真实工作流同时构建 settings/Gallery，人工使用该次构建的应用进行：
 
