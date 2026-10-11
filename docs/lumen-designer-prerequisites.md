@@ -1930,3 +1930,11 @@ Theme 的实际 `pageBackground`，确认 session 替换后预览主题色切换
 Designer/无障碍筛选 174/174、平台验收脚本 17/17 均通过。Windows 七个 job、Linux 七个
 job、macOS 六个 job均成功，最终摘要见
 [`54badb4 CI 证据`](platform-evidence/designer-ci-2026-10-11-54badb4.json)。
+
+`3424331` 将同一 ThemeScope 引用事务接入 Linux 原生 AT-SPI Designer 回环：客户端真实
+激活 `ThemeScope  [theme-scope]`，通过 EditableText 写入 `light`→`dark`，应用端验证
+文本编辑与主题引用的选择、undo/redo、保存重开及 DocumentId 保持；本机原生回环通过，
+启用 AT-SPI 的 Debug CTest 1172/1172（119.58s），`[a11y]` 为 26 个用例、462 个断言，
+平台验收脚本 17/17 通过。Windows 七个 job、Linux 七个 job、macOS 六个 job均成功，
+最终摘要见 [`3424331 CI 证据`](platform-evidence/designer-ci-2026-10-11-3424331.json)。
+该协议回环仍不替代 Orca 语音、真实 IME、跨应用剪贴板和完整 Linux 桌面现场记录。

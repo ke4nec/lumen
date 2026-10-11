@@ -1,0 +1,37 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T02:01:34Z",
+  "source_commit": "3424331ecfb14530b885177b941860e770e36a5c",
+  "purpose": "Linux AT-SPI live Designer coverage for ThemeScope reference editing, selection, undo/redo, and save/reopen",
+  "runs": {
+    "windows": {
+      "id": 38102493031,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38102493031",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully; Windows UIA Designer coverage remained green"
+    },
+    "linux": {
+      "id": 38102493037,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38102493037",
+      "jobs": "7/7 successful",
+      "a11y_job": "CPU completed successfully, including the Designer AT-SPI live transaction"
+    },
+    "macos": {
+      "id": 38102493035,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38102493035",
+      "jobs": "6/6 successful",
+      "provider_job": "cpu completed successfully; macOS provider tests included"
+    }
+  },
+  "local": {
+    "native_atspi_designer_round_trip": "passed: ThemeScope light->dark, selection, text edit, undo/redo, save/reopen",
+    "a11y_filter": "26 test cases, 462 assertions passed",
+    "full_debug_ctest_accessibility": "1172/1172 passed (119.58s)",
+    "platform_acceptance_checker": "17/17 passed"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted CI and the native AT-SPI client verify the provider/application protocol path but do not provide a signed-in Linux desktop acceptance record.",
+    "The evidence does not replace Orca speech, real IME, cross-application clipboard, DPI, GPU recovery, clean-machine package, one-hour soak, or complete manual desktop acceptance."
+  ]
+}

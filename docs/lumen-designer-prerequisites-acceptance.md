@@ -111,6 +111,14 @@
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38097917678) CI 全部通过；本机
   Debug 完整 CTest 1171/1171、Designer/无障碍筛选 174/174、平台验收脚本 17/17 均通过，
   完整归属见 [`54badb4 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-54badb4.json)。
+- `3424331` 将 ThemeScope 引用事务接入 Linux 原生 AT-SPI Designer 回环：真实激活
+  `ThemeScope  [theme-scope]`，通过 EditableText 写入 `light`→`dark`，并验证选择、
+  文本编辑、主题引用 undo/redo、保存重开和 DocumentId 保持；本机原生回环通过，启用
+  AT-SPI 的 Debug CTest 1172/1172、`[a11y]` 26 个用例/462 个断言、平台验收脚本 17/17
+  均通过。[Windows](https://github.com/ke4nec/lumen/actions/runs/38102493031)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38102493037) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38102493035) CI 全部通过，完整归属见
+  [`3424331 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-3424331.json)。
 
 ## 2. 阶段与 fixture 对照
 
