@@ -2042,3 +2042,11 @@ hosted CI 全部通过，Windows `a11y-bridge` 也成功，归属见
 [`0748688 CI 证据`](platform-evidence/designer-ci-2026-10-12-0748688.json)。这仍不替代
 真实登录桌面的 Orca/Narrator/NVDA/VoiceOver、IME、Inspector、DPI/主题、拖拽或一小时
 soak 现场记录。
+
+2026-10-12 的阶段复查在当前源码上重新执行 Debug 全量 CTest `1172/1172`、平台验收
+检查器 `17/17` 和 Linux AT-SPI fixture，均通过。隔离 X11 生产窗口能够注册
+`Lumen Designer`/`Lumen Preview` 并暴露大纲树；语义树在真实激活后的重建期间仍会让
+外部 AT-SPI 遍历遇到瞬时对象失效，因此没有把该探针升级为自动门禁或现场通过。复查记录见
+[`36d72f5 阶段复查`](platform-evidence/designer-review-2026-10-12-36d72f5.json)。
+P1–P5/D3 的 headless 出口保持通过，下一项仍是稳定生产窗口的读屏/输入法验收，不能用
+该复查替代 Orca、Narrator、NVDA、VoiceOver 或完整 `record.json`。

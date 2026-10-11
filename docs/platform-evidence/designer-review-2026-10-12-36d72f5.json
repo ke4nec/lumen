@@ -1,0 +1,19 @@
+{
+  "kind": "designer_stage_review",
+  "recorded_at": "2026-10-11T18:46:39Z",
+  "source_commit": "36d72f5",
+  "source_commit_full": "36d72f59cce1da85367e1e76aabcbbc4745c4727",
+  "stage": "F6/D3 review after Windows Designer gate and AT-SPI activation evidence",
+  "local": {
+    "debug_ctest": "1172/1172 passed",
+    "platform_acceptance_tests": "17/17 passed",
+    "designer_atspi_live": "selection, Unicode text, ThemeScope light -> dark, document history, and save-reopen passed",
+    "scope": "P1-P5 and D3 headless fixtures remain green; the production X11 probe registered Designer and Preview windows and exposed the outline tree"
+  },
+  "acceptance_complete": false,
+  "remaining_operator_evidence": [
+    "A stable production-window AT-SPI traversal during live semantic rebuilds",
+    "Signed-in Linux/Windows/macOS desktop records with Orca/Narrator/NVDA/VoiceOver and real IME",
+    "Inspector/edit-save-reopen, DPI/theme, drag/drop, clean-machine package, and one-hour soak records"
+  ]
+}

@@ -207,6 +207,13 @@
   该 fixture 仍不提供 Orca 语音或登录桌面证据，完整 `record.json`、IME、Inspector、
   DPI/主题、拖拽和 soak 继续 pending。
 
+- 2026-10-12 阶段复查在当前源码上重新执行 Debug 全量 CTest `1172/1172`、平台验收检查器
+  `17/17` 和 Linux AT-SPI fixture，均通过。隔离 X11 生产 Designer/Preview 窗口已注册并
+  暴露大纲树，但真实激活触发语义树重建时，外部 AT-SPI 遍历仍可能读到瞬时对象；因此该
+  探针保持观察记录，未升级为自动通过。复查证据见
+  [`36d72f5 阶段复查`](platform-evidence/designer-review-2026-10-12-36d72f5.json)，完整
+  读屏、IME、Inspector、DPI/主题、拖拽和 soak 仍 pending。
+
 
 ## 2. 阶段与 fixture 对照
 
