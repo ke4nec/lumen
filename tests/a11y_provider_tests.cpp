@@ -1161,6 +1161,71 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
           "dark");
     CHECK(app.workbench().selection().primary == themeId);
 
+    // Exercise structural command buttons through the same UIA client path.
+    // Widen the headless layout so the buttons remain visible instead of
+    // moving into the toolbar overflow menu.
+    app.shell().setView(core::Size{2400.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    const auto invokeButton = [&](const wchar_t* name) {
+        auto button = findByNameAndType(name, UIA_ButtonControlTypeId);
+        REQUIRE(button != nullptr);
+        ComPtr<IUIAutomationInvokePattern> buttonInvoke;
+        REQUIRE(button->GetCurrentPatternAs(UIA_InvokePatternId,
+                                             IID_PPV_ARGS(&buttonInvoke)) ==
+                S_OK);
+        REQUIRE(buttonInvoke != nullptr);
+        REQUIRE(buttonInvoke->Invoke() == S_OK);
+    };
+    auto rootItem = findByNameAndType(L"Column  [root]",
+                                      UIA_TreeItemControlTypeId);
+    REQUIRE(rootItem != nullptr);
+    ComPtr<IUIAutomationInvokePattern> rootInvoke;
+    REQUIRE(rootItem->GetCurrentPatternAs(UIA_InvokePatternId,
+                                           IID_PPV_ARGS(&rootInvoke)) == S_OK);
+    REQUIRE(rootInvoke != nullptr);
+    REQUIRE(rootInvoke->Invoke() == S_OK);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    const auto structuralChildCount =
+        app.workbench().document()->root.children.size();
+    invokeButton(L"Add Text");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    REQUIRE(app.workbench().document()->root.children.size() ==
+            structuralChildCount + 1);
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto insertedId = *app.workbench().selection().primary;
+    invokeButton(L"Duplicate");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    REQUIRE(app.workbench().document()->root.children.size() ==
+            structuralChildCount + 2);
+    REQUIRE(app.workbench().selection().primary.has_value());
+    const auto duplicateId = *app.workbench().selection().primary;
+    CHECK(duplicateId != insertedId);
+    const auto indexOf = [&app](dsl::DesignNodeId id) {
+        const auto& children = app.workbench().document()->root.children;
+        for (std::size_t index = 0; index < children.size(); ++index) {
+            if (children[index].id == id) return index;
+        }
+        return children.size();
+    };
+    const auto duplicateIndex = indexOf(duplicateId);
+    REQUIRE(duplicateIndex > 0);
+    invokeButton(L"Move up");
+    (void)app.shell().renderFrame();
+    CHECK(indexOf(duplicateId) == duplicateIndex - 1);
+    invokeButton(L"Move down");
+    (void)app.shell().renderFrame();
+    CHECK(indexOf(duplicateId) == duplicateIndex);
+    invokeButton(L"Delete");
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.size() ==
+          structuralChildCount + 1);
+    CHECK(indexOf(duplicateId) == app.workbench().document()->root.children.size());
+    CHECK(app.workbench().diagnostics().empty());
+
     const auto path = std::filesystem::temp_directory_path() /
                       ("lumen-uia-designer-" +
                        std::to_string(std::chrono::steady_clock::now()
@@ -1181,6 +1246,9 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
                                     ->root.children.front()
                                     .properties.at("text")
                                     .value) == "重命名🙂e\xCC\x81");
+    CHECK(reopened.workbench().document()->root.children.size() ==
+          structuralChildCount + 1);
+    CHECK(reopened.workbench().document()->root.children.back().id == insertedId);
     CHECK(reopened.workbench().document()->root.children.back().references.at(
               "theme") == "dark");
     std::error_code cleanupError;
