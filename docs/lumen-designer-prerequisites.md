@@ -1917,10 +1917,16 @@ Theme 的实际 `pageBackground`，确认 session 替换后预览主题色切换
 七个 job、Linux 七个 job、macOS 六个 job 全部通过，原始摘要见
 [`5252506 CI 证据`](platform-evidence/designer-ci-2026-10-11-5252506.json)。
 
-`a4650f4` 将 ThemeScope 引用再接入 Windows 原生 UIA 回环：真实 UIA TreeItem 激活
-`ThemeScope  [theme-scope]`，通过 Edit 的 ValuePattern 将 `light` 改为 `dark`，验证
-文档诊断、undo/redo、选择和保存重开仍保持一致。Linux 相关 Designer/无障碍筛选
-174/174、本机 Debug 完整 CTest 1171/1171（121.78s）、平台验收脚本 17/17 均通过；
-Windows `a11y-bridge` 的新增 live UIA 用例及其余六个 job 全部成功，Linux 七个 job、
-macOS 六个 job 也全部成功，原始摘要见
+`a4650f4` 首次将 ThemeScope 引用接入 Windows 原生 UIA 回环：真实 UIA TreeItem 激活
+`ThemeScope  [theme-scope]`，通过 Edit 的 ValuePattern 将 `light` 改为 `dark`，并验证
+文档诊断、undo/redo、选择和保存重开；但 fixture 复用了已由解析 Text 节点占用的
+`DocumentId 2`，Windows `a11y-bridge` 在打开文档时拒绝了该用例。该提交的 Windows
+运行因此为 6/7，Linux 七个 job、macOS 六个 job通过；首次失败摘要见
 [`a4650f4 CI 证据`](platform-evidence/designer-ci-2026-10-11-a4650f4.json)。
+
+`54badb4` 为 ThemeScope 分配唯一 `DocumentId 3` 并修复上述门禁：Windows UIA 回环现在
+真实激活 TreeItem、读取并写入 Edit 的 ValuePattern（`light`→`dark`），验证文档引用、
+诊断、undo/redo、选择和保存重开；本机 Debug 完整 CTest 1171/1171（120.43s）、
+Designer/无障碍筛选 174/174、平台验收脚本 17/17 均通过。Windows 七个 job、Linux 七个
+job、macOS 六个 job均成功，最终摘要见
+[`54badb4 CI 证据`](platform-evidence/designer-ci-2026-10-11-54badb4.json)。

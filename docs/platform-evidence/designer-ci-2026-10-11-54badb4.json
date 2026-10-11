@@ -1,0 +1,35 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T00:44:12Z",
+  "source_commit": "54badb4522e0984a0c49cdcbdbb5ce03dcf1beae",
+  "purpose": "Windows UIA live coverage for ThemeScope reference editing, undo/redo, selection, and save/reopen after the unique DocumentId fix",
+  "runs": {
+    "windows": {
+      "id": 38097917657,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38097917657",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully, including the live UIA ThemeScope reference round-trip"
+    },
+    "linux": {
+      "id": 38097917645,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38097917645",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38097917678,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38097917678",
+      "jobs": "6/6 successful",
+      "provider_job": "cpu completed successfully; macOS provider tests included"
+    }
+  },
+  "local": {
+    "full_debug_ctest": "1171/1171 passed (120.43s)",
+    "designer_accessibility_filter": "174/174 passed",
+    "platform_acceptance_checker": "17/17 passed"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted CI verifies the UIA provider and application transaction path but does not provide a signed-in Windows desktop acceptance record.",
+    "The evidence does not replace Narrator/NVDA speech, real IME, cross-application clipboard, DPI, GPU recovery, clean-machine package, or complete manual desktop acceptance."
+  ]
+}

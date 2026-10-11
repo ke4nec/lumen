@@ -99,13 +99,18 @@
   [Linux](https://github.com/ke4nec/lumen/actions/runs/38093296901) 和
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38093296871) CI 全部通过，完整归属见
   [`5252506 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-5252506.json)。
-- `a4650f4` 将 ThemeScope 引用接入 Windows 原生 UIA 回环：真实 UIA TreeItem 激活
-  `ThemeScope  [theme-scope]`，通过 Edit 的 ValuePattern 将 `light` 改为 `dark`，并验证
-  文档诊断、undo/redo、选择和保存重开。[Windows](https://github.com/ke4nec/lumen/actions/runs/38096258305)、
-  [Linux](https://github.com/ke4nec/lumen/actions/runs/38096258247) 和
-  [macOS](https://github.com/ke4nec/lumen/actions/runs/38096258291) CI 全部通过；本机
+- `a4650f4` 首次将 ThemeScope 引用接入 Windows 原生 UIA 回环，但 fixture 复用了已由解析
+  Text 节点占用的 `DocumentId 2`；因此 [Windows](https://github.com/ke4nec/lumen/actions/runs/38096258305)
+  的 `a11y-bridge` 失败（6/7），而 [Linux](https://github.com/ke4nec/lumen/actions/runs/38096258247)
+  和 [macOS](https://github.com/ke4nec/lumen/actions/runs/38096258291) 通过。该首次失败记录见
+  [`a4650f4 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-a4650f4.json)。
+- `54badb4` 为 ThemeScope 使用唯一 `DocumentId 3`，修复 Windows 门禁并完成真实 UIA
+  TreeItem/Edit ValuePattern 的 `light`→`dark` 写入、undo/redo、选择和保存重开回环。
+  [Windows](https://github.com/ke4nec/lumen/actions/runs/38097917657)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38097917645) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38097917678) CI 全部通过；本机
   Debug 完整 CTest 1171/1171、Designer/无障碍筛选 174/174、平台验收脚本 17/17 均通过，
-  完整归属见 [`a4650f4 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-a4650f4.json)。
+  完整归属见 [`54badb4 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-54badb4.json)。
 
 ## 2. 阶段与 fixture 对照
 

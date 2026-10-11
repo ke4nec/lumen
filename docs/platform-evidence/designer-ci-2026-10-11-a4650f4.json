@@ -7,8 +7,8 @@
     "windows": {
       "id": 38096258305,
       "url": "https://github.com/ke4nec/lumen/actions/runs/38096258305",
-      "jobs": "7/7 successful",
-      "a11y_job": "a11y-bridge completed successfully, including the live UIA ThemeScope reference round-trip"
+      "jobs": "6/7 successful",
+      "a11y_job": "failed: duplicate ThemeScope DocumentId 2 caused openDocument rejection before the live UIA round-trip"
     },
     "linux": {
       "id": 38096258247,
@@ -29,6 +29,7 @@
   },
   "acceptance_complete": false,
   "limitations": [
+    "This first attempt was rejected by the Windows a11y job because the fixture reused DocumentId 2; commit 54badb4 assigns a unique ThemeScope DocumentId and records the corrected run.",
     "Hosted CI verifies the UIA provider and application transaction path but does not provide a signed-in Windows desktop acceptance record.",
     "The evidence does not replace Narrator/NVDA speech, real IME, cross-application clipboard, DPI, GPU recovery, clean-machine package, or complete manual desktop acceptance."
   ]
