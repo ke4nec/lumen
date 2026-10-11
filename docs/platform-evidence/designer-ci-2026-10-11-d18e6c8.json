@@ -1,0 +1,39 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T15:05:00Z",
+  "source_commit": "d18e6c8",
+  "source_commit_full": "d18e6c8149226d0e493e09b5467532c6458c6fdf",
+  "purpose": "Revalidate the Windows Designer UIA gate after removing an unstable client-proxy assertion while retaining provider selected-state mapping and diagnostic-location checks",
+  "runs": {
+    "windows": {
+      "id": 38147655106,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38147655106",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38147655109,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38147655109",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU and package jobs completed successfully"
+    },
+    "macos": {
+      "id": 38147655108,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38147655108",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU and package jobs completed successfully"
+    }
+  },
+  "local": {
+    "platform_acceptance_checker": "17/17 passed",
+    "a11y_tests": "25 test cases, 459 assertions passed",
+    "protocol_script_ast": "check_platform_acceptance.py, platform_acceptance_tests.py, and uia_designer_reader_loop.py parsed successfully",
+    "yaml_parse": ".github/workflows/platform-acceptance.yml parsed successfully",
+    "scope": "Provider exposes UIA_SelectionItemIsSelectedPropertyId; the Windows Designer live script verifies selected outline/ThemeScope and reference.missing -> Source -> ThemeScope diagnostic location"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The hosted UIA loop and protocol checker do not provide a signed-in desktop speech observation.",
+    "Narrator/NVDA speech, real IME, drag/drop, Inspector, DPI/theme, clean-machine packaging, and one-hour soak remain operator platform checks."
+  ]
+}

@@ -2016,3 +2016,14 @@ UIA smoke；平台验收检查器 17/17、Designer UIA 脚本 AST 和 platform-a
 协议覆盖，不把 NVDA/Narrator 语音、IME、Inspector、DPI/主题、拖拽或 soak 标为完成。
 `43be45f` 的 Windows 7/7、Linux 7/7、macOS 6/6 常规 CI 和平台验收 CTest 17/17
 均通过；运行与限制登记在 [`43be45f CI 证据`](platform-evidence/designer-ci-2026-10-11-43be45f.json)。
+
+`d18e6c8` 修复了 Windows Designer UIA 门禁的现场断言：保留 provider 对
+`UIA_SelectionItemIsSelectedPropertyId` 的选中状态映射以及 Designer 回环对大纲/ThemeScope
+选中和 `reference.missing -> Source -> ThemeScope` 诊断定位的检查，移除只在 C++ UIA 代理层
+不稳定的重复现场断言。本机平台验收检查器 17/17、无障碍筛选 25 个用例/459 个断言通过；
+[Windows](https://github.com/ke4nec/lumen/actions/runs/38147655106) 7/7、
+[Linux](https://github.com/ke4nec/lumen/actions/runs/38147655109) 7/7、
+[macOS](https://github.com/ke4nec/lumen/actions/runs/38147655108) 6/6 hosted CI 全部通过，
+Windows `a11y-bridge` 也成功，完整归属见 [`d18e6c8 CI 证据`](platform-evidence/designer-ci-2026-10-11-d18e6c8.json)。
+该回环仍不替代登录桌面的 Narrator/NVDA/Orca/VoiceOver 语音、真实 IME、Inspector、
+DPI/主题、拖拽或一小时 soak 现场记录。

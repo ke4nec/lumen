@@ -186,6 +186,14 @@
   6/6）；平台验收检查器与对应 CTest 均为 17/17，通过摘要见
   [`43be45f CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-43be45f.json)。
 
+- `d18e6c8` 修复 Windows Designer UIA 门禁的现场断言：provider 继续暴露
+  `UIA_SelectionItemIsSelectedPropertyId`，真实 Designer UIA 回环继续验证大纲/ThemeScope 选中和
+  `reference.missing -> Source -> ThemeScope` 诊断定位；移除 C++ UIA 代理层不稳定的重复断言。
+  本机平台验收检查器 17/17、无障碍筛选 25 个用例/459 个断言通过；[Windows](https://github.com/ke4nec/lumen/actions/runs/38147655106)
+  7/7、[Linux](https://github.com/ke4nec/lumen/actions/runs/38147655109) 7/7、
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38147655108) 6/6 CI 全部通过，
+  完整归属见 [`d18e6c8 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-d18e6c8.json)。
+
 ## 2. 阶段与 fixture 对照
 
 以下“headless 通过”只归属上述源码和自动化验证范围；涉及真实输入、合成器、读屏或
