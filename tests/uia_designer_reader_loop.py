@@ -31,6 +31,28 @@ def eventually(predicate, timeout=12.0, interval=0.2):
     raise AssertionError("UIA Designer round-trip timed out")
 
 
+def make_missing_reference_copy(source, target):
+    document = json.loads(source.read_text(encoding="utf-8"))
+    found = False
+
+    def visit(node):
+        nonlocal found
+        if isinstance(node, dict) and node.get("type") == "ThemeScope":
+            node.setdefault("references", {})["theme"] = "missing_theme"
+            found = True
+        if isinstance(node, dict):
+            for child in node.get("children", []):
+                visit(child)
+            for children in node.get("slots", {}).values():
+                for child in children:
+                    visit(child)
+
+    visit(document.get("root", {}))
+    if not found:
+        raise AssertionError("gallery fixture has no ThemeScope node")
+    target.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def main():
     if len(sys.argv) != 3:
         raise SystemExit("usage: uia_designer_reader_loop.py DESIGNER DESIGN_FILE")
@@ -56,6 +78,7 @@ def main():
         UIA_InvokePatternId,
         UIA_NamePropertyId,
         UIA_ProcessIdPropertyId,
+        UIA_SelectionItemIsSelectedPropertyId,
         UIA_TreeItemControlTypeId,
         UIA_ValuePatternId,
     )
@@ -109,6 +132,18 @@ def main():
             element = elements.GetElement(index)
             name = element.CurrentName if element is not None else None
             if name is not None and name.startswith(prefix):
+                return element
+        return None
+
+    def find_contains(window, control_type, fragment):
+        elements = window.FindAll(
+            TreeScope_Descendants, condition(control_type))
+        if elements is None:
+            return None
+        for index in range(elements.Length):
+            element = elements.GetElement(index)
+            name = element.CurrentName if element is not None else None
+            if name is not None and fragment in name:
                 return element
         return None
 
@@ -201,6 +236,30 @@ def main():
         finally:
             close(reopened)
 
+        diagnostic_target = Path(directory) / "reader-diagnostic.design"
+        make_missing_reference_copy(source_path, diagnostic_target)
+        diagnostic_app, diagnostic_window = launch(diagnostic_target)
+        try:
+            diagnostic = eventually(
+                lambda: find_contains(
+                    diagnostic_window, UIA_ButtonControlTypeId,
+                    "reference.missing"))
+            focus_and_invoke(diagnostic)
+            source_tab = eventually(
+                lambda: find(diagnostic_window, UIA_ButtonControlTypeId, "Source"))
+            selected = source_tab.GetCurrentPropertyValue(
+                UIA_SelectionItemIsSelectedPropertyId)
+            assert bool(selected)
+            theme_item = eventually(
+                lambda: find_prefix(
+                    diagnostic_window, UIA_TreeItemControlTypeId, "ThemeScope  ["))
+            theme_selected = theme_item.GetCurrentPropertyValue(
+                UIA_SelectionItemIsSelectedPropertyId)
+            assert bool(theme_selected)
+            print("designer diagnostic locate: passed")
+        finally:
+            close(diagnostic_app)
+
     # Probe both reader processes after the protocol loop.  Their speech
     # output is intentionally left to the operator's record.
     try:
@@ -222,6 +281,7 @@ def main():
         "nvda_alive": nvda_alive,
         "narrator_alive": narrator_alive,
         "protocol_loop": ["designer_select_locate", "designer_edit_save"],
+        "diagnostic_locate": "reference.missing -> Source -> ThemeScope",
     }, ensure_ascii=False))
     print(
         "UIA Designer reader round-trip passed; speech evidence remains "

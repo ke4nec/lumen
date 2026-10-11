@@ -178,7 +178,8 @@
   探活仍不替代 Narrator/NVDA 语音人工记录及完整桌面出口。
 - 后续 review 收紧了 Windows 证据绑定：`check_platform_acceptance.py` 要求 Windows
   `record.json` 同时登记本次 workflow 的 `uia-reader-live.log` 与 `uia-designer-live.log`，
-  并校验两份日志各自唯一的 UIA JSON 协议摘要及完整协议集合；缺少 Designer 专用日志或
+  并校验两份日志各自唯一的 UIA JSON 协议摘要及完整协议集合；Designer 摘要还必须包含
+  `reference.missing -> Source -> ThemeScope` 的诊断定位结果。缺少 Designer 专用日志或
   使用其他运行的日志都会被拒绝。该规则只强化证据归属，不把协议回环、进程探活或自动
   摘要当作 Narrator/NVDA 语音通过。
 - `43be45f` 的 Windows、Linux、macOS 常规 CI 全部通过（Windows 7/7、Linux 7/7、macOS

@@ -434,6 +434,12 @@ class UiaNodeProvider final : public RefCounted,
             case UIA_IsDataValidForFormPropertyId:
                 *out = variantBool((node->flags & kSemanticsInvalid) == 0);
                 break;
+            case UIA_SelectionItemIsSelectedPropertyId:
+                // Selection is part of the Designer reader contract.  Keep
+                // the UIA property sourced from the same semantic flag that
+                // drives the visual selected state and AT-SPI provider.
+                *out = variantBool((node->flags & kSemanticsSelected) != 0);
+                break;
             case UIA_IsDialogPropertyId:
                 *out = variantBool(node->role == SemanticsRole::Dialog);
                 break;

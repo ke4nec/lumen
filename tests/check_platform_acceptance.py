@@ -132,11 +132,15 @@ def _read_protocol_json(path: Path) -> List[Dict]:
     return summaries
 
 
-def read_windows_reader_protocol_log(path: Path, expected: Tuple[str, ...]) -> None:
+def read_windows_reader_protocol_log(path: Path, expected: Tuple[str, ...],
+                                    diagnostic_required: bool = False) -> None:
     """Require a current Windows UIA reader loop protocol summary."""
     summary = _read_protocol_json(path)[0]
     if summary.get("platform") != "windows" or summary.get("protocol_loop") != list(expected):
         raise ValueError(f"{path.name} has incomplete Windows UIA protocol coverage")
+    if diagnostic_required and summary.get("diagnostic_locate") != (
+            "reference.missing -> Source -> ThemeScope"):
+        raise ValueError(f"{path.name} has no Designer diagnostic locate result")
 
 
 def validate_windows_reader_artifacts(record: dict, directory: Path) -> None:
@@ -150,6 +154,7 @@ def validate_windows_reader_artifacts(record: dict, directory: Path) -> None:
     read_windows_reader_protocol_log(
         evidence_log(record, directory, "uia-designer-live.log"),
         ("designer_select_locate", "designer_edit_save"),
+        diagnostic_required=True,
     )
 
 

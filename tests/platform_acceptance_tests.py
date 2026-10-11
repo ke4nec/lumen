@@ -52,7 +52,8 @@ class EvidenceTests(unittest.TestCase):
                     "designer reopen: passed\n"
                     + json.dumps({
                         "platform": "windows", "provider": "uia",
-                        "protocol_loop": ["designer_select_locate", "designer_edit_save"]
+                        "protocol_loop": ["designer_select_locate", "designer_edit_save"],
+                        "diagnostic_locate": "reference.missing -> Source -> ThemeScope"
                     }) + "\n"
             })
         record = dict(commit="a" * 40, platform=platform, operator="fixture",
@@ -270,6 +271,8 @@ class EvidenceTests(unittest.TestCase):
                             + ("[\"focus\", \"activate\", \"value\", \"edit\"]"
                                if name == "uia-reader-live.log" else
                                "[\"designer_select_locate\", \"designer_edit_save\"]")
+                            + ("\n,\"diagnostic_locate\": \"reference.missing -> Source -> ThemeScope\""
+                               if name == "uia-designer-live.log" else "")
                             + "}\n", encoding="utf-8")
                         artifact["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
                 for reader in READERS[platform]:
