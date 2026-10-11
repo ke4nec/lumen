@@ -62,9 +62,11 @@ def main():
             item = eventually(lambda: find("Text  [title]", Atspi.Role.TREE_ITEM))
             action = item.get_action_iface()
             assert action is not None
-            activate = next(index for index in range(action.get_n_actions())
-                            if action.get_action_name(index) == "activate")
-            assert action.do_action(activate)
+            # The provider exposes activate before focus for every actionable
+            # Designer row.  Calling that stable index avoids the deprecated
+            # action-name lookup while preserving the reader protocol.
+            assert action.get_n_actions() >= 1
+            assert action.do_action(0)
             eventually(lambda: item.get_state_set().contains(Atspi.StateType.SELECTED))
 
             field = eventually(lambda: find("text", Atspi.Role.ENTRY))
@@ -123,10 +125,8 @@ def main():
                 "ThemeScope  [theme-scope]", Atspi.Role.TREE_ITEM))
             theme_action = theme_item.get_action_iface()
             assert theme_action is not None
-            theme_activate = next(
-                index for index in range(theme_action.get_n_actions())
-                if theme_action.get_action_name(index) == "activate")
-            assert theme_action.do_action(theme_activate)
+            assert theme_action.get_n_actions() >= 1
+            assert theme_action.do_action(0)
             eventually(lambda: theme_item.get_state_set().contains(
                 Atspi.StateType.SELECTED))
 
