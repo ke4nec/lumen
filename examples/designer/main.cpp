@@ -190,6 +190,73 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
     accessibility::RecordingAccessibilityBridge accessibilityBridge;
     app.shell().setAccessibilityBridge(&accessibilityBridge);
     (void)app.shell().renderFrame();
+    const auto initialRevision = app.workbench().documentRevision();
+    const auto checkEnvironment = [&app, initialRevision] {
+        (void)app.shell().renderFrame();
+        if (app.workbench().dirty() ||
+            app.workbench().documentRevision() != initialRevision) {
+            return false;
+        }
+        constexpr const char* kLayoutKeys[] = {
+            "designer-outline-view", "designer-canvas",
+            "designer-properties-panel", "designer-diagnostics"};
+        const auto semantics = app.shell().buildSemanticsSnapshot();
+        for (const auto* key : kLayoutKeys) {
+            const auto* renderNode = core::findNodeByKey(app.shell().root(), key);
+            if (renderNode == nullptr || renderNode->size.width <= 0.0F ||
+                renderNode->size.height <= 0.0F) {
+                return false;
+            }
+            const auto* semantic = semantics.find(renderNode->identity);
+            if (semantic == nullptr || semantic->bounds.size.width <= 0.0F ||
+                semantic->bounds.size.height <= 0.0F) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const auto environmentFailure = [] {
+        std::fprintf(stderr,
+                     "designer acceptance DPI/theme environment check failed\n");
+        return 1;
+    };
+    if (!checkEnvironment()) return environmentFailure();
+    for (const auto view : {core::Size{1024.0F, 640.0F},
+                            core::Size{1600.0F, 900.0F}}) {
+        app.shell().setView(view);
+        if (!checkEnvironment()) return environmentFailure();
+    }
+    const auto& handlers = app.shell().handlers();
+    const auto activateEnvironment = [&](const char* handler) {
+        const auto found = handlers.find(handler);
+        if (found == handlers.end()) return false;
+        found->second();
+        return checkEnvironment();
+    };
+    if (!activateEnvironment("designer:dpi") ||
+        app.shell().styleContext().deviceScale != 1.25F ||
+        !activateEnvironment("designer:font-scale") ||
+        app.shell().accessibilitySettings().fontScale != 1.25F ||
+        !activateEnvironment("designer:contrast") ||
+        !app.shell().accessibilitySettings().highContrast) {
+        return environmentFailure();
+    }
+    // Restore the defaults before the document transaction so the acceptance
+    // frame and saved preview do not depend on the environment probe state.
+    if (!activateEnvironment("designer:dpi") ||
+        !activateEnvironment("designer:dpi") ||
+        !activateEnvironment("designer:font-scale") ||
+        !activateEnvironment("designer:font-scale") ||
+        !activateEnvironment("designer:contrast")) {
+        return environmentFailure();
+    }
+    app.shell().setView(core::Size{1280.0F, 800.0F});
+    if (!checkEnvironment() || app.shell().styleContext().deviceScale != 1.0F ||
+        app.shell().accessibilitySettings().fontScale != 1.0F ||
+        app.shell().accessibilitySettings().highContrast) {
+        return environmentFailure();
+    }
+    std::printf("designer_acceptance dpi_theme pass\n");
     const auto* textNode = findFirstTextNode(app.workbench().document()->root);
     if (textNode == nullptr) {
         std::fprintf(stderr, "designer acceptance fixture has no editable Text node\n");

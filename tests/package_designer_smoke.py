@@ -49,6 +49,12 @@ def main() -> None:
         "designer_acceptance edit_save_reopen pass"
     ) != 1:
         raise RuntimeError("Designer package acceptance marker is missing or duplicated")
+    if acceptance.stdout.splitlines().count(
+        "designer_acceptance dpi_theme pass"
+    ) != 1:
+        raise RuntimeError(
+            "Designer package DPI/theme acceptance marker is missing or duplicated"
+        )
 
     result = run_designer(
         "--headless", "--file", str(examples / "gallery.design")
