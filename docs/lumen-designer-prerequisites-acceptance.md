@@ -119,6 +119,13 @@
   [Linux](https://github.com/ke4nec/lumen/actions/runs/38102493037) 和
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38102493035) CI 全部通过，完整归属见
   [`3424331 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-3424331.json)。
+- `1677c57` 将 ThemeScope 引用事务接入 macOS 原生 NSAccessibility Designer 回环：真实
+  AX Row 激活 `ThemeScope  [theme-scope]`，通过 AXValue 写入 `light`→`dark`，并验证
+  Focus→SetValue、选择、dirty、undo/redo 和保存重开。[Windows](https://github.com/ke4nec/lumen/actions/runs/38105806495)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38105806450) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38105806458) CI 全部通过，Linux 本机
+  Debug CTest 1171/1171 通过，完整归属见
+  [`1677c57 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-1677c57.json)。
 
 ## 2. 阶段与 fixture 对照
 

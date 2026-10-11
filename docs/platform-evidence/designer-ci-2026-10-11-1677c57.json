@@ -1,0 +1,36 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T03:00:15Z",
+  "source_commit": "1677c57fc486a164b00abcc091280c534a35c51b",
+  "purpose": "macOS NSAccessibility live Designer coverage for ThemeScope reference editing, selection, focus/value transaction, undo/redo, and save/reopen",
+  "runs": {
+    "windows": {
+      "id": 38105806495,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38105806495",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully; Windows UIA Designer coverage remained green"
+    },
+    "linux": {
+      "id": 38105806450,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38105806450",
+      "jobs": "7/7 successful",
+      "a11y_job": "CPU completed successfully; Linux Designer accessibility coverage remained green"
+    },
+    "macos": {
+      "id": 38105806458,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38105806458",
+      "jobs": "6/6 successful",
+      "provider_job": "CPU completed successfully and executed the NSAccessibility Designer transaction test"
+    }
+  },
+  "local": {
+    "linux_debug_ctest": "1171/1171 passed (119.58s)",
+    "linux_debug_build": "passed",
+    "native_ax_designer_round_trip": "covered by macOS hosted CPU: AX Row activation, AXValue light->dark, Focus->SetValue, selection, dirty, undo/redo, save/reopen"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted CI and the AppKit provider test verify the AX provider/application protocol path but do not provide a signed-in macOS desktop acceptance record.",
+    "The evidence does not replace VoiceOver speech, real IME, cross-application clipboard, DPI, GPU recovery, clean-machine package, one-hour soak, or complete manual desktop acceptance."
+  ]
+}

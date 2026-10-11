@@ -1938,3 +1938,11 @@ job、macOS 六个 job均成功，最终摘要见
 平台验收脚本 17/17 通过。Windows 七个 job、Linux 七个 job、macOS 六个 job均成功，
 最终摘要见 [`3424331 CI 证据`](platform-evidence/designer-ci-2026-10-11-3424331.json)。
 该协议回环仍不替代 Orca 语音、真实 IME、跨应用剪贴板和完整 Linux 桌面现场记录。
+
+`1677c57` 将同一 ThemeScope 引用事务接入 macOS 原生 NSAccessibility Designer 回环：
+真实 AX Row 激活 `ThemeScope  [theme-scope]`，通过 AXValue 写入 `light`→`dark`，并验证
+AX TextField 的 Focus→SetValue 顺序、文档选择、dirty、undo/redo 与保存重开。Linux 本机
+Debug CTest 1171/1171（119.58s）与构建通过；macOS CPU job 实际编译并执行新的
+`[a11y][appkit][designer]` 用例。Windows 七个 job、Linux 七个 job、macOS 六个 job 均成功，
+最终摘要见 [`1677c57 CI 证据`](platform-evidence/designer-ci-2026-10-11-1677c57.json)。
+该 AX 协议回环仍不替代 VoiceOver 语音、真实 IME、跨应用剪贴板和完整 macOS 桌面现场记录。
