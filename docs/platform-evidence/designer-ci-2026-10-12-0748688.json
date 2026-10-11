@@ -1,0 +1,37 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T17:55:04Z",
+  "source_commit": "0748688",
+  "source_commit_full": "074868854d0686e5d6ae016db9fccbe7d0d6b149",
+  "purpose": "Stabilize the Linux AT-SPI Designer activation path by invoking the first advertised action directly for outline and ThemeScope tree items",
+  "runs": {
+    "windows": {
+      "id": 38160123874,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38160123874",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38160123843,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38160123843",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU, package, and Skia jobs completed successfully"
+    },
+    "macos": {
+      "id": 38160124001,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38160124001",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU and package jobs completed successfully"
+    }
+  },
+  "local": {
+    "platform_acceptance_checker": "17/17 passed",
+    "designer_atspi_live": "selection, Unicode text, ThemeScope light -> dark, document history, and save-reopen passed; structured protocol summary emitted",
+    "scope": "AT-SPI actions use the stable first advertised action index for Text and ThemeScope tree items; the protocol summary remains designer_select_locate/designer_edit_save"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The hosted AT-SPI fixture is a D-Bus provider loop and does not provide a signed-in desktop Orca speech observation.",
+    "Narrator/NVDA/Orca/VoiceOver speech, real IME, drag/drop, Inspector, DPI/theme, clean-machine packaging, and one-hour soak remain operator platform checks."
+  ]
+}

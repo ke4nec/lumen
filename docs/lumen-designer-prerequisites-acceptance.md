@@ -199,6 +199,14 @@
   `ThemeScope light -> dark`；这只增强 hosted/headless 证据的可绑定性，不把 Orca 语音、
   登录桌面或完整现场 `record.json` 标为完成。
 
+- `0748688` 将 Linux AT-SPI Designer fixture 的 Text 与 ThemeScope 激活改为调用首个已声明
+  action，绕开弃用的 action 名称查询；选中、Unicode 文本、ThemeScope `light -> dark`、
+  历史与保存重开继续通过，并输出结构化 `designer_select_locate`/`designer_edit_save`
+  摘要。Windows 7/7、Linux 7/7、macOS 6/6 hosted CI 全部通过，Windows `a11y-bridge`
+  通过；原始摘要见 [`0748688 CI 证据`](platform-evidence/designer-ci-2026-10-12-0748688.json)。
+  该 fixture 仍不提供 Orca 语音或登录桌面证据，完整 `record.json`、IME、Inspector、
+  DPI/主题、拖拽和 soak 继续 pending。
+
 
 ## 2. 阶段与 fixture 对照
 

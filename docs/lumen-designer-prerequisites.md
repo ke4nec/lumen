@@ -2033,3 +2033,12 @@ DPI/主题、拖拽或一小时 soak 现场记录。
 并保留 `ThemeScope light -> dark` 事务结果。它与 `tests/designer_atspi_live_tests.py` 的稳定
 D-Bus provider 回环一起作为 hosted/headless 证据，仍不把 Orca 语音、登录桌面或完整现场
 record 标为完成。
+
+`0748688` 修复 Linux AT-SPI Designer fixture 的激活路径：Text 与 ThemeScope TreeItem
+直接调用首个已声明 action，避免依赖已弃用的 action 名称查询。该 fixture 重新通过选中、
+Unicode 文本、ThemeScope `light -> dark`、历史与保存重开，并继续输出结构化
+`designer_select_locate`/`designer_edit_save` 摘要；Windows 7/7、Linux 7/7、macOS 6/6
+hosted CI 全部通过，Windows `a11y-bridge` 也成功，归属见
+[`0748688 CI 证据`](platform-evidence/designer-ci-2026-10-12-0748688.json)。这仍不替代
+真实登录桌面的 Orca/Narrator/NVDA/VoiceOver、IME、Inspector、DPI/主题、拖拽或一小时
+soak 现场记录。
