@@ -1984,3 +1984,11 @@ NVDA/Orca/VoiceOver、IME 和完整人工 Designer 现场记录。
 Windows 七个 job、Linux 七个 job、macOS 六个 job均成功，摘要见
 [`f96943b CI 证据`](platform-evidence/designer-ci-2026-10-11-f96943b.json)。结构自动回环
 仍不替代真实桌面的键盘/读屏操作、拖拽重排、IME、剪贴板和人工 Designer 现场记录。
+
+`80ca81c` 修复了结构编辑 UIA 回环的保存回读断言：结构命令先经 UIA `SetFocus` 离开
+属性编辑域，删除操作通过同一 UIA 客户端路径验证 undo/redo，保存重开改按稳定
+`DesignNodeId` 查找插入节点和 ThemeScope，避免结构增删后把末节点误当作主题节点。本机
+启用无障碍 Debug CTest 1173/1173、`[a11y]` 26 个用例/462 个断言、设计器 acceptance
+1/1、平台验收检查器 17/17 通过；Windows、Linux、macOS hosted CI 全部通过，摘要见
+[`80ca81c CI 证据`](platform-evidence/designer-ci-2026-10-11-80ca81c.json)。该修复仍不替代
+真实桌面的键盘/读屏操作、拖拽重排、IME、剪贴板和人工 Designer 现场记录。

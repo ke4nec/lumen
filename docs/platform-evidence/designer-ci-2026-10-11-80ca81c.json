@@ -1,0 +1,39 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T09:45:36Z",
+  "source_commit": "80ca81c",
+  "source_commit_full": "80ca81cee61886d6192a8965117de4d71e29bf1f",
+  "purpose": "Windows UIA Designer structural command focus, history, and stable-ID save/reopen round-trip",
+  "runs": {
+    "windows": {
+      "id": 38128294059,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38128294059",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully, including live UIA window smoke"
+    },
+    "linux": {
+      "id": 38128294025,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38128294025",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU completed successfully"
+    },
+    "macos": {
+      "id": 38128294020,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38128294020",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU completed successfully"
+    }
+  },
+  "local": {
+    "focused_a11y": "26 test cases, 462 assertions passed",
+    "designer_acceptance_ctest": "1/1 passed",
+    "full_debug_a11y_ctest": "1173/1173 passed",
+    "platform_acceptance_checker": "17/17 passed",
+    "acceptance_markers": "dpi_theme, theme_reference, structure_edit, edit_save_reopen, and window smoke markers are each unique and required"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The UIA client loop verifies structural command focus, history, and persistence through a real HWND, but does not provide a signed-in desktop keyboard, drag, or screen-reader acceptance record.",
+    "Real drag reorder, Narrator/NVDA/Orca/VoiceOver speech, IME, cross-application clipboard, inspector overlays, GPU recovery, clean-machine packaging, and one-hour soak remain separate manual platform checks."
+  ]
+}

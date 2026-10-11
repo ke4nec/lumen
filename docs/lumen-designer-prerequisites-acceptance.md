@@ -158,6 +158,15 @@
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38121299697) CI 全部通过，完整归属见
   [`f96943b CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-f96943b.json)。真实键盘/读屏、
   拖拽重排、IME、跨应用剪贴板和人工 Designer 现场仍按 §3 保持 pending。
+- `80ca81c` 修复结构编辑 UIA 回环的保存回读断言：结构命令先经 UIA `SetFocus` 离开
+  属性编辑域，删除操作验证 UIA 路径的 undo/redo，保存重开按稳定 `DesignNodeId` 查找
+  插入节点和 ThemeScope，避免节点增删后依赖子节点位置。本机启用无障碍 Debug CTest
+  1173/1173、`[a11y]` 26 个用例/462 个断言、设计器 acceptance 1/1、平台验收检查器
+  17/17 通过。[Windows](https://github.com/ke4nec/lumen/actions/runs/38128294059)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38128294025) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38128294020) CI 全部通过，完整归属见
+  [`80ca81c CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-80ca81c.json)。该修复
+  仍不替代真实键盘/读屏、拖拽重排、IME、跨应用剪贴板和人工 Designer 现场。
 
 ## 2. 阶段与 fixture 对照
 
