@@ -248,6 +248,7 @@
   UIA 树重新查询元素，减少通用读屏步骤在 Designer 专用回环前的偶发阻断；平台验收单测
   更新为 `22/22`。这仍只加强协议回环稳定性，不把 UIA 回执升级为 Narrator/NVDA 语音或
   完整桌面验收。
+  本轮三平台 hosted CI 均通过，运行归属见 [`2343f5d CI 证据`](platform-evidence/designer-ci-2026-10-12-2343f5d.json)。
 
 
 ## 2. 阶段与 fixture 对照

@@ -2090,3 +2090,5 @@ macOS `record.json`。
 UIA 元素，超时同样保留底层 COM 错误。这样 platform-acceptance 在进入 Designer 专用
 回环前不会被通用控件树重建偶发打断；对应本地平台验收单测为 `22/22`，仍不替代登录
 桌面的读屏语音和完整人工 record。
+三平台 hosted CI 的提交归属见
+[`2343f5d CI 证据`](platform-evidence/designer-ci-2026-10-12-2343f5d.json)。

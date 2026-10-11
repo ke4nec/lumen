@@ -1,0 +1,35 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T23:20:20Z",
+  "source_commit": "2343f5d",
+  "source_commit_full": "2343f5d7a7cd244e340d2dcb9416721a0bdaff40",
+  "purpose": "Apply transient UIA COM/tree rebuild retries to the generic Windows reader loop that runs before the Designer-specific loop",
+  "runs": {
+    "windows": {
+      "id": 38182513505,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38182513505",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38182513514,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38182513514",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38182513529,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38182513529",
+      "jobs": "6/6 successful"
+    }
+  },
+  "local": {
+    "platform_acceptance_tests": "22/22 passed",
+    "python_validation": "tests/uia_reader_loop.py, tests/uia_designer_reader_loop.py, and tests/platform_acceptance_tests.py compiled; git diff --check passed",
+    "scope": "Generic and Designer UIA loops retry transient semantic-tree COM failures and re-query current elements; this remains protocol evidence and does not provide Narrator/NVDA speech sign-off."
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The hosted UIA loops do not provide a signed-in desktop Narrator or NVDA speech observation.",
+    "Narrator/NVDA/Orca/VoiceOver speech, real IME, drag/drop, Inspector, DPI/theme, clean-machine packaging, and one-hour soak remain operator platform checks."
+  ]
+}
