@@ -2,12 +2,50 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
+#include "designer_app.h"
 #include "nsaccessibility_provider.h"
 
+using namespace lumen;
 using namespace lumen::accessibility;
+
+namespace {
+
+id findAccessibilityElement(id element, NSString* role, NSString* title) {
+    if (element == nil) return nil;
+    const id elementRole =
+        [element accessibilityAttributeValue:NSAccessibilityRoleAttribute];
+    const id elementTitle =
+        [element accessibilityAttributeValue:NSAccessibilityTitleAttribute];
+    if ((role == nil || [elementRole isEqual:role]) &&
+        (title == nil || [elementTitle isEqual:title])) {
+        return element;
+    }
+    NSArray* children =
+        [element accessibilityAttributeValue:NSAccessibilityChildrenAttribute];
+    for (id child in children) {
+        if (id found = findAccessibilityElement(child, role, title)) {
+            return found;
+        }
+    }
+    return nil;
+}
+
+id findWindowAccessibilityElement(NSWindow* window, NSString* role,
+                                  NSString* title) {
+    for (id root in [[window contentView] accessibilityChildren]) {
+        if (id found = findAccessibilityElement(root, role, title)) {
+            return found;
+        }
+    }
+    return nil;
+}
+
+}  // namespace
 
 // Provider design §7: native object identity, actions, coordinates and detach.
 TEST_CASE("a11y_appkit_preserves_identity_and_detaches_retained_elements", "[a11y][appkit]") {
@@ -144,6 +182,133 @@ TEST_CASE("a11y_appkit_text_value_establishes_focus_before_commit",
             CHECK(actions[0] == kActionFocus);
             CHECK(values[0].empty());
         }
+        [window close];
+        [window release];
+    }
+}
+
+// Designer prerequisites §4.18: the native AX client must drive the same
+// ThemeScope reference transaction as the desktop UI, including history and
+// persistence.
+TEST_CASE("a11y_appkit_drives_designer_theme_reference_transaction",
+          "[a11y][appkit][designer]") {
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        NSWindow* window = [[NSWindow alloc]
+            initWithContentRect:NSMakeRect(30, 40, 1280, 800)
+            styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered
+                defer:NO];
+        [window setReleasedWhenClosed:NO];
+        [window makeKeyAndOrderFront:nil];
+
+        const std::filesystem::path fixture =
+            std::filesystem::temp_directory_path() /
+            "lumen-designer-nsaccessibility.design";
+        const std::filesystem::path saved =
+            std::filesystem::temp_directory_path() /
+            "lumen-designer-nsaccessibility-saved.design";
+        std::error_code cleanup;
+        std::filesystem::remove(fixture, cleanup);
+        cleanup.clear();
+        std::filesystem::remove(saved, cleanup);
+        {
+            std::ofstream output(fixture, std::ios::binary | std::ios::trunc);
+            REQUIRE(output.good());
+            output << R"DESIGN({
+  "documentId": "nsaccessibility-designer",
+  "format": "lumen.design",
+  "pageName": "designer",
+  "schemaVersion": 1,
+  "root": {
+    "id": "1",
+    "type": "Column",
+    "properties": {"key": {"kind": "string", "value": "root"}},
+    "children": [
+      {"id": "2", "type": "Text", "properties": {
+        "key": {"kind": "string", "value": "title"},
+        "text": {"kind": "string", "value": "Title"}
+      }},
+      {"id": "3", "type": "ThemeScope", "properties": {
+        "key": {"kind": "string", "value": "theme-scope"}
+      }, "references": {"theme": "light"}}
+    ]
+  }
+})DESIGN";
+        }
+
+        designer_app::DesignerApp app;
+        app.attach();
+        REQUIRE(app.loadDesignFile(fixture.string()));
+        app.shell().setView(core::Size{1280.0F, 800.0F});
+
+        PlatformAccessibilityHost host;
+        host.nativeWindow = window;
+        host.applicationName = "Lumen Designer AX test";
+        host.dispatch = [&app](const std::string& id, std::uint32_t action,
+                               const std::string& value, float scrollDelta) {
+            return app.shell().performAccessibilityAction(id, action, value,
+                                                           scrollDelta);
+        };
+        host.activateWindow = [window] {
+            [window makeKeyAndOrderFront:nil];
+            return true;
+        };
+
+        std::string diagnostics;
+        {
+            nsaccessibility::NsAccessibilityBridge bridge(host, &diagnostics);
+            REQUIRE(bridge.available());
+            app.shell().setAccessibilityBridge(&bridge);
+            bridge.noteWindowActive(true);
+            (void)app.shell().renderFrame();
+
+            id themeItem = findWindowAccessibilityElement(
+                window, NSAccessibilityRowRole, @"ThemeScope  [theme-scope]");
+            REQUIRE(themeItem != nil);
+            [themeItem accessibilityPerformAction:NSAccessibilityPressAction];
+            (void)app.shell().renderFrame();
+
+            id field = findWindowAccessibilityElement(
+                window, NSAccessibilityTextFieldRole, @"theme reference");
+            REQUIRE(field != nil);
+            CHECK([[field accessibilityAttributeValue:NSAccessibilityValueAttribute]
+                       isEqualToString:@"light"]);
+            CHECK([field accessibilityIsAttributeSettable:
+                               NSAccessibilityValueAttribute]);
+            [field accessibilitySetValue:@"dark"
+                           forAttribute:NSAccessibilityValueAttribute];
+            (void)app.shell().renderFrame();
+
+            REQUIRE(app.workbench().document().has_value());
+            CHECK(app.workbench().document()->root.children.back().references.at(
+                      "theme") == "dark");
+            CHECK(app.workbench().selection().primary == 3);
+            CHECK(app.workbench().dirty());
+
+            REQUIRE(app.undo());
+            (void)app.shell().renderFrame();
+            CHECK(app.workbench().document()->root.children.back().references.at(
+                      "theme") == "light");
+            REQUIRE(app.redo());
+            (void)app.shell().renderFrame();
+            CHECK(app.workbench().document()->root.children.back().references.at(
+                      "theme") == "dark");
+
+            REQUIRE(app.saveDesignFile(saved.string()));
+        }
+
+        designer_app::DesignerApp reopened;
+        reopened.attach();
+        REQUIRE(reopened.loadDesignFile(saved.string()));
+        REQUIRE(reopened.workbench().document().has_value());
+        CHECK(reopened.workbench().document()->documentId ==
+              "nsaccessibility-designer");
+        CHECK(reopened.workbench().document()->root.children.back().references.at(
+                  "theme") == "dark");
+
+        std::error_code ignored;
+        std::filesystem::remove(fixture, ignored);
+        std::filesystem::remove(saved, ignored);
         [window close];
         [window release];
     }
