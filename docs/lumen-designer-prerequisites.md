@@ -1992,3 +1992,11 @@ Windows 七个 job、Linux 七个 job、macOS 六个 job均成功，摘要见
 1/1、平台验收检查器 17/17 通过；Windows、Linux、macOS hosted CI 全部通过，摘要见
 [`80ca81c CI 证据`](platform-evidence/designer-ci-2026-10-11-80ca81c.json)。该修复仍不替代
 真实桌面的键盘/读屏操作、拖拽重排、IME、剪贴板和人工 Designer 现场记录。
+
+Windows 读屏现场回环现在补齐了 Designer 专用协议入口：`tests/uia_designer_reader_loop.py`
+在临时 `.design` 副本上启动真实 `lumen-designer`，通过 UIA TreeItem/Edit/Button 完成
+大纲选择、Unicode 属性编辑、插入/复制/上移/下移/删除、保存和关闭重开回读，并输出
+`designer_select_locate`/`designer_edit_save` 结果；`.github/workflows/platform-acceptance.yml`
+的 Windows job 与通用 `uia_reader_loop.py` 一起执行并归档日志。该入口补齐协议覆盖，仍
+不把 UIA 回执、NVDA/讲述人进程探活或自动播报摘要当作语音人工验收；完整 record、IME、
+拖拽、Inspector、DPI/主题和 soak 仍按平台出口保持 pending。

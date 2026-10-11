@@ -250,6 +250,15 @@ jobs:
       - name: UIA live smoke
         shell: pwsh
         run: ctest --test-dir build-live --output-on-failure -C Release -R a11y
+      - name: UIA reader protocol loops
+        shell: pwsh
+        run: |
+          $gallery = Get-ChildItem build-live -Recurse -Filter lumen-gallery.exe | Select-Object -First 1
+          $designer = Get-ChildItem build-live -Recurse -Filter lumen-designer.exe | Select-Object -First 1
+          python tests/uia_reader_loop.py $gallery.FullName 2>&1 | Tee-Object uia-reader-live.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/uia_designer_reader_loop.py $designer.FullName "$env:GITHUB_WORKSPACE/examples/designer/gallery.design" 2>&1 | Tee-Object uia-designer-live.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: One-hour multi-window resize pressure and recovery soak
         shell: pwsh
         run: |
@@ -265,6 +274,8 @@ jobs:
           name: platform-acceptance-windows
           path: |
             windows-live.json
+            uia-reader-live.log
+            uia-designer-live.log
             frame-allocator-live.log
             designer-live.log
             soak.json

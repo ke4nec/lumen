@@ -79,7 +79,7 @@ AT-SPI live 冒烟互补，面向读屏器在场驱动；调用方式与前置�
 | 平台 | 脚本 | 读屏器证据 |
 | --- | --- | --- |
 | Linux（X11） | `tests/atspi_orca_loop.py` | Orca debug 日志（专属 script + 事件消费 + SPEECH OUTPUT） |
-| Windows | `tests/uia_reader_loop.py` | NVDA controller client 探活 + 摘要播报；讲述人进程探活；协议回环含文本 Edit ValuePattern；语音人工记录 |
+| Windows | `tests/uia_reader_loop.py`、`tests/uia_designer_reader_loop.py` | 通用控件与 Designer 专用 UIA 协议回环；NVDA controller client/讲述人进程探活；语音人工记录 |
 | macOS | `tests/voiceover_loop.py` | VoiceOver 进程探活；协议回环含 AXTextField 文本编辑；语音人工记录 |
 
 工作流不再接受 `confirmed` 自报。配置仓库变量 `LUMEN_ACCEPTANCE_ROOT` 为
@@ -116,6 +116,13 @@ Linux/macOS 常规 CPU CI 启用原生桥，其他默认 OFF 构建继续覆盖�
 dirty/保存状态和预览反馈）。Windows 的 Narrator 和 NVDA 分别记录，settings/Gallery
 的同类回环不能代替 Designer 的结果。`inspector_tree_overlay` 等人工项没有自动
 成功标记；检查器验证记录完整性，实际通过仍由验收人观察并签署。
+
+Windows 的 `uia_designer_reader_loop.py` 会在临时 `.design` 副本上启动真实
+`lumen-designer`，通过 UIA TreeItem/Edit/Button 完成 Designer 大纲选择、属性 Unicode
+编辑、插入/复制/上移/下移/删除、保存和关闭重开回读，并输出
+`designer_select_locate`/`designer_edit_save` 协议结果。它与 `uia_reader_loop.py` 一起由
+Windows 现场 workflow 执行；UIA 协议和读屏器进程探活不等于 Narrator/NVDA 的语音通过，
+语音内容仍须由验收人观察并写入本次提交的 `record.json`。
 
 每次验收应保留 workflow run URL、artifact JSON、OS/桌面环境、显示服务器、
 GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 headless job 不得更新
