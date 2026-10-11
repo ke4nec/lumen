@@ -9,6 +9,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstdlib>
 #include <chrono>
 #include <filesystem>
@@ -1162,9 +1163,9 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     CHECK(app.workbench().selection().primary == themeId);
 
     // Exercise structural command buttons through the same UIA client path.
-    // Widen the headless layout so the buttons remain visible instead of
-    // moving into the toolbar overflow menu.
-    app.shell().setView(core::Size{2400.0F, 800.0F});
+    // Widen the headless viewport so the complete command strip stays in the
+    // rendered surface while the client resolves its controls by semantics.
+    app.shell().setView(core::Size{3200.0F, 800.0F});
     (void)app.shell().renderFrame();
     const auto invokeButton = [&](const wchar_t* name) {
         auto button = findByNameAndType(name, UIA_ButtonControlTypeId);
@@ -1186,6 +1187,12 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     REQUIRE(rootInvoke->Invoke() == S_OK);
     (void)app.shell().renderFrame();
     REQUIRE(app.workbench().document().has_value());
+    // SetFocus follows the same UIA -> semantics -> InteractionController
+    // route as a keyboard navigation event.  It also commits the property
+    // editor before structural commands are dispatched.
+    REQUIRE(rootItem->SetFocus() == S_OK);
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.shell().controller().wantsTextInput());
     const auto structuralChildCount =
         app.workbench().document()->root.children.size();
     invokeButton(L"Add Text");
@@ -1224,6 +1231,19 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     CHECK(app.workbench().document()->root.children.size() ==
           structuralChildCount + 1);
     CHECK(indexOf(duplicateId) == app.workbench().document()->root.children.size());
+    REQUIRE(app.undo());
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.size() ==
+          structuralChildCount + 2);
+    CHECK(indexOf(duplicateId) <
+          app.workbench().document()->root.children.size());
+    REQUIRE(app.redo());
+    (void)app.shell().renderFrame();
+    REQUIRE(app.workbench().document().has_value());
+    CHECK(app.workbench().document()->root.children.size() ==
+          structuralChildCount + 1);
+    CHECK(indexOf(duplicateId) == app.workbench().document()->root.children.size());
     CHECK(app.workbench().diagnostics().empty());
 
     const auto path = std::filesystem::temp_directory_path() /
@@ -1248,9 +1268,21 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
                                     .value) == "重命名🙂e\xCC\x81");
     CHECK(reopened.workbench().document()->root.children.size() ==
           structuralChildCount + 1);
-    CHECK(reopened.workbench().document()->root.children.back().id == insertedId);
-    CHECK(reopened.workbench().document()->root.children.back().references.at(
-              "theme") == "dark");
+    const auto findReopenedChild = [&](dsl::DesignNodeId id)
+        -> const dsl::DesignNode* {
+        const auto& children = reopened.workbench().document()->root.children;
+        const auto found = std::find_if(
+            children.begin(), children.end(),
+            [id](const dsl::DesignNode& node) { return node.id == id; });
+        return found == children.end() ? nullptr : &*found;
+    };
+    const auto* reopenedInserted = findReopenedChild(insertedId);
+    REQUIRE(reopenedInserted != nullptr);
+    CHECK(reopenedInserted->type == "Text");
+    const auto* reopenedTheme = findReopenedChild(themeId);
+    REQUIRE(reopenedTheme != nullptr);
+    REQUIRE(reopenedTheme->references.contains("theme"));
+    CHECK(reopenedTheme->references.at("theme") == "dark");
     std::error_code cleanupError;
     std::filesystem::remove(path, cleanupError);
     std::filesystem::remove(path.string() + ".bak", cleanupError);
