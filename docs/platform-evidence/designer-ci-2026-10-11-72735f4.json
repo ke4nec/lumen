@@ -1,0 +1,38 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T11:13:16Z",
+  "source_commit": "72735f4",
+  "source_commit_full": "72735f4bd6f956189e87bdbf1d406270c7610d7b",
+  "purpose": "Windows UIA Designer reader protocol loop and platform-acceptance workflow integration",
+  "runs": {
+    "windows": {
+      "id": 38133455731,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38133455731",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully, including live UIA window smoke"
+    },
+    "linux": {
+      "id": 38133455724,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38133455724",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU completed successfully"
+    },
+    "macos": {
+      "id": 38133455736,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38133455736",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU completed successfully"
+    }
+  },
+  "local": {
+    "protocol_script_ast": "tests/uia_designer_reader_loop.py parsed successfully",
+    "platform_acceptance_checker": "17/17 passed",
+    "yaml_parse": ".github/workflows/platform-acceptance.yml parsed successfully",
+    "protocol_scope": "Designer selection/edit, structural commands, save/reopen, and reader liveness probe"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The script drives a real UIA Designer window and reports NVDA/Narrator process liveness, but does not provide a signed-in desktop speech observation.",
+    "Narrator/NVDA speech, real IME, drag/drop, Inspector, DPI/主题, clean-machine packaging, and one-hour soak remain operator platform checks."
+  ]
+}

@@ -2000,3 +2000,9 @@ Windows 读屏现场回环现在补齐了 Designer 专用协议入口：`tests/u
 的 Windows job 与通用 `uia_reader_loop.py` 一起执行并归档日志。该入口补齐协议覆盖，仍
 不把 UIA 回执、NVDA/讲述人进程探活或自动播报摘要当作语音人工验收；完整 record、IME、
 拖拽、Inspector、DPI/主题和 soak 仍按平台出口保持 pending。
+
+`72735f4` 的 Windows、Linux、macOS 常规 CI 全部通过，Windows `a11y-bridge` 仍包含 live
+UIA smoke；平台验收检查器 17/17、Designer UIA 脚本 AST 和 platform-acceptance YAML 解析均
+通过，运行归属见 [`72735f4 CI 证据`](platform-evidence/designer-ci-2026-10-11-72735f4.json)。
+这只证明新入口可追溯且能在登录 Windows 会话中执行，尚未产生本次提交的 Narrator/NVDA
+语音 record，也不改变 Inspector、IME、DPI/主题、拖拽和 soak 的 pending 状态。

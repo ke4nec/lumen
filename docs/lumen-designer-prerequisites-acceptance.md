@@ -167,6 +167,15 @@
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38128294020) CI 全部通过，完整归属见
   [`80ca81c CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-80ca81c.json)。该修复
   仍不替代真实键盘/读屏、拖拽重排、IME、跨应用剪贴板和人工 Designer 现场。
+- `72735f4` 补齐 Windows 现场读屏协议入口：新增 `uia_designer_reader_loop.py`，在临时
+  `.design` 副本上通过真实 UIA TreeItem/Edit/Button 完成 Designer 选择、Unicode 属性编辑、
+  插入/复制/上移/下移/删除、保存和重开回读；Windows platform-acceptance job 与通用
+  `uia_reader_loop.py` 一起执行并归档日志。脚本 AST、YAML 和平台验收检查器 17/17 通过；
+  [Windows](https://github.com/ke4nec/lumen/actions/runs/38133455731)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38133455724) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38133455736) 常规 CI 全部通过，完整归属见
+  [`72735f4 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-72735f4.json)。UIA 协议和进程
+  探活仍不替代 Narrator/NVDA 语音人工记录及完整桌面出口。
 
 ## 2. 阶段与 fixture 对照
 
