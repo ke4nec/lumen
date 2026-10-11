@@ -214,6 +214,16 @@
   [`36d72f5 阶段复查`](platform-evidence/designer-review-2026-10-12-36d72f5.json)，完整
   读屏、IME、Inspector、DPI/主题、拖拽和 soak 仍 pending。
 
+- `f8ac4a8` 将 Linux X11 生产窗口 AT-SPI 探针收敛为可重复门禁：新增最小顶层
+  `tests/fixtures/designer_atspi_window.design`，`tests/designer_atspi_window_live_tests.py`
+  直接通过 AT-SPI D-Bus `Accessible`、`Action`、`Text` 和 `EditableText` 接口启动真实
+  `lumen-designer`，完成 Text 选择、Unicode 编辑、ThemeScope `light -> dark`、Save 和
+  JSON 保存回读。Linux workflow 增加 `python3-dbus` 依赖并执行窗口回环；Windows 7/7
+  （含 `a11y-bridge`）、Linux 7/7、macOS 6/6 hosted CI 全部通过，证据见
+  [`f8ac4a8 CI 原始摘要`](platform-evidence/designer-ci-2026-10-12-f8ac4a8.json)。该协议
+  回环仍不等价于 Orca 语音或登录桌面人工验收，真实 IME、Inspector、DPI/主题、拖拽、
+  干净机器包和一小时 soak 继续 pending。
+
 
 ## 2. 阶段与 fixture 对照
 

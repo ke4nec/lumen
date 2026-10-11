@@ -1,0 +1,38 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T19:49:12Z",
+  "source_commit": "f8ac4a8",
+  "source_commit_full": "f8ac4a84a46fdc5c3c0d12063efcb34d36899b0f",
+  "purpose": "Add a production Linux X11 Designer AT-SPI D-Bus window loop with a stable top-level fixture, while retaining the headless provider loop",
+  "runs": {
+    "windows": {
+      "id": 38168021717,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38168021717",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38168021733,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38168021733",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU completed with the production X11 AT-SPI window loop"
+    },
+    "macos": {
+      "id": 38168021719,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38168021719",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU and package jobs completed successfully"
+    }
+  },
+  "local": {
+    "platform_acceptance_checker": "17/17 passed",
+    "designer_atspi_window_live": "production Lumen Designer window registered over X11; Text selection, Unicode text, ThemeScope light -> dark, save and JSON re-read passed",
+    "debug_ctest": "1172/1172 passed before this test-only/workflow change",
+    "scope": "tests/designer_atspi_window_live_tests.py uses direct org.a11y.atspi D-Bus methods; it is protocol evidence and does not claim Orca speech or signed-in desktop acceptance"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The production window loop does not provide a signed-in desktop Orca speech observation.",
+    "Narrator/NVDA/Orca/VoiceOver speech, real IME, drag/drop, Inspector, DPI/theme, clean-machine packaging, and one-hour soak remain operator platform checks."
+  ]
+}

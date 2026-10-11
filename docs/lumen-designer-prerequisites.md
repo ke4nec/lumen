@@ -2050,3 +2050,14 @@ soak 现场记录。
 [`36d72f5 阶段复查`](platform-evidence/designer-review-2026-10-12-36d72f5.json)。
 P1–P5/D3 的 headless 出口保持通过，下一项仍是稳定生产窗口的读屏/输入法验收，不能用
 该复查替代 Orca、Narrator、NVDA、VoiceOver 或完整 `record.json`。
+
+`f8ac4a8` 将该生产窗口观察收敛为 Linux X11 自动回环：新增最小顶层
+`tests/fixtures/designer_atspi_window.design`，并让
+`tests/designer_atspi_window_live_tests.py` 直接通过 `org.a11y.atspi` D-Bus
+`Accessible`/`Action`/`Text`/`EditableText` 接口驱动真正的 `lumen-designer` 窗口，完成
+Text 选中、Unicode 文本、ThemeScope `light -> dark`、Save 与 JSON 保存回读。这样避开
+语义树重建期间 pyatspi 包装对象的瞬时失效；Linux CPU workflow 已安装 `python3-dbus`
+并执行该窗口门禁。Windows 7/7（含 `a11y-bridge`）、Linux 7/7、macOS 6/6 hosted CI
+全部成功，证据见 [`f8ac4a8 CI`](platform-evidence/designer-ci-2026-10-12-f8ac4a8.json)。
+该回环证明原生 AT-SPI 协议和生产窗口路径，不替代 Orca 语音、登录桌面、真实 IME、
+Inspector、DPI/主题、拖拽或一小时 soak 的人工 `record.json`。
