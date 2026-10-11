@@ -149,6 +149,15 @@
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38117565110) CI 全部通过，完整归属见
   [`ac910bd CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-ac910bd.json)。真实显示器
   DPI/resize、画布命中和读屏人工验收仍按 §3 保持 pending。
+- `f96943b` 将生产回环补齐到结构编辑：真实命令路径插入 Text、复制、粘贴、上移、下移、
+  删除，核对选区、稳定 ID、revision/dirty、节点计数和诊断，再保存重开确认新增节点保持、
+  删除节点消失、DocumentId 不变；窗口日志新增唯一 `structure_edit pass` marker，并与
+  其他四个 Designer marker 一起校验。本机完整 Debug CTest 1172/1172、平台验收检查器
+  17/17 通过。[Windows](https://github.com/ke4nec/lumen/actions/runs/38121299685)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38121299683) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38121299697) CI 全部通过，完整归属见
+  [`f96943b CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-f96943b.json)。真实键盘/读屏、
+  拖拽重排、IME、跨应用剪贴板和人工 Designer 现场仍按 §3 保持 pending。
 
 ## 2. 阶段与 fixture 对照
 

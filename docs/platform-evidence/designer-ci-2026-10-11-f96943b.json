@@ -1,0 +1,39 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T07:50:53Z",
+  "source_commit": "f96943b",
+  "source_commit_full": "f96943b6cffc1246d2997d688f51be0654dcd946",
+  "purpose": "Production DesignerApp structural edit, reorder, delete, save, and reopen round-trip",
+  "runs": {
+    "windows": {
+      "id": 38121299685,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38121299685",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38121299683,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38121299683",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU completed successfully"
+    },
+    "macos": {
+      "id": 38121299697,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38121299697",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU completed successfully"
+    }
+  },
+  "local": {
+    "designer_acceptance": "passed: field exit, insert, duplicate, copy/paste, move up/down, delete, stable IDs, diagnostics, save/reopen",
+    "designer_acceptance_ctest": "1/1 passed",
+    "full_debug_ctest": "1172/1172 passed (124.59s)",
+    "platform_acceptance_checker": "17/17 passed",
+    "acceptance_markers": "dpi_theme, theme_reference, structure_edit, edit_save_reopen, and window smoke markers are each unique and required"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The automated structural round-trip verifies production command transactions and persistence but does not provide a signed-in desktop keyboard, drag, or screen-reader acceptance record.",
+    "Real drag reorder, Narrator/NVDA/Orca/VoiceOver speech, IME, cross-application clipboard, inspector overlays, GPU recovery, clean-machine packaging, and one-hour soak remain separate manual platform checks."
+  ]
+}

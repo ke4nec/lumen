@@ -1974,3 +1974,13 @@ Linux 七个 job、macOS 六个 job均成功，Windows `a11y-bridge` 也成功�
 [`ac910bd CI 证据`](platform-evidence/designer-ci-2026-10-11-ac910bd.json)。该自动检查
 增强了 Windows 门禁的状态隔离证据，仍不替代真实显示器 DPI/resize、画布命中、Narrator/
 NVDA/Orca/VoiceOver、IME 和完整人工 Designer 现场记录。
+
+`f96943b` 将生产验收扩展到结构编辑保存回环：离开声明字段编辑域后，通过 Designer
+命令路径在真实 gallery 文档中插入 Text、复制、粘贴、上移、下移并删除节点，逐步核对
+文档 revision、选区、稳定新 ID、节点计数和无诊断状态；保存临时文件后重开，确认插入与
+复制节点 ID/声明保留、已删除节点不复现且文档身份不变。日志新增并由检查器强制唯一的
+`designer_acceptance structure_edit pass`，与 DPI、ThemeScope 和属性编辑 marker 一起
+作为窗口日志门禁。本机 Debug CTest 1172/1172（124.59s）、平台验收检查器 17/17 通过；
+Windows 七个 job、Linux 七个 job、macOS 六个 job均成功，摘要见
+[`f96943b CI 证据`](platform-evidence/designer-ci-2026-10-11-f96943b.json)。结构自动回环
+仍不替代真实桌面的键盘/读屏操作、拖拽重排、IME、剪贴板和人工 Designer 现场记录。
