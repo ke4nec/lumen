@@ -133,6 +133,13 @@
   [Linux](https://github.com/ke4nec/lumen/actions/runs/38109953528) 和
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38109953443) CI 全部通过，完整归属见
   [`f0cdd34 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-f0cdd34.json)。
+- `30b2d90` 将生产回环扩展到 ThemeScope 命名引用：通过语义 Focus/SetValue 写入
+  `light`/`dark`，验证实际预览主题、引用 undo/redo、保存重开和稳定节点 ID；日志强制唯一
+  `theme_reference pass` 与 `edit_save_reopen pass` marker。本机完整 Debug CTest 1172/1172、
+  平台验收检查器 17/17 通过。[Windows](https://github.com/ke4nec/lumen/actions/runs/38112946355)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38112946315) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38112946344) CI 全部通过，完整归属见
+  [`30b2d90 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-30b2d90.json)。
 
 ## 2. 阶段与 fixture 对照
 

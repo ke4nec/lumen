@@ -1,0 +1,38 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T05:05:12Z",
+  "source_commit": "30b2d90c6f5d71bc5d82c8ed0569ae97ad0ec926",
+  "purpose": "Production DesignerApp ThemeScope reference round-trip through semantic actions, preview theme replacement, undo/redo, and save/reopen",
+  "runs": {
+    "windows": {
+      "id": 38112946355,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38112946355",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38112946315,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38112946315",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU completed successfully"
+    },
+    "macos": {
+      "id": 38112946344,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38112946344",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU completed successfully"
+    }
+  },
+  "local": {
+    "designer_acceptance": "passed: semantic ThemeScope selection, light/dark reference SetValue, light/dark preview theme, undo/redo, save/reopen",
+    "designer_acceptance_ctest": "1/1 passed",
+    "full_debug_ctest": "1172/1172 passed (120.03s)",
+    "platform_acceptance_checker": "17/17 passed",
+    "acceptance_markers": "theme_reference pass and edit_save_reopen pass are each unique and required"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The automated ThemeScope round-trip verifies the production semantic transaction and preview replacement but does not provide a signed-in desktop acceptance record.",
+    "VoiceOver/Narrator/NVDA/Orca speech, real IME, cross-application clipboard, DPI observation, inspector overlays, GPU recovery, and one-hour soak remain separate manual platform checks."
+  ]
+}

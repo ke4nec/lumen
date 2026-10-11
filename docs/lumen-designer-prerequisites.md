@@ -1955,3 +1955,11 @@ Debug CTest 1171/1171（119.58s）与构建通过；macOS CPU job 实际编译�
 本机完整 Debug CTest 1172/1172、平台验收检查器 17/17 通过；Windows 七个 job、Linux
 七个 job、macOS 六个 job均成功，最终摘要见 [`f0cdd34 CI 证据`](platform-evidence/designer-ci-2026-10-11-f0cdd34.json)。
 自动回环仍不替代登录桌面的读屏、IME、DPI、Inspector 和完整人工现场记录。
+
+`30b2d90` 将该生产回环扩展到命名引用：真实选择 ThemeScope 节点后，通过语义
+Focus/SetValue 将 `theme` 写入 `light` 与 `dark`，校验离线预览的实际 Theme 页面背景色、
+引用 undo/redo，以及保存重开后的 ThemeScope 节点 ID 和 `theme=dark`。日志新增并强制唯一
+`designer_acceptance theme_reference pass` marker；本机完整 Debug CTest 1172/1172、平台
+验收检查器 17/17 通过，Windows 七个 job、Linux 七个 job、macOS 六个 job均成功，最终摘要见
+[`30b2d90 CI 证据`](platform-evidence/designer-ci-2026-10-11-30b2d90.json)。该自动回环仍不替代
+三桌面登录环境中的读屏、IME、DPI 和人工 Designer 现场记录。
