@@ -31,6 +31,7 @@ class EvidenceTests(unittest.TestCase):
         contents = {"trace.txt": "unit fixture only",
                     "frame-allocator-live.log": json.dumps(report) + "\nframe_allocator_smoke pass\n",
                     "designer-live.log":
+                        "designer_acceptance theme_reference pass\n"
                         "designer_acceptance edit_save_reopen pass\n"
                         "designer_window_smoke pass\n"}
         record = dict(commit="a" * 40, platform=platform, operator="fixture",
@@ -275,6 +276,10 @@ class EvidenceTests(unittest.TestCase):
             for content in ("libEGL warning\n", "designer_window_smoke pass-invalid\n",
                             "warning: designer_window_smoke pass\n",
                             "designer_window_smoke pass\n",
+                            "designer_acceptance theme_reference pass\n"
+                            "designer_acceptance edit_save_reopen pass\n"
+                            "designer_window_smoke pass\n"
+                            "designer_acceptance theme_reference pass\n",
                             "designer_acceptance edit_save_reopen pass\n"
                             "designer_window_smoke pass\n"
                             "designer_window_smoke pass\n",
@@ -284,6 +289,7 @@ class EvidenceTests(unittest.TestCase):
                     validate_designer_window_artifact(record, root)
             log.write_text(
                 "libEGL warning\r\n"
+                "designer_acceptance theme_reference pass\r\n"
                 "designer_acceptance edit_save_reopen pass\r\n"
                 "designer_window_smoke pass\r\n",
                 encoding="utf-8")

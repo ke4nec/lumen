@@ -15,6 +15,7 @@
 #include "file_watcher.h"
 #include "lumen/accessibility/bridge.h"
 #include "lumen/platform/sdl3_host.h"
+#include "lumen/style/theme.h"
 
 namespace {
 
@@ -123,6 +124,58 @@ const lumen::dsl::DesignNode* findFirstTextNode(
     return nullptr;
 }
 
+const lumen::dsl::DesignNode* findFirstNodeOfType(
+    const lumen::dsl::DesignNode& node, std::string_view type) {
+    if (node.type == type) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = findFirstNodeOfType(child, type);
+            found != nullptr) {
+            return found;
+        }
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            if (const auto* found = findFirstNodeOfType(child, type);
+                found != nullptr) {
+                return found;
+            }
+        }
+    }
+    return nullptr;
+}
+
+const lumen::dsl::DesignNode* findNodeById(
+    const lumen::dsl::DesignNode& node, lumen::dsl::DesignNodeId id) {
+    if (node.id == id) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = findNodeById(child, id); found != nullptr) {
+            return found;
+        }
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            if (const auto* found = findNodeById(child, id); found != nullptr) {
+                return found;
+            }
+        }
+    }
+    return nullptr;
+}
+
+const lumen::core::Widget* findFirstWidgetOfType(
+    const lumen::core::Widget& widget, lumen::core::WidgetType type) {
+    if (widget.type == type) return &widget;
+    for (const auto& child : widget.children) {
+        if (const auto* found = findFirstWidgetOfType(child, type);
+            found != nullptr) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 int runAcceptance(lumen::designer_app::DesignerApp& app,
                   bool requestedFileLoaded, const std::string& filename) {
     using namespace lumen;
@@ -204,6 +257,94 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
         return 1;
     }
 
+    const auto* themeNode =
+        findFirstNodeOfType(app.workbench().document()->root, "ThemeScope");
+    if (themeNode == nullptr) {
+        std::fprintf(stderr, "designer acceptance fixture has no ThemeScope node\n");
+        return 1;
+    }
+    const auto themeId = themeNode->id;
+    const auto themeSelect = app.shell().handlers().find(
+        "designer:select:" + std::to_string(themeId));
+    if (themeSelect == app.shell().handlers().end()) {
+        std::fprintf(stderr, "designer acceptance cannot select ThemeScope %llu\n",
+                     static_cast<unsigned long long>(themeId));
+        return 1;
+    }
+    themeSelect->second();
+    (void)app.shell().renderFrame();
+    const std::string themeFieldKey =
+        "designer-reference-field:" + std::to_string(themeId) + ":theme";
+    if (core::findNodeByKey(app.shell().root(), themeFieldKey) == nullptr) {
+        std::fprintf(stderr, "designer acceptance ThemeScope reference field is missing\n");
+        return 1;
+    }
+    const auto setTheme = [&](std::string value) {
+        const auto* field = core::findNodeByKey(app.shell().root(), themeFieldKey);
+        if (field == nullptr) return false;
+        return app.shell().performAccessibilityAction(
+                   field->identity, accessibility::kActionFocus) ==
+                   accessibility::SemanticsActionStatus::Handled &&
+               app.shell().performAccessibilityAction(
+                   field->identity, accessibility::kActionSetValue, value) ==
+                   accessibility::SemanticsActionStatus::Handled;
+    };
+    if (!setTheme("light")) {
+        std::fprintf(stderr, "designer acceptance light ThemeScope edit was rejected\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    const auto themeReference = [&app, themeId] {
+        const auto* node = findNodeById(app.workbench().document()->root, themeId);
+        if (node == nullptr) return std::string{};
+        const auto reference = node->references.find("theme");
+        return reference == node->references.end() ? std::string{}
+                                                   : reference->second;
+    };
+    if (themeReference() != "light" || !app.workbench().diagnostics().empty()) {
+        std::fprintf(stderr, "designer acceptance light ThemeScope edit did not commit\n");
+        return 1;
+    }
+    const auto* lightPreview = findFirstWidgetOfType(
+        app.workbench().frame().widget(), core::WidgetType::ThemeScope);
+    if (lightPreview == nullptr || lightPreview->themeOverride == nullptr ||
+        static_cast<const style::Theme*>(lightPreview->themeOverride)->colors.pageBackground !=
+            style::Theme::light().colors.pageBackground) {
+        std::fprintf(stderr, "designer acceptance light ThemeScope preview is invalid\n");
+        return 1;
+    }
+    if (!setTheme("dark")) {
+        std::fprintf(stderr, "designer acceptance dark ThemeScope edit was rejected\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (themeReference() != "dark" || !app.workbench().diagnostics().empty()) {
+        std::fprintf(stderr, "designer acceptance dark ThemeScope edit did not commit\n");
+        return 1;
+    }
+    const auto* darkPreview = findFirstWidgetOfType(
+        app.workbench().frame().widget(), core::WidgetType::ThemeScope);
+    if (darkPreview == nullptr || darkPreview->themeOverride == nullptr ||
+        static_cast<const style::Theme*>(darkPreview->themeOverride)->colors.pageBackground !=
+            style::Theme::dark().colors.pageBackground) {
+        std::fprintf(stderr, "designer acceptance dark ThemeScope preview is invalid\n");
+        return 1;
+    }
+    if (!app.undo() || themeReference() != "light") {
+        std::fprintf(stderr, "designer acceptance ThemeScope undo failed\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (!app.redo()) {
+        std::fprintf(stderr, "designer acceptance ThemeScope undo/redo failed\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    if (themeReference() != "dark") {
+        std::fprintf(stderr, "designer acceptance ThemeScope redo failed\n");
+        return 1;
+    }
+
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const std::filesystem::path saved =
         std::filesystem::temp_directory_path() /
@@ -226,6 +367,7 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
     }
     const auto& reopenedDocument = *reopened.workbench().document();
     const auto* reopenedText = findFirstTextNode(reopenedDocument.root);
+    const auto* reopenedTheme = findNodeById(reopenedDocument.root, themeId);
     std::string reopenedValue;
     if (reopenedText != nullptr) {
         const auto value = reopenedText->properties.find("text");
@@ -238,7 +380,10 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
     }
     if (reopenedDocument.documentId != app.workbench().document()->documentId ||
         reopenedText == nullptr || reopenedText->id != nodeId ||
-        reopenedValue != editedText || !reopened.diagnostics().empty()) {
+        reopenedValue != editedText || reopenedTheme == nullptr ||
+        reopenedTheme->references.find("theme") == reopenedTheme->references.end() ||
+        reopenedTheme->references.at("theme") != "dark" ||
+        !reopened.diagnostics().empty()) {
         std::fprintf(stderr, "designer acceptance reopen changed declaration\n");
         std::filesystem::remove(saved, cleanup);
         return 1;
@@ -248,6 +393,7 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
                 reopenedDocument.documentId.c_str());
     std::printf("designer_acceptance selected %llu\n",
                 static_cast<unsigned long long>(nodeId));
+    std::printf("designer_acceptance theme_reference pass\n");
     std::printf("designer_acceptance edit_save_reopen pass\n");
     return 0;
 }
