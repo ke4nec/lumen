@@ -241,7 +241,8 @@
   重建期间的瞬时 COM/UIA 失效统一重试，属性写入、结构命令、重开读回及诊断
   `Source`/`ThemeScope` 选中态都从当前树重新查询；超时会保留底层异常。平台验收单测
   `21/21` 通过。该修复只降低现场回环的瞬态失败率，不改变 Narrator/NVDA 语音、真实
-  IME、Inspector、DPI/主题、拖拽、soak 和完整 `record.json` 的 pending 状态。
+  IME、Inspector、DPI/主题、拖拽、soak 和完整 `record.json` 的 pending 状态；Windows、
+  Linux、macOS hosted CI 运行归属见 [`25bec09 CI 证据`](platform-evidence/designer-ci-2026-10-12-25bec09.json)。
 
 
 ## 2. 阶段与 fixture 对照

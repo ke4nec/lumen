@@ -1,0 +1,36 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T22:32:32Z",
+  "source_commit": "25bec09",
+  "source_commit_full": "25bec09a6f71c0f7fe209ed8fb66ed83a0c688da",
+  "purpose": "Harden the Windows Designer UIA protocol loop against transient semantic-tree COM object invalidation during selection, editing, structure commands, reopen, and diagnostic navigation",
+  "runs": {
+    "windows": {
+      "id": 38179304524,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38179304524",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38179304512,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38179304512",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38179304532,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38179304532",
+      "jobs": "6/6 successful"
+    }
+  },
+  "local": {
+    "platform_acceptance_tests": "21/21 passed",
+    "python_validation": "tests/uia_designer_reader_loop.py and tests/platform_acceptance_tests.py compiled; git diff --check passed",
+    "debug_ctest": "1172/1172 passed before this Python/docs-only change",
+    "scope": "The UIA loop retries transient COM/UIA failures and re-queries current Designer elements; protocol and process-liveness output remains separate from Narrator/NVDA speech sign-off."
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The hosted UIA loop does not provide a signed-in desktop Narrator or NVDA speech observation.",
+    "Narrator/NVDA/Orca/VoiceOver speech, real IME, drag/drop, Inspector, DPI/theme, clean-machine packaging, and one-hour soak remain operator platform checks."
+  ]
+}

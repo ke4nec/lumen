@@ -2082,4 +2082,5 @@ macOS `record.json`。
 读回以及 `Source`/`ThemeScope` 选中态均重新查询当前元素，超时保留底层瞬态错误作为诊断。
 新增的平台验收单测覆盖该重试路径，平台验收检查器测试为 `21/21`；这改善现场稳定性，仍
 不把 UIA 协议回执升级为 Narrator/NVDA 语音、IME、Inspector、DPI/主题、拖拽、soak 或
-完整 `record.json` 通过。
+完整 `record.json` 通过。三平台 hosted CI 均通过，具体归属见
+[`25bec09 CI 证据`](platform-evidence/designer-ci-2026-10-12-25bec09.json)。
