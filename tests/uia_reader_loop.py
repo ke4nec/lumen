@@ -30,11 +30,18 @@ import time
 
 def eventually(predicate, timeout=12.0, interval=0.2):
     deadline = time.monotonic() + timeout
+    last_error = None
     while time.monotonic() < deadline:
-        result = predicate()
-        if result:
-            return result
+        try:
+            result = predicate()
+        except Exception as error:  # UIA trees may rebuild after a routed action.
+            last_error = error
+        else:
+            if result:
+                return result
         time.sleep(interval)
+    if last_error is not None:
+        raise AssertionError("UIA round-trip timed out after transient UIA errors") from last_error
     raise AssertionError("UIA round-trip timed out")
 
 
@@ -74,14 +81,12 @@ def main():
             timeout=25)
         print("window registered:", window.CurrentName)
 
-        def find_named(control_type, label):
-            def lookup():
-                condition = uia.CreateAnd_condition(
-                    uia.CreateProperty_condition(
-                        UIA_ControlTypePropertyId, control_type),
-                    uia.CreateProperty_condition(UIA_NamePropertyId, label))
-                return window.FindFirst(TreeScope_Descendants, condition)
-            return eventually(lookup)
+        def find_named_once(control_type, label):
+            condition = uia.CreateAnd_condition(
+                uia.CreateProperty_condition(
+                    UIA_ControlTypePropertyId, control_type),
+                uia.CreateProperty_condition(UIA_NamePropertyId, label))
+            return window.FindFirst(TreeScope_Descendants, condition)
 
         def control_type_count(control_type):
             condition = uia.CreateProperty_condition(
@@ -94,21 +99,35 @@ def main():
             return element.CurrentName if element is not None else None
 
         # 注册核对：控件映射在位。
-        assert control_type_count(UIA_ButtonControlTypeId) > 0, "no buttons"
-        assert control_type_count(UIA_SliderControlTypeId) > 0, "no sliders"
+        eventually(lambda: control_type_count(UIA_ButtonControlTypeId) > 0)
+        eventually(lambda: control_type_count(UIA_SliderControlTypeId) > 0)
 
         # 焦点导航：SetFocus → 系统焦点回读一致（读屏器随之播报）。
+        def focus_named(label):
+            def focus():
+                element = find_named_once(UIA_ButtonControlTypeId, label)
+                if element is None:
+                    return False
+                return element.SetFocus() == 0
+
+            eventually(focus, timeout=8)
+
         for label in ["Overview", "Buttons"]:
-            find_named(UIA_ButtonControlTypeId, label).SetFocus()
+            focus_named(label)
             eventually(lambda l=label: focused_name() == l, timeout=8)
             print("focused:", label)
 
         # 激活（路由切换）：Buttons → Feedback 两跳，树随路由更新。
         def invoke_named(label):
-            pattern = find_named(
-                UIA_ButtonControlTypeId, label).GetCurrentPattern(
-                    UIA_InvokePatternId)
-            pattern.QueryInterface(IUIAutomationInvokePattern).Invoke()
+            def invoke():
+                element = find_named_once(UIA_ButtonControlTypeId, label)
+                if element is None:
+                    return False
+                pattern = element.GetCurrentPattern(UIA_InvokePatternId)
+                pattern.QueryInterface(IUIAutomationInvokePattern).Invoke()
+                return True
+
+            eventually(invoke)
 
         invoke_named("Buttons")
         time.sleep(2.0)
@@ -119,13 +138,20 @@ def main():
         # 值设置：Slider → 80 并回读。
         slider_condition = uia.CreateProperty_condition(
             UIA_ControlTypePropertyId, UIA_SliderControlTypeId)
-        slider = eventually(
-            lambda: window.FindFirst(TreeScope_Descendants, slider_condition))
-        range_value = slider.GetCurrentPattern(
-            UIA_RangeValuePatternId).QueryInterface(
-                IUIAutomationRangeValuePattern)
-        range_value.SetValue(80)
-        eventually(lambda: abs(range_value.CurrentValue - 80) < 0.01,
+        def set_slider():
+            slider = window.FindFirst(TreeScope_Descendants, slider_condition)
+            if slider is None:
+                return False
+            slider.GetCurrentPattern(UIA_RangeValuePatternId).QueryInterface(
+                IUIAutomationRangeValuePattern).SetValue(80)
+            return True
+
+        eventually(set_slider)
+        eventually(lambda: abs(
+            window.FindFirst(TreeScope_Descendants, slider_condition)
+            .GetCurrentPattern(UIA_RangeValuePatternId)
+            .QueryInterface(IUIAutomationRangeValuePattern).CurrentValue - 80
+        ) < 0.01,
                    timeout=6)
         print("value set: 80")
 
@@ -133,12 +159,19 @@ def main():
         # SetValue 回执路径，读屏器可据此播报新值。
         edit_condition = uia.CreateProperty_condition(
             UIA_ControlTypePropertyId, UIA_EditControlTypeId)
-        edit = eventually(
-            lambda: window.FindFirst(TreeScope_Descendants, edit_condition))
-        value = edit.GetCurrentPattern(
-            UIA_ValuePatternId).QueryInterface(IUIAutomationValuePattern)
-        value.SetValue("Reader edit")
-        eventually(lambda: value.CurrentValue == "Reader edit", timeout=6)
+        def set_text():
+            edit = window.FindFirst(TreeScope_Descendants, edit_condition)
+            if edit is None:
+                return False
+            edit.GetCurrentPattern(UIA_ValuePatternId).QueryInterface(
+                IUIAutomationValuePattern).SetValue("Reader edit")
+            return True
+
+        eventually(set_text)
+        eventually(lambda: window.FindFirst(TreeScope_Descendants, edit_condition)
+                   .GetCurrentPattern(UIA_ValuePatternId)
+                   .QueryInterface(IUIAutomationValuePattern).CurrentValue == "Reader edit",
+                   timeout=6)
         print("text edited: Reader edit")
     finally:
         app.terminate()

@@ -17,6 +17,7 @@ from check_platform_acceptance import (validate, validate_platform,
                                        READER_CASES, PLATFORM_CASES, READERS,
                                        NATIVE_ALLOCATOR_DRIVERS, NATIVE_ALLOCATOR_SOURCES)
 from uia_designer_reader_loop import eventually as uia_designer_eventually
+from uia_reader_loop import eventually as uia_reader_eventually
 
 
 class EvidenceTests(unittest.TestCase):
@@ -39,6 +40,22 @@ class EvidenceTests(unittest.TestCase):
 
         self.assertEqual(
             uia_designer_eventually(transient_lookup, timeout=0.2, interval=0.001),
+            "ready",
+        )
+        self.assertEqual(attempts, 3)
+
+    def test_windows_reader_loop_retries_transient_uia_errors(self):
+        attempts = 0
+
+        def transient_lookup():
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise RuntimeError("UIA tree is rebuilding")
+            return "ready"
+
+        self.assertEqual(
+            uia_reader_eventually(transient_lookup, timeout=0.2, interval=0.001),
             "ready",
         )
         self.assertEqual(attempts, 3)

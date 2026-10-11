@@ -2084,3 +2084,9 @@ macOS `record.json`。
 不把 UIA 协议回执升级为 Narrator/NVDA 语音、IME、Inspector、DPI/主题、拖拽、soak 或
 完整 `record.json` 通过。三平台 hosted CI 均通过，具体归属见
 [`25bec09 CI 证据`](platform-evidence/designer-ci-2026-10-12-25bec09.json)。
+
+后续复查又将同一瞬态重试策略应用到 Windows 通用读屏回环
+`tests/uia_reader_loop.py`：路由切换后的焦点、激活、滑块值和文本值操作会重新查询当前
+UIA 元素，超时同样保留底层 COM 错误。这样 platform-acceptance 在进入 Designer 专用
+回环前不会被通用控件树重建偶发打断；对应本地平台验收单测为 `22/22`，仍不替代登录
+桌面的读屏语音和完整人工 record。

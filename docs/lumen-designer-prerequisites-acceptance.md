@@ -244,6 +244,11 @@
   IME、Inspector、DPI/主题、拖拽、soak 和完整 `record.json` 的 pending 状态；Windows、
   Linux、macOS hosted CI 运行归属见 [`25bec09 CI 证据`](platform-evidence/designer-ci-2026-10-12-25bec09.json)。
 
+- 通用 Windows UIA 回环随后同步采用瞬态重试：路由切换、焦点、滑块和文本值步骤都从当前
+  UIA 树重新查询元素，减少通用读屏步骤在 Designer 专用回环前的偶发阻断；平台验收单测
+  更新为 `22/22`。这仍只加强协议回环稳定性，不把 UIA 回执升级为 Narrator/NVDA 语音或
+  完整桌面验收。
+
 
 ## 2. 阶段与 fixture 对照
 
