@@ -2061,3 +2061,9 @@ Text 选中、Unicode 文本、ThemeScope `light -> dark`、Save 与 JSON 保存
 全部成功，证据见 [`f8ac4a8 CI`](platform-evidence/designer-ci-2026-10-12-f8ac4a8.json)。
 该回环证明原生 AT-SPI 协议和生产窗口路径，不替代 Orca 语音、登录桌面、真实 IME、
 Inspector、DPI/主题、拖拽或一小时 soak 的人工 `record.json`。
+
+后续将同一脚本接入 `.github/workflows/platform-acceptance.yml` 的 Linux X11 与
+Wayland self-hosted job，单独归档 `atspi-designer-live.log`。现场 job 会在真实窗口
+smoke 后启动生产 Designer、执行 AT-SPI D-Bus 选择/编辑/保存回环，并要求 `python3-dbus`
+可用；这只加强协议日志与当前提交的绑定，不能把自动回环升级为 Orca 语音或完整现场
+`record.json`。

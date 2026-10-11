@@ -52,6 +52,14 @@ jobs:
           set -o pipefail
           if ! ./build-live/examples/designer/lumen-designer --acceptance --file "$PWD/examples/designer/gallery.design" 2>&1 | tee designer-live.log; then exit 1; fi
           if ! ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 2>&1 | tee -a designer-live.log; then exit 1; fi
+      - name: Native AT-SPI production Designer protocol loop
+        run: |
+          set -o pipefail
+          python3 -B -c 'import dbus'
+          python3 -B tests/designer_atspi_window_live_tests.py \
+            ./build-live/examples/designer/lumen-designer \
+            "$PWD/tests/fixtures/designer_atspi_window.design" \
+            2>&1 | tee atspi-designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-x11-live.json
       - name: GPU/present recovery fault injection
@@ -78,6 +86,7 @@ jobs:
             linux-x11-live.json
             frame-allocator-live.log
             designer-live.log
+            atspi-designer-live.log
             soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log
@@ -113,6 +122,14 @@ jobs:
           set -o pipefail
           if ! ./build-live/examples/designer/lumen-designer --acceptance --file "$PWD/examples/designer/gallery.design" 2>&1 | tee designer-live.log; then exit 1; fi
           if ! ./build-live/examples/designer/lumen-designer --file "$PWD/examples/designer/gallery.design" --max-frames 3 2>&1 | tee -a designer-live.log; then exit 1; fi
+      - name: Native AT-SPI production Designer protocol loop
+        run: |
+          set -o pipefail
+          python3 -B -c 'import dbus'
+          python3 -B tests/designer_atspi_window_live_tests.py \
+            ./build-live/examples/designer/lumen-designer \
+            "$PWD/tests/fixtures/designer_atspi_window.design" \
+            2>&1 | tee atspi-designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-wayland-live.json
       - name: GPU/present recovery fault injection
@@ -139,6 +156,7 @@ jobs:
             linux-wayland-live.json
             frame-allocator-live.log
             designer-live.log
+            atspi-designer-live.log
             soak.json
             acceptance-evidence/
             build-live/Testing/Temporary/LastTest.log
