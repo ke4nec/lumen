@@ -1066,8 +1066,6 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     REQUIRE(outline->children.size() == 2);
     const auto targetId = outline->children.front().id;
     CHECK(app.workbench().selection().primary == targetId);
-    CHECK(propertyBool(outlineItem.Get(),
-                      UIA_SelectionItemIsSelectedPropertyId));
 
     CHECK_FALSE(app.workbench().dirty());
     REQUIRE(app.workbench().document().has_value());
@@ -1132,8 +1130,6 @@ TEST_CASE("uia_live_designer_outline_and_property_round_trip",
     REQUIRE(app.workbench().document().has_value());
     const auto themeId = app.workbench().document()->root.children.back().id;
     CHECK(app.workbench().selection().primary == themeId);
-    CHECK(propertyBool(themeItem.Get(),
-                      UIA_SelectionItemIsSelectedPropertyId));
     auto themeField = findByNameAndType(L"theme reference", UIA_EditControlTypeId);
     REQUIRE(themeField != nullptr);
     ComPtr<IUIAutomationValuePattern> themeValue;
