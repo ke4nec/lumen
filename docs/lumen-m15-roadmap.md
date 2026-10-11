@@ -14,7 +14,7 @@
 | 优先级 | 需求 | 现状证据（2026-09-29） | 归属 |
 | --- | --- | --- | --- |
 | P0 | 拖放（OS 拖入 + 应用内行/列重排） | `include/`、`src/` 全文检索无任何 DnD 实现 | M15 |
-| P0 | M14-A Windows/macOS 真实验收（读屏回环/真实 IME/透明合成/浸泡） | 回环脚本 `tests/uia_reader_loop.py`/`voiceover_loop.py` 就绪，现场人工验收未做 | 不新开编号，仍属 M14 出口 |
+| P0 | M14-A Windows/macOS 真实验收（读屏回环/真实 IME/透明合成/浸泡） | 通用与 Designer 专用回环脚本 `tests/uia_reader_loop.py`、`uia_designer_reader_loop.py`、`voiceover_loop.py`、`voiceover_designer_reader_loop.py` 已就绪，现场人工验收未做 | 不新开编号，仍属 M14 出口 |
 | P1 | 桌面窗口与系统集成（全屏/置顶/OS 模态/托盘/全局快捷键/macOS 原生菜单栏/交通灯） | 窗口能力仅 min/max/restore/DPI（`application_host.h`） | M16 |
 | P1 | 发布尾项（Windows/macOS GPU 包、CPack Bundle） | package-skia-gpu 变体仅 Linux llvmpipe | M16 |
 | P2 | 控件细节池（auto-hide/RTL 镜像/双轴联滚/跨行列合并/Splitter 塌缩/菜单 mnemonic/行内编辑/DataGrid 筛选等） | 各设计文档「已知限制」与主路线图按需池 | M17 |

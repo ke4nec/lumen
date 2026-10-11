@@ -226,7 +226,7 @@ Unicode/ThemeScope 编辑和保存回读协议。该附件由 macOS self-hosted 
 | 缺口 | 平台 | 实现状态（四态） | 未覆盖原因 | 当前降级行为 | 后续归属 |
 | --- | --- | --- | --- | --- | --- |
 | 读屏回环 Narrator/NVDA | Windows | 接口已存在（UIA provider 编入）+ headless 已验证 | 无登录 Win32 会话执行 `tests/uia_reader_loop.py` | provider 未编入时能力报告 false，应用照常运行 | R0 / M14 出口 |
-| 读屏回环 VoiceOver | macOS | 接口已存在（NSAccessibility 编入）+ headless 已验证 | 无登录 Aqua 会话执行 `tests/voiceover_loop.py` | 同上 | R0 / M14 出口 |
+| 读屏回环 VoiceOver | macOS | 接口已存在（NSAccessibility 编入）+ headless 已验证 | 无登录 Aqua 会话执行 `tests/voiceover_loop.py` 与 `tests/voiceover_designer_reader_loop.py` | 同上 | R0 / M14 出口 |
 | 真实 IME preedit/commit/cancel、候选框定位 | Windows/macOS | headless 已验证（IME 状态机） | 无现场输入法 | 候选锚点失效时回退字段内定位；提交不受阻 | R0 / R5 |
 | 跨应用剪贴板（文本/图片/自定义格式） | 三平台 | headless 已验证（G-3 core MIME + SDL data API） | 无跨应用真实复制现场 | `setText`/`setFormats` 失败返回 false，编辑状态不丢 | R0 / R5 |
 | 透明合成 | Windows texture 已实测；X11/Wayland/macOS 未验 | headless 已验证（预乘表示一致） | 无真实合成器现场 | 软件窗口不支持逐像素透明时按不透明提交 | R0 |

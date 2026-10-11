@@ -9,7 +9,9 @@
 
 以下不是新方向，而是既有出口条件的未完成部分；按四态规则，补验完成前「实战可用」的宣称持续悬空。本池条目（含 P0）应排在其后或与之穿插：
 
-- Windows 讲述人/NVDA、macOS VoiceOver 真实读屏回环（脚本 `tests/uia_reader_loop.py` / `tests/voiceover_loop.py` 就绪，现场人工验收未做）。
+- Windows 讲述人/NVDA、macOS VoiceOver 真实读屏回环（通用与 Designer 专用脚本
+  `tests/uia_reader_loop.py` / `tests/uia_designer_reader_loop.py` / `tests/voiceover_loop.py`
+  / `tests/voiceover_designer_reader_loop.py` 已就绪，现场人工验收未做）。
 - Windows/macOS 真实 IME preedit/commit/cancel、候选窗锚点、跨应用剪贴板、透明合成人工清单。
 - Windows/macOS 一小时双窗口浸泡（Linux 已于 2026-09 完成，跨平台侧未做）。
 
