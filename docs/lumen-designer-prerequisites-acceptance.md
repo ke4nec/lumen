@@ -194,6 +194,12 @@
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38147655108) 6/6 CI 全部通过，
   完整归属见 [`d18e6c8 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-d18e6c8.json)。
 
+- 本轮 review 让 `tests/designer_atspi_live_tests.py` 在既有稳定回环后输出单行结构化摘要，
+  明确 `linux`/`atspi`、`designer_select_locate`、`designer_edit_save` 和
+  `ThemeScope light -> dark`；这只增强 hosted/headless 证据的可绑定性，不把 Orca 语音、
+  登录桌面或完整现场 `record.json` 标为完成。
+
+
 ## 2. 阶段与 fixture 对照
 
 以下“headless 通过”只归属上述源码和自动化验证范围；涉及真实输入、合成器、读屏或

@@ -2027,3 +2027,9 @@ UIA smoke；平台验收检查器 17/17、Designer UIA 脚本 AST 和 platform-a
 Windows `a11y-bridge` 也成功，完整归属见 [`d18e6c8 CI 证据`](platform-evidence/designer-ci-2026-10-11-d18e6c8.json)。
 该回环仍不替代登录桌面的 Narrator/NVDA/Orca/VoiceOver 语音、真实 IME、Inspector、
 DPI/主题、拖拽或一小时 soak 现场记录。
+
+本轮 review 还让 Linux Designer AT-SPI fixture 输出单行结构化协议摘要：
+`{"platform":"linux","provider":"atspi","protocol_loop":["designer_select_locate","designer_edit_save"]}`，
+并保留 `ThemeScope light -> dark` 事务结果。它与 `tests/designer_atspi_live_tests.py` 的稳定
+D-Bus provider 回环一起作为 hosted/headless 证据，仍不把 Orca 语音、登录桌面或完整现场
+record 标为完成。

@@ -3,6 +3,7 @@
 Uses native AT-SPI; no Orca/desktop sign-off.
 """
 from pathlib import Path
+import json
 import select
 import subprocess
 import sys
@@ -156,6 +157,12 @@ def main():
         assert output.is_file()
         print("AT-SPI Designer selection / Unicode text and events / "
               "ThemeScope reference / document history / save-reopen passed")
+        print(json.dumps({
+            "platform": "linux",
+            "provider": "atspi",
+            "protocol_loop": ["designer_select_locate", "designer_edit_save"],
+            "theme_reference": "light -> dark",
+        }, ensure_ascii=False))
 
 
 if __name__ == "__main__":
