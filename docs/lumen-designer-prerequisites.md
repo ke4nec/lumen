@@ -1916,3 +1916,11 @@ Theme 的实际 `pageBackground`，确认 session 替换后预览主题色切换
 51 用例/2979 断言、ThemeScope 定向用例 1/43、平台验收脚本 17/17 均通过。Windows
 七个 job、Linux 七个 job、macOS 六个 job 全部通过，原始摘要见
 [`5252506 CI 证据`](platform-evidence/designer-ci-2026-10-11-5252506.json)。
+
+`a4650f4` 将 ThemeScope 引用再接入 Windows 原生 UIA 回环：真实 UIA TreeItem 激活
+`ThemeScope  [theme-scope]`，通过 Edit 的 ValuePattern 将 `light` 改为 `dark`，验证
+文档诊断、undo/redo、选择和保存重开仍保持一致。Linux 相关 Designer/无障碍筛选
+174/174、本机 Debug 完整 CTest 1171/1171（121.78s）、平台验收脚本 17/17 均通过；
+Windows `a11y-bridge` 的新增 live UIA 用例及其余六个 job 全部成功，Linux 七个 job、
+macOS 六个 job 也全部成功，原始摘要见
+[`a4650f4 CI 证据`](platform-evidence/designer-ci-2026-10-11-a4650f4.json)。
