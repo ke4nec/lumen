@@ -37,6 +37,19 @@ def main() -> None:
             timeout=30,
         )
 
+    acceptance = run_designer("--acceptance", "--file", str(examples / "gallery.design"))
+    print(acceptance.stdout, end="")
+    if acceptance.stderr:
+        print(acceptance.stderr, end="")
+    if acceptance.returncode != 0:
+        raise RuntimeError(
+            f"Designer package acceptance round-trip failed with exit code {acceptance.returncode}"
+        )
+    if acceptance.stdout.splitlines().count(
+        "designer_acceptance edit_save_reopen pass"
+    ) != 1:
+        raise RuntimeError("Designer package acceptance marker is missing or duplicated")
+
     result = run_designer(
         "--headless", "--file", str(examples / "gallery.design")
     )

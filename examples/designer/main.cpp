@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <exception>
@@ -12,12 +13,14 @@
 
 #include "designer_app.h"
 #include "file_watcher.h"
+#include "lumen/accessibility/bridge.h"
 #include "lumen/platform/sdl3_host.h"
 
 namespace {
 
 struct Options {
     bool headless{false};
+    bool acceptance{false};
     bool watch{false};
     bool dumpDiagnostics{false};
     std::uint64_t maxFrames{0};
@@ -30,6 +33,8 @@ Options parseOptions(int argc, char** argv) {
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--headless") == 0) {
             options.headless = true;
+        } else if (std::strcmp(argv[index], "--acceptance") == 0) {
+            options.acceptance = true;
         } else if (std::strcmp(argv[index], "--watch") == 0) {
             options.watch = true;
         } else if (std::strcmp(argv[index], "--dump-diagnostics") == 0) {
@@ -95,6 +100,156 @@ int runHeadless(lumen::designer_app::DesignerApp& app,
     std::printf("diagnostics %zu\n", app.diagnostics().size());
     if (dump) dumpDiagnostics(app);
     return app.workbench().frame().hasFrame() && requestedFileLoaded ? 0 : 1;
+}
+
+const lumen::dsl::DesignNode* findFirstTextNode(
+    const lumen::dsl::DesignNode& node) {
+    if (node.type == "Text" && node.properties.contains("text")) {
+        return &node;
+    }
+    for (const auto& child : node.children) {
+        if (const auto* found = findFirstTextNode(child); found != nullptr) {
+            return found;
+        }
+    }
+    for (const auto& [slot, children] : node.slots) {
+        (void)slot;
+        for (const auto& child : children) {
+            if (const auto* found = findFirstTextNode(child); found != nullptr) {
+                return found;
+            }
+        }
+    }
+    return nullptr;
+}
+
+int runAcceptance(lumen::designer_app::DesignerApp& app,
+                  bool requestedFileLoaded, const std::string& filename) {
+    using namespace lumen;
+    if (!requestedFileLoaded || filename.empty() || !isDesignFile(filename) ||
+        !app.workbench().document().has_value()) {
+        std::fprintf(stderr,
+                     "designer acceptance requires a loaded .design file\n");
+        return 1;
+    }
+
+    app.shell().setView(core::Size{1280.0F, 800.0F});
+    accessibility::RecordingAccessibilityBridge accessibilityBridge;
+    app.shell().setAccessibilityBridge(&accessibilityBridge);
+    (void)app.shell().renderFrame();
+    const auto* textNode = findFirstTextNode(app.workbench().document()->root);
+    if (textNode == nullptr) {
+        std::fprintf(stderr, "designer acceptance fixture has no editable Text node\n");
+        return 1;
+    }
+    const auto textValue = textNode->properties.at("text");
+    const auto* original = std::get_if<std::string>(&textValue.value);
+    if (original == nullptr) {
+        std::fprintf(stderr, "designer acceptance Text.text is not a string\n");
+        return 1;
+    }
+    const std::string originalText = *original;
+    const std::string editedText = originalText + " (acceptance)";
+    const auto nodeId = textNode->id;
+    const auto select = app.shell().handlers().find(
+        "designer:select:" + std::to_string(nodeId));
+    if (select == app.shell().handlers().end()) {
+        std::fprintf(stderr, "designer acceptance cannot select Text node %llu\n",
+                     static_cast<unsigned long long>(nodeId));
+        return 1;
+    }
+    select->second();
+    (void)app.shell().renderFrame();
+    if (app.workbench().selection().primary != nodeId) {
+        std::fprintf(stderr, "designer acceptance selection did not publish\n");
+        return 1;
+    }
+
+    const std::string fieldKey =
+        "designer-property-field:" + std::to_string(nodeId) + ":text";
+    const auto* field = core::findNodeByKey(app.shell().root(), fieldKey);
+    if (field == nullptr) {
+        std::fprintf(stderr, "designer acceptance property field is missing\n");
+        return 1;
+    }
+    if (app.shell().performAccessibilityAction(
+            field->identity, accessibility::kActionFocus) !=
+        accessibility::SemanticsActionStatus::Handled ||
+        app.shell().performAccessibilityAction(
+            field->identity, accessibility::kActionSetValue, editedText) !=
+        accessibility::SemanticsActionStatus::Handled) {
+        std::fprintf(stderr, "designer acceptance property action was rejected\n");
+        return 1;
+    }
+    (void)app.shell().renderFrame();
+    const auto readText = [&app] {
+        const auto& document = *app.workbench().document();
+        const auto* node = findFirstTextNode(document.root);
+        if (node == nullptr) return std::string{};
+        const auto property = node->properties.find("text");
+        if (property == node->properties.end()) return std::string{};
+        const auto* value = std::get_if<std::string>(&property->second.value);
+        return value == nullptr ? std::string{} : *value;
+    };
+    if (readText() != editedText || !app.workbench().dirty()) {
+        std::fprintf(stderr, "designer acceptance property edit did not commit\n");
+        return 1;
+    }
+    if (!app.undo()) {
+        std::fprintf(stderr, "designer acceptance undo failed\n");
+        return 1;
+    }
+    if (readText() != originalText || !app.redo() || readText() != editedText) {
+        std::fprintf(stderr, "designer acceptance undo/redo did not restore text\n");
+        return 1;
+    }
+
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::filesystem::path saved =
+        std::filesystem::temp_directory_path() /
+        ("lumen-designer-acceptance-" + std::to_string(stamp) + ".design");
+    std::error_code cleanup;
+    std::filesystem::remove(saved, cleanup);
+    if (!app.saveDesignFile(saved.string())) {
+        std::fprintf(stderr, "designer acceptance save failed\n");
+        std::filesystem::remove(saved, cleanup);
+        return 1;
+    }
+
+    designer_app::DesignerApp reopened;
+    reopened.attach();
+    if (!reopened.loadDesignFile(saved.string()) ||
+        !reopened.workbench().document().has_value()) {
+        std::fprintf(stderr, "designer acceptance reopen failed\n");
+        std::filesystem::remove(saved, cleanup);
+        return 1;
+    }
+    const auto& reopenedDocument = *reopened.workbench().document();
+    const auto* reopenedText = findFirstTextNode(reopenedDocument.root);
+    std::string reopenedValue;
+    if (reopenedText != nullptr) {
+        const auto value = reopenedText->properties.find("text");
+        if (value != reopenedText->properties.end()) {
+            if (const auto* text = std::get_if<std::string>(&value->second.value);
+                text != nullptr) {
+                reopenedValue = *text;
+            }
+        }
+    }
+    if (reopenedDocument.documentId != app.workbench().document()->documentId ||
+        reopenedText == nullptr || reopenedText->id != nodeId ||
+        reopenedValue != editedText || !reopened.diagnostics().empty()) {
+        std::fprintf(stderr, "designer acceptance reopen changed declaration\n");
+        std::filesystem::remove(saved, cleanup);
+        return 1;
+    }
+    std::filesystem::remove(saved, cleanup);
+    std::printf("designer_acceptance document %s\n",
+                reopenedDocument.documentId.c_str());
+    std::printf("designer_acceptance selected %llu\n",
+                static_cast<unsigned long long>(nodeId));
+    std::printf("designer_acceptance edit_save_reopen pass\n");
+    return 0;
 }
 
 int runWindowed(lumen::designer_app::DesignerApp& app,
@@ -199,6 +354,9 @@ int main(int argc, char** argv) {
         }
     }
     try {
+        if (options.acceptance) {
+            return runAcceptance(app, requestedFileLoaded, options.filename);
+        }
         return options.headless
                    ? runHeadless(app, requestedFileLoaded, options.dumpDiagnostics)
                    : runWindowed(app, options, requestedFileLoaded);

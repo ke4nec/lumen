@@ -30,7 +30,9 @@ class EvidenceTests(unittest.TestCase):
                       frame_allocator_source=NATIVE_ALLOCATOR_SOURCES[platform])
         contents = {"trace.txt": "unit fixture only",
                     "frame-allocator-live.log": json.dumps(report) + "\nframe_allocator_smoke pass\n",
-                    "designer-live.log": "designer_window_smoke pass\n"}
+                    "designer-live.log":
+                        "designer_acceptance edit_save_reopen pass\n"
+                        "designer_window_smoke pass\n"}
         record = dict(commit="a" * 40, platform=platform, operator="fixture",
                       recorded_at="2026-10-09T00:00:00Z", os="fixture", desktop="fixture",
                       gpu_driver="fixture", ime="fixture", application="settings/gallery/designer",
@@ -272,11 +274,19 @@ class EvidenceTests(unittest.TestCase):
                       "artifacts": [{"path": log.name, "sha256": ""}]}
             for content in ("libEGL warning\n", "designer_window_smoke pass-invalid\n",
                             "warning: designer_window_smoke pass\n",
-                            "designer_window_smoke pass\ndesigner_window_smoke pass\n"):
+                            "designer_window_smoke pass\n",
+                            "designer_acceptance edit_save_reopen pass\n"
+                            "designer_window_smoke pass\n"
+                            "designer_window_smoke pass\n",
+                            "designer_acceptance edit_save_reopen pass\n"):
                 log.write_text(content, encoding="utf-8")
                 with self.subTest(content=content), self.assertRaises(ValueError):
                     validate_designer_window_artifact(record, root)
-            log.write_text("libEGL warning\r\ndesigner_window_smoke pass\r\n", encoding="utf-8")
+            log.write_text(
+                "libEGL warning\r\n"
+                "designer_acceptance edit_save_reopen pass\r\n"
+                "designer_window_smoke pass\r\n",
+                encoding="utf-8")
             record["artifacts"][0]["sha256"] = hashlib.sha256(log.read_bytes()).hexdigest()
             validate_designer_window_artifact(record, root)
             record["artifacts"].append(dict(record["artifacts"][0]))

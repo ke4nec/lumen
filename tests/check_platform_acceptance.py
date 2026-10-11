@@ -88,8 +88,13 @@ def validate_frame_allocator_artifact(record: dict, directory: Path) -> None:
 
 
 def read_designer_window_log(path: Path) -> None:
-    if path.read_text(encoding="utf-8").splitlines().count("designer_window_smoke pass") != 1:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if lines.count("designer_window_smoke pass") != 1:
         raise ValueError("designer-live.log requires exactly one successful Designer smoke marker")
+    if lines.count("designer_acceptance edit_save_reopen pass") != 1:
+        raise ValueError(
+            "designer-live.log requires exactly one Designer edit/save/reopen marker"
+        )
 
 
 def validate_designer_window_artifact(record: dict, directory: Path) -> None:

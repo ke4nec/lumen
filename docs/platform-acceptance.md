@@ -23,12 +23,13 @@ Linux 两个 job 使用当前会话的 SDL video driver，不启动 Xvfb 或 dum
 `lumen-platform-live-smoke` 使用两个真实 AppShell/runApp 窗口，包含文本编辑和
 千项 VirtualList；统计真实 IME、resize、滚轮事件及成功 present，按需验证
 跨应用剪贴板和最终文本。未操作 IME 时 `ime_verified=false`，不会冒充已验。
-每个平台 job 还直接启动 `lumen-designer --file examples/designer/gallery.design
---max-frames 3`，验证设计器编辑器/预览双窗口在真实桌面会话中创建并完成原生窗口
-smoke；该结果必须在记录的 `designer_window_smoke` 项标记为 `pass`，并把
+每个平台 job 先运行 `lumen-designer --acceptance --file examples/designer/gallery.design`，
+经生产 `DesignerApp` 完成选择、属性编辑、undo/redo、保存和重开回环，再启动
+`lumen-designer --file examples/designer/gallery.design --max-frames 3`，验证设计器
+编辑器/预览双窗口在真实桌面会话中创建并完成原生窗口 smoke；日志必须同时包含
+`designer_acceptance edit_save_reopen pass` 与 `designer_window_smoke pass`，并把
 `designer-live.log` 随平台 artifact 归档。日志必须包含 Designer 进程成功退出后输出的
-`designer_window_smoke pass` 标记；验收检查器会校验该标记和附件哈希。
-该标记必须是唯一的完整日志行；人工附件必须与本次 workflow 的 `designer-live.log`
+两个成功标记；验收检查器会校验标记和附件哈希。每个标记必须是唯一的完整日志行；人工附件必须与本次 workflow 的 `designer-live.log`
 逐字节匹配，不能以此前通过的日志替代。
 Linux job 还加载现有 `LD_PRELOAD` present 故障夹具，确认
 GPU swap 失败和软件 present 失败均进入预期诊断路径。
@@ -101,7 +102,7 @@ Linux/macOS 常规 CPU CI 启用原生桥，其他默认 OFF 构建继续覆盖�
 | 检查项 | 操作和通过条件 |
 | --- | --- |
 | `inspector_tree_overlay` | 启动 `lumen-gallery --inspector --bounds-overlay --damage-overlay --frame-overlay`；悬停检查最深节点，点击钉住、Esc 解钉，触发 resize 和控件更新；核对树/样式、bounds/damage 和帧 HUD 与实际窗口一致 |
-| `designer_edit_save_reopen` | 打开 `gallery.design` 副本，选中 L0 节点、修改属性、undo/redo，插入/复制/重排/删除节点；保存后关闭并重开，核对最终声明、节点身份和预览；无效属性输入不得留下半提交文档 |
+| `designer_edit_save_reopen` | 先核对自动 `designer_acceptance` 回环，再打开 `gallery.design` 副本，选中 L0 节点、修改属性、undo/redo，插入/复制/重排/删除节点；保存后关闭并重开，核对最终声明、节点身份和预览；无效属性输入不得留下半提交文档 |
 | `designer_dpi_theme` | 调整真实窗口 DPI/显示器缩放并 resize，切换 Designer 的 DPI、Font 和 Contrast；核对画布命中、大纲/属性/错误面板布局及语义位置；预览环境切换不得使文档 dirty |
 
 每个必检读屏器还须在 Designer 自身完成 `designer_select_locate`（只用键盘和读屏
