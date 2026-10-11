@@ -21,13 +21,19 @@ semantic tree. It is protocol evidence, not an Orca speech or desktop sign-off.
 ROLE_TREE_ITEM = 91
 ROLE_ENTRY = 79
 ROLE_BUTTON = 43
+PLATFORMS = {"linux-x11", "linux-wayland"}
 
 
 def main():
-    if len(sys.argv) != 3:
-        raise SystemExit(f"usage: {sys.argv[0]} <lumen-designer> <fixture.design>")
+    if len(sys.argv) not in (3, 4):
+        raise SystemExit(
+            f"usage: {sys.argv[0]} <lumen-designer> <fixture.design> [platform]"
+        )
     app_path = Path(sys.argv[1])
     source = Path(sys.argv[2])
+    platform = sys.argv[3] if len(sys.argv) == 4 else "linux-x11"
+    if platform not in PLATFORMS:
+        raise SystemExit(f"unsupported Linux AT-SPI platform: {platform}")
     if not app_path.is_file() or not source.is_file():
         raise SystemExit("Designer production loop requires an app and fixture")
 
@@ -236,7 +242,7 @@ def main():
                             "ThemeScope / save passed"
                         )
                         print(json.dumps({
-                            "platform": "linux-x11",
+                            "platform": platform,
                             "provider": "atspi-dbus",
                             "protocol_loop": ["designer_select_locate", "designer_edit_save"],
                             "theme_reference": "light -> dark",

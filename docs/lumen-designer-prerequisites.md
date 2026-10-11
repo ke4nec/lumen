@@ -2065,5 +2065,6 @@ Inspector、DPI/主题、拖拽或一小时 soak 的人工 `record.json`。
 后续将同一脚本接入 `.github/workflows/platform-acceptance.yml` 的 Linux X11 与
 Wayland self-hosted job，单独归档 `atspi-designer-live.log`。现场 job 会在真实窗口
 smoke 后启动生产 Designer、执行 AT-SPI D-Bus 选择/编辑/保存回环，并要求 `python3-dbus`
-可用；这只加强协议日志与当前提交的绑定，不能把自动回环升级为 Orca 语音或完整现场
-`record.json`。
+可用；`check_platform_acceptance.py` 现在要求 Linux `record.json` 登记并按 SHA256
+绑定该日志，且严格校验唯一的 X11/Wayland 协议摘要。这只加强协议日志与当前提交的
+绑定，不能把自动回环升级为 Orca 语音或完整现场 `record.json`。

@@ -171,6 +171,7 @@ GPU/驱动、输入法和屏幕阅读器版本。没有这些信息的绿色 hea
   },
   "artifacts": [
     {"path": "designer-live.log", "sha256": "实际附件 SHA256"},
+    {"path": "atspi-designer-live.log", "sha256": "Linux X11/Wayland AT-SPI Designer 协议附件 SHA256"},
     {"path": "frame-allocator-live.log", "sha256": "实际附件 SHA256"},
     {"path": "reader-trace.txt", "sha256": "实际附件 SHA256"}
   ]
@@ -200,6 +201,12 @@ Windows x64 已完成交叉构建并在 Wine 中通过五组独立进程回归�
 [Linux](https://github.com/ke4nec/lumen/actions/runs/37928701730) 常规 CI 全部通过。
 Windows/macOS 现场结果仍待补齐，不能把它们的现场检查项改为 pass。旧版单项 JSON 诊断不是完整
 record，须用带来源和成功标记的新探针重新采集正式附件。
+Linux X11/Wayland 的 `designer_window_smoke=pass` 还必须附唯一的
+`atspi-designer-live.log`；其中只能有一条 `provider=atspi-dbus` 的生产窗口摘要，
+并且平台、`designer_select_locate`/`designer_edit_save`、`light -> dark` 和
+`windowed=true` 必须与现场会话一致。该附件由
+`.github/workflows/platform-acceptance.yml` 的 Linux job 生成；它证明 AT-SPI 协议
+路径，不替代 Orca 语音观察。
 可用 `--frame-allocator-log <log> --validate-frame-allocator-only --platform <session>`
 单独检查原生日志；此模式不检查 commit、读屏、浸泡或人工 record，不等同完整验收。
 完整人工验收必须提供 `--soak-report`，并通过全部平台检查项及读屏检查项；省略

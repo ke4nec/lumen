@@ -58,7 +58,7 @@ jobs:
           python3 -B -c 'import dbus'
           python3 -B tests/designer_atspi_window_live_tests.py \
             ./build-live/examples/designer/lumen-designer \
-            "$PWD/tests/fixtures/designer_atspi_window.design" \
+            "$PWD/tests/fixtures/designer_atspi_window.design" linux-x11 \
             2>&1 | tee atspi-designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-x11-live.json
@@ -77,7 +77,7 @@ jobs:
       - name: One-hour multi-window resize pressure and recovery soak
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate Orca evidence for this commit and session
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-x11/record.json" --commit "$GITHUB_SHA" --platform linux-x11 --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-x11/record.json" --commit "$GITHUB_SHA" --platform linux-x11 --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --atspi-designer-log atspi-designer-live.log --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -128,7 +128,7 @@ jobs:
           python3 -B -c 'import dbus'
           python3 -B tests/designer_atspi_window_live_tests.py \
             ./build-live/examples/designer/lumen-designer \
-            "$PWD/tests/fixtures/designer_atspi_window.design" \
+            "$PWD/tests/fixtures/designer_atspi_window.design" linux-wayland \
             2>&1 | tee atspi-designer-live.log
       - name: Window, resize, IME, clipboard and present probe
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_LIVE_SECONDS" --resize-burst | tee linux-wayland-live.json
@@ -147,7 +147,7 @@ jobs:
       - name: One-hour multi-window resize pressure and recovery soak
         run: ./build-live/tests/lumen-platform-live-smoke --seconds "$LUMEN_SOAK_SECONDS" --resize-burst --stress-mib 64 --inject-recovery | tee soak.json
       - name: Validate Orca evidence for this commit and session
-        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-wayland/record.json" --commit "$GITHUB_SHA" --platform linux-wayland --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --archive acceptance-evidence
+        run: python3 tests/check_platform_acceptance.py --record "$LUMEN_ACCEPTANCE_ROOT/$GITHUB_SHA/linux-wayland/record.json" --commit "$GITHUB_SHA" --platform linux-wayland --soak-report soak.json --frame-allocator-log frame-allocator-live.log --designer-log designer-live.log --atspi-designer-log atspi-designer-live.log --archive acceptance-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:

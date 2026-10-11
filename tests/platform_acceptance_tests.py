@@ -11,6 +11,7 @@ from check_platform_acceptance import (validate, validate_platform,
                                        validate_frame_allocator_artifact,
                                        validate_frame_allocator_report,
                                        read_frame_allocator_log,
+                                       read_linux_designer_protocol_log,
                                        READER_CASES, PLATFORM_CASES, READERS,
                                        NATIVE_ALLOCATOR_DRIVERS, NATIVE_ALLOCATOR_SOURCES)
 
@@ -56,6 +57,15 @@ class EvidenceTests(unittest.TestCase):
                         "diagnostic_locate": "reference.missing -> Source -> ThemeScope"
                     }) + "\n"
             })
+        if platform in ("linux-x11", "linux-wayland"):
+            contents["atspi-designer-live.log"] = (
+                "AT-SPI production Designer window selection / Unicode text / ThemeScope / save passed\n"
+                + json.dumps({
+                    "platform": platform, "provider": "atspi-dbus",
+                    "protocol_loop": ["designer_select_locate", "designer_edit_save"],
+                    "theme_reference": "light -> dark", "windowed": True
+                }) + "\n"
+            )
         record = dict(commit="a" * 40, platform=platform, operator="fixture",
                       recorded_at="2026-10-09T00:00:00Z", os="fixture", desktop="fixture",
                       gpu_driver="fixture", ime="fixture", application="settings/gallery/designer",
@@ -349,6 +359,26 @@ class EvidenceTests(unittest.TestCase):
             record["artifacts"].append(dict(record["artifacts"][0]))
             with self.assertRaises(ValueError):
                 validate_designer_window_artifact(record, root)
+
+    def test_linux_designer_atspi_log_requires_windowed_protocol_summary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "atspi-designer-live.log"
+            valid = {
+                "platform": "linux-x11", "provider": "atspi-dbus",
+                "protocol_loop": ["designer_select_locate", "designer_edit_save"],
+                "theme_reference": "light -> dark", "windowed": True,
+            }
+            path.write_text("warning\n" + json.dumps(valid) + "\n", encoding="utf-8")
+            read_linux_designer_protocol_log(path, "linux-x11")
+            for key, value in (("platform", "linux-wayland"),
+                               ("provider", "atspi"),
+                               ("windowed", False),
+                               ("theme_reference", "light")):
+                with self.subTest(key=key, value=value):
+                    invalid = dict(valid, **{key: value})
+                    path.write_text(json.dumps(invalid) + "\n", encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        read_linux_designer_protocol_log(path, "linux-x11")
 
     def test_operator_cli_rejects_valid_but_stale_native_logs_before_archiving(self):
         for platform in READERS:

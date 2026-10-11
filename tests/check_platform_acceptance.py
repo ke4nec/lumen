@@ -158,6 +158,36 @@ def validate_windows_reader_artifacts(record: dict, directory: Path) -> None:
     )
 
 
+def read_linux_designer_protocol_log(path: Path, platform: str) -> None:
+    """Require the production Linux Designer AT-SPI D-Bus protocol summary."""
+    summaries = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and value.get("provider") == "atspi-dbus":
+            summaries.append(value)
+    if len(summaries) != 1:
+        raise ValueError(f"{path.name} requires exactly one AT-SPI Designer protocol summary")
+    summary = summaries[0]
+    if (summary.get("platform") != platform or
+            summary.get("protocol_loop") != ["designer_select_locate", "designer_edit_save"] or
+            summary.get("theme_reference") != "light -> dark" or
+            summary.get("windowed") is not True):
+        raise ValueError(f"{path.name} has incomplete Linux Designer AT-SPI coverage")
+
+
+def validate_linux_designer_artifacts(record: dict, directory: Path) -> None:
+    """Bind Linux operator records to the production Designer window loop."""
+    platform = record.get("platform")
+    if platform not in {"linux-x11", "linux-wayland"}:
+        return
+    read_linux_designer_protocol_log(
+        evidence_log(record, directory, "atspi-designer-live.log"), platform
+    )
+
+
 def validate_platform_checks(record: dict, platform: str) -> None:
     required = PLATFORM_CASES | ({"font_cold_start", "touchpad"} if platform == "windows" else set())
     for case in sorted(required):
@@ -216,6 +246,7 @@ def validate(record: dict, commit: str, platform: str, directory: Path) -> None:
             raise ValueError("empty or mismatched artifact")
     validate_designer_window_artifact(record, directory)
     validate_frame_allocator_artifact(record, directory)
+    validate_linux_designer_artifacts(record, directory)
     validate_windows_reader_artifacts(record, directory)
 
 
@@ -228,6 +259,7 @@ def main() -> None:
     parser.add_argument("--soak-report", type=Path)
     parser.add_argument("--frame-allocator-log", type=Path)
     parser.add_argument("--designer-log", type=Path)
+    parser.add_argument("--atspi-designer-log", type=Path)
     parser.add_argument("--validate-frame-allocator-only", action="store_true")
     args = parser.parse_args()
     try:
@@ -235,6 +267,10 @@ def main() -> None:
             read_frame_allocator_log(args.frame_allocator_log, args.platform)
         if args.designer_log:
             read_designer_window_log(args.designer_log)
+        if args.atspi_designer_log:
+            read_linux_designer_protocol_log(
+                args.atspi_designer_log, args.platform
+            )
         if args.validate_frame_allocator_only:
             if not args.frame_allocator_log:
                 raise ValueError("--validate-frame-allocator-only requires --frame-allocator-log")
@@ -251,6 +287,11 @@ def main() -> None:
                                  "frame-allocator-live.log")
         if args.designer_log:
             validate_current_log(record, args.record.parent, args.designer_log, "designer-live.log")
+        if args.atspi_designer_log:
+            validate_current_log(
+                record, args.record.parent, args.atspi_designer_log,
+                "atspi-designer-live.log"
+            )
         validate_platform(record, json.loads(args.soak_report.read_text(encoding="utf-8")), args.platform)
         if args.archive:
             args.archive.mkdir(parents=True, exist_ok=True)

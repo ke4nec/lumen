@@ -226,9 +226,11 @@
 
 - 下一步现场接线已落在 `.github/workflows/platform-acceptance.yml`：Linux X11 与 Wayland
   job 在 Designer 原生窗口 smoke 后执行同一个 `designer_atspi_window_live_tests.py`，
-  将结构化协议摘要保存为 `atspi-designer-live.log` 并上传。该步骤要求真实会话中的
-  `python3-dbus`、AT-SPI bus 和生产窗口，属于协议证据绑定；Orca 播报、IME、Inspector、
-  DPI/主题、拖拽和 soak 仍需现场记录，未因工作流接线而标记为通过。
+  将结构化协议摘要保存为 `atspi-designer-live.log` 并上传；检查器要求 Linux
+  `record.json` 登记该附件并按 SHA256 绑定当前 workflow 日志，严格验证 X11/Wayland
+  平台字段和唯一协议摘要。该步骤要求真实会话中的 `python3-dbus`、AT-SPI bus 和生产
+  窗口，属于协议证据绑定；Orca 播报、IME、Inspector、DPI/主题、拖拽和 soak 仍需现场
+  记录，未因工作流接线而标记为通过。
 
 
 ## 2. 阶段与 fixture 对照
