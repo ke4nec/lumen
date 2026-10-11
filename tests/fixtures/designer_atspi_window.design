@@ -1,0 +1,31 @@
+{
+  "documentId": "designer-atspi-window",
+  "format": "lumen.design",
+  "pageName": "atspi",
+  "schemaVersion": 1,
+  "root": {
+    "id": "1",
+    "type": "Column",
+    "properties": {
+      "key": {"kind": "string", "value": "root"}
+    },
+    "children": [
+      {
+        "id": "4",
+        "type": "Text",
+        "properties": {
+          "key": {"kind": "string", "value": "text"},
+          "text": {"kind": "string", "value": "Gallery"}
+        }
+      },
+      {
+        "id": "21",
+        "type": "ThemeScope",
+        "properties": {
+          "key": {"kind": "string", "value": "theme-scope"}
+        },
+        "references": {"theme": "light"}
+      }
+    ]
+  }
+}

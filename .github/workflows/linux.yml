@@ -28,7 +28,7 @@ env:
     libasound2-dev libpulse-dev libaudio-dev libjack-dev
     libsndio-dev libsamplerate0-dev liburing-dev
     wayland-protocols libfontconfig1-dev libfreetype6-dev
-    xvfb at-spi2-core gir1.2-atspi-2.0 python3-gi dbus-x11
+    xvfb at-spi2-core gir1.2-atspi-2.0 python3-gi python3-dbus dbus-x11
   # FetchContent（SDL3/Catch2/Skia/zlib）集中到工作区外缓存目录，
   # 跨 job 经 actions/cache 复用，避免每次重新 clone/下载。
   FETCHCONTENT_BASE_DIR: ${{ github.workspace }}/.fetchcontent-cache
@@ -189,6 +189,8 @@ jobs:
         run: dbus-run-session -- /usr/bin/python3 -B tests/atspi_live_tests.py build/tests/lumen-atspi-live-app
       - name: Native AT-SPI Designer outline and property round-trip
         run: dbus-run-session -- /usr/bin/python3 -B tests/designer_atspi_live_tests.py build/tests/lumen-designer-atspi-live-app
+      - name: Native AT-SPI production Designer window round-trip
+        run: xvfb-run -a dbus-run-session -- /usr/bin/python3 -B tests/designer_atspi_window_live_tests.py build/examples/designer/lumen-designer tests/fixtures/designer_atspi_window.design
       - name: Native accessibility preference changes
         run: dbus-run-session -- /usr/bin/python3 -B tests/native_preferences_live_tests.py build/tests/lumen-native-preferences-live-app
       - name: ccache stats
