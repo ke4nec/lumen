@@ -126,6 +126,13 @@
   [macOS](https://github.com/ke4nec/lumen/actions/runs/38105806458) CI 全部通过，Linux 本机
   Debug CTest 1171/1171 通过，完整归属见
   [`1677c57 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-1677c57.json)。
+- `f0cdd34` 将生产 `lumen-designer --acceptance` 接入四个真实桌面 workflow 的 Designer
+  日志：通过语义 Focus/SetValue 完成选择、属性编辑、undo/redo、保存和重开，再执行双窗口
+  原生 smoke；日志 marker 与附件哈希均由验收检查器校验。新增 acceptance CTest 和包内
+  smoke；本机完整 Debug CTest 1172/1172、平台验收检查器 17/17 通过。[Windows](https://github.com/ke4nec/lumen/actions/runs/38109953434)、
+  [Linux](https://github.com/ke4nec/lumen/actions/runs/38109953528) 和
+  [macOS](https://github.com/ke4nec/lumen/actions/runs/38109953443) CI 全部通过，完整归属见
+  [`f0cdd34 CI 原始摘要`](platform-evidence/designer-ci-2026-10-11-f0cdd34.json)。
 
 ## 2. 阶段与 fixture 对照
 

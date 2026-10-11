@@ -1,0 +1,38 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-11T04:18:17Z",
+  "source_commit": "f0cdd34ec6797633891d22f3ac02cbb8ccbe5215",
+  "purpose": "Production DesignerApp acceptance round-trip for selection, semantic property editing, undo/redo, save, and reopen",
+  "runs": {
+    "windows": {
+      "id": 38109953434,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38109953434",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38109953528,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38109953528",
+      "jobs": "7/7 successful",
+      "designer_job": "CPU completed successfully with Designer acceptance CTest and package smoke"
+    },
+    "macos": {
+      "id": 38109953443,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38109953443",
+      "jobs": "6/6 successful",
+      "designer_job": "CPU completed successfully with Designer acceptance CTest and package smoke"
+    }
+  },
+  "local": {
+    "designer_acceptance": "passed: production semantic Focus and SetValue, selection, undo/redo, temporary save, reopen, documentId and node identity",
+    "designer_acceptance_ctest": "1/1 passed",
+    "full_debug_ctest": "1172/1172 passed (120.47s)",
+    "platform_acceptance_checker": "17/17 passed",
+    "acceptance_marker_validation": "passed: unique edit_save_reopen and window smoke markers, duplicate/missing/invalid cases rejected"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The automated Designer round-trip verifies the production application transaction and native window smoke, but does not provide a signed-in desktop acceptance record.",
+    "VoiceOver/Narrator/NVDA/Orca speech, real IME, cross-application clipboard, DPI observation, inspector overlays, GPU recovery, and one-hour soak remain separate manual platform checks."
+  ]
+}

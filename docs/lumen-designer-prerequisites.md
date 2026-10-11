@@ -1946,3 +1946,12 @@ Debug CTest 1171/1171（119.58s）与构建通过；macOS CPU job 实际编译�
 `[a11y][appkit][designer]` 用例。Windows 七个 job、Linux 七个 job、macOS 六个 job 均成功，
 最终摘要见 [`1677c57 CI 证据`](platform-evidence/designer-ci-2026-10-11-1677c57.json)。
 该 AX 协议回环仍不替代 VoiceOver 语音、真实 IME、跨应用剪贴板和完整 macOS 桌面现场记录。
+
+`f0cdd34` 将生产 `lumen-designer` 的原生验收回环接入现场工作流：`--acceptance` 通过
+`DesignerApp` 真实语义 Focus/SetValue 路径选择 Text 节点、编辑声明属性、执行 undo/redo、
+保存临时设计文档并重开，校验 `documentId`、节点 ID 和最终值；随后同一日志再执行双窗口
+原生窗口 smoke。新增 `designer_gallery_design_acceptance` CTest 与包内 smoke，验收检查器
+要求 `designer_acceptance edit_save_reopen pass` 和 `designer_window_smoke pass` 各唯一一次。
+本机完整 Debug CTest 1172/1172、平台验收检查器 17/17 通过；Windows 七个 job、Linux
+七个 job、macOS 六个 job均成功，最终摘要见 [`f0cdd34 CI 证据`](platform-evidence/designer-ci-2026-10-11-f0cdd34.json)。
+自动回环仍不替代登录桌面的读屏、IME、DPI、Inspector 和完整人工现场记录。
