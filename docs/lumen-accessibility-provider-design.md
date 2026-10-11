@@ -116,7 +116,7 @@ SDL3 只有消息泵钩子（`SDL_SetWindowsMessageHook`，Peek 循环内），�
 | Group | Group | |
 | Window / Dialog | Pane | Dialog 另置 `UIA_IsDialogPropertyId` |
 
-**Flags → Properties**：Enabled→IsEnabled；Focused→HasKeyboardFocus（**flag 与 focusedId 双源**——setFocusedNode 可先于下一帧 flag 推送）；Hidden→IsOffscreen；Invalid→`!IsDataValidForForm`；Checked→ToggleState（pattern）。另：IsKeyboardFocusable = actions 含 Focus 且 enabled；IsPassword 恒 false（语义层已隐藏密码值）。
+**Flags → Properties**：Enabled→IsEnabled；Focused→HasKeyboardFocus（**flag 与 focusedId 双源**——setFocusedNode 可先于下一帧 flag 推送）；Hidden→IsOffscreen；Invalid→`!IsDataValidForForm`；Checked→ToggleState（pattern）；Selected→`UIA_SelectionItemIsSelectedPropertyId`，供大纲、页签和其他选中语义回读。另：IsKeyboardFocusable = actions 含 Focus 且 enabled；IsPassword 恒 false（语义层已隐藏密码值）。
 
 **Actions → Patterns**：
 
