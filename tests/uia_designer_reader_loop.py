@@ -315,6 +315,7 @@ def main():
         "narrator_alive": narrator_alive,
         "protocol_loop": ["designer_select_locate", "designer_edit_save"],
         "diagnostic_locate": "reference.missing -> Source -> ThemeScope",
+        "reopened": True,
     }, ensure_ascii=False))
     print(
         "UIA Designer reader round-trip passed; speech evidence remains "

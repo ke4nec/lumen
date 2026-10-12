@@ -127,7 +127,8 @@ Windows 现场 workflow 执行；UIA 协议和读屏器进程探活不等于 Nar
 Windows 的 `record.json` 还必须把本次 workflow 生成的 `uia-reader-live.log` 和
 `uia-designer-live.log` 作为附件登记；验收检查器会解析两份日志各自唯一的 UIA JSON
 协议摘要并核对协议集合；Designer 摘要还必须包含 `reference.missing -> Source ->
-ThemeScope` 的诊断定位结果，防止只填读屏字段而漏掉 Designer 专用回环。两份日志的
+ThemeScope` 的诊断定位结果和布尔值 `reopened=true`。该值仅在新启动的原生窗口读回
+保存文本之后输出；缺失、false、字符串或数值不满足 §6.3 保存重开出口。两份日志的
 附件哈希也必须与本次现场 workflow 的文件一致。
 
 每次验收应保留 workflow run URL、artifact JSON、OS/桌面环境、显示服务器、

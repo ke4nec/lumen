@@ -14,6 +14,7 @@ from check_platform_acceptance import (validate, validate_platform,
                                        read_frame_allocator_log,
                                        read_linux_designer_protocol_log,
                                        read_macos_designer_protocol_log,
+                                       read_windows_reader_protocol_log,
                                        READER_CASES, PLATFORM_CASES, READERS,
                                        NATIVE_ALLOCATOR_DRIVERS, NATIVE_ALLOCATOR_SOURCES)
 from uia_designer_reader_loop import eventually as uia_designer_eventually
@@ -124,7 +125,8 @@ class EvidenceTests(unittest.TestCase):
                     + json.dumps({
                         "platform": "windows", "provider": "uia",
                         "protocol_loop": ["designer_select_locate", "designer_edit_save"],
-                        "diagnostic_locate": "reference.missing -> Source -> ThemeScope"
+                        "diagnostic_locate": "reference.missing -> Source -> ThemeScope",
+                        "reopened": True,
                     }) + "\n"
             })
         if platform in ("linux-x11", "linux-wayland"):
@@ -351,22 +353,16 @@ class EvidenceTests(unittest.TestCase):
                         artifact = next(item for item in record["artifacts"]
                                         if item["path"] == name)
                         path = root / name
+                        original = path.read_bytes()
                         path.write_text("{\"platform\": \"windows\", \"provider\": \"uia\"}\n",
                                         encoding="utf-8")
                         artifact["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
                         with self.subTest(platform=platform, artifact=name):
                             with self.assertRaisesRegex(ValueError, name):
                                 validate(record, "a" * 40, platform, root)
-                        path.write_text(
-                            "{\"platform\": \"windows\", \"provider\": \"uia\", "
-                            "\"protocol_loop\": "
-                            + ("[\"focus\", \"activate\", \"value\", \"edit\"]"
-                               if name == "uia-reader-live.log" else
-                               "[\"designer_select_locate\", \"designer_edit_save\"]")
-                            + ("\n,\"diagnostic_locate\": \"reference.missing -> Source -> ThemeScope\""
-                               if name == "uia-designer-live.log" else "")
-                            + "}\n", encoding="utf-8")
+                        path.write_bytes(original)
                         artifact["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+                        validate(record, "a" * 40, platform, root)
                 for reader in READERS[platform]:
                     for case in ("designer_select_locate", "designer_edit_save"):
                         for value in ("pending", None):
@@ -441,6 +437,31 @@ class EvidenceTests(unittest.TestCase):
             record["artifacts"].append(dict(record["artifacts"][0]))
             with self.assertRaises(ValueError):
                 validate_designer_window_artifact(record, root)
+
+    def test_windows_designer_uia_log_requires_native_reopen(self):
+        # Designer §6.3 requires reopening the saved file in a new native window.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "uia-designer-live.log"
+            valid = {
+                "platform": "windows", "provider": "uia",
+                "protocol_loop": ["designer_select_locate", "designer_edit_save"],
+                "diagnostic_locate": "reference.missing -> Source -> ThemeScope",
+                "reopened": True,
+            }
+            expected = ("designer_select_locate", "designer_edit_save")
+            path.write_text(json.dumps(valid) + "\n", encoding="utf-8")
+            read_windows_reader_protocol_log(path, expected, diagnostic_required=True)
+            for value in (None, False, "true", 1):
+                invalid = dict(valid)
+                if value is None:
+                    del invalid["reopened"]
+                else:
+                    invalid["reopened"] = value
+                path.write_text(json.dumps(invalid) + "\n", encoding="utf-8")
+                with self.subTest(value=value):
+                    with self.assertRaisesRegex(ValueError, "native reopen"):
+                        read_windows_reader_protocol_log(
+                            path, expected, diagnostic_required=True)
 
     def test_linux_designer_atspi_log_requires_windowed_protocol_summary(self):
         with tempfile.TemporaryDirectory() as directory:

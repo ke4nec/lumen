@@ -2129,3 +2129,10 @@ Linux X11/Xvfb 与本机 GNOME Wayland 生产回环均已通过实际重开，�
 Orca 50.2 在场的补充探测仅有启动播报、没有 Designer 属性播报，不能签署读屏通过。
 本次 Wayland 原生 allocator/resize/64 MiB/双恢复浸泡第一次在 1486.200 秒提前退出 1，
 状态保持但未达到 3600 秒；失败日志已保留，第二次采样仍在运行，当前不登记 soak pass。
+
+Windows Designer 现场 UIA 摘要现也与 Linux/macOS 一致，显式报告布尔值
+`reopened=true`；该摘要仅在关闭旧进程、新窗口选择 Text 并读回保存值，以及诊断定位
+回环通过后输出。检查器拒绝缺失、false、字符串和数值；回归覆盖这些拒绝分支，并
+修正 Windows 证据测试恢复日志的方式，恢复后重新校验完整记录。
+平台验收检查器 `24/24`、完整 Debug CTest `1172/1172`（137.19s）通过。
+本次收紧的是现场证据格式，真实 Windows Narrator/NVDA 签署仍需要登录桌面记录。

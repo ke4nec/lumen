@@ -141,6 +141,8 @@ def read_windows_reader_protocol_log(path: Path, expected: Tuple[str, ...],
     if diagnostic_required and summary.get("diagnostic_locate") != (
             "reference.missing -> Source -> ThemeScope"):
         raise ValueError(f"{path.name} has no Designer diagnostic locate result")
+    if diagnostic_required and summary.get("reopened") is not True:
+        raise ValueError(f"{path.name} has no Designer native reopen result")
 
 
 def validate_windows_reader_artifacts(record: dict, directory: Path) -> None:
