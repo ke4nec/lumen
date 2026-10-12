@@ -15,13 +15,23 @@ int main() {
         button.onClick = "apply";
         auto slider = core::makeSlider("value", "volume");
         slider.semanticsLabel = "Volume";
-        return core::makeColumn({std::move(button), std::move(slider)});
+        slider.enabled = app->state().get("volumeDisabled") != "yes";
+        auto toggle = core::makeButton("Toggle availability");
+        toggle.key = "toggle-availability";
+        toggle.onClick = "toggle-availability";
+        return core::makeColumn({std::move(button), std::move(slider),
+                                 std::move(toggle)});
     };
     app::AppShell shell(config);
     app = &shell;
     shell.state().set("value", "50");
     shell.handlers()["apply"] = [&] {
         shell.state().set("clicked", "yes");
+        shell.markDirty();
+    };
+    shell.handlers()["toggle-availability"] = [&] {
+        const bool disabled = shell.state().get("volumeDisabled") == "yes";
+        shell.state().set("volumeDisabled", disabled ? "no" : "yes");
         shell.markDirty();
     };
     accessibility::PlatformAccessibilityHost host;

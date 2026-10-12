@@ -163,14 +163,17 @@ Linux 侧走 org.a11y.Bus D-Bus 协议（Qt/GTK 同款；仓库已有 libdbus �
   表示响应用户交互；缺少 SENSITIVE 会使 Orca 把可用窗口/控件播报为 grayed。
   两位的含义见 [AT-SPI StateType](https://docs.gtk.org/atspi2/enum.StateType.html)，
   `designer_atspi_live_tests.py` 覆盖大纲行、可编辑字段及禁用字段的真实协议状态。
-- **事件**：children-changed（结构）、property-change（accessible-name/value/state）、focus（state-changed:focused）经总线信号广播。TextField 值改变发送 text-changed:delete/insert：语义快照不携带编辑区间，因此以 offset=0 删除旧全文再插入新全文；length 按码点计算，variant 为对应字符串，空串不发送该方向事件。文本字段不发送数值 accessible-value 事件。
+  稳定节点的可用状态切换分别发送 `state-changed:enabled` 和 `state-changed:sensitive`，
+  detail1 为新状态 0/1；`enabled && actions ∋ Focus` 改变时发送 `state-changed:focusable`。
+  `atspi_live_tests.py` 通过真实 libatspi 监听验证禁用/重新启用两向通知与缓存回读。
+- **事件**：children-changed（结构）、property-change（accessible-name/value）、state-changed（focused/enabled/sensitive/focusable）经总线信号广播。TextField 值改变发送 text-changed:delete/insert：语义快照不携带编辑区间，因此以 offset=0 删除旧全文再插入新全文；length 按码点计算，variant 为对应字符串，空串不发送该方向事件。文本字段不发送数值 accessible-value 事件。
 - **文本协议依据**：[GNOME Text.xml](https://github.com/GNOME/at-spi2-core/blob/main/xml/Text.xml)、[EditableText.xml](https://github.com/GNOME/at-spi2-core/blob/main/xml/EditableText.xml) 与 [Event.xml](https://github.com/GNOME/at-spi2-core/blob/main/xml/Event.xml)。当前最小字段值接口不承诺光标、选区、文本属性、字词/行粒度或其他 EditableText 操作；字段密码值仍以语义层已经隐藏的 value 为准。
 - **窗口激活（M13 2026-09-23 补齐）**：屏幕阅读器以 window:activate 切换“当前应用”上下文，只发 state-changed:focused 不会开始播报。`noteWindowActive`（宿主 WindowFocusGained/Lost → runApp → AppShell 转发）发 `org.a11y.atspi.Event.Window` 的 `Activate`/`Deactivate` 信号 + 根节点 `state-changed:active`（线格式按 libatspi 客户端注册 "window:activate" 生成的 match 规则实测比对）。`Component.GrabFocus` 按平台惯例（atk_component_grab_focus）同时经 `PlatformAccessibilityHost.activateWindow`（runApp 接宿主 `raiseWindow`）抬升所属窗口；窗口根路径只做激活（语义根无 focus action，向根派发会搅乱后续控件焦点）。Wayland 焦点授予由合成器策略决定（xdg-activation），X11/XWayland 可直接置前。
 - **角色/名称映射修正（2026-09-23）**：AtspiRole 数值以 libatspi `Atspi.Role` 实测枚举为准（旧表多处错位：Button=41 实为 POPUP_MENU、List=35 实为 MENU_ITEM、ProgressBar=38 实为 PAGE_TAB_LIST 等，屏幕阅读器按错角色播报）；Switch 用原生 SWITCH(130)。根节点名三通道（GetName 成员/`Properties.Get("Name")`——libatspi get_name() 实际走这条/GetAll）统一返回应用名（宿主窗口标题）；语义根 label 通常为空。`AppShell::performAccessibilityAction` 对 Handled 的 AT 派发显式标脏（AT 路径无宿主事件伴随帧请求，否则 FOCUSED 状态永不上报），runApp 的 a11y pump 按 `hasPendingFrame` 合并请求一帧。
 - **线程**：D-Bus 连接在 UI 线程的 `AccessibilityBridge::pump()` 内 `dbus_connection_dispatch`，由 `runApp` 在 SDL 事件轮询前调用，保持“UI 线程拥有”不变量。
 - **能力**：注册握手成功 → `available()` true；Orca 回环属 M13 出口验收。
 - **协议回归**：`dbus-run-session -- python3 -B tests/atspi_live_tests.py <build>/tests/lumen-atspi-live-app`
-  使用系统注册表与 libatspi 客户端验证注册、窗口激活（GrabFocus → activateWindow → window:activate）、焦点、按钮、数值回灌。Socket 位于
+  使用系统注册表与 libatspi 客户端验证注册、窗口激活（GrabFocus → activateWindow → window:activate）、焦点、按钮、数值回灌和可用状态双向通知。Socket 位于
   `/org/a11y/atspi/accessible/root`，Application.Id 为 int32，GetState 返回两段
   uint32 位图；Cache.GetItems 返回空缓存，客户端按需查询对象。此测试不替代 Orca。
 - **Designer 协议回归**：`dbus-run-session -- /usr/bin/python3 -B tests/designer_atspi_live_tests.py <build>/tests/lumen-designer-atspi-live-app` 在 Linux CPU CI 执行。libatspi 客户端驱动生产 provider 与真实 DesignerApp/AppShell：大纲激活、selected/焦点、属性全文读写、空串、中文/emoji/组合字符范围和计数、文本事件、非字段/禁用字段拒写。应用端另验证 DocumentId 选择、dirty、undo/redo、保存与重开后的文档/节点 ID 和声明值。此 fixture 不创建 SDL 窗口，不覆盖 Orca、显示器或人工桌面签署。

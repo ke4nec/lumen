@@ -1008,6 +1008,24 @@ void AtspiAccessibilityBridge::updateTree(const SemanticsTree& tree,
             if (node != nullptr) {
                 const std::string path = impl_->pathFor(id);
                 const auto* old = previous.find(id);
+                if (old != nullptr) {
+                    const bool wasEnabled = (old->flags & kSemanticsEnabled) != 0;
+                    const bool enabled = (node->flags & kSemanticsEnabled) != 0;
+                    if (wasEnabled != enabled) {
+                        for (const char* state : {"enabled", "sensitive"}) {
+                            emitSignal(impl_.get(), path.c_str(),
+                                       "org.a11y.atspi.Event.Object", "StateChanged",
+                                       "state", state, {}, enabled ? 1 : 0);
+                        }
+                    }
+                    const bool wasFocusable = wasEnabled && (old->actions & kActionFocus) != 0;
+                    const bool focusable = enabled && (node->actions & kActionFocus) != 0;
+                    if (wasFocusable != focusable) {
+                        emitSignal(impl_.get(), path.c_str(),
+                                   "org.a11y.atspi.Event.Object", "StateChanged",
+                                   "state", "focusable", {}, focusable ? 1 : 0);
+                    }
+                }
                 emitSignal(impl_.get(), path.c_str(),
                            "org.a11y.atspi.Event.Object", "PropertyChange",
                            "property", "accessible-name", node->label);

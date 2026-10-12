@@ -30,7 +30,16 @@ def eventually(predicate):
 Atspi.init()
 Atspi.set_timeout(1000, 1000)
 events = []
-listener = Atspi.EventListener.new(lambda event: events.append(event.type))
+state_events = []
+
+
+def on_event(event):
+    events.append(event.type)
+    if event.type.startswith("object:state-changed"):
+        state_events.append((event.source, event.type, event.detail1))
+
+
+listener = Atspi.EventListener.new(on_event)
 listener.register("object:property-change")
 listener.register("object:state-changed")
 listener.register("window:activate")
@@ -53,8 +62,26 @@ with subprocess.Popen([sys.argv[1]]) as app:
         eventually(lambda: not button.get_state_set().contains(Atspi.StateType.FOCUSED))
         assert slider.get_value_iface().set_current_value(75)
         eventually(lambda: slider.get_value_iface().get_current_value() == 75)
+        # Provider design §6: native events must update the reader's cached
+        # enabled/sensitive/focusable state when a stable control changes availability.
+        toggle = eventually(lambda: find("Toggle availability"))
+        assert slider.get_state_set().contains(Atspi.StateType.ENABLED)
+        assert slider.get_state_set().contains(Atspi.StateType.SENSITIVE)
+        assert slider.get_state_set().contains(Atspi.StateType.FOCUSABLE)
+        for available in (False, True):
+            state_events.clear()
+            assert toggle.get_action_iface().do_action(0)
+            for state in ("enabled", "sensitive", "focusable"):
+                eventually(lambda s=state, a=available: (
+                    slider, f"object:state-changed:{s}", int(a)
+                ) in state_events)
+            eventually(lambda a=available: (
+                slider.get_state_set().contains(Atspi.StateType.ENABLED) == a
+                and slider.get_state_set().contains(Atspi.StateType.SENSITIVE) == a
+                and slider.get_state_set().contains(Atspi.StateType.FOCUSABLE) == a
+            ))
         assert app.poll() is None
-        print("AT-SPI native registry / window activation / focus / activate / value round-trip passed")
+        print("AT-SPI native registry / window activation / focus / activate / value / availability events round-trip passed")
     finally:
         app.terminate()
         app.wait(timeout=5)
