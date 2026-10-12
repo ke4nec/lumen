@@ -1,0 +1,16 @@
+dbus-daemon[83465]: [session uid=1000 pid=83465 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=83466 comm="/usr/bin/python3 -B tests/atspi_live_tests.py buil" label="unconfined")
+dbus-daemon[83465]: [session uid=1000 pid=83465 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[83475]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=83466 comm="/usr/bin/python3 -B tests/atspi_live_tests.py buil" label="unconfined")
+dbus-daemon[83475]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+Traceback (most recent call last):
+  File "/home/niq/prj/lumen/tests/atspi_live_tests.py", line 74, in <module>
+    eventually(lambda s=state, a=available: (
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        slider, f"object:state-changed:{s}", int(a)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) in state_events)
+    ^^^^^^^^^^^^^^^^^^
+  File "/home/niq/prj/lumen/tests/atspi_live_tests.py", line 27, in eventually
+    raise AssertionError("native AT-SPI round-trip timed out")
+AssertionError: native AT-SPI round-trip timed out

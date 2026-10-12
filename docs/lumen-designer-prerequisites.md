@@ -2155,3 +2155,12 @@ Orca 复查改为 `window.`/`button.`，保留日志没有 grayed。启用桥的
 源文件/可执行文件哈希见 [`AT-SPI 状态复查`](platform-evidence/designer-atspi-sensitive-2026-10-12.json)。
 诊断运行在 GNOME Wayland 内的 Xwayland，通过临时 wrapper 记录实际 Orca 播报请求，
 未录制声音或签署完整 reader record；字段 Unicode 值、光标/选区和真实 IME 播报仍未证明。
+
+后续 review 补齐 AT-SPI 运行时可用状态通知：稳定节点禁用/重新启用时分别发送
+`state-changed:enabled`、`state-changed:sensitive`，Focus 可用性同步发送
+`state-changed:focusable`。旧 provider 在真实 libatspi 监听中因缺少 enabled 事件超时；
+修复后同一 Volume 节点两向 detail1=0/1、三种状态与客户端缓存回读一致，Designer
+Unicode/主题/历史/保存重开回环保持通过。完整 Debug CTest `1173/1173`（119.43s）、
+平台验收检查器 `24/24` 通过，原始失败/成功日志与源码、fixture 二进制哈希见
+[`可用状态事件复查`](platform-evidence/designer-atspi-state-events-2026-10-12.json)。
+这些隔离 D-Bus fixture 没有启动 Orca，不升级为完整人工桌面 record。

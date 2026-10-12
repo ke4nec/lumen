@@ -294,6 +294,13 @@
   [前后日志与脚本](platform-evidence/designer-atspi-sensitive-2026-10-12.json) 保留身份与限制。
   这只补充播报请求诊断，未录音或取得完整人工 record，所有 reader 现场出口继续 pending。
 
+- `2244605` 的原生 AT-SPI review 补齐稳定节点的 enabled/sensitive/focusable 状态通知。
+  旧 provider 在禁用时缺少 enabled 事件导致真实 libatspi 监听超时；修复后同一节点
+  禁用/重新启用两向收到 detail1=0/1，客户端状态回读一致。Designer Unicode、ThemeScope、
+  历史与保存重开保持通过；完整桥开启 Debug CTest `1173/1173`（119.43s）、验收检查器
+  `24/24` 通过。[原始协议证据](platform-evidence/designer-atspi-state-events-2026-10-12.json)
+  按源码和二进制哈希归属；没有启动 Orca，完整现场出口继续 pending。
+
 ## 2. 阶段与 fixture 对照
 
 以下“headless 通过”只归属上述源码和自动化验证范围；涉及真实输入、合成器、读屏或

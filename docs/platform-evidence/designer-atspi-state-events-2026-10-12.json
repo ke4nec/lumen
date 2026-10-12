@@ -1,0 +1,51 @@
+{
+  "kind": "designer_atspi_availability_event_regression",
+  "recorded_at": "2026-10-12T05:58:16.470215+00:00",
+  "source_commit": "2244605a5404e4a2e5bfd26de0b70226cfbfbeec",
+  "old_provider_commit": "ada64457c5e0e4ec0436f9d5ee28366e2c56331d",
+  "source_identity": {
+    "src/accessibility/atspi_provider.cpp": "8d794c598ef52133737b1a0b0699ccdc7f9947abd4f752ac56957462f1d42a50",
+    "tests/atspi_live_app.cpp": "e023ca1a3835d2370aa08990a8b324335d1d4fd14aaed60a474cf1e4de5d05fe",
+    "tests/atspi_live_tests.py": "6dee622f59e08bd7894270a3fe482d662dae83cd550072857dbab2c616318b6e",
+    "build-debug-a11y-ninja/tests/lumen-atspi-live-app": "4f06ca8763cd58c280cfa0a4d071e7034b0480e7a59e7cb76d12aef49a4f873b",
+    "build-debug-a11y-ninja/tests/lumen-designer-atspi-live-app": "fa65ee96531a72eb5f151d514271f1594f5f63c281c60a9d7545d0c80415bbfd"
+  },
+  "change": "Emit AT-SPI state-changed:enabled/sensitive for stable nodes when enabled changes; emit state-changed:focusable when enabled && Focus action changes.",
+  "old_result": "The native libatspi listener timed out waiting for state-changed:enabled when the Volume slider was disabled. The old provider reported states on query but sent no availability events.",
+  "fixed_result": "A native libatspi client receives enabled, sensitive and focusable events with detail1=0 on disable and detail1=1 on re-enable for the same Volume object; state reads agree in both directions. Designer Unicode/text events, ThemeScope, history and save/reopen still pass.",
+  "local": {
+    "commands": [
+      "cmake --build build-debug-a11y-ninja --config Debug --parallel 4",
+      "ctest --test-dir build-debug-a11y-ninja --output-on-failure -C Debug",
+      "python3 -B tests/platform_acceptance_tests.py",
+      "dbus-run-session -- /usr/bin/python3 -B tests/atspi_live_tests.py build-debug-a11y-ninja/tests/lumen-atspi-live-app",
+      "dbus-run-session -- /usr/bin/python3 -B tests/designer_atspi_live_tests.py build-debug-a11y-ninja/tests/lumen-designer-atspi-live-app"
+    ],
+    "debug_a11y_ctest": "1173/1173 passed (119.43 seconds)",
+    "platform_acceptance_tests": "24/24 passed",
+    "native_generic_loop_exit_code": 0,
+    "native_designer_loop_exit_code": 0,
+    "python_syntax": "passed",
+    "git_diff_check": "passed"
+  },
+  "artifacts": [
+    {
+      "path": "designer-atspi-state-events-2026-10-12/old-notification-failure.log",
+      "sha256": "2a1b7fd7bb769c06954b516ef9619cb845ddd6de091b3f3cecd1f0cf40d8901a"
+    },
+    {
+      "path": "designer-atspi-state-events-2026-10-12/fixed-notification-loop.log",
+      "sha256": "03498a671350527f83f9efc3acf6170c7ec4cba62e88996370a80dab0281f20d"
+    },
+    {
+      "path": "designer-atspi-state-events-2026-10-12/fixed-designer-loop.log",
+      "sha256": "85730475048a8dd10c2ff5797a5347ee0b75fd5850e69ede9f5e5d7b0375c34d"
+    }
+  ],
+  "acceptance_complete": false,
+  "limitations": [
+    "Both libatspi regressions use isolated D-Bus sessions and headless fixtures with the production provider; neither launches Orca or signs a desktop reader record.",
+    "The old failure log was captured before the additional focusable assertion; it already fails at the first enabled event wait.",
+    "Windows Narrator/NVDA, macOS VoiceOver, real IME, Inspector, physical DPI/theme, drag/drop and complete platform record.json remain pending."
+  ]
+}
