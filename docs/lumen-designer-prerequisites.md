@@ -2100,3 +2100,9 @@ UIA 元素，超时同样保留底层 COM 错误。这样 platform-acceptance �
 VoiceOver 语音仍需登录桌面现场观察。
 本次三平台 hosted CI 归属见
 [`06771f2 CI 证据`](platform-evidence/designer-ci-2026-10-12-06771f2.json)。
+
+Designer 专用回环随后也完成了同样的当前节点重取：macOS AXAPI 的 Text/ThemeScope 行、
+属性字段和 Save 动作不再跨语义树重建复用旧对象；Linux X11 AT-SPI D-Bus 生产窗口回环
+同时对 TreeItem 激活、属性读写和 Save 动作重试。当前 Linux X11 生产回环已通过选择、
+Unicode 编辑、ThemeScope `light -> dark` 和保存回读；macOS 仍需登录 Aqua/辅助功能权限，
+不能用语法检查代替 AXAPI 现场结果。

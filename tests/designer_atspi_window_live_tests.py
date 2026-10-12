@@ -128,6 +128,23 @@ def main():
                     time.sleep(0.1)
                 raise AssertionError("production Designer AT-SPI node timed out")
 
+            def wait_action(predicate, start=root, timeout=20):
+                """Invoke a current node, retrying across semantic-tree rebuilds."""
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
+                    try:
+                        ref = find(predicate, start=start)
+                        if ref is not None and proxy(ref).DoAction(
+                            dbus.Int32(0),
+                            dbus_interface="org.a11y.atspi.Action",
+                            timeout=2,
+                        ):
+                            return
+                    except dbus.DBusException:
+                        pass
+                    time.sleep(0.1)
+                raise AssertionError("production Designer AT-SPI action timed out")
+
             def property_panel():
                 # Designer body is the first child of the content panel; its
                 # third child is the stable Properties panel.
@@ -144,80 +161,84 @@ def main():
                     timeout=20,
                 )
 
-            text_item = wait_find(
-                lambda ref: name(ref) == "Text  [text]" and role(ref) == ROLE_TREE_ITEM
+            text_predicate = lambda ref: (
+                name(ref) == "Text  [text]" and role(ref) == ROLE_TREE_ITEM
             )
-            if not proxy(text_item).DoAction(
-                dbus.Int32(0), dbus_interface="org.a11y.atspi.Action", timeout=2
-            ):
-                raise AssertionError("Designer Text TreeItem activation was rejected")
-            text_field = property_field("text")
-            get_text = lambda ref: str(
-                proxy(ref).GetText(
-                    dbus.Int32(0), dbus.Int32(-1),
-                    dbus_interface="org.a11y.atspi.Text", timeout=1,
+            wait_action(text_predicate)
+
+            def get_text(ref):
+                return str(
+                    proxy(ref).GetText(
+                        dbus.Int32(0), dbus.Int32(-1),
+                        dbus_interface="org.a11y.atspi.Text", timeout=1,
+                    )
                 )
-            )
-            if get_text(text_field) != "Gallery":
+
+            def read_field(label, getter):
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    try:
+                        return getter(property_field(label))
+                    except dbus.DBusException:
+                        time.sleep(0.1)
+                raise AssertionError("production Designer property read timed out")
+
+            def wait_field_value(label, getter, expected):
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    try:
+                        if getter(property_field(label)) == expected:
+                            return
+                    except dbus.DBusException:
+                        pass
+                    time.sleep(0.1)
+                raise AssertionError("production Designer property value did not update")
+
+            def set_field_value(label, value):
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    try:
+                        field = property_field(label)
+                        if proxy(field).SetTextContents(
+                            value,
+                            dbus_interface="org.a11y.atspi.EditableText",
+                            timeout=2,
+                        ):
+                            return
+                    except dbus.DBusException:
+                        pass
+                    time.sleep(0.1)
+                raise AssertionError("production Designer property write timed out")
+
+            if read_field("text", get_text) != "Gallery":
                 raise AssertionError("initial production Text value mismatch")
             renamed = "窗口回环🙂e\u0301"
-            if not proxy(text_field).SetTextContents(
-                renamed, dbus_interface="org.a11y.atspi.EditableText", timeout=2
-            ):
-                raise AssertionError("production Text SetTextContents was rejected")
-            deadline = time.monotonic() + 20
-            while time.monotonic() < deadline:
-                try:
-                    text_field = property_field("text")
-                    if get_text(text_field) == renamed:
-                        break
-                except dbus.DBusException:
-                    pass
-                time.sleep(0.1)
-            else:
-                raise AssertionError("production Text value did not update")
+            set_field_value("text", renamed)
+            wait_field_value("text", get_text, renamed)
 
-            theme_item = wait_find(
-                lambda ref: name(ref) == "ThemeScope  [theme-scope]"
+            theme_predicate = lambda ref: (
+                name(ref) == "ThemeScope  [theme-scope]"
                 and role(ref) == ROLE_TREE_ITEM
             )
-            if not proxy(theme_item).DoAction(
-                dbus.Int32(0), dbus_interface="org.a11y.atspi.Action", timeout=2
-            ):
-                raise AssertionError("Designer ThemeScope activation was rejected")
-            theme_field = property_field("theme reference")
-            get_theme = lambda ref: str(
-                proxy(ref).GetText(
-                    dbus.Int32(0), dbus.Int32(-1),
-                    dbus_interface="org.a11y.atspi.Text", timeout=1,
-                )
-            )
-            if get_theme(theme_field) != "light":
-                raise AssertionError("initial production ThemeScope value mismatch")
-            if not proxy(theme_field).SetTextContents(
-                "dark", dbus_interface="org.a11y.atspi.EditableText", timeout=2
-            ):
-                raise AssertionError("production ThemeScope SetTextContents was rejected")
-            deadline = time.monotonic() + 20
-            while time.monotonic() < deadline:
-                try:
-                    theme_field = property_field("theme reference")
-                    if get_theme(theme_field) == "dark":
-                        break
-                except dbus.DBusException:
-                    pass
-                time.sleep(0.1)
-            else:
-                raise AssertionError("production ThemeScope value did not update")
+            wait_action(theme_predicate)
 
-            save_button = wait_find(
+            def get_theme(ref):
+                return str(
+                    proxy(ref).GetText(
+                        dbus.Int32(0), dbus.Int32(-1),
+                        dbus_interface="org.a11y.atspi.Text", timeout=1,
+                    )
+                )
+
+            if read_field("theme reference", get_theme) != "light":
+                raise AssertionError("initial production ThemeScope value mismatch")
+            set_field_value("theme reference", "dark")
+            wait_field_value("theme reference", get_theme, "dark")
+
+            wait_action(
                 lambda ref: name(ref) == "Save" and role(ref) == ROLE_BUTTON,
                 start=root,
             )
-            if not proxy(save_button).DoAction(
-                dbus.Int32(0), dbus_interface="org.a11y.atspi.Action", timeout=2
-            ):
-                raise AssertionError("production Designer Save activation was rejected")
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
                 try:

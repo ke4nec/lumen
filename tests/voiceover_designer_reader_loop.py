@@ -47,14 +47,20 @@ def descendants(element):
 
 def eventually(predicate, timeout=25.0):
     deadline = time.monotonic() + timeout
+    last_error = None
     while time.monotonic() < deadline:
         try:
             result = predicate()
-        except Exception:
+        except Exception as error:
+            last_error = error
             result = None
         if result is not None and result is not False:
             return result
         time.sleep(0.1)
+    if last_error is not None:
+        raise AssertionError(
+            "NSAccessibility Designer protocol loop timed out after transient object errors"
+        ) from last_error
     raise AssertionError("NSAccessibility Designer protocol loop timed out")
 
 
@@ -96,12 +102,16 @@ def main():
                         return element
                 return None
 
-            def find_eventually(role, title, start=window):
-                return eventually(lambda: find(role, title, start))
+            def press_current(role, title, start=window):
+                def action():
+                    element = find(role, title, start)
+                    return element is not None and AX.AXUIElementPerformAction(
+                        element, AX.kAXPressAction
+                    ) == 0
 
-            text_item = find_eventually(ROLE_ROW, "Text  [text]")
-            if AX.AXUIElementPerformAction(text_item, AX.kAXPressAction) != 0:
-                raise AssertionError("Designer Text row activation was rejected")
+                eventually(action)
+
+            press_current(ROLE_ROW, "Text  [text]")
 
             def field_value(label):
                 field = find(ROLE_TEXT_FIELD, label)
@@ -109,27 +119,25 @@ def main():
 
             eventually(lambda: field_value("text") == "Gallery")
             renamed = "窗口回环🙂e\u0301"
-            field = find_eventually(ROLE_TEXT_FIELD, "text")
-            if AX.AXUIElementSetAttributeValue(
-                field, AX.kAXValueAttribute, renamed
-            ) != 0:
-                raise AssertionError("Designer Text AXValue write was rejected")
+
+            def set_value(label, value):
+                def write():
+                    field = find(ROLE_TEXT_FIELD, label)
+                    return field is not None and AX.AXUIElementSetAttributeValue(
+                        field, AX.kAXValueAttribute, value
+                    ) == 0
+
+                eventually(write)
+
+            set_value("text", renamed)
             eventually(lambda: field_value("text") == renamed)
 
-            theme_item = find_eventually(ROLE_ROW, "ThemeScope  [theme-scope]")
-            if AX.AXUIElementPerformAction(theme_item, AX.kAXPressAction) != 0:
-                raise AssertionError("Designer ThemeScope row activation was rejected")
+            press_current(ROLE_ROW, "ThemeScope  [theme-scope]")
             eventually(lambda: field_value("theme reference") == "light")
-            theme_field = find_eventually(ROLE_TEXT_FIELD, "theme reference")
-            if AX.AXUIElementSetAttributeValue(
-                theme_field, AX.kAXValueAttribute, "dark"
-            ) != 0:
-                raise AssertionError("Designer ThemeScope AXValue write was rejected")
+            set_value("theme reference", "dark")
             eventually(lambda: field_value("theme reference") == "dark")
 
-            save = find_eventually(ROLE_BUTTON, "Save")
-            if AX.AXUIElementPerformAction(save, AX.kAXPressAction) != 0:
-                raise AssertionError("Designer Save AXPress was rejected")
+            press_current(ROLE_BUTTON, "Save")
 
             def saved_values():
                 try:

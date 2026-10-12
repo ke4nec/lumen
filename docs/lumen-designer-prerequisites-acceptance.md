@@ -256,6 +256,11 @@
   完整桌面 `record.json` 的 pending 状态。
   三平台 hosted CI 归属见 [`06771f2 CI 证据`](platform-evidence/designer-ci-2026-10-12-06771f2.json)。
 
+- Designer 专用回环继续收紧：macOS AXAPI 和 Linux AT-SPI D-Bus 的 TreeItem 激活、属性
+  读写及 Save 动作都会在语义树重建后重新获取当前节点。Linux X11 生产窗口回环已实际
+  通过 Text 选择、Unicode 编辑、ThemeScope `light -> dark` 和保存回读；macOS 仅完成
+  语法验证，真实 AXAPI 运行仍待登录 Aqua 会话。
+
 
 ## 2. 阶段与 fixture 对照
 
