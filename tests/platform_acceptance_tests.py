@@ -18,9 +18,36 @@ from check_platform_acceptance import (validate, validate_platform,
                                        NATIVE_ALLOCATOR_DRIVERS, NATIVE_ALLOCATOR_SOURCES)
 from uia_designer_reader_loop import eventually as uia_designer_eventually
 from uia_reader_loop import eventually as uia_reader_eventually
+from voiceover_designer_reader_loop import saved_values as macos_designer_saved_values
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_macos_designer_saved_values_include_named_slots(self):
+        renamed = "保存🙂e\u0301"
+        document = {
+            "root": {"id": "1", "children": [], "slots": {
+                "content": [{"id": "2", "slots": {"nested": [
+                    {"id": "4", "properties": {
+                        "text": {"kind": "string", "value": renamed}
+                    }}
+                ]}}],
+                "footer": [{"id": "21", "references": {"theme": "dark"}}],
+                "empty": [],
+            }}
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "edited.design"
+            target.write_text(json.dumps(document), encoding="utf-8")
+            self.assertTrue(macos_designer_saved_values(target, renamed))
+            self.assertFalse(macos_designer_saved_values(target, "old text"))
+            document["root"]["slots"]["footer"][0]["references"]["theme"] = "light"
+            target.write_text(json.dumps(document), encoding="utf-8")
+            self.assertFalse(macos_designer_saved_values(target, renamed))
+            target.write_text("{unfinished", encoding="utf-8")
+            self.assertFalse(macos_designer_saved_values(target, renamed))
+            target.unlink()
+            self.assertFalse(macos_designer_saved_values(target, renamed))
+
     def test_reader_protocol_scripts_parse(self):
         for name in ("uia_reader_loop.py", "uia_designer_reader_loop.py",
                      "designer_atspi_window_live_tests.py", "voiceover_loop.py",
@@ -102,20 +129,22 @@ class EvidenceTests(unittest.TestCase):
             })
         if platform in ("linux-x11", "linux-wayland"):
             contents["atspi-designer-live.log"] = (
-                "AT-SPI production Designer window selection / Unicode text / ThemeScope / save passed\n"
+                "AT-SPI production Designer window selection / Unicode text / ThemeScope / save / reopen passed\n"
                 + json.dumps({
                     "platform": platform, "provider": "atspi-dbus",
                     "protocol_loop": ["designer_select_locate", "designer_edit_save"],
-                    "theme_reference": "light -> dark", "windowed": True
+                    "theme_reference": "light -> dark", "windowed": True,
+                    "reopened": True,
                 }) + "\n"
             )
         if platform == "macos":
             contents["ax-designer-live.log"] = (
-                "NSAccessibility production Designer selection / Unicode text / ThemeScope / save passed\n"
+                "NSAccessibility production Designer selection / Unicode text / ThemeScope / save / reopen passed\n"
                 + json.dumps({
                     "platform": "macos", "provider": "nsaccessibility",
                     "protocol_loop": ["designer_select_locate", "designer_edit_save"],
                     "theme_reference": "light -> dark", "windowed": True,
+                    "reopened": True,
                     "voiceover_alive": False,
                 }) + "\n"
             )
@@ -420,18 +449,25 @@ class EvidenceTests(unittest.TestCase):
                 "platform": "linux-x11", "provider": "atspi-dbus",
                 "protocol_loop": ["designer_select_locate", "designer_edit_save"],
                 "theme_reference": "light -> dark", "windowed": True,
+                "reopened": True,
             }
             path.write_text("warning\n" + json.dumps(valid) + "\n", encoding="utf-8")
             read_linux_designer_protocol_log(path, "linux-x11")
             for key, value in (("platform", "linux-wayland"),
                                ("provider", "atspi"),
                                ("windowed", False),
-                               ("theme_reference", "light")):
+                               ("theme_reference", "light"),
+                               ("reopened", False), ("reopened", "true")):
                 with self.subTest(key=key, value=value):
                     invalid = dict(valid, **{key: value})
                     path.write_text(json.dumps(invalid) + "\n", encoding="utf-8")
                     with self.assertRaises(ValueError):
                         read_linux_designer_protocol_log(path, "linux-x11")
+            missing_reopen = dict(valid)
+            del missing_reopen["reopened"]
+            path.write_text(json.dumps(missing_reopen) + "\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                read_linux_designer_protocol_log(path, "linux-x11")
 
     def test_macos_designer_ax_log_requires_windowed_protocol_summary(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -440,18 +476,25 @@ class EvidenceTests(unittest.TestCase):
                 "platform": "macos", "provider": "nsaccessibility",
                 "protocol_loop": ["designer_select_locate", "designer_edit_save"],
                 "theme_reference": "light -> dark", "windowed": True,
+                "reopened": True,
             }
             path.write_text(json.dumps(valid) + "\n", encoding="utf-8")
             read_macos_designer_protocol_log(path)
             for key, value in (("platform", "linux-x11"),
                                ("provider", "atspi-dbus"),
                                ("windowed", False),
-                               ("theme_reference", "light")):
+                               ("theme_reference", "light"),
+                               ("reopened", False), ("reopened", "true")):
                 with self.subTest(key=key, value=value):
                     invalid = dict(valid, **{key: value})
                     path.write_text(json.dumps(invalid) + "\n", encoding="utf-8")
                     with self.assertRaises(ValueError):
                         read_macos_designer_protocol_log(path)
+            missing_reopen = dict(valid)
+            del missing_reopen["reopened"]
+            path.write_text(json.dumps(missing_reopen) + "\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                read_macos_designer_protocol_log(path)
 
     def test_operator_cli_rejects_valid_but_stale_native_logs_before_archiving(self):
         for platform in READERS:

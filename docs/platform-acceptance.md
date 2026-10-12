@@ -205,12 +205,16 @@ record，须用带来源和成功标记的新探针重新采集正式附件。
 Linux X11/Wayland 的 `designer_window_smoke=pass` 还必须附唯一的
 `atspi-designer-live.log`；其中只能有一条 `provider=atspi-dbus` 的生产窗口摘要，
 并且平台、`designer_select_locate`/`designer_edit_save`、`light -> dark` 和
-`windowed=true` 必须与现场会话一致。该附件由
+`windowed=true` 必须与现场会话一致；还必须报告 `reopened=true`，证明保存后关闭并
+重新启动生产 Designer，从新窗口的属性字段读回 Unicode 文本与 `dark` 主题引用。
+Linux 窗口按 AT-SPI D-Bus 连接所属进程 ID 匹配，避免同名或已关闭窗口混入回读。该附件由
 `.github/workflows/platform-acceptance.yml` 的 Linux job 生成；它证明 AT-SPI 协议
 路径，不替代 Orca 语音观察。
 macOS 的 `designer_window_smoke=pass` 还必须附唯一的 `ax-designer-live.log`；其中只能
 有一条 `provider=nsaccessibility` 的生产窗口摘要，并校验同一组 Designer 选择、
-Unicode/ThemeScope 编辑和保存回读协议。该附件由 macOS self-hosted job 生成，
+Unicode/ThemeScope 编辑和保存回读协议，且要求 `reopened=true`。macOS 回环重建新进程的
+AX application/window，重新选择 Text 和 ThemeScope，并验证保存值。缺失、false 或字符串
+形式的 `reopened` 均不能通过这两类原生协议检查。该附件由 macOS self-hosted job 生成，
 `voiceover_alive` 只作进程探活，VoiceOver 播报仍由验收人观察。
 可用 `--frame-allocator-log <log> --validate-frame-allocator-only --platform <session>`
 单独检查原生日志；此模式不检查 commit、读屏、浸泡或人工 record，不等同完整验收。

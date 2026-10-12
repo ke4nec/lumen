@@ -1,0 +1,37 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-12T02:30:36+00:00",
+  "source_commit": "e2f3e91",
+  "source_commit_full": "e2f3e9179578d17e60ab00c1e08870df3da098e0",
+  "purpose": "Wait for current initial AT-SPI Designer field values across semantic-tree rebuilds",
+  "runs": {
+    "windows": {
+      "id": 38191331922,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38191331922",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38191331889,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38191331889",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38191331893,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38191331893",
+      "jobs": "6/6 successful"
+    }
+  },
+  "local": {
+    "debug_ctest": "1172/1172 passed before the Python-only fix",
+    "platform_acceptance_tests": "22/22 passed",
+    "linux_production_designer_atspi": "Text selection, Unicode property editing, ThemeScope light -> dark, Save and JSON readback passed under Xvfb/X11",
+    "scope": "CI and local protocol evidence for e2f3e91; this commit did not restart the production Designer after Save."
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "This source commit proves JSON persistence, not production-window reopen; the later reopen change requires its own validation.",
+    "macOS AXAPI requires a signed-in Aqua session with accessibility permission.",
+    "Actual reader speech, IME, Inspector, DPI/theme, drag/drop, clean-machine packaging, cross-application clipboard and one-hour soak require operator platform records."
+  ]
+}

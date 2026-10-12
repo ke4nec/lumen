@@ -263,6 +263,15 @@
 
 - 8f67961 的 Designer 原生回环修复已完成三平台 hosted CI：Windows `7/7`（含 `a11y-bridge`）、Linux `7/7`、macOS `6/6` 均成功。Linux X11 生产 AT-SPI D-Bus 回环通过 Text 选择、Unicode 编辑、ThemeScope `light -> dark`、保存和 JSON 回读；macOS AXAPI 仍需登录 Aqua/辅助功能权限。平台验收检查器为 `22/22`，真实读屏语音、IME、Inspector、DPI/主题、拖拽、干净机器包、跨应用剪贴板、soak 和完整 `record.json` 继续 pending。证据见 [`8f67961 CI 证据`](platform-evidence/designer-ci-2026-10-12-8f67961.json)。
 
+- `e2f3e91` 的初始 AT-SPI 字段等待修复三平台 CI 全部通过，归属见
+  [`e2f3e91 CI 证据`](platform-evidence/designer-ci-2026-10-12-e2f3e91.json)。
+  保存/重开出口复查继续补齐 Linux/macOS 的专用原生窗口回环：保存落盘后关闭进程、
+  重开同一文档，在新窗口选择 Text/ThemeScope 并读回保存值；检查器必须看到布尔
+  `reopened=true`。Linux X11/Xvfb 和本机 GNOME Wayland 生产回环均本地通过，新摘要通过
+  协议检查器；Debug 完整 CTest `1172/1172`（116.97s）。macOS 命名 slot JSON 回读错误有旧版
+  失败复现与新回归，平台验收单测为 `23/23`。macOS 原生 AXAPI 仍待登录 Aqua/权限环境，
+  实际读屏和完整人工平台记录仍为 pending。
+
 ## 2. 阶段与 fixture 对照
 
 以下“headless 通过”只归属上述源码和自动化验证范围；涉及真实输入、合成器、读屏或

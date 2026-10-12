@@ -174,7 +174,8 @@ def read_linux_designer_protocol_log(path: Path, platform: str) -> None:
     if (summary.get("platform") != platform or
             summary.get("protocol_loop") != ["designer_select_locate", "designer_edit_save"] or
             summary.get("theme_reference") != "light -> dark" or
-            summary.get("windowed") is not True):
+            summary.get("windowed") is not True or
+            summary.get("reopened") is not True):
         raise ValueError(f"{path.name} has incomplete Linux Designer AT-SPI coverage")
 
 
@@ -204,7 +205,8 @@ def read_macos_designer_protocol_log(path: Path) -> None:
     if (summary.get("platform") != "macos" or
             summary.get("protocol_loop") != ["designer_select_locate", "designer_edit_save"] or
             summary.get("theme_reference") != "light -> dark" or
-            summary.get("windowed") is not True):
+            summary.get("windowed") is not True or
+            summary.get("reopened") is not True):
         raise ValueError(f"{path.name} has incomplete macOS Designer AX coverage")
 
 

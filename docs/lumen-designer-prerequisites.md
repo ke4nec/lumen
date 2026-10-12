@@ -2109,3 +2109,16 @@ Unicode 编辑、ThemeScope `light -> dark` 和保存回读；macOS 仍需登录
 
 
 本轮 Designer 原生读屏回环修复已完成三平台 hosted CI：Windows 七个 job（含 `a11y-bridge`）、Linux 七个 job、macOS 六个 job 均成功。Linux X11 生产 AT-SPI D-Bus 回环在本地通过 Text 选择、Unicode 编辑、ThemeScope `light -> dark`、保存及 JSON 回读；macOS AXAPI 仍只完成脚本验证，需登录 Aqua/辅助功能权限才能取得现场结果。平台验收检查器为 `22/22`，完整桌面验收仍保持 `acceptance_complete=false`。本次归属见 [`8f67961 CI 证据`](platform-evidence/designer-ci-2026-10-12-8f67961.json)。
+
+`e2f3e91` 的初始 AT-SPI 字段读回改为等待期望值，避免选择后的旧语义值导致立即失败；
+Windows `7/7`、Linux `7/7`、macOS `6/6` CI 均通过，具体归属见
+[`e2f3e91 CI 证据`](platform-evidence/designer-ci-2026-10-12-e2f3e91.json)。
+
+§6.3 保存/重开出口复查发现 Linux/macOS 专用原生窗口脚本只验证落盘 JSON；现两者均在
+保存后关闭进程、重新启动同一文件，再从新窗口大纲选中 Text/ThemeScope 并读回保存值。
+Linux 按 D-Bus owner PID 匹配窗口，macOS 重新取得 AX application/window；协议摘要新增
+`reopened=true`，检查器拒绝旧摘要。另修正 macOS 保存回读中命名 slot 列表的遍历，旧实现
+在同一 fixture 上复现 `list has no attribute get`，新回归包含嵌套 slot、旧值和文件读取失败。
+Linux X11/Xvfb 与本机 GNOME Wayland 生产回环均已通过实际重开，两个日志均通过加强后的
+协议检查器；Debug 完整 CTest 为 `1172/1172`（116.97s），平台验收单测 `23/23`。macOS 原生 AXAPI 和
+真实读屏、IME、Inspector、DPI/主题、拖拽及 soak 仍需要现场证据。

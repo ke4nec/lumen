@@ -40,11 +40,24 @@ def main():
     with tempfile.TemporaryDirectory(prefix="lumen-designer-window-atspi-") as directory:
         target = Path(directory) / "edited.design"
         shutil.copyfile(source, target)
-        app = subprocess.Popen(
-            [str(app_path), "--file", str(target)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+
+        def launch():
+            return subprocess.Popen(
+                [str(app_path), "--file", str(target)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+        def close(process):
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+        app = launch()
         try:
             session = dbus.SessionBus()
             address = session.get_object(
@@ -95,7 +108,14 @@ def main():
                     for ref in roots():
                         try:
                             if name(ref) == "Lumen Designer":
-                                return ref
+                                owner_pid = bus.get_object(
+                                    "org.freedesktop.DBus", "/org/freedesktop/DBus"
+                                ).GetConnectionUnixProcessID(
+                                    str(ref[0]),
+                                    dbus_interface="org.freedesktop.DBus", timeout=1,
+                                )
+                                if int(owner_pid) == app.pid:
+                                    return ref
                         except dbus.DBusException:
                             continue
                     time.sleep(0.05)
@@ -103,8 +123,8 @@ def main():
 
             root = wait_for_root()
 
-            def find(predicate, start=root, limit=300):
-                queue = [start]
+            def find(predicate, start=None, limit=300):
+                queue = [root if start is None else start]
                 seen = set()
                 while queue and len(seen) < limit:
                     ref = queue.pop(0)
@@ -119,7 +139,7 @@ def main():
                         continue
                 return None
 
-            def wait_find(predicate, start=root, timeout=20):
+            def wait_find(predicate, start=None, timeout=20):
                 deadline = time.monotonic() + timeout
                 while time.monotonic() < deadline:
                     found = find(predicate, start=start)
@@ -128,7 +148,7 @@ def main():
                     time.sleep(0.1)
                 raise AssertionError("production Designer AT-SPI node timed out")
 
-            def wait_action(predicate, start=root, timeout=20):
+            def wait_action(predicate, start=None, timeout=20):
                 """Invoke a current node, retrying across semantic-tree rebuilds."""
                 deadline = time.monotonic() + timeout
                 while time.monotonic() < deadline:
@@ -264,30 +284,34 @@ def main():
                         text_node["properties"]["text"]["value"] == renamed
                         and theme_node["references"]["theme"] == "dark"
                     ):
-                        print(
-                            "AT-SPI production Designer window selection / Unicode text / "
-                            "ThemeScope / save passed"
-                        )
-                        print(json.dumps({
-                            "platform": platform,
-                            "provider": "atspi-dbus",
-                            "protocol_loop": ["designer_select_locate", "designer_edit_save"],
-                            "theme_reference": "light -> dark",
-                            "windowed": True,
-                        }, ensure_ascii=False))
-                        return
+                        break
                 except (OSError, KeyError, StopIteration, json.JSONDecodeError):
                     pass
                 time.sleep(0.1)
-            raise AssertionError("production Designer Save did not persist edits")
+            else:
+                raise AssertionError("production Designer Save did not persist edits")
+
+            close(app)
+            app = launch()
+            root = wait_for_root()
+            wait_action(text_predicate)
+            read_field("text", get_text, renamed)
+            wait_action(theme_predicate)
+            read_field("theme reference", get_theme, "dark")
+            print(
+                "AT-SPI production Designer window selection / Unicode text / "
+                "ThemeScope / save / reopen passed"
+            )
+            print(json.dumps({
+                "platform": platform,
+                "provider": "atspi-dbus",
+                "protocol_loop": ["designer_select_locate", "designer_edit_save"],
+                "theme_reference": "light -> dark",
+                "windowed": True,
+                "reopened": True,
+            }, ensure_ascii=False))
         finally:
-            if app.poll() is None:
-                app.terminate()
-            try:
-                app.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                app.kill()
-                app.wait()
+            close(app)
 
 
 if __name__ == "__main__":

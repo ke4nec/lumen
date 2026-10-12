@@ -14,9 +14,6 @@ import tempfile
 import time
 from pathlib import Path
 
-import ApplicationServices as AX
-
-
 ROLE_BUTTON = "AXButton"
 ROLE_ROW = "AXRow"
 ROLE_TEXT_FIELD = "AXTextField"
@@ -64,7 +61,31 @@ def eventually(predicate, timeout=25.0):
     raise AssertionError("NSAccessibility Designer protocol loop timed out")
 
 
+def saved_values(target, renamed):
+    try:
+        document = json.loads(target.read_text(encoding="utf-8"))
+        nodes = []
+        queue = [document["root"]]
+        while queue:
+            node = queue.pop()
+            nodes.append(node)
+            queue.extend(node.get("children", []))
+            for slot in node.get("slots", {}).values():
+                queue.extend(slot)
+        text_node = next(node for node in nodes if node.get("id") == "4")
+        theme_node = next(node for node in nodes if node.get("id") == "21")
+        return (
+            text_node["properties"]["text"]["value"] == renamed
+            and theme_node["references"]["theme"] == "dark"
+        )
+    except (OSError, KeyError, StopIteration, json.JSONDecodeError):
+        return False
+
+
 def main():
+    global AX
+    import ApplicationServices as AX
+
     if len(sys.argv) != 3:
         raise SystemExit(
             f"usage: {sys.argv[0]} <lumen-designer> <fixture.design>"
@@ -77,11 +98,24 @@ def main():
     with tempfile.TemporaryDirectory(prefix="lumen-designer-ax-") as directory:
         target = Path(directory) / "edited.design"
         shutil.copyfile(source, target)
-        app = subprocess.Popen(
-            [str(app_path), "--file", str(target)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+
+        def launch():
+            return subprocess.Popen(
+                [str(app_path), "--file", str(target)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+        def close(process):
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+        app = launch()
         try:
             application = AX.AXUIElementCreateApplication(app.pid)
 
@@ -94,15 +128,15 @@ def main():
 
             window = eventually(find_window)
 
-            def find(role, title, start=window):
-                for element in descendants(start):
+            def find(role, title, start=None):
+                for element in descendants(window if start is None else start):
                     if attribute(element, AX.kAXRoleAttribute) != role:
                         continue
                     if title is None or attribute(element, AX.kAXTitleAttribute) == title:
                         return element
                 return None
 
-            def press_current(role, title, start=window):
+            def press_current(role, title, start=None):
                 def action():
                     element = find(role, title, start)
                     return element is not None and AX.AXUIElementPerformAction(
@@ -139,46 +173,31 @@ def main():
 
             press_current(ROLE_BUTTON, "Save")
 
-            def saved_values():
-                try:
-                    document = json.loads(target.read_text(encoding="utf-8"))
-                    nodes = []
-                    queue = [document["root"]]
-                    while queue:
-                        node = queue.pop()
-                        nodes.append(node)
-                        queue.extend(node.get("children", []))
-                        queue.extend(node.get("slots", {}).values())
-                    text_node = next(node for node in nodes if node.get("id") == "4")
-                    theme_node = next(node for node in nodes if node.get("id") == "21")
-                    return (
-                        text_node["properties"]["text"]["value"] == renamed
-                        and theme_node["references"]["theme"] == "dark"
-                    )
-                except (OSError, KeyError, StopIteration, json.JSONDecodeError):
-                    return False
+            eventually(lambda: saved_values(target, renamed), timeout=12)
 
-            eventually(saved_values, timeout=12)
+            close(app)
+            app = launch()
+            application = AX.AXUIElementCreateApplication(app.pid)
+            window = eventually(find_window)
+            press_current(ROLE_ROW, "Text  [text]")
+            eventually(lambda: field_value("text") == renamed)
+            press_current(ROLE_ROW, "ThemeScope  [theme-scope]")
+            eventually(lambda: field_value("theme reference") == "dark")
         finally:
-            if app.poll() is None:
-                app.terminate()
-            try:
-                app.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                app.kill()
-                app.wait()
+            close(app)
 
     voiceover_alive = subprocess.run(
         ["pgrep", "-x", "VoiceOver"], capture_output=True
     ).returncode == 0
     print("NSAccessibility production Designer selection / Unicode text / "
-          "ThemeScope / save passed")
+          "ThemeScope / save / reopen passed")
     print(json.dumps({
         "platform": "macos",
         "provider": "nsaccessibility",
         "protocol_loop": ["designer_select_locate", "designer_edit_save"],
         "theme_reference": "light -> dark",
         "windowed": True,
+        "reopened": True,
         "voiceover_alive": voiceover_alive,
     }, ensure_ascii=False))
 
