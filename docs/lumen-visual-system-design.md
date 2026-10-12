@@ -265,6 +265,29 @@ value="mixed"、不带 checked flag。禁用态沿用 disabledBackground 降级�
 几何不随密度分档（交互反馈非控件部件）；控件不得绕过 token 写死常量。
 ghost 文本沿用 contentPrimary。原型见 `design/drag-drop.html`。
 
+### 3.5 设计器画布辅助 token（2026-10-01 提案，designer.html v2 原型）
+
+设计器工作台的标尺、智能对齐参考线、距离标注与选择手柄是密集动态几何反馈，
+按 G-D7 首版绕行方案由非模态视觉 overlay 承载；视觉值冻结为
+`Theme.designerCanvas`（`DesignerCanvasTokens`）：
+
+| Token | 派生来源 | 说明 |
+| --- | --- | --- |
+| guide | 固定 primitive `rose`（暗 `#f4587f` / 亮 `#cf2e5f`，不随 accent 交换） | 对齐参考线（中心 / 边缘 / 等距候选），与选中 accent 蓝明确区分 |
+| onGuide | 固定 `#ffffff` | 距离 chip 前景（guide 底 + 反白等宽 10） |
+| rulerSurface / rulerTick | `colors.surfaceSunken` / `colors.borderDefault` | 标尺带与刻度（带高 18，次刻度 8 / 主刻度 40 逻辑 px） |
+| gridDot | `colors.borderDefault` | 网格参考点（8 逻辑 px 网格点阵） |
+| handleFill / handleBorder | `colors.surface` / `colors.accent` | 8 向选择手柄 8×8、命中 12 |
+| guideThickness | 固定 1 | 参考线厚度（逻辑 px） |
+| snapThreshold | 固定 6 | 吸附判定半径（逻辑 px），DPI/zoom 换算走 P4 坐标链 |
+
+几何不随密度分档（画布反馈非控件部件）；控件与设计器均不得绕过 token 写死常量。
+高对比主题下 guide 色重新派生加深，且吸附信息必须同时以距离 chip 数值表达，
+不只靠颜色。吸附 / 对齐规则引擎属设计器应用自建能力
+（[designer 前置文档](lumen-designer-prerequisites.md) §3），本节只冻结视觉值。
+原型见 `design/designer.html`（v2：可交互拖动演示）。CPU / Skia / GPU 三端走同一
+RenderCommand 契约。
+
 ## 4. Theme 模型
 
 Theme 是可复制、不可变使用的值对象，由应用或窗口根节点拥有，不使用全局可变单例。

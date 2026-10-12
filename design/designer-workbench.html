@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Lumen Designer 工作台实现还原稿：按 examples/designer/designer_app.cpp 的 buildUi/buildToolbar/buildOutlinePanel/buildPreviewPanel/buildPropertiesPanel/buildDiagnosticsPanel 逐控件还原 1280×800 主窗口（工具栏 22 钮、Project/Toolbox/Outline 左栏、Canvas/Source/References 页签、Properties、诊断栏），视觉值全部取自 Theme::dark/light(CoreDark) 与 DesignerCanvasTokens。独立离线 HTML，含主题/密度/DPI/字号/对比度/参考线/运行调试交互。">
+<title>Lumen · Designer 工作台 · 实现还原稿</title>
+<style>
+/* ============================================================
+   评审板（与 design/ 其它 mockup 同口径；浅色评审板 + 深色工作台）
+   ============================================================ */
+:root{color-scheme:light;--board:#edf0f5;--paper:#fff;--ink:#202735;--muted:#5e6878;--line:#d8dfe8;--blue:#3460be;--soft:#e0eaff;--radius:8px;font-family:Inter,system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.5}
+*{box-sizing:border-box}body{margin:0;background:var(--board);color:var(--ink)}button,input,select{font:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+svg{flex:none}
+.board-head{max-width:1560px;margin:0 auto;padding:32px 28px 8px}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--blue);margin:0 0 8px}
+.board-head h1{font-size:30px;letter-spacing:-.8px;line-height:1.25;margin:0 0 10px;font-weight:650}
+.board-head p{max-width:1040px;color:var(--muted);margin:0;line-height:1.8}
+.board-head code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);background:#f6f8fb;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.state-chips{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0}
+.chip{font-size:11px;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:3px 10px;color:var(--muted)}
+.chip b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.stage-wrap{max-width:1560px;margin:20px auto 0;padding:0 28px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+/* ============================================================
+   OS 窗口外框（SDL 窗口 chrome 仅示意；应用内容从标题栏下开始）
+   ============================================================ */
+.window{width:1280px;flex:none;border:1px solid #101014;box-shadow:0 24px 64px #00000038;border-radius:10px;overflow:hidden;background:#18181b}
+.window-title{display:flex;align-items:center;gap:10px;height:36px;padding:0 12px;background:#101014;color:#9d9da8;font-size:12px}
+.window-title .traffic{display:flex;gap:6px;margin-right:4px}
+.window-title .traffic i{width:12px;height:12px;border-radius:50%;display:block}
+.window-title .traffic i:nth-child(1){background:#febc2e}.window-title .traffic i:nth-child(2){background:#28c840}.window-title .traffic i:nth-child(3){background:#ff5f57}
+.window-title strong{color:#e8e8ee;font-weight:600}
+.window-title .win-size{margin-left:auto;font:11px ui-monospace,monospace;color:#6c6c78}
+/* ============================================================
+   应用主题变量 —— theme.cpp coreDarkPalette/applyCoreDarkTargets
+   （CoreDark dark 精确值）＋ DesignerCanvasTokens
+   ============================================================ */
+/* 主题变量同时供主窗口 .app 与独立预览窗口 .preview-window 使用
+   （applyEnvironmentTheme：previewShell 与 shell 同 darkMode/density/fontScale） */
+.mock-theme{
+  --page:#18181b;--surface:#27272e;--elevated:#34343f;--sunken:#2e2e36;
+  --content:#f1f1f4;--secondary:#a1a1aa;
+  --border:#3b3b45;--strong:#8c8c98;
+  --accent:#568cf0;--on-accent:#000;--accent-content:#a8c5fa;--accent-container:#2e3c60;--on-accent-container:#e0eaff;
+  --selection:rgba(86,140,240,.51);--focus:#96b9fa;
+  --error:#e05a60;--success:#73c991;--warning:#e2b566;
+  --disabled-bg:#2e2e36;--disabled-fg:#8c8c98;
+  --guide:#f4587f;--on-guide:#fff;--ruler-tick:#3b3b45;--grid-dot:rgba(82,82,91,.706);--handle-fill:#27272e;
+  /* Metrics（Comfortable 基准档 index 1；§3.2 尺度表） */
+  --ctl-h:40px;--ctl-px:12px;--ctl-py:6px;--gap:8px;--radius-ctl:6px;
+  --row-h:40px;--grid-head-h:36px;--card-radius:8px;--focus-width:2px;
+  --title:600 20px/1.4 inherit;--label:500 14px/1.43 inherit;--body:400 14px/1.43 inherit;--caption:400 12px/1.5 inherit;
+  color-scheme:dark;color:var(--content);font-size:14px;line-height:1.43;
+  font-family:Inter,system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+}
+/* —— 浅色主题（lightColorScheme + applyCoreDarkTargets light）—— */
+.mock-theme[data-theme="light"]{
+  --page:#f4f4f5;--surface:#ffffff;--elevated:#ffffff;--sunken:#f4f4f5;
+  --content:#18181b;--secondary:#52525b;
+  --border:#d4d4d8;--strong:#71717a;
+  --accent:#3460be;--on-accent:#fff;--accent-content:#234a91;--accent-container:#e0eaff;--on-accent-container:#234a91;
+  --selection:rgba(52,96,190,.251);--focus:#234a91;
+  --error:#aa343a;--success:#256746;--warning:#8a5700;
+  --disabled-bg:#e4e4e7;--disabled-fg:#71717a;
+  --guide:#cf2e5f;--ruler-tick:#d4d4d8;--grid-dot:rgba(212,212,216,.706);--handle-fill:#ffffff;
+  color-scheme:light;
+}
+/* —— 高对比（applyHighContrast；dark 分支）—— */
+.mock-theme[data-contrast="on"]{
+  --content:#fff;--secondary:#fff;--border:#fff;--strong:#fff;
+  --accent:#96b9fa;--focus:#96b9fa;--on-accent:#000;--accent-content:#96b9fa;--accent-container:#243f6e;--on-accent-container:#e6efff;
+  --disabled-fg:#9d9da8;
+  --guide:#fff;--ruler-tick:#fff;--grid-dot:rgba(255,255,255,.85);--handle-fill:#18181b;
+}
+.mock-theme[data-theme="light"][data-contrast="on"]{
+  --content:#000;--secondary:#000;--border:#000;--strong:#000;
+  --accent:#234a91;--focus:#234a91;--on-accent:#fff;--accent-content:#234a91;--accent-container:#d7e2f7;--on-accent-container:#234a91;
+  --guide:#000;--ruler-tick:#000;--grid-dot:rgba(0,0,0,.85);--handle-fill:#f4f4f5;
+}
+/* —— 密度档（Metrics [Small,Medium,Large]；§3.2）—— */
+.mock-theme[data-density="compact"]{--ctl-h:32px;--ctl-px:8px;--ctl-py:4px;--gap:4px;--radius-ctl:4px;--row-h:32px;--grid-head-h:32px}
+.mock-theme[data-density="touch"]{--ctl-h:48px;--ctl-px:16px;--ctl-py:8px;--gap:8px;--radius-ctl:8px;--row-h:48px;--grid-head-h:44px}
+/* —— 字号缩放（Metrics::scaleBy：高度/内距/间距同乘）—— */
+.mock-theme[data-font="125"]{font-size:17.5px}
+.mock-theme[data-font="150"]{font-size:21px}
+.app{
+  height:800px;display:flex;flex-direction:column;
+  background:var(--page);color:var(--content);
+  user-select:none;
+}
+.app button{color:inherit}
+.app [hidden]{display:none!important}
+.app ::-webkit-scrollbar{width:6px;height:6px}
+.app ::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--strong),transparent 35%);border-radius:3px}
+.app ::-webkit-scrollbar-track{background:transparent}
+/* ============================================================
+   ① 工具栏 —— buildToolbar（designer_app.cpp，版本 A 分组实现）
+   五组（编辑|运行|文件|环境|缩放）+ 3 分隔线 + 弹性占位；Chrome 变体
+   （rest 幽灵/secondary 字，hover 表面，checked accentContainer 持久底），
+   Run 唯一 Filled；文本 caption 12px、内距 8、行距 6/组距 1。
+   ============================================================ */
+.toolbar{height:56px;flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--surface)}
+.tgroup{display:flex;align-items:center;gap:1px;flex:none}
+.tsep{width:1px;height:22px;background:var(--border);flex:none}
+.tspacer{flex:1}
+/* Chrome Button（resolver.cpp resolveButton chrome 分支） */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;
+  height:var(--ctl-h);min-width:64px;padding:var(--ctl-py) 8px;
+  border:0;border-radius:var(--radius-ctl);background:transparent;color:var(--secondary);
+  font:var(--caption);white-space:nowrap;font-variant-numeric:tabular-nums}
+.btn:hover{background:var(--sunken);color:var(--content)}
+.btn:active{background:color-mix(in srgb,var(--surface),var(--accent) 32%)}
+.btn[aria-pressed="true"]{background:var(--accent-container);color:var(--content)}
+.btn[disabled]{background:transparent;color:var(--disabled-fg);cursor:default}
+.btn.icon{width:var(--ctl-h);min-width:var(--ctl-h);padding:0}
+.btn.primary{background:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{background:color-mix(in srgb,var(--accent),#fff 10%)}
+.btn.primary:active{background:color-mix(in srgb,var(--accent),#000 10%)}
+.btn .icn{width:16px;height:16px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;fill:none}
+/* 注：Run/Debug 的 selected 仅语义（resolver 对非集合行不改 rest 外观）；
+   Guides 用 chrome checked 持久底表达开关态。 */
+/* ============================================================
+   ② 主体 —— buildBody（:4530）：Row [outline 240 | preview | properties 280]
+   padding 8、gap 1；下接诊断栏
+   ============================================================ */
+.body-row{flex:1;display:flex;gap:1px;padding:8px;min-height:0;background:var(--page)}
+/* —— 左栏 —— buildOutlinePanel 版本 C：页签 Outline⇄Toolbox 切换整栏视图 —— */
+.outline-panel{width:240px;flex:none;display:flex;flex-direction:column;gap:6px;padding:12px;background:var(--sunken);min-height:0}
+.panel-label{font:var(--label);color:var(--content)}
+.panel-caption{font:var(--caption);color:var(--secondary)}
+.left-tabs{display:flex;gap:4px;flex:none}
+.left-tab{position:relative;border:0;background:none;color:var(--secondary);font:var(--label);
+  height:var(--ctl-h);flex:1;padding:0 12px;border-radius:0}
+.left-tab:hover{color:var(--content)}
+.left-tab[aria-selected="true"]{color:var(--accent-content)}
+.left-tab::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--border)}
+.left-tab[aria-selected="true"]::before{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--accent);z-index:1}
+/* 工具箱视图：组头 + 整行幽灵钮（左对齐，组图标前导） */
+.toolbox-view{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:2px;padding-right:2px}
+.group-head{display:flex;align-items:center;gap:6px;height:24px;color:var(--secondary);font-size:12px;font-weight:600}
+.group-head .cnt{margin-left:auto;font:10px ui-monospace,monospace;opacity:.8}
+.trow{display:flex;align-items:center;gap:8px;height:30px;border:0;background:transparent;border-radius:5px;
+  color:var(--secondary);font-size:12.5px;text-align:left;padding:0 6px;width:100%}
+.trow:hover{background:var(--sunken);color:var(--content)}
+.trow:active{background:color-mix(in srgb,var(--surface),var(--accent) 32%)}
+.trow svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;opacity:.75;flex:none}
+/* Project 底部状态行（版本 C） */
+.proj-status{display:flex;align-items:center;gap:6px;flex:none;color:var(--secondary);font-size:12px;min-height:30px}
+.proj-status svg.mark{width:15px;height:15px;stroke:currentColor;stroke-width:1.7;fill:none;flex:none}
+.proj-status .acts{margin-left:auto;display:flex;gap:2px}
+.proj-status .acts .btn{gap:0}
+.proj-pages{display:flex;flex-direction:column;gap:2px;max-height:128px;overflow-y:auto;flex:none}
+.proj-pages .btn{justify-content:flex-start;gap:6px}
+.panel-label.old-heading{display:none}overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;line-height:calc(var(--ctl-h) - 2 * var(--ctl-py))}
+/* Outline 树 —— TreeTokens：indent 20、chevron 槽 24、标记 3px/inset4 */
+.outline-tree{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column}
+.tree-row{display:flex;align-items:center;height:var(--row-h);border:0;background:none;color:var(--content);
+  font:var(--body);text-align:left;border-radius:var(--radius-ctl);position:relative;white-space:nowrap;width:100%;padding-right:8px}
+.tree-row:hover{background:color-mix(in srgb,var(--surface),#fff 6%)}
+.tree-row:active{background:color-mix(in srgb,var(--surface),var(--accent) 32%)}
+.tree-row[aria-selected="true"]{background:var(--accent-container);color:var(--on-accent-container)}
+.tree-row[aria-selected="true"]::before{content:"";position:absolute;left:2px;top:4px;bottom:4px;width:3px;border-radius:2px;background:var(--accent)}
+.tree-row .chev,.tree-row .leaf{width:24px;height:100%;display:grid;place-items:center;flex:none;color:var(--secondary)}
+.tree-row .chev svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;transition:transform .12s}
+.tree-row[aria-expanded="true"] .chev svg{transform:rotate(90deg)}
+.tree-row .tag{font-family:ui-monospace,monospace;font-size:11px;color:var(--secondary)}
+.tree-row[aria-selected="true"] .tag{color:var(--on-accent-container)}
+/* ============================================================
+   ③ 中央 —— buildPreviewPanel（:4228）：Tabs + 内容
+   ============================================================ */
+.preview-panel{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface)}
+/* Tabs（painter.cpp:1150：每页签底 1px 分隔线，选中叠 2px accent 指示条；
+   layoutTabs：Ghost + tabPaddingX12、selectedContent/accentContent） */
+.tabs{display:flex;align-items:stretch;gap:4px;flex:none}
+.tab{position:relative;border:0;background:none;color:var(--secondary);font:var(--label);
+  height:var(--ctl-h);width:96px;padding:0 12px;border-radius:0}
+.tab.wide{width:112px}
+.tab:hover{color:var(--content)}
+.tab[aria-selected="true"]{color:var(--accent-content)}
+.tab::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--border)}
+.tab[aria-selected="true"]::before{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--accent);z-index:1}
+/* Canvas —— buildCanvasPanel（:4111）：heading + p24/pageBackground/r8 画布 */
+.canvas-panel{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:12px;background:var(--surface)}
+.canvas{flex:1;min-height:0;padding:24px;background:var(--page);border-radius:var(--card-radius);position:relative;overflow:hidden}
+.canvas-inner{position:absolute;inset:24px}
+/* 参考线层 —— buildCanvasStack（:3879）：40px 网格点、20px 标尺、
+   80px 刻度数字、rose 参考线 + 8 向手柄 + 尺寸 chip */
+.guides-layer{position:absolute;inset:0;display:none;pointer-events:none}
+.app[data-guides="on"] .guides-layer{display:block}
+.grid-dots{position:absolute;inset:0;background-image:radial-gradient(var(--grid-dot) 1.1px,transparent 1.2px);background-size:40px 40px;background-position:0 0}
+.ruler-top{position:absolute;left:0;top:0;right:0;height:20px;background:var(--sunken)}
+.ruler-left{position:absolute;left:0;top:0;bottom:0;width:20px;background:var(--sunken)}
+.ruler-ticks-x{position:absolute;left:0;top:12px;right:0;height:0;background-image:repeating-linear-gradient(to right,var(--ruler-tick) 0 1px,transparent 1px 40px)}
+.ruler-ticks-y{position:absolute;left:12px;top:0;bottom:0;width:0;background-image:repeating-linear-gradient(to bottom,var(--ruler-tick) 0 1px,transparent 1px 40px)}
+.ruler-labels{position:absolute;inset:0;font:12px/1 ui-monospace,monospace;color:var(--ruler-tick)}
+.ruler-labels span{position:absolute;white-space:nowrap}
+/* 预览帧（compileDesignDocument 直映射；Column crossAxis.start、spacing0） */
+.preview-frame{position:absolute;left:0;top:0;display:flex;flex-direction:column;transform-origin:0 0}
+.pv-node{position:relative;cursor:pointer}
+.pv-text{font:var(--body);color:var(--content);white-space:nowrap}
+.pv-btn{display:inline-flex;align-items:center;justify-content:center;height:var(--ctl-h);min-width:64px;
+  padding:var(--ctl-py) var(--ctl-px);border:0;border-radius:var(--radius-ctl);background:var(--accent);color:var(--on-accent);font:var(--label)}
+.pv-row{display:flex;align-items:flex-start}
+/* decoratePreview（:3575）：选中 = selectionBackground 底 + 2px accent 边 */
+.pv-node[data-selected="true"]{background:var(--selection);outline:2px solid var(--accent);outline-offset:-2px}
+/* setVisualPreviewState 演示（Hover/Press/Focus 循环） */
+.pv-node[data-vstate="hovered"]{box-shadow:inset 0 0 0 999px rgba(255,255,255,.102)}
+.pv-node[data-vstate="pressed"]{box-shadow:inset 0 0 0 999px rgba(0,0,0,.102)}
+.pv-node[data-vstate="focused"]{outline:2px solid var(--focus);outline-offset:0}
+.app[data-theme="light"] .pv-node[data-vstate="hovered"]{box-shadow:inset 0 0 0 999px rgba(0,0,0,.063)}
+.app[data-theme="light"] .pv-node[data-vstate="pressed"]{box-shadow:inset 0 0 0 999px rgba(0,0,0,.165)}
+/* 选中参考线装饰（guide/handleFill/handleBorder tokens） */
+.sel-guides{position:absolute;inset:0;pointer-events:none;display:none}
+.app[data-guides="on"] .sel-guides{display:block}
+.sel-guides .gv{position:absolute;left:0;right:0;top:0;bottom:0;width:1px;background:var(--guide)}
+.sel-guides .gh{position:absolute;left:0;right:0;height:1px;background:var(--guide)}
+.sel-guides .frame{position:absolute;border:1px solid var(--guide)}
+.sel-guides .handle{position:absolute;width:8px;height:8px;background:var(--handle-fill);border:1px solid var(--accent)}
+.sel-guides .dims{position:absolute;background:var(--guide);color:var(--on-guide);font:var(--caption);padding:3px 6px;white-space:nowrap;line-height:18px}
+/* Source —— buildSourcePanel（:4140） */
+.source-panel{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:12px;background:var(--surface)}
+.panel-heading-row{display:flex;align-items:center;gap:8px}
+.panel-heading-row .fill{flex:1}
+.source-scroll{flex:1;min-height:0;overflow:auto;padding:8px 12px}
+.source-line{display:flex;gap:8px;align-items:flex-start}
+.source-line .no{width:40px;flex:none;font:var(--caption);color:var(--secondary);font-variant-numeric:tabular-nums}
+.source-line .tx{flex:1;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--content);white-space:pre}
+.source-line.focus-line{background:var(--selection)}
+/* References —— buildReferencesPanel（:4202）+ DataGrid（§12 几何） */
+.refs-panel{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:12px;background:var(--surface)}
+.datagrid{flex:1;min-height:0;overflow:auto;border:1px solid var(--border);border-radius:var(--card-radius);background:var(--surface)}
+.dg-head{display:flex;height:var(--grid-head-h);background:var(--sunken);border-bottom:1px solid var(--border);position:sticky;top:0}
+.dg-cell{padding:0 12px;display:flex;align-items:center;font:var(--caption);color:var(--secondary);white-space:nowrap;flex:none}
+.dg-empty{display:grid;place-items:center;height:160px;color:var(--secondary);font:var(--caption)}
+/* ============================================================
+   ④ 属性栏 —— buildPropertiesPanel（:4265）：280 宽、surfaceSunken、p12
+   行 = caption 标签 + 168 宽 TextField（bind 通道）
+   ============================================================ */
+.props-panel{width:280px;flex:none;display:flex;flex-direction:column;background:var(--sunken)}
+.props-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:12px}
+.prop-row{display:flex;align-items:center;gap:8px}
+.prop-row .name{flex:none;font:var(--caption);color:var(--secondary)}
+.prop-row input{flex:1;width:168px;min-width:0;height:var(--ctl-h);padding:var(--ctl-py) var(--ctl-px);
+  border:1px solid var(--strong);border-radius:var(--radius-ctl);background:var(--sunken);color:var(--content);font:var(--body)}
+.app[data-theme="light"] .prop-row input{background:var(--page)}
+.prop-row input:focus{outline:none;border-color:var(--focus)}
+.props-empty{font:var(--body);color:var(--content)}
+/* ============================================================
+   ⑤ 诊断栏 —— buildDiagnosticsPanel（:4445）：高 96、surfaceSunken、
+   padding 8/12、gap4：状态行 + VirtualList（默认空）
+   ============================================================ */
+.diagnostics{height:96px;flex:none;display:flex;flex-direction:column;gap:4px;padding:8px 12px;background:var(--sunken);overflow:hidden}
+.status-line{font:var(--caption);color:var(--secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.diag-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+.diag-row{font:var(--caption);color:var(--secondary);white-space:nowrap}
+.diag-row.actionable{border:0;background:none;color:var(--accent-content);text-align:left;width:fit-content;border-radius:4px;padding:0 4px}
+.diag-row.actionable:hover{background:var(--selection)}
+/* ============================================================
+   独立预览窗口 —— buildPreviewWindow（:4556）+ previewConfigFor（960×640）
+   ============================================================ */
+.preview-window{width:420px;flex:none;align-self:flex-start;border:1px solid #101014;border-radius:10px;overflow:hidden;background:var(--surface);box-shadow:0 24px 64px #00000038;display:none}
+.preview-window.open{display:block}
+.preview-window .window-title{background:#101014}
+.pw-body{padding:32px;min-height:240px;display:flex;align-items:flex-start;background:transparent}
+.pw-stopped{color:#a1a1aa;font-size:14px}
+/* ============================================================
+   评审板注记区
+   ============================================================ */
+.board-notes{max-width:1560px;margin:28px auto 64px;padding:0 28px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.note-card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:20px}
+.note-card h3{margin:0 0 10px;font-size:15px}
+.note-card table{border-collapse:collapse;width:100%;font-size:12.5px}
+.note-card th{font-weight:600;color:var(--muted);text-align:left;padding:4px 10px 4px 0}
+.note-card td{padding:4px 10px 4px 0;border-top:1px solid #eef1f6;vertical-align:top;line-height:1.7}
+.note-card td:first-child{font-family:ui-monospace,monospace;font-size:11.5px;white-space:nowrap}
+.note-card p{font-size:12.5px;color:var(--muted);line-height:1.8;margin:0 0 8px}
+.note-card code{font:11.5px ui-monospace,monospace;background:#f6f8fb;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+@media (max-width:1120px){.board-notes{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="board-head">
+  <p class="eyebrow">LUMEN · DESIGNER · IMPLEMENTATION RESTORE</p>
+  <h1>Designer 工作台 · 按实现代码还原</h1>
+  <p>本稿按 <code>examples/designer/designer_app.cpp</code> 的 <code>buildUi()</code> 逐控件还原主窗口（初始 1280×800，<code>configFor</code>）：分组工具栏（版本 A，22 钮）+ 左栏（版本 C：页签 Outline ⇄ Toolbox + Project 底行）+ 中央页签（Canvas / Source / References）+ 属性栏 + 诊断栏；默认加载 <code>kSampleSource</code>（sample.lumen）。颜色/字号/间距取自 <code>Theme::dark(CoreDark)</code> 与 <code>DesignerCanvasTokens</code>（<code>src/style/theme.cpp</code>），未造新值；工具栏为版本 A 重设计后的实现还原（2026-10）。工具栏按钮可交互：主题 / 密度 / DPI / 字号 / 对比度 / 参考线 / 运行调试 / 缩放 / 节点编辑均按实现行为驱动。</p>
+  <div class="state-chips">
+    <span class="chip">主题 <b id="chip-theme">Dark</b></span>
+    <span class="chip">密度 <b id="chip-density">Comfortable</b></span>
+    <span class="chip">DPI <b id="chip-dpi">100%</b></span>
+    <span class="chip">字号 <b id="chip-font">100%</b></span>
+    <span class="chip">对比度 <b id="chip-contrast">off</b></span>
+    <span class="chip">参考线 <b id="chip-guides">off</b></span>
+    <span class="chip">预览会话 <b id="chip-session">Stopped</b></span>
+    <span class="chip">文档 <b>sample.lumen</b></span>
+  </div>
+</header>
+
+<!-- 工具栏图标：core::IconId 目录（16 栅格 / 描边 1.8）的 HTML 镜像 -->
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-textadd" viewBox="0 0 16 16"><path d="M3 4h8M7 4v9M12.2 10.4v4M10.2 12.4h4"/></symbol>
+  <symbol id="i-duplicate" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="8" height="8" rx="1.2"/><path d="M6 13.5h6.3a1.2 1.2 0 0 0 1.2-1.2V6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3 4.5h10M6.4 4.5V3h3.2v1.5M4.4 4.5l.7 9h5.8l.7-9M6.7 7.5v3.3M9.3 7.5v3.3"/></symbol>
+  <symbol id="i-up" viewBox="0 0 16 16"><path d="M8 13V3M4.5 6.5 8 3l3.5 3.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 3v10M4.5 9.5 8 13l3.5-3.5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.2 13 8 5 12.8Z"/></symbol>
+  <symbol id="i-bug" viewBox="0 0 16 16"><rect x="5.4" y="5.8" width="5.2" height="6.4" rx="2.4"/><path d="M8 5.8V4.2M6.4 4.2 5 2.6M9.6 4.2 11 2.6M5.4 8H3M5.4 10.4H3M10.6 8H13M10.6 10.4H13M6.9 12.2v1.6M9.1 12.2v1.6"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4.2" y="4.2" width="7.6" height="7.6" rx="1"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.8h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-save" viewBox="0 0 16 16"><path d="M3 2.5h8L13.5 5v8.5h-11z"/><path d="M5.5 2.5v3h4.5v-3M5.5 13.5v-4h5v4"/></symbol>
+  <symbol id="i-saveas" viewBox="0 0 16 16"><path d="M3 2.5h8L13.5 5v3.5M3 11v2.5h5.6"/><path d="M5.5 2.5v3h4.5v-3M11.2 9.1l2.7 2.7M11 14.2l3.9-3.9-1.5-1.5-3.9 3.9-.6 2.1z"/></symbol>
+  <symbol id="i-folderplus" viewBox="0 0 16 16"><path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.8h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/><path d="M8 7.2v4M6 9.2h4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 9.6A5.6 5.6 0 1 1 6.4 2.8a4.5 4.5 0 0 0 6.8 6.8z"/></symbol>
+  <symbol id="i-density" viewBox="0 0 16 16"><path d="M3 3.5h10M3 12.5h10M8 5.7v4.6M6.2 7.5 8 5.7l1.8 1.8M6.2 8.5 8 10.3l1.8-1.8"/></symbol>
+  <symbol id="i-dpi" viewBox="0 0 16 16"><rect x="2.2" y="3" width="11.6" height="8.4" rx="1"/><path d="M6 13.6h4M8 11.4v2.2M5.4 9.2 10.4 4.2M10.4 4.2H7.6M10.4 4.2v2.8"/></symbol>
+  <symbol id="i-font" viewBox="0 0 16 16"><path d="M4.2 12.6 7.1 3.4h1.8l2.9 9.2M5.3 9.5h5.4"/></symbol>
+  <symbol id="i-contrast" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M8 2.4v11.2A5.6 5.6 0 0 0 8 2.4z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-cursor" viewBox="0 0 16 16"><path d="M4 2.6 12.6 8l-3.3 1 2 3.7-1.7.9-2-3.7L4.8 12z"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 16 16"><path d="M2.5 2.5h11v11h-11zM2.5 6.2h11M2.5 9.9h11M6.2 2.5v11M9.9 2.5v11"/></symbol>
+  <symbol id="i-zoomout" viewBox="0 0 16 16"><circle cx="6.6" cy="6.6" r="4"/><path d="M9.6 9.6 13.6 13.6M4.9 6.6h3.4"/></symbol>
+  <symbol id="i-glayout" viewBox="0 0 16 16"><path d="M2.5 2.5h11v11h-11zM2.5 6.2h11M2.5 9.9h11M6.2 2.5v11"/></symbol>
+  <symbol id="i-gcontent" viewBox="0 0 16 16"><path d="M3 4h7M3 8h10M3 12h5"/></symbol>
+  <symbol id="i-ginput" viewBox="0 0 16 16"><rect x="2.5" y="4.5" width="11" height="7" rx="1.5"/><path d="M6.2 8h3.6"/></symbol>
+  <symbol id="i-glist" viewBox="0 0 16 16"><path d="M5 3.5h8.5M5 8h8.5M5 12.5h8.5"/><circle cx="2.8" cy="3.5" r=".9"/><circle cx="2.8" cy="8" r=".9"/><circle cx="2.8" cy="12.5" r=".9"/></symbol>
+  <symbol id="i-gfeedback" viewBox="0 0 16 16"><path d="M2.5 10.5v2h2M13.5 10.5v2h-2M2.5 12.5 5.5 8l3 3 2.5-5 2.5 6.5"/></symbol>
+  <symbol id="i-gcomp" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="4" rx="1"/><rect x="2.5" y="9" width="5" height="4" rx="1"/><path d="M10 11h3.5M11.75 9.25v3.5"/></symbol>
+  <symbol id="i-gscope" viewBox="0 0 16 16"><path d="M5.5 3.5C4 3.5 3.5 4.5 3.5 6v4c0 1.5.5 2.5 2 2.5M10.5 3.5c1.5 0 2 1 2 2.5v4c0 1.5-.5 2.5-2 2.5"/></symbol>
+  <symbol id="i-zoomin" viewBox="0 0 16 16"><circle cx="6.6" cy="6.6" r="4"/><path d="M9.6 9.6 13.6 13.6M4.9 6.6h3.4M6.6 4.9v3.4"/></symbol>
+</svg>
+
+<div class="stage-wrap">
+  <!-- 主窗口（SDL 窗口 chrome 仅示意） -->
+  <section class="window" aria-label="Lumen Designer 主窗口 1280×800">
+    <div class="window-title">
+      <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
+      <strong>Lumen Designer</strong>
+      <span class="win-size">1280 × 800</span>
+    </div>
+
+    <div class="app mock-theme" id="app" data-theme="dark" data-density="comfortable" data-guides="off" data-contrast="off" data-font="100">
+
+      <!-- ① 工具栏 buildToolbar（版本 A 分组实现：编辑|运行|文件|环境|缩放） -->
+      <div class="toolbar" role="toolbar" aria-label="Designer 工具栏">
+        <div class="tgroup">
+          <button class="btn" id="bt-add-text" title="插入 Text 节点"><svg class="icn"><use href="#i-textadd"/></svg>Add Text</button>
+          <button class="btn" id="bt-duplicate" title="复制选中节点"><svg class="icn"><use href="#i-duplicate"/></svg>Duplicate</button>
+          <button class="btn" id="bt-remove" title="删除选中节点 · Delete"><svg class="icn"><use href="#i-trash"/></svg>Delete</button>
+          <button class="btn icon" id="bt-move-up" aria-label="Move up" title="上移节点 · ↑"><svg class="icn"><use href="#i-up"/></svg></button>
+          <button class="btn icon" id="bt-move-down" aria-label="Move down" title="下移节点 · ↓"><svg class="icn"><use href="#i-down"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup">
+          <button class="btn primary" id="bt-run" title="运行预览 · Ctrl+R"><svg class="icn"><use href="#i-play"/></svg>Run</button>
+          <button class="btn" id="bt-debug" title="调试预览（帧统计/边界 overlay）· Ctrl+D"><svg class="icn"><use href="#i-bug"/></svg>Debug</button>
+          <button class="btn icon" id="bt-stop" aria-label="Stop" title="停止预览" disabled><svg class="icn"><use href="#i-stop"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup">
+          <button class="btn" id="bt-open" title="打开文档/工程 · Ctrl+O"><svg class="icn"><use href="#i-folder"/></svg>Open</button>
+          <button class="btn" id="bt-save" title="保存 · Ctrl+S"><svg class="icn"><use href="#i-save"/></svg>Save</button>
+          <button class="btn icon" id="bt-save-as" aria-label="Save as" title="另存为 · Ctrl+Shift+S"><svg class="icn"><use href="#i-saveas"/></svg></button>
+          <button class="btn icon" id="bt-new-project" aria-label="New project" title="新建工程 · Ctrl+Shift+N"><svg class="icn"><use href="#i-folderplus"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup">
+          <button class="btn icon" id="bt-theme" aria-label="Light" title="明暗主题切换"><svg class="icn"><use href="#i-moon"/></svg></button>
+          <button class="btn icon" id="bt-density" aria-label="Density" title="密度：Compact / Comfortable / Touch"><svg class="icn"><use href="#i-density"/></svg></button>
+          <button class="btn icon" id="bt-dpi" aria-label="DPI 100%" title="DPI：100 / 125 / 200%"><svg class="icn"><use href="#i-dpi"/></svg></button>
+          <button class="btn icon" id="bt-font" aria-label="Font 100%" title="字号：100 / 125 / 150%"><svg class="icn"><use href="#i-font"/></svg></button>
+          <button class="btn icon" id="bt-contrast" aria-label="Contrast off" title="高对比开关"><svg class="icn"><use href="#i-contrast"/></svg></button>
+          <button class="btn icon" id="bt-pvstate" aria-label="Hover state" title="预览状态：Hover / Press / Focus"><svg class="icn"><use href="#i-cursor"/></svg></button>
+          <button class="btn icon" id="bt-guides" aria-label="Guides off" aria-pressed="false" title="画布参考线/标尺开关"><svg class="icn"><use href="#i-grid"/></svg></button>
+        </div>
+        <div class="tspacer"></div>
+        <div class="tgroup">
+          <button class="btn icon" id="bt-zoom-out" aria-label="Zoom -" title="缩小 · 钳制 50%"><svg class="icn"><use href="#i-zoomout"/></svg></button>
+          <button class="btn" id="bt-zoom-reset" title="重置缩放与平移" style="min-width:64px">100%</button>
+          <button class="btn icon" id="bt-zoom-in" aria-label="Zoom +" title="放大 · 钳制 200%"><svg class="icn"><use href="#i-zoomin"/></svg></button>
+        </div>
+      </div>
+
+      <!-- ② buildBody（:4530） -->
+      <div class="body-row">
+
+        <!-- 左栏 buildOutlinePanel 版本 C：页签 Outline ⇄ Toolbox + Project 底行 -->
+        <aside class="outline-panel" aria-label="大纲面板">
+          <div class="left-tabs" role="tablist" aria-label="左面板视图">
+            <button class="left-tab" id="ltab-outline" role="tab" aria-selected="true">Outline</button>
+            <button class="left-tab" id="ltab-toolbox" role="tab" aria-selected="false">Toolbox</button>
+          </div>
+          <div class="outline-tree" role="tree" aria-label="文档大纲" id="outline"></div>
+          <div class="toolbox-view" id="toolbox" hidden></div>
+          <div class="proj-status">
+            <svg class="mark" viewBox="0 0 16 16"><path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.8h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg>
+            <span id="project-empty">No project</span>
+            <span class="acts">
+              <button class="btn icon" id="lp-new-project" aria-label="New project" title="New project · Ctrl+Shift+N"><svg class="icn"><use href="#i-folderplus"/></svg></button>
+              <button class="btn icon" id="lp-open" aria-label="Open" title="Open · Ctrl+O"><svg class="icn"><use href="#i-folder"/></svg></button>
+            </span>
+          </div>
+          <div class="project-pages" id="project-pages" hidden></div>
+        </aside>
+
+        <!-- 中央 buildPreviewPanel（:4228） -->
+        <main class="preview-panel">
+          <div class="tabs" role="tablist" aria-label="中央页签">
+            <button class="tab" id="tab-canvas" role="tab" aria-selected="true">Canvas</button>
+            <button class="tab" id="tab-source" role="tab" aria-selected="false">Source</button>
+            <button class="tab wide" id="tab-refs" role="tab" aria-selected="false">References</button>
+          </div>
+
+          <!-- Canvas 页 buildCanvasPanel（:4111） -->
+          <section class="canvas-panel" id="page-canvas">
+            <div class="panel-label">Canvas</div>
+            <div class="canvas">
+              <div class="canvas-inner" id="canvas-inner">
+                <div class="guides-layer" aria-hidden="true">
+                  <div class="grid-dots"></div>
+                  <div class="ruler-top"></div>
+                  <div class="ruler-left"></div>
+                  <div class="ruler-ticks-x"></div>
+                  <div class="ruler-ticks-y"></div>
+                  <div class="ruler-labels" id="ruler-labels"></div>
+                </div>
+                <div class="preview-frame" id="preview-frame"></div>
+                <div class="sel-guides" id="sel-guides" aria-hidden="true">
+                  <div class="gv" id="guide-v"></div>
+                  <div class="gh" id="guide-h"></div>
+                  <div class="frame" id="guide-frame"></div>
+                  <div class="handle" data-h="nw"></div><div class="handle" data-h="n"></div>
+                  <div class="handle" data-h="ne"></div><div class="handle" data-h="e"></div>
+                  <div class="handle" data-h="se"></div><div class="handle" data-h="s"></div>
+                  <div class="handle" data-h="sw"></div><div class="handle" data-h="w"></div>
+                  <div class="dims" id="guide-dims">X 0  Y 0  W 0  H 0</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Source 页 buildSourcePanel（:4140） -->
+          <section class="source-panel" id="page-source" hidden>
+            <div class="panel-heading-row">
+              <div class="panel-label">Source</div>
+              <div class="panel-caption fill">read-only&nbsp;&nbsp;/&nbsp;&nbsp;sample.lumen</div>
+            </div>
+            <div class="source-scroll" id="source-lines"></div>
+          </section>
+
+          <!-- References 页 buildReferencesPanel（:4202） -->
+          <section class="refs-panel" id="page-refs" hidden>
+            <div class="panel-heading-row">
+              <div class="panel-label">References</div>
+              <div class="panel-caption fill" id="refs-status">0 refs&nbsp;&nbsp;/&nbsp;&nbsp;0 missing</div>
+            </div>
+            <div class="datagrid" role="grid" aria-label="引用表">
+              <div class="dg-head">
+                <div class="dg-cell" style="width:156px">Reference</div>
+                <div class="dg-cell" style="width:92px">Kind</div>
+                <div class="dg-cell" style="width:92px">State</div>
+                <div class="dg-cell" style="width:176px">Value</div>
+                <div class="dg-cell" style="width:220px">Node</div>
+              </div>
+              <div class="dg-empty" id="refs-empty">—</div>
+            </div>
+          </section>
+        </main>
+
+        <!-- ④ 属性栏 buildPropertiesPanel（:4265） -->
+        <aside class="props-panel" aria-label="属性面板">
+          <div class="props-scroll" id="props"></div>
+        </aside>
+      </div>
+
+      <!-- ⑤ 诊断栏 buildDiagnosticsPanel（:4445） -->
+      <footer class="diagnostics">
+        <div class="status-line" id="status">Ready&nbsp;&nbsp;/&nbsp;&nbsp;sample.lumen</div>
+        <div class="diag-list" id="diag-list"></div>
+      </footer>
+    </div>
+  </section>
+
+  <!-- 独立预览窗口（runApp 多窗口；previewConfigFor 960×640，示意缩小） -->
+  <section class="preview-window mock-theme" id="preview-window" data-theme="dark" data-density="comfortable" data-contrast="off" data-font="100" aria-label="Lumen Preview 独立预览窗口">
+    <div class="window-title">
+      <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
+      <strong>Lumen Preview</strong>
+      <span class="win-size">960 × 640</span>
+    </div>
+    <div class="pw-body"><div class="preview-frame" id="pw-frame"></div></div>
+  </section>
+</div>
+
+<!-- 评审注记 -->
+<div class="board-notes">
+  <div class="note-card">
+    <h3>区域 → 实现映射</h3>
+    <table>
+      <tr><th>区域</th><th>实现（designer_app.cpp）</th></tr>
+      <tr><td>toolbar</td><td><code>buildToolbar</code> —— 版本 A 分组（design/designer-toolbar-redesign.html）：编辑|运行|文件|环境 五组 + 3 分隔线 + 弹性占位 + 缩放贴右；Chrome 幽灵变体 + caption 12px + 内距 8，Run 唯一 Filled；图标取自 <code>core::IconId</code> 目录（TextAdd/Duplicate/Trash/ArrowUp/Down/Bug/Stop/Save/SaveAs/FolderPlus/Moon/Density/DeviceScale/Font/Contrast/Cursor/ZoomIn/Out），无文字命令经 <code>semanticsLabel</code> 暴露</td></tr>
+      <tr><td>outline 栏</td><td><code>buildOutlinePanel</code> :3862 —— 240 宽 surfaceSunken；内含 <code>buildProjectPanel</code> :3814（默认 "No project"）、<code>buildToolboxPanel</code>（37 类节点 × 两列 Chrome 幽灵钮、ScrollView max 240；两列 106px 钮可容纳最长名，三列 69px 会逐字裁断长名）、Outline 树（TreeTokens 缩进 20 / chevron 槽 24 / 3px 选中标记）</td></tr>
+      <tr><td>中央页签</td><td><code>buildPreviewPanel</code> :4228 —— makeTabs 三页签 96/96/112；Ghost + 底部 1px 分隔线 + 选中 2px accent 指示条（painter.cpp:1150）</td></tr>
+      <tr><td>Canvas</td><td><code>buildCanvasPanel</code> :4111 + <code>buildCanvasStack</code> :3879 —— 画布 padding 24 / pageBackground / 圆角 8；参考线层 = 40px 网格点、20px 标尺、80px 刻度、rose #F4587F 对齐线 + 8 向 8×8 手柄 + 尺寸 chip</td></tr>
+      <tr><td>Source</td><td><code>buildSourcePanel</code> :4140 —— 行号 40 宽 + 等宽行文本，read-only / sample.lumen；诊断定位行高亮 selectionBackground</td></tr>
+      <tr><td>References</td><td><code>buildReferencesPanel</code> :4202 —— DataGrid 列 156/92/92/176/220，表头 surfaceSunken·36 高</td></tr>
+      <tr><td>properties</td><td><code>buildPropertiesPanel</code> :4265 —— 280 宽 surfaceSunken；caption 标签 + 168 宽 TextField（bind 状态通道）；多选仅保留同型可编辑属性</td></tr>
+      <tr><td>diagnostics</td><td><code>buildDiagnosticsPanel</code> :4445 —— 高 96 surfaceSunken；状态行 + VirtualList；保存冲突时插入 notice + Reload / Save as / Overwrite(Danger) 栅格（另见 design/designer-file-conflict.html）</td></tr>
+      <tr><td>选中装饰</td><td><code>decoratePreview</code> :3575 —— selectionBackground（accent 51%）+ 2px accent 边</td></tr>
+      <tr><td>预览窗口</td><td><code>buildPreviewWindow</code> :4556 —— Run/Debug 后出现的第二窗口（960×640），无选中装饰；停止时显示 "Preview stopped"</td></tr>
+    </table>
+  </div>
+  <div class="note-card">
+    <h3>命令与快捷键（registerCommands :850）</h3>
+    <table>
+      <tr><th>键</th><th>命令</th></tr>
+      <tr><td>Ctrl/⌘+Z</td><td>designer.undo（属性/引用字段聚焦时也可用）</td></tr>
+      <tr><td>Ctrl/⌘+Y · Ctrl/⌘+Shift+Z</td><td>designer.redo</td></tr>
+      <tr><td>Ctrl/⌘+O</td><td>designer.open —— 文件对话框（.design / .lumen-project）</td></tr>
+      <tr><td>Ctrl/⌘+Shift+N</td><td>designer.new-project</td></tr>
+      <tr><td>Ctrl/⌘+C · V</td><td>copy / paste 节点</td></tr>
+      <tr><td>Ctrl/⌘+S · Shift+S</td><td>save / save-as（冲突时走 SaveConflict 流程）</td></tr>
+      <tr><td>Ctrl/⌘+R · D</td><td>run / debug 预览会话</td></tr>
+      <tr><td>↑ / ↓</td><td>move-up / move-down（文本输入时禁用）</td></tr>
+      <tr><td>Delete</td><td>remove 选中节点（Alt+Delete 除外）</td></tr>
+      <tr><td>Esc</td><td>取消 IME 组合 → 取消拖拽/框选 → Navigator 返回</td></tr>
+      <tr><td>滚轮</td><td>画布内 panCanvas；滚过 Spin 时步进</td></tr>
+    </table>
+    <p style="margin-top:12px"><strong>还原注记</strong>：① 工具栏已按版本 A 重设计落地：22 项全部可见（maxRight 1268 = 内容右界，无裁剪；见 designer_app_tests "designer toolbar groups commands and fits the viewport"）。② Run/Debug 的 selected 仅语义（resolver 对非集合行不改 rest 外观）；Guides 用 Chrome checked 持久底表达开关。③ 环境循环值与实现一致：密度 Compact→Comfortable→Touch；DPI 100/125/200%；字号 100/125/150%；缩放钳制 50–200%（×1.1 步进）。④ 预览状态循环 None→Hovered→Pressed→Focused，作用于画布内节点。⑤ 画布空白处拖拽 = 框选（designer-canvas-selection），大纲行与工具箱按钮可拖入画布（ghost + rose 插入指示），本稿未演示动态拖拽。</p>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   状态机 —— 与 DesignerApp 成员一一对应（designer_app.h:340-410）
+   ============================================================ */
+const state = {
+  theme: 'dark',            // darkMode_ = true
+  density: 'comfortable',   // style::ControlDensity::Comfortable
+  dpi: 1.0,                 // deviceScale_（1.0 / 1.25 / 2.0）
+  fontScale: 1.0,           // fontScale_（1.0 / 1.25 / 1.5）
+  contrast: false,          // highContrast_
+  guides: false,            // canvasGuidesEnabled_
+  previewState: 'none',     // PreviewStateMode（none/hovered/pressed/focused）
+  session: 'stopped',       // PreviewSessionMode（stopped/running/debugging）
+  tab: 'canvas',            // CenterTab
+  zoom: 1.0,                // canvasTransform_.zoom()（0.5–2.0）
+  selection: null,          // workbench_.selection().primary
+  leftTab: 'outline',       // LeftPanelTab（版本 C：默认 Outline 视图）
+  status: null,             // statusMessage_（null = Ready / sample.lumen）
+};
+
+/* 文档模型 —— kSampleSource（designer_app.cpp:26-31）
+   page preview { Column(key:"root"){ Text("Preview title",key:"title")
+   Button("Save",key:"save") Row(key:"status"){ Text("Ready",key:"message") } } } */
+let nextId = 6;
+const doc = [
+  { id: 1, type: 'Column', key: 'root', parent: 0 },
+  { id: 2, type: 'Text', key: 'title', parent: 1, text: 'Preview title' },
+  { id: 3, type: 'Button', key: 'save', parent: 1, text: 'Save' },
+  { id: 4, type: 'Row', key: 'status', parent: 1 },
+  { id: 5, type: 'Text', key: 'message', parent: 4, text: 'Ready' },
+];
+
+// designerToolboxGroups()：7 组分类法（版本 C，与实现同源）
+const TOOLBOX_GROUPS = [
+  {label:'Layout', icon:'#i-glayout', types:['Container','Row','Column','Stack','Grid','ScrollView','Splitter']},
+  {label:'Content', icon:'#i-gcontent', types:['Text','Image','Icon']},
+  {label:'Input', icon:'#i-ginput', types:['Button','TextField','Checkbox','Switch','Radio','Slider','Spin','ComboBox','ColorPicker','Dropdown']},
+  {label:'Collection', icon:'#i-glist', types:['ListView','VirtualList','List','Tree','TreeList','DataGrid','Tabs']},
+  {label:'Feedback', icon:'#i-gfeedback', types:['ProgressBar','Tooltip']},
+  {label:'Component', icon:'#i-gcomp', types:['Menu','ToolBar','StatusBar','DialogHost','Navigator','Form']},
+  {label:'Scope', icon:'#i-gscope', types:['FocusScope','ThemeScope']},
+];
+
+const $ = (id) => document.getElementById(id);
+const childrenOf = (parent) => doc.filter(n => n.parent === parent);
+const nodeLabel = (n) => n.key ? `${n.type}  [${n.key}]` : n.type;  // nodeLabel（:119）
+
+/* ============================================================
+   渲染
+   ============================================================ */
+function setStatus(text) {
+  state.status = text;
+  $('status').innerHTML = (text ?? 'Ready&nbsp;&nbsp;/&nbsp;&nbsp;sample.lumen');
+}
+
+function setIconLabel(id, text, title) {
+  const el = $(id);
+  el.setAttribute('aria-label', text);
+  el.title = title ?? text;
+}
+
+function renderChips() {
+  $('chip-theme').textContent = state.theme === 'dark' ? 'Dark' : 'Light';
+  $('chip-density').textContent = state.density[0].toUpperCase() + state.density.slice(1);
+  $('chip-dpi').textContent = Math.round(state.dpi * 100) + '%';
+  $('chip-font').textContent = Math.round(state.fontScale * 100) + '%';
+  $('chip-contrast').textContent = state.contrast ? 'on' : 'off';
+  $('chip-guides').textContent = state.guides ? 'on' : 'off';
+  $('chip-session').textContent = state.session === 'stopped' ? 'Stopped'
+    : state.session === 'running' ? 'Running' : 'Debugging';
+}
+
+function renderToolbox() {
+  const box = $('toolbox');
+  box.innerHTML = '';
+  for (const g of TOOLBOX_GROUPS) {
+    const head = document.createElement('div');
+    head.className = 'group-head';
+    head.innerHTML = `<svg><use href="${g.icon}"/></svg>${g.label}` +
+      `<span class="cnt">${g.types.length}</span>`;
+    box.appendChild(head);
+    for (const type of g.types) {
+      const b = document.createElement('button');
+      b.className = 'trow'; b.title = type;
+      b.innerHTML = `<svg><use href="${g.icon}"/></svg>${type}`;
+      b.onclick = () => insertNode(type);
+      box.appendChild(b);
+    }
+  }
+}
+
+function renderOutline() {
+  const tree = $('outline');
+  tree.innerHTML = '';
+  const walk = (parent, depth) => {
+    for (const n of childrenOf(parent)) {
+      const kids = childrenOf(n.id);
+      const row = document.createElement('button');
+      row.className = 'tree-row';
+      row.setAttribute('role', 'treeitem');
+      row.dataset.id = n.id;
+      if (kids.length) row.setAttribute('aria-expanded', 'true');
+      row.setAttribute('aria-selected', String(state.selection === n.id));
+      row.style.paddingLeft = (depth * 20) + 'px';          // indentStep 20
+      const slot = kids.length
+        ? '<span class="chev"><svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></span>'
+        : '<span class="leaf"></span>';
+      row.innerHTML = slot +
+        `<span>${n.type}</span>&nbsp;&nbsp;<span class="tag">[${n.key ?? ''}]</span>`;
+      row.onclick = () => selectNode(n.id);
+      tree.appendChild(row);
+      walk(n.id, depth + 1);
+    }
+  };
+  walk(0, 0);
+}
+
+/* 画布预览 —— compileDesignDocument 的 widget 直映射 */
+function nodeVisual(n) {
+  if (n.type === 'Button') {
+    return `<div class="pv-btn">${n.text ?? ''}</div>`;
+  }
+  if (n.type === 'Text') {
+    return `<div class="pv-text">${n.text ?? ''}</div>`;
+  }
+  if (n.type === 'Row') {
+    return `<div class="pv-row">${childrenOf(n.id).map(childVisual).join('')}</div>`;
+  }
+  return `<div style="display:flex;flex-direction:column">${childrenOf(n.id).map(childVisual).join('')}</div>`;
+}
+function childVisual(n) { return nodeVisual(n); }
+
+function renderPreview() {
+  const root = doc.find(n => n.id === 1);
+  const frame = $('preview-frame');
+  frame.innerHTML = nodeVisual(root);
+  frame.style.transform = `scale(${state.zoom})`;           // scaleCanvasWidget
+  // 首个子元素即根节点本体；decoratePreview：onClick = designer:select:id
+  wrapNode(frame.firstElementChild, root);
+  const pw = $('pw-frame');
+  pw.innerHTML = nodeVisual(root);
+  pw.style.transform = '';
+}
+
+/* 给预览 widget 包命中层并标 key（对应 previewKeyForNodeId） */
+function wrapNode(el, n) {
+  if (!el) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'pv-node';
+  wrap.dataset.id = n.id;
+  if (state.selection === n.id) wrap.dataset.selected = 'true';
+  if (state.previewState !== 'none' && state.selection === n.id)
+    wrap.dataset.vstate = state.previewState;
+  el.replaceWith(wrap);
+  wrap.appendChild(el);
+  wrap.onclick = (e) => { e.stopPropagation(); selectNode(n.id); };
+  const kids = childrenOf(n.id);
+  [...el.children].forEach((child, i) => {
+    if (kids[i]) wrapNode(child, kids[i]);
+  });
+}
+
+/* 参考线 + 手柄 + 尺寸 chip —— buildCanvasStack 选中分支（:3991-4089） */
+function renderSelGuides() {
+  const layer = $('sel-guides');
+  layer.style.display = (state.guides && state.selection) ? 'block' : 'none';
+  if (!state.selection) return;
+  const el = $('preview-frame').querySelector(`.pv-node[data-id="${state.selection}"]`);
+  const target = el;
+  if (!target) { layer.style.display = 'none'; return; }
+  const frame = $('preview-frame');
+  const fr = frame.getBoundingClientRect();
+  const r = target.getBoundingClientRect();
+  const zoom = state.zoom;
+  const x = (r.left - fr.left) / zoom, y = (r.top - fr.top) / zoom;
+  const w = r.width / zoom, h = r.height / zoom;
+  $('guide-v').style.left = (x + w / 2) + 'px';
+  $('guide-h').style.top = (y + h / 2) + 'px';
+  const f = $('guide-frame');
+  f.style.left = (x - 6) + 'px'; f.style.top = (y - 6) + 'px';
+  f.style.width = (w + 12) + 'px'; f.style.height = (h + 12) + 'px';
+  const pos = {
+    nw: [x - 10, y - 10], n: [x + w / 2 - 4, y - 10], ne: [x + w + 2, y - 10],
+    e: [x + w + 2, y + h / 2 - 4], se: [x + w + 2, y + h + 2],
+    s: [x + w / 2 - 4, y + h + 2], sw: [x - 10, y + h + 2], w: [x - 10, y + h / 2 - 4],
+  };
+  layer.querySelectorAll('.handle').forEach(hd => {
+    const [hx, hy] = pos[hd.dataset.h];
+    hd.style.left = hx + 'px'; hd.style.top = hy + 'px';
+  });
+  const dims = $('guide-dims');
+  dims.style.left = x + 'px'; dims.style.top = (y + h + 14) + 'px';
+  dims.textContent = `X ${Math.round(x)}  Y ${Math.round(y)}  W ${Math.round(w)}  H ${Math.round(h)}`;
+}
+
+/* 标尺数字 —— 每 80 一档（x 与 y 错开 40 起步，同实现） */
+function renderRulers() {
+  const box = $('ruler-labels');
+  box.innerHTML = '';
+  const inner = $('canvas-inner');
+  const w = inner.clientWidth, h = inner.clientHeight;
+  for (let x = 0; x <= w; x += 80) {
+    const s = document.createElement('span');
+    s.textContent = x; s.style.left = (x + 2) + 'px'; s.style.top = '1px';
+    box.appendChild(s);
+  }
+  for (let y = 40; y <= h; y += 80) {
+    const s = document.createElement('span');
+    s.textContent = y; s.style.left = '1px'; s.style.top = (y + 2) + 'px';
+    box.appendChild(s);
+  }
+}
+
+/* Source 页 —— currentSourceText（:2085）：未编辑 = 原始快照单行 */
+function renderSource() {
+  const lines = ['page preview { Column(key: "root") { Text("Preview title", key: "title") Button("Save", key: "save") Row(key: "status") { Text("Ready", key: "message") } } }'];
+  $('source-lines').innerHTML = lines.map((t, i) =>
+    `<div class="source-line"><span class="no">${i + 1}</span><span class="tx">${t}</span></div>`).join('');
+}
+
+/* Properties 页 —— buildPropertiesPanel：属性按名排序；可编辑 → TextField */
+function renderProps() {
+  const box = $('props');
+  if (!state.selection) {
+    box.innerHTML = '<div class="panel-label">Properties</div><div class="props-empty">Select a node</div>';
+    return;
+  }
+  const n = doc.find(x => x.id === state.selection);
+  const props = Object.entries({
+    ...(n.key !== undefined ? { key: n.key } : {}),
+    ...(n.text !== undefined ? { text: n.text } : {}),
+  }).sort((a, b) => a[0].localeCompare(b[0]));
+  box.innerHTML = '<div class="panel-label">Properties</div>' +
+    props.map(([name, value]) =>
+      `<label class="prop-row"><span class="name">${name}</span>` +
+      `<input data-prop="${name}" value="${String(value).replace(/"/g, '&quot;')}" aria-label="${name}"></label>`).join('');
+  box.querySelectorAll('input').forEach(input => {
+    input.oninput = () => {
+      const node = doc.find(x => x.id === state.selection);
+      node[input.dataset.prop] = input.value;
+      renderOutline(); renderPreview(); renderSelGuides();
+    };
+  });
+}
+
+function renderAll() {
+  const app = $('app');
+  const pw = $('preview-window');
+  for (const el of [app, pw]) {                      // 主题/对比度/字号同步预览窗口
+    el.dataset.theme = state.theme;
+    el.dataset.density = state.density;
+    el.dataset.contrast = state.contrast ? 'on' : 'off';
+    el.dataset.font = String(Math.round(state.fontScale * 100));
+  }
+  app.dataset.guides = state.guides ? 'on' : 'off';
+  setIconLabel('bt-theme', state.theme === 'dark' ? 'Light' : 'Dark');
+  setIconLabel('bt-dpi', 'DPI ' + Math.round(state.dpi * 100) + '%',
+    'DPI：100 / 125 / 200%');
+  setIconLabel('bt-font', 'Font ' + Math.round(state.fontScale * 100) + '%',
+    '字号：100 / 125 / 150%');
+  setIconLabel('bt-contrast', state.contrast ? 'Contrast on' : 'Contrast off');
+  setIconLabel('bt-guides', state.guides ? 'Guides on' : 'Guides off');
+  $('bt-guides').setAttribute('aria-pressed', String(state.guides));
+  setIconLabel('bt-pvstate', { none: 'Hover state', hovered: 'Press state',
+    pressed: 'Focus state', focused: 'Clear state' }[state.previewState]);
+  $('bt-zoom-reset').textContent = Math.round(state.zoom * 100) + '%';
+  $('bt-stop').disabled = state.session === 'stopped';
+  $('preview-window').classList.toggle('open', state.session !== 'stopped');
+  document.querySelectorAll('.tab').forEach(t =>
+    t.setAttribute('aria-selected', String(t.id === 'tab-' + state.tab)));
+  $('page-canvas').hidden = state.tab !== 'canvas';
+  $('page-source').hidden = state.tab !== 'source';
+  $('page-refs').hidden = state.tab !== 'refs';
+  renderChips(); renderOutline(); renderPreview(); renderProps(); renderSelGuides(); renderRulers();
+}
+
+function selectNode(id) {
+  state.selection = id;
+  renderAll();
+}
+
+/* ============================================================
+   命令行为 —— 与 attach() 注册的 handlers 对应（:1175-1260）
+   ============================================================ */
+function insertNode(type) {
+  const root = doc.find(n => n.id === 1);
+  const n = { id: nextId++, type, parent: 1 };
+  if (type === 'Text') n.text = 'New text';
+  if (type === 'Button') n.text = 'Button';
+  if (!n.key) n.key = '';
+  doc.push(n);
+  state.selection = n.id;
+  renderAll();
+}
+
+$('bt-theme').onclick = () => { state.theme = state.theme === 'dark' ? 'light' : 'dark'; renderAll(); };
+$('bt-density').onclick = () => {
+  state.density = { compact: 'comfortable', comfortable: 'touch', touch: 'compact' }[state.density];
+  renderAll();
+};
+$('bt-dpi').onclick = () => {
+  const scales = [1.0, 1.25, 2.0];                       // cycleDpi（:3331）
+  state.dpi = scales[(scales.indexOf(state.dpi) + 1) % scales.length];
+  renderAll();
+};
+$('bt-font').onclick = () => {
+  const scales = [1.0, 1.25, 1.5];                       // cycleFontScale（:3380）
+  state.fontScale = scales[(scales.indexOf(state.fontScale) + 1) % scales.length];
+  renderAll();
+};
+$('bt-contrast').onclick = () => { state.contrast = !state.contrast; renderAll(); };
+$('bt-pvstate').onclick = () => {
+  state.previewState = { none: 'hovered', hovered: 'pressed',
+    pressed: 'focused', focused: 'none' }[state.previewState];   // cyclePreviewState（:3557）
+  renderAll();
+};
+$('bt-guides').onclick = () => { state.guides = !state.guides; renderAll(); };
+$('bt-run').onclick = () => {
+  state.session = 'running';
+  setStatus('Preview running&nbsp;&nbsp;/&nbsp;&nbsp;current session');   // startPreview（:1349）
+  renderAll();
+};
+$('bt-debug').onclick = () => {
+  state.session = 'debugging';
+  setStatus('Debug preview running&nbsp;&nbsp;/&nbsp;&nbsp;current session');
+  renderAll();
+};
+$('bt-stop').onclick = () => {
+  state.session = 'stopped';
+  setStatus('Preview stopped');                          // stopPreview（:1365）
+  renderAll();
+};
+$('bt-add-text').onclick = () => insertNode('Text');      // insertTextNode
+$('bt-duplicate').onclick = () => {                       // duplicateSelectedNode
+  if (!state.selection) return;
+  const n = doc.find(x => x.id === state.selection);
+  const copy = { ...n, id: nextId++ };
+  doc.splice(doc.indexOf(n) + 1, 0, copy);
+  state.selection = copy.id;
+  renderAll();
+};
+$('bt-remove').onclick = () => {                          // removeSelectedNode
+  if (!state.selection) return;
+  const kill = (id) => { childrenOf(id).forEach(c => kill(c.id));
+    doc.splice(doc.findIndex(x => x.id === id), 1); };
+  kill(state.selection);
+  state.selection = null;
+  renderAll();
+};
+const moveSelected = (offset) => {                        // moveSelectedNode
+  if (!state.selection) return;
+  const n = doc.find(x => x.id === state.selection);
+  const sibs = childrenOf(n.parent);
+  const i = sibs.findIndex(x => x.id === n.id), j = i + offset;
+  if (j < 0 || j >= sibs.length) return;
+  const a = doc.indexOf(sibs[i]), b = doc.indexOf(sibs[j]);
+  doc[a] = sibs[j]; doc[b] = n;
+  renderAll();
+};
+$('bt-move-up').onclick = () => moveSelected(-1);
+$('bt-move-down').onclick = () => moveSelected(1);
+$('bt-new-project').onclick = () => setStatus('New project&nbsp;&nbsp;/&nbsp;&nbsp;file dialog (mock)');
+$('bt-open').onclick = () => setStatus('Open&nbsp;&nbsp;/&nbsp;&nbsp;file dialog (mock)');
+$('bt-save').onclick = () => setStatus('Saved&nbsp;&nbsp;/&nbsp;&nbsp;sample.lumen (mock)');
+$('bt-save-as').onclick = () => setStatus('Save as&nbsp;&nbsp;/&nbsp;&nbsp;file dialog (mock)');
+$('bt-zoom-in').onclick = () => { state.zoom = Math.min(2.0, state.zoom * 1.1); renderAll(); };
+$('bt-zoom-out').onclick = () => { state.zoom = Math.max(0.5, state.zoom / 1.1); renderAll(); };
+$('bt-zoom-reset').onclick = () => { state.zoom = 1.0; renderAll(); };
+function setLeftTab(tab) {
+  state.leftTab = tab;
+  $('ltab-outline').setAttribute('aria-selected', String(tab === 'outline'));
+  $('ltab-toolbox').setAttribute('aria-selected', String(tab === 'toolbox'));
+  $('outline').hidden = tab !== 'outline';
+  $('toolbox').hidden = tab !== 'toolbox';
+}
+$('ltab-outline').onclick = () => setLeftTab('outline');
+$('ltab-toolbox').onclick = () => setLeftTab('toolbox');
+$('lp-new-project').onclick = () => setStatus('New project  /  file dialog (mock)');
+$('lp-open').onclick = () => setStatus('Open  /  file dialog (mock)');
+$('tab-canvas').onclick = () => { state.tab = 'canvas'; renderAll(); };
+$('tab-source').onclick = () => { state.tab = 'source'; renderAll(); };
+$('tab-refs').onclick = () => { state.tab = 'refs'; renderAll(); };
+// 画布空白点击 = 清除选择（designer-canvas 命中不中任何 designer:select）
+$('canvas-inner').parentElement.onclick = () => selectNode(null);
+window.addEventListener('resize', renderRulers);
+
+renderToolbox();
+renderSource();
+renderAll();
+</script>
+</body>
+</html>

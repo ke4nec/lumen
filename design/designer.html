@@ -1,0 +1,1101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Lumen 设计器（D2 预览工作台）UI 设计稿 v4：三栏工作台 + 画布标尺 / 智能对齐参考线 / 距离标注 + 运行调试组 + 画布 / 源码 / 引用页签 + 设计工程目标态（工程/页面树、命令菜单、文档切换隔离、诊断聚合）+ 引用面板（命名引用与 RuntimeContext 解析状态、ref.missing 诊断）。全部面板控件映射到框架已有控件，缺失控件显式登记为待补充。独立离线 HTML。">
+<title>Lumen · 设计器工作台设计稿（D2 · v4）</title>
+<style>
+/* 评审板基线（与 datagrid.html 同口径）；工作台控件值映射视觉系统语义 token。 */
+:root{color-scheme:light;--board:#edf0f5;--paper:#fff;--ink:#202735;--muted:#5e6878;--line:#d8dfe8;--blue:#3460be;--soft:#e0eaff;--radius:8px;font-family:Inter,system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.5}
+*{box-sizing:border-box}body{margin:0;background:var(--board);color:var(--ink)}button,input,select,textarea{font:inherit}button,a,select{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}a{color:var(--blue);text-underline-offset:3px}svg.icon{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}svg.sprite{position:absolute;width:0;height:0;overflow:hidden}[hidden]{display:none!important}
+.topbar{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(28px,calc((100vw - 1440px)/2));background:var(--paper)}.brand{display:flex;align-items:center;gap:12px;font-size:16px;font-weight:700}.brand-mark{width:28px;height:28px;display:grid;place-items:center;background:var(--ink);color:#fff;border-radius:6px;font-size:19px}.breadcrumb{font-size:12px;color:var(--muted);font-weight:400}.top-meta{display:flex;gap:16px;font-size:12px;color:var(--muted)}
+main{max-width:1496px;padding:36px 28px 56px;margin:auto}.hero{display:flex;justify-content:space-between;gap:32px;align-items:end;margin-bottom:28px}.eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--blue);margin:0 0 8px}.hero h1{font-size:34px;letter-spacing:-1px;line-height:1.25;margin:0 0 12px;font-weight:650}.hero p{max-width:860px;color:var(--muted);margin:0;line-height:1.8}.version{flex:none;align-self:start;border:1px solid var(--line);padding:8px 12px;background:var(--paper);border-radius:6px;font-size:12px}
+.section-nav{display:flex;gap:28px;border-bottom:1px solid var(--line);margin-bottom:28px;overflow:auto}.section-nav a{color:var(--muted);text-decoration:none;padding:0 0 12px;white-space:nowrap}.section-nav a:first-child{color:var(--blue);border-bottom:2px solid var(--blue)}.section-nav small{font-size:10px;margin-right:6px;opacity:.65}
+.section{scroll-margin-top:24px;margin-top:40px}.section-head{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:16px;flex-wrap:wrap}.section-head h2{font-size:20px;font-weight:650;margin:0;letter-spacing:-.4px}.section-head p{font-size:12px;color:var(--muted);margin:4px 0 0}.section-no{color:var(--blue);font-size:12px;font-family:ui-monospace,monospace;margin-right:12px}
+.preview-settings{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.setting{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}.setting select{height:32px;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:0 8px;border-radius:6px;cursor:pointer}
+.review-note{display:flex;gap:8px;align-items:baseline;margin-top:12px;color:var(--muted);font-size:12px;line-height:1.8}.review-note strong{color:var(--blue);white-space:nowrap}
+.pill{font-size:11px;border-radius:4px;padding:2px 6px;background:var(--soft);color:var(--blue);white-space:nowrap}.pill.done{background:#e8f2eb;color:#256f46}.pill.partial{background:#fff1da;color:#805100}.pill.missing{background:#fde8e8;color:#b3261e}.pill.later{background:#f0f1f4;color:#596273}
+.annotations{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:24px}.annotation{display:flex;align-items:start;gap:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px}.annotation .num{background:var(--paper);border:1px solid var(--blue);color:var(--blue);border-radius:50%;width:24px;height:24px;display:grid;place-items:center;font:11px ui-monospace,monospace;flex:none}.annotation h4{margin:0 0 4px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.annotation p{font-size:12px;color:var(--muted);margin:0;line-height:1.7}.annotation code{font-size:11px;font-family:ui-monospace,monospace;color:var(--ink)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:8px;overflow:hidden}.card-body{padding:24px}.card h3{font-size:15px;margin:0 0 12px}.card p{color:var(--muted);font-size:13px;line-height:1.8;margin:0 0 12px}
+.matrix-wrap{overflow:auto}.matrix{border-collapse:collapse;min-width:920px;width:100%;font-size:13px;text-align:left}.matrix th{font-size:12px;background:#f7f8fa;color:var(--muted);font-weight:500}.matrix th,.matrix td{padding:13px 18px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.7}.matrix tr:last-child td{border-bottom:0}.matrix td code{font-size:11px;font-family:ui-monospace,monospace}.matrix td:first-child{font-weight:600}
+.audit-note{padding:16px 20px;border-top:1px solid var(--line);background:#fbfcfe;font-size:12px;line-height:1.8;color:var(--muted)}.audit-note strong{color:var(--ink)}
+.link-row{display:flex;gap:20px;flex-wrap:wrap;margin-top:20px;font-size:12px}.page-footer{display:flex;justify-content:space-between;gap:20px;border-top:1px solid var(--line);padding-top:24px;margin-top:36px;font-size:12px;color:var(--muted)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}.three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+/* ============ 工作台：Theme::dark(CoreDark) 语义值，与 datagrid.html 同一映射 ============ */
+.themed{--page:#18181b;--surface:#27272e;--elevated:#34343f;--sunken:#2e2e36;--content:#f1f1f4;--secondary:#a1a1aa;--border:#3b3b45;--strong:#8c8c98;--accent:#568cf0;--on-accent:#000;--accent-content:#a8c5fa;--selected:#2e3c60;--focus:#96b9fa;--error:#e05a60;--error-content:#f0969a;--success:#73c991;--warning:#e2b566;--disabled:#8c8c98;--pressed:color-mix(in srgb,var(--surface),var(--accent) 32%);--control:40px;--control-sm:32px;--pad:12px;--control-radius:6px;--row:32px;--caption:12px;--body:14px;--focus-width:2px;/* 画布辅助 token（视觉系统 §3.5，designer v2） */--guide:#f4587f;--on-guide:#fff;color-scheme:dark;background:var(--surface);color:var(--content);font-size:var(--body);border-radius:8px;border:1px solid var(--border);overflow:hidden}
+.themed[data-theme="light"]{color-scheme:light;--page:#f4f4f5;--surface:#fff;--elevated:#fff;--sunken:#f4f4f5;--content:#18181b;--secondary:#52525b;--border:#d4d4d8;--strong:#71717a;--accent:#3460be;--on-accent:#fff;--accent-content:#234a91;--selected:#e0eaff;--focus:#234a91;--error:#aa343a;--error-content:#aa343a;--success:#256f46;--warning:#8a5700;--disabled:#71717a;--guide:#cf2e5f}
+.themed[data-density="compact"]{--control:32px;--pad:8px;--control-radius:4px;--row:28px}.themed[data-density="touch"]{--control:48px;--pad:16px;--control-radius:8px;--row:40px}
+.themed button{color:var(--content)}.themed button:focus-visible,.themed select:focus-visible,.themed textarea:focus-visible{outline:var(--focus-width) solid var(--focus);outline-offset:1px}
+/* 标题行：应用自绘标题栏（titlebar-design）；设计稿只标窗口身份，不占单独控件 */
+.dw-title{display:flex;align-items:center;gap:10px;height:40px;padding:0 14px;background:var(--sunken);border-bottom:1px solid var(--border);font-size:var(--caption);color:var(--secondary)}.dw-title .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}.dw-title strong{color:var(--content);font-weight:600;font-size:var(--body)}.dw-title .dirty{color:var(--warning)}
+/* ① ToolBar：ToolBarController——Ghost 项 + 分隔线 + toggle 持久底 + 尾部溢出 */
+.dw-toolbar{display:flex;align-items:center;gap:4px;padding:6px 10px;min-height:calc(var(--control) + 12px);background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.tb-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:var(--control);min-width:var(--control);padding:0 8px;border:0;background:transparent;border-radius:var(--control-radius);color:var(--content);position:relative}
+.tb-btn:hover{background:var(--sunken)}.tb-btn:active{background:var(--pressed)}
+.tb-btn[aria-pressed="true"]{background:var(--selected);color:var(--accent-content)}
+.tb-btn[aria-disabled="true"]{opacity:.45}
+.tb-btn.label{padding:0 var(--pad)}
+.tb-btn .glyph{display:grid;place-items:center;width:20px;height:20px;flex:none}
+.tb-sep{width:1px;height:22px;background:var(--border);margin:0 6px;flex:none}
+.tb-spacer{flex:1}
+.tb-overflow{width:var(--control);padding:0}
+/* 主区：SplitterController 三栏 + 诊断折叠带 */
+.dw-body{display:flex;min-height:560px}
+.dw-panel{display:flex;flex-direction:column;min-width:0;background:var(--surface)}
+.dw-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px 8px;font-size:var(--caption);color:var(--secondary);letter-spacing:.04em}
+.split{width:9px;flex:none;background:var(--sunken);border-left:1px solid var(--border);border-right:1px solid var(--border);position:relative;cursor:col-resize}
+.split::after{content:"";position:absolute;left:calc(50% - 1px);top:calc(50% - 14px);height:28px;width:2px;border-radius:2px;background:var(--border)}
+.split:hover::after,.split:focus-visible::after{background:var(--accent)}
+/* ② 大纲：Tree / TreeList——chevron 槽 24、缩进 20、选中 3px 标记 */
+.dw-outline{width:236px;flex:none}
+.dw-tree{flex:1;overflow:auto;padding:0 6px 10px}
+.tree-row{display:flex;align-items:center;gap:6px;height:var(--row);padding:0 8px 0 0;border-radius:4px;color:var(--content);font-size:var(--body);position:relative;white-space:nowrap;width:100%;border:0;background:none;text-align:left}
+.tree-row:hover{background:var(--sunken)}.tree-row:active{background:var(--pressed)}
+.tree-row[aria-selected="true"]{background:var(--selected);color:var(--accent-content)}
+.tree-row[aria-selected="true"]::before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:3px;border-radius:2px;background:var(--accent)}
+.tree-row .chev{width:24px;height:100%;display:grid;place-items:center;flex:none;color:var(--secondary)}
+.tree-row[aria-expanded="true"] .chev,.tree-row[aria-expanded="false"] .chev{color:var(--secondary)}
+.tree-row .chev svg{width:16px;height:16px;transition:transform .12s}
+.tree-row[aria-expanded="true"] .chev svg{transform:rotate(90deg)}
+.tree-row .leaf{width:24px;flex:none}
+.tree-row .tag{font-family:ui-monospace,monospace;font-size:11px;color:var(--secondary)}
+.tree-row[aria-selected="true"] .tag{color:var(--accent-content)}
+.tree-leaf-icon{width:16px;height:16px;color:var(--secondary);fill:none;stroke:currentColor;stroke-width:1.8}
+/* ⑬ 中心页签：makeTabs（core/widget.h）——下划线激活态 + 键盘左右 */
+.dw-tabs{display:flex;align-items:flex-end;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--border);background:var(--surface)}
+.dw-tab{height:32px;padding:0 12px;border:0;background:none;color:var(--secondary);font-size:var(--caption);border-bottom:2px solid transparent;border-radius:4px 4px 0 0;display:inline-flex;align-items:center;gap:6px}
+.dw-tab:hover{color:var(--content);background:var(--sunken)}
+.dw-tab[aria-selected="true"]{color:var(--accent-content);border-bottom-color:var(--accent)}
+.dw-tabs .tabs-meta{margin-left:auto;padding:0 4px 6px;font-size:var(--caption);color:var(--secondary);font-family:ui-monospace,monospace}
+/* ⑭ 左栏小页签（大纲 / 工程）与 ⑮ 工程命令菜单（ContextMenuController 视觉口径） */
+.dw-tabs.sm{padding:4px 8px 0}
+.dw-tabs.sm .dw-tab{height:30px;font-size:11px;padding:0 10px}
+.dw-menu{position:absolute;top:calc(100% + 4px);left:0;min-width:216px;background:var(--elevated);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 28px #00000048;padding:4px;z-index:20;display:flex;flex-direction:column}
+.dw-menu .menu-item{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border:0;background:none;color:var(--content);border-radius:4px;font-size:var(--caption);text-align:left;width:100%;white-space:nowrap}
+.dw-menu .menu-item:hover{background:var(--sunken)}
+.dw-menu .menu-item .kbd{margin-left:auto;font:10px ui-monospace,monospace;color:var(--secondary)}
+.dw-menu .menu-sep{height:1px;background:var(--border);margin:4px 6px;flex:none}
+/* ③ 画布：Container 承载预览帧；选中环/边界 chip = 非模态视觉 overlay */
+.dw-canvas{flex:1}
+.dw-canvas-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;flex-wrap:wrap}
+.chip-lbl{font-size:var(--caption);color:var(--secondary)}
+/* Spin：SpinController——stepper 步进 + 文本提交 */
+.spin{display:inline-flex;align-items:stretch;height:var(--control-sm);border:1px solid var(--strong);border-radius:var(--control-radius);background:var(--sunken);overflow:hidden}
+.spin button{width:30px;border:0;background:transparent;color:var(--content);display:grid;place-items:center}
+.spin button:hover{background:var(--selected)}.spin button:active{background:var(--pressed)}
+.spin output{display:grid;place-items:center;min-width:64px;padding:0 10px;font-variant-numeric:tabular-nums;font-size:var(--body);border-left:1px solid var(--border);border-right:1px solid var(--border)}
+/* ComboBox：ComboBoxController */
+.combo{height:var(--control-sm);border:1px solid var(--strong);border-radius:var(--control-radius);background:var(--sunken);color:var(--content);padding:0 28px 0 10px;font-size:var(--caption);cursor:pointer;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--secondary) 50%),linear-gradient(135deg,var(--secondary) 50%,transparent 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat}
+.combo:hover{border-color:var(--accent)}
+/* 预览环境：ComboBox 组（AppShell setTheme / setDeviceScale / setAccessibilityOverrides） */
+.dw-env{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--border);background:var(--sunken)}
+.dw-env .chip-lbl{margin-right:2px}
+/* ⑩ 画布舞台：标尺带（overlay 承载，G-D7 首版绕行；token 视觉系统 §3.5） */
+.canvas-stage{flex:1;min-height:320px;display:grid;grid-template-columns:18px 1fr;grid-template-rows:18px 1fr;margin:0 12px 12px;background:var(--page);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.ruler{background:var(--sunken);position:relative;overflow:hidden}
+.ruler-top{grid-column:2;grid-row:1;border-bottom:1px solid var(--border);background-image:repeating-linear-gradient(to right,var(--border) 0 1px,transparent 1px 40px),repeating-linear-gradient(to right,color-mix(in srgb,var(--border) 55%,transparent) 0 1px,transparent 1px 8px)}
+.ruler-left{grid-column:1;grid-row:2;border-right:1px solid var(--border);background-image:repeating-linear-gradient(to bottom,var(--border) 0 1px,transparent 1px 40px),repeating-linear-gradient(to bottom,color-mix(in srgb,var(--border) 55%,transparent) 0 1px,transparent 1px 8px)}
+.ruler-corner{grid-column:1;grid-row:1;background:var(--sunken);border-right:1px solid var(--border);border-bottom:1px solid var(--border)}
+.ruler-num{position:absolute;font:8px/1 ui-monospace,monospace;color:var(--secondary);pointer-events:none}
+.ruler-top .ruler-num{top:4px}
+.ruler-left .ruler-num{left:3px}
+.ruler-mark{position:absolute;background:color-mix(in srgb,var(--accent) 50%,transparent);pointer-events:none}
+.ruler-top .ruler-mark{top:0;bottom:0}
+.ruler-left .ruler-mark{left:0;right:0}
+.canvas-viewport{grid-column:2;grid-row:2;position:relative;overflow:auto;display:grid;place-items:center}
+.canvas-viewport.show-grid{background-image:radial-gradient(color-mix(in srgb,var(--border) 90%,transparent) 1px,transparent 1.5px);background-size:8px 8px}
+.preview-frame{background:var(--surface);border-radius:8px;box-shadow:0 8px 28px #00000038;padding:24px;display:flex;flex-direction:column;gap:14px;width:min(380px,90%)}
+.pv-text{font-size:16px;font-weight:600;color:var(--content)}
+.pv-field{height:var(--control);border:1px solid var(--strong);border-radius:var(--control-radius);background:var(--sunken);color:var(--secondary);display:flex;align-items:center;padding:0 var(--pad);font-size:var(--body)}
+.pv-row{display:flex;gap:10px;align-items:center}
+.pv-btn{height:var(--control);min-width:64px;border-radius:var(--control-radius);border:0;font-size:var(--body);padding:0 16px;position:relative}
+.pv-btn.filled{background:var(--accent);color:var(--on-accent)}
+.pv-btn.ghost{background:transparent;color:var(--content)}
+.pv-check{display:flex;align-items:center;gap:8px;font-size:var(--body);color:var(--content)}
+.pv-check .box{width:18px;height:18px;border:2px solid var(--strong);border-radius:4px;flex:none}
+.pv-switch{width:36px;height:20px;border-radius:10px;background:var(--accent);position:relative;flex:none}
+.pv-switch::after{content:"";position:absolute;top:2px;left:18px;width:16px;height:16px;border-radius:50%;background:var(--on-accent)}
+/* 节点选中/状态预览（setVisualPreviewState 的目标态示意） */
+.pv-node{position:relative;border-radius:6px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none}
+.pv-node.dragging{cursor:grabbing}
+.pv-node[data-selected="true"]{outline:2px solid var(--accent);outline-offset:2px}
+.pv-node[data-selected="true"]::after{content:attr(data-bounds);position:absolute;top:-24px;left:-2px;background:var(--accent);color:var(--on-accent);font:11px/18px ui-monospace,monospace;padding:0 6px;border-radius:4px;white-space:nowrap}
+.pv-node[data-selected="true"][data-state="hovered"]{background:var(--sunken)}
+.pv-node[data-selected="true"][data-state="pressed"]{background:var(--pressed)}
+.pv-node[data-selected="true"][data-state="focused"]{outline-color:var(--focus);box-shadow:0 0 0 4px color-mix(in srgb,var(--focus) 32%,transparent)}
+.canvas-hint{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--secondary);font-family:ui-monospace,monospace}
+/* ⑪ 智能对齐：guide token（视觉系统 §3.5）——中心/边缘候选参考线 + 距离 chip */
+.guide{position:absolute;background:var(--guide);pointer-events:none;z-index:7}
+.guide.v{width:1px;top:0;bottom:0}
+.guide.h{height:1px;left:0;right:0}
+.dist-chip{position:absolute;z-index:7;background:var(--guide);color:var(--on-guide);font:10px/16px ui-monospace,monospace;padding:0 5px;border-radius:3px;transform:translate(-50%,-50%);pointer-events:none;white-space:nowrap}
+/* 8 向选择手柄（G-D7 目标态示意；8×8、命中 12） */
+.hwrap{position:absolute;inset:0;pointer-events:none}
+.handle{position:absolute;width:8px;height:8px;background:var(--surface);border:1.5px solid var(--accent);border-radius:2px}
+.handle.nw{left:-5px;top:-5px}.handle.n{left:calc(50% - 4px);top:-5px}.handle.ne{right:-5px;top:-5px}
+.handle.e{right:-5px;top:calc(50% - 4px)}.handle.se{right:-5px;bottom:-5px}.handle.s{left:calc(50% - 4px);bottom:-5px}.handle.sw{left:-5px;bottom:-5px}.handle.w{left:-5px;top:calc(50% - 4px)}
+/* ⑫ 独立预览窗口：runApp 多窗口 + DP-4 独立 preview-session（mock） */
+.preview-win{position:absolute;right:16px;bottom:16px;width:300px;max-width:calc(100% - 32px);z-index:8;background:var(--elevated);border:1px solid var(--border);border-radius:8px;box-shadow:0 12px 32px #00000052;display:none;flex-direction:column;overflow:hidden}
+.preview-win.open{display:flex}
+.pw-title{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;background:var(--sunken);border-bottom:1px solid var(--border);font-size:var(--caption);color:var(--secondary)}
+.pw-title .dot{width:7px;height:7px;border-radius:50%;background:var(--success);flex:none}
+.pw-title strong{color:var(--content);font-weight:600}
+.pw-mode{color:var(--accent-content);margin-left:auto;white-space:nowrap}
+.pw-close{border:0;background:none;color:var(--secondary);width:22px;height:22px;border-radius:4px;display:grid;place-items:center}
+.pw-close:hover{background:var(--selected);color:var(--accent-content)}
+.pw-body{position:relative;padding:16px;min-height:220px;display:flex;flex-direction:column;gap:12px;background:var(--surface)}
+.pw-body .pv-text{font-size:14px}
+.pw-body .pv-btn,.pw-body .pv-field{height:32px}
+.pw-body .pv-row{gap:8px}
+.preview-win.debug .pw-body .pv-node{outline:1px dashed var(--accent);outline-offset:3px}
+.pw-hud{display:none;position:absolute;top:42px;left:10px;background:var(--elevated);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font:10px ui-monospace,monospace;color:var(--accent-content)}
+.preview-win.debug .pw-hud{display:block}
+.pw-foot{padding:6px 10px;border-top:1px solid var(--border);font-size:10px;color:var(--secondary);background:var(--sunken);line-height:1.6}
+/* ⑤ 属性：DataGrid 只读投影（名称/值）；编辑态映射见映射表 */
+.dw-props{width:296px;flex:none}
+.props-grid{flex:1;overflow:auto;border-top:1px solid var(--border)}
+.props-table{border-collapse:collapse;width:100%;font-size:var(--body)}
+.props-table th{position:sticky;top:0;background:var(--sunken);color:var(--secondary);font-weight:500;font-size:var(--caption);text-align:left}
+.props-table th,.props-table td{height:var(--row);padding:0 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.props-table td:first-child{color:var(--secondary);font-family:ui-monospace,monospace;font-size:12px}
+.props-table td:last-child{color:var(--content)}
+.props-table tr:hover td{background:var(--sunken)}
+.props-foot{padding:8px 12px;border-top:1px solid var(--border);font-size:var(--caption);color:var(--secondary);line-height:1.6}
+/* ⑬ 源码页签：多行 TextField 承载；行号槽 + 覆盖层错误行（编辑事务 editing_history 先例） */
+.src-pane{flex:1;min-height:0;display:flex;flex-direction:column}
+.src-bar{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.src-state{font-size:var(--caption)}
+.src-loc{margin-left:auto;font:11px ui-monospace,monospace;color:var(--secondary);font-variant-numeric:tabular-nums}
+.src-editor{flex:1;min-height:220px;display:flex;background:var(--sunken);border-bottom:1px solid var(--border)}
+.src-gutter{width:44px;flex:none;overflow:hidden;border-right:1px solid var(--border);padding:10px 0;font:12px/20px ui-monospace,monospace;color:var(--secondary);text-align:right}
+.src-gutter div{padding-right:10px}
+.src-gutter div.err{color:var(--error-content);font-weight:700}
+.src-wrap{position:relative;flex:1;min-width:0}
+.src-back,.src-input{margin:0;padding:10px 14px;font:12px/20px ui-monospace,monospace;white-space:pre;tab-size:4;letter-spacing:normal}
+.src-back{position:absolute;inset:0;overflow:hidden;pointer-events:none;color:transparent}
+.src-back span{display:block;min-height:20px}
+.src-back span.err-line{background:color-mix(in srgb,var(--error) 20%,transparent);box-shadow:inset 2px 0 0 var(--error)}
+.src-input{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;color:var(--content);caret-color:var(--accent);resize:none;outline:none;overflow:auto}
+.src-foot{padding:8px 12px;font-size:var(--caption);color:var(--secondary);line-height:1.7}
+.src-foot code{font:11px ui-monospace,monospace;color:var(--content)}
+/* ⑯ 引用面板：文档命名引用 ↔ RuntimeContext 解析状态（P3 类型化结果） */
+.refs-pane{flex:1;min-height:0;display:flex;flex-direction:column}
+.refs-bar{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.refs-state{font-size:var(--caption)}
+.refs-wrap{flex:1;overflow:auto}
+.refs-table{border-collapse:collapse;width:100%;font-size:var(--body)}
+.refs-table th{position:sticky;top:0;background:var(--sunken);color:var(--secondary);font-weight:500;font-size:var(--caption);text-align:left}
+.refs-table th,.refs-table td{height:var(--row);padding:0 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.refs-table td:first-child{font-family:ui-monospace,monospace;font-size:12px}
+.refs-table tbody tr:hover td{background:var(--sunken);cursor:pointer}
+.refs-table .ok{color:var(--success)}
+.refs-table .stub{color:var(--secondary)}
+.refs-table .miss{color:var(--error-content)}
+/* ⑥ 诊断：List 行（file:line:col + 错误码 + 消息） */
+.dw-diag{border-top:1px solid var(--border);background:var(--sunken)}
+.diag-head{display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:var(--caption);color:var(--secondary);width:100%;border:0;background:none}
+.diag-head:hover{color:var(--content)}
+.diag-head .count{background:var(--error);color:#fff;border-radius:8px;padding:0 7px;font-size:11px}
+.diag-row{display:flex;align-items:center;gap:8px;padding:0 12px;height:30px;font-size:var(--caption);color:var(--content);border:0;background:none;width:100%;text-align:left}
+.diag-row:hover{background:var(--selected)}
+.diag-row .loc{font-family:ui-monospace,monospace;color:var(--secondary);flex:none}
+.diag-row .code{font-family:ui-monospace,monospace;color:var(--error-content);flex:none}
+.diag-row .msg{color:var(--content);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.diag-row.info .code{color:var(--accent-content)}
+.diag-row.warn .code{color:var(--warning)}
+.diag-row.warn .diag-icon{color:var(--warning)}
+.diag-icon{width:14px;height:14px;flex:none;color:var(--error-content)}
+.diag-row.info .diag-icon{color:var(--secondary)}
+/* ⑦ StatusBar：StatusBarController——弹性消息区 + 右侧项 + grip */
+.dw-status{display:flex;align-items:center;gap:0;height:30px;border-top:1px solid var(--border);background:var(--sunken);font-size:var(--caption);color:var(--secondary)}
+.dw-status .msg{flex:1;min-width:120px;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--content)}
+.st-item{display:flex;align-items:center;gap:6px;padding:0 10px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.st-item.st-btn{border:0;background:none;color:var(--secondary);height:100%;cursor:pointer}
+.st-item.st-btn:hover{background:var(--selected);color:var(--accent-content)}
+.st-sep{width:1px;height:12px;background:var(--border);flex:none}
+.st-grip{width:34px;height:100%;display:grid;place-items:center;color:var(--secondary);flex:none}
+/* 编号徽标：评审标注锚点 */
+.mark{position:absolute;width:22px;height:22px;border-radius:50%;background:var(--paper);border:1px solid var(--blue);color:var(--blue);font:700 11px/20px ui-monospace,monospace;text-align:center;z-index:5;box-shadow:0 0 0 3px #edf0f5cc}
+.annotations .mark{position:static;box-shadow:none;flex:none}
+@media(max-width:1100px){.annotations{grid-template-columns:repeat(2,1fr)}.three-col{grid-template-columns:1fr}.dw-body{flex-direction:column}.dw-outline,.dw-props{width:auto}.split{display:none}.two-col{grid-template-columns:1fr}}
+@media(max-width:680px){main{padding:24px 16px}.topbar{padding:0 16px}.hero{display:block}.hero h1{font-size:28px}.version{display:inline-block;margin-top:16px}.annotations{grid-template-columns:1fr}.breadcrumb,.top-meta span:first-child{display:none}}
+@media print{.topbar,.section-nav,.preview-settings{display:none!important}body{background:#fff}main{padding:0;max-width:none}.themed{box-shadow:none}}
+</style>
+</head>
+<body>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+<symbol id="i-open" viewBox="0 0 24 24"><path d="M3 7V5h6l2 2h10v3"/><path d="M3 11h18l-2 8H5Z"/></symbol>
+<symbol id="i-reload" viewBox="0 0 24 24"><path d="M20 11A8 8 0 1 1 17.7 5.3"/><path d="M20 3v5h-5"/></symbol>
+<symbol id="i-undo" viewBox="0 0 24 24"><path d="M7 5 3 9l4 4"/><path d="M3 9h11a6 6 0 0 1 0 12h-3"/></symbol>
+<symbol id="i-redo" viewBox="0 0 24 24"><path d="m17 5 4 4-4 4"/><path d="M21 9H10a6 6 0 0 0 0 12h3"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.8v14.4L19 12Z"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+<symbol id="i-debug" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="5"/><path d="M12 8.5V6M9.2 7 7.5 4.5M14.8 7l1.7-2.5M7 13.5H3.5M20.5 13.5H17M8.3 17.3l-2 2.2M15.7 17.3l2 2.2"/></symbol>
+<symbol id="i-magnet" viewBox="0 0 24 24"><path d="M7 3v8a5 5 0 0 0 10 0V3"/><path d="M7 3h3.6v5H7zM13.4 3H17v5h-3.6z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9 7 7m10 10 2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="m12 3 10 18H2Z"/><path d="M12 10v4m0 3v1"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="i-grip" viewBox="0 0 24 24"><path d="M5 9h14M5 15h14"/></symbol>
+<symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6Z"/><path d="M14 2v4h4"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5h6l2 2h10v3"/><path d="M3 11h18l-2 8H5Z"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5-5 3 3 3-3 3 3"/></symbol>
+</defs></svg>
+<header class="topbar"><div class="brand"><span class="brand-mark">L</span>Lumen <span class="breadcrumb">/ &nbsp; Design library &nbsp; / &nbsp; Designer workbench</span></div><div class="top-meta"><span>DESIGNER GUI · D2 SHELL · V4</span><span>2026.10</span></div></header>
+<main>
+<div class="hero"><div><div class="eyebrow">DESIGN PROPOSAL / 015</div><h1>设计器工作台：简洁三栏，控件全部来自框架。</h1><p>以已交付的 D2 预览工作台（<code>examples/designer</code>）为基线收敛页面结构：工具栏 + 大纲 / 画布 / 属性三栏 + 诊断带 + 状态栏。v2 补齐<strong>画布对齐辅助</strong>与<strong>运行 / 调试组</strong>；v3 落<strong>「设计工程」目标态</strong>（工程 / 页面树 + 命令菜单，登记 DP-9）；v4 落<strong>「引用面板」</strong>：中心第三页签把文档的命名引用（bind / handler / 资源）与 C++ 侧注册表的解析状态对齐——替身 / 已解析 / 缺失，<code>ref.missing</code> 进诊断带并可跳转选中节点。<strong>设计器的产出是应用运行时加载的 UI 声明：结构归文档、行为归代码、命名引用做桥</strong>。每个区域只使用 Lumen 已提供的控件；框架尚缺的能力在稿内以「缺失 · 需补充」显式登记，不虚构控件；新增视觉值全部走视觉系统 §3.5 的 designer canvas token。</p></div><span class="version">设计稿 v4 &nbsp;/&nbsp; 基于 <code>lumen-designer-prerequisites.md</code>（2026-10-01）</span></div>
+<nav class="section-nav" aria-label="设计稿章节"><a href="#prototype"><small>01</small>页面设计稿</a><a href="#mapping"><small>02</small>控件映射</a><a href="#gaps"><small>03</small>缺失与补充</a><a href="#spec"><small>04</small>规格与阶段</a></nav>
+
+<!-- ================= 01 设计稿 ================= -->
+<section class="section" id="prototype">
+<div class="section-head"><div><h2><span class="section-no">01</span>一屏四带，只保留编辑预览必需的面板</h2><p>示例工程 sample.lumenproj · 3 文档 · 当前 sample.lumen（9 节点）· 点选 / 拖动对齐 / 运行调试 / 源码编译 / 工程切换 / 引用核查可直接操作</p></div><div class="preview-settings"><label class="setting">主题<select id="theme-select"><option value="dark">Core Dark</option><option value="light">Core Light</option></select></label><label class="setting">密度<select id="density-select"><option value="comfortable">标准 · 40</option><option value="compact">紧凑 · 32</option><option value="touch">触屏 · 48</option></select></label></div></div>
+
+<div class="themed" id="workbench" data-theme="dark" data-density="comfortable">
+  <!-- 窗口标题（应用自绘标题栏，仅示意身份；非设计器面板）——v3：工程 · 文档两级 -->
+  <div class="dw-title"><span class="dot"></span><strong>Lumen Designer</strong><span>— 示例工程</span><span class="dirty">●</span><span style="margin-left:auto" id="title-meta">sample.lumenproj · schemaVersion 1 · 3 文档 / 3 资源 · 当前 sample.lumen</span></div>
+
+  <!-- ① 工具栏 -->
+  <div class="dw-toolbar" role="toolbar" aria-label="主工具栏" style="position:relative"><span class="mark" style="top:-8px;left:-8px">1</span>
+    <span style="position:relative;display:flex;gap:4px"><span class="mark" style="top:-14px;left:-2px">15</span>
+      <button class="tb-btn" id="tb-new" aria-haspopup="menu" aria-expanded="false" title="新建 (Ctrl+N) —— 工程 / 页面 / 导入（Menu）"><span class="glyph"><svg class="icon"><use href="#i-plus"/></svg></span></button>
+      <div class="dw-menu" id="proj-menu" role="menu" aria-label="工程命令" hidden>
+        <button class="menu-item" role="menuitem" data-cmd="new-project">新建工程…<span class="kbd">Ctrl+Shift+N</span></button>
+        <button class="menu-item" role="menuitem" data-cmd="new-page">新建页面<span class="kbd">Ctrl+N</span></button>
+        <button class="menu-item" role="menuitem" data-cmd="import">从 .lumen 导入页面…</button>
+        <span class="menu-sep" role="separator"></span>
+        <button class="menu-item" role="menuitem" data-cmd="save-project">保存工程<span class="kbd">Ctrl+S</span></button>
+        <button class="menu-item" role="menuitem" data-cmd="save-project-as">另存工程…</button>
+      </div>
+    </span>
+    <button class="tb-btn" id="tb-open" title="打开工程… (Ctrl+O) —— 也可直接打开单文档"><span class="glyph"><svg class="icon"><use href="#i-open"/></svg></span></button>
+    <button class="tb-btn" title="重新载入 (F5)"><span class="glyph"><svg class="icon"><use href="#i-reload"/></svg></span></button>
+    <span class="tb-sep" role="separator"></span>
+    <button class="tb-btn" title="撤销 (Ctrl+Z) — D3 编辑态启用"><span class="glyph"><svg class="icon"><use href="#i-undo"/></svg></span></button>
+    <button class="tb-btn" title="重做 (Ctrl+Y) — D3 编辑态启用"><span class="glyph"><svg class="icon"><use href="#i-redo"/></svg></span></button>
+    <span class="tb-sep" role="separator"></span>
+    <span style="position:relative;display:flex;gap:4px"><span class="mark" style="top:-14px;left:-2px">12</span>
+      <button class="tb-btn label" id="tb-run" title="编译并运行 (Ctrl+R) — 打开独立预览窗口（runApp 多窗口 · DP-4 独立 preview-session）"><span class="glyph"><svg class="icon"><use href="#i-play"/></svg></span>运行</button>
+      <button class="tb-btn" id="tb-stop" aria-disabled="true" title="停止预览 (Shift+F5) — 结束 preview-session 并释放引用 lease（P3）"><span class="glyph"><svg class="icon"><use href="#i-stop"/></svg></span></button>
+      <button class="tb-btn label" id="tb-debug" title="调试运行 (Ctrl+D) — 运行 + 帧统计 HUD + bounds overlay（RunOptions.frameDebugOverlay）"><span class="glyph"><svg class="icon"><use href="#i-debug"/></svg></span>调试</button>
+    </span>
+    <span class="tb-spacer"></span>
+    <button class="tb-btn" id="tb-grid" aria-pressed="true" title="网格参考 8px（视觉 overlay · G-D7 绕行）"><span class="glyph"><svg class="icon"><use href="#i-grid"/></svg></span></button>
+    <button class="tb-btn" id="tb-snap" aria-pressed="true" title="智能对齐：开（中心 / 边缘候选 + 距离标注 · 吸附阈值 6px）" style="position:relative"><span class="mark" style="top:-14px;right:-4px">11</span><span class="glyph"><svg class="icon"><use href="#i-magnet"/></svg></span></button>
+    <button class="tb-btn" title="预览设置（Menu 面板）"><span class="glyph"><svg class="icon"><use href="#i-settings"/></svg></span></button>
+  </div>
+
+  <div class="dw-body">
+    <!-- ② 左栏：大纲 / 工程 双页签（⑭ makeTabs；工程页为 DP-9 目标态） -->
+    <div class="dw-panel dw-outline" style="position:relative"><span class="mark" style="top:6px;right:6px">2</span>
+      <div class="dw-tabs sm" role="tablist" aria-label="左栏视图">
+        <button class="dw-tab" role="tab" id="tab-outline" aria-selected="true" aria-controls="outline-panel">大纲</button>
+        <button class="dw-tab" role="tab" id="tab-project" aria-selected="false" aria-controls="project-panel" style="position:relative"><span class="mark" style="top:-6px;left:-8px">14</span>工程</button>
+      </div>
+      <div class="dw-tree" role="tree" aria-label="文档大纲" id="outline-panel"></div>
+      <div class="dw-tree" role="tree" aria-label="工程结构" id="project-panel" hidden></div>
+    </div>
+    <div class="split" role="separator" aria-label="大纲栏宽" tabindex="0" style="position:relative"><span class="mark" style="top:calc(50% - 34px);left:-7px">8</span></div>
+
+    <!-- ③ 中心区：画布 / 源码 页签 -->
+    <div class="dw-panel dw-canvas" style="position:relative"><span class="mark" style="top:6px;right:6px">3</span>
+      <div class="dw-tabs" role="tablist" aria-label="中心视图">
+        <button class="dw-tab" role="tab" id="tab-canvas" aria-selected="true" aria-controls="panel-canvas" style="position:relative"><span class="mark" style="top:-6px;left:-8px">13</span>画布</button>
+        <button class="dw-tab" role="tab" id="tab-source" aria-selected="false" aria-controls="panel-source">源码</button>
+        <button class="dw-tab" role="tab" id="tab-refs" aria-selected="false" aria-controls="panel-refs" style="position:relative"><span class="mark" style="top:-6px;left:-8px">16</span>引用</button>
+        <span class="tabs-meta">DOM 是编辑源 · Widget 是编译产物</span>
+      </div>
+
+      <!-- 画布页签 -->
+      <div id="panel-canvas" role="tabpanel" aria-labelledby="tab-canvas" style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div class="dw-canvas-bar">
+          <span style="flex:1"></span>
+          <label class="chip-lbl" for="state-select">交互状态</label>
+          <select class="combo" id="state-select"><option value="none">无</option><option value="hovered">Hover</option><option value="pressed">Press</option><option value="focused">Focus</option></select>
+          <label class="chip-lbl" for="zoom-spin">缩放</label>
+          <span class="spin" id="zoom-spin" role="group" aria-label="画布缩放" style="position:relative"><span class="mark" style="top:-16px;right:-10px">9</span><button type="button" data-zoom="-" aria-label="缩小">−</button><output id="zoom-out" for="zoom-spin">100%</output><button type="button" data-zoom="+" aria-label="放大">＋</button></span>
+        </div>
+        <div class="canvas-stage">
+          <div class="ruler-corner" style="position:relative"><span class="mark" style="top:-4px;left:-4px">10</span></div>
+          <div class="ruler ruler-top" id="ruler-top" aria-hidden="true"></div>
+          <div class="ruler ruler-left" id="ruler-left" aria-hidden="true"></div>
+          <div class="canvas-viewport show-grid" id="canvas-viewport">
+            <div class="preview-frame" id="preview-frame">
+              <div class="pv-text pv-node" data-node="title" data-bounds="132×24">预览标题</div>
+              <div class="pv-field pv-node" data-node="name" data-bounds="332×40">输入名称…</div>
+              <div class="pv-row pv-node" data-node="actions" data-bounds="332×40">
+                <button class="pv-btn filled pv-node" data-node="save" data-bounds="86×40">保存</button>
+                <button class="pv-btn ghost pv-node" data-node="cancel" data-bounds="94×40">取消</button>
+              </div>
+              <div class="pv-row pv-node" data-node="prefs" data-bounds="332×24">
+                <span class="pv-check pv-node" data-node="auto" data-bounds="104×24"><span class="box"></span>自动保存</span>
+                <span class="pv-switch pv-node" data-node="sync" data-bounds="36×20" role="img" aria-label="同步开关：开"></span>
+              </div>
+            </div>
+            <span class="canvas-hint">点选节点查看属性 · 拖动节点体验智能对齐（吸附 6px · D3 演示）</span>
+            <!-- ⑫ 独立预览窗口（▶ 运行 / 调试 时打开） -->
+            <div class="preview-win" id="preview-win" role="region" aria-label="独立预览窗口">
+              <div class="pw-title"><span class="dot"></span><strong>Lumen 预览</strong><span>— sample.lumen</span><span class="pw-mode" id="pw-mode">运行预览</span><button class="pw-close" id="pw-close" aria-label="关闭预览窗口"><svg class="icon" style="width:12px;height:12px"><use href="#i-x"/></svg></button></div>
+              <div class="pw-body" id="pw-body"></div>
+              <span class="pw-hud">帧 12.4 ms · 60 fps · overlay 开</span>
+              <div class="pw-foot">runApp 多窗口 · 独立 preview-session（DP-4）· 离线 RuntimeContext —— 未启动业务代码（G-D16）</div>
+            </div>
+          </div>
+        </div>
+        <!-- ④ 预览环境 -->
+        <div class="dw-env" style="position:relative"><span class="mark" style="top:-8px;left:8px">4</span>
+          <span class="chip-lbl">预览环境</span>
+          <select class="combo" id="env-theme"><option>CoreDark</option><option>CoreLight</option></select>
+          <select class="combo" id="env-density"><option>Comfortable</option><option>Compact</option><option>Touch</option></select>
+          <select class="combo"><option>DPI 100%</option><option>DPI 125%</option><option>DPI 200%</option></select>
+          <select class="combo"><option>字体 100%</option><option>字体 125%</option><option>字体 150%</option></select>
+          <select class="combo"><option>高对比 关</option><option>高对比 开</option></select>
+        </div>
+      </div>
+
+      <!-- 源码页签 -->
+      <div class="src-pane" id="panel-source" role="tabpanel" aria-labelledby="tab-source" hidden>
+        <div class="src-bar">
+          <span class="chip-lbl">源码 · sample.lumen</span>
+          <span class="src-state" id="src-state">未编译</span>
+          <span class="src-loc" id="src-loc">Ln 1, Col 1</span>
+        </div>
+        <div class="src-editor">
+          <div class="src-gutter" id="src-gutter" aria-hidden="true"></div>
+          <div class="src-wrap">
+            <pre class="src-back" id="src-back" aria-hidden="true"></pre>
+            <textarea class="src-input" id="src-input" spellcheck="false" wrap="off" aria-label="文档源码"></textarea>
+          </div>
+        </div>
+        <div class="src-foot">编辑 → <code>parse → schema → compile → swapRoot</code>；编译失败保留上一帧（G-D15）。本文档始终是数据序列化，无脚本 / 变量 / 条件（G-D3 / DP-1）。状态栏「热重载」开启时，编辑自动重编译（<code>--watch</code> 先例）。D2 阶段此页只读 + 诊断定位；「编辑 → 编译并运行」为 D3 目标态交互演示。</div>
+      </div>
+
+      <!-- 引用页签（⑯ 目标态：数据来自 P3，UI 属设计器应用实现） -->
+      <div class="refs-pane" id="panel-refs" role="tabpanel" aria-labelledby="tab-refs" hidden>
+        <div class="refs-bar">
+          <span class="chip-lbl" id="refs-title">引用 · sample.lumen</span>
+          <span class="refs-state" id="refs-state">3 个引用 · 1 缺失</span>
+          <span class="src-loc" style="margin-left:auto">RuntimeContext：离线（DP-7 默认替身）</span>
+        </div>
+        <div class="refs-wrap">
+          <table class="refs-table"><thead><tr><th>名称</th><th>类型</th><th>解析</th><th>引用位置</th></tr></thead><tbody id="refs-body"></tbody></table>
+        </div>
+        <div class="src-foot">文档只写<strong>稳定名称</strong>（<code>bind</code> / <code>onClick</code> / 资源名）；解析永远在代码侧——设计期由离线 RuntimeContext 给替身（DP-7 默认），运行时由应用注册的 <code>StateStore</code> / <code>HandlerRegistry</code> / 资源表给真身，文档零改动。缺失引用 = <code>ref.missing</code> 诊断 + 节点禁用但保留几何（P3 placeholder）。点击行选中引用节点；数据来自 P3 类型化解析结果（<code>dsl/runtime_context.h</code>）。</div>
+      </div>
+    </div>
+    <div class="split" role="separator" aria-label="属性栏宽" tabindex="0"></div>
+
+    <!-- ⑤ 属性（只读投影） -->
+    <div class="dw-panel dw-props" style="position:relative"><span class="mark" style="top:6px;right:6px">5</span>
+      <div class="dw-panel-heading"><span>属性 · 只读</span><span>DataGrid</span></div>
+      <div class="props-grid"><table class="props-table" id="props-table"><thead><tr><th>属性</th><th>值</th></tr></thead><tbody id="props-body"></tbody></table></div>
+      <div class="props-foot">D2 只读投影（P2 schema 驱动）。D3 编辑态按属性类型换用 TextField / Spin / ComboBox / ColorPicker / Slider —— 编辑器待 P2 元数据覆盖 L1–L3 后启用。</div>
+    </div>
+  </div>
+
+  <!-- ⑥ 诊断 -->
+  <div class="dw-diag" style="position:relative"><span class="mark" style="bottom:24px;right:6px">6</span>
+    <div class="diag-head" id="diag-toggle" role="button" tabindex="0" aria-expanded="true"><svg class="icon" style="width:14px;height:14px"><use href="#i-chev"/></svg><span>诊断</span><span class="count" id="diag-count">1</span><span style="margin-left:auto">点击行定位源码行 / 引用节点（P4 SourceMap · P3 引用）</span></div>
+    <div id="diag-rows">
+      <button class="diag-row"><svg class="diag-icon icon"><use href="#i-alert"/></svg><span class="loc">sample.lumen:12:29</span><span class="code">schema.enum_invalid</span><span class="msg">“variant: filed” 不是 ButtonVariant（期望 filled | tonal | outline | ghost | danger）</span></button>
+      <button class="diag-row info"><svg class="diag-icon icon"><use href="#i-info"/></svg><span class="loc">sample.lumen:1:1</span><span class="code">parse.ok</span><span class="msg">9 个节点 · 0 个未解析引用 · 离线 RuntimeContext</span></button>
+    </div>
+  </div>
+
+  <!-- ⑦ 状态栏 -->
+  <div class="dw-status" style="position:relative"><span class="mark" style="bottom:-6px;left:-8px">7</span>
+    <span class="msg" id="status-msg">就绪</span>
+    <span class="st-item" title="工程（manifest）—— DP-9 待决策"><svg class="icon" style="width:13px;height:13px"><use href="#i-folder"/></svg>工程 sample.lumenproj</span><span class="st-sep"></span>
+    <span class="st-item"><svg class="icon" style="width:13px;height:13px"><use href="#i-doc"/></svg><span id="st-file">sample.lumen</span></span><span class="st-sep"></span>
+    <button class="st-item st-btn" id="st-watch" aria-pressed="true"><svg class="icon" style="width:13px;height:13px"><use href="#i-reload"/></svg>热重载：开</button><span class="st-sep"></span>
+    <span class="st-item" id="st-node">Button [save]</span><span class="st-sep"></span>
+    <span class="st-item" id="st-zoom">缩放 100%</span><span class="st-sep"></span>
+    <span class="st-item">帧 12.4 ms</span>
+    <span class="st-grip" aria-hidden="true"><svg class="icon" style="width:14px;height:14px"><use href="#i-grip"/></svg></span>
+  </div>
+</div>
+
+<p class="review-note"><strong>原型边界</strong><span>本稿主体仍是 D2「只读预览工作台」的 UI 设计稿，与 <code>examples/designer/designer_app.cpp</code> 已交付能力对齐；<strong>拖动吸附、选择手柄、源码编辑 → 编译并运行、工程树 / 文档切换 / 工程命令菜单、引用面板均为目标态的交互演示</strong>——依托的管线（FileWatcher / DslCache / swapRoot 热重载、runApp 多窗口、RunOptions.frameDebugOverlay、非模态 overlay、按 documentId 的选择与预览状态隔离、P3 类型化引用解析）均有框架证据，演示只补交互层；工程清单不落盘，切换只换当前文档会话，工程容器本体待 DP-9 决策（§03-8），引用面板数据侧 P3 已交付、面板 UI 随 D3 落地。工具箱拖入 / 属性就地编辑 / 结构重排属于 D3，仅在 §03 登记不在稿内伪造。缩放步进与吸附为演示值，实际画布 zoom / 命中走 P4 DesignCoordinateTransform。面板结构保持「四带三栏」，中心与左栏页签均复用既有栏位、不新增栏。</span></p>
+
+<div class="annotations">
+  <div class="annotation"><span class="num">1</span><div><h4>工具栏 <span class="pill done">已提供</span></h4><p><code>widgets/toolbar.h · ToolBarController</code>：Ghost 项、分组分隔、toggle 持久底、尾部溢出折叠；快捷键走 CommandRegistry 单一数据源。v2 增补运行 / 调试 / 停止组（标注 12）；<code>IconId::Play / Grid / Undo / Redo / Settings</code> 已有，Stop / Debug / Magnet 需补，见 §03-7。</p></div></div>
+  <div class="annotation"><span class="num">2</span><div><h4>大纲 <span class="pill done">已提供</span></h4><p><code>TreeController + TreeModel</code>（<code>makeTree</code>）：DocumentId 为主键，缩进 20 / chevron 槽 24 / 选中 3px 标记；与画布点选双向同步（CompileTrace 过滤 runtime identity）。v3 起与「工程」页共享左栏（Tabs，标注 14）。</p></div></div>
+  <div class="annotation"><span class="num">3</span><div><h4>画布 <span class="pill partial">降级绕行</span></h4><p>预览帧由 <code>AppShell::swapRoot + renderFrame</code> 提供（CPU/Skia 同契约）；选中环、bounds chip、对齐参考用非模态视觉 overlay（<code>setVisualOverlayBuilder</code>）。v2 起标尺 / 参考线 / 距离标注 / 手柄按 overlay 目标态绘出（标注 10–11）；标尺 / 手柄 / 框选需 Canvas 自绘控件 —— <strong>缺失，见 §03-1</strong>。</p></div></div>
+  <div class="annotation"><span class="num">4</span><div><h4>预览环境 <span class="pill done">已提供</span></h4><p><code>ComboBoxController</code> 承载主题 / 密度 / DPI / 字体缩放 / 高对比 / 交互状态（<code>setVisualPreviewState</code>）；预览切换不产生文档 dirty（DesignPreviewState 隔离）。</p></div></div>
+  <div class="annotation"><span class="num">5</span><div><h4>属性面板 <span class="pill partial">只读已提供</span></h4><p>只读投影用 <code>DataGridController</code> 两列（名称 / 值），行来自 P2 schema 的属性投影。逐属性编辑器控件（TextField / Spin / ComboBox / ColorPicker / Slider）框架已备，<strong>属性元数据仅覆盖 L0 12 节点，见 §03-4</strong>。</p></div></div>
+  <div class="annotation"><span class="num">6</span><div><h4>诊断 <span class="pill done">已提供</span></h4><p><code>ListController</code> 行：file:line:col + 稳定错误码 + 消息；同结构供 CLI dump / 测试 / GUI 三端消费（DesignDiagnostic）。点击行定位到源 span 并跳转源码页签高亮；错误保留上一帧画布。</p></div></div>
+  <div class="annotation"><span class="num">7</span><div><h4>状态栏 <span class="pill done">已提供</span></h4><p><code>StatusBarController</code>：弹性消息区（瞬态淡切）+ 常驻项（Text / Toggle / Separator）+ resize grip。热重载 Toggle（联动源码页签自动重编译）、帧耗时、当前节点 / 缩放读数都在这里，不另设 HUD。</p></div></div>
+  <div class="annotation"><span class="num">8</span><div><h4>分栏与滚动 <span class="pill done">已提供</span></h4><p>三栏与诊断带折叠用 <code>SplitterController</code>（<code>makeSplitter</code>，键盘 ←→ 调宽、焦点 3px accent 线）；面板内容超长走 <code>makeScrollView</code> 与集合控件内建滚动。</p></div></div>
+  <div class="annotation"><span class="num">9</span><div><h4>缩放 <span class="pill partial">降级绕行</span></h4><p>无专用 Zoom 控件；用 <code>SpinController</code>（± 步进 / 文本提交）承载 25%–400%，变换由 P4 DesignCoordinateTransform 完成。<strong>若需滑杆 + 百分比复位组合件，见 §03-5</strong>。</p></div></div>
+  <div class="annotation"><span class="num">10</span><div><h4>标尺与网格 <span class="pill partial">降级绕行</span></h4><p>顶 / 左标尺带 18px（次刻度 8 / 主刻度 40，逻辑 px），选中节点在标尺上以 accent 半透明区间标记；网格参考为 8px 点阵，工具栏可开关。全部由非模态视觉 overlay 绘制（G-D7 首版绕行），刻度换算走 P4 DesignCoordinateTransform（DPI / zoom / pan），几何不随密度分档（token 视觉系统 §3.5）。</p></div></div>
+  <div class="annotation"><span class="num">11</span><div><h4>智能对齐与距离标注 <span class="pill partial">D3 演示</span></h4><p>拖动节点时按其他节点与预览帧的中心 / 左 / 右 / 上 / 下生成候选，误差 ≤ 6px 吸附并显示 guide 参考线；与正交方向对象存在投影重叠时给出间距 chip（数值为实际 gap）。吸附规则引擎是设计器自建能力（前置文档 §3，非框架缺口）；视觉值冻结在视觉系统 §3.5（guide 玫红 1px / onGuide / 手柄 8×8 命中 12）。本稿为 D3 目标态交互演示，磁铁按钮可关吸附。</p></div></div>
+  <div class="annotation"><span class="num">12</span><div><h4>运行 / 调试 / 停止 <span class="pill done">基础已提供</span></h4><p>▶ 运行 = 编译当前文档并在<strong>独立窗口</strong>预览：<code>runApp</code> 多窗口（每窗口独立 shell / renderer / IME）+ DP-4 独立 preview-session，离线 RuntimeContext 替身、不启动业务代码（G-D16 / DP-7）。🐞 调试 = 运行 + <code>RunOptions.frameDebugOverlay</code> 帧统计 HUD + bounds overlay（复用 D1 能力）。⏹ 停止结束会话并释放引用 lease（P3 DesignRuntimeSession）。编译失败不打开窗口、画布保留上一帧（G-D15）。</p></div></div>
+  <div class="annotation"><span class="num">13</span><div><h4>源码页签 <span class="pill partial">D2 只读 · D3 编辑</span></h4><p>中心区 <code>makeTabs</code>（<code>core/widget.h</code>）承载「画布 / 源码」：源码用多行 TextField 呈现（<code>text::EditingHistory</code> 编辑事务先例），行号槽标注错误行，点击诊断行跳转并高亮（P4 SourceMap span）。D2 此页只读；「编辑 → 编译并运行」为 D3 目标态（本稿可交互演示）：parse → schema → compile → swapRoot；状态栏热重载（<code>--watch</code> 先例）开启时编辑自动重编译。文档始终是数据序列化，无脚本 / 变量 / 条件（G-D3 / DP-1）。</p></div></div>
+  <div class="annotation"><span class="num">14</span><div><h4>工程 / 页面树 <span class="pill partial">DP-9 目标态</span></h4><p>左栏「工程」页用 Tree 呈现工程清单（manifest）视图：<strong>页面集</strong>（每页是独立 DesignDocument，切换 = 换当前文档，选择 / 预览状态按 documentId 隔离——<code>DesignSelectionModel</code> / <code>DesignPreviewState</code>，F6 已实现并有回归测试）与<strong>资源表</strong>（工程根内相对路径解析，G-D16 授权会话、默认离线）。诊断跨文档聚合，点击其他文档的错误行会切回该文档并定位。工程容器本体（清单格式 / 工程 ID / 跨文档引用）登记为 <strong>DP-9 待决策，见 §03-8</strong>；文档文件与格式不变——工程是文档的容器，不是更大的文档。</p></div></div>
+  <div class="annotation"><span class="num">15</span><div><h4>工程命令菜单 <span class="pill done">控件已提供</span></h4><p>新建 / 导入 / 保存 / 另存工程走 Menu（<code>ContextMenuController</code> / <code>MenuBarController</code> 框架已有，本稿首用），命令统一进 <code>CommandRegistry</code>。保存工程 = 清单 + 受影响文档逐个原子写（P5 tmp+rename 模式复用）；从 <code>.lumen</code> 导入页面沿用 DP-1 单向导入、不回写；最近工程入 <code>Preferences</code>（与文档数据分离存储）。图标复用 <code>IconId::Plus / Document / Folder / Image</code>，无新增图标缺口。</p></div></div>
+  <div class="annotation"><span class="num">16</span><div><h4>引用面板 <span class="pill partial">数据已提供 · UI 目标态</span></h4><p>中心第三页签，DataGrid 呈现当前文档全部命名引用（<code>bind</code> / handler / 资源名）与 RuntimeContext 解析状态：<strong>替身</strong>（离线固定值，DP-7 默认）/ <strong>已解析</strong>（应用适配器显式授权后读应用注册表）/ <strong>缺失</strong>（<code>ref.missing</code> 警告进诊断带，节点禁用 + 保留几何，P3 placeholder）。点击引用行或警告行选中引用节点。<strong>这是设计器与代码实现的关联面</strong>：文档只写稳定名称，行为永远在 C++（StateStore / HandlerRegistry / 资源表），设计期与运行时用同一份文档、两套解析。数据来自 P3 类型化解析结果（<code>dsl/runtime_context.h</code>），UI 属设计器应用实现（同吸附引擎口径），无框架缺口。</p></div></div>
+</div>
+</section>
+
+<!-- ================= 02 控件映射 ================= -->
+<section class="section" id="mapping">
+<div class="section-head"><div><h2><span class="section-no">02</span>十六个区域，全部映射到框架既有控件</h2><p>逐区域给出控件、公共头文件与状态；「已提供」= 接口存在且 headless 已验证，降级 = 有既定绕行，缺失 = 框架无此能力，需按 §03 补充。</p></div><a class="source-link" href="../docs/lumen-designer-prerequisites.md">设计器前置与缺口文档 ↗</a></div>
+<div class="card"><div class="matrix-wrap"><table class="matrix"><thead><tr><th>设计器区域</th><th>框架控件 / 机制</th><th>证据入口</th><th>状态</th></tr></thead><tbody>
+<tr><td>窗口标题 / 文档身份</td><td>自绘标题栏（titlebar 契约）+ <code>Text</code></td><td><code>docs/lumen-titlebar-design.md</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>① 工具栏</td><td><code>ToolBarController</code>（icon / labelMode / separator / checkable / 溢出）</td><td><code>include/lumen/widgets/toolbar.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>② 大纲面板</td><td><code>TreeController</code> + <code>TreeModel</code>（<code>makeTree</code>；文件行图标 Document / Folder）</td><td><code>include/lumen/widgets/tree.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>③ 画布预览帧</td><td><code>AppShell::swapRoot / renderFrame</code> + <code>Container</code> 壳；命中链 <code>core::hitTestChain</code></td><td><code>include/lumen/app/app_shell.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>③ 选中高亮 / 参考线</td><td>非模态视觉 overlay：<code>setVisualOverlayBuilder</code> / <code>setOverlayBuilder</code></td><td><code>app_shell.h</code>；G-D7 限制见 §03-1</td><td><span class="pill partial">降级绕行</span></td></tr>
+<tr><td>④ 预览环境 / 交互状态</td><td><code>ComboBoxController</code> + <code>setVisualPreviewState</code> + <code>Theme::fromSettings</code></td><td><code>widgets/combo_box.h</code>、<code>style/theme.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>⑤ 属性（只读）</td><td><code>DataGridController</code> 两列投影（P2 schema → 行）</td><td><code>widgets/datagrid.h</code>、<code>dsl/design_schema.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>⑤ 属性（编辑，D3）</td><td>按属性类型：TextField / Spin / ComboBox / ColorPicker / Slider / Form</td><td><code>widgets/spin.h</code> 等五件</td><td><span class="pill partial">控件已备 · 元数据待补 §03-4</span></td></tr>
+<tr><td>⑥ 诊断列表</td><td><code>ListController</code> + <code>DesignDiagnostic</code>（code / stage / span / recoverability）</td><td><code>widgets/list.h</code>、<code>dsl/design_document.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>⑦ 状态栏</td><td><code>StatusBarController</code>（消息区 / Text / Toggle / Progress / Busy / Separator / grip）</td><td><code>widgets/statusbar.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>⑧ 三栏分栏</td><td><code>SplitterController</code>（<code>makeSplitter</code>）</td><td><code>widgets/splitter.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>⑨ 缩放输入</td><td><code>SpinController</code>（无专用 Zoom 件）</td><td><code>widgets/spin.h</code></td><td><span class="pill partial">降级绕行 §03-5</span></td></tr>
+<tr><td>⑩ 中心页签（画布 / 源码）</td><td><code>makeTabs</code>（核心组合件，含键盘左右切换）</td><td><code>include/lumen/core/widget.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>⑩ 标尺 / 网格参考</td><td>非模态视觉 overlay：标尺带 18 + 刻度 8/40 + 8px 点阵（token 视觉系统 §3.5）</td><td><code>app_shell.h</code>；G-D7 见 §03-1</td><td><span class="pill partial">降级绕行</span></td></tr>
+<tr><td>⑪ 智能对齐 / 距离标注</td><td>视觉 overlay + 设计器自建吸附规则引擎（前置文档 §3）</td><td><code>design/designer.html</code> v2、视觉系统 §3.5</td><td><span class="pill partial">D3 · overlay 承载已可用</span></td></tr>
+<tr><td>⑫ 运行 / 调试 / 停止</td><td><code>runApp</code> 多窗口 + <code>RunOptions.frameDebugOverlay</code> + FileWatcher</td><td><code>include/lumen/app/app_shell.h</code>、<code>examples/designer/main.cpp</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>⑬ 源码视图 / 编辑编译</td><td>多行 TextField（<code>text::EditingHistory</code>）+ DslCache / <code>swapRoot</code> 热重载</td><td><code>include/lumen/text/editing_history.h</code></td><td><span class="pill partial">D2 只读定位 · D3 编辑</span></td></tr>
+<tr><td>⑭ 工程 / 页面树</td><td>Tree + <code>makeTabs</code>；页面 = 独立 DesignDocument，切换按 documentId 隔离</td><td><code>widgets/tree.h</code>、<code>dsl/design_preview.h</code>（F6 隔离）</td><td><span class="pill partial">隔离已提供 · 容器待决策 §03-8</span></td></tr>
+<tr><td>⑭ 工程清单（manifest）</td><td>页面集 / 资源表 / 工程根 / schemaVersion —— DP-1 方案 B 同族格式</td><td>DP-9 待决策（§03-8）；DocumentStore 扩展</td><td><span class="pill later">待决策</span></td></tr>
+<tr><td>⑮ 工程命令菜单</td><td><code>ContextMenuController</code> / <code>MenuBarController</code> + <code>CommandRegistry</code></td><td><code>include/lumen/widgets/menu.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>⑮ 最近工程</td><td><code>Preferences</code>（与文档数据分离存储）</td><td><code>include/lumen/core/preferences.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>⑯ 引用面板</td><td>DataGrid + P3 类型化引用解析（RuntimeContext 替身 / 已解析 / 缺失）</td><td><code>dsl/runtime_context.h</code>、<code>designer.html</code> v4</td><td><span class="pill partial">数据已提供 · UI 目标态</span></td></tr>
+<tr><td>命令 / 快捷键</td><td><code>CommandRegistry</code> 单一数据源；菜单 / 工具栏 / 键盘共用命令 id</td><td><code>app/command_registry.h</code></td><td><span class="pill done">已提供</span></td></tr>
+<tr><td>设置持久化</td><td><code>Preferences</code>（原子替换先例；文档另走 DocumentStore）</td><td><code>core/preferences.h</code>、<code>dsl/document_store.h</code></td><td><span class="pill done">已提供</span></td></tr>
+</tbody></table></div><div class="audit-note"><strong>映射原则：</strong>设计器是框架的普通应用（dogfooding 即回归证据），不自建绘制控件、不绕开 Theme token。运行 / 调试组不新增控件——ToolBar 命令项 + runApp 多窗口 + overlay 组合即得。凡本稿未列出的桌面设计器常见件——菜单栏（<code>MenuBarController</code>）、右键菜单（<code>ContextMenuController</code>）、弹窗（<code>makeDialog</code> / DialogHost）、提示（<code>makeTooltip</code>）——框架均已提供，首版按「简洁」要求不放入主屏，需要时直接组合。</div></div>
+</section>
+
+<!-- ================= 03 缺失与补充 ================= -->
+<section class="section" id="gaps">
+<div class="section-head"><div><h2><span class="section-no">03</span>缺失清单：设计器需要、框架还没有的</h2><p>按前置文档口径登记。「绕行」是首版交付方式；「补充建议」给出立项路径。DP-1/DP-3/DP-4 已于 2026-10-01 决定（方案 B 私有格式 / L0 先闭环 / 运行态独立 preview-session）；D3 仍需 P1–P5 与 G-D13–D16 验收全绿后才开工。</p></div><span class="pill missing">共 8 项 · 3 项影响 D3</span></div>
+<div class="card"><div class="matrix-wrap"><table class="matrix"><thead><tr><th># / 缺口</th><th>设计器需要它做什么</th><th>首版绕行</th><th>补充建议</th></tr></thead><tbody>
+<tr><td>1 · G-D7<br>Canvas 自绘画布控件 <span class="pill missing">缺失</span></td><td>画布标尺、对齐 / 吸附参考线、选中手柄（8 向缩放点）、框选矩形——密集动态几何 + 自身命中交互。</td><td>非模态视觉 overlay（普通 RenderCommand，CPU / Skia / GPU 三端一致）+ <code>IconId</code> 折线画手柄。本稿 v2 已把标尺 / 参考线 / 距离标注 / 手柄按 overlay 目标态画出并冻结 token（视觉系统 §3.5）；命中交互仍由会话输入路由承担。</td><td>overlay 出现闪烁 / 命中不准时按新控件流程立项：设计文档 + mockup 同批交付；把「overlay 契约（坐标变换、与事件树互斥）」一并冻结。</td></tr>
+<tr><td>2 · G-D4<br>通用绝对定位容器 <span class="pill missing">缺失</span></td><td>D3 自由画布：子控件任意坐标摆放、拖动。</td><td>约定「画布根 = <code>Stack</code>，子项一律 <code>stackPosition</code>」；嵌套容器内仍走布局流。本稿拖动演示即按此语义（transform 不改文档布局字段）。</td><td>暂不补。若需要「布局流 / 自由定位」混合画布语义，按新容器控件立项（设计文档 + mockup + 布局测试）。</td></tr>
+<tr><td>3 · G-D5<br>自绘编辑光标 <span class="pill missing">缺失</span></td><td>精确编辑光标：十字（画布拾取）、斜切（角手柄）、旋转。</td><td>11 种系统光标形状（含十字 Crosshair / 手形）+ overlay 模拟。</td><td>暂不补。编辑体验明确不够用或 overlay 模拟出现延迟 / 闪烁时，平台层扩展自绘光标（SDL 支持自建 cursor surface）。</td></tr>
+<tr><td>4 · G-D2 / P2<br>属性元数据覆盖 <span class="pill missing">缺失（分批）</span></td><td>可编辑属性面板：逐属性的类型、取值范围、默认值、分组、访问器——L1–L3 控件（Grid / Image / Slider / Tabs / DataGrid 列模型 / ComboBox 选项等）尚未登记。</td><td>属性面板保持只读投影（本稿形态）；L0 12 节点已可编辑。</td><td>按 P2 注册表逐批登记 L1→L2→L3，每批同步字段清单守护测试；完成后属性面板才切换编辑态。</td></tr>
+<tr><td>5 · —<br>专用缩放（Zoom）控件 <span class="pill missing">缺失</span></td><td>画布缩放组合件：滑杆 + 百分比 + 复位 + 适应窗口。</td><td><code>SpinController</code> 步进（本稿）；变换由 P4 DesignCoordinateTransform 承担。</td><td>暂不补。设计器自建组合件即可（Slider + Spin + Ghost 按钮），不需要框架新控件；若多个工具需要，再抽为 widgets 层组合件。</td></tr>
+<tr><td>6 · G-D6 / G-D13–D16<br>D3 编辑流程 <span class="pill later">前置未收口</span></td><td>工具箱拖入（应用内拖放已有）、结构重排、就地编辑、undo/redo、保存导出；吸附 / 对齐规则引擎亦属设计器自建（前置文档 §3）。</td><td>不绕行——DP-1/3/4 已决定（方案 B / L0 先闭环 / 运行态独立）；事务 / 选择 / 诊断 / 资源契约 F6 已有地基，验收未全绿。</td><td>按前置文档 §8 完成剩余决策（DP-2/5–8）并让 P1–P5 与 G-D13–D16 验收全绿后进入 F6 应用出口；本稿布局已为 D3 预留（工具箱可挂在左栏与大纲同层，用 Tabs / List 切换）。</td></tr>
+<tr><td>7 · —<br>命令图标 Stop / Debug / Magnet <span class="pill missing">缺失</span></td><td>工具栏运行 / 停止 / 调试与吸附开关的命令图标（v2 新增组）。</td><td><code>IconId::Play / Grid / Settings</code> 等已有可直接复用；缺的三枚先以自定 painter 折线或文字标签绕行。</td><td>按 <code>include/lumen/core/icon_id.h</code> 既有先例尾部追加（保持已发布 ID 值不变），随 D3 工具栏实装同批登记折线几何与渲染测试。</td></tr>
+<tr><td>8 · DP-9<br>设计工程容器 <span class="pill later">待决策 · D3 后</span></td><td>工程清单（页面集 / 资源表 / 工程根 / schemaVersion）、工程级打开 / 保存 / 迁移、跨文档引用协议、工程身份（工程 ID + 文档在工程内的稳定名）。</td><td>无绕行——维持单文档模型 + 最近文件（<code>Preferences</code>）；工程根授权语义已在 G-D16 资源策略预留，文档切换的选择 / 预览隔离（按 documentId）F6 已实现。</td><td>决策 DP-9 后按 P5 同族格式立项：清单原子写与迁移链、工程身份规则、跨文档引用诊断；作为 D3 后独立范围，不并入 L0 出口。本稿 v3 已画目标态交互（左栏工程页 + 命令菜单，标注 14–15）。</td></tr>
+</tbody></table></div><div class="audit-note"><strong>显式排除项：</strong>OS 拖出到外部工具（G-D6，SDL 3.2.10 无结构化 API）维持登记不开项；DSL 可编程化（脚本 / 变量 / 条件 / 循环）继续排除——源码页签编辑的是数据序列化文档，不是可编程 DSL（G-D3 / DP-1 边界）。移动端（Android / iOS）不在本稿范围。</div></div>
+</section>
+
+<!-- ================= 04 规格与阶段 ================= -->
+<section class="section" id="spec">
+<div class="section-head"><div><h2><span class="section-no">04</span>沿用视觉系统，随 D1→D3 演进</h2><p>几何与颜色全部取自 Theme token；v2 新增的画布辅助值登记为视觉系统 §3.5 designer canvas token，本稿不引入其他新视觉值。</p></div><a class="source-link" href="../docs/lumen-visual-system-design.md">视觉系统文档 ↗</a></div>
+<div class="two-col">
+<article class="card card-body"><h3>视觉规格（Comfortable 档）</h3>
+<p style="margin-bottom:8px"><strong>结构：</strong>标题 40 + 工具栏 52 + 主区自适应 + 诊断带（1 行 30px / 行 30）+ 状态栏 30；左栏 236 / 右栏 296 / 分隔条命中 9（可视 2px 线 + 悬停 accent）。中心区 = 页签行 32 + 画布条 / 舞台 / 环境带（或源码编辑区）。</p>
+<p style="margin-bottom:8px"><strong>控件：</strong>控件高 40（紧凑 32 / 触屏 48）、圆角 6（4 / 8）、水平内边距 12（8 / 16）；工具栏 Ghost 项 hover=surfaceSunken、toggle 持久底=accentContainer；Tree 缩进 20 / chevron 槽 24 / 选中标记 3px；状态栏 grip 命中归平台 resize 边。</p>
+<p style="margin-bottom:8px"><strong>画布辅助（§3.5 token，几何不随密度分档）：</strong>标尺带 18（次刻度 8 / 主 40）；guide 参考线 1px 玫红（暗 <code>#f4587f</code> / 亮 <code>#cf2e5f</code>，不随 accent 交换）；距离 chip = guide 底 + 反白等宽 10；选择手柄 8×8（surface 填充 + accent 描边）、命中 12；吸附阈值 6；网格 8px 点阵。</p>
+<p style="margin-bottom:0"><strong>状态：</strong>选中 = accent 2px 环 + bounds chip；hover/press/focus 预览只改视觉状态不进文档 dirty；错误用 errorContent + 文字，不只靠颜色。</p></article>
+<article class="card card-body"><h3>与设计器阶段的关系</h3>
+<p style="margin-bottom:8px"><strong>D1 检查器</strong>（并入 R6）：同一布局的「运行时树」视图——大纲换 dump 数据源，画布换 bounds / damage overlay，状态栏换帧统计；不依赖任何前置工程。调试运行的 HUD / bounds overlay 即复用这批能力。</p>
+<p style="margin-bottom:8px"><strong>D2 预览工作台</strong>（本稿主体）：只读画布 + 大纲 + 只读属性 + 环境与交互状态预览 + 诊断定位 + 热重载；<code>examples/designer</code> 已交付 headless 与 Linux/Xvfb 窗口 smoke，Windows / macOS 现场验收待补。v2 增补的运行 / 调试组、源码只读 + 诊断定位、标尺 / 网格 overlay 均属此外壳可交付部分。</p>
+<p style="margin-bottom:0"><strong>D3 可编辑设计器</strong>：左栏扩展工具箱（List + 应用内拖放）、属性面板切编辑态（§03-4）、工具栏启用撤销 / 重做；<strong>拖动吸附（标注 11）、选择手柄缩放、源码编辑 → 编译并运行（标注 13）、引用面板（标注 16）按本稿交互落地</strong>——吸附引擎与引用面板 UI 为设计器自建（数据侧 P3 已交付），运行管线复用 FileWatcher / DslCache / swapRoot。前置 = P1–P5 + G-D13–D16 验收全绿（DP-1/3/4 已决定，2026-10-01）。布局骨架不变，本稿即三阶段共用外壳。<strong>设计工程（标注 14–15）为 D3 后独立范围</strong>：工程清单 / 多文档 / 资源根 / 跨文档引用待 DP-9 决策，v3 已画目标态；文档切换的状态隔离（documentId）复用 F6 已交付契约。</p></article>
+</div>
+<div class="audit-note" style="border-top:0;background:none;padding:12px 0 0"><strong>验收口径：</strong>设计器作为 Lumen 应用进入 ctest（headless frame hash + 语义树 + 键盘路径）；高对比 / 字体缩放 / 三档密度下本稿布局不丢信息（标尺 / 参考线几何不分档，guide 色在高对比下重新派生并配距离 chip 数值，不只靠颜色）；键盘可完成 D2 的选择与定位（Tab 顺序：工具栏 → 大纲 → 页签 → 画布 → 属性 → 诊断 → 状态栏 Toggle）；吸附判定在 100% / 125% / 200% DPI 与两个 zoom 值下指向同一 DocumentId（P4 坐标链）。</div>
+<div class="link-row"><a href="../docs/lumen-designer-prerequisites.md">设计器前置与缺口文档</a><a href="../examples/designer/designer_app.cpp">已交付 D2 应用</a><a href="../docs/lumen-visual-system-design.md">视觉系统基线（§3.5 画布辅助 token）</a><a href="../include/lumen/widgets/toolbar.h">toolbar.h</a><a href="gallery.html">Gallery 控件总览稿</a></div>
+</section>
+<footer class="page-footer"><span>Lumen Design / Designer workbench v4 · 2026-10-01</span><span>Windows · Linux · macOS &nbsp;/&nbsp; 独立离线 HTML，无外部依赖</span></footer>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const chev='<svg class="tree-leaf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>';
+const doc='<svg class="tree-leaf-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h8l4 4v16H6Z"/><path d="M14 2v4h4"/></svg>';
+const imgIc='<svg class="tree-leaf-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 5-5 3 3 3-3 3 3"/></svg>';
+const NODES={
+ page:{label:'page preview',props:[['type','document'],['root','Column [root]'],['schemaVersion','1']],leaf:false,depth:0},
+ root:{label:'Column',tag:'root',props:[['type','Column'],['key','"root"'],['padding','16'],['background','#20242c'],['mainAxis','start'],['crossAxis','stretch'],['children','6']],leaf:false,depth:1},
+ title:{label:'Text',tag:'title',props:[['type','Text'],['key','"title"'],['text','"预览标题"'],['style','title']],leaf:true,depth:2},
+ name:{label:'TextField',tag:'name',props:[['type','TextField'],['key','"name"'],['placeholder','"输入名称…"'],['enabled','true'],['multiline','false']],leaf:true,depth:2},
+ actions:{label:'Row',tag:'actions',props:[['type','Row'],['key','"actions"'],['gap','10'],['mainAxis','start']],leaf:false,depth:2},
+ save:{label:'Button',tag:'save',props:[['type','Button'],['key','"save"'],['label','"保存"'],['variant','filled'],['minWidth','64'],['onClick','"app:save"']],leaf:true,depth:3},
+ cancel:{label:'Button',tag:'cancel',props:[['type','Button'],['key','"cancel"'],['label','"取消"'],['variant','ghost']],leaf:true,depth:3},
+ prefs:{label:'Row',tag:'prefs',props:[['type','Row'],['key','"prefs"'],['gap','16'],['mainAxis','start']],leaf:false,depth:2},
+ auto:{label:'Checkbox',tag:'auto',props:[['type','Checkbox'],['key','"auto"'],['label','"自动保存"'],['checked','false'],['bind','"prefs.auto"']],leaf:true,depth:3},
+ sync:{label:'Switch',tag:'sync',props:[['type','Switch'],['key','"sync"'],['checked','true'],['bind','"prefs.sync"']],leaf:true,depth:3},
+};
+const ORDER=['page','root','title','name','actions','save','cancel','prefs','auto','sync'];
+const PARENT_OF={root:'page',title:'root',name:'root',actions:'root',save:'actions',cancel:'actions',prefs:'root',auto:'prefs',sync:'prefs'};
+const HAS_KIDS={page:true,root:true,actions:true,prefs:true};
+let selection='save';
+/* ⑭ 设计工程目标态（DP-9 待决策）：工程 = 清单 + 页面集 + 资源表；
+   页面是独立 DesignDocument，切换 = 换当前文档（选择/预览状态按 documentId 隔离） */
+const SETTINGS_NODES={
+ page:{label:'page preview',props:[['type','document'],['root','Column [root]'],['schemaVersion','1']],leaf:false,depth:0},
+ sroot:{label:'Column',tag:'root',props:[['type','Column'],['key','"root"'],['padding','16'],['spacing','14'],['crossAxis','stretch'],['children','4']],leaf:false,depth:1},
+ stitle:{label:'Text',tag:'title',props:[['type','Text'],['key','"title"'],['text','"设置"'],['style','title']],leaf:true,depth:2},
+ stheme:{label:'Row',tag:'theme',props:[['type','Row'],['key','"theme"'],['gap','12'],['crossAxis','center']],leaf:false,depth:2},
+ sdark:{label:'Switch',tag:'dark',props:[['type','Switch'],['key','"dark"'],['checked','true'],['bind','"prefs.theme"']],leaf:true,depth:3},
+ sapply:{label:'Button',tag:'apply',props:[['type','Button'],['key','"apply"'],['label','"应用"'],['variant','filled']],leaf:true,depth:2},
+};
+const SETTINGS_ORDER=['page','sroot','stitle','stheme','sdark','sapply'];
+const SETTINGS_KIDS={page:true,sroot:true,stheme:true};
+const SETTINGS_SRC=`// settings.lumen —— 工程内第二份文档（演示切换与状态隔离）
+page preview {
+    Column(key: "root", padding: 16, spacing: 14, crossAxis: stretch) {
+        Text("设置", key: "title", style: title)
+        Row(key: "theme", spacing: 12, crossAxis: center) {
+            Switch(key: "dark", checked: true, bind: "prefs.theme")
+        }
+        Button("应用", key: "apply", variant: filled)
+    }
+}
+`;
+const SETTINGS_FRAME=`<div class="pv-text pv-node" data-node="stitle" data-bounds="32×24">设置</div>
+<div class="pv-row pv-node" data-node="stheme" data-bounds="150×24"><span style="font-size:14px;color:var(--content)">深色主题</span><span class="pv-switch pv-node" data-node="sdark" data-bounds="36×20" role="img" aria-label="深色主题：开"></span></div>
+<button class="pv-btn filled pv-node" data-node="sapply" data-bounds="86×40">应用</button>`;
+const ABOUT_NODES={
+ page:{label:'page preview',props:[['type','document'],['root','Column [root]'],['schemaVersion','1']],leaf:false,depth:0},
+ aroot:{label:'Column',tag:'root',props:[['type','Column'],['key','"root"'],['padding','16'],['spacing','8']],leaf:false,depth:1},
+ atitle:{label:'Text',tag:'title',props:[['type','Text'],['key','"title"'],['text','"关于 Lumen"'],['style','title']],leaf:true,depth:2},
+ aver:{label:'Text',tag:'ver',props:[['type','Text'],['key','"ver"'],['text','"版本 0.1.0"'],['style','caption']],leaf:true,depth:2},
+};
+const ABOUT_ORDER=['page','aroot','atitle','aver'];
+const ABOUT_KIDS={page:true,aroot:true};
+const ABOUT_SRC=`// about.lumen —— 工程内第三份文档
+page preview {
+    Column(key: "root", padding: 16, spacing: 8) {
+        Text("关于 Lumen", key: "title", style: title)
+        Text("版本 0.1.0", key: "ver", style: caption)
+    }
+}
+`;
+const ABOUT_FRAME=`<div class="pv-text pv-node" data-node="atitle" data-bounds="96×24">关于 Lumen</div>
+<div class="pv-text pv-node" data-node="aver" data-bounds="88×20" style="font-weight:400;font-size:13px;color:var(--secondary)">版本 0.1.0</div>`;
+const DOC_DATA={
+ 'sample.lumen':{docId:'doc:9f2a',nodes:NODES,order:ORDER,kids:HAS_KIDS,frame:null,src:null,sel:'save'},
+ 'settings.lumen':{docId:'doc:3c71',nodes:SETTINGS_NODES,order:SETTINGS_ORDER,kids:SETTINGS_KIDS,frame:SETTINGS_FRAME,src:SETTINGS_SRC,sel:'sapply'},
+ 'about.lumen':{docId:'doc:77be',nodes:ABOUT_NODES,order:ABOUT_ORDER,kids:ABOUT_KIDS,frame:ABOUT_FRAME,src:ABOUT_SRC,sel:'atitle'},
+};
+const DOC_FILES=Object.keys(DOC_DATA);
+let curDoc='sample.lumen';
+const DOC_ERRORS={};
+const D=()=>DOC_DATA[curDoc];
+const N=id=>DOC_DATA[curDoc].nodes[id];
+function buildOutline(){
+ const d=D();
+ $('outline-panel').innerHTML=d.order.map(id=>{const n=d.nodes[id];
+  const indent=(n.depth*20)+'px';
+  const chevSlot=n.leaf?'<span class="leaf"></span>':`<span class="chev">${chev}</span>`;
+  const icon=n.leaf?`<span class="leaf">${doc}</span>`:chevSlot;
+  const tag=n.tag?` <span class="tag">[${n.tag}]</span>`:'';
+  return `<button class="tree-row" role="treeitem" data-node="${id}" aria-selected="${id===selection}" ${d.kids[id]?'aria-expanded="true"':''} style="padding-left:${indent}">${icon}<span>${id==='page'?'page preview':n.label}</span>${id!=='page'?tag:''}</button>`;}).join('');
+}
+function renderProps(){
+ const n=D().nodes[selection];
+ $('props-body').innerHTML=n.props.map(p=>`<tr><td>${p[0]}</td><td>${p[1]}</tr>`).join('')||'';
+ $('st-node').textContent=`${n.label}${n.tag?` [${n.tag}]`:''}`;
+}
+/* 选择手柄（G-D7 目标态示意：8 向，8×8 命中 12） */
+function attachHandles(){
+ document.querySelectorAll('.hwrap').forEach(h=>h.remove());
+ const el=document.querySelector('.pv-node[data-selected="true"]');
+ if(!el)return;
+ const w=document.createElement('span');w.className='hwrap';w.setAttribute('aria-hidden','true');
+ ['nw','n','ne','e','se','s','sw','w'].forEach(p=>{const s=document.createElement('span');s.className='handle '+p;w.appendChild(s);});
+ el.appendChild(w);
+}
+function setSelection(id){
+ document.querySelectorAll('.pv-node[data-selected="true"]').forEach(el=>el.removeAttribute('data-selected'));
+ selection=id;
+ const target=document.querySelector(`.pv-node[data-node="${id}"]`);
+ if(target)target.setAttribute('data-selected','true');
+ document.querySelectorAll('.tree-row').forEach(row=>row.setAttribute('aria-selected',String(row.dataset.node===id)));
+ renderProps();
+ attachHandles();
+ updateRulerMarks();
+ $('status-msg').textContent=`已选中 ${N(id).label}${N(id).tag?` [${N(id).tag}]`:''} · DocumentId 稳定`;
+}
+/* ⑭ 工程树（manifest 视图）：页面集 + 资源表；页面行切换当前文档 */
+function buildProject(){
+ const folder=(indent,label,attrs='')=>`<button class="tree-row proj-row" ${attrs} style="padding-left:${indent}px"><span class="chev">${chev}</span><span>${label}</span></button>`;
+ const docRow=(file)=>{
+  const cur=file===curDoc;
+  return `<button class="tree-row proj-row" role="treeitem" data-doc="${file}" aria-selected="${cur}" style="padding-left:60px"><span class="leaf">${doc}</span><span>${file}</span>${cur?' <span class="tag">[当前]</span>':''}</button>`;};
+ const resRow=name=>`<button class="tree-row proj-row" data-res="${name}" style="padding-left:60px"><span class="leaf">${imgIc}</span><span>${name}</span></button>`;
+ $('project-panel').innerHTML=
+  folder(8,'sample.lumenproj','data-act="manifest" aria-expanded="true"')
+  +folder(28,`页面 (${DOC_FILES.length})`,'aria-expanded="true"')
+  +DOC_FILES.map(docRow).join('')
+  +folder(28,'资源 (3)','aria-expanded="true"')
+  +resRow('logo.png')+resRow('brandmark.svg')+resRow('Inter-Regular.ttf');
+}
+/* 文档切换：换当前文档会话——选择/预览状态按 documentId 隔离（F6 契约），工程不关闭 */
+function switchDoc(file){
+ if(!DOC_DATA[file]||file===curDoc)return;
+ clearGuides();
+ curDoc=file;
+ const d=DOC_DATA[file];
+ $('preview-frame').innerHTML=d.frame;
+ selection=d.sel;
+ buildOutline();
+ setSelection(selection);
+ srcTA.value=d.src;
+ updateLoc();
+ compileSource();
+ $('st-file').textContent=file;
+ $('title-meta').textContent=`sample.lumenproj · schemaVersion 1 · ${DOC_FILES.length} 文档 / 3 资源 · 当前 ${file}`;
+ buildProject();
+ buildRefs();
+ $('status-msg').textContent=`已切换到 ${file}（documentId ${d.docId}）—— 选择 / 预览状态按 documentId 隔离（F6 已验证），工程会话保持`;
+}
+/* 标尺：数字刻度 + 选中区间标记（overlay，坐标链 P4） */
+function buildRulers(){
+ const vt=$('canvas-viewport');
+ const fill=(el,axis)=>{
+  el.querySelectorAll('.ruler-num').forEach(n=>n.remove());
+  const size=axis==='x'?vt.clientWidth:vt.clientHeight;
+  for(let p=40;p<size-14;p+=40){
+   const s=document.createElement('span');s.className='ruler-num';s.textContent=p;
+   if(axis==='x')s.style.left=p+'px';else s.style.top=p+'px';
+   el.appendChild(s);
+  }};
+ fill($('ruler-top'),'x');fill($('ruler-left'),'y');
+}
+function updateRulerMarks(){
+ const vt=$('canvas-viewport'),rt=$('ruler-top'),rl=$('ruler-left');
+ rt.querySelectorAll('.ruler-mark').forEach(m=>m.remove());
+ rl.querySelectorAll('.ruler-mark').forEach(m=>m.remove());
+ const el=document.querySelector('.pv-node[data-selected="true"]');
+ if(!el)return;
+ const vr=vt.getBoundingClientRect(),r=el.getBoundingClientRect();
+ const x=r.left-vr.left+vt.scrollLeft,y=r.top-vr.top+vt.scrollTop;
+ if(x+r.width>=0&&x<=vt.clientWidth&&r.width>0){
+  const m=document.createElement('span');m.className='ruler-mark';
+  m.style.left=Math.max(0,x)+'px';m.style.width=Math.min(r.width,vt.clientWidth-Math.max(0,x))+'px';
+  rt.appendChild(m);
+ }
+ if(y+r.height>=0&&y<=vt.clientHeight&&r.height>0){
+  const m=document.createElement('span');m.className='ruler-mark';
+  m.style.top=Math.max(0,y)+'px';m.style.height=Math.min(r.height,vt.clientHeight-Math.max(0,y))+'px';
+  rl.appendChild(m);
+ }
+}
+/* 中心页签：makeTabs（画布 / 源码 / 引用） */
+function showTab(which){
+ ['canvas','source','refs'].forEach(k=>{
+  $('tab-'+k).setAttribute('aria-selected',String(k===which));
+  $('panel-'+k).hidden=k!==which;
+ });
+ if(which==='canvas'){buildRulers();updateRulerMarks();}
+}
+$('tab-canvas').addEventListener('click',()=>showTab('canvas'));
+$('tab-source').addEventListener('click',()=>showTab('source'));
+$('tab-refs').addEventListener('click',()=>{showTab('refs');buildRefs();});
+/* ⑯ 引用面板：文档命名引用 ↔ RuntimeContext 解析状态（替身 / 已解析 / 缺失）。
+   数据来自 P3 类型化解析结果；UI 属设计器应用实现（同吸附引擎口径，无框架缺口） */
+const REF_DATA={
+ 'sample.lumen':[
+  {name:'app:save',kind:'handler',state:'miss',node:'save',prop:'onClick'},
+  {name:'prefs.auto',kind:'bind',state:'stub',node:'auto',prop:'bind'},
+  {name:'prefs.sync',kind:'bind',state:'stub',node:'sync',prop:'bind'},
+ ],
+ 'settings.lumen':[
+  {name:'prefs.theme',kind:'bind',state:'stub',node:'sdark',prop:'bind'},
+ ],
+ 'about.lumen':[],
+};
+const REF_STATE_LABEL={
+ miss:'<span class="miss">缺失 · 节点已禁用</span>',
+ stub:'<span class="stub">替身 · 离线固定值</span>',
+ ok:'<span class="ok">已解析 · 应用注册表</span>',
+};
+function missingRefsOf(file){
+ return (REF_DATA[file]||[]).filter(r=>r.state==='miss');
+}
+function buildRefs(){
+ const refs=REF_DATA[curDoc]||[];
+ const miss=refs.filter(r=>r.state==='miss').length;
+ $('refs-title').textContent=`引用 · ${curDoc}`;
+ $('refs-state').textContent=refs.length?`${refs.length} 个引用 · ${miss} 缺失`:'无命名引用';
+ $('refs-state').style.color=miss?'var(--error-content)':'var(--secondary)';
+ $('refs-body').innerHTML=refs.map(r=>{
+  const n=DOC_DATA[curDoc].nodes[r.node]||{};
+  return `<tr class="ref-row" data-node="${r.node}" title="点击选中引用节点"><td>${r.name}</td><td>${r.kind}</td><td>${REF_STATE_LABEL[r.state]||r.state}</td><td>${n.label||r.node}${n.tag?` [${n.tag}]`:''} · ${r.prop}</td></tr>`;
+ }).join('')||'<tr><td colspan="4" style="color:var(--secondary)">当前文档没有命名引用</td></tr>';
+}
+/* ⑭ 左栏页签：大纲 / 工程 */
+$('tab-outline').addEventListener('click',()=>{
+ $('tab-outline').setAttribute('aria-selected','true');
+ $('tab-project').setAttribute('aria-selected','false');
+ $('outline-panel').hidden=false;$('project-panel').hidden=true;});
+$('tab-project').addEventListener('click',()=>{
+ $('tab-project').setAttribute('aria-selected','true');
+ $('tab-outline').setAttribute('aria-selected','false');
+ $('project-panel').hidden=false;$('outline-panel').hidden=true;});
+/* ⑮ 工程命令菜单（ContextMenuController / CommandRegistry 口径） */
+const MENU_MSGS={
+ 'new-project':'新建工程 —— 创建工程目录 + 清单（manifest：页面集 / 资源表 / 工程根 / schemaVersion），单文档文件与格式不变（DP-9 待决策）',
+ 'new-page':'新建页面 —— 工程内新增文档（分配新 documentId）· 3 → 4 文档（演示不落盘）',
+ 'import':'从 .lumen 导入页面 —— parseLumenSource 单向导入为工程页面（DP-1 边界：不回写 .lumen）',
+ 'save-project':'保存工程 —— 清单 + 受影响文档逐个原子写（P5 tmp+rename 模式复用）· 工程内 1 个文档未保存（演示）',
+ 'save-project-as':'另存工程… —— 新工程路径 + 文档 documentId 保持（复制 / 另存规则走 DocumentStore 迁移测试）',
+};
+const projMenu=$('proj-menu');
+$('tb-new').addEventListener('click',e=>{
+ e.stopPropagation();
+ projMenu.hidden=!projMenu.hidden;
+ $('tb-new').setAttribute('aria-expanded',String(!projMenu.hidden));
+});
+document.addEventListener('click',e=>{
+ if(projMenu.hidden)return;
+ if(!e.target.closest('#proj-menu')&&!e.target.closest('#tb-new')){projMenu.hidden=true;$('tb-new').setAttribute('aria-expanded','false');}
+});
+projMenu.querySelectorAll('.menu-item').forEach(b=>b.addEventListener('click',()=>{
+ projMenu.hidden=true;$('tb-new').setAttribute('aria-expanded','false');
+ $('status-msg').textContent=MENU_MSGS[b.dataset.cmd];
+}));
+$('tb-open').addEventListener('click',()=>{
+ $('status-msg').textContent='打开工程 / 文档 —— 最近工程在 Preferences（与文档数据分离存储）；单文档可直接打开（无工程上下文时资源按文件相对路径降级）';
+});
+/* 网格 / 吸附 toggle */
+$('tb-grid').addEventListener('click',()=>{
+ const on=$('tb-grid').getAttribute('aria-pressed')!=='true';
+ $('tb-grid').setAttribute('aria-pressed',String(on));
+ $('canvas-viewport').classList.toggle('show-grid',on);
+ $('status-msg').textContent=on?'网格参考 8px · 视觉 overlay（G-D7 绕行）':'网格参考已隐藏';
+});
+let snapOn=true;
+$('tb-snap').addEventListener('click',()=>{
+ snapOn=!snapOn;
+ $('tb-snap').setAttribute('aria-pressed',String(snapOn));
+ $('status-msg').textContent=snapOn?'智能对齐：开（中心 / 边缘候选 + 距离标注，吸附阈值 6px）':'智能对齐：关（自由拖动）';
+});
+/* ⑪ 拖动 + 智能对齐：中心/边缘候选 → 吸附 → guide 参考线 + 距离 chip（D3 目标态演示） */
+const SNAP=6;
+const viewport=$('canvas-viewport');
+let drag=null,justDragged=false;
+function clearGuides(){viewport.querySelectorAll('.guide,.dist-chip').forEach(g=>g.remove());}
+function addGuide(axis,pos){
+ const g=document.createElement('div');g.className='guide '+axis;
+ const vr=viewport.getBoundingClientRect();
+ if(axis==='v')g.style.left=(pos-vr.left+viewport.scrollLeft)+'px';
+ else g.style.top=(pos-vr.top+viewport.scrollTop)+'px';
+ viewport.appendChild(g);
+}
+function addChip(cx,cy,text){
+ const c=document.createElement('span');c.className='dist-chip';c.textContent=text;
+ const vr=viewport.getBoundingClientRect();
+ c.style.left=(cx-vr.left+viewport.scrollLeft)+'px';
+ c.style.top=(cy-vr.top+viewport.scrollTop)+'px';
+ viewport.appendChild(c);
+}
+document.addEventListener('pointerdown',e=>{
+ const node=e.target.closest('.pv-node');
+ if(!node||e.button!==0||node.closest('.preview-win'))return;
+ drag={node,sx:e.clientX,sy:e.clientY,rect:node.getBoundingClientRect(),moved:false,guides:0};
+});
+document.addEventListener('pointermove',e=>{
+ if(!drag)return;
+ const dx=e.clientX-drag.sx,dy=e.clientY-drag.sy;
+ if(!drag.moved){
+  if(Math.hypot(dx,dy)<3)return;
+  drag.moved=true;
+  drag.node.classList.add('dragging');
+  setSelection(drag.node.dataset.node);
+ }
+ clearGuides();drag.guides=0;
+ const w=drag.rect.width,h=drag.rect.height;
+ const others=[...document.querySelectorAll('#preview-frame .pv-node')]
+  .filter(n=>n!==drag.node&&!drag.node.contains(n)&&!n.contains(drag.node));
+ const frameEl=$('preview-frame');
+ const frame=frameEl.getBoundingClientRect();
+ const cur={left:drag.rect.left+dx,right:drag.rect.right+dx,top:drag.rect.top+dy,bottom:drag.rect.bottom+dy,
+            cx:drag.rect.left+dx+w/2,cy:drag.rect.top+dy+h/2};
+ let adjX=0,adjY=0,matchX=null,matchY=null;
+ if(snapOn){
+  const xs=[],ys=[];
+  others.forEach(n=>{const r=n.getBoundingClientRect();
+   xs.push({p:r.left,o:n},{p:r.right,o:n},{p:r.left+r.width/2,o:n});
+   ys.push({p:r.top,o:n},{p:r.bottom,o:n},{p:r.top+r.height/2,o:n});});
+  xs.push({p:frame.left,o:frameEl},{p:frame.right,o:frameEl},{p:frame.left+frame.width/2,o:frameEl});
+  ys.push({p:frame.top,o:frameEl},{p:frame.bottom,o:frameEl},{p:frame.top+frame.height/2,o:frameEl});
+  let bestX=null,bestY=null;
+  [['left',cur.left],['right',cur.right],['center',cur.cx]].forEach(([k,p])=>{
+   xs.forEach(c=>{const d=Math.abs(p-c.p);if(d<=SNAP&&(!bestX||d<bestX.d))bestX={d,c,k};});});
+  [['top',cur.top],['bottom',cur.bottom],['center',cur.cy]].forEach(([k,p])=>{
+   ys.forEach(c=>{const d=Math.abs(p-c.p);if(d<=SNAP&&(!bestY||d<bestY.d))bestY={d,c,k};});});
+  if(bestX){adjX=bestX.c.p-cur[bestX.k];addGuide('v',bestX.c.p);drag.guides++;matchX=bestX.c;}
+  if(bestY){adjY=bestY.c.p-cur[bestY.k];addGuide('h',bestY.c.p);drag.guides++;matchY=bestY.c;}
+ }
+ drag.node.style.transform=`translate(${dx+adjX}px,${dy+adjY}px)`;
+ const now={left:cur.left+adjX,right:cur.right+adjX,top:cur.top+adjY,bottom:cur.bottom+adjY,cy:cur.cy+adjY,cx:cur.cx+adjX};
+ /* 距离 chip：参考线对象的正交间距——垂直参考线（x 对齐、上下堆叠）标纵向 gap，
+    水平参考线（y 对齐、左右并排）标横向 gap（Figma 口径） */
+ [matchX,matchY].forEach((m,i)=>{
+  if(!m)return;
+  const r=m.o.getBoundingClientRect();
+  if(i===0){
+   if(!(now.left<r.right&&now.right>r.left))return;
+   const gap=r.bottom<=now.top?now.top-r.bottom:(now.bottom<=r.top?r.top-now.bottom:0);
+   if(gap>0)addChip(now.cx,(Math.min(r.bottom,now.bottom)+Math.max(r.top,now.top))/2,gap);
+  }else{
+   if(!(now.top<r.bottom&&now.bottom>r.top))return;
+   const gap=r.right<=now.left?now.left-r.right:(now.right<=r.left?r.left-now.right:0);
+   if(gap>0)addChip((Math.min(r.right,now.right)+Math.max(r.left,now.left))/2,now.cy,gap);
+  }
+ });
+ updateRulerMarks();
+});
+document.addEventListener('pointerup',()=>{
+ if(!drag)return;
+ if(drag.moved){
+  clearGuides();
+  drag.node.classList.remove('dragging');
+  justDragged=true;setTimeout(()=>justDragged=false,0);
+  const n=N(drag.node.dataset.node)||{label:drag.node.dataset.node};
+  $('status-msg').textContent=`已移动 ${n.label}${n.tag?` [${n.tag}]`:''} · ${snapOn?`吸附 ${drag.guides} 条参考线（阈值 6px）`:'吸附关闭'} —— D3 拖动演示（G-D4：transform 语义，不改文档布局字段），DocumentId 不变`;
+ }
+ drag=null;
+});
+document.addEventListener('click',e=>{
+ const ref=e.target.closest('.ref-row');
+ if(ref){
+  showTab('canvas');
+  setSelection(ref.dataset.node);
+  const refRow=(REF_DATA[curDoc]||[]).find(r=>r.node===ref.dataset.node);
+  $('status-msg').textContent=`引用 ${refRow?refRow.name:ref.dataset.node} —— 已选中引用节点；名称在运行时由应用注册表解析（设计期替身 / 缺失则节点禁用）`;
+  return;
+ }
+ const proj=e.target.closest('.proj-row');
+ if(proj){
+  if(proj.dataset.doc){switchDoc(proj.dataset.doc);return;}
+  if(proj.dataset.res){$('status-msg').textContent=`资源 ${proj.dataset.res} —— 工程根内相对路径解析（G-D16 授权会话，默认离线；保存写稳定资源名）`;return;}
+  if(proj.dataset.act==='manifest'){$('status-msg').textContent='工程清单 manifest：页面集 / 资源表 / 工程根 / schemaVersion —— 格式沿用 DP-1 方案 B 同族（DP-9 待决策，§03-8）';return;}
+  return;
+ }
+ const pv=e.target.closest('.pv-node');
+ if(pv&&!justDragged){if(!pv.closest('.preview-win'))setSelection(pv.dataset.node);return;}
+ const row=e.target.closest('.tree-row');
+ if(row&&row.dataset.node){setSelection(row.dataset.node);return;}
+ const diag=e.target.closest('.diag-row');
+ if(diag&&!diag.classList.contains('info')){
+  const file=diag.dataset.file||curDoc;
+  if(file!==curDoc)switchDoc(file);
+  if(diag.dataset.node){
+   showTab('canvas');
+   setSelection(diag.dataset.node);
+   $('status-msg').textContent=`定位 ${file} · ${diag.dataset.node} —— 引用缺失节点（P3 placeholder：节点禁用、几何保留）`;
+  }else{
+   showTab('source');
+   focusSourceLine(+diag.dataset.line||1,+diag.dataset.col||1);
+   $('status-msg').textContent=`定位 ${file}:${diag.dataset.line}:${diag.dataset.col} —— 高亮源码行（P4 SourceMap span）`;
+  }
+ }
+});
+document.addEventListener('keydown',e=>{
+ if(e.key==='Escape'&&!$('proj-menu').hidden){$('proj-menu').hidden=true;return;}
+ if(e.key!=='Enter'&&e.key!==' ')return;
+ const row=e.target.closest&&e.target.closest('.tree-row');
+ if(row&&row.dataset.node){e.preventDefault();setSelection(row.dataset.node);}
+});
+/* 主题 / 密度（评审板级：整体工作台） */
+$('theme-select').addEventListener('change',e=>{$('workbench').dataset.theme=e.target.value;$('env-theme').selectedIndex=e.target.selectedIndex;});
+$('density-select').addEventListener('change',e=>{$('workbench').dataset.density=e.target.value;$('env-density').selectedIndex=e.target.selectedIndex;});
+$('env-theme').addEventListener('change',e=>{$('workbench').dataset.theme=e.target.selectedIndex?'light':'dark';});
+/* 交互状态预览（setVisualPreviewState 目标态示意） */
+$('state-select').addEventListener('change',e=>{
+ const el=document.querySelector('.pv-node[data-selected="true"]');
+ if(!el)return;
+ if(e.target.value==='none')el.removeAttribute('data-state');else el.dataset.state=e.target.value;
+ $('status-msg').textContent=e.target.value==='none'?'就绪':`预览 ${e.target.options[e.target.selectedIndex].text} 状态 —— 不产生文档 dirty`;
+});
+/* 缩放（Spin 演示值） */
+let zoom=100;
+document.querySelectorAll('#zoom-spin button').forEach(btn=>btn.addEventListener('click',()=>{
+ zoom=Math.min(400,Math.max(25,zoom+(btn.dataset.zoom==='+'?25:-25)));
+ $('zoom-out').textContent=zoom+'%';
+ $('st-zoom').textContent=`缩放 ${zoom}%`;
+ $('status-msg').textContent=`缩放 ${zoom}% —— DPI/zoom/pan 由 DesignCoordinateTransform 承担`;
+}));
+/* 诊断折叠 */
+$('diag-toggle').addEventListener('click',()=>{
+ const rows=$('diag-rows'),open=$('diag-toggle').getAttribute('aria-expanded')==='true';
+ $('diag-toggle').setAttribute('aria-expanded',String(!open));
+ rows.style.display=open?'none':'';
+});
+/* ⑬ 源码页签：编辑 → 编译（parse → schema → compile 演示）→ swapRoot/运行 */
+const SAMPLE_SOURCE=`// sample.lumen — D2 预览工作台示例（L0 12 节点子集）
+// 第 12 行注入了一个故意的枚举错误（filed 不是合法 variant），
+// 用于演示：编译失败保留上一帧 + 点击诊断行定位到源码。
+page preview {
+    Column(key: "root", padding: 16, spacing: 14,
+           background: #20242c, crossAxis: stretch) {
+        Text("预览标题", key: "title", style: title)
+        TextField(key: "name", placeholder: "输入名称…")
+        Row(key: "actions", spacing: 10, crossAxis: center) {
+            Button("保存", key: "save", minWidth: 64,
+                   onClick: "app:save",
+                   variant: filed)
+            Button("取消", key: "cancel", variant: ghost)
+        }
+        Row(key: "prefs", spacing: 16) {
+            Checkbox("自动保存", key: "auto", checked: false,
+                     bind: "prefs.auto")
+            Switch(key: "sync", checked: true, bind: "prefs.sync")
+        }
+    }
+}
+`;
+const VARIANTS=['filled','tonal','outline','ghost','danger'];
+const srcTA=$('src-input');
+srcTA.value=SAMPLE_SOURCE;
+const escapeHtml=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function paintSource(errors){
+ const lines=srcTA.value.split('\n');
+ const errLines=new Set(errors.map(e=>e.line));
+ $('src-gutter').innerHTML=lines.map((l,i)=>`<div class="${errLines.has(i+1)?'err':''}">${i+1}</div>`).join('');
+ $('src-back').innerHTML=lines.map((l,i)=>`<span class="${errLines.has(i+1)?'err-line':''}">${escapeHtml(l)}</span>`).join('')+'<span></span>';
+}
+function compileSource(){
+ const text=srcTA.value;
+ const errors=[];
+ text.split('\n').forEach((ln,i)=>{
+  const m=/variant:\s*([A-Za-z_]+)/.exec(ln);
+  if(m&&!VARIANTS.includes(m[1]))errors.push({line:i+1,col:ln.indexOf(m[1])+1,found:m[1],kind:'enum'});
+ });
+ const opens=(text.match(/{/g)||[]).length,closes=(text.match(/}/g)||[]).length;
+ if(opens!==closes)errors.push({line:text.split('\n').length,col:1,kind:'brace',opens,closes});
+ DOC_ERRORS[curDoc]=errors;
+ renderDiagnostics();
+ paintSource(errors);
+ const ok=errors.length===0;
+ const st=$('src-state');
+ st.textContent=ok?'编译通过 · swapRoot 已刷新':'编译失败 · 保留上一帧';
+ st.style.color=ok?'var(--success)':'var(--error-content)';
+ return ok;
+}
+/* 工程级诊断聚合：按文档缓存错误，跨文档展示并支持点击跳回出错文档 */
+function allProjectErrors(){
+ const out=[];
+ DOC_FILES.forEach(f=>{(DOC_ERRORS[f]||[]).forEach(er=>out.push(Object.assign({file:f},er)));});
+ return out;
+}
+function renderDiagnostics(){
+ const errs=allProjectErrors();
+ const refMiss=[];
+ DOC_FILES.forEach(f=>missingRefsOf(f).forEach(r=>refMiss.push(Object.assign({file:f},r))));
+ const rows=errs.map(er=>er.kind==='brace'
+  ?`<button class="diag-row" data-file="${er.file}" data-line="${er.line}" data-col="1"><svg class="diag-icon icon"><use href="#i-alert"/></svg><span class="loc">${er.file}:${er.line}:1</span><span class="code">parse.unbalanced_brace</span><span class="msg">花括号不匹配（{ ${er.opens} 个 / } ${er.closes} 个）</span></button>`
+  :`<button class="diag-row" data-file="${er.file}" data-line="${er.line}" data-col="${er.col}"><svg class="diag-icon icon"><use href="#i-alert"/></svg><span class="loc">${er.file}:${er.line}:${er.col}</span><span class="code">schema.enum_invalid</span><span class="msg">“variant: ${er.found}” 不是 ButtonVariant（期望 filled | tonal | outline | ghost | danger）</span></button>`);
+ refMiss.forEach(r=>{
+  rows.push(`<button class="diag-row warn" data-file="${r.file}" data-node="${r.node}"><svg class="diag-icon icon"><use href="#i-alert"/></svg><span class="loc">${r.file}</span><span class="code">ref.missing</span><span class="msg">handler “${r.name}” 未注册 —— 离线 RuntimeContext 无此替身；节点禁用 + 保留几何（P3 placeholder），点击行定位节点</span></button>`);
+ });
+ rows.push(`<button class="diag-row info"><svg class="diag-icon icon"><use href="#i-info"/></svg><span class="loc">sample.lumenproj</span><span class="code">${errs.length?'project.errors':'project.ok'}</span><span class="msg">${errs.length||refMiss.length?`工程 ${DOC_FILES.length} 文档 · ${errs.length} 个错误 · ${refMiss.length} 个未解析引用（点击行跳转）`:`工程 ${DOC_FILES.length} 文档 · 0 错误 · 0 个未解析引用 · 离线 RuntimeContext`}</span></button>`);
+ $('diag-rows').innerHTML=rows.join('');
+ $('diag-count').textContent=errs.length;
+}
+function focusSourceLine(line,col){
+ const lines=srcTA.value.split('\n');
+ let off=0;
+ for(let i=0;i<line-1&&i<lines.length;i++)off+=lines[i].length+1;
+ srcTA.focus();
+ srcTA.setSelectionRange(off+col-1,off+col-1);
+ srcTA.scrollTop=Math.max(0,(line-3)*20);
+ syncSrcScroll();
+ updateLoc();
+}
+function syncSrcScroll(){
+ $('src-back').scrollTop=srcTA.scrollTop;
+ $('src-back').scrollLeft=srcTA.scrollLeft;
+ $('src-gutter').scrollTop=srcTA.scrollTop;
+}
+function updateLoc(){
+ const i=srcTA.selectionStart;
+ const before=srcTA.value.slice(0,i).split('\n');
+ $('src-loc').textContent=`Ln ${before.length}, Col ${before[before.length-1].length+1}`;
+}
+srcTA.addEventListener('scroll',syncSrcScroll);
+srcTA.addEventListener('keyup',updateLoc);
+srcTA.addEventListener('click',updateLoc);
+let hotOn=true,hotTimer=0;
+srcTA.addEventListener('input',()=>{
+ paintSource([]);
+ updateLoc();
+ if(!hotOn)return;
+ clearTimeout(hotTimer);
+ hotTimer=setTimeout(()=>{
+  const ok=compileSource();
+  $('status-msg').textContent=ok?'热重载：编译成功 · swapRoot 已刷新（DslCache / --watch 先例）':'热重载：编译失败 · 保留上一帧（G-D15）';
+  if(ok)fillPreviewBody();
+ },500);
+});
+/* 热重载 toggle（状态栏） */
+$('st-watch').addEventListener('click',()=>{
+ hotOn=!hotOn;
+ $('st-watch').setAttribute('aria-pressed',String(hotOn));
+ $('st-watch').lastChild.textContent=hotOn?'热重载：开':'热重载：关';
+ $('status-msg').textContent=hotOn?'热重载已开启：源码编辑自动重编译（--watch 先例 · 500ms 去抖演示）':'热重载已关闭：用 ▶ 运行手动编译';
+});
+/* ⑫ 独立预览窗口（runApp 多窗口 · DP-4 preview-session mock） */
+function fillPreviewBody(){
+ const body=$('pw-body');
+ const clone=$('preview-frame').cloneNode(true);
+ clone.removeAttribute('id');
+ clone.removeAttribute('class');
+ clone.querySelectorAll('.hwrap').forEach(h=>h.remove());
+ clone.querySelectorAll('.pv-node').forEach(n=>{
+  n.removeAttribute('data-selected');n.removeAttribute('data-state');
+  n.style.transform='';n.classList.remove('dragging');
+ });
+ clone.style.cssText='display:flex;flex-direction:column;gap:12px;width:100%';
+ body.innerHTML='';
+ body.appendChild(clone);
+}
+function openPreview(debug){
+ const ok=compileSource();
+ if(!ok){
+  $('status-msg').textContent='编译失败 · 未启动预览，画布保留上一帧（G-D15）—— 点击诊断行可定位到源码';
+  return;
+ }
+ showTab('canvas');
+ fillPreviewBody();
+ const win=$('preview-win');
+ win.classList.toggle('debug',!!debug);
+ win.classList.add('open');
+ $('tb-stop').removeAttribute('aria-disabled');
+ $('pw-mode').textContent=debug?'调试预览 · frameDebugOverlay':'运行预览';
+ $('status-msg').textContent=(debug
+  ?'调试预览已打开 · 帧统计 HUD + bounds overlay（RunOptions.frameDebugOverlay，D1 能力复用）'
+  :'编译成功（parse → schema → compile）· 预览窗口已打开（runApp 多窗口 · DP-4 独立 preview-session）')
+  +' · 离线 RuntimeContext，未启动业务代码（G-D16 / DP-7）';
+}
+function stopPreview(){
+ $('preview-win').classList.remove('open','debug');
+ $('tb-stop').setAttribute('aria-disabled','true');
+ $('status-msg').textContent='预览会话已结束（DesignRuntimeSession lease 释放 · P3）';
+}
+$('tb-run').addEventListener('click',()=>openPreview(false));
+$('tb-debug').addEventListener('click',()=>openPreview(true));
+$('tb-stop').addEventListener('click',()=>{
+ if($('tb-stop').getAttribute('aria-disabled')==='true'){$('status-msg').textContent='当前没有运行中的预览会话';return;}
+ stopPreview();
+});
+$('pw-close').addEventListener('click',stopPreview);
+/* 初始化 */
+DOC_DATA['sample.lumen'].frame=$('preview-frame').innerHTML;
+DOC_DATA['sample.lumen'].src=SAMPLE_SOURCE;
+buildOutline();
+buildProject();
+buildRefs();
+renderProps();
+document.querySelector('.pv-node[data-node="save"]').setAttribute('data-selected','true');
+attachHandles();
+buildRulers();
+updateRulerMarks();
+compileSource();
+updateLoc();
+window.addEventListener('resize',()=>{buildRulers();updateRulerMarks();});
+viewport.addEventListener('scroll',updateRulerMarks);
+</script>
+</body>
+</html>

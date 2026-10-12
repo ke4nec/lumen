@@ -16,6 +16,9 @@ provider 已接入三桌面平台，真实屏幕阅读器回环仍在平台验�
 [`docs/lumen-self-use-roadmap.md`](docs/lumen-self-use-roadmap.md)。
 当前 GUI 完善顺序、剩余缺口和验收模板见
 [`docs/lumen-gui-completion-plan.md`](docs/lumen-gui-completion-plan.md)。
+可视化设计器的可行性结论、结构性缺口与前置工程见
+[`docs/lumen-designer-prerequisites.md`](docs/lumen-designer-prerequisites.md)（规划提案，
+含待决策项，未构成开工授权）。
 统一构建/验证命令表见
 [`docs/build-commands.md`](docs/build-commands.md)，性能基线见
 [`docs/perf-baselines/README.md`](docs/perf-baselines/README.md)。

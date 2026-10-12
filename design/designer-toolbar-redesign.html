@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Lumen Designer 顶部工具栏重设计提案 ×4：按使用频率与功能分组重新规划 22 个既有命令（编辑/运行/文件/预览环境/缩放），配 16px/1.8 描边 IconId 风格图标。四版策略：A 全功能分组可见、B 主次分层+环境收纳弹层、C 图标密集命令栏、D 频率中轴+分段环境控件。视觉值取 Theme(CoreDark) token。独立离线 HTML。">
+<title>Lumen · Designer 工具栏重设计 · 四版提案</title>
+<style>
+/* ============ 评审板（与 design/ 其它 mockup 同口径） ============ */
+:root{color-scheme:light;--board:#edf0f5;--paper:#fff;--ink:#202735;--muted:#5e6878;--line:#d8dfe8;--blue:#3460be;--soft:#e0eaff;--radius:8px;font-family:Inter,system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.5}
+*{box-sizing:border-box}body{margin:0;background:var(--board);color:var(--ink)}button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.sprite{position:absolute;width:0;height:0;overflow:hidden}
+.board{max-width:1360px;margin:0 auto;padding:32px 28px 64px}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--blue);margin:0 0 8px}
+h1{font-size:28px;letter-spacing:-.6px;margin:0 0 10px;font-weight:650}
+.lead{max-width:1040px;color:var(--muted);line-height:1.8;margin:0 0 20px}
+.lead code{font:12px ui-monospace,monospace;background:#f6f8fb;border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--ink)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:20px;margin-bottom:20px}
+.card>h2{font-size:18px;margin:0 0 6px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card>h2 .ver{font:11px ui-monospace,monospace;color:var(--blue);letter-spacing:.08em}
+.card>p.thesis{color:var(--muted);font-size:13px;line-height:1.8;margin:0 0 14px;max-width:1040px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.meta .chip{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--muted)}
+.meta .chip b{color:var(--ink);font-weight:600}
+.pros-cons{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px;font-size:12.5px;line-height:1.8}
+.pros-cons .col h4{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.04em}
+.pros-cons ul{margin:0;padding-left:18px;color:var(--muted)}
+.pros-cons li+li{margin-top:2px}
+@media (max-width:900px){.pros-cons{grid-template-columns:1fr}}
+/* ============ 工具栏画布（1280 深色窗口条） ============ */
+.win{width:1280px;max-width:100%;border:1px solid #101014;border-radius:10px;overflow:hidden;box-shadow:0 16px 44px #00000030;margin:0 auto}
+.win-title{display:flex;align-items:center;gap:10px;height:30px;padding:0 12px;background:#101014;color:#9d9da8;font-size:11px}
+.win-title .traffic{display:flex;gap:6px}
+.win-title .traffic i{width:10px;height:10px;border-radius:50%;display:block}
+.win-title .traffic i:nth-child(1){background:#febc2e}.win-title .traffic i:nth-child(2){background:#28c840}.win-title .traffic i:nth-child(3){background:#ff5f57}
+.win-title strong{color:#e8e8ee;font-weight:600}
+.win-title .win-size{margin-left:auto;font:10px ui-monospace,monospace;color:#6c6c78}
+.win-below{height:56px;background:linear-gradient(#27272e,#232329);border-top:1px solid #3b3b45;display:flex;align-items:center;padding:0 16px;gap:10px}
+.win-below .pane{height:34px;border-radius:6px;background:#2e2e36}
+.win-below .outline{width:220px}.win-below .center{flex:1;background:#18181b;border:1px solid #3b3b45}.win-below .props{width:260px}
+/* ============ 工具栏 token（Theme CoreDark + ToolBar chrome 变体语言） ============ */
+.tb{
+  /* CoreDark 语义色（theme.cpp） */
+  --surface:#27272e;--sunken:#2e2e36;--elevated:#34343f;
+  --content:#f1f1f4;--secondary:#a1a1aa;--border:#3b3b45;--strong:#8c8c98;
+  --accent:#568cf0;--on-accent:#000;--accent-content:#a8c5fa;--accent-container:#2e3c60;
+  --pressed:color-mix(in srgb,var(--surface),var(--accent) 32%);
+  --radius:6px;--h:40px;
+  color-scheme:dark;display:flex;align-items:center;gap:8px;height:56px;padding:0 16px;
+  background:var(--surface);color:var(--content);font-size:13px;
+  font-family:Inter,system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+  position:relative;user-select:none;
+}
+.tb .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:var(--content);white-space:nowrap}
+.tb .brand .mark{width:20px;height:20px;border-radius:5px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-size:12px;font-weight:700}
+.tb .brand small{font-weight:400;font-size:11px;color:var(--secondary)}
+.tb .spacer{flex:1}
+/* chrome 按钮语言（lumen-toolbar-design：rest 幽灵、hover 表面、checked 持久底） */
+.tbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--h);min-width:var(--h);
+  padding:0 7px;border:0;background:transparent;border-radius:var(--radius);color:var(--secondary);
+  white-space:nowrap;position:relative;font-size:13px;font-weight:500}
+.tbtn:hover{background:var(--sunken);color:var(--content)}
+.tbtn:active{background:var(--pressed)}
+.tbtn[aria-pressed="true"]{background:var(--accent-container);color:var(--content)}
+.tbtn[disabled]{color:#6c6c78;cursor:default;background:transparent}
+.tbtn.icon{padding:0;width:38px}
+.tbtn.primary{background:var(--accent);color:var(--on-accent)}
+.tbtn.primary:hover{background:color-mix(in srgb,var(--accent),#fff 10%)}
+.tbtn.primary:active{background:color-mix(in srgb,var(--accent),#000 10%)}
+.tbtn .kbd{font:10px ui-monospace,monospace;color:var(--secondary);border:1px solid var(--border);border-radius:3px;padding:0 4px;line-height:14px}
+.tbtn.primary .kbd{color:var(--on-accent);border-color:color-mix(in srgb,var(--on-accent),transparent 65%)}
+.tsep{width:1px;height:22px;background:var(--border);flex:none}
+.tgroup{display:flex;align-items:center;gap:2px;flex:none}
+/* 版本 A 已实现（designer_app.cpp buildToolbar，2026-10）：落地值向
+   Theme token 对齐——文本 caption 12px、图标钮 40（minHeight）、
+   内距 8、行距 6/组距 1、zoom 重置受 buttonMinWidth 64 下限。 */
+.tb.as-built{gap:6px;padding:0 12px}
+.tb.as-built .tbtn{font-size:12px;font-weight:400;padding:0 8px;gap:8px}
+.tb.as-built .tbtn.icon{width:40px}
+.tb.as-built .tgroup{gap:1px}
+.tb.as-built .zoom-reset{min-width:64px;padding:0 8px}
+/* tooltip（框架 Tooltip token：elevated 面 + borderDefault 轮廓，caption 文本） */
+[data-tip]{position:relative}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:50%;top:calc(100% + 6px);transform:translateX(-50%);
+  background:var(--elevated,#34343f);border:1px solid var(--border,#3b3b45);color:var(--content,#f1f1f4);
+  font-size:11px;line-height:1.6;padding:4px 8px;border-radius:6px;white-space:nowrap;z-index:30;pointer-events:none;
+  box-shadow:0 8px 24px #00000060}
+/* 摘要 chip（版本 B） */
+.summary-chip{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 10px;border:1px solid var(--border);
+  border-radius:999px;background:var(--sunken);color:var(--secondary);font-size:12px;white-space:nowrap}
+.summary-chip:hover{color:var(--content);border-color:var(--strong)}
+.summary-chip b{color:var(--content);font-weight:600}
+/* 分段控件（版本 D；Tabs 指示条语言的 pressed 组变体） */
+.seg{display:inline-flex;height:32px;padding:2px;gap:2px;background:var(--sunken);border:1px solid var(--border);border-radius:8px}
+.seg button{border:0;background:transparent;color:var(--secondary);border-radius:6px;padding:0 8px;font-size:12px;height:26px}
+.seg button:hover{color:var(--content)}
+.seg button[aria-checked="true"]{background:var(--accent-container);color:var(--content)}
+.chip-cycle{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 8px;border:1px solid var(--border);
+  border-radius:8px;background:transparent;color:var(--secondary);font-size:12px;font-variant-numeric:tabular-nums}
+.chip-cycle:hover{color:var(--content);border-color:var(--strong)}
+.chip-cycle b{color:var(--content);font-weight:600}
+/* 弹出面板（版本 B 环境；Menu/Dropdown token：elevated + L2 阴影） */
+.pop{position:absolute;top:calc(100% + 8px);right:16px;width:264px;background:var(--elevated);
+  border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px #00000060;padding:8px;z-index:20;display:none}
+.pop.open{display:block}
+.pop h5{margin:2px 4px 8px;font-size:11px;font-weight:600;color:var(--secondary);letter-spacing:.06em}
+.pop .row{display:flex;align-items:center;justify-content:space-between;gap:10px;height:34px;padding:0 6px;border-radius:6px;font-size:12.5px;color:var(--content)}
+.pop .row:hover{background:var(--sunken)}
+.pop .row .val{color:var(--secondary);font-size:11.5px;font-variant-numeric:tabular-nums}
+.pop .row .mini{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 6px;border:1px solid var(--border);
+  border-radius:5px;background:transparent;color:var(--secondary);font-size:11px}
+.pop .row .mini:hover{color:var(--content);border-color:var(--strong)}
+.pop .row .mini[aria-pressed="true"]{background:var(--accent-container);color:var(--content);border-color:transparent}
+/* ============ 频率分析表 ============ */
+.freq-table{border-collapse:collapse;width:100%;font-size:12.5px}
+.freq-table th{font-size:11px;color:var(--muted);text-align:left;font-weight:600;letter-spacing:.04em;padding:4px 12px 4px 0}
+.freq-table td{padding:7px 12px 7px 0;border-top:1px solid #eef1f6;vertical-align:top;line-height:1.7}
+.freq-table td:first-child{white-space:nowrap;font-weight:600}
+.freq-table code{font:11px ui-monospace,monospace;background:#f6f8fb;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.pill{font-size:10.5px;border-radius:4px;padding:1px 7px;white-space:nowrap;font-weight:600}
+.pill.hi{background:#e5f0e9;color:#256f46}.pill.mid{background:#fff1da;color:#805100}.pill.lo{background:#f0f1f4;color:#596273}
+/* 图标语义表 */
+.icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px 18px;font-size:12px}
+.icon-grid .item{display:flex;align-items:center;gap:8px;color:var(--muted);white-space:nowrap}
+.icon-grid .item svg{color:var(--ink)}
+.icon-grid .item b{color:var(--ink);font-weight:600}
+/* 对比矩阵 */
+.matrix{border-collapse:collapse;width:100%;font-size:12.5px}
+.matrix th{background:#f7f8fa;color:var(--muted);font-weight:500;font-size:11.5px;text-align:left}
+.matrix th,.matrix td{padding:9px 12px;border-bottom:1px solid #eef1f6;vertical-align:top;line-height:1.7}
+.matrix td:first-child{font-weight:600}
+.note{font-size:12.5px;color:var(--muted);line-height:1.8;margin-top:12px}
+.note strong{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<!-- 图标库：16px / 描边 1.8 / 圆角端点，对齐框架 IconId 语言（tokens.h IconTheme） -->
+<svg class="sprite" aria-hidden="true">
+  <symbol id="ic-play" viewBox="0 0 16 16"><path d="M5 3.2 13 8 5 12.8Z"/></symbol>
+  <symbol id="ic-stop" viewBox="0 0 16 16"><rect x="4.2" y="4.2" width="7.6" height="7.6" rx="1"/></symbol>
+  <symbol id="ic-debug" viewBox="0 0 16 16"><rect x="5.4" y="5.8" width="5.2" height="6.4" rx="2.4"/><path d="M8 5.8V4.2M6.4 4.2 5 2.6M9.6 4.2 11 2.6M5.4 8H3M5.4 10.4H3M10.6 8H13M10.6 10.4H13M6.9 12.2v1.6M9.1 12.2v1.6"/></symbol>
+  <symbol id="ic-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+  <symbol id="ic-folder" viewBox="0 0 16 16"><path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.8h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="ic-folder-plus" viewBox="0 0 16 16"><path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.8h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/><path d="M8 7.2v4M6 9.2h4"/></symbol>
+  <symbol id="ic-save" viewBox="0 0 16 16"><path d="M3 2.5h8L13.5 5v8.5h-11z"/><path d="M5.5 2.5v3h4.5v-3M5.5 13.5v-4h5v4"/></symbol>
+  <symbol id="ic-save-as" viewBox="0 0 16 16"><path d="M3 2.5h8L13.5 5v8.5h-11z"/><path d="M5.5 2.5v3h4.5v-3"/><path d="M11.2 9.1l2.7 2.7M11 14.2l3.9-3.9-1.5-1.5-3.9 3.9-.6 2.1z"/></symbol>
+  <symbol id="ic-add-text" viewBox="0 0 16 16"><path d="M3 4h8M7 4v9"/><path d="M12.2 10.4v4M10.2 12.4h4"/></symbol>
+  <symbol id="ic-duplicate" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="8" height="8" rx="1.2"/><path d="M6 13.5h6.3a1.2 1.2 0 0 0 1.2-1.2V6"/></symbol>
+  <symbol id="ic-trash" viewBox="0 0 16 16"><path d="M3 4.5h10M6.4 4.5V3h3.2v1.5M4.4 4.5l.7 9h5.8l.7-9M6.7 7.5v3.3M9.3 7.5v3.3"/></symbol>
+  <symbol id="ic-up" viewBox="0 0 16 16"><path d="M8 13V3M4.5 6.5 8 3l3.5 3.5"/></symbol>
+  <symbol id="ic-down" viewBox="0 0 16 16"><path d="M8 3v10M4.5 9.5 8 13l3.5-3.5"/></symbol>
+  <symbol id="ic-theme" viewBox="0 0 16 16"><path d="M13.2 9.6A5.6 5.6 0 1 1 6.4 2.8a4.5 4.5 0 0 0 6.8 6.8z"/></symbol>
+  <symbol id="ic-density" viewBox="0 0 16 16"><path d="M3 3.5h10M3 12.5h10M8 5.7v4.6M6.2 7.5 8 5.7l1.8 1.8M6.2 8.5 8 10.3l1.8-1.8"/></symbol>
+  <symbol id="ic-dpi" viewBox="0 0 16 16"><rect x="2.2" y="3" width="11.6" height="8.4" rx="1"/><path d="M6 13.6h4M8 11.4v2.2"/><path d="M5.4 9.2 10.4 4.2M10.4 4.2H7.6M10.4 4.2v2.8"/></symbol>
+  <symbol id="ic-font" viewBox="0 0 16 16"><path d="M4.2 12.6 7.1 3.4h1.8l2.9 9.2M5.3 9.5h5.4"/></symbol>
+  <symbol id="ic-contrast" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M8 2.4v11.2A5.6 5.6 0 0 0 8 2.4z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ic-state" viewBox="0 0 16 16"><path d="M4 2.6 12.6 8l-3.3 1 2 3.7-1.7.9-2-3.7L4.8 12z"/></symbol>
+  <symbol id="ic-guides" viewBox="0 0 16 16"><path d="M2.5 2.5h11v11h-11zM2.5 6.2h11M2.5 9.9h11M6.2 2.5v11M9.9 2.5v11"/></symbol>
+  <symbol id="ic-zoom-out" viewBox="0 0 16 16"><circle cx="6.6" cy="6.6" r="4"/><path d="M9.6 9.6 13.6 13.6M4.9 6.6h3.4"/></symbol>
+  <symbol id="ic-zoom-in" viewBox="0 0 16 16"><circle cx="6.6" cy="6.6" r="4"/><path d="M9.6 9.6 13.6 13.6M4.9 6.6h3.4M6.6 4.9v3.4"/></symbol>
+  <symbol id="ic-fit" viewBox="0 0 16 16"><path d="M2.5 5.2V2.5h2.7M10.3 2.5h2.7v2.7M13 10.3v2.7h-2.7M5.2 13H2.5v-2.7"/><circle cx="8" cy="8" r="1.6"/></symbol>
+  <symbol id="ic-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 2.2v1.8M8 12v1.8M2.2 8h1.8M12 8h1.8M3.9 3.9l1.3 1.3M10.8 10.8l1.3 1.3M12.1 3.9l-1.3 1.3M5.2 10.8l-1.3 1.3"/></symbol>
+</svg>
+
+<div class="board">
+  <p class="eyebrow">LUMEN · DESIGNER · TOOLBAR REDESIGN</p>
+  <h1>顶部工具栏重设计 · 四版提案</h1>
+  <p class="lead">现状问题：<code>buildToolbar</code>（designer_app.cpp:3644）把 22 个按钮单行平铺、逐钮写死宽度，1280 视口下尾部被裁剪；全部 Filled 变体导致无主次；无分组、无图标，功能只能靠文字识别。本提案保持 <code>registerCommands</code> 的命令与快捷键体系完全不变，只重排表现层：按<b>使用频率</b>定优先级、按<b>功能分组</b>定结构、按 <b>IconId 语言</b>（16px / 描边 1.8）补图标。四版共享同一套图标语义与 CoreDark token。</p>
+
+  <!-- ============ 频率分析 ============ -->
+  <div class="card">
+    <h2>频率与分组规划 <span class="ver">四版共用依据</span></h2>
+    <table class="freq-table">
+      <tr><th>频率</th><th>命令</th><th>依据</th></tr>
+      <tr><td><span class="pill hi">高频</span> 设计回路</td>
+          <td>Run · Stop · Add Text · Duplicate · Delete · Move up · Move down · Zoom −/+</td>
+          <td>“编辑 → 运行 → 查看”是设计器的核心回路，每次迭代都经过；缩放与节点操作在画布检视时反复使用</td></tr>
+      <tr><td><span class="pill mid">中频</span> 会话级</td>
+          <td>Save · Open · Debug · Guides · Theme · 预览状态循环</td>
+          <td>保存/打开每次会话数次；明暗与参考线在做视觉校验时成组切换；Debug 在排查布局时使用</td></tr>
+      <tr><td><span class="pill lo">低频</span> 环境模拟</td>
+          <td>Save as · New project · Density · DPI · Font · Contrast</td>
+          <td>环境模拟属“抽检”性质，设定后长期不变；另存/新建工程是偶发操作</td></tr>
+      <tr><td>分组</td>
+          <td><b>① 编辑</b> ② 运行 ③ 文件 ④ 预览环境 ⑤ 缩放</td>
+          <td>编辑+运行置左（F 型扫描黄金区）；文件安全操作居中；环境模拟靠右收纳；缩放贴右与画布视线延续</td></tr>
+    </table>
+  </div>
+
+  <!-- ============ 图标语义 ============ -->
+  <div class="card">
+    <h2>图标语义 <span class="ver">16px · stroke 1.8 · IconId 语言</span></h2>
+    <div class="icon-grid">
+      <div class="item"><svg class="i"><use href="#ic-play"/></svg><b>Run</b> 播放三角</div>
+      <div class="item"><svg class="i"><use href="#ic-debug"/></svg><b>Debug</b> 虫 + 触角</div>
+      <div class="item"><svg class="i"><use href="#ic-stop"/></svg><b>Stop</b> 实心方框</div>
+      <div class="item"><svg class="i"><use href="#ic-add-text"/></svg><b>Add Text</b> T 字 + 加号</div>
+      <div class="item"><svg class="i"><use href="#ic-duplicate"/></svg><b>Duplicate</b> 叠加双框</div>
+      <div class="item"><svg class="i"><use href="#ic-trash"/></svg><b>Delete</b> 垃圾桶</div>
+      <div class="item"><svg class="i"><use href="#ic-up"/></svg><b>Move up</b> 上箭头</div>
+      <div class="item"><svg class="i"><use href="#ic-down"/></svg><b>Move down</b> 下箭头</div>
+      <div class="item"><svg class="i"><use href="#ic-folder"/></svg><b>Open</b> 文件夹</div>
+      <div class="item"><svg class="i"><use href="#ic-save"/></svg><b>Save</b> 软盘</div>
+      <div class="item"><svg class="i"><use href="#ic-save-as"/></svg><b>Save as</b> 软盘 + 铅笔</div>
+      <div class="item"><svg class="i"><use href="#ic-folder-plus"/></svg><b>New project</b> 文件夹 + 加号</div>
+      <div class="item"><svg class="i"><use href="#ic-theme"/></svg><b>Theme</b> 月牙（切浅色）</div>
+      <div class="item"><svg class="i"><use href="#ic-density"/></svg><b>Density</b> 行高双向箭头</div>
+      <div class="item"><svg class="i"><use href="#ic-dpi"/></svg><b>DPI</b> 屏幕 + 扩展箭头</div>
+      <div class="item"><svg class="i"><use href="#ic-font"/></svg><b>Font</b> A 字形</div>
+      <div class="item"><svg class="i"><use href="#ic-contrast"/></svg><b>Contrast</b> 半填充圆</div>
+      <div class="item"><svg class="i"><use href="#ic-state"/></svg><b>预览状态</b> 指针光标</div>
+      <div class="item"><svg class="i"><use href="#ic-guides"/></svg><b>Guides</b> 网格</div>
+      <div class="item"><svg class="i"><use href="#ic-zoom-out"/></svg><b>Zoom −</b> 放大镜减</div>
+      <div class="item"><svg class="i"><use href="#ic-zoom-in"/></svg><b>Zoom +</b> 放大镜加</div>
+      <div class="item"><svg class="i"><use href="#ic-fit"/></svg><b>Zoom 重置</b> 取景框</div>
+      <div class="item"><svg class="i"><use href="#ic-gear"/></svg><b>环境设置</b> 齿轮（收纳用）</div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- 版本 A -->
+  <!-- ================================================================ -->
+  <div class="card" id="v-a">
+    <h2>版本 A · 全功能分组 <span class="ver">保守渐进 · 零收纳</span><span class="ver" style="color:#256f46">✔ 已选定并实现（2026-10）</span></h2>
+    <p class="thesis">22 个功能全部保持可见，只做三件事：按频率重排（编辑→运行→文件→环境→缩放）、组分隔线划分、低频项去文字改图标 + tooltip。视觉从 22 个 Filled 降噪为 ToolBar chrome 幽灵语言，Run 是唯一 Filled 主按钮。适合不想任何功能被藏起来的使用者。<br><b>实现状态</b>：已落地 <code>buildToolbar</code>（designer_app.cpp）；落地时向 token 对齐三处——文本 13px→caption 12px、图标钮 38→40（minHeight 下限）、zoom 重置 50→64（buttonMinWidth 下限），图标进 <code>core::IconId</code> 目录，无文字命令以 <code>semanticsLabel</code> 暴露（UIA/AT-SPI 按名调用不受影响）。</p>
+    <div class="meta">
+      <span class="chip">分组 <b>5 组 · 分隔线</b></span>
+      <span class="chip">宽度 <b>as-built ≈1268 / 1268 · 贴满</b></span>
+      <span class="chip">图标 <b>13 项图标化</b></span>
+      <span class="chip">收纳 <b>无</b></span>
+    </div>
+    <div class="win">
+      <div class="win-title"><span class="traffic"><i></i><i></i><i></i></span><strong>Lumen Designer</strong><span class="win-size">1280 × 800 · 版本 A · as-built</span></div>
+      <div class="tb as-built">
+        <!-- ① 编辑（高频） -->
+        <div class="tgroup">
+          <button class="tbtn" data-tip="插入 Text 节点"><svg class="i"><use href="#ic-add-text"/></svg>Add Text</button>
+          <button class="tbtn" data-tip="复制选中节点"><svg class="i"><use href="#ic-duplicate"/></svg>Duplicate</button>
+          <button class="tbtn" data-tip="删除选中节点 · Delete"><svg class="i"><use href="#ic-trash"/></svg>Delete</button>
+          <button class="tbtn icon" data-tip="上移节点 · ↑"><svg class="i"><use href="#ic-up"/></svg></button>
+          <button class="tbtn icon" data-tip="下移节点 · ↓"><svg class="i"><use href="#ic-down"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <!-- ② 运行（高频） -->
+        <div class="tgroup">
+          <button class="tbtn primary" data-tip="运行预览 · Ctrl+R"><svg class="i"><use href="#ic-play"/></svg>Run</button>
+          <button class="tbtn" data-tip="调试预览（帧统计/边界 overlay）· Ctrl+D"><svg class="i"><use href="#ic-debug"/></svg>Debug</button>
+          <button class="tbtn icon" data-tip="停止预览"><svg class="i"><use href="#ic-stop"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <!-- ③ 文件（中频） -->
+        <div class="tgroup">
+          <button class="tbtn" data-tip="打开文档/工程 · Ctrl+O"><svg class="i"><use href="#ic-folder"/></svg>Open</button>
+          <button class="tbtn" data-tip="保存 · Ctrl+S"><svg class="i"><use href="#ic-save"/></svg>Save</button>
+          <button class="tbtn icon" data-tip="另存为 · Ctrl+Shift+S"><svg class="i"><use href="#ic-save-as"/></svg></button>
+          <button class="tbtn icon" data-tip="新建工程 · Ctrl+Shift+N"><svg class="i"><use href="#ic-folder-plus"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <!-- ④ 预览环境（低频，全图标化） -->
+        <div class="tgroup">
+          <button class="tbtn icon" data-tip="明暗主题切换"><svg class="i"><use href="#ic-theme"/></svg></button>
+          <button class="tbtn icon" data-tip="密度：Compact / Comfortable / Touch"><svg class="i"><use href="#ic-density"/></svg></button>
+          <button class="tbtn icon" data-tip="DPI：100 / 125 / 200%"><svg class="i"><use href="#ic-dpi"/></svg></button>
+          <button class="tbtn icon" data-tip="字号：100 / 125 / 150%"><svg class="i"><use href="#ic-font"/></svg></button>
+          <button class="tbtn icon" data-tip="高对比开关"><svg class="i"><use href="#ic-contrast"/></svg></button>
+          <button class="tbtn icon" data-tip="预览状态：Hover / Press / Focus"><svg class="i"><use href="#ic-state"/></svg></button>
+          <button class="tbtn icon" aria-pressed="true" data-tip="画布参考线/标尺开关"><svg class="i"><use href="#ic-guides"/></svg></button>
+        </div>
+        <div class="spacer"></div>
+        <!-- ⑤ 缩放（贴右） -->
+        <div class="tgroup">
+          <button class="tbtn icon" data-tip="缩小 · 钳制 50%"><svg class="i"><use href="#ic-zoom-out"/></svg></button>
+          <button class="tbtn zoom-reset" data-tip="重置缩放与平移">100%</button>
+          <button class="tbtn icon" data-tip="放大 · 钳制 200%"><svg class="i"><use href="#ic-zoom-in"/></svg></button>
+        </div>
+      </div>
+      <div class="win-below"><div class="pane outline"></div><div class="pane center"></div><div class="pane props"></div></div>
+    </div>
+    <div class="pros-cons">
+      <div class="col"><h4>优点</h4><ul>
+        <li>零学习成本：功能一个不少，位置按频率可预测</li>
+        <li>高频命令全部带文字，扫读无歧义</li>
+        <li>唯一 Filled 的 Run 形成清晰主行动点</li>
+      </ul></div>
+      <div class="col"><h4>代价</h4><ul>
+        <li>低频 7 个纯图标仍占一整段视觉宽度</li>
+        <li>tooltip 依赖较强（首次需探索）</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- 版本 B -->
+  <!-- ================================================================ -->
+  <div class="card" id="v-b">
+    <h2>版本 B · 主次分层 + 环境收纳 <span class="ver">推荐 · 均衡</span></h2>
+    <p class="thesis">左侧只留高频与中频的“主操作带”（编辑、运行、文件，全部 icon+label）；7 个环境模拟项收进右侧<b>摘要 chip + 弹出面板</b>——chip 常显当前环境（Dark · Comfortable），点开面板内是带文字的开关行，改完即收。缩放贴右。工具栏从此只表达“我在编辑什么、是否在运行、处于什么环境”三件事。</p>
+    <div class="meta">
+      <span class="chip">分组 <b>3 主组 + 环境弹层 + 缩放</b></span>
+      <span class="chip">宽度 <b>主带 ≈790 / 1260 可用</b></span>
+      <span class="chip">图标 <b>全部 22 项</b></span>
+      <span class="chip">收纳 <b>环境 7 项 → 弹层</b></span>
+    </div>
+    <div class="win">
+      <div class="win-title"><span class="traffic"><i></i><i></i><i></i></span><strong>Lumen Designer</strong><span class="win-size">1280 × 800 · 版本 B</span></div>
+      <div class="tb">
+        <div class="tgroup">
+          <button class="tbtn" data-tip="插入 Text 节点"><svg class="i"><use href="#ic-add-text"/></svg>Add Text</button>
+          <button class="tbtn" data-tip="复制选中节点"><svg class="i"><use href="#ic-duplicate"/></svg>Duplicate</button>
+          <button class="tbtn" data-tip="删除选中节点 · Delete"><svg class="i"><use href="#ic-trash"/></svg>Delete</button>
+          <button class="tbtn icon" data-tip="上移节点 · ↑"><svg class="i"><use href="#ic-up"/></svg></button>
+          <button class="tbtn icon" data-tip="下移节点 · ↓"><svg class="i"><use href="#ic-down"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup">
+          <button class="tbtn primary" data-tip="运行预览 · Ctrl+R"><svg class="i"><use href="#ic-play"/></svg>Run</button>
+          <button class="tbtn" data-tip="调试预览 · Ctrl+D"><svg class="i"><use href="#ic-debug"/></svg>Debug</button>
+          <button class="tbtn icon" data-tip="停止预览"><svg class="i"><use href="#ic-stop"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup">
+          <button class="tbtn" data-tip="打开文档/工程 · Ctrl+O"><svg class="i"><use href="#ic-folder"/></svg>Open</button>
+          <button class="tbtn" data-tip="保存 · Ctrl+S"><svg class="i"><use href="#ic-save"/></svg>Save</button>
+          <button class="tbtn icon" data-tip="另存为 · Ctrl+Shift+S"><svg class="i"><use href="#ic-save-as"/></svg></button>
+          <button class="tbtn icon" data-tip="新建工程 · Ctrl+Shift+N"><svg class="i"><use href="#ic-folder-plus"/></svg></button>
+        </div>
+        <div class="spacer"></div>
+        <!-- 环境摘要 chip → 弹层 -->
+        <button class="summary-chip" id="b-env" aria-expanded="false">
+          <svg class="i" style="width:13px;height:13px"><use href="#ic-gear"/></svg>
+          <b>Dark</b>·<b>Comfortable</b>·<b>100%</b>
+          <svg class="i" style="width:12px;height:12px"><use href="#ic-down"/></svg>
+        </button>
+        <div class="tgroup">
+          <button class="tbtn icon" data-tip="缩小"><svg class="i"><use href="#ic-zoom-out"/></svg></button>
+          <button class="tbtn" data-tip="重置缩放" style="min-width:0;padding:0 6px;font-variant-numeric:tabular-nums">100%</button>
+          <button class="tbtn icon" data-tip="放大"><svg class="i"><use href="#ic-zoom-in"/></svg></button>
+        </div>
+        <!-- 弹出面板 -->
+        <div class="pop" id="b-pop">
+          <h5>预览环境</h5>
+          <div class="row"><span>明暗主题</span><button class="mini">Dark ⇄ Light</button></div>
+          <div class="row"><span>控件密度</span><span class="val">Comfortable</span><button class="mini">切换</button></div>
+          <div class="row"><span>设备 DPI</span><span class="val">100%</span><button class="mini">100/125/200</button></div>
+          <div class="row"><span>字号缩放</span><span class="val">100%</span><button class="mini">100/125/150</button></div>
+          <div class="row"><span>高对比</span><button class="mini" aria-pressed="false">关</button></div>
+          <div class="row"><span>参考线 / 标尺</span><button class="mini" aria-pressed="true">开</button></div>
+          <div class="row"><span>预览状态循环</span><button class="mini">Hover → Press → Focus</button></div>
+        </div>
+      </div>
+      <div class="win-below"><div class="pane outline"></div><div class="pane center"></div><div class="pane props"></div></div>
+    </div>
+    <div class="pros-cons">
+      <div class="col"><h4>优点</h4><ul>
+        <li>主带全文字可扫读，环境状态一眼可见（摘要 chip）</li>
+        <li>低频 7 项收纳后仍有带文字的完整入口（弹层行）</li>
+        <li>右侧留白 ≈170px，为后续功能预留</li>
+      </ul></div>
+      <div class="col"><h4>代价</h4><ul>
+        <li>环境切换多一次点击（换来主带降噪）</li>
+        <li>弹层需与画布快捷键 Esc 约定协调</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- 版本 C -->
+  <!-- ================================================================ -->
+  <div class="card" id="v-c">
+    <h2>版本 C · 图标密集命令栏 <span class="ver">紧凑 · 专业向</span></h2>
+    <p class="thesis">除 Run 与缩放百分比外全部图标化（tooltip 补全名称 + 快捷键），整条工具栏压缩到 ≈885px，把宽度还给画布。分组顺序同 A，但组内以 2px 微间距成对排列（如 上/下、Zoom−/+）。适合快捷键熟练、以键盘为主指针为辅的自用阶段。</p>
+    <div class="meta">
+      <span class="chip">分组 <b>5 组 · 分隔线</b></span>
+      <span class="chip">宽度 <b>内容 ≈885 / 1260 可用</b></span>
+      <span class="chip">图标 <b>20/22 图标化</b></span>
+      <span class="chip">收纳 <b>无（tooltip 承载文字）</b></span>
+    </div>
+    <div class="win">
+      <div class="win-title"><span class="traffic"><i></i><i></i><i></i></span><strong>Lumen Designer</strong><span class="win-size">1280 × 800 · 版本 C</span></div>
+      <div class="tb">
+        <div class="tgroup" style="gap:2px">
+          <button class="tbtn icon" data-tip="插入 Text 节点"><svg class="i"><use href="#ic-add-text"/></svg></button>
+          <button class="tbtn icon" data-tip="复制选中节点 · Ctrl+C/V"><svg class="i"><use href="#ic-duplicate"/></svg></button>
+          <button class="tbtn icon" data-tip="删除选中节点 · Delete"><svg class="i"><use href="#ic-trash"/></svg></button>
+          <button class="tbtn icon" data-tip="上移节点 · ↑"><svg class="i"><use href="#ic-up"/></svg></button>
+          <button class="tbtn icon" data-tip="下移节点 · ↓"><svg class="i"><use href="#ic-down"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup" style="gap:2px">
+          <button class="tbtn primary" data-tip="运行预览 · Ctrl+R" style="width:auto;padding:0 12px"><svg class="i"><use href="#ic-play"/></svg>Run</button>
+          <button class="tbtn icon" data-tip="调试预览 · Ctrl+D"><svg class="i"><use href="#ic-debug"/></svg></button>
+          <button class="tbtn icon" data-tip="停止预览"><svg class="i"><use href="#ic-stop"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup" style="gap:2px">
+          <button class="tbtn icon" data-tip="打开 · Ctrl+O"><svg class="i"><use href="#ic-folder"/></svg></button>
+          <button class="tbtn icon" data-tip="保存 · Ctrl+S"><svg class="i"><use href="#ic-save"/></svg></button>
+          <button class="tbtn icon" data-tip="另存为 · Ctrl+Shift+S"><svg class="i"><use href="#ic-save-as"/></svg></button>
+          <button class="tbtn icon" data-tip="新建工程 · Ctrl+Shift+N"><svg class="i"><use href="#ic-folder-plus"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup" style="gap:2px">
+          <button class="tbtn icon" data-tip="明暗主题"><svg class="i"><use href="#ic-theme"/></svg></button>
+          <button class="tbtn icon" data-tip="密度 Compact/Comfortable/Touch"><svg class="i"><use href="#ic-density"/></svg></button>
+          <button class="tbtn icon" data-tip="DPI 100/125/200%"><svg class="i"><use href="#ic-dpi"/></svg></button>
+          <button class="tbtn icon" data-tip="字号 100/125/150%"><svg class="i"><use href="#ic-font"/></svg></button>
+          <button class="tbtn icon" data-tip="高对比"><svg class="i"><use href="#ic-contrast"/></svg></button>
+          <button class="tbtn icon" data-tip="预览状态循环"><svg class="i"><use href="#ic-state"/></svg></button>
+          <button class="tbtn icon" aria-pressed="true" data-tip="参考线/标尺"><svg class="i"><use href="#ic-guides"/></svg></button>
+        </div>
+        <div class="spacer"></div>
+        <div class="tgroup" style="gap:2px">
+          <button class="tbtn icon" data-tip="缩小（钳制 50%）"><svg class="i"><use href="#ic-zoom-out"/></svg></button>
+          <button class="tbtn" data-tip="重置缩放" style="min-width:0;padding:0 6px;font-variant-numeric:tabular-nums">100%</button>
+          <button class="tbtn icon" data-tip="放大（钳制 200%）"><svg class="i"><use href="#ic-zoom-in"/></svg></button>
+        </div>
+      </div>
+      <div class="win-below"><div class="pane outline" style="width:180px"></div><div class="pane center"></div><div class="pane props" style="width:220px"></div></div>
+    </div>
+    <div class="pros-cons">
+      <div class="col"><h4>优点</h4><ul>
+        <li>最省宽度：画布/面板空间最大化</li>
+        <li>视觉密度统一，无长短不一的文字块</li>
+        <li>分组微间距形成节奏，成对操作（↑↓、±）贴近</li>
+      </ul></div>
+      <div class="col"><h4>代价</h4><ul>
+        <li>纯图标学习成本最高，依赖 tooltip 与快捷键记忆</li>
+        <li>频率分层只能靠位置表达，不如文字版直观</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- 版本 D -->
+  <!-- ================================================================ -->
+  <div class="card" id="v-d">
+    <h2>版本 D · 品牌中轴 + 分段环境控件 <span class="ver">结构化 · 仪表台</span></h2>
+    <p class="thesis">左=品牌（Lumen Designer），中=精选命令带（仅 Add Text / Delete / Save 三个高频命令保留文字，其余图标化），右=运行组 + <b>环境仪表区</b>：明暗 toggle、密度<b>分段控件</b>（Compact/Comfortable/Touch 一眼可读可直接点选，不再循环）、DPI 循环 chip，其余（字号/对比度/参考线/预览状态）收进齿轮弹层。环境从“一排按钮”变成“可读的当前状态仪表”。</p>
+    <div class="meta">
+      <span class="chip">分组 <b>品牌 | 命令 | 运行 | 环境仪表 | 缩放</b></span>
+      <span class="chip">宽度 <b>≈1259 / 1260 可用 · 贴满</b></span>
+      <span class="chip">图标 <b>全部 + 分段/摘要控件</b></span>
+      <span class="chip">收纳 <b>4 项 → 齿轮弹层</b></span>
+    </div>
+    <div class="win">
+      <div class="win-title"><span class="traffic"><i></i><i></i><i></i></span><strong>Lumen Designer</strong><span class="win-size">1280 × 800 · 版本 D</span></div>
+      <div class="tb" style="gap:8px;padding:0 12px">
+        <div class="brand"><span class="mark">L</span>Lumen Designer</div>
+        <div class="tsep"></div>
+        <div class="tgroup">
+          <button class="tbtn" data-tip="插入 Text 节点"><svg class="i"><use href="#ic-add-text"/></svg>Add Text</button>
+          <button class="tbtn icon" data-tip="复制选中节点 · Ctrl+C/V"><svg class="i"><use href="#ic-duplicate"/></svg></button>
+          <button class="tbtn" data-tip="删除选中节点 · Delete"><svg class="i"><use href="#ic-trash"/></svg>Delete</button>
+          <button class="tbtn" data-tip="保存 · Ctrl+S"><svg class="i"><use href="#ic-save"/></svg>Save</button>
+          <button class="tbtn icon" data-tip="打开 · Ctrl+O"><svg class="i"><use href="#ic-folder"/></svg></button>
+          <button class="tbtn icon" data-tip="上移 · ↑"><svg class="i"><use href="#ic-up"/></svg></button>
+          <button class="tbtn icon" data-tip="下移 · ↓"><svg class="i"><use href="#ic-down"/></svg></button>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup">
+          <button class="tbtn primary" data-tip="运行预览 · Ctrl+R"><svg class="i"><use href="#ic-play"/></svg>Run</button>
+          <button class="tbtn icon" data-tip="调试 · Ctrl+D"><svg class="i"><use href="#ic-debug"/></svg></button>
+          <button class="tbtn icon" data-tip="停止"><svg class="i"><use href="#ic-stop"/></svg></button>
+        </div>
+        <div class="spacer"></div>
+        <!-- 环境仪表区 -->
+        <button class="tbtn icon" aria-pressed="false" data-tip="明暗主题：当前 Dark"><svg class="i"><use href="#ic-theme"/></svg></button>
+        <div class="seg" role="radiogroup" aria-label="控件密度" id="d-seg">
+          <button role="radio" aria-checked="false" data-tip="紧凑密度">Compact</button>
+          <button role="radio" aria-checked="true" data-tip="默认密度">Comfortable</button>
+          <button role="radio" aria-checked="false" data-tip="触摸密度">Touch</button>
+        </div>
+        <button class="chip-cycle" data-tip="设备 DPI：100 / 125 / 200%"><svg class="i" style="width:13px;height:13px"><use href="#ic-dpi"/></svg><b>100%</b></button>
+        <button class="tbtn icon" id="d-gear" aria-expanded="false" data-tip="更多环境（字号 / 对比度 / 参考线 / 预览状态）"><svg class="i"><use href="#ic-gear"/></svg></button>
+        <div class="pop" id="d-pop" style="right:108px">
+          <h5>更多环境</h5>
+          <div class="row"><span>字号缩放</span><span class="val">100%</span><button class="mini">100/125/150</button></div>
+          <div class="row"><span>高对比</span><button class="mini" aria-pressed="false">关</button></div>
+          <div class="row"><span>参考线 / 标尺</span><button class="mini" aria-pressed="true">开</button></div>
+          <div class="row"><span>预览状态循环</span><button class="mini">Hover → Press → Focus</button></div>
+        </div>
+        <div class="tsep"></div>
+        <div class="tgroup">
+          <button class="tbtn icon" data-tip="缩小"><svg class="i"><use href="#ic-zoom-out"/></svg></button>
+          <button class="tbtn icon" data-tip="重置缩放"><svg class="i"><use href="#ic-fit"/></svg></button>
+          <button class="tbtn icon" data-tip="放大"><svg class="i"><use href="#ic-zoom-in"/></svg></button>
+        </div>
+      </div>
+      <div class="win-below"><div class="pane outline"></div><div class="pane center"></div><div class="pane props"></div></div>
+    </div>
+    <div class="pros-cons">
+      <div class="col"><h4>优点</h4><ul>
+        <li>环境状态“可读”：密度分段、DPI chip 直接显示当前值，点选即达</li>
+        <li>品牌左置 + 运行右置，中轴命令带扫读动线最顺</li>
+        <li>密度从循环改为分段直选，减少“点两次才到目标档”</li>
+      </ul></div>
+      <div class="col"><h4>代价</h4><ul>
+        <li>控件类型最多（按钮/分段/chip/弹层），实现与测试面最大</li>
+        <li>宽度最紧，后续加命令的空间有限</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <!-- ============ 对比矩阵 ============ -->
+  <div class="card">
+    <h2>四版对比与建议</h2>
+    <table class="matrix">
+      <tr><th>维度</th><th>A 全功能分组</th><th>B 主次分层+收纳</th><th>C 图标密集</th><th>D 品牌中轴+分段</th></tr>
+      <tr><td>可发现性</td><td>★★★★★ 全可见</td><td>★★★★☆ 主带+弹层</td><td>★★★☆☆ 靠 tooltip</td><td>★★★★☆ 仪表可读</td></tr>
+      <tr><td>宽度占用（1260 可用）</td><td>as-built ≈1268（贴满）</td><td>主带 ≈790</td><td>≈885</td><td>≈1259（贴满）</td></tr>
+      <tr><td>视觉降噪</td><td>★★★☆☆</td><td>★★★★☆</td><td>★★★★☆</td><td>★★★★★</td></tr>
+      <tr><td>实现/测试成本</td><td>低（重排+图标）</td><td>中（弹层复用 Menu/Dropdown）</td><td>低</td><td>高（分段+chips+弹层）</td></tr>
+      <tr><td>适合阶段</td><td>过渡期</td><td>长期自用</td><td>快捷键熟练后</td><td>功能稳定后</td></tr>
+    </table>
+    <p class="note"><strong>建议</strong>：日常自用以 <b>版本 B</b> 为推荐起点（主带可扫读、环境可收纳、留白充足）；若希望零收纳可退 <b>A</b>；追求极致画布空间选 <b>C</b>；等控件库与命令集稳定后再演进 <b>D</b> 的仪表化环境区。四版共享同一图标语义表，选定后图标资产可直接沉淀进 <code>core::IconId</code> 注册表。</p>
+    <p class="note"><strong>落地约束</strong>：任何版本都不改 <code>registerCommands</code> 的命令 id 与快捷键；弹层/分段若入选，走框架既有 Menu/Dropdown 控件实现，颜色全部取自 Theme token（本稿 CoreDark 值与 designer-workbench.html 同源）。</p>
+  </div>
+</div>
+
+<script>
+// 版本 B：环境摘要 chip ↔ 弹出面板
+const bEnv = document.getElementById('b-env');
+const bPop = document.getElementById('b-pop');
+bEnv.addEventListener('click', () => {
+  const open = bPop.classList.toggle('open');
+  bEnv.setAttribute('aria-expanded', String(open));
+});
+// 版本 D：齿轮弹层 + 密度分段
+const dGear = document.getElementById('d-gear');
+const dPop = document.getElementById('d-pop');
+dGear.addEventListener('click', () => {
+  const open = dPop.classList.toggle('open');
+  dGear.setAttribute('aria-expanded', String(open));
+});
+document.getElementById('d-seg').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  btn.parentElement.querySelectorAll('button').forEach(b =>
+    b.setAttribute('aria-checked', String(b === btn)));
+});
+// 点击面板外关闭弹层
+document.addEventListener('click', (e) => {
+  if (!bEnv.contains(e.target) && !bPop.contains(e.target)) bPop.classList.remove('open');
+  if (!dGear.contains(e.target) && !dPop.contains(e.target)) dPop.classList.remove('open');
+});
+</script>
+</body>
+</html>
