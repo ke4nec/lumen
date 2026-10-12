@@ -1,0 +1,9 @@
+libEGL warning: failed to get driver name for fd -1
+
+libEGL warning: MESA-LOADER: failed to retrieve device information
+
+libEGL warning: failed to get driver name for fd -1
+
+MESA: error: ZINK: failed to choose pdev
+libEGL warning: egl: failed to create dri2 screen
+{"driver":"wayland","seconds":1486.200,"windows":2,"frames":122652,"resize_events":31731,"preedit_events":0,"commit_events":0,"composition_end_events":10,"wheel_events":0,"font_available":true,"transparent_requested":false,"external_clipboard":false,"ime_verified":false,"stress_mib":64,"simulated_recoveries":2,"state_preserved":true,"frame_allocator_requested":true,"frame_allocator_verified":true,"frame_allocator_source":"glibc/malloc","frame_allocator_frames":122641,"frame_allocator_allocations":458576795,"frame_allocator_bytes":66929565224,"frame_allocator_peak_bytes":1539948}

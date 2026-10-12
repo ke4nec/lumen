@@ -1,0 +1,2 @@
+AT-SPI production Designer window selection / Unicode text / ThemeScope / save / reopen passed
+{"platform": "linux-wayland", "provider": "atspi-dbus", "protocol_loop": ["designer_select_locate", "designer_edit_save"], "theme_reference": "light -> dark", "windowed": true, "reopened": true}

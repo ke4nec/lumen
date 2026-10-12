@@ -1,0 +1,45 @@
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=11914 comm="/usr/bin/python3 -B tests/designer_atspi_window_li" label="unconfined")
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[11924]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=11914 comm="/usr/bin/python3 -B tests/designer_atspi_window_li" label="unconfined")
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.2' (uid=1000 pid=11915 comm="build-debug-a11y-ninja/examples/designer/lumen-des" label="unconfined")
+dbus-daemon[11924]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.5' (uid=1000 pid=11931 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.5' (uid=1000 pid=11931 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.058: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown as a last-resort fallback
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.5' (uid=1000 pid=11931 comm="/usr/libexec/xdg-desktop-portal" label="unconfined")
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.8' (uid=1000 pid=11961 comm="/usr/libexec/xdg-desktop-portal-gtk" label="unconfined")
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+fusermount3: failed to access mountpoint /run/user/1000/gvfs: Permission denied
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.227: Choosing gtk.portal for org.freedesktop.impl.portal.Access as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.248: Choosing gtk.portal for org.freedesktop.impl.portal.Settings as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.250: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.251: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.253: Choosing gtk.portal for org.freedesktop.impl.portal.Print as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.254: Choosing gtk.portal for org.freedesktop.impl.portal.Notification as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.256: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.263: Choosing gtk.portal for org.freedesktop.impl.portal.Account as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.265: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback
+
+(/usr/libexec/xdg-desktop-portal:11931): xdg-desktop-portal-WARNING **: 10:26:41.267: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Activating service name='org.gnome.ScreenSaver' requested by ':1.2' (uid=1000 pid=11915 comm="build-debug-a11y-ninja/examples/designer/lumen-des" label="unconfined")
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Successfully activated service 'org.gnome.ScreenSaver'
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Activating service name='org.gnome.ScreenSaver' requested by ':1.15' (uid=1000 pid=12152 comm="build-debug-a11y-ninja/examples/designer/lumen-des" label="unconfined")
+dbus-daemon[11913]: [session uid=1000 pid=11913 pidfd=5] Successfully activated service 'org.gnome.ScreenSaver'
+AT-SPI production Designer window selection / Unicode text / ThemeScope / save / reopen passed
+{"platform": "linux-x11", "provider": "atspi-dbus", "protocol_loop": ["designer_select_locate", "designer_edit_save"], "theme_reference": "light -> dark", "windowed": true, "reopened": true}
+A connection to the bus can't be made

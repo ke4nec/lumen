@@ -2122,3 +2122,10 @@ Linux 按 D-Bus owner PID 匹配窗口，macOS 重新取得 AX application/windo
 Linux X11/Xvfb 与本机 GNOME Wayland 生产回环均已通过实际重开，两个日志均通过加强后的
 协议检查器；Debug 完整 CTest 为 `1172/1172`（116.97s），平台验收单测 `23/23`。macOS 原生 AXAPI 和
 真实读屏、IME、Inspector、DPI/主题、拖拽及 soak 仍需要现场证据。
+
+`17b4232` 的 Windows `7/7`、Linux `7/7`、macOS `6/6` hosted CI 全部成功，
+原生 X11/Wayland 保存重开日志与构建身份已归档到
+[`17b4232 CI 与原生协议证据`](platform-evidence/designer-ci-2026-10-12-17b4232.json)。
+Orca 50.2 在场的补充探测仅有启动播报、没有 Designer 属性播报，不能签署读屏通过。
+本次 Wayland 原生 allocator/resize/64 MiB/双恢复浸泡第一次在 1486.200 秒提前退出 1，
+状态保持但未达到 3600 秒；失败日志已保留，第二次采样仍在运行，当前不登记 soak pass。

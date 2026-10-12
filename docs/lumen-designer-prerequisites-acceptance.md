@@ -272,6 +272,12 @@
   失败复现与新回归，平台验收单测为 `23/23`。macOS 原生 AXAPI 仍待登录 Aqua/权限环境，
   实际读屏和完整人工平台记录仍为 pending。
 
+- `17b4232` 的三平台 hosted CI 全部成功（Windows `7/7`、Linux `7/7`、macOS `6/6`），
+  X11/Wayland 原生保存重开日志、构建身份与 CI job 结果见
+  [`本批证据`](platform-evidence/designer-ci-2026-10-12-17b4232.json)。
+  Orca 补充探测未取得 Designer 属性播报；原生浸泡第一次运行 1486.200 秒后退出 1，
+  未达到一小时门槛，第二次仍在运行。这两项均保留 pending。
+
 ## 2. 阶段与 fixture 对照
 
 以下“headless 通过”只归属上述源码和自动化验证范围；涉及真实输入、合成器、读屏或

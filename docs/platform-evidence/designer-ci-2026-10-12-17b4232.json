@@ -1,0 +1,179 @@
+{
+  "kind": "designer_hosted_ci_and_native_protocol",
+  "recorded_at": "2026-10-12T03:05:18+00:00",
+  "source_commit": "17b4232",
+  "source_commit_full": "17b4232c206b5e1ac1c74769a58d8087b8e98b7f",
+  "purpose": "Close and restart production Designer after Save, re-query native windows and read back Unicode text and ThemeScope; reject protocol summaries without boolean reopened=true",
+  "runs": {
+    "windows": {
+      "id": 38196288153,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38196288153",
+      "status": "completed",
+      "conclusion": "success",
+      "source_commit": "17b4232c206b5e1ac1c74769a58d8087b8e98b7f",
+      "jobs": [
+        {
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-raster",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "a11y-bridge",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    "linux": {
+      "id": 38196288215,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38196288215",
+      "status": "completed",
+      "conclusion": "success",
+      "source_commit": "17b4232c206b5e1ac1c74769a58d8087b8e98b7f",
+      "jobs": [
+        {
+          "name": "mobile-core",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    "macos": {
+      "id": 38196288207,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38196288207",
+      "status": "completed",
+      "conclusion": "success",
+      "source_commit": "17b4232c206b5e1ac1c74769a58d8087b8e98b7f",
+      "jobs": [
+        {
+          "name": "mobile-core",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  },
+  "local": {
+    "debug_build": "cmake --build build-debug --config Debug passed",
+    "debug_ctest": "1172/1172 passed (116.97 seconds)",
+    "platform_acceptance_tests": "23/23 passed",
+    "linux_x11": "Production Designer under Xvfb: selection, Unicode edit, ThemeScope light -> dark, Save, close/restart and native field readback passed; strengthened protocol checker accepted the log.",
+    "linux_wayland": "Production Designer in GNOME Wayland: same close/restart and native field readback passed; strengthened protocol checker accepted the log.",
+    "macos_named_slots_regression": "Old saved_values implementation reproduced AttributeError for slot lists; the new regression covers nested slots, stale text/theme values, incomplete JSON and missing file.",
+    "allocator_soak_short": "5.066 seconds, two windows, 80 resize events, 64 MiB pressure, two simulated recoveries, state preserved, glibc/malloc verified.",
+    "allocator_soak_attempt1": "Incomplete: exited 1 after 1486.200 seconds; state and allocator metrics preserved but did not meet the one-hour threshold. Retained as a failed attempt. A second run is still live and is not claimed as passed.",
+    "orca_probe": "Designer protocol passed with Orca 50.2 running, but its debug log only contained the reader-startup speech message and no Designer property speech; reader sign-off remains pending."
+  },
+  "build_identity": {
+    "source_commit": "17b4232c206b5e1ac1c74769a58d8087b8e98b7f",
+    "os": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "files": {
+      "build-release/tests/lumen-platform-live-smoke": "de39764c1e90ee2f1ae1225d120fb7c3311cfcb40bea1411414f20599a5f7776",
+      "build-release/src/platform/liblumen-frame-allocator.so": "5e5fd44596bd880e8ab183e9284ab348ca3aeeb8f97c76f5963b1f5fcb3e265a",
+      "build-debug-a11y-ninja/examples/designer/lumen-designer": "e01e5fc9ade07c2255b026f4ff29835ce489e0e459effec07a18979d1042f22a",
+      "tests/fixtures/designer_atspi_window.design": "52f1e3bea865942be206e0db09cd0e02d7603b8991cedcaf138742ade6c26b7d",
+      "tests/platform_live_smoke.cpp": "b1de8bdf367399faa28a42d5b0a94eab026c0b4db8da1c49438cb3a93c2567bc"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "designer-native-2026-10-12-17b4232/atspi-x11.log",
+      "sha256": "1d371e2322e9667c9fbb4020db53f12b259ab240bb2c3590f17d9dadb6f88eb2"
+    },
+    {
+      "path": "designer-native-2026-10-12-17b4232/atspi-wayland.log",
+      "sha256": "fb1e9d1df8696816518348daa0373c76dd30207ec90de31e1de7909bdaae7920"
+    },
+    {
+      "path": "designer-native-2026-10-12-17b4232/soak-attempt1.log",
+      "sha256": "3b9b0a1f87175460f5863f850a852b01cf3914326d9b49b25251e69b8e9ab96a"
+    }
+  ],
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted macOS CI verifies builds and headless regressions, not the new production AXAPI window loop; a signed-in Aqua session and accessibility permission remain necessary.",
+    "Protocol readback is not actual reader speech, real IME, Inspector, physical DPI/theme, drag/drop, clean-machine packaging or cross-application clipboard sign-off.",
+    "The first native soak attempt was shorter than 3600 seconds and is not accepted; the second attempt must be observed to completion before any soak pass is recorded.",
+    "No complete operator record.json has been supplied for the four desktop sessions."
+  ]
+}
