@@ -1,0 +1,35 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-12T00:10:00Z",
+  "source_commit": "06771f2",
+  "source_commit_full": "06771f2265253d399c958f14e267254668df278e",
+  "purpose": "Stabilize Linux AT-SPI and macOS NSAccessibility generic reader loops by re-querying semantic nodes across tree rebuilds",
+  "runs": {
+    "windows": {
+      "id": 38185613925,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38185613925",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38185613909,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38185613909",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38185614014,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38185614014",
+      "jobs": "6/6 successful"
+    }
+  },
+  "local": {
+    "platform_acceptance_tests": "22/22 passed",
+    "python_validation": "AT-SPI, VoiceOver, UIA and platform acceptance scripts compiled; git diff --check passed",
+    "scope": "Generic reader loops retry transient semantic-tree object failures and re-query current nodes; this remains protocol evidence and does not provide Orca/VoiceOver speech sign-off."
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The hosted scripts do not provide signed-in desktop Orca or VoiceOver speech observations.",
+    "Narrator/NVDA/Orca/VoiceOver speech, real IME, drag/drop, Inspector, DPI/theme, clean-machine packaging, and one-hour soak remain operator platform checks."
+  ]
+}

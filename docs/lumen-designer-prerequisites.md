@@ -2098,3 +2098,5 @@ UIA 元素，超时同样保留底层 COM 错误。这样 platform-acceptance �
 都会重新取得当前节点，`eventually` 会保留最后一次底层对象错误。三条通用读屏脚本均已
 通过语法检查，平台验收检查器保持 `22/22`；这只降低协议回环的瞬态失败率，实际 Orca/
 VoiceOver 语音仍需登录桌面现场观察。
+本次三平台 hosted CI 归属见
+[`06771f2 CI 证据`](platform-evidence/designer-ci-2026-10-12-06771f2.json)。

@@ -254,6 +254,7 @@
   重新查找当前焦点、路由、滑块和文本节点，并把底层对象错误保留到超时诊断；三条读屏脚本
   语法检查通过，平台验收单测保持 `22/22`。这不改变 Orca/VoiceOver 语音、真实输入法或
   完整桌面 `record.json` 的 pending 状态。
+  三平台 hosted CI 归属见 [`06771f2 CI 证据`](platform-evidence/designer-ci-2026-10-12-06771f2.json)。
 
 
 ## 2. 阶段与 fixture 对照
