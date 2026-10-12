@@ -342,6 +342,51 @@ TEST_CASE("designer toolbar groups commands and fits the viewport",
     CHECK(runStyle->common.background == theme.colors.accent);
     CHECK(runButton->text == "Run");
 
+    // M11 tooltip：22 枚 tip 常驻 Stack 并完成注册（图标钮/紧凑档的
+    // 文字事实来源）。
+    for (const auto* key : {"designer-tip:designer-run",
+                            "designer-tip:designer-move-up",
+                            "designer-tip:designer-zoom-in"}) {
+        const auto* tip = findNodeByKey(app.shell().root(), key);
+        INFO(key);
+        REQUIRE(tip != nullptr);
+        CHECK(tip->type == lumen::core::WidgetType::Tooltip);
+    }
+
+    // 字号放大（125%）：带文字命令退化为图标钮，工具栏仍不越内容盒。
+    app.shell().handlers().at("designer:font-scale")();
+    (void)app.shell().renderFrame();
+    const auto* compactRun =
+        findNodeByKey(app.shell().root(), "designer-run");
+    REQUIRE(compactRun != nullptr);
+    CHECK(compactRun->text.empty());
+    CHECK(compactRun->semanticsLabel == "Run");
+    float compactMaxRight = 0.0F;
+    std::function<void(const lumen::core::RenderNode&, float)> reprobe =
+        [&](const lumen::core::RenderNode& node, float left) {
+            const float x = left + node.offset.x;
+            if (node.type == lumen::core::WidgetType::Button) {
+                compactMaxRight =
+                    std::max(compactMaxRight, x + node.size.width);
+            }
+            for (const auto& child : node.children) reprobe(child, x);
+        };
+    if (const auto* bar =
+            findNodeByKey(app.shell().root(), "designer-toolbar")) {
+        reprobe(*bar, 0.0F);
+        CHECK(compactMaxRight <=
+              Catch::Approx(bar->size.width - bar->padding.right).margin(
+                  0.5F));
+    }
+
+    // 工具箱行：尾随 Dots 拖拽把手（组语义由组头承担）。
+    if (const auto* toolRow = findNodeByKey(app.shell().root(),
+                                            "designer-toolbox:Container")) {
+        CHECK(toolRow->icon == static_cast<std::uint8_t>(
+                                   lumen::core::IconId::Dots));
+        CHECK_FALSE(toolRow->iconLeading);
+    }
+
     // 可选视觉取证：LUMEN_TOOLBAR_PNG=path.png 时导出当前帧，供与
     // design/ mockup 并排比对（不设则零开销，不参与断言）。
     if (const char* dumpPath = std::getenv("LUMEN_TOOLBAR_PNG")) {

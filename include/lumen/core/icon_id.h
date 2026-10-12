@@ -90,6 +90,8 @@ enum class IconId : std::uint8_t {
     // 反馈/组件复用 Nav 系列。追加在尾部，保持既有 ID 值不变。
     Content,
     Scope,
+    // 工具箱整行按钮的尾随拖拽点（三横点，静态次前景）。
+    Dots,
 };
 
 // 图标的归一化折线组（0..1 坐标；stroke 绘制，无填充）。

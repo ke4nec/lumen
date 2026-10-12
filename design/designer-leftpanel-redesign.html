@@ -316,7 +316,7 @@ h1{font-size:28px;letter-spacing:-.6px;margin:0 0 10px;font-weight:650}
   <!-- ================================================================ -->
   <div class="card" id="v-c">
     <h2>版本 C · 面板页签 Outline ⇄ Toolbox <span class="ver">整栏切换 · 空间最大化</span><span class="ver" style="color:#256f46">✔ 已选定并实现（2026-10）</span></h2>
-    <p class="thesis">左栏顶部一组小页签（与中央 Canvas/Source/References 同语言）：<b>大纲</b> 或 <b>工具箱</b> 二选一占据整个 632px 高。工具箱视图 = 7 组全展开的整行列表（图标 + 类型名 + 拖拽把手，行高 26px，19+7 行放得下并可滚）；大纲视图 = 完整高度的树。Project 收成底部状态行。适合"浏览文档结构"与"找组件插入"两种心智不混用的场景。</p>
+    <p class="thesis">左栏顶部一组小页签（与中央 Canvas/Source/References 同语言）：<b>大纲</b> 或 <b>工具箱</b> 二选一占据整个 632px 高。工具箱视图 = 7 组全展开的整行列表（图标 + 类型名 + 拖拽把手，行高 26px，19+7 行放得下并可滚）；大纲视图 = 完整高度的树。Project 收成底部状态行。适合"浏览文档结构"与"找组件插入"两种心智不混用的场景。<br><b>实现状态</b>（2026-10）：已落地 <code>buildOutlinePanel/buildToolboxPanel（designer_app.cpp）——默认 Outline 视图，页签键 <code>designer-tab-outline/toolbox</code>；7 组分类法为应用层展示映射（designerToolboxGroups，与 schema 注册表互相覆盖有回归测试）；组图标复用 Nav 系列 + <code>IconId::Content/Scope</code>；工具箱行尾拖拽点经 Button 尾随图标槽实现（<code>IconId::Dots</code>）；Project 压缩为底部状态行（<code>designer-project-*</code> 键名兼容）。页签文字用英文（Outline/Toolbox），遵循应用 UI 语言约定。</p>
     <div class="meta">
       <span class="chip">结构 <b>页签 + 整栏视图 + Project 底行</b></span>
       <span class="chip">检索 <b>分组滚动</b></span>

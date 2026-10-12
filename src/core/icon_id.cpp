@@ -16,7 +16,7 @@ using Catalog = std::vector<Line>;
 const std::vector<Catalog>& catalog() {
     static const std::vector<Catalog> kCatalog = [] {
         std::vector<Catalog> table(
-            static_cast<std::size_t>(IconId::Scope) + 1);
+            static_cast<std::size_t>(IconId::Dots) + 1);
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
@@ -525,6 +525,22 @@ const std::vector<Catalog>& catalog() {
                           Offset{0.22F, 0.69F}, Offset{0.34F, 0.78F}}},
                     Line{{Offset{0.66F, 0.22F}, Offset{0.78F, 0.31F},
                           Offset{0.78F, 0.69F}, Offset{0.66F, 0.78F}}}};
+        // Dots：三横点（拖拽把手；点为 8 段八边形逼近，同 NavLists 惯例）。
+        {
+            Catalog dots;
+            constexpr float kCenters[3] = {0.25F, 0.5F, 0.75F};
+            for (const float cx : kCenters) {
+                Line dot;
+                constexpr float kR = 0.09F;
+                for (int i = 0; i <= 8; ++i) {
+                    const float angle = 6.2831853F * static_cast<float>(i) / 8;
+                    dot.push_back(Offset{cx + kR * std::cos(angle),
+                                         0.5F + kR * std::sin(angle)});
+                }
+                dots.push_back(std::move(dot));
+            }
+            table[static_cast<std::size_t>(IconId::Dots)] = std::move(dots);
+        }
         return table;
     }();
     return kCatalog;

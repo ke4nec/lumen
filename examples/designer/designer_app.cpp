@@ -3692,16 +3692,22 @@ core::Widget DesignerApp::buildToolbar() {
     // 工具栏文本用 caption 档（12px）+ 收紧内距 8px：22 项全可见的前提
     // 下对齐设计稿的紧凑度量（值经 token 与 StyleOverrides 表达，不新造
     // 常量；对照 design/designer-toolbar-redesign.html 版本 A）。
-    const auto command = [&theme](std::string label, core::IconId icon,
-                                  std::string key, std::string handler) {
+    // 字号放大（125/150%）时整行会超出内容盒——带文字命令退化为图标钮
+    // （tooltip 常驻名称/快捷键兜底），任何缩放档不裁剪。
+    const bool compact = fontScale_ > 1.0F;
+    const auto command = [&theme, compact](std::string label, core::IconId icon,
+                                           std::string key,
+                                           std::string handler) {
         auto button = core::withVariant(
             core::withLeadingIcon(
-                core::makeButton(std::move(label), theme.typography.caption, {},
+                core::makeButton(compact ? std::string{} : std::move(label),
+                                 theme.typography.caption, {},
                                  0.0F, std::move(key), std::nullopt,
                                  std::nullopt, std::move(handler)),
                 icon),
             core::ButtonVariant::Chrome);
         button.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
+        if (compact) button.semanticsLabel = std::move(label);
         return button;
     };
     const auto iconCommand = [&theme](core::IconId icon, std::string key,
@@ -3749,11 +3755,13 @@ core::Widget DesignerApp::buildToolbar() {
         1.0F);
     // ② 运行（高频）：Run 唯一 Filled；Debug/Stop 为 chrome 件。
     auto runButton = core::withLeadingIcon(
-        core::makeButton("Run", theme.typography.caption, {}, 0.0F,
+        core::makeButton(compact ? std::string{} : std::string{"Run"},
+                         theme.typography.caption, {}, 0.0F,
                          "designer-run", std::nullopt, std::nullopt,
                          "designer:run"),
         core::IconId::Play);
     runButton.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
+    if (compact) runButton.semanticsLabel = "Run";
     runButton.selected = previewSessionMode_ == PreviewSessionMode::Running;
     auto debugButton = command("Debug", core::IconId::Bug, "designer-debug",
                                "designer:debug");
@@ -3834,7 +3842,7 @@ core::Widget DesignerApp::buildToolbar() {
                          theme.typography.caption, {}, 0.0F,
                          "designer-zoom-reset", std::nullopt, std::nullopt,
                          "designer:zoom-reset"),
-        core::ButtonVariant::Chrome);
+        core::ButtonVariant::Chrome);  // 数字短，各档保留文字
     zoomResetButton.styleOverrides.padding =
         core::EdgeInsets::symmetric(8.0F, 6.0F);
     zoomResetButton.semanticsLabel =
@@ -3846,13 +3854,57 @@ core::Widget DesignerApp::buildToolbar() {
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
         1.0F);
 
-    auto toolbar = core::makeRow(
+    auto row = core::makeRow(
         {std::move(editGroup), separator(), std::move(runGroup), separator(),
          std::move(fileGroup), separator(), std::move(envGroup),
          std::move(spacer), std::move(zoomGroup)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-        6.0F, core::EdgeInsets::symmetric(12.0F, 8.0F), {}, "designer-toolbar",
-        std::nullopt, 56.0F);
+        6.0F, core::EdgeInsets::symmetric(12.0F, 8.0F), {},
+        "designer-toolbar-row");
+
+    // Tooltip（M11 机制，ToolBar 控件同口径）：tip 常驻 Stack、由
+    // AppShell 负责延迟/定位/淡切；注册幂等。图标钮与紧凑档的文字事实
+    // 来源；带快捷键的命令在文案中一并展示。
+    const std::vector<std::pair<const char*, const char*>> tooltipTexts = {
+        {"designer-add-text", "Add Text"},
+        {"designer-duplicate", "Duplicate"},
+        {"designer-remove", "Delete   Del"},
+        {"designer-move-up", "Move up   Up"},
+        {"designer-move-down", "Move down   Down"},
+        {"designer-run", "Run   Ctrl+R"},
+        {"designer-debug", "Debug   Ctrl+D"},
+        {"designer-stop", "Stop"},
+        {"designer-open", "Open   Ctrl+O"},
+        {"designer-save", "Save   Ctrl+S"},
+        {"designer-save-as", "Save as   Ctrl+Shift+S"},
+        {"designer-new-project", "New project   Ctrl+Shift+N"},
+        {"designer-theme", "Theme"},
+        {"designer-density", "Density"},
+        {"designer-dpi", "DPI"},
+        {"designer-font-scale", "Font scale"},
+        {"designer-contrast", "Contrast"},
+        {"designer-preview-state", "Preview state"},
+        {"designer-canvas-guides", "Canvas guides"},
+        {"designer-zoom-out", "Zoom out"},
+        {"designer-zoom-reset", "Zoom reset"},
+        {"designer-zoom-in", "Zoom in"},
+    };
+    std::vector<core::Widget> stackChildren;
+    stackChildren.push_back(std::move(row));
+    for (const auto& [buttonKey, text] : tooltipTexts) {
+        const std::string tipKey = std::string{"designer-tip:"} + buttonKey;
+        shell_.registerTooltip(buttonKey, tipKey);
+        stackChildren.push_back(core::withStackPosition(
+            core::makeTooltip(text, tipKey), core::Offset{0.0F, 0.0F}));
+    }
+    auto stack = core::makeStack(std::move(stackChildren),
+                                 core::StackAlignment::TopLeft, {}, {},
+                                 "designer-toolbar-stack");
+    auto toolbar = core::makeColumn({std::move(stack)},
+                                    core::MainAxisAlignment::Start,
+                                    core::CrossAxisAlignment::Stretch, 0.0F,
+                                    {}, {}, "designer-toolbar", std::nullopt,
+                                    56.0F);
     toolbar.color = theme.colors.surface;
     return toolbar;
 }
@@ -3896,8 +3948,10 @@ core::Widget DesignerApp::buildToolboxPanel() {
                     "designer-toolbox:" + std::string(type), std::nullopt,
                     std::nullopt, "designer:toolbox:" + std::string(type)),
                 core::ButtonVariant::Chrome);
-            row.icon = group.icon;
-            row.iconLeading = true;
+            // 尾随三横点 = 拖拽把手（Button 单图标槽：组语义由组头承担，
+            // 行内槽位让给拖拽示意）。
+            row.icon = core::IconId::Dots;
+            row.iconLeading = false;
             row.alignContentStart = true;
             row.styleOverrides.padding = core::EdgeInsets::symmetric(6.0F, 4.0F);
             rows.push_back(std::move(row));

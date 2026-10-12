@@ -143,6 +143,7 @@ svg{flex:none}
 .group-head .cnt{margin-left:auto;font:10px ui-monospace,monospace;opacity:.8}
 .trow{display:flex;align-items:center;gap:8px;height:30px;border:0;background:transparent;border-radius:5px;
   color:var(--secondary);font-size:12.5px;text-align:left;padding:0 6px;width:100%}
+.trow svg{margin-left:auto;opacity:.55}
 .trow:hover{background:var(--sunken);color:var(--content)}
 .trow:active{background:color-mix(in srgb,var(--surface),var(--accent) 32%)}
 .trow svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;opacity:.75;flex:none}
@@ -326,6 +327,7 @@ svg{flex:none}
   <symbol id="i-glist" viewBox="0 0 16 16"><path d="M5 3.5h8.5M5 8h8.5M5 12.5h8.5"/><circle cx="2.8" cy="3.5" r=".9"/><circle cx="2.8" cy="8" r=".9"/><circle cx="2.8" cy="12.5" r=".9"/></symbol>
   <symbol id="i-gfeedback" viewBox="0 0 16 16"><path d="M2.5 10.5v2h2M13.5 10.5v2h-2M2.5 12.5 5.5 8l3 3 2.5-5 2.5 6.5"/></symbol>
   <symbol id="i-gcomp" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="4" rx="1"/><rect x="2.5" y="9" width="5" height="4" rx="1"/><path d="M10 11h3.5M11.75 9.25v3.5"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="8" r="1.3" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-gscope" viewBox="0 0 16 16"><path d="M5.5 3.5C4 3.5 3.5 4.5 3.5 6v4c0 1.5.5 2.5 2 2.5M10.5 3.5c1.5 0 2 1 2 2.5v4c0 1.5-.5 2.5-2 2.5"/></symbol>
   <symbol id="i-zoomin" viewBox="0 0 16 16"><circle cx="6.6" cy="6.6" r="4"/><path d="M9.6 9.6 13.6 13.6M4.9 6.6h3.4M6.6 4.9v3.4"/></symbol>
 </svg>
@@ -614,7 +616,8 @@ function renderToolbox() {
     for (const type of g.types) {
       const b = document.createElement('button');
       b.className = 'trow'; b.title = type;
-      b.innerHTML = `<svg><use href="${g.icon}"/></svg>${type}`;
+      // 尾随三横点 = 拖拽把手（Button 单图标槽，组语义由组头承担）
+      b.innerHTML = `${type}<svg style="margin-left:auto"><use href="#i-dots"/></svg>`;
       b.onclick = () => insertNode(type);
       box.appendChild(b);
     }
