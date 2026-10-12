@@ -1,0 +1,37 @@
+{
+  "kind": "designer_hosted_ci",
+  "recorded_at": "2026-10-12T00:38:55Z",
+  "source_commit": "8f67961",
+  "source_commit_full": "8f6796119e4fcd06daf272e2f26980344a7d1baf",
+  "purpose": "Stabilize Designer-specific Linux AT-SPI D-Bus and macOS NSAccessibility reader loops by re-querying current semantic nodes across tree rebuilds",
+  "runs": {
+    "windows": {
+      "id": 38187329853,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38187329853",
+      "jobs": "7/7 successful",
+      "a11y_job": "a11y-bridge completed successfully"
+    },
+    "linux": {
+      "id": 38187329890,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38187329890",
+      "jobs": "7/7 successful"
+    },
+    "macos": {
+      "id": 38187329918,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38187329918",
+      "jobs": "6/6 successful"
+    }
+  },
+  "local": {
+    "platform_acceptance_tests": "22/22 passed",
+    "python_validation": "tests/designer_atspi_window_live_tests.py, tests/voiceover_designer_reader_loop.py, tests/atspi_orca_loop.py, tests/voiceover_loop.py and tests/platform_acceptance_tests.py compiled; git diff --check passed",
+    "linux_production_designer_atspi": "passed selection, Unicode text edit, ThemeScope light -> dark, save and JSON readback under Xvfb/X11; provider=atspi-dbus; windowed=true",
+    "scope": "Designer-specific reader loops re-query current semantic nodes for selection, property editing and Save after tree rebuilds; this remains protocol evidence and does not provide reader speech or manual desktop sign-off."
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "The hosted scripts do not provide signed-in desktop Orca, Narrator, NVDA or VoiceOver speech observations.",
+    "macOS AXAPI execution still requires a signed-in Aqua session with accessibility permission.",
+    "Real IME, drag/drop, Inspector, DPI/theme, clean-machine packaging, cross-application clipboard and one-hour soak remain operator platform checks."
+  ]
+}

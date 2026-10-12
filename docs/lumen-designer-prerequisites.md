@@ -2106,3 +2106,6 @@ Designer 专用回环随后也完成了同样的当前节点重取：macOS AXAPI
 同时对 TreeItem 激活、属性读写和 Save 动作重试。当前 Linux X11 生产回环已通过选择、
 Unicode 编辑、ThemeScope `light -> dark` 和保存回读；macOS 仍需登录 Aqua/辅助功能权限，
 不能用语法检查代替 AXAPI 现场结果。
+
+
+本轮 Designer 原生读屏回环修复已完成三平台 hosted CI：Windows 七个 job（含 `a11y-bridge`）、Linux 七个 job、macOS 六个 job 均成功。Linux X11 生产 AT-SPI D-Bus 回环在本地通过 Text 选择、Unicode 编辑、ThemeScope `light -> dark`、保存及 JSON 回读；macOS AXAPI 仍只完成脚本验证，需登录 Aqua/辅助功能权限才能取得现场结果。平台验收检查器为 `22/22`，完整桌面验收仍保持 `acceptance_complete=false`。本次归属见 [`8f67961 CI 证据`](platform-evidence/designer-ci-2026-10-12-8f67961.json)。

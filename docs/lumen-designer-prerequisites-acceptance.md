@@ -261,6 +261,7 @@
   通过 Text 选择、Unicode 编辑、ThemeScope `light -> dark` 和保存回读；macOS 仅完成
   语法验证，真实 AXAPI 运行仍待登录 Aqua 会话。
 
+- 8f67961 的 Designer 原生回环修复已完成三平台 hosted CI：Windows `7/7`（含 `a11y-bridge`）、Linux `7/7`、macOS `6/6` 均成功。Linux X11 生产 AT-SPI D-Bus 回环通过 Text 选择、Unicode 编辑、ThemeScope `light -> dark`、保存和 JSON 回读；macOS AXAPI 仍需登录 Aqua/辅助功能权限。平台验收检查器为 `22/22`，真实读屏语音、IME、Inspector、DPI/主题、拖拽、干净机器包、跨应用剪贴板、soak 和完整 `record.json` 继续 pending。证据见 [`8f67961 CI 证据`](platform-evidence/designer-ci-2026-10-12-8f67961.json)。
 
 ## 2. 阶段与 fixture 对照
 
