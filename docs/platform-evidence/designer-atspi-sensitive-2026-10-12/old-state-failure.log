@@ -1,0 +1,13 @@
+dbus-daemon[58179]: [session uid=1000 pid=58179 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=58180 comm="/usr/bin/python3 -B tests/designer_atspi_live_test" label="unconfined")
+dbus-daemon[58179]: [session uid=1000 pid=58179 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[58189]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=58180 comm="/usr/bin/python3 -B tests/designer_atspi_live_test" label="unconfined")
+dbus-daemon[58189]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+Traceback (most recent call last):
+  File "/home/niq/prj/lumen/tests/designer_atspi_live_tests.py", line 174, in <module>
+    main()
+    ~~~~^^
+  File "/home/niq/prj/lumen/tests/designer_atspi_live_tests.py", line 64, in main
+    assert item.get_state_set().contains(Atspi.StateType.SENSITIVE)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

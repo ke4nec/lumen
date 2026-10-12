@@ -2145,3 +2145,13 @@ Windows Designer 现场 UIA 摘要现也与 Linux/macOS 一致，显式报告布
 Windows `a11y-bridge` 的既有 UIA Designer 窗口回环成功。新的 `reopened=true` 现场摘要
 约束由脚本语法和检查器单测验证，登录桌面的 Python UIA 回环仍待执行。运行和日志归档见
 [`8bd12c2 CI 证据`](platform-evidence/designer-ci-2026-10-12-8bd12c2.json)。
+
+§4.18 原生读屏复查取得了 Orca 的大纲/属性标签与 Save 播报请求，并复现可用窗口和
+Save 被错误播报为 grayed：AT-SPI 只报告 ENABLED、缺少 SENSITIVE。provider 现按
+`kSemanticsEnabled` 同时映射两位，禁用节点两位均清除；旧原生协议回归在 SENSITIVE
+断言处失败，修复后根、大纲、字段与禁用字段的状态及 Unicode/主题/保存重开回环均通过。
+Orca 复查改为 `window.`/`button.`，保留日志没有 grayed。启用桥的完整 Debug CTest
+`1173/1173`（117.97s）、平台验收检查器 `24/24` 通过；前后原始日志、临时诊断脚本与
+源文件/可执行文件哈希见 [`AT-SPI 状态复查`](platform-evidence/designer-atspi-sensitive-2026-10-12.json)。
+诊断运行在 GNOME Wayland 内的 Xwayland，通过临时 wrapper 记录实际 Orca 播报请求，
+未录制声音或签署完整 reader record；字段 Unicode 值、光标/选区和真实 IME 播报仍未证明。

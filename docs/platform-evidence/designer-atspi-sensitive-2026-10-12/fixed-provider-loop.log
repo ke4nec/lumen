@@ -1,0 +1,7 @@
+dbus-daemon[63367]: [session uid=1000 pid=63367 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=63368 comm="/usr/bin/python3 -B tests/designer_atspi_live_test" label="unconfined")
+dbus-daemon[63367]: [session uid=1000 pid=63367 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[63378]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=63368 comm="/usr/bin/python3 -B tests/designer_atspi_live_test" label="unconfined")
+dbus-daemon[63378]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+AT-SPI Designer selection / Unicode text and events / ThemeScope reference / document history / save-reopen passed
+{"platform": "linux", "provider": "atspi", "protocol_loop": ["designer_select_locate", "designer_edit_save"], "theme_reference": "light -> dark"}

@@ -1,0 +1,18 @@
+2026-10-12T04:37:58.798495+00:00 SPEECH OUTPUT: 'Screen reader on.' {'established': False}
+2026-10-12T04:39:47.227624+00:00 SPEECH OUTPUT: 'Lumen Preview' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:39:47.228829+00:00 SPEECH OUTPUT: 'window.' {'established': False}
+2026-10-12T04:39:53.359854+00:00 SPEECH OUTPUT: 'Lumen Preview' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:39:53.363672+00:00 SPEECH OUTPUT: 'window.' {'established': False}
+2026-10-12T04:40:19.818343+00:00 SPEECH OUTPUT: 'Text  [text]' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:40:41.991211+00:00 SPEECH OUTPUT: 'text' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:40:41.992270+00:00 SPEECH OUTPUT: 'entry.' {'established': False}
+2026-10-12T04:40:54.700258+00:00 SPEECH OUTPUT: 'ThemeScope  [theme-scope]' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:41:18.377470+00:00 SPEECH OUTPUT: 'Save' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:41:18.378993+00:00 SPEECH OUTPUT: 'button.' {'established': False}
+2026-10-12T04:43:03.750426+00:00 SPEECH OUTPUT: 'Lumen Preview' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:43:03.751578+00:00 SPEECH OUTPUT: 'window.' {'established': False}
+2026-10-12T04:43:09.881999+00:00 SPEECH OUTPUT: 'Lumen Preview' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:43:09.882986+00:00 SPEECH OUTPUT: 'window.' {'established': False}
+2026-10-12T04:43:35.835026+00:00 SPEECH OUTPUT: 'Text  [text]' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:44:03.737729+00:00 SPEECH OUTPUT: 'ThemeScope  [theme-scope]' {'established': False, 'family': {'name': '', 'gender': None, 'lang': 'C', 'dialect': '', 'variant': None}}
+2026-10-12T04:44:32.881227+00:00 SPEECH OUTPUT: 'Screen reader off.' {'established': False}

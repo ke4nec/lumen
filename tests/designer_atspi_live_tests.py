@@ -54,12 +54,16 @@ def main():
             root = eventually(lambda: next(
                 (node for node in descendants(desktop)
                  if node.get_name() == "Lumen Designer AT-SPI test"), None))
+            assert root.get_state_set().contains(Atspi.StateType.ENABLED)
+            assert root.get_state_set().contains(Atspi.StateType.SENSITIVE)
 
             def find(name, role):
                 return next((node for node in descendants(root)
                              if node.get_name() == name and node.get_role() == role), None)
 
             item = eventually(lambda: find("Text  [title]", Atspi.Role.TREE_ITEM))
+            assert item.get_state_set().contains(Atspi.StateType.ENABLED)
+            assert item.get_state_set().contains(Atspi.StateType.SENSITIVE)
             action = item.get_action_iface()
             assert action is not None
             # The provider exposes activate before focus for every actionable
@@ -70,6 +74,8 @@ def main():
             eventually(lambda: item.get_state_set().contains(Atspi.StateType.SELECTED))
 
             field = eventually(lambda: find("text", Atspi.Role.ENTRY))
+            assert field.get_state_set().contains(Atspi.StateType.ENABLED)
+            assert field.get_state_set().contains(Atspi.StateType.SENSITIVE)
             assert field.get_text_iface() is not None
             assert field.get_editable_text_iface() is not None
             # Accessible.get_text() is the deprecated interface getter; use
@@ -95,6 +101,7 @@ def main():
 
             blocked = eventually(lambda: find("Blocked preview", Atspi.Role.ENTRY))
             assert not blocked.get_state_set().contains(Atspi.StateType.ENABLED)
+            assert not blocked.get_state_set().contains(Atspi.StateType.SENSITIVE)
             assert not Atspi.EditableText.set_text_contents(blocked, "Wrong target")
             assert Atspi.Text.get_text(blocked, 0, -1) == ""
             assert get_text() == "Renamed"

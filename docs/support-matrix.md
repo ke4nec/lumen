@@ -153,6 +153,12 @@ Command 与文档 redo 分支回归为 448 个断言通过，连同输入法回�
 1176/1176；`ab43fec` 的三平台 CI 现已通过，完整人工现场状态未变。
 逐阶段、13 类 fixture 与四个桌面会话的出口复核见
 [`设计器阶段验收对照`](lumen-designer-prerequisites-acceptance.md)。
+2026-10-12 的 AT-SPI 状态复查补齐启用节点的 SENSITIVE 映射，禁用节点同时清除
+ENABLED/SENSITIVE。旧原生协议断言失败，修复后根、大纲、属性与禁用字段回环通过；
+桥开启 Debug CTest `1173/1173`（117.97s）、验收检查器 `24/24` 通过。GNOME Wayland 内
+Xwayland 的 Orca 生成了大纲/字段/Save 标签请求，修复后不再将启用窗口和 Save 标为
+grayed；[原始前后日志与身份](platform-evidence/designer-atspi-sensitive-2026-10-12.json) 已保留。
+这些为状态协议与播报请求诊断，未录制实际语音、未签署 reader record，完整平台四态未推进。
 原生 AT-SPI 激活大纲时的选择回退现已修复：大纲与 DocumentId 同步后重建保留
 目标，属性字段可定位并接受编辑。旧实现应用回归有 8 个失败断言，修复后新增用例
 52 个断言通过；连同键盘/IME 回归为五用例、612 个断言。默认配置完整 CTest

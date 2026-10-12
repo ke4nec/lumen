@@ -1,6 +1,6 @@
 # 设计器前置任务阶段出口复核
 
-> 核对日期：2026-10-11。最近被测运行时提交：`dc57970d8a938dba803b0ede502626cef013bfe6`；一小时浸泡单项归属 `ab43fec9a5f47b5dbafc47a7b4db1d85d82b8a7a`。
+> 核对日期：2026-10-12。最新 Windows 现场摘要检查器提交：`8bd12c25cd1d6ce3fc69493fcb7bca4c28b02d1e`；本批原生保存重开与一小时浸泡构建身份归属 `17b4232c206b5e1ac1c74769a58d8087b8e98b7f`，早期结果另按各提交保留。
 > 本记录按 [`前置任务`](lumen-designer-prerequisites.md) §6、§10.2 核对出口。
 > F0–F6 的实现与 headless 证据已有；D1/D2/D3 的完整桌面现场出口尚未闭环。
 
@@ -276,7 +276,23 @@
   X11/Wayland 原生保存重开日志、构建身份与 CI job 结果见
   [`本批证据`](platform-evidence/designer-ci-2026-10-12-17b4232.json)。
   Orca 补充探测未取得 Designer 属性播报；原生浸泡第一次运行 1486.200 秒后退出 1，
-  未达到一小时门槛，第二次仍在运行。这两项均保留 pending。
+  未达到一小时门槛，第二次采样随后以 3600.020 秒、退出码 0 完成；该单项结果已归档，
+  但不替代完整平台 record。Orca 补充探测仍未取得 Designer 属性播报，这两项分别按
+  原生单项证据和读屏现场缺口登记。
+
+- `8bd12c2` 的 Windows `7/7`、Linux `7/7`、macOS `6/6` hosted CI 全部成功；
+  完整本地 CTest `1172/1172`（137.19s）、平台验收检查器 `24/24` 通过。Windows
+  Designer 专用现场摘要也要求布尔 `reopened=true`，缺失、false、字符串和数值均拒绝。
+  hosted UIA job 运行既有 C++ 窗口回环，Python 现场读屏脚本仍需登录会话执行。
+  [归属摘要](platform-evidence/designer-ci-2026-10-12-8bd12c2.json) 保留 CI、浸泡和限制。
+
+- 后续 AT-SPI 状态 review 复现启用节点缺少 SENSITIVE，并观察到 Orca 将可用窗口和
+  Save 播报为 grayed。修复后根、大纲、可编辑字段同时具备 ENABLED/SENSITIVE，禁用
+  字段同时缺少两位；旧协议断言失败，修复回环通过。完整桥开启 Debug CTest
+  `1173/1173`（117.97s）、验收检查器 `24/24` 通过。
+  Orca 生成了 Text、text、ThemeScope、Save 等标签/角色请求，修复后没有 grayed；
+  [前后日志与脚本](platform-evidence/designer-atspi-sensitive-2026-10-12.json) 保留身份与限制。
+  这只补充播报请求诊断，未录音或取得完整人工 record，所有 reader 现场出口继续 pending。
 
 ## 2. 阶段与 fixture 对照
 
@@ -320,8 +336,8 @@ Windows 或 macOS 的登录桌面和验收人可用。
 
 | 会话 | 已有本批证据 | 完整出口仍需什么 |
 | --- | --- | --- |
-| Linux X11 | Linux hosted CI/headless；旧 Xvfb/Xwayland 回归 | 独立 X11 桌面、Orca、完整同提交 record 与附件 |
-| Linux Wayland | 原生 Designer 短窗口和 `glibc/malloc` 双窗口短探针 | Inspector 操作、编辑/保存/重开、实际 DPI/主题、IME、Orca、跨应用输入/剪贴板、GPU/合成器及一小时浸泡的完整记录 |
+| Linux X11 | Linux hosted CI/headless；Xvfb 生产 Designer 选择、Unicode 编辑、ThemeScope、保存重开协议日志 | 独立 X11 桌面、Orca、完整同提交 record 与附件 |
+| Linux Wayland | 原生 Designer 保存重开协议、`glibc/malloc` 双窗口一小时浸泡（3600.020 秒、resize/64 MiB/双恢复状态保持） | Inspector 操作、人工编辑/保存/重开、实际 DPI/主题、IME、Orca、跨应用输入/剪贴板、硬件 GPU/合成器及绑定一小时日志的完整记录 |
 | Windows | MSVC、UIA 自动化链路、Designer 大纲/属性 UIA live 回环、CPU/Skia/GPU 回退与三个便携包 CI | 登录 Win32 桌面、真实 IME、Narrator 和 NVDA、干净机器包验证、完整 record；额外 `font_cold_start` 与 `touchpad` 项 |
 | macOS | 原生 CPU/NSAccessibility/allocator CTest 与包/Skia CI | 登录 Aqua 桌面、真实 IME、VoiceOver、干净机器包验证、完整 record |
 

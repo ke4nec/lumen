@@ -1,0 +1,4 @@
+root focus state [dbus.UInt32(1107296512), dbus.UInt32(0)]
+root focus state [dbus.UInt32(1107296512), dbus.UInt32(0)]
+AT-SPI production Designer window selection / Unicode text / ThemeScope / save / reopen passed
+{"platform": "linux-x11", "provider": "atspi-dbus", "protocol_loop": ["designer_select_locate", "designer_edit_save"], "theme_reference": "light -> dark", "windowed": true, "reopened": true}

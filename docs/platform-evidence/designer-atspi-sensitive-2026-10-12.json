@@ -1,0 +1,87 @@
+{
+  "kind": "designer_atspi_sensitive_regression",
+  "recorded_at": "2026-10-12T05:39:20.790750+00:00",
+  "source_base_commit": "ec91de3572bd3c0cd815335c59cff1ecae32ef69",
+  "source_identity": {
+    "src/accessibility/atspi_provider.cpp": "9ca707e571418d44077c55099ed4a713b5092916e099b0f57df8b13b1b3da5a1",
+    "tests/designer_atspi_live_tests.py": "7fbbbf8f862d7635c282ee3cbb00779dd2ac8fbfc9e50312cb23fccaac9203a7",
+    "build-debug-a11y-ninja/examples/designer/lumen-designer": "84c00e65ef17112cb8939ed9f7ab12c6c3021dd8f40dde5e87ec546ada079379",
+    "build-debug-a11y-ninja/tests/lumen-designer-atspi-live-app": "da5cde732b5ce956566c2a8e462fa826aadeef9cb27d976c561dc02a254c4162",
+    "tests/fixtures/designer_atspi_window.design": "52f1e3bea865942be206e0db09cd0e02d7603b8991cedcaf138742ade6c26b7d"
+  },
+  "change": "Map enabled semantics to both AT-SPI ENABLED and SENSITIVE; disabled controls have neither state.",
+  "old_result": "Native provider regression failed because the enabled Designer TreeItem lacked SENSITIVE. Orca generated window grayed and button grayed requests for usable windows and Save.",
+  "fixed_result": "Native provider regression passes ENABLED/SENSITIVE for root, TreeItem and editable field and clears both for the disabled field; normal Unicode editing, history, ThemeScope and save/reopen pass. Orca generated window. and button. requests and no grayed request in the retained run.",
+  "local": {
+    "debug_a11y_ctest": "1173/1173 passed (117.97 seconds)",
+    "platform_acceptance_tests": "24/24 passed",
+    "native_provider_loop_exit_code": 0,
+    "orca_protocol_loop_exit_code": 0
+  },
+  "orca_diagnostic": {
+    "version": "50.2",
+    "atspi_version": "2.60.4",
+    "session": "GNOME Wayland with native Xwayland; isolated D-Bus session",
+    "environment": [
+      "DISPLAY=:0",
+      "explicit XAUTHORITY path",
+      "AT_SPI_BUS_ADDRESS from isolated org.a11y.Bus.GetAddress",
+      "ATSPI_USE_LEGACY_DEVICE=1",
+      "NO_AT_BRIDGE=1 for the reader only"
+    ],
+    "monitor": "Temporary wrapper captures only calls to Orca debug.print_message for SPEECH OUTPUT and traces event types; it runs the installed Orca and does not synthesize speech. No installed reader source or user settings were changed.",
+    "timing": "The old driver waited 120 seconds after window focus and 60 seconds for each action; fixed driver used 120 seconds and 15 seconds. State getter failure/pass is independent of those timing differences.",
+    "emitted_speech_requests": 18,
+    "completed_native_reopen": true
+  },
+  "artifacts": [
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/old-state-failure.log",
+      "sha256": "ef6c14a877783c6a2ab751c5a411b9506821288fc7d3e38bffd5764b8a3a9f62"
+    },
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/fixed-provider-loop.log",
+      "sha256": "678cc172c3f5bb9802c19b88586b756b49adfd27c5b6df93eaeb9a607bbffe1c"
+    },
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/old-orca-speech.log",
+      "sha256": "3fee35b7c69d55e232f2b1681fcdd7aaadc5b28e587363eb451c339c42973bcd"
+    },
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/old-orca-protocol.log",
+      "sha256": "d63d63b45f67628ce5249991c683f7a46e770082db181b4b4d544bcd199a4fb7"
+    },
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/fixed-orca-speech.log",
+      "sha256": "89471ec0af8ef3d32c057498795c42758f88788fbc4497ed57f10f1f1feba72e"
+    },
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/fixed-orca-protocol.log",
+      "sha256": "78f0fbe8325eb1131c236e395701725f183efde9b2c9ce7431966a2ef7c361a1"
+    },
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/speech-monitor.py",
+      "sha256": "6f072ac9f8c93f23fe63cd611c049d73bc2070564712ab7294b0672e548d189c"
+    },
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/protocol-driver.py",
+      "sha256": "c641101d3ad1614476e27325e50738b7b11737c145e028bac2f1b247fa96c80c"
+    },
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/old-protocol-driver.py",
+      "sha256": "120740cc1c43b30b7841982402feae55ff428c849ad0f1ed7bbcb8bc49acece1"
+    },
+    {
+      "path": "designer-atspi-sensitive-2026-10-12/probe-runner.py",
+      "sha256": "999b5eb759420cf3872c71907028e4832b53b27f4f0e7050615081ac1838a7e0"
+    }
+  ],
+  "acceptance_complete": false,
+  "limitations": [
+    "Generated speech requests are diagnostic evidence, not a recording of audible output or an operator-signed reader record.",
+    "Field labels and roles are observed; full Unicode value/caret/selection/IME speech coverage is not proven.",
+    "The sample uses Xwayland inside GNOME Wayland, not an independent X11 desktop.",
+    "The monitor and driver are retained reproduction artifacts, not the normal acceptance workflow.",
+    "Windows Narrator/NVDA, macOS VoiceOver, real IME, Inspector, physical DPI, drag/drop, clean-machine packaging and complete record.json remain unproven."
+  ]
+}

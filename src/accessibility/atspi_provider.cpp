@@ -398,7 +398,10 @@ void appendStateArray(DBusMessageIter* parent, const SemanticsNode& node,
         bits[state / 32] |= std::uint32_t{1} << (state % 32);
     };
     if (activeRoot) append(1);  // ACTIVE（窗口激活；仅根/窗口节点传入）
-    if ((node.flags & kSemanticsEnabled) != 0) append(8);   // ENABLED
+    if ((node.flags & kSemanticsEnabled) != 0) {
+        append(8);   // ENABLED
+        append(24);  // SENSITIVE: enabled widgets respond to user interaction.
+    }
     if ((node.actions & kActionFocus) != 0 &&
         (node.flags & kSemanticsEnabled) != 0) append(11);  // FOCUSABLE
     if (node.id == focused || (node.flags & kSemanticsFocused) != 0) append(12);

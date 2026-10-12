@@ -158,6 +158,11 @@ Linux 侧走 org.a11y.Bus D-Bus 协议（Qt/GTK 同款；仓库已有 libdbus �
 | org.a11y.atspi.EditableText | 仅声明 SetValue 的 TextField 暴露；SetTextContents 返回 boolean，启用字段先 dispatch(Focus)，成功后 dispatch(SetValue)，沿已有编辑事务；禁用、只读或非字段拒绝写入 |
 | org.a11y.atspi.Socket/Embed | 桌面嵌入路径（AT 侧主动 Embed，应用侧只需响应） |
 
+- **可用状态**：Lumen 的 `kSemanticsEnabled` 同时映射 `ATSPI_STATE_ENABLED`（8）和
+  `ATSPI_STATE_SENSITIVE`（24），禁用节点同时清除两位。前者表示应用状态同步，后者
+  表示响应用户交互；缺少 SENSITIVE 会使 Orca 把可用窗口/控件播报为 grayed。
+  两位的含义见 [AT-SPI StateType](https://docs.gtk.org/atspi2/enum.StateType.html)，
+  `designer_atspi_live_tests.py` 覆盖大纲行、可编辑字段及禁用字段的真实协议状态。
 - **事件**：children-changed（结构）、property-change（accessible-name/value/state）、focus（state-changed:focused）经总线信号广播。TextField 值改变发送 text-changed:delete/insert：语义快照不携带编辑区间，因此以 offset=0 删除旧全文再插入新全文；length 按码点计算，variant 为对应字符串，空串不发送该方向事件。文本字段不发送数值 accessible-value 事件。
 - **文本协议依据**：[GNOME Text.xml](https://github.com/GNOME/at-spi2-core/blob/main/xml/Text.xml)、[EditableText.xml](https://github.com/GNOME/at-spi2-core/blob/main/xml/EditableText.xml) 与 [Event.xml](https://github.com/GNOME/at-spi2-core/blob/main/xml/Event.xml)。当前最小字段值接口不承诺光标、选区、文本属性、字词/行粒度或其他 EditableText 操作；字段密码值仍以语义层已经隐藏的 value 为准。
 - **窗口激活（M13 2026-09-23 补齐）**：屏幕阅读器以 window:activate 切换“当前应用”上下文，只发 state-changed:focused 不会开始播报。`noteWindowActive`（宿主 WindowFocusGained/Lost → runApp → AppShell 转发）发 `org.a11y.atspi.Event.Window` 的 `Activate`/`Deactivate` 信号 + 根节点 `state-changed:active`（线格式按 libatspi 客户端注册 "window:activate" 生成的 match 规则实测比对）。`Component.GrabFocus` 按平台惯例（atk_component_grab_focus）同时经 `PlatformAccessibilityHost.activateWindow`（runApp 接宿主 `raiseWindow`）抬升所属窗口；窗口根路径只做激活（语义根无 focus action，向根派发会搅乱后续控件焦点）。Wayland 焦点授予由合成器策略决定（xdg-activation），X11/XWayland 可直接置前。
