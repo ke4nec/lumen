@@ -1,0 +1,48 @@
+{
+  "kind": "designer_atspi_selection_event_regression",
+  "recorded_at": "2026-10-12T06:39:03.823985+00:00",
+  "source_commit": "abc4872f3da964af959c10ebc12f6c946b0f7646",
+  "old_provider_commit": "44a5ef7a0950ebd6d3f1f4c5178ecaba0eda2c1e",
+  "source_identity": {
+    "src/accessibility/atspi_provider.cpp": "63313d5254a88fc211dcd4002e08c9c34c523930ad20c14a2f1a2ebccfeef53f",
+    "tests/designer_atspi_live_tests.py": "d065ad7e826448dbe946f3e92b14eae141dff39162c531573e4f50d3ab0367fa",
+    "build-debug-a11y-ninja/tests/lumen-atspi-live-app": "f14ba8aa6448ab847724b9e9352eb753073a5c2f31d87bce47316cfaaac08e13",
+    "build-debug-a11y-ninja/tests/lumen-designer-atspi-live-app": "199dbc3c3e38db19f292ea7214524a6ce5c095021628be5bc6e6e5b5d0e3afc2"
+  },
+  "contract": "Designer prerequisites section 4.18 and native provider design section 6: outline selection is observable through native accessibility state updates.",
+  "change": "Emit object:state-changed:selected for stable nodes when kSemanticsSelected changes; detail1 is 0 or 1. Existing enabled/sensitive/focusable notification behavior is preserved.",
+  "old_result": "The native libatspi Designer client times out at its first selection_changed(Text, True) assertion after activating the Text row. GetState alone was covered before this change, but selected notifications were missing.",
+  "fixed_result": "Text activation sends selected=1; ThemeScope activation sends Text selected=0 and ThemeScope selected=1. State reads agree and text edits produce no redundant selection notifications. Unicode text/events, theme references, document history and save/reopen still pass.",
+  "local": {
+    "debug_a11y_ctest": "1173/1173 passed (119.35 seconds)",
+    "platform_acceptance_tests": "24/24 passed",
+    "native_designer_loop_exit_code": 0,
+    "native_generic_loop_exit_code": 0,
+    "python_syntax": "passed",
+    "git_diff_check": "passed"
+  },
+  "artifacts": [
+    {
+      "path": "designer-atspi-selection-events-2026-10-12/old-selection-failure.log",
+      "sha256": "af79d0169cda4436f9220cc2477df5b2376ebe38d7e4b08f51c2ad9fd36b2584"
+    },
+    {
+      "path": "designer-atspi-selection-events-2026-10-12/fixed-designer-loop.log",
+      "sha256": "d587070f3916dd6cb388f713d9297235e0ff0e7d2b9f75292c8f51e6591b6006"
+    },
+    {
+      "path": "designer-atspi-selection-events-2026-10-12/generic-registration-failure.log",
+      "sha256": "9659bec0fd2b6354a1cbe32897f0fe0524efa9f9f573b70aa1af0a49415bc88a"
+    },
+    {
+      "path": "designer-atspi-selection-events-2026-10-12/fixed-generic-loop.log",
+      "sha256": "d09e3550240db291aad0f4240154fceb7404db38e04ba72f037175dfd52e1c37"
+    }
+  ],
+  "acceptance_complete": false,
+  "limitations": [
+    "The native fixtures use the production provider with isolated D-Bus sessions; no Orca speech or operator-signed desktop record is implied.",
+    "The generic native loop initially failed before application registration while it ran concurrently with the Designer fixture; a separate retry passed. The registration failure log is retained and its exact cause is not established.",
+    "Windows Narrator/NVDA, macOS VoiceOver, real IME, Inspector, physical DPI/theme, drag/drop and complete platform records remain pending."
+  ]
+}

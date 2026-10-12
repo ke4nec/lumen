@@ -1,0 +1,12 @@
+dbus-daemon[100425]: [session uid=1000 pid=100425 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=100428 comm="/usr/bin/python3 -B tests/atspi_live_tests.py buil" label="unconfined")
+dbus-daemon[100425]: [session uid=1000 pid=100425 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[100444]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=100428 comm="/usr/bin/python3 -B tests/atspi_live_tests.py buil" label="unconfined")
+dbus-daemon[100444]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+AT-SPI unavailable: AT-SPI bus registration failed
+Traceback (most recent call last):
+  File "/home/niq/prj/lumen/tests/atspi_live_tests.py", line 51, in <module>
+    button = eventually(lambda: find("Apply"))
+  File "/home/niq/prj/lumen/tests/atspi_live_tests.py", line 27, in eventually
+    raise AssertionError("native AT-SPI round-trip timed out")
+AssertionError: native AT-SPI round-trip timed out

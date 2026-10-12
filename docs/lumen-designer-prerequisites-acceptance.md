@@ -301,6 +301,16 @@
   `24/24` 通过。[原始协议证据](platform-evidence/designer-atspi-state-events-2026-10-12.json)
   按源码和二进制哈希归属；没有启动 Orca，完整现场出口继续 pending。
 
+- `44a5ef7` 的 Windows `7/7`（含 `a11y-bridge`）、Linux `7/7`、macOS `6/6` hosted
+  CI 已全部成功；[精确提交归属](platform-evidence/designer-ci-2026-10-12-44a5ef7.json)
+  保留运行与全部 job 结果。
+- `abc4872` 补齐 AT-SPI 大纲 selected 状态通知。旧 provider 在真实 libatspi 回归中
+  因 Text 激活后缺少 selected 事件超时；修复后 Text 选中、切到 ThemeScope 后 Text 取消
+  选中与新行选中均收到 detail1=0/1，文字编辑不重复发送选择通知。完整 Debug CTest
+  `1173/1173`（119.35s）、验收检查器 `24/24`、Designer 与单独重跑的通用原生协议回归
+  均通过；[前后证据](platform-evidence/designer-atspi-selection-events-2026-10-12.json)
+  同时保留一次并发应用总线注册失败。fixture 没有启动 Orca，完整现场出口继续 pending。
+
 ## 2. 阶段与 fixture 对照
 
 以下“headless 通过”只归属上述源码和自动化验证范围；涉及真实输入、合成器、读屏或

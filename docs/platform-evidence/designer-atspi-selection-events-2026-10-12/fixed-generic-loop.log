@@ -1,0 +1,6 @@
+dbus-daemon[102110]: [session uid=1000 pid=102110 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=102111 comm="/usr/bin/python3 -B tests/atspi_live_tests.py buil" label="unconfined")
+dbus-daemon[102110]: [session uid=1000 pid=102110 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[102121]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=102111 comm="/usr/bin/python3 -B tests/atspi_live_tests.py buil" label="unconfined")
+dbus-daemon[102121]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+AT-SPI native registry / window activation / focus / activate / value / availability events round-trip passed

@@ -2164,3 +2164,17 @@ Unicode/主题/历史/保存重开回环保持通过。完整 Debug CTest `1173/
 平台验收检查器 `24/24` 通过，原始失败/成功日志与源码、fixture 二进制哈希见
 [`可用状态事件复查`](platform-evidence/designer-atspi-state-events-2026-10-12.json)。
 这些隔离 D-Bus fixture 没有启动 Orca，不升级为完整人工桌面 record。
+
+`44a5ef7` 的三平台 hosted CI 已全部通过：Windows `7/7`（含 `a11y-bridge`）、
+Linux `7/7`、macOS `6/6`；完整运行归属见
+[`状态通知 CI`](platform-evidence/designer-ci-2026-10-12-44a5ef7.json)。
+
+§4.18 大纲选择的后续 review 复现 selected 状态仅可查询、未广播变化的问题。
+`abc4872` 补齐稳定节点的 `state-changed:selected`；原生 libatspi 回归验证激活 Text
+时 selected=1，再激活 ThemeScope 时旧 Text selected=0、新 ThemeScope selected=1，
+客户端状态回读一致，文字编辑不会重复发送未变化的选择通知。Unicode/主题/历史与保存
+重开回环保持通过，完整 Debug CTest `1173/1173`（119.35s）、验收检查器 `24/24`。
+通用回归并发时曾在应用总线注册前失败，单独重跑成功；两份日志均保留且不推断具体原因。
+失败/成功协议日志与源码、二进制哈希见
+[`大纲选择事件证据`](platform-evidence/designer-atspi-selection-events-2026-10-12.json)。
+这些结果仍不替代实际 Orca 语音、IME 或完整现场记录。

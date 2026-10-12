@@ -1,0 +1,152 @@
+{
+  "kind": "designer_atspi_availability_ci",
+  "source_commit": "44a5ef7a0950ebd6d3f1f4c5178ecaba0eda2c1e",
+  "recorded_at": "2026-10-12T06:20:28.589554+00:00",
+  "purpose": "Validate the runtime AT-SPI enabled/sensitive/focusable notifications and retain the Windows Designer UIA gate coverage.",
+  "runs": {
+    "windows": {
+      "id": 38210367423,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38210367423",
+      "source_commit": "44a5ef7a0950ebd6d3f1f4c5178ecaba0eda2c1e",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": "7/7 successful",
+      "job_results": [
+        {
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "a11y-bridge",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-raster",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "observed_page_sha256": "41d5483cde61685045c86f0b475396282794073d7fcfd01bea8c59ee201c75b8"
+    },
+    "linux": {
+      "id": 38210367485,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38210367485",
+      "source_commit": "44a5ef7a0950ebd6d3f1f4c5178ecaba0eda2c1e",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": "7/7 successful",
+      "job_results": [
+        {
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "mobile-core",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "observed_page_sha256": "76eed6f152335b1b6a21459889073f9d2ba193e21ea2304f1e8273e2afddf9f8"
+    },
+    "macos": {
+      "id": 38210367460,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38210367460",
+      "source_commit": "44a5ef7a0950ebd6d3f1f4c5178ecaba0eda2c1e",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": "6/6 successful",
+      "job_results": [
+        {
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "mobile-core",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "observed_page_sha256": "a5cd27655845536f3c934d90e7b4ca03e65f62b0e19e5613b2d9aab65bdf8068"
+    }
+  },
+  "local": {
+    "ctest": "1173/1173 passed (119.43 seconds)",
+    "platform_acceptance_tests": "24/24 passed",
+    "native_atspi_availability": "passed",
+    "native_designer_loop": "passed"
+  },
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted CI and native protocol fixtures do not replace operator-signed Windows Narrator/NVDA, macOS VoiceOver, real IME or complete desktop record.json.",
+    "Historical mobile-core jobs are included only to account for existing workflows and do not authorize or prove mobile functionality."
+  ]
+}

@@ -1,0 +1,15 @@
+dbus-daemon[98007]: [session uid=1000 pid=98007 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=98008 comm="/usr/bin/python3 -B tests/designer_atspi_live_test" label="unconfined")
+dbus-daemon[98007]: [session uid=1000 pid=98007 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[98017]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=98008 comm="/usr/bin/python3 -B tests/designer_atspi_live_test" label="unconfined")
+dbus-daemon[98017]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+Traceback (most recent call last):
+  File "/home/niq/prj/lumen/tests/designer_atspi_live_tests.py", line 190, in <module>
+    main()
+    ~~~~^^
+  File "/home/niq/prj/lumen/tests/designer_atspi_live_tests.py", line 82, in main
+    eventually(lambda: selection_changed(item, True))
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/niq/prj/lumen/tests/designer_atspi_live_tests.py", line 38, in eventually
+    raise AssertionError("Designer AT-SPI round-trip timed out")
+AssertionError: Designer AT-SPI round-trip timed out
