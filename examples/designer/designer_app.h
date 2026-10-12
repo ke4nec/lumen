@@ -277,6 +277,13 @@ class DesignerApp {
         References,
     };
 
+    // 左面板版本 C（designer-leftpanel-redesign.html）：页签在
+    // Outline（文档树）与 Toolbox（分组节点列表）间切换整个面板视图。
+    enum class LeftPanelTab {
+        Outline,
+        Toolbox,
+    };
+
     enum class PreviewSessionMode {
         Stopped,
         Running,
@@ -338,6 +345,7 @@ class DesignerApp {
     core::VirtualListController diagnosticsController_{};
     std::vector<ReferenceEntry> referenceRows_{};
     CenterTab centerTab_{CenterTab::Canvas};
+    LeftPanelTab leftPanelTab_{LeftPanelTab::Outline};
     PreviewSessionMode previewSessionMode_{PreviewSessionMode::Stopped};
     std::string sourceSnapshot_{};
     std::size_t sourceFocusLine_{0};

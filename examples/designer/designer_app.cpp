@@ -48,6 +48,37 @@ std::vector<const dsl::NodeSchema*> designerToolboxSchemas() {
     return result;
 }
 
+// 左面板版本 C（design/designer-leftpanel-redesign.html）：工具箱分 7 组
+// 展示，口径对齐 examples/gallery 的 nav taxonomy。分组只是展示映射——
+// schema 注册表顺序与 designer:toolbox:type 命令不变；测试断言分类法
+// 与注册表互相覆盖（见 designer_app_tests "designer toolbox groups
+// cover the schema registry"）。
+struct ToolboxGroupSpec {
+    const char* label;
+    core::IconId icon;
+    std::vector<const char*> types;
+};
+
+const std::vector<ToolboxGroupSpec>& designerToolboxGroups() {
+    static const std::vector<ToolboxGroupSpec> groups = {
+        {"Layout", core::IconId::NavLayout,
+         {"Container", "Row", "Column", "Stack", "Grid", "ScrollView",
+          "Splitter"}},
+        {"Content", core::IconId::Content, {"Text", "Image", "Icon"}},
+        {"Input", core::IconId::NavInputs,
+         {"Button", "TextField", "Checkbox", "Switch", "Radio", "Slider",
+          "Spin", "ComboBox", "ColorPicker", "Dropdown"}},
+        {"Collection", core::IconId::NavLists,
+         {"ListView", "VirtualList", "List", "Tree", "TreeList", "DataGrid",
+          "Tabs"}},
+        {"Feedback", core::IconId::NavFeedback, {"ProgressBar", "Tooltip"}},
+        {"Component", core::IconId::NavMenus,
+         {"Menu", "ToolBar", "StatusBar", "DialogHost", "Navigator", "Form"}},
+        {"Scope", core::IconId::Scope, {"FocusScope", "ThemeScope"}},
+    };
+    return groups;
+}
+
 void prefixWidgetKeys(core::Widget& widget, std::string_view prefix) {
     if (!widget.key.empty()) widget.key = std::string{prefix} + widget.key;
     for (auto& child : widget.children) prefixWidgetKeys(child, prefix);
@@ -3642,6 +3673,10 @@ std::string DesignerApp::formatDiagnostic(
 }
 
 core::Widget DesignerApp::buildToolbar() {
+    // 工具栏重设计（design/designer-toolbar-redesign.html 版本 A，2026-10）：
+    // 按使用频率分五组——编辑 | 运行 | 文件 | 预览环境 | 缩放；高频命令带
+    // 文字，低频项图标 + semanticsLabel；Chrome 变体（rest 幽灵），Run 为
+    // 唯一 Filled 主行动点。命令 id 与快捷键（registerCommands）不变。
     const auto& theme = shell_.theme();
     auto scaleLabel = [](const char* name, float scale) {
         std::ostringstream stream;
@@ -3649,188 +3684,295 @@ core::Widget DesignerApp::buildToolbar() {
                << "%";
         return stream.str();
     };
-    auto themeButton = core::makeButton(
-        darkMode_ ? "Light" : "Dark", theme.typography.label, {}, 0.0F,
-        "designer-theme", 88.0F, std::nullopt, "designer:theme");
-    auto densityButton = core::makeButton(
-        "Density", theme.typography.label, {}, 0.0F, "designer-density",
-        96.0F, std::nullopt, "designer:density");
-    auto dpiButton = core::makeButton(
-        scaleLabel("DPI", deviceScale_), theme.typography.label, {}, 0.0F,
-        "designer-dpi", 88.0F, std::nullopt, "designer:dpi");
-    auto fontButton = core::makeButton(
-        scaleLabel("Font", fontScale_), theme.typography.label, {}, 0.0F,
-        "designer-font-scale", 96.0F, std::nullopt, "designer:font-scale");
-    auto contrastButton = core::makeButton(
-        highContrast_ ? "Contrast on" : "Contrast off", theme.typography.label,
-        {}, 0.0F, "designer-contrast", 112.0F, std::nullopt,
-        "designer:contrast");
-    auto previewButton = core::makeButton(
-        [&] {
-            switch (previewStateMode_) {
-                case PreviewStateMode::None:
-                    return "Hover state";
-                case PreviewStateMode::Hovered:
-                    return "Press state";
-                case PreviewStateMode::Pressed:
-                    return "Focus state";
-                case PreviewStateMode::Focused:
-                    return "Clear state";
-            }
-            return "Hover state";
-        }(),
-        theme.typography.label, {}, 0.0F, "designer-preview-state", 128.0F,
-        std::nullopt, "designer:preview-state");
-    auto guidesButton = core::withLeadingIcon(
-        core::makeButton(canvasGuidesEnabled_ ? "Guides on" : "Guides off",
-                         theme.typography.label, {}, 0.0F,
-                         "designer-canvas-guides", 104.0F, std::nullopt,
-                         "designer:canvas-guides"),
-        core::IconId::Grid);
-    guidesButton.selected = canvasGuidesEnabled_;
+    auto percentLabel = [](float scale) {
+        std::ostringstream stream;
+        stream << static_cast<int>(scale * 100.0F + 0.5F) << "%";
+        return stream.str();
+    };
+    // 工具栏文本用 caption 档（12px）+ 收紧内距 8px：22 项全可见的前提
+    // 下对齐设计稿的紧凑度量（值经 token 与 StyleOverrides 表达，不新造
+    // 常量；对照 design/designer-toolbar-redesign.html 版本 A）。
+    const auto command = [&theme](std::string label, core::IconId icon,
+                                  std::string key, std::string handler) {
+        auto button = core::withVariant(
+            core::withLeadingIcon(
+                core::makeButton(std::move(label), theme.typography.caption, {},
+                                 0.0F, std::move(key), std::nullopt,
+                                 std::nullopt, std::move(handler)),
+                icon),
+            core::ButtonVariant::Chrome);
+        button.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
+        return button;
+    };
+    const auto iconCommand = [&theme](core::IconId icon, std::string key,
+                                      std::string semantics,
+                                      std::string handler) {
+        auto button = core::withVariant(
+            core::withLeadingIcon(
+                core::makeButton({}, theme.typography.caption, {}, 0.0F,
+                                 std::move(key), std::nullopt, std::nullopt,
+                                 std::move(handler)),
+                icon),
+            core::ButtonVariant::Chrome);
+        button.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
+        button.semanticsLabel = std::move(semantics);
+        return button;
+    };
+    const auto separator = [&theme] {
+        auto divider = core::makeContainerLeaf(
+            1.0F, 22.0F, {}, {}, theme.colors.borderDefault,
+            "designer-toolbar-separator");
+        divider.excludeFromFocus = true;
+        divider.excludeFromSemantics = true;
+        return divider;
+    };
+    auto spacer = core::makeContainerLeaf(
+        std::nullopt, std::nullopt, {}, {}, core::Color::transparent(),
+        "designer-toolbar-spacer");
+    spacer.flex = 1.0F;
+    spacer.excludeFromFocus = true;
+    spacer.excludeFromSemantics = true;
+
+    // ① 编辑（高频）：节点插入/复制/删除与排序。
+    auto editGroup = core::makeRow(
+        {command("Add Text", core::IconId::TextAdd, "designer-add-text",
+                 "designer:add-text"),
+         command("Duplicate", core::IconId::Duplicate, "designer-duplicate",
+                 "designer:duplicate"),
+         command("Delete", core::IconId::Trash, "designer-remove",
+                 "designer:remove"),
+         iconCommand(core::IconId::ArrowUp, "designer-move-up", "Move up",
+                     "designer:move-up"),
+         iconCommand(core::IconId::ArrowDown, "designer-move-down",
+                     "Move down", "designer:move-down")},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+        1.0F);
+    // ② 运行（高频）：Run 唯一 Filled；Debug/Stop 为 chrome 件。
     auto runButton = core::withLeadingIcon(
-        core::makeButton("Run", theme.typography.label, {}, 0.0F,
-                         "designer-run", 72.0F, std::nullopt,
+        core::makeButton("Run", theme.typography.caption, {}, 0.0F,
+                         "designer-run", std::nullopt, std::nullopt,
                          "designer:run"),
         core::IconId::Play);
-    auto debugButton = core::withLeadingIcon(
-        core::makeButton("Debug", theme.typography.label, {}, 0.0F,
-                         "designer-debug", 88.0F, std::nullopt,
-                         "designer:debug"),
-        core::IconId::Grid);
-    auto stopButton = core::makeButton(
-        "Stop", theme.typography.label, {}, 0.0F, "designer-stop", 72.0F,
-        std::nullopt, "designer:stop");
+    runButton.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
     runButton.selected = previewSessionMode_ == PreviewSessionMode::Running;
-    debugButton.selected =
-        previewSessionMode_ == PreviewSessionMode::Debugging;
+    auto debugButton = command("Debug", core::IconId::Bug, "designer-debug",
+                               "designer:debug");
+    debugButton.selected = previewSessionMode_ == PreviewSessionMode::Debugging;
+    auto stopButton = iconCommand(core::IconId::Stop, "designer-stop", "Stop",
+                                  "designer:stop");
     stopButton.enabled = previewSessionMode_ != PreviewSessionMode::Stopped;
-    auto addTextButton = core::makeButton(
-        "Add Text", theme.typography.label, {}, 0.0F, "designer-add-text",
-        96.0F, std::nullopt, "designer:add-text");
-    auto duplicateButton = core::makeButton(
-        "Duplicate", theme.typography.label, {}, 0.0F,
-        "designer-duplicate", 104.0F, std::nullopt, "designer:duplicate");
-    auto removeButton = core::makeButton(
-        "Delete", theme.typography.label, {}, 0.0F, "designer-remove", 80.0F,
-        std::nullopt, "designer:remove");
-    auto moveUpButton = core::makeButton(
-        "Move up", theme.typography.label, {}, 0.0F, "designer-move-up",
-        88.0F, std::nullopt, "designer:move-up");
-    auto moveDownButton = core::makeButton(
-        "Move down", theme.typography.label, {}, 0.0F, "designer-move-down",
-        96.0F, std::nullopt, "designer:move-down");
-    auto newProjectButton = core::withLeadingIcon(
-        core::makeButton("New project", theme.typography.label, {}, 0.0F,
-                         "designer-new-project", 116.0F, std::nullopt,
-                         "designer:new-project"),
-        core::IconId::Plus);
-    auto openButton = core::withLeadingIcon(
-        core::makeButton("Open", theme.typography.label, {}, 0.0F,
-                         "designer-open", 78.0F, std::nullopt,
-                         "designer:open"),
-        core::IconId::Folder);
-    auto saveButton = core::withLeadingIcon(
-        core::makeButton("Save", theme.typography.label, {}, 0.0F,
-                         "designer-save", 78.0F, std::nullopt,
-                         "designer:save"),
-        core::IconId::Document);
-    auto saveAsButton = core::withLeadingIcon(
-        core::makeButton("Save as", theme.typography.label, {}, 0.0F,
-                         "designer-save-as", 92.0F, std::nullopt,
-                         "designer:save-as"),
-        core::IconId::Document);
-    auto zoomOutButton = core::makeButton(
-        "Zoom -", theme.typography.label, {}, 0.0F, "designer-zoom-out",
-        84.0F, std::nullopt, "designer:zoom-out");
-    zoomOutButton.excludeFromFocus = true;
-    auto zoomInButton = core::makeButton(
-        "Zoom +", theme.typography.label, {}, 0.0F, "designer-zoom-in",
-        84.0F, std::nullopt, "designer:zoom-in");
-    zoomInButton.excludeFromFocus = true;
-    auto zoomResetButton = core::makeButton(
-        scaleLabel("Zoom", canvasTransform_.zoom()), theme.typography.label,
-        {}, 0.0F, "designer-zoom-reset", 96.0F, std::nullopt,
-        "designer:zoom-reset");
-    zoomResetButton.excludeFromFocus = true;
-    auto title = core::makeText("Lumen Designer  /  D3 Editor",
-                                theme.typography.title, {}, 1.0F,
-                                "designer-title");
-    auto toolbar = core::makeRow(
-        {std::move(title), std::move(themeButton), std::move(densityButton),
-         std::move(dpiButton), std::move(fontButton),
-         std::move(contrastButton), std::move(previewButton),
-         std::move(guidesButton),
-         std::move(runButton), std::move(debugButton), std::move(stopButton),
-         std::move(addTextButton), std::move(duplicateButton),
-         std::move(removeButton), std::move(moveUpButton),
-         std::move(moveDownButton), std::move(newProjectButton),
-         std::move(openButton),
-         std::move(saveButton), std::move(saveAsButton),
-         std::move(zoomOutButton), std::move(zoomInButton),
-         std::move(zoomResetButton)},
+    auto runGroup = core::makeRow(
+        {std::move(runButton), std::move(debugButton), std::move(stopButton)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-        8.0F, core::EdgeInsets::symmetric(16.0F, 8.0F), {}, "designer-toolbar",
+        1.0F);
+    // ③ 文件（中频）：Open/Save 带文字，另存/新建工程图标化。
+    auto fileGroup = core::makeRow(
+        {command("Open", core::IconId::Folder, "designer-open",
+                 "designer:open"),
+         command("Save", core::IconId::Save, "designer-save",
+                 "designer:save"),
+         iconCommand(core::IconId::SaveAs, "designer-save-as", "Save as",
+                     "designer:save-as"),
+         iconCommand(core::IconId::FolderPlus, "designer-new-project",
+                     "New project", "designer:new-project")},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+        1.0F);
+    // ④ 预览环境（低频，全图标化；当前值进 semanticsLabel）。
+    auto themeButton = iconCommand(core::IconId::Moon, "designer-theme",
+                                   darkMode_ ? "Light" : "Dark",
+                                   "designer:theme");
+    auto densityButton = iconCommand(core::IconId::Density, "designer-density",
+                                     "Density", "designer:density");
+    auto dpiButton = iconCommand(core::IconId::DeviceScale, "designer-dpi",
+                                 scaleLabel("DPI", deviceScale_),
+                                 "designer:dpi");
+    auto fontButton =
+        iconCommand(core::IconId::Font, "designer-font-scale",
+                    scaleLabel("Font", fontScale_), "designer:font-scale");
+    auto contrastButton = iconCommand(
+        core::IconId::Contrast, "designer-contrast",
+        highContrast_ ? "Contrast on" : "Contrast off", "designer:contrast");
+    auto previewStateLabel = [&] {
+        switch (previewStateMode_) {
+            case PreviewStateMode::None:
+                return "Hover state";
+            case PreviewStateMode::Hovered:
+                return "Press state";
+            case PreviewStateMode::Pressed:
+                return "Focus state";
+            case PreviewStateMode::Focused:
+                return "Clear state";
+        }
+        return "Hover state";
+    }();
+    auto previewStateButton = iconCommand(
+        core::IconId::Cursor, "designer-preview-state", previewStateLabel,
+        "designer:preview-state");
+    auto guidesButton = iconCommand(
+        core::IconId::Grid, "designer-canvas-guides",
+        canvasGuidesEnabled_ ? "Guides on" : "Guides off",
+        "designer:canvas-guides");
+    // Chrome 变体的 checked 才有持久底（accentContainer）；selected 对普通
+    // 按钮仅语义无外观（resolver.cpp resolveButton）。
+    guidesButton.checked = canvasGuidesEnabled_;
+    auto envGroup = core::makeRow(
+        {std::move(themeButton), std::move(densityButton),
+         std::move(dpiButton), std::move(fontButton),
+         std::move(contrastButton), std::move(previewStateButton),
+         std::move(guidesButton)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+        1.0F);
+    // ⑤ 缩放（贴右；维持 excludeFromFocus 的既有焦点策略）。
+    auto zoomOutButton = iconCommand(core::IconId::ZoomOut, "designer-zoom-out",
+                                     "Zoom -", "designer:zoom-out");
+    zoomOutButton.excludeFromFocus = true;
+    auto zoomInButton = iconCommand(core::IconId::ZoomIn, "designer-zoom-in",
+                                    "Zoom +", "designer:zoom-in");
+    zoomInButton.excludeFromFocus = true;
+    auto zoomResetButton = core::withVariant(
+        core::makeButton(percentLabel(canvasTransform_.zoom()),
+                         theme.typography.caption, {}, 0.0F,
+                         "designer-zoom-reset", std::nullopt, std::nullopt,
+                         "designer:zoom-reset"),
+        core::ButtonVariant::Chrome);
+    zoomResetButton.styleOverrides.padding =
+        core::EdgeInsets::symmetric(8.0F, 6.0F);
+    zoomResetButton.semanticsLabel =
+        scaleLabel("Zoom", canvasTransform_.zoom());
+    zoomResetButton.excludeFromFocus = true;
+    auto zoomGroup = core::makeRow(
+        {std::move(zoomOutButton), std::move(zoomResetButton),
+         std::move(zoomInButton)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+        1.0F);
+
+    auto toolbar = core::makeRow(
+        {std::move(editGroup), separator(), std::move(runGroup), separator(),
+         std::move(fileGroup), separator(), std::move(envGroup),
+         std::move(spacer), std::move(zoomGroup)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+        6.0F, core::EdgeInsets::symmetric(12.0F, 8.0F), {}, "designer-toolbar",
         std::nullopt, 56.0F);
     toolbar.color = theme.colors.surface;
     return toolbar;
 }
 
 core::Widget DesignerApp::buildToolboxPanel() {
+    // 左面板版本 C 的工具箱视图：7 组全展开的整行列表（组头 = 图标 +
+    // 名称 + 数量；行 = 组图标 + 类型名，Chrome 幽灵 + 左对齐）。整行宽
+    // 216px 无长名截断；点击/拖放仍走 designer:toolbox:type。行尾拖拽点
+    // 需 Button 之外的尾随图标槽，属本版已知偏差（交互不受影响）。
     const auto& theme = shell_.theme();
-    const auto schemas = designerToolboxSchemas();
     std::vector<core::Widget> rows;
-    for (std::size_t index = 0; index < schemas.size(); index += 3) {
-        std::vector<core::Widget> buttons;
-        for (std::size_t offset = 0;
-             offset < 3 && index + offset < schemas.size();
-             ++offset) {
-            const auto* schema = schemas[index + offset];
-            buttons.push_back(core::makeButton(
-                schema->type, theme.typography.caption, {}, 1.0F,
-                "designer-toolbox:" + schema->type, std::nullopt,
-                std::nullopt, "designer:toolbox:" + schema->type));
-        }
+    for (const auto& group : designerToolboxGroups()) {
+        auto groupIcon =
+            core::makeIcon(group.icon,
+                           "designer-toolbox-group:" + std::string(group.label),
+                           14.0F, 14.0F);
+        groupIcon.styleOverrides.foreground = theme.colors.contentSecondary;
+        groupIcon.excludeFromFocus = true;
+        auto spacer = core::makeContainerLeaf(
+            std::nullopt, std::nullopt, {}, {}, core::Color::transparent(), {});
+        spacer.flex = 1.0F;
+        spacer.excludeFromFocus = true;
+        spacer.excludeFromSemantics = true;
         rows.push_back(core::makeRow(
-            std::move(buttons), core::MainAxisAlignment::Start,
-            core::CrossAxisAlignment::Stretch, 4.0F));
+            {std::move(groupIcon),
+             core::makeText(group.label, theme.typography.caption, {}, 0.0F,
+                            "designer-toolbox-group-label:" +
+                                std::string(group.label)),
+             std::move(spacer),
+             core::makeText(std::to_string(group.types.size()),
+                            theme.typography.caption, {}, 0.0F,
+                            "designer-toolbox-group-count:" +
+                                std::string(group.label))},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            6.0F, {}, {}, "designer-toolbox-group-row:" +
+                              std::string(group.label)));
+        for (const char* type : group.types) {
+            auto row = core::withVariant(
+                core::makeButton(
+                    type, theme.typography.caption, {}, 0.0F,
+                    "designer-toolbox:" + std::string(type), std::nullopt,
+                    std::nullopt, "designer:toolbox:" + std::string(type)),
+                core::ButtonVariant::Chrome);
+            row.icon = group.icon;
+            row.iconLeading = true;
+            row.alignContentStart = true;
+            row.styleOverrides.padding = core::EdgeInsets::symmetric(6.0F, 4.0F);
+            rows.push_back(std::move(row));
+        }
     }
-    auto heading = core::makeText("Toolbox", theme.typography.label, {}, 0.0F,
-                                  "designer-toolbox-heading");
-    auto toolboxBody = core::makeColumn(
-        std::move(rows), core::MainAxisAlignment::Start,
-        core::CrossAxisAlignment::Stretch, 4.0F);
-    auto toolboxScroll = core::makeScrollView(
-        std::move(toolboxBody), "designer-toolbox-scroll", std::nullopt,
-        240.0F, {});
-    toolboxScroll.scrollAxis = core::ScrollAxis::Vertical;
-    toolboxScroll.showScrollbar = true;
-    return core::makeColumn(
-        {std::move(heading), std::move(toolboxScroll)},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 6.0F,
-        {}, {}, "designer-toolbox");
+    auto body = core::makeColumn(std::move(rows),
+                                 core::MainAxisAlignment::Start,
+                                 core::CrossAxisAlignment::Stretch, 2.0F);
+    auto scroll = core::makeScrollView(std::move(body),
+                                       "designer-toolbox-scroll");
+    scroll.scrollAxis = core::ScrollAxis::Vertical;
+    scroll.showScrollbar = true;
+    return scroll;
 }
 
 core::Widget DesignerApp::buildProjectPanel() {
+    // 左面板版本 C：Project 收成底部状态行（图标 + 名称/No project +
+    // 新建/打开动作）；加载工程后在状态行下保留紧凑的页面/资源区，
+    // designer-project-* 键名不变（测试与语义树兼容）。
     const auto& theme = shell_.theme();
-    auto heading = core::makeText("Project", theme.typography.label, {}, 0.0F,
-                                  "designer-project-heading");
-    std::vector<core::Widget> rows;
-    if (!project_.has_value()) {
-        rows.push_back(core::makeText("No project", theme.typography.caption, {},
-                                      0.0F, "designer-project-empty"));
-    } else {
+    auto statusIcon = core::makeIcon(core::IconId::Folder,
+                                     "designer-project-status-icon", 15.0F,
+                                     15.0F);
+    statusIcon.styleOverrides.foreground = theme.colors.contentSecondary;
+    statusIcon.excludeFromFocus = true;
+    const std::string statusText = [&] {
+        if (!project_.has_value()) return std::string{"No project"};
+        if (!projectFile_.empty()) {
+            return std::filesystem::path(projectFile_).filename().string();
+        }
+        return std::string{"Project"};
+    }();
+    auto newProject = core::withVariant(
+        core::makeButton({}, theme.typography.caption, {}, 0.0F,
+                         "designer-project-new", std::nullopt, std::nullopt,
+                         "designer:new-project"),
+        core::ButtonVariant::Chrome);
+    newProject.icon = core::IconId::FolderPlus;
+    newProject.styleOverrides.padding = core::EdgeInsets::symmetric(6.0F, 4.0F);
+    newProject.semanticsLabel = "New project";
+    auto openProject = core::withVariant(
+        core::makeButton({}, theme.typography.caption, {}, 0.0F,
+                         "designer-project-open", std::nullopt, std::nullopt,
+                         "designer:open"),
+        core::ButtonVariant::Chrome);
+    openProject.icon = core::IconId::Folder;
+    openProject.styleOverrides.padding = core::EdgeInsets::symmetric(6.0F, 4.0F);
+    openProject.semanticsLabel = "Open";
+    auto statusRow = core::makeRow(
+        {std::move(statusIcon),
+         core::makeText(statusText, theme.typography.caption, {}, 0.0F,
+                        "designer-project-status"),
+         std::move(newProject), std::move(openProject)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 4.0F,
+        {}, {}, "designer-project-status-row");
+
+    std::vector<core::Widget> sections{std::move(statusRow)};
+    if (project_.has_value()) {
+        std::vector<core::Widget> rows;
         for (const auto& page : project_->pages) {
             const std::string handler = "designer:project-page:" + page.documentId;
             shell_.handlers()[handler] = [this, id = page.documentId] {
                 (void)switchProjectDocument(id);
             };
-            auto row = core::makeButton(
-                page.pageName.empty() ? page.documentId : page.pageName,
-                theme.typography.caption, {}, 0.0F,
-                "designer-project-page:" + page.documentId, std::nullopt,
-                std::nullopt, handler);
-            row.selected = page.documentId == activeProjectDocumentId_;
+            auto row = core::withVariant(
+                core::makeButton(
+                    page.pageName.empty() ? page.documentId : page.pageName,
+                    theme.typography.caption, {}, 0.0F,
+                    "designer-project-page:" + page.documentId, std::nullopt,
+                    std::nullopt, handler),
+                core::ButtonVariant::Chrome);
+            row.alignContentStart = true;
+            row.checked = page.documentId == activeProjectDocumentId_;
+            row.styleOverrides.padding =
+                core::EdgeInsets::symmetric(6.0F, 4.0F);
             rows.push_back(std::move(row));
         }
         if (!project_->resources.empty()) {
@@ -3850,27 +3992,57 @@ core::Widget DesignerApp::buildProjectPanel() {
                     "designer-project-resource:" + std::to_string(index)));
             }
         }
+        auto body = core::makeColumn(std::move(rows),
+                                     core::MainAxisAlignment::Start,
+                                     core::CrossAxisAlignment::Stretch, 2.0F);
+        auto scroll = core::makeScrollView(std::move(body),
+                                           "designer-project-scroll",
+                                           std::nullopt, 128.0F, {});
+        scroll.scrollAxis = core::ScrollAxis::Vertical;
+        sections.push_back(std::move(scroll));
     }
-    auto body = core::makeColumn(std::move(rows), core::MainAxisAlignment::Start,
-                                 core::CrossAxisAlignment::Stretch, 4.0F);
-    return core::makeColumn({std::move(heading), std::move(body)},
+    return core::makeColumn(std::move(sections),
                             core::MainAxisAlignment::Start,
-                            core::CrossAxisAlignment::Stretch, 6.0F, {}, {},
+                            core::CrossAxisAlignment::Stretch, 4.0F, {}, {},
                             "designer-project-panel");
 }
 
 core::Widget DesignerApp::buildOutlinePanel() {
+    // 左面板版本 C（design/designer-leftpanel-redesign.html）：页签
+    // Outline ⇄ Toolbox 切换整栏视图；默认 Outline（文档结构是常驻上下
+    // 文）；Project 压缩为底部状态行。
     const auto& theme = shell_.theme();
-    auto heading = core::makeText("Outline", theme.typography.label, {}, 0.0F,
-                                  "designer-outline-heading");
-    auto tree = core::makeTree(&outlineController_, "designer-outline-view",
-                               std::nullopt, std::nullopt);
-    tree.flex = 1.0F;
+    shell_.handlers()["designer:lefttab-outline"] = [this] {
+        leftPanelTab_ = LeftPanelTab::Outline;
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:lefttab-toolbox"] = [this] {
+        leftPanelTab_ = LeftPanelTab::Toolbox;
+        shell_.markDirty();
+    };
+    auto outlineTab = core::makeButton(
+        "Outline", theme.typography.label, {}, 0.0F, "designer-tab-outline",
+        std::nullopt, std::nullopt, "designer:lefttab-outline");
+    outlineTab.selected = leftPanelTab_ == LeftPanelTab::Outline;
+    auto toolboxTab = core::makeButton(
+        "Toolbox", theme.typography.label, {}, 0.0F, "designer-tab-toolbox",
+        std::nullopt, std::nullopt, "designer:lefttab-toolbox");
+    toolboxTab.selected = leftPanelTab_ == LeftPanelTab::Toolbox;
+    auto tabs = core::makeTabs({std::move(outlineTab), std::move(toolboxTab)},
+                               "designer-left-tabs");
+
+    core::Widget view;
+    if (leftPanelTab_ == LeftPanelTab::Toolbox) {
+        view = buildToolboxPanel();
+    } else {
+        view = core::makeTree(&outlineController_, "designer-outline-view",
+                              std::nullopt, std::nullopt);
+    }
+    view.flex = 1.0F;
     auto panel = core::makeColumn(
-        {buildProjectPanel(), buildToolboxPanel(), std::move(heading),
-         std::move(tree)},
+        {std::move(tabs), std::move(view), buildProjectPanel()},
         core::MainAxisAlignment::Start,
-        core::CrossAxisAlignment::Stretch, 8.0F,
+        core::CrossAxisAlignment::Stretch, 6.0F,
         core::EdgeInsets::all(12.0F), {}, "designer-outline-panel", 240.0F);
     panel.color = theme.colors.surfaceSunken;
     return panel;

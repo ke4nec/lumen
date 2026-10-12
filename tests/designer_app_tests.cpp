@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +20,7 @@
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/render_node.h"
+#include "stb_image_write.h"
 #include "lumen/core/splitter.h"
 #include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_codec.h"
@@ -47,6 +49,15 @@ void writeRawRgba(const std::filesystem::path& path) {
         220, 80, 60, 255, 220, 80, 60, 255};
     file.write(reinterpret_cast<const char*>(pixels.data()),
                static_cast<std::streamsize>(pixels.size()));
+}
+
+
+// 左面板版本 C：工具箱行只在 Toolbox 视图（默认 Outline）。需要工具箱
+// 按钮的用例在首次渲染后调用此助手切换视图（leftPanelTab_ 为成员态，
+// 后续重建保持该视图）。
+void showLeftToolbox(lumen::designer_app::DesignerApp& app) {
+    app.shell().handlers().at("designer:lefttab-toolbox")();
+    (void)app.shell().renderFrame();
 }
 
 const lumen::dsl::DesignNode* findDesignNodeById(
@@ -211,6 +222,183 @@ TEST_CASE("designer app exposes the D2 shell and semantic controls",
     REQUIRE(app.workbench().selection().primary.has_value());
 }
 
+TEST_CASE("designer toolbar groups commands and fits the viewport",
+          "[designer][d2][app]") {
+    // 工具栏重设计版本 A（design/designer-toolbar-redesign.html）：五组
+    // 命令 + 分隔线 + 弹性占位把缩放组推到右缘；1280 视口内不裁剪。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    // 可选取证：默认（Outline 视图）帧导出，与文末 Toolbox 视图导出
+    //（LUMEN_TOOLBAR_PNG）互补，供 design/ mockup 并排比对。
+    if (const char* leftPath = std::getenv("LUMEN_LEFT_PNG")) {
+        const auto& pixels = app.shell().pixels();
+        std::printf("left png %s (%dx%d)\n", leftPath, pixels.width,
+                    pixels.height);
+        if (pixels.width > 0 && pixels.height > 0) {
+            (void)stbi_write_png(leftPath, pixels.width, pixels.height, 4,
+                                 pixels.rgba.data(),
+                                 static_cast<int>(pixels.width) * 4);
+        }
+    }
+
+    // 左面板版本 C：默认 Outline 视图时工具箱不在树上；切到 Toolbox
+    // 视图后整行列表落在面板内容盒内（整行宽 = 内容宽，无长名截断）。
+    // 坐标取面板相对（子 offset 链不含面板自身 offset）。
+    {
+        app.shell().handlers().at("designer:lefttab-toolbox")();
+        (void)app.shell().renderFrame();
+        const auto* panel =
+            findNodeByKey(app.shell().root(), "designer-outline-panel");
+        REQUIRE(panel != nullptr);
+        std::vector<std::pair<std::string, float>> toolboxButtons;
+        std::function<void(const lumen::core::RenderNode&, float)> probe =
+            [&](const lumen::core::RenderNode& node, float left) {
+                if (node.type == lumen::core::WidgetType::Button &&
+                    node.key.rfind("designer-toolbox:", 0) == 0) {
+                    toolboxButtons.emplace_back(node.key,
+                                                left + node.size.width);
+                }
+                for (const auto& child : node.children) {
+                    probe(child, left + child.offset.x);
+                }
+            };
+        for (const auto& child : panel->children) probe(child, 0.0F);
+        REQUIRE(toolboxButtons.size() == 37);  // schema 注册表全量
+        const float contentRight =
+            panel->size.width - panel->padding.right;
+        for (const auto& [key, right] : toolboxButtons) {
+            INFO(key << " right=" << right);
+            CHECK(right <= Catch::Approx(contentRight).margin(0.5F));
+        }
+    }
+
+    const auto* toolbar =
+        findNodeByKey(app.shell().root(), "designer-toolbar");
+    REQUIRE(toolbar != nullptr);
+    CHECK(toolbar->size.width == Catch::Approx(1280.0F));
+    CHECK(toolbar->size.height == Catch::Approx(56.0F));
+
+    struct ToolRow {
+        std::string key;
+        std::string label;
+        float right;
+        float width;
+        float fontSize;
+        lumen::core::Color background;
+    };
+    std::vector<ToolRow> rows;
+    std::size_t separators = 0;
+    std::function<void(const lumen::core::RenderNode&, float, float)> walk =
+        [&](const lumen::core::RenderNode& node, float originX,
+            float originY) {
+            const float x = originX + node.offset.x;
+            const float y = originY + node.offset.y;
+            if (node.type == lumen::core::WidgetType::Button) {
+                const auto* button =
+                    std::get_if<lumen::core::ButtonResolvedStyle>(
+                        &node.style.component);
+                rows.push_back(ToolRow{
+                    node.key,
+                    node.semanticsLabel.empty() ? node.text
+                                                : node.semanticsLabel,
+                    x + node.size.width, node.size.width,
+                    button != nullptr ? button->common.text.fontSize : 0.0F,
+                    button != nullptr
+                        ? button->common.background
+                        : lumen::core::Color::transparent()});
+            }
+            if (node.key == "designer-toolbar-separator") ++separators;
+            for (const auto& child : node.children) walk(child, x, y);
+        };
+    walk(*toolbar, 0.0F, 0.0F);
+
+    const float contentRight = toolbar->size.width - toolbar->padding.right;
+    float maxRight = 0.0F;
+    for (const auto& row : rows) {
+        WARN("toolbar " << row.key << " label='" << row.label << "' right="
+                        << row.right << " width=" << row.width
+                        << " font=" << row.fontSize);
+        maxRight = std::max(maxRight, row.right);
+    }
+    // 缩放组完整可见：右缘不越过内容盒（右 padding 16）。
+    CHECK(maxRight <= Catch::Approx(contentRight).margin(0.5F));
+    // 编辑|运行|文件|环境 组间三条分隔线；缩放组经弹性占位贴右，不设线。
+    CHECK(separators == 3);
+    // Run 是唯一 Filled（accent 底）；其余 chrome 件 rest 透明。
+    const auto& theme = app.shell().theme();
+    std::size_t filled = 0;
+    for (const auto& row : rows) {
+        if (row.background == theme.colors.accent) ++filled;
+    }
+    CHECK(filled == 1);
+    const auto* runButton =
+        findNodeByKey(app.shell().root(), "designer-run");
+    REQUIRE(runButton != nullptr);
+    const auto* runStyle = std::get_if<lumen::core::ButtonResolvedStyle>(
+        &runButton->style.component);
+    REQUIRE(runStyle != nullptr);
+    CHECK(runStyle->common.background == theme.colors.accent);
+    CHECK(runButton->text == "Run");
+
+    // 可选视觉取证：LUMEN_TOOLBAR_PNG=path.png 时导出当前帧，供与
+    // design/ mockup 并排比对（不设则零开销，不参与断言）。
+    if (const char* dumpPath = std::getenv("LUMEN_TOOLBAR_PNG")) {
+        const auto& pixels = app.shell().pixels();
+        std::printf("toolbar png %s (%dx%d)\n", dumpPath, pixels.width,
+                    pixels.height);
+        if (pixels.width > 0 && pixels.height > 0) {
+            // 帧缓冲为 BGRA 的话在此转换；CpuRenderer 输出 RGBA。
+            (void)stbi_write_png(dumpPath, pixels.width, pixels.height, 4,
+                                 pixels.rgba.data(),
+                                 static_cast<int>(pixels.width) * 4);
+        }
+    }
+}
+
+
+TEST_CASE("designer toolbox groups cover the schema registry",
+          "[designer][d2][app]") {
+    // 左面板版本 C：分类法是应用层展示映射——7 组顺序、组计数与
+    // schema 注册表互相覆盖（每个类型恰好出现一次，无遗漏无杜撰）。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    app.shell().handlers().at("designer:lefttab-toolbox")();
+    (void)app.shell().renderFrame();
+
+    std::vector<std::string> groupLabels;
+    std::vector<std::string> typeOrder;
+    std::function<void(const lumen::core::RenderNode&)> walk =
+        [&](const lumen::core::RenderNode& node) {
+            if (node.key.rfind("designer-toolbox-group-label:", 0) == 0) {
+                groupLabels.push_back(node.text);
+            }
+            if (node.type == lumen::core::WidgetType::Button &&
+                node.key.rfind("designer-toolbox:", 0) == 0) {
+                typeOrder.push_back(node.text);
+            }
+            for (const auto& child : node.children) walk(child);
+        };
+    walk(app.shell().root());
+
+    const std::vector<std::string> expectedGroups = {
+        "Layout", "Content", "Input", "Collection", "Feedback", "Component",
+        "Scope"};
+    REQUIRE(groupLabels == expectedGroups);
+
+    // 注册表全量恰好一次。
+    std::set<std::string> seen(typeOrder.begin(), typeOrder.end());
+    REQUIRE(seen.size() == typeOrder.size());
+    for (const auto& schema : lumen::dsl::nodeSchemaRegistry()) {
+        INFO(schema.type);
+        CHECK(seen.contains(schema.type));
+    }
+    CHECK(typeOrder.size() == 37);
+}
+
 TEST_CASE("designer property fields expose stable semantics and set values",
           "[designer][d3][app][a11y]") {
     DesignerApp app;
@@ -306,64 +494,26 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     CHECK(app.shell().theme().metrics.density != beforeDensity);
 
     app.shell().focus().clearFocus();
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey() == "designer-theme");
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey() == "designer-density");
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey() == "designer-dpi");
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey() == "designer-font-scale");
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey() == "designer-contrast");
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey() == "designer-preview-state");
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey() == "designer-canvas-guides");
-    const std::vector<std::string> previewKeys = {"designer-run",
-                                                  "designer-debug"};
-    for (const auto& key : previewKeys) {
+    // 工具栏版本 A 的焦点顺序：编辑 → 运行（Stop 停止态禁用跳过）→
+    // 文件 → 环境；缩放组 excludeFromFocus 不参与 Tab。
+    const std::vector<std::string> toolbarKeys = {
+        "designer-add-text",   "designer-duplicate", "designer-remove",
+        "designer-move-up",    "designer-move-down", "designer-run",
+        "designer-debug",      "designer-open",      "designer-save",
+        "designer-save-as",    "designer-new-project", "designer-theme",
+        "designer-density",    "designer-dpi",       "designer-font-scale",
+        "designer-contrast",   "designer-preview-state",
+        "designer-canvas-guides"};
+    for (const auto& key : toolbarKeys) {
         app.shell().keyDown(Key::Tab);
         CHECK(app.shell().focus().focusedKey() == key);
     }
-    const std::vector<std::string> structureKeys = {
-        "designer-add-text", "designer-duplicate", "designer-remove",
-        "designer-move-up", "designer-move-down"};
-    for (const auto& key : structureKeys) {
-        app.shell().keyDown(Key::Tab);
-        CHECK(app.shell().focus().focusedKey() == key);
-    }
-    const std::vector<std::string> fileKeys = {
-        "designer-new-project", "designer-open", "designer-save",
-        "designer-save-as"};
-    for (const auto& key : fileKeys) {
-        app.shell().keyDown(Key::Tab);
-        CHECK(app.shell().focus().focusedKey() == key);
-    }
-    const std::vector<std::string> toolboxKeys = {
-        "designer-toolbox:Container", "designer-toolbox:Row",
-        "designer-toolbox:Column",    "designer-toolbox:Stack",
-        "designer-toolbox:Text",      "designer-toolbox:Button",
-        "designer-toolbox:TextField", "designer-toolbox:ScrollView",
-        "designer-toolbox:ListView",  "designer-toolbox:Checkbox",
-        "designer-toolbox:Switch",    "designer-toolbox:FocusScope",
-        "designer-toolbox:Grid",      "designer-toolbox:Image",
-        "designer-toolbox:Icon",      "designer-toolbox:Slider",
-        "designer-toolbox:ProgressBar", "designer-toolbox:Radio",
-        "designer-toolbox:Tooltip",   "designer-toolbox:Dropdown",
-        "designer-toolbox:Tabs",      "designer-toolbox:ThemeScope",
-        "designer-toolbox:VirtualList", "designer-toolbox:List",
-        "designer-toolbox:Tree",      "designer-toolbox:TreeList",
-        "designer-toolbox:Splitter",  "designer-toolbox:ComboBox",
-        "designer-toolbox:ColorPicker", "designer-toolbox:Spin",
-        "designer-toolbox:ToolBar", "designer-toolbox:StatusBar",
-        "designer-toolbox:Menu", "designer-toolbox:DialogHost",
-        "designer-toolbox:Navigator",
-        "designer-toolbox:Form", "designer-toolbox:DataGrid"};
-    for (const auto& key : toolboxKeys) {
-        app.shell().keyDown(Key::Tab);
-        CHECK(app.shell().focus().focusedKey() == key);
-    }
+    // 左面板版本 C：默认 Outline 视图——工具栏之后是左面板页签（2 枚）
+    // 与大纲树；Toolbox 行不在焦点环内（互斥视图）。
+    app.shell().keyDown(Key::Tab);
+    CHECK(app.shell().focus().focusedKey() == "designer-tab-outline");
+    app.shell().keyDown(Key::Tab);
+    CHECK(app.shell().focus().focusedKey() == "designer-tab-toolbox");
     app.shell().keyDown(Key::Tab);
     CHECK(app.shell().focus().focusedKey().starts_with(
         "designer-outline:item:"));
@@ -375,6 +525,44 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     (void)app.shell().renderFrame();
     REQUIRE(app.workbench().selection().primary.has_value());
     CHECK(*app.workbench().selection().primary == outline->children.front().id);
+
+    // 切到 Toolbox 视图后，焦点顺序按 7 组分类法（designerToolboxGroups）
+    // 逐行推进。
+    app.shell().handlers().at("designer:lefttab-toolbox")();
+    (void)app.shell().renderFrame();
+    app.shell().focus().clearFocus();
+    // clearFocus 后遍历从树首重新开始：先过工具栏 18 枚，再进左面板。
+    for (const auto& key : toolbarKeys) {
+        app.shell().keyDown(Key::Tab);
+        CHECK(app.shell().focus().focusedKey() == key);
+    }
+    const std::vector<std::string> toolboxKeys = {
+        "designer-tab-outline",   "designer-tab-toolbox",
+        "designer-toolbox:Container", "designer-toolbox:Row",
+        "designer-toolbox:Column",    "designer-toolbox:Stack",
+        "designer-toolbox:Grid",      "designer-toolbox:ScrollView",
+        "designer-toolbox:Splitter",  "designer-toolbox:Text",
+        "designer-toolbox:Image",     "designer-toolbox:Icon",
+        "designer-toolbox:Button",    "designer-toolbox:TextField",
+        "designer-toolbox:Checkbox",  "designer-toolbox:Switch",
+        "designer-toolbox:Radio",     "designer-toolbox:Slider",
+        "designer-toolbox:Spin",      "designer-toolbox:ComboBox",
+        "designer-toolbox:ColorPicker", "designer-toolbox:Dropdown",
+        "designer-toolbox:ListView",  "designer-toolbox:VirtualList",
+        "designer-toolbox:List",      "designer-toolbox:Tree",
+        "designer-toolbox:TreeList",  "designer-toolbox:DataGrid",
+        "designer-toolbox:Tabs",      "designer-toolbox:ProgressBar",
+        "designer-toolbox:Tooltip",   "designer-toolbox:Menu",
+        "designer-toolbox:ToolBar",   "designer-toolbox:StatusBar",
+        "designer-toolbox:DialogHost", "designer-toolbox:Navigator",
+        "designer-toolbox:Form",      "designer-toolbox:FocusScope",
+        "designer-toolbox:ThemeScope",
+        "designer-project-new",       "designer-project-open"};
+    for (const auto& key : toolboxKeys) {
+        app.shell().keyDown(Key::Tab);
+        INFO(key);
+        CHECK(app.shell().focus().focusedKey() == key);
+    }
 }
 
 TEST_CASE("designer app mirrors extended outline selection into the canvas",
@@ -829,11 +1017,13 @@ TEST_CASE("designer app previews theme density dpi and accessibility inputs",
     CHECK_FALSE(app.shell().accessibilitySettings().reduceAnimation);
 
     (void)app.shell().renderFrame();
-    CHECK(findNodeByKey(app.shell().root(), "designer-dpi")->text == "DPI 125%");
-    CHECK(findNodeByKey(app.shell().root(), "designer-font-scale")->text ==
-          "Font 125%");
-    CHECK(findNodeByKey(app.shell().root(), "designer-contrast")->text ==
-          "Contrast on");
+    // 工具栏重设计后环境组为图标钮：当前值进 semanticsLabel（无障碍同源）。
+    CHECK(findNodeByKey(app.shell().root(), "designer-dpi")->semanticsLabel ==
+          "DPI 125%");
+    CHECK(findNodeByKey(app.shell().root(), "designer-font-scale")
+              ->semanticsLabel == "Font 125%");
+    CHECK(findNodeByKey(app.shell().root(), "designer-contrast")
+              ->semanticsLabel == "Contrast on");
 }
 
 TEST_CASE("designer app runs and stops the current preview session",
@@ -958,7 +1148,7 @@ TEST_CASE("designer app cycles keyed interaction state previews",
         const auto* button =
             findNodeByKey(app.shell().root(), "designer-preview-state");
         REQUIRE(button != nullptr);
-        CHECK(button->text == label);
+        CHECK(button->semanticsLabel == label);
         const auto context = app.shell().styleContext();
         REQUIRE(context.previewStates != nullptr);
         const auto found = context.previewStates->find(key);
@@ -970,7 +1160,7 @@ TEST_CASE("designer app cycles keyed interaction state previews",
     const auto* initialPreview =
         findNodeByKey(app.shell().root(), "designer-preview-state");
     REQUIRE(initialPreview != nullptr);
-    CHECK(initialPreview->text == "Hover state");
+    CHECK(initialPreview->semanticsLabel == "Hover state");
     activatePreview();
     checkState("Press state", "root",
                lumen::style::WidgetState{.hovered = true});
@@ -1388,6 +1578,7 @@ TEST_CASE("designer app routes L0 structure commands",
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
@@ -1879,6 +2070,7 @@ TEST_CASE("designer app creates L1 and L2 toolbox nodes with schema defaults",
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
@@ -1949,6 +2141,7 @@ TEST_CASE("designer app exposes L2 source references and offline diagnostics",
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
@@ -2005,6 +2198,7 @@ TEST_CASE("designer app previews deterministic L2 source adapters",
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     auto outline = app.workbench().outline();
     REQUIRE(outline.has_value());
@@ -2138,6 +2332,7 @@ TEST_CASE("designer app previews its first L3 DataGrid component",
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
@@ -2182,6 +2377,7 @@ TEST_CASE("designer app resolves offline ThemeScope references",
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
@@ -2286,6 +2482,7 @@ TEST_CASE("designer app previews toolbar and statusbar components",
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
@@ -2329,6 +2526,7 @@ TEST_CASE("designer app previews input component adapters",
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
@@ -2372,6 +2570,7 @@ TEST_CASE("designer app previews menu navigator and form adapters",
     app.shell().setAccessibilityBridge(&bridge);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
@@ -2674,6 +2873,7 @@ TEST_CASE("designer app inserts toolbox nodes by pointer drag",
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    showLeftToolbox(app);
 
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
