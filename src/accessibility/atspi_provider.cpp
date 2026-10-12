@@ -1011,20 +1011,18 @@ void AtspiAccessibilityBridge::updateTree(const SemanticsTree& tree,
                 if (old != nullptr) {
                     const bool wasEnabled = (old->flags & kSemanticsEnabled) != 0;
                     const bool enabled = (node->flags & kSemanticsEnabled) != 0;
-                    if (wasEnabled != enabled) {
-                        for (const char* state : {"enabled", "sensitive"}) {
-                            emitSignal(impl_.get(), path.c_str(),
-                                       "org.a11y.atspi.Event.Object", "StateChanged",
-                                       "state", state, {}, enabled ? 1 : 0);
-                        }
-                    }
-                    const bool wasFocusable = wasEnabled && (old->actions & kActionFocus) != 0;
-                    const bool focusable = enabled && (node->actions & kActionFocus) != 0;
-                    if (wasFocusable != focusable) {
+                    const auto emitState = [&](const char* state, bool before, bool after) {
+                        if (before == after) return;
                         emitSignal(impl_.get(), path.c_str(),
                                    "org.a11y.atspi.Event.Object", "StateChanged",
-                                   "state", "focusable", {}, focusable ? 1 : 0);
-                    }
+                                   "state", state, {}, after ? 1 : 0);
+                    };
+                    emitState("enabled", wasEnabled, enabled);
+                    emitState("sensitive", wasEnabled, enabled);
+                    emitState("focusable", wasEnabled && (old->actions & kActionFocus) != 0,
+                              enabled && (node->actions & kActionFocus) != 0);
+                    emitState("selected", (old->flags & kSemanticsSelected) != 0,
+                              (node->flags & kSemanticsSelected) != 0);
                 }
                 emitSignal(impl_.get(), path.c_str(),
                            "org.a11y.atspi.Event.Object", "PropertyChange",

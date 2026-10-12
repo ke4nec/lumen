@@ -45,6 +45,7 @@ def main():
     listener = Atspi.EventListener.new(lambda event: events.append(
         (event.source, event.type, event.detail1, event.detail2, event.any_data)))
     assert listener.register("object:text-changed")
+    assert listener.register("object:state-changed")
     with tempfile.TemporaryDirectory(prefix="lumen-designer-atspi-") as directory:
         output = Path(directory) / "edited.design"
         app = subprocess.Popen([sys.argv[1], str(output)], stdout=subprocess.PIPE,
@@ -61,6 +62,11 @@ def main():
                 return next((node for node in descendants(root)
                              if node.get_name() == name and node.get_role() == role), None)
 
+            def selection_changed(node, selected):
+                return any(source == node and kind == "object:state-changed:selected"
+                           and detail1 == int(selected)
+                           for source, kind, detail1, _, _ in events)
+
             item = eventually(lambda: find("Text  [title]", Atspi.Role.TREE_ITEM))
             assert item.get_state_set().contains(Atspi.StateType.ENABLED)
             assert item.get_state_set().contains(Atspi.StateType.SENSITIVE)
@@ -70,8 +76,12 @@ def main():
             # Designer row.  Calling that stable index avoids the deprecated
             # action-name lookup while preserving the reader protocol.
             assert action.get_n_actions() >= 1
+            assert not item.get_state_set().contains(Atspi.StateType.SELECTED)
+            events.clear()
             assert action.do_action(0)
+            eventually(lambda: selection_changed(item, True))
             eventually(lambda: item.get_state_set().contains(Atspi.StateType.SELECTED))
+            events.clear()
 
             field = eventually(lambda: find("text", Atspi.Role.ENTRY))
             assert field.get_state_set().contains(Atspi.StateType.ENABLED)
@@ -114,6 +124,10 @@ def main():
             assert Atspi.EditableText.set_text_contents(field, renamed)
             eventually(lambda: get_text() == renamed)
             eventually(lambda: changed("insert", renamed))
+            # Editing the selected node updates text, not its selection state.
+            assert not selection_changed(item, True)
+            assert not selection_changed(item, False)
+            assert item.get_state_set().contains(Atspi.StateType.SELECTED)
             assert Atspi.Text.get_character_count(field) == len(renamed)
             assert get_text(0, 3) == "重命名"
             assert get_text(3, 4) == "🙂"
@@ -133,7 +147,12 @@ def main():
             theme_action = theme_item.get_action_iface()
             assert theme_action is not None
             assert theme_action.get_n_actions() >= 1
+            assert not theme_item.get_state_set().contains(Atspi.StateType.SELECTED)
+            events.clear()
             assert theme_action.do_action(0)
+            eventually(lambda: selection_changed(item, False))
+            eventually(lambda: selection_changed(theme_item, True))
+            eventually(lambda: not item.get_state_set().contains(Atspi.StateType.SELECTED))
             eventually(lambda: theme_item.get_state_set().contains(
                 Atspi.StateType.SELECTED))
 
@@ -162,7 +181,7 @@ def main():
                 app.communicate()
                 raise
         assert output.is_file()
-        print("AT-SPI Designer selection / Unicode text and events / "
+        print("AT-SPI Designer selection and state events / Unicode text and events / "
               "ThemeScope reference / document history / save-reopen passed")
         print(json.dumps({
             "platform": "linux",
