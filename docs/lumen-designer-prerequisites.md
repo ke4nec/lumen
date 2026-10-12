@@ -2128,7 +2128,11 @@ Linux X11/Xvfb 与本机 GNOME Wayland 生产回环均已通过实际重开，�
 [`17b4232 CI 与原生协议证据`](platform-evidence/designer-ci-2026-10-12-17b4232.json)。
 Orca 50.2 在场的补充探测仅有启动播报、没有 Designer 属性播报，不能签署读屏通过。
 本次 Wayland 原生 allocator/resize/64 MiB/双恢复浸泡第一次在 1486.200 秒提前退出 1，
-状态保持但未达到 3600 秒；失败日志已保留，第二次采样仍在运行，当前不登记 soak pass。
+状态保持但未达到 3600 秒；失败日志已保留。第二次采样已在 3600.020 秒正常退出 0，
+双窗口共提交 302728 帧、77186 次 resize、64 MiB 压力、两次模拟恢复后状态保持；
+302600 个原生 allocator 帧均来自 `glibc/malloc`，检查器与成功标记均通过。
+日志和结构化报告按原构建提交 `17b4232` 归档在上述证据中；该单项 CPU/软件呈现
+浸泡不替代硬件 GPU 恢复、其他桌面会话或完整人工 `record.json`，整体验收仍未完成。
 
 Windows Designer 现场 UIA 摘要现也与 Linux/macOS 一致，显式报告布尔值
 `reopened=true`；该摘要仅在关闭旧进程、新窗口选择 Text 并读回保存值，以及诊断定位
@@ -2136,3 +2140,8 @@ Windows Designer 现场 UIA 摘要现也与 Linux/macOS 一致，显式报告布
 修正 Windows 证据测试恢复日志的方式，恢复后重新校验完整记录。
 平台验收检查器 `24/24`、完整 Debug CTest `1172/1172`（137.19s）通过。
 本次收紧的是现场证据格式，真实 Windows Narrator/NVDA 签署仍需要登录桌面记录。
+
+`8bd12c2` 推送后的 Windows `7/7`、Linux `7/7`、macOS `6/6` hosted CI 全部成功；
+Windows `a11y-bridge` 的既有 UIA Designer 窗口回环成功。新的 `reopened=true` 现场摘要
+约束由脚本语法和检查器单测验证，登录桌面的 Python UIA 回环仍待执行。运行和日志归档见
+[`8bd12c2 CI 证据`](platform-evidence/designer-ci-2026-10-12-8bd12c2.json)。

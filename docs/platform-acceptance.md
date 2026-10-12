@@ -224,6 +224,13 @@ AX application/window，重新选择 Text 和 ThemeScope，并验证保存值。
 
 ## 待验收登记（2026-10-02）
 
+2026-10-12 原生 GNOME Wayland 的独立 CPU/软件呈现浸泡已正常退出 0：
+3600.020 秒、双窗口、77186 次 resize、64 MiB 压力、两次模拟恢复后状态保持，
+原生 `glibc/malloc` allocator 采样通过。失败的第一次短运行与成功的第二次完整日志、
+报告及构建身份均见 [`17b4232 单项原生证据`](platform-evidence/designer-ci-2026-10-12-17b4232.json)。
+这份测量补充一小时浸泡和 allocator 证据，完整人工记录、真实 GPU 恢复及其余桌面
+会话仍按下表待验。
+
 按 [`lumen-gui-completion-plan.md`](lumen-gui-completion-plan.md) 的缺口编号，
 把“实现批次已交付（headless 契约通过）”与“真实平台缺口（必须现场验收）”
 分开登记。未覆盖项必须能回答：平台、原因、当前降级行为、后续归属。

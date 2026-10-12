@@ -1,0 +1,175 @@
+{
+  "kind": "designer_windows_reopen_gate_ci",
+  "recorded_at": "2026-10-12T04:08:01.806261+00:00",
+  "source_commit": "8bd12c25cd1d6ce3fc69493fcb7bca4c28b02d1e",
+  "purpose": "Require boolean reopened=true in the Windows Designer UIA evidence summary and reject missing, false, string and numeric values.",
+  "runs": {
+    "windows": {
+      "id": 38201005859,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38201005859",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": "7/7 successful",
+      "source_commit": "8bd12c25cd1d6ce3fc69493fcb7bca4c28b02d1e",
+      "job_results": [
+        {
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "a11y-bridge",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-raster",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    "linux": {
+      "id": 38201005829,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38201005829",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": "7/7 successful",
+      "source_commit": "8bd12c25cd1d6ce3fc69493fcb7bca4c28b02d1e",
+      "job_results": [
+        {
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "mobile-core",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    "macos": {
+      "id": 38201005757,
+      "url": "https://github.com/ke4nec/lumen/actions/runs/38201005757",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": "6/6 successful",
+      "source_commit": "8bd12c25cd1d6ce3fc69493fcb7bca4c28b02d1e",
+      "job_results": [
+        {
+          "name": "package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "mobile-core",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "package-skia-gpu",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  },
+  "local": {
+    "debug_ctest": "1172/1172 passed (137.19 seconds)",
+    "platform_acceptance_tests": "24/24 passed",
+    "git_diff_check": "passed",
+    "native_wayland_soak": "3600.020 seconds, exit 0; two windows, 302728 frames, 77186 resize events, 64 MiB pressure, two recoveries, preserved state, glibc/malloc allocator verified; exact runtime identity and full log are retained in the 17b4232 evidence directory.",
+    "reader_diagnostic": "Orca 50.2 protocol diagnostic completed Designer close/restart loop but emitted only reader on/off speech; no Designer property speech, so reader sign-off remains pending."
+  },
+  "artifacts": [
+    {
+      "path": "designer-native-2026-10-12-17b4232/atspi-x11.log",
+      "sha256": "1d371e2322e9667c9fbb4020db53f12b259ab240bb2c3590f17d9dadb6f88eb2"
+    },
+    {
+      "path": "designer-native-2026-10-12-17b4232/atspi-wayland.log",
+      "sha256": "fb1e9d1df8696816518348daa0373c76dd30207ec90de31e1de7909bdaae7920"
+    },
+    {
+      "path": "designer-native-2026-10-12-17b4232/soak-attempt1.log",
+      "sha256": "3b9b0a1f87175460f5863f850a852b01cf3914326d9b49b25251e69b8e9ab96a"
+    },
+    {
+      "path": "designer-native-2026-10-12-17b4232/soak-attempt2.log",
+      "sha256": "fdf58775fa028e748bb7dd288388c9548a65f59f773b068f7ac9bd4aa7b167ce"
+    },
+    {
+      "path": "designer-native-2026-10-12-17b4232/soak-attempt2.json",
+      "sha256": "36a20fed5cb1df16b3066c265fe8084d722894cdfd3b77ce02fde9694bfb6c43"
+    }
+  ],
+  "acceptance_complete": false,
+  "limitations": [
+    "Hosted CI and protocol loops do not replace signed-in Windows Narrator/NVDA or macOS VoiceOver speech records, real IME, Inspector, physical DPI/theme, drag/drop, cross-application clipboard, clean-machine package launch, or complete operator record.json.",
+    "The native soak is Linux GNOME Wayland CPU/software presentation; it does not prove hardware GPU recovery on Windows/macOS/X11.",
+    "The first native soak attempt remains retained as an incomplete failed attempt; no cause is asserted.",
+    "The newly strengthened Python Windows UIA reader loop runs only in the signed-in acceptance workflow; hosted a11y-bridge exercises the existing C++ native UIA smoke, while Python syntax and checker behavior are covered by automated tests."
+  ],
+  "status_source": "GitHub workflow HTML pages verified after API rate limiting; source commit link and every job conclusion checked."
+}

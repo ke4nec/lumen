@@ -141,8 +141,41 @@
     "linux_wayland": "Production Designer in GNOME Wayland: same close/restart and native field readback passed; strengthened protocol checker accepted the log.",
     "macos_named_slots_regression": "Old saved_values implementation reproduced AttributeError for slot lists; the new regression covers nested slots, stale text/theme values, incomplete JSON and missing file.",
     "allocator_soak_short": "5.066 seconds, two windows, 80 resize events, 64 MiB pressure, two simulated recoveries, state preserved, glibc/malloc verified.",
-    "allocator_soak_attempt1": "Incomplete: exited 1 after 1486.200 seconds; state and allocator metrics preserved but did not meet the one-hour threshold. Retained as a failed attempt. A second run is still live and is not claimed as passed.",
-    "orca_probe": "Designer protocol passed with Orca 50.2 running, but its debug log only contained the reader-startup speech message and no Designer property speech; reader sign-off remains pending."
+    "allocator_soak_attempt1": "Incomplete: exited 1 after 1486.200 seconds; state and allocator metrics preserved but did not meet the one-hour threshold. Retained as a failed attempt; no cause is asserted.",
+    "orca_probe": "Focused diagnostic with Orca 50.2 active completed native Designer close/restart protocol, but speech log contained only reader on/off messages and no Designer property speech; reader sign-off remains pending.",
+    "allocator_soak_attempt2": {
+      "status": "passed",
+      "exit_code": 0,
+      "platform": "linux-wayland",
+      "renderer": "CPU/software presentation; Skia and GPU build options disabled",
+      "report": {
+        "driver": "wayland",
+        "seconds": 3600.02,
+        "windows": 2,
+        "frames": 302728,
+        "resize_events": 77186,
+        "preedit_events": 0,
+        "commit_events": 0,
+        "composition_end_events": 6,
+        "wheel_events": 0,
+        "font_available": true,
+        "transparent_requested": false,
+        "external_clipboard": false,
+        "ime_verified": false,
+        "stress_mib": 64,
+        "simulated_recoveries": 2,
+        "state_preserved": true,
+        "frame_allocator_requested": true,
+        "frame_allocator_verified": true,
+        "frame_allocator_source": "glibc/malloc",
+        "frame_allocator_frames": 302600,
+        "frame_allocator_allocations": 1134296237,
+        "frame_allocator_bytes": 165283445756,
+        "frame_allocator_peak_bytes": 1539469
+      },
+      "validation": "Native allocator checker accepted the log; duration >= 3600, two windows, resize, 64 MiB pressure, two simulated recoveries, preserved state, exit code 0 and successful smoke marker verified.",
+      "scope": "Single native soak measurement with exact binary/source identity; not a complete operator acceptance record or actual hardware GPU recovery."
+    }
   },
   "build_identity": {
     "source_commit": "17b4232c206b5e1ac1c74769a58d8087b8e98b7f",
@@ -167,13 +200,22 @@
     {
       "path": "designer-native-2026-10-12-17b4232/soak-attempt1.log",
       "sha256": "3b9b0a1f87175460f5863f850a852b01cf3914326d9b49b25251e69b8e9ab96a"
+    },
+    {
+      "path": "designer-native-2026-10-12-17b4232/soak-attempt2.log",
+      "sha256": "fdf58775fa028e748bb7dd288388c9548a65f59f773b068f7ac9bd4aa7b167ce"
+    },
+    {
+      "path": "designer-native-2026-10-12-17b4232/soak-attempt2.json",
+      "sha256": "36a20fed5cb1df16b3066c265fe8084d722894cdfd3b77ce02fde9694bfb6c43"
     }
   ],
   "acceptance_complete": false,
   "limitations": [
     "Hosted macOS CI verifies builds and headless regressions, not the new production AXAPI window loop; a signed-in Aqua session and accessibility permission remain necessary.",
     "Protocol readback is not actual reader speech, real IME, Inspector, physical DPI/theme, drag/drop, clean-machine packaging or cross-application clipboard sign-off.",
-    "The first native soak attempt was shorter than 3600 seconds and is not accepted; the second attempt must be observed to completion before any soak pass is recorded.",
-    "No complete operator record.json has been supplied for the four desktop sessions."
-  ]
+    "No complete operator record.json has been supplied for the four desktop sessions.",
+    "The failed first soak remains retained; the successful second CPU/software Wayland soak does not satisfy Windows/macOS/X11 desktop evidence, actual GPU recovery, or complete operator sign-off."
+  ],
+  "native_soak_recorded_at": "2026-10-12T04:05:21.760611+00:00"
 }
