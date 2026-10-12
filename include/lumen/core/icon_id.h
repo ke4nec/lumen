@@ -62,6 +62,34 @@ enum class IconId : std::uint8_t {
     NavControls,
     NavFeedback,
     NavTheme,
+    // Designer 工具栏重设计（design/designer-toolbar-redesign.html 版本 A，
+    // 2026-10）：编辑/运行/文件/环境/缩放五组的命令图标，16 栅格设计后
+    // 归一（追加在尾部，保持既有 ID 值不变）。Run 复用 Play、Guides 复用
+    // Grid、Open 复用 Folder。
+    TextAdd,
+    Duplicate,
+    Trash,
+    ArrowUp,
+    ArrowDown,
+    Bug,
+    Stop,
+    Save,
+    SaveAs,
+    FolderPlus,
+    Moon,
+    Density,
+    DeviceScale,
+    Font,
+    Contrast,
+    Cursor,
+    ZoomIn,
+    ZoomOut,
+    Fit,
+    // 左面板版本 C（designer-leftpanel-redesign.html，2026-10）：工具箱
+    // 分组头图标——内容（文本行）与作用域（括号）；布局/输入/集合/
+    // 反馈/组件复用 Nav 系列。追加在尾部，保持既有 ID 值不变。
+    Content,
+    Scope,
 };
 
 // 图标的归一化折线组（0..1 坐标；stroke 绘制，无填充）。

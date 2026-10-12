@@ -16,7 +16,7 @@ using Catalog = std::vector<Line>;
 const std::vector<Catalog>& catalog() {
     static const std::vector<Catalog> kCatalog = [] {
         std::vector<Catalog> table(
-            static_cast<std::size_t>(IconId::NavTheme) + 1);
+            static_cast<std::size_t>(IconId::Scope) + 1);
         table[static_cast<std::size_t>(IconId::Check)] =
             Catalog{Line{{Offset{0.20F, 0.52F}, Offset{0.42F, 0.74F},
                   Offset{0.80F, 0.28F}}}};
@@ -294,6 +294,237 @@ const std::vector<Catalog>& catalog() {
                                   Offset{0.8333F, 0.6717F}}});
             table[static_cast<std::size_t>(IconId::NavTheme)] = std::move(theme);
         }
+        // --- Designer 工具栏（designer-toolbar-redesign.html 版本 A）：
+        // 16 栅格设计后 /16 归一；线帽/拐角沿用目录圆帽惯例。 ---
+        // TextAdd：T 字 + 右下加号（插入文本节点）。
+        table[static_cast<std::size_t>(IconId::TextAdd)] =
+            Catalog{Line{{Offset{0.1875F, 0.25F}, Offset{0.6875F, 0.25F}}},
+                    Line{{Offset{0.4375F, 0.25F}, Offset{0.4375F, 0.8125F}}},
+                    Line{{Offset{0.7625F, 0.65F}, Offset{0.7625F, 0.9F}}},
+                    Line{{Offset{0.6375F, 0.775F}, Offset{0.8875F, 0.775F}}}};
+        // Duplicate：前框完整 + 后框右下两边（复制节点）。
+        table[static_cast<std::size_t>(IconId::Duplicate)] =
+            Catalog{Line{{Offset{0.15625F, 0.15625F}, Offset{0.65625F, 0.15625F},
+                          Offset{0.65625F, 0.65625F}, Offset{0.15625F, 0.65625F},
+                          Offset{0.15625F, 0.15625F}}},
+                    Line{{Offset{0.375F, 0.84375F}, Offset{0.76875F, 0.84375F}}},
+                    Line{{Offset{0.76875F, 0.84375F}, Offset{0.76875F, 0.4375F}}}};
+        // Trash：桶盖 + 收腰桶身 + 两条肋线（删除节点）。
+        table[static_cast<std::size_t>(IconId::Trash)] =
+            Catalog{Line{{Offset{0.1875F, 0.28125F}, Offset{0.8125F, 0.28125F}}},
+                    Line{{Offset{0.4F, 0.28125F}, Offset{0.4F, 0.1875F},
+                          Offset{0.6F, 0.1875F}, Offset{0.6F, 0.28125F}}},
+                    Line{{Offset{0.275F, 0.28125F}, Offset{0.31875F, 0.84375F},
+                          Offset{0.68125F, 0.84375F}, Offset{0.725F, 0.28125F}}},
+                    Line{{Offset{0.41875F, 0.46875F}, Offset{0.41875F, 0.675F}}},
+                    Line{{Offset{0.58125F, 0.46875F}, Offset{0.58125F, 0.675F}}}};
+        // ArrowUp / ArrowDown：单箭头（节点上移/下移）。
+        table[static_cast<std::size_t>(IconId::ArrowUp)] =
+            Catalog{Line{{Offset{0.5F, 0.8125F}, Offset{0.5F, 0.1875F}}},
+                    Line{{Offset{0.28125F, 0.40625F}, Offset{0.5F, 0.1875F},
+                          Offset{0.71875F, 0.40625F}}}};
+        table[static_cast<std::size_t>(IconId::ArrowDown)] =
+            Catalog{Line{{Offset{0.5F, 0.1875F}, Offset{0.5F, 0.8125F}}},
+                    Line{{Offset{0.28125F, 0.59375F}, Offset{0.5F, 0.8125F},
+                          Offset{0.71875F, 0.59375F}}}};
+        // Bug：圆角桶身 + 头线/触角 + 六足（调试预览）。
+        table[static_cast<std::size_t>(IconId::Bug)] =
+            Catalog{Line{{Offset{0.3375F, 0.3625F}, Offset{0.6625F, 0.3625F},
+                          Offset{0.6625F, 0.7625F}, Offset{0.3375F, 0.7625F},
+                          Offset{0.3375F, 0.3625F}}},
+                    Line{{Offset{0.5F, 0.3625F}, Offset{0.5F, 0.2625F}}},
+                    Line{{Offset{0.4F, 0.2625F}, Offset{0.3125F, 0.1625F}}},
+                    Line{{Offset{0.6F, 0.2625F}, Offset{0.6875F, 0.1625F}}},
+                    Line{{Offset{0.3375F, 0.5F}, Offset{0.1875F, 0.5F}}},
+                    Line{{Offset{0.3375F, 0.65F}, Offset{0.1875F, 0.65F}}},
+                    Line{{Offset{0.6625F, 0.5F}, Offset{0.8125F, 0.5F}}},
+                    Line{{Offset{0.6625F, 0.65F}, Offset{0.8125F, 0.65F}}},
+                    Line{{Offset{0.43125F, 0.7625F}, Offset{0.43125F, 0.8625F}}},
+                    Line{{Offset{0.56875F, 0.7625F}, Offset{0.56875F, 0.8625F}}}};
+        // Stop：实心观感的停止方框（stroke 闭合，同 Play 的处理）。
+        table[static_cast<std::size_t>(IconId::Stop)] =
+            Catalog{Line{{Offset{0.2625F, 0.2625F}, Offset{0.7375F, 0.2625F},
+                          Offset{0.7375F, 0.7375F}, Offset{0.2625F, 0.7375F},
+                          Offset{0.2625F, 0.2625F}}}};
+        // Save：软盘外框 + 快门 + 标签窗（保存）。
+        table[static_cast<std::size_t>(IconId::Save)] =
+            Catalog{Line{{Offset{0.1875F, 0.15625F}, Offset{0.6875F, 0.15625F},
+                          Offset{0.84375F, 0.3125F}, Offset{0.84375F, 0.84375F},
+                          Offset{0.1875F, 0.84375F}, Offset{0.1875F, 0.15625F}}},
+                    Line{{Offset{0.34375F, 0.15625F}, Offset{0.34375F, 0.34375F},
+                          Offset{0.625F, 0.34375F}, Offset{0.625F, 0.15625F}}},
+                    Line{{Offset{0.34375F, 0.84375F}, Offset{0.34375F, 0.59375F},
+                          Offset{0.65625F, 0.59375F}, Offset{0.65625F, 0.84375F}}}};
+        // SaveAs：软盘 + 右下铅笔（另存为）。
+        table[static_cast<std::size_t>(IconId::SaveAs)] =
+            Catalog{Line{{Offset{0.1875F, 0.15625F}, Offset{0.6875F, 0.15625F},
+                          Offset{0.84375F, 0.3125F}, Offset{0.84375F, 0.84375F},
+                          Offset{0.7F, 0.84375F}, Offset{0.1875F, 0.84375F},
+                          Offset{0.1875F, 0.15625F}}},
+                    Line{{Offset{0.34375F, 0.15625F}, Offset{0.34375F, 0.34375F},
+                          Offset{0.625F, 0.34375F}, Offset{0.625F, 0.15625F}}},
+                    Line{{Offset{0.7F, 0.56875F}, Offset{0.8875F, 0.75625F}}},
+                    Line{{Offset{0.65F, 0.9F}, Offset{0.8875F, 0.75625F}}}};
+        // FolderPlus：Folder 轮廓 + 中央加号（新建工程）。
+        table[static_cast<std::size_t>(IconId::FolderPlus)] =
+            Catalog{Line{{Offset{0.12F, 0.25F}, Offset{0.4F, 0.25F},
+                          Offset{0.5F, 0.38F}, Offset{0.88F, 0.38F},
+                          Offset{0.88F, 0.78F}, Offset{0.12F, 0.78F},
+                          Offset{0.12F, 0.25F}}},
+                    Line{{Offset{0.5F, 0.48F}, Offset{0.5F, 0.68F}}},
+                    Line{{Offset{0.4F, 0.58F}, Offset{0.6F, 0.58F}}}};
+        // Moon：月牙（明暗主题切换；外弧 260° + 内弧回接，24 段折线逼近）。
+        {
+            Catalog moon;
+            Line crescent;
+            constexpr float kOuterCx = 0.44F;
+            constexpr float kOuterCy = 0.5F;
+            constexpr float kOuterR = 0.36F;
+            constexpr int kSegments = 24;
+            // 外弧：从 -40° 逆时针扫 260° 到 220°（经过左侧）。
+            constexpr float kStart = -0.6981317F;   // -40°
+            constexpr float kSweep = 4.5378561F;    // 260°
+            for (int i = 0; i <= kSegments; ++i) {
+                const float angle =
+                    kStart + kSweep * static_cast<float>(i) / kSegments;
+                crescent.push_back(
+                    Offset{kOuterCx + kOuterR * std::cos(angle),
+                           kOuterCy + kOuterR * std::sin(angle)});
+            }
+            // 内弧：以右侧偏心圆从终点扫回起点（开口朝右的月牙）。
+            constexpr float kInnerCx = 0.62F;
+            constexpr float kInnerR = 0.26F;
+            for (int i = kSegments; i >= 0; --i) {
+                // 内弧起止角与外弧终点/起点同点（0.62+0.26cosθ 拼接处近似）。
+                const float angle =
+                    -0.35F + 1.9F * static_cast<float>(i) / kSegments;
+                crescent.push_back(
+                    Offset{kInnerCx + kInnerR * std::cos(angle),
+                           kOuterCy + kInnerR * std::sin(angle)});
+            }
+            moon.push_back(std::move(crescent));
+            table[static_cast<std::size_t>(IconId::Moon)] = std::move(moon);
+        }
+        // Density：上下两横线 + 中间双向竖箭头（密度切换）。
+        table[static_cast<std::size_t>(IconId::Density)] =
+            Catalog{Line{{Offset{0.1875F, 0.21875F}, Offset{0.6875F, 0.21875F}}},
+                    Line{{Offset{0.1875F, 0.78125F}, Offset{0.6875F, 0.78125F}}},
+                    Line{{Offset{0.5F, 0.35625F}, Offset{0.5F, 0.64375F}}},
+                    Line{{Offset{0.3875F, 0.46875F}, Offset{0.5F, 0.35625F},
+                          Offset{0.6125F, 0.46875F}}},
+                    Line{{Offset{0.3875F, 0.53125F}, Offset{0.5F, 0.64375F},
+                          Offset{0.6125F, 0.53125F}}}};
+        // DeviceScale：屏幕 + 底座 + 屏内扩展箭头（DPI 缩放）。
+        table[static_cast<std::size_t>(IconId::DeviceScale)] =
+            Catalog{Line{{Offset{0.1375F, 0.1875F}, Offset{0.8625F, 0.1875F},
+                          Offset{0.8625F, 0.7125F}, Offset{0.1375F, 0.7125F},
+                          Offset{0.1375F, 0.1875F}}},
+                    Line{{Offset{0.375F, 0.85F}, Offset{0.625F, 0.85F}}},
+                    Line{{Offset{0.5F, 0.7125F}, Offset{0.5F, 0.85F}}},
+                    Line{{Offset{0.3375F, 0.575F}, Offset{0.65F, 0.2625F}}},
+                    Line{{Offset{0.65F, 0.2625F}, Offset{0.475F, 0.2625F}}},
+                    Line{{Offset{0.65F, 0.2625F}, Offset{0.65F, 0.4375F}}}};
+        // Font：A 字形 + 横梁（字号缩放）。
+        table[static_cast<std::size_t>(IconId::Font)] =
+            Catalog{Line{{Offset{0.2625F, 0.7875F}, Offset{0.44375F, 0.2125F},
+                          Offset{0.55625F, 0.2125F}, Offset{0.7375F, 0.7875F}}},
+                    Line{{Offset{0.33125F, 0.59375F}, Offset{0.66875F, 0.59375F}}}};
+        // Contrast：整圆（24 段逼近）+ 右半填充的三条竖弦（高对比）。
+        {
+            Catalog contrast;
+            Line circle;
+            constexpr float kCx = 0.5F;
+            constexpr float kCy = 0.5F;
+            constexpr float kRadius = 0.36F;
+            constexpr int kSegments = 24;
+            for (int i = 0; i <= kSegments; ++i) {
+                const float angle =
+                    6.2831853F * static_cast<float>(i) / kSegments;
+                circle.push_back(Offset{kCx + kRadius * std::cos(angle),
+                                        kCy + kRadius * std::sin(angle)});
+            }
+            contrast.push_back(std::move(circle));
+            contrast.push_back(Line{{Offset{0.64F, 0.2371F},
+                                     Offset{0.64F, 0.7629F}}});
+            contrast.push_back(Line{{Offset{0.75F, 0.2937F},
+                                     Offset{0.75F, 0.7063F}}});
+            contrast.push_back(Line{{Offset{0.83F, 0.41F},
+                                     Offset{0.83F, 0.59F}}});
+            table[static_cast<std::size_t>(IconId::Contrast)] =
+                std::move(contrast);
+        }
+        // Cursor：指针光标轮廓（预览状态循环）。
+        table[static_cast<std::size_t>(IconId::Cursor)] =
+            Catalog{Line{{Offset{0.25F, 0.1625F}, Offset{0.7875F, 0.5F},
+                          Offset{0.58125F, 0.5625F}, Offset{0.70625F, 0.79375F},
+                          Offset{0.6F, 0.85F}, Offset{0.475F, 0.61875F},
+                          Offset{0.3F, 0.75F}, Offset{0.25F, 0.1625F}}}};
+        // ZoomOut / ZoomIn：Search 镜圆 + 镜内减/加号。
+        {
+            auto searchLines = [] {
+                Catalog lines;
+                Line circle;
+                constexpr float kCx = 0.4375F;
+                constexpr float kCy = 0.4375F;
+                constexpr float kRadius = 0.2656F;
+                constexpr int kSegments = 24;
+                for (int i = 0; i <= kSegments; ++i) {
+                    const float angle =
+                        6.2831853F * static_cast<float>(i) / kSegments;
+                    circle.push_back(Offset{kCx + kRadius * std::cos(angle),
+                                            kCy + kRadius * std::sin(angle)});
+                }
+                lines.push_back(std::move(circle));
+                const float edge = kRadius * 0.7071068F;
+                lines.push_back(Line{{Offset{kCx + edge, kCy + edge},
+                                       Offset{0.8125F, 0.8125F}}});
+                return lines;
+            };
+            Catalog zoomOut = searchLines();
+            zoomOut.push_back(Line{{Offset{0.33F, 0.4375F},
+                                    Offset{0.545F, 0.4375F}}});
+            table[static_cast<std::size_t>(IconId::ZoomOut)] = std::move(zoomOut);
+            Catalog zoomIn = searchLines();
+            zoomIn.push_back(Line{{Offset{0.4375F, 0.33F},
+                                   Offset{0.4375F, 0.545F}}});
+            zoomIn.push_back(Line{{Offset{0.33F, 0.4375F},
+                                   Offset{0.545F, 0.4375F}}});
+            table[static_cast<std::size_t>(IconId::ZoomIn)] = std::move(zoomIn);
+        }
+        // Fit：四角取景框 + 中心点（缩放重置；点为 8 段八边形逼近）。
+        {
+            Catalog fit;
+            fit.push_back(Line{{Offset{0.15625F, 0.325F}, Offset{0.15625F, 0.15625F},
+                                Offset{0.325F, 0.15625F}}});
+            fit.push_back(Line{{Offset{0.64375F, 0.15625F}, Offset{0.8125F, 0.15625F},
+                                Offset{0.8125F, 0.325F}}});
+            fit.push_back(Line{{Offset{0.8125F, 0.64375F}, Offset{0.8125F, 0.8125F},
+                                Offset{0.64375F, 0.8125F}}});
+            fit.push_back(Line{{Offset{0.325F, 0.8125F}, Offset{0.15625F, 0.8125F},
+                                Offset{0.15625F, 0.64375F}}});
+            Line dot;
+            constexpr float kDotR = 0.1F;
+            for (int i = 0; i <= 8; ++i) {
+                const float angle =
+                    6.2831853F * static_cast<float>(i) / 8;
+                dot.push_back(Offset{0.5F + kDotR * std::cos(angle),
+                                     0.5F + kDotR * std::sin(angle)});
+            }
+            fit.push_back(std::move(dot));
+            table[static_cast<std::size_t>(IconId::Fit)] = std::move(fit);
+        }
+        // 左面板工具箱分组头（16 栅格归一）。
+        // Content：三条递减横线（Text/Image/Icon 静态内容组）。
+        table[static_cast<std::size_t>(IconId::Content)] =
+            Catalog{Line{{Offset{0.1875F, 0.28F}, Offset{0.625F, 0.28F}}},
+                    Line{{Offset{0.1875F, 0.5F}, Offset{0.8125F, 0.5F}}},
+                    Line{{Offset{0.1875F, 0.72F}, Offset{0.5F, 0.72F}}}};
+        // Scope：左右方括号（FocusScope/ThemeScope 行为包装组）。
+        table[static_cast<std::size_t>(IconId::Scope)] =
+            Catalog{Line{{Offset{0.34F, 0.22F}, Offset{0.22F, 0.31F},
+                          Offset{0.22F, 0.69F}, Offset{0.34F, 0.78F}}},
+                    Line{{Offset{0.66F, 0.22F}, Offset{0.78F, 0.31F},
+                          Offset{0.78F, 0.69F}, Offset{0.66F, 0.78F}}}};
         return table;
     }();
     return kCatalog;
