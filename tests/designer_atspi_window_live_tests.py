@@ -174,14 +174,22 @@ def main():
                     )
                 )
 
-            def read_field(label, getter):
+            def read_field(label, getter, expected):
+                """Read a current field until its semantic value settles."""
                 deadline = time.monotonic() + 20
+                last_value = None
                 while time.monotonic() < deadline:
                     try:
-                        return getter(property_field(label))
+                        last_value = getter(property_field(label))
+                        if last_value == expected:
+                            return last_value
                     except dbus.DBusException:
-                        time.sleep(0.1)
-                raise AssertionError("production Designer property read timed out")
+                        pass
+                    time.sleep(0.1)
+                raise AssertionError(
+                    "production Designer property read did not settle: "
+                    f"{label!r} expected {expected!r}, got {last_value!r}"
+                )
 
             def wait_field_value(label, getter, expected):
                 deadline = time.monotonic() + 20
@@ -210,8 +218,7 @@ def main():
                     time.sleep(0.1)
                 raise AssertionError("production Designer property write timed out")
 
-            if read_field("text", get_text) != "Gallery":
-                raise AssertionError("initial production Text value mismatch")
+            read_field("text", get_text, "Gallery")
             renamed = "窗口回环🙂e\u0301"
             set_field_value("text", renamed)
             wait_field_value("text", get_text, renamed)
@@ -230,8 +237,7 @@ def main():
                     )
                 )
 
-            if read_field("theme reference", get_theme) != "light":
-                raise AssertionError("initial production ThemeScope value mismatch")
+            read_field("theme reference", get_theme, "light")
             set_field_value("theme reference", "dark")
             wait_field_value("theme reference", get_theme, "dark")
 
