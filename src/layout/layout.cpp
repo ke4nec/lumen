@@ -171,6 +171,7 @@ RenderNode makeNode(const Widget& widget, Offset offset, Size size,
     node.excludeFromSemantics = widget.excludeFromSemantics;
     node.excludeFromFocus = widget.excludeFromFocus;
     node.ignorePointer = widget.ignorePointer;
+    node.clipContent = node.clipContent || widget.clipContent;
     node.invalid = widget.invalid;
     node.selected = widget.selected;
     node.collectionRow = widget.collectionRow;

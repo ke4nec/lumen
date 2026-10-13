@@ -402,6 +402,10 @@ struct Widget {
     // 中测试透明，指针事件穿透到下方内容。交互手柄等可拖目标不设此
     // 标志。
     bool ignorePointer{false};
+    // 内容裁剪：true 时绘制与命中按节点边界裁剪（RenderNode.clipContent
+    // 同源；滚动视口由布局隐式开启，普通容器可显式声明——如设计器画
+    // 布 100% 缩放时约束画板不越界遮挡邻区）。
+    bool clipContent{false};
 
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
     // handler in the app's HandlerRegistry. `bindPrefix` preserves the

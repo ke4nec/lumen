@@ -492,12 +492,12 @@ TEST_CASE("designer schema inventory covers registry persistence categories",
         enabled, invalid, selected, showScrollbar, scrollbarAutoHide, icon,
         elevation, transitionAlpha, styleOverrides, progressIndeterminate,
         iconRotation, iconLeading, clipRounded, excludeFromSemantics,
-        excludeFromFocus, ignorePointer, bind, bindPrefix, onClick,
-        stackPosition, children
+        excludeFromFocus, ignorePointer, clipContent, bind, bindPrefix,
+        onClick, stackPosition, children
     ] = widget;
 
     const auto& inventory = widgetFieldInventory();
-    REQUIRE(inventory.size() == 86);
+    REQUIRE(inventory.size() == 87);
 
     std::set<std::string> names;
     std::set<std::string> schemaNames;
