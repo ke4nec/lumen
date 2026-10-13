@@ -905,8 +905,8 @@ TEST_CASE("designer app transforms canvas preview without editing the document",
     (void)app.shell().renderFrame();
     const auto* zoomed = findNodeByKey(app.shell().root(), nodeKey);
     REQUIRE(zoomed != nullptr);
-    CHECK(zoomed->size.width == Catch::Approx(beforeSize.width * 1.1F));
-    CHECK(zoomed->size.height == Catch::Approx(beforeSize.height * 1.1F));
+    CHECK(zoomed->size.width == Catch::Approx(beforeSize.width * 1.25F));
+    CHECK(zoomed->size.height == Catch::Approx(beforeSize.height * 1.25F));
     CHECK(app.workbench().documentRevision() == revision);
     CHECK_FALSE(app.workbench().dirty());
     CHECK(app.workbench().frame().generation() > initialGeneration);
@@ -3349,15 +3349,14 @@ TEST_CASE("designer app moves stack children by canvas drag",
     CHECK(property("top") == 24.0);
 }
 
-TEST_CASE("designer default sample is a draggable 540x400 artboard",
+TEST_CASE("designer default sample opens at 100 percent with guides",
           "[designer][d3][app][drag]") {
-    // 默认样例契约（workspace-design §8.2/8.3）：540×400 Stack 画板 + 全
-    // 定位子节点（卡片带文本内容）；参考线默认可见；1024×768 默认窗口
-    // 下 fit-to-view ≈0.66，正文 16px 缩后 ≈10px 可读；Save 按钮等元素
-    // 可直接拖动换位。
+    // 默认态契约（§8.6）：缩放默认 100%（不再自动 fit，画板超出可视
+    // 区由画布裁剪约束）；参考线默认可见且首帧后即完成物化；卡片文本
+    // 完整呈现；Save 按钮等元素可直接拖动换位。
     DesignerApp app;
     app.attach();
-    app.shell().setView(Size{1024.0F, 768.0F});
+    app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
     (void)app.shell().renderFrame();
 
@@ -3375,8 +3374,8 @@ TEST_CASE("designer default sample is a draggable 540x400 artboard",
         REQUIRE(found != rootProperties.end());
         return std::get<double>(found->value->value);
     };
-    CHECK(readNumber("width") == 540.0);
-    CHECK(readNumber("height") == 400.0);
+    CHECK(readNumber("width") == 352.0);
+    CHECK(readNumber("height") == 264.0);
 
     // 参考线（网格点 + 标尺）默认可见。
     CHECK(findNodeByKey(app.shell().root(), "designer-canvas-grid-dot:0:0") !=
@@ -3384,12 +3383,12 @@ TEST_CASE("designer default sample is a draggable 540x400 artboard",
     CHECK(findNodeByKey(app.shell().root(), "designer-canvas-ruler-top") !=
           nullptr);
 
-    // fit-to-view：1024×768 视口下画板缩小呈现（≈0.66，可读）。
+    // 缩放读数默认 100%；画板按设计尺寸原样呈现（zoom=1）。
+    CHECK(findNodeByKey(app.shell().root(), "designer-zoom-label")->text ==
+          "100%");
     const auto* previewRoot = findNodeByKey(app.shell().root(), "root");
     REQUIRE(previewRoot != nullptr);
-    CHECK(previewRoot->size.width < 540.0F);
-    CHECK(previewRoot->size.width > 350.0F);
-    // 卡片文本内容完整呈现（缩放后仍有可测高度）。
+    CHECK(previewRoot->size.width == 352.0F);
     const auto* cardLabel = findNodeByKey(app.shell().root(), "card-a-label");
     REQUIRE(cardLabel != nullptr);
     CHECK(cardLabel->size.height > 8.0F);
@@ -3423,11 +3422,145 @@ TEST_CASE("designer default sample is a draggable 540x400 artboard",
     CHECK(app.workbench().selection().primary == saveId);
     app.shell().pointerUp(end);
     (void)app.shell().renderFrame();
-    CHECK(saveProperty("left") != 420.0);
-    CHECK(saveProperty("top") != 336.0);
+    CHECK(saveProperty("left") != 240.0);
+    CHECK(saveProperty("top") != 208.0);
     REQUIRE(app.undo());
-    CHECK(saveProperty("left") == 420.0);
-    CHECK(saveProperty("top") == 336.0);
+    CHECK(saveProperty("left") == 240.0);
+    CHECK(saveProperty("top") == 208.0);
+}
+
+TEST_CASE("designer zoom control uses discrete steps with clamped range",
+          "[designer][d3][app]") {
+    // §8.6 缩放契约：默认 100%；≤200% 步进 25%，>200% 步进 50%；
+    // 上限 500%、下限 10% 钳制。读数经 designer-zoom-label 断言。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto zoomText = [&app] {
+        const auto* label =
+            findNodeByKey(app.shell().root(), "designer-zoom-label");
+        REQUIRE(label != nullptr);
+        return label->text;
+    };
+    const auto zoomBy = [&app](int steps) {
+        for (int i = 0; i < steps; ++i) {
+            app.shell().handlers().at("designer:zoom-in")();
+            (void)app.shell().renderFrame();
+        }
+    };
+    const auto zoomOut = [&app](int steps) {
+        for (int i = 0; i < steps; ++i) {
+            app.shell().handlers().at("designer:zoom-out")();
+            (void)app.shell().renderFrame();
+        }
+    };
+
+    CHECK(zoomText() == "100%");
+    zoomBy(1);
+    CHECK(zoomText() == "125%");
+    zoomBy(1);
+    CHECK(zoomText() == "150%");
+    zoomBy(2);
+    CHECK(zoomText() == "200%");
+    zoomBy(1);
+    CHECK(zoomText() == "250%");
+    zoomBy(5);
+    CHECK(zoomText() == "500%");
+    zoomBy(1);
+    CHECK(zoomText() == "500%");
+    zoomOut(1);
+    CHECK(zoomText() == "450%");
+    zoomOut(13);
+    CHECK(zoomText() == "10%");
+    zoomOut(1);
+    CHECK(zoomText() == "10%");
+    // 复位 = 100%。
+    app.shell().handlers().at("designer:zoom-reset")();
+    (void)app.shell().renderFrame();
+    CHECK(zoomText() == "100%");
+}
+
+
+TEST_CASE("designer canvas bounds show page and parent outlines",
+          "[designer][d3][app]") {
+    // §8.7 容器边界（designer-canvas.html）：页面虚线边界默认可见；选
+    // 中节点时其父容器带虚线轮廓与"类型 · key"标注；独立开关可关。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    (void)app.shell().renderFrame();
+
+    // 页面边界默认在场。
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-page-dash:0:0") !=
+          nullptr);
+    // 未选中的父容器为文档根：不重复画父轮廓。
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-bounds-dash:0:0") == nullptr);
+
+    // 选中卡片内文本：父容器 = card-a，轮廓 + 标注在场。
+    const auto* label = findNodeByKey(app.shell().root(), "card-a-label");
+    REQUIRE(label != nullptr);
+    REQUIRE(label->onClick.rfind("designer:select:", 0) == 0);
+    app.shell().handlers().at(
+        "designer:select:" +
+        std::to_string(static_cast<lumen::dsl::DesignNodeId>(std::strtoull(
+            label->onClick.c_str() + 16, nullptr, 10))))();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-bounds-dash:0:0") != nullptr);
+    const auto* caption =
+        findNodeByKey(app.shell().root(), "designer-canvas-bounds-caption");
+    REQUIRE(caption != nullptr);
+    CHECK(caption->text == "Container · card-a");
+
+    // 独立开关：关闭后边界消失（网格不受影响）。
+    app.shell().handlers().at("designer:canvas-bounds")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-page-dash:0:0") ==
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-bounds-dash:0:0") == nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-grid-dot:0:0") !=
+          nullptr);
+}
+
+TEST_CASE("designer fit view scales the artboard into the canvas",
+          "[designer][d3][app]") {
+    // §8.6/§8.7："适合"命令按画布内容区缩小居中画板（不放大），复位
+    // 回 100%。默认样例 352×264 在默认窗口 100% 已完整，故用大画板
+    // 自有源验证缩放路径。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1024.0F, 768.0F});
+    REQUIRE(app.loadSource(
+        "page fit { Stack(key: \"root\", width: 800, height: 600) {"
+        " Text(\"Big\", key: \"node\", left: 40, top: 40) } }",
+        "fit-view.lumen"));
+    (void)app.shell().renderFrame();
+    (void)app.shell().renderFrame();
+
+    CHECK(findNodeByKey(app.shell().root(), "designer-zoom-label")->text ==
+          "100%");
+    app.shell().handlers().at("designer:zoom-fit")();
+    (void)app.shell().renderFrame();
+    const auto fittedText =
+        findNodeByKey(app.shell().root(), "designer-zoom-label")->text;
+    CHECK(fittedText != "100%");
+    const auto* fitted = findNodeByKey(app.shell().root(), "root");
+    REQUIRE(fitted != nullptr);
+    CHECK(fitted->size.width < 800.0F);
+    CHECK(fitted->size.width > 300.0F);
+    app.shell().handlers().at("designer:zoom-reset")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-zoom-label")->text ==
+          "100%");
+    // 100% 下 800 宽画板被画布约束钳制（单轴视口语义），不为 800。
+    const auto* reset = findNodeByKey(app.shell().root(), "root");
+    REQUIRE(reset != nullptr);
+    CHECK(reset->size.width < 800.0F);
 }
 
 TEST_CASE("designer canvas drag snaps to sibling edges with dashed guides",
@@ -3484,6 +3617,145 @@ TEST_CASE("designer canvas drag snaps to sibling edges with dashed guides",
     CHECK(property("top") == 24.0);
     CHECK(findNodeByKey(app.shell().root(),
                         "designer-canvas-drag-dash:0:0") == nullptr);
+}
+
+
+TEST_CASE("designer toolbox insert falls back to parent when leaf selected",
+          "[designer][d3][app][drag]") {
+    // §4.1 契约补全：所选是叶子（Text 等 maxChildren==0）时插入到其父
+    // 容器、紧随其后——此前叶子选中时静默失败（仅落 schema 诊断），工
+    // 具箱拖放表现为"拖不进去"。容器已满时给状态行反馈而非静默。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    showLeftToolbox(app);
+
+    const auto titleId = [&app] {
+        const auto* title = findNodeByKey(app.shell().root(), "title");
+        REQUIRE(title != nullptr);
+        REQUIRE(title->onClick.rfind("designer:select:", 0) == 0);
+        return static_cast<lumen::dsl::DesignNodeId>(
+            std::strtoull(title->onClick.c_str() + 16, nullptr, 10));
+    }();
+    const auto titleIndex = [&] {
+        const auto outline = app.workbench().outline();
+        REQUIRE(outline.has_value());
+        for (std::size_t index = 0; index < outline->children.size();
+             ++index) {
+            if (outline->children[index].id == titleId) return index;
+        }
+        FAIL("title not found in outline");
+        return std::size_t{0};
+    }();
+
+    // 点击 title（叶子选中），拖 Column 到画布。
+    const auto* title = findNodeByKey(app.shell().root(), "title");
+    const auto titleOrigin = absoluteOffset(app.shell().root(), title->key);
+    const Offset titlePoint{titleOrigin.x + 5.0F, titleOrigin.y + 5.0F};
+    app.shell().pointerDown(titlePoint);
+    app.shell().pointerUp(titlePoint);
+    (void)app.shell().renderFrame();
+
+    const auto rootCountBefore = app.workbench().outline()->children.size();
+    const auto* row = findNodeByKey(app.shell().root(),
+                                    "designer-toolbox:Column");
+    REQUIRE(row != nullptr);
+    const auto rowOrigin = absoluteOffset(app.shell().root(), row->key);
+    const Offset start{rowOrigin.x + 20.0F, rowOrigin.y + 10.0F};
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    const auto canvasOrigin = absoluteOffset(app.shell().root(), canvas->key);
+    const Offset end{canvasOrigin.x + canvas->size.width * 0.5F,
+                     canvasOrigin.y + canvas->size.height * 0.5F};
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    app.shell().pointerUp(end);
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(outline->children.size() == rootCountBefore + 1);
+    // 落在 title 之后（同父紧随其后的兄弟）。
+    CHECK(outline->children[titleIndex].type == "Text");
+    CHECK(outline->children[titleIndex + 1].type == "Column");
+    CHECK(app.diagnostics().empty());
+
+    // 点击插入路径同样回退：叶子选中时激活工具箱命令。
+    app.shell().handlers().at("designer:select:" + std::to_string(titleId))();
+    (void)app.shell().renderFrame();
+    const auto countBeforeCommand = app.workbench().outline()->children.size();
+    app.shell().handlers().at("designer:toolbox:Text")();
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().outline()->children.size() ==
+          countBeforeCommand + 1);
+    CHECK(app.diagnostics().empty());
+
+    // 容器已满（card 是单子 Container 且已有 label）：状态行反馈，不动
+    // 文档。
+    const auto* card = findNodeByKey(app.shell().root(), "card-a");
+    REQUIRE(card != nullptr);
+    app.shell().handlers().at(
+        "designer:select:" +
+        std::to_string(static_cast<lumen::dsl::DesignNodeId>(std::strtoull(
+            card->onClick.c_str() + 16, nullptr, 10))))();
+    (void)app.shell().renderFrame();
+    const auto countBeforeFull = app.workbench().outline()->children.size();
+    app.shell().handlers().at("designer:toolbox:Text")();
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().outline()->children.size() == countBeforeFull);
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Container 已满，无法插入");
+    CHECK(app.diagnostics().empty());
+}
+
+TEST_CASE("designer toolbox drag with incremental motion inserts",
+          "[designer][d3][app][drag]") {
+    // 真实鼠标输入近似：多次小步移动（≤8px/步）且步间渲染帧。会话启
+    // 动阈值按累计位移（锚点起算），增量移动不得影响认领与落点判定。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    showLeftToolbox(app);
+
+    const auto before = app.workbench().outline()->children.size();
+    const auto* row = findNodeByKey(app.shell().root(),
+                                    "designer-toolbox:Button");
+    REQUIRE(row != nullptr);
+    const auto rowOrigin = absoluteOffset(app.shell().root(), row->key);
+    Offset current{rowOrigin.x + 20.0F, rowOrigin.y + 10.0F};
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    const auto canvasOrigin = absoluteOffset(app.shell().root(), canvas->key);
+    const Offset target{canvasOrigin.x + canvas->size.width * 0.6F,
+                        canvasOrigin.y + canvas->size.height * 0.6F};
+
+    app.shell().pointerDown(current);
+    (void)app.shell().renderFrame();
+    // 先抖动两小步（未越阈值不应起会话）。
+    current = current + Offset{2.0F, 1.0F};
+    app.shell().pointerMove(current);
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.shell().controller().dragSessionActive());
+    // 分 40 步走完到画布，每 5 步渲染一帧。
+    const Offset step{(target.x - current.x) / 40.0F,
+                      (target.y - current.y) / 40.0F};
+    for (int i = 0; i < 40; ++i) {
+        current = current + step;
+        app.shell().pointerMove(current);
+        if (i % 5 == 0) (void)app.shell().renderFrame();
+    }
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    app.shell().pointerUp(current);
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    CHECK(outline->children.size() == before + 1);
+    CHECK(outline->children.back().type == "Button");
+    CHECK(app.diagnostics().empty());
 }
 
 TEST_CASE("designer canvas refuses to drag flow-layout children",
@@ -5216,5 +5488,6 @@ TEST_CASE("designer panel scrollviews answer wheel and scrollbar drags",
           Catch::Approx(toolbox()->size.height * 0.9F).margin(0.5F));
     CHECK(app.workbench().documentRevision() == revision);
 }
+
 
 

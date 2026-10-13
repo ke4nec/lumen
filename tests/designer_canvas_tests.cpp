@@ -143,7 +143,7 @@ TEST_CASE("designer canvas resize preserves design coordinates across dpi zoom a
                 const auto handle = bounds(app, "designer-canvas-handle:nw");
                 const Offset start = handle.origin +
                     Offset{handle.size.width * 0.5F, handle.size.height * 0.5F};
-                const float zoom = zoomSteps == 0 ? 1.0F : 1.21F;
+                const float zoom = zoomSteps == 0 ? 1.0F : 1.5F;
                 const Offset end = start + Offset{-8.0F * zoom, -8.0F * zoom};
                 app.shell().pointerDown(start);
                 app.shell().pointerMove(end);
@@ -231,7 +231,7 @@ TEST_CASE("designer canvas resize uses every handle in parent design units",
             const bool south = handleName.find('s') != std::string::npos;
             const Offset delta{west ? -16.0F : east ? 16.0F : 0.0F,
                                north ? -16.0F : south ? 16.0F : 0.0F};
-            const Offset end = start + Offset{delta.x * 1.21F, delta.y * 1.21F};
+            const Offset end = start + Offset{delta.x * 1.5F, delta.y * 1.5F};
             app.shell().pointerDown(start);
             app.shell().pointerMove(end);
             REQUIRE(app.shell().controller().dragSessionActive());
@@ -275,7 +275,7 @@ TEST_CASE("designer canvas view changes cancel resize and stale revisions cannot
         const auto selection = app.workbench().selection();
         const auto handle = bounds(app, "designer-canvas-handle:se");
         const Offset start = handle.origin + Offset{4.0F, 4.0F};
-        const Offset end = start + Offset{16.0F * 1.21F, 16.0F * 1.21F};
+        const Offset end = start + Offset{16.0F * 1.5F, 16.0F * 1.5F};
         app.shell().pointerDown(start);
         app.shell().pointerMove(end);
         REQUIRE(app.shell().controller().dragSessionActive());
@@ -319,7 +319,7 @@ TEST_CASE("designer canvas root resize excludes view pan from design snapping",
             (void)app.shell().renderFrame();
             const auto handle = bounds(app, "designer-canvas-handle:se");
             const Offset start = handle.origin + Offset{4.0F, 4.0F};
-            const float zoom = zoomSteps == 0 ? 1.0F : 1.21F;
+            const float zoom = zoomSteps == 0 ? 1.0F : 1.5F;
             const Offset end = start + Offset{16.0F * zoom, 16.0F * zoom};
             app.shell().pointerDown(start);
             app.shell().pointerMove(end);

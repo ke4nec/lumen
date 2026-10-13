@@ -256,9 +256,9 @@ class DesignerApp {
     void adjustCanvasZoom(float factor);
     void panCanvas(core::Offset delta);
     void resetCanvasView();
-    // 文档加载后 pending：画布节点就绪的那次 build 里计算 fit-to-view
-    //（画板大于视口时缩小居中，不放大），随 buildCanvasPanel 消费。
-    void maybeFitCanvasView();
+    // 适合视图（design/designer-canvas.html）：画板按画布内容区缩小
+    // 居中（不放大；放得下时 100% 居中）。
+    void fitCanvasView();
     // 应用侧 ScrollView 滚动接线（lumen-scroll-design §3.4/§4）：框架把
     // 滚轮/滚动条/键盘/语义滚动解析到视口节点后经 onWheel/onScrollDrag
     // 交回应用，这里按视口 key 驱动各自的 ScrollController，offset 由
@@ -458,7 +458,9 @@ class DesignerApp {
     // 参考线（网格点 + 标尺 + 选中框/手柄）默认可见：对齐辅助是画布的
     // 常驻预期（workspace-design §8.1 追加；原 B 落地为默认关）。
     bool canvasGuidesEnabled_{true};
-    bool canvasFitPending_{false};
+    // 容器边界（designer-canvas.html，§8.7）：页面虚线边界 + 所选父容
+    // 器虚线轮廓与类型标注，独立开关，默认开。
+    bool canvasBoundsEnabled_{true};
     PreviewStateMode previewStateMode_{PreviewStateMode::None};
     std::string previewStateKey_{};
     std::map<dsl::DesignNodeId, std::string> previewKeys_{};
