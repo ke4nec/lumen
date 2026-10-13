@@ -242,6 +242,53 @@ TEST_CASE("designer toolbar groups commands and fits the viewport",
                                  static_cast<int>(pixels.width) * 4);
         }
     }
+    // 可选取证：全布局元素盒导出（与 design/ mockup 逐元素比对的实现侧
+    // 数据源；坐标为视口绝对值）。LAYOUT <key> x y w h。
+    if (std::getenv("LUMEN_LAYOUT_DUMP") != nullptr) {
+        const std::vector<std::string> wanted = {
+            "designer-toolbar",        "designer-toolbar-row",
+            "designer-tab-outline",    "designer-tab-toolbox",
+            "designer-outline-view",   "designer-project-status",
+            "designer-project-new",    "designer-project-open",
+            "designer-canvas",         "designer-preview-canvas",
+            "designer-center-tabs",    "designer-properties-panel",
+            "designer-diagnostics"};
+        for (const auto& key : wanted) {
+            const auto* node = findNodeByKey(app.shell().root(), key);
+            if (node == nullptr) continue;
+            std::printf("LAYOUT %s %.1f %.1f %.1f %.1f\n", key.c_str(),
+                        lumen::core::absoluteOffset(app.shell().root(), key).x,
+                        lumen::core::absoluteOffset(app.shell().root(), key).y,
+                        node->size.width, node->size.height);
+        }
+        // 工具栏 22 枚按钮 + 大纲树行 + 工具箱行（Toolbox 视图另测）。
+        std::function<void(const lumen::core::RenderNode&, float, float)> boxes =
+            [&](const lumen::core::RenderNode& node, float x, float y) {
+                const float nx = x + node.offset.x;
+                const float ny = y + node.offset.y;
+                const bool isToolbarButton =
+                    node.type == lumen::core::WidgetType::Button &&
+                    node.key.rfind("designer-", 0) == 0 &&
+                    node.key.rfind("designer-property", 0) != 0 &&
+                    node.key.rfind("designer-reference", 0) != 0 &&
+                    node.key.rfind("designer-outline:item", 0) != 0 &&
+                    node.key.rfind("designer-tip:", 0) != 0 &&
+                    node.key.rfind("designer-diagnostic", 0) != 0 &&
+                    node.key.rfind("designer-project-", 0) != 0;
+                if (isToolbarButton) {
+                    std::printf("LAYOUT %s %.1f %.1f %.1f %.1f\n",
+                                node.key.c_str(), nx, ny, node.size.width,
+                                node.size.height);
+                }
+                if (node.key.rfind("designer-outline:item:", 0) == 0) {
+                    std::printf("LAYOUT %s %.1f %.1f %.1f %.1f\n",
+                                node.key.c_str(), nx, ny, node.size.width,
+                                node.size.height);
+                }
+                for (const auto& child : node.children) boxes(child, nx, ny);
+            };
+        boxes(app.shell().root(), 0.0F, 0.0F);
+    }
 
     // 左面板版本 C：默认 Outline 视图时工具箱不在树上；切到 Toolbox
     // 视图后整行列表落在面板内容盒内（整行宽 = 内容宽，无长名截断）。

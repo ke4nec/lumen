@@ -4000,11 +4000,17 @@ core::Widget DesignerApp::buildProjectPanel() {
     openProject.icon = core::IconId::Folder;
     openProject.styleOverrides.padding = core::EdgeInsets::symmetric(6.0F, 4.0F);
     openProject.semanticsLabel = "Open";
+    auto statusSpacer = core::makeContainerLeaf(
+        std::nullopt, std::nullopt, {}, {}, core::Color::transparent(), {});
+    statusSpacer.flex = 1.0F;
+    statusSpacer.excludeFromFocus = true;
+    statusSpacer.excludeFromSemantics = true;
     auto statusRow = core::makeRow(
         {std::move(statusIcon),
          core::makeText(statusText, theme.typography.caption, {}, 0.0F,
                         "designer-project-status"),
-         std::move(newProject), std::move(openProject)},
+         std::move(statusSpacer), std::move(newProject),
+         std::move(openProject)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 4.0F,
         {}, {}, "designer-project-status-row");
 
@@ -4077,10 +4083,12 @@ core::Widget DesignerApp::buildOutlinePanel() {
     auto outlineTab = core::makeButton(
         "Outline", theme.typography.label, {}, 0.0F, "designer-tab-outline",
         std::nullopt, std::nullopt, "designer:lefttab-outline");
+    outlineTab.width = 106.0F;  // 均分内容宽（设计稿 flex:1 同义：2×106+gap4=216）
     outlineTab.selected = leftPanelTab_ == LeftPanelTab::Outline;
     auto toolboxTab = core::makeButton(
         "Toolbox", theme.typography.label, {}, 0.0F, "designer-tab-toolbox",
         std::nullopt, std::nullopt, "designer:lefttab-toolbox");
+    toolboxTab.width = 106.0F;
     toolboxTab.selected = leftPanelTab_ == LeftPanelTab::Toolbox;
     auto tabs = core::makeTabs({std::move(outlineTab), std::move(toolboxTab)},
                                "designer-left-tabs");
