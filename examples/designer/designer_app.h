@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "lumen/app/app_shell.h"
+#include "lumen/core/scroll.h"
 #include "lumen/core/virtual_list.h"
 #include "lumen/dsl/design_resources.h"
 #include "lumen/dsl/design_mapping.h"
@@ -28,6 +29,7 @@
 #include "lumen/widgets/menu.h"
 #include "lumen/widgets/navigator.h"
 #include "lumen/widgets/spin.h"
+#include "lumen/widgets/splitter.h"
 #include "lumen/widgets/statusbar.h"
 #include "lumen/widgets/toolbar.h"
 #include "lumen/widgets/tree.h"
@@ -158,6 +160,24 @@ class DesignerApp {
     void registerCommands();
     [[nodiscard]] core::Widget buildUi();
     [[nodiscard]] core::Widget buildPreviewWindow();
+    // B 画布优先（design/designer-ide.html?variant=b，workspace-design §3/§3.1）：
+    // 标题栏 44 + 主工具 48 + 工作区（48 rail + 224 left + 6 + center + 6 + 280
+    // right）+ 状态栏 28。旧 buildToolbar/buildBody 保留为兼容入口，内部转调
+    // 新的 B 组件，保持 designer-toolbar 等既有 key 可测。
+    [[nodiscard]] core::Widget buildTitleBar();
+    [[nodiscard]] core::Widget buildMenuPopover();
+    // 运行预览模态覆盖层：仅在运行/调试会话中出现，停止/Esc 即隐藏，
+    // 不再常驻第二个 OS 窗口（HTML 稿亦为 modal 近似）。
+    [[nodiscard]] core::Widget buildRunPreviewOverlay();
+    [[nodiscard]] core::Widget buildMainTools();
+    [[nodiscard]] core::Widget buildRail();
+    [[nodiscard]] core::Widget buildDocumentTabs();
+    [[nodiscard]] core::Widget buildCanvasControls();
+    [[nodiscard]] core::Widget buildCrumbBar();
+    [[nodiscard]] core::Widget buildBottomDock();
+    [[nodiscard]] core::Widget buildStatusBar();
+    [[nodiscard]] core::Widget buildCenterPanel();
+    [[nodiscard]] core::Widget buildWorkspace();
     [[nodiscard]] core::Widget buildToolbar();
     [[nodiscard]] core::Widget buildToolboxPanel();
     [[nodiscard]] core::Widget buildProjectPanel();
@@ -191,6 +211,15 @@ class DesignerApp {
     void cyclePreviewState();
     void applyPreviewState();
     void resetPreviewState();
+    // B 工作区状态（workspace-design §3/§4.4）：专注、左栏折叠、底部折叠、
+    // 中心视图（设计/分屏/快照）与底部页签（问题/引用）。切换均不触碰文档
+    // dirty/undo（§4.4），仅 markDirty 重建。
+    void toggleZen();
+    void toggleLeftCollapsed();
+    void toggleBottom();
+    void resetLayout();
+    void showToolbox();
+    void focusLayoutContext();
     void requestOpenFile();
     void requestNewProjectFile();
     void requestSaveFile();
@@ -227,8 +256,33 @@ class DesignerApp {
     void adjustCanvasZoom(float factor);
     void panCanvas(core::Offset delta);
     void resetCanvasView();
+    // 文档加载后 pending：画布节点就绪的那次 build 里计算 fit-to-view
+    //（画板大于视口时缩小居中，不放大），随 buildCanvasPanel 消费。
+    void maybeFitCanvasView();
+    // 应用侧 ScrollView 滚动接线（lumen-scroll-design §3.4/§4）：框架把
+    // 滚轮/滚动条/键盘/语义滚动解析到视口节点后经 onWheel/onScrollDrag
+    // 交回应用，这里按视口 key 驱动各自的 ScrollController，offset 由
+    // 各 build* 写回 scrollOffset。
+    [[nodiscard]] core::ScrollController* scrollControllerForKey(
+        std::string_view key);
+    [[nodiscard]] core::ScrollController* scrollControllerFor(
+        const core::RenderNode& viewport);
+    [[nodiscard]] float panelScrollOffset(std::string_view key) const;
+    bool handlePanelWheel(const core::RenderNode* viewport,
+                          core::Offset delta);
+    bool handlePanelScrollDrag(const core::RenderNode* viewport,
+                               core::Offset delta,
+                               core::ScrollDragPhase phase,
+                               std::uint64_t nowMs);
+    bool advancePanelScrollFling(app::AppShell& shell, std::uint64_t nowMs);
     [[nodiscard]] static float snapCanvasCoordinate(float value, float maximum,
-                                                     float threshold);
+                                                    float threshold);
+    // 拖动换位吸附：阈值内取最近候选（并记命中参考线），否则回落
+    // snapCanvasCoordinate 的网格吸附。
+    [[nodiscard]] float snapDragCoordinate(
+        float value, const std::vector<float>& snaps,
+        const std::vector<float>& guides, float gridMaximum, float threshold,
+        std::optional<float>& activeGuide) const;
     void refreshDocumentUi();
     void clearProjectSession();
     void syncActiveProjectDocument();
@@ -271,14 +325,29 @@ class DesignerApp {
         SaveAs,
     };
 
+    // B 中心视图（designer-ide.html variant-b）：设计（仅画布）、分屏
+    // （画布+只读快照）、快照（全宽只读）。引用移至底部，中心不再有
+    // References 页（workspace-design §3 表格）。
+    enum class CenterView {
+        Design,
+        Split,
+        Source,
+    };
+
+    // B 底部页签（workspace-design §3）：问题/引用常驻底栏，C 才有布局工具。
+    enum class BottomTab {
+        Diagnostics,
+        References,
+    };
+
     enum class CenterTab {
         Canvas,
         Source,
         References,
     };
 
-    // 左面板版本 C（designer-leftpanel-redesign.html）：页签在
-    // Outline（文档树）与 Toolbox（分组节点列表）间切换整个面板视图。
+    // 左面板 B（designer-ide.html variant-b dock-tabs）：控件/结构按需切换，
+    // 默认控件（与 A 的同时显示不同；workspace-design §3 表格）。
     enum class LeftPanelTab {
         Outline,
         Toolbox,
@@ -321,8 +390,10 @@ class DesignerApp {
 
     dsl::DesignPreviewWorkbench workbench_{};
     OfflineRuntimeContext runtimeContext_;
-    OutlineModel outlineModel_;
-    widgets::TreeController outlineController_{};
+    // B 预览独立密度（ThemeScope 包裹画布，工作台 Compact 不影响预览
+    // Comfortable；visual-system §3.6）。shared_ptr 存活覆盖布局期。
+    std::shared_ptr<void> previewScopeData_{};
+    OutlineModel outlineModel_;    widgets::TreeController outlineController_{};
     widgets::DataGridController referencesController_{};
     widgets::ComboBoxController comboPreviewController_{
         {widgets::ComboBoxController::Option{"draft", "Draft"},
@@ -345,7 +416,27 @@ class DesignerApp {
     core::VirtualListController diagnosticsController_{};
     std::vector<ReferenceEntry> referenceRows_{};
     CenterTab centerTab_{CenterTab::Canvas};
-    LeftPanelTab leftPanelTab_{LeftPanelTab::Outline};
+    // B 默认：Toolbox（画布优先先给插入入口，大纲按需展开；HTML leftTab
+    // variant-b 默认 toolbox）。旧 CenterTab 保留兼容映射到 CenterView。
+    LeftPanelTab leftPanelTab_{LeftPanelTab::Toolbox};
+    CenterView centerView_{CenterView::Design};
+    BottomTab bottomTab_{BottomTab::Diagnostics};
+    // B 默认收起（workspace-design §3.1 底栏初始 36；A/B 折叠，C/D 展开）。
+    bool bottomOpen_{false};
+    bool zenMode_{false};
+    bool leftCollapsed_{false};
+    // B 外壳分栏（workspace-design §3.1：左 224 + 48 rail，右 280，轨道 6，
+    // 左右边界不低于 180/232，上限 400；Compact 12 步进，双击复位）。
+    widgets::SplitterController leftSplitter_{224.0F};
+    widgets::SplitterController rightSplitter_{716.0F};
+    // 右栏偏好宽（默认 280，上限 400；拖动经 onOffsetChanged 回填，resize/
+    // 折叠时恢复偏好，中心吃增量）。
+    float rightWidthPreference_{280.0F};
+    // 标题栏菜单 popover（B 文件/编辑/视图；HTML .popover，Esc 关闭）。
+    std::optional<std::string> openMenu_{};
+    // 运行预览覆盖层是否打开。仅 startPreview 成功置位，stopPreview/Esc
+    // 复位；窗口关闭等价停止会话。
+    bool runPreviewOpen_{false};
     PreviewSessionMode previewSessionMode_{PreviewSessionMode::Stopped};
     std::string sourceSnapshot_{};
     std::size_t sourceFocusLine_{0};
@@ -356,12 +447,18 @@ class DesignerApp {
     PendingFileDialog pendingFileDialog_{PendingFileDialog::None};
     std::optional<SaveConflict> saveConflict_{};
     bool darkMode_{true};
-    style::ControlDensity density_{style::ControlDensity::Comfortable};
+    // B 工作台显式 Compact（visual-system §3.6）；预览独立 Comfortable，
+    // 互不影响（workspace-design §3.1/§4.4）。
+    style::ControlDensity density_{style::ControlDensity::Compact};
+    style::ControlDensity previewDensity_{style::ControlDensity::Comfortable};
     float deviceScale_{1.0F};
     dsl::DesignCoordinateTransform canvasTransform_{};
     float fontScale_{1.0F};
     bool highContrast_{false};
-    bool canvasGuidesEnabled_{false};
+    // 参考线（网格点 + 标尺 + 选中框/手柄）默认可见：对齐辅助是画布的
+    // 常驻预期（workspace-design §8.1 追加；原 B 落地为默认关）。
+    bool canvasGuidesEnabled_{true};
+    bool canvasFitPending_{false};
     PreviewStateMode previewStateMode_{PreviewStateMode::None};
     std::string previewStateKey_{};
     std::map<dsl::DesignNodeId, std::string> previewKeys_{};
@@ -378,6 +475,10 @@ class DesignerApp {
     bool toolboxDragActive_{false};
     std::string toolboxDragType_{};
     core::Offset toolboxDragPointer_{};
+    // 面板 ScrollView（工具箱/工程/源码/属性/运行预览）的应用侧滚动状态；
+    // 键 = 视口 key，全部纵向。VirtualList/List/Tree 等源视口由框架直驱，
+    // 不进这张表。
+    std::map<std::string, core::ScrollController> panelScrolls_{};
     struct CanvasResizePreview {
         dsl::DesignNodeId id{0};
         float x{0.0F};
@@ -397,6 +498,15 @@ class DesignerApp {
     std::string canvasResizeDocumentId_{};
     std::uint64_t canvasResizeRevision_{0};
     bool canvasResizePositionEditable_{false};
+    // 拖动换位对齐参考（§8.3）：Start 时按父框与同父子节点收集吸附候
+    // 选（拖动节点左/中/右对齐目标坐标）与对应参考线位置（设计坐标，
+    // 成对等长）；命中阈值内吸附并记 ActiveGuide 供画虚线。
+    std::vector<float> canvasResizeSnapXs_{};
+    std::vector<float> canvasResizeGuideXs_{};
+    std::vector<float> canvasResizeSnapYs_{};
+    std::vector<float> canvasResizeGuideYs_{};
+    std::optional<float> canvasResizeActiveGuideX_{};
+    std::optional<float> canvasResizeActiveGuideY_{};
     std::map<std::string, core::StateStore::ObserverId> propertyObservers_{};
     bool syncingPropertyState_{false};
     dsl::DesignResourcePolicy resourcePolicy_{};

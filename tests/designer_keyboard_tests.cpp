@@ -27,6 +27,9 @@ TEST_CASE("designer accessible outline activation selects and locates its declar
         " Text(\"First\", key: \"first\")"
         " Button(\"Second\", key: \"second\") } }", "accessible-outline.lumen"));
     (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页。
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
     const auto before = *app.workbench().document();
     const auto revision = app.workbench().documentRevision();
     const auto outline = app.workbench().outline();
@@ -169,6 +172,9 @@ TEST_CASE("designer declaration fields retain document undo while blocking struc
     (void)app.shell().renderFrame();
     const auto id = app.workbench().document()->root.children[1].id;
     app.shell().handlers().at("designer:select:" + std::to_string(id))();
+    (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页。
+    app.shell().handlers().at("designer:lefttab-outline")();
     (void)app.shell().renderFrame();
     const auto before = *app.workbench().document();
     const std::string fieldKey =

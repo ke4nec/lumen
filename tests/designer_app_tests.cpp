@@ -5,6 +5,7 @@
 #include <array>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -20,6 +21,7 @@
 #include "lumen/accessibility/bridge.h"
 #include "lumen/accessibility/semantics.h"
 #include "lumen/core/render_node.h"
+#include "lumen/core/scrollbar.h"
 #include "stb_image_write.h"
 #include "lumen/core/splitter.h"
 #include "lumen/core/virtual_list.h"
@@ -38,6 +40,7 @@ using lumen::core::Offset;
 using lumen::core::Size;
 using lumen::core::absoluteOffset;
 using lumen::core::findNodeByKey;
+using lumen::core::scrollbarGeometry;
 using lumen::designer_app::DesignerApp;
 using lumen::designer_app::FileWatcher;
 
@@ -52,9 +55,9 @@ void writeRawRgba(const std::filesystem::path& path) {
 }
 
 
-// 左面板版本 C：工具箱行只在 Toolbox 视图（默认 Outline）。需要工具箱
-// 按钮的用例在首次渲染后调用此助手切换视图（leftPanelTab_ 为成员态，
-// 后续重建保持该视图）。
+// B 画布优先：工具箱行在 Toolbox 视图（默认 Toolbox）。需要工具箱
+// 按钮的用例在首次渲染后调用此助手确保视图（leftPanelTab_ 为成员态，
+// 后续重建保持该视图；默认已是 Toolbox，调用为幂等）。
 void showLeftToolbox(lumen::designer_app::DesignerApp& app) {
     app.shell().handlers().at("designer:lefttab-toolbox")();
     (void)app.shell().renderFrame();
@@ -203,11 +206,25 @@ TEST_CASE("designer app exposes the D2 shell and semantic controls",
     (void)app.shell().renderFrame();
 
     const auto& root = app.shell().root();
-    REQUIRE(findNodeByKey(root, "designer-toolbar") != nullptr);
-    REQUIRE(findNodeByKey(root, "designer-outline-view") != nullptr);
+    // B 画布优先外壳（designer-ide.html variant-b）：标题 44 + 主工具 48 +
+    // 活动栏 48 + 左右分栏 + 中心 + 状态 28。
+    REQUIRE(findNodeByKey(root, "designer-titlebar") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-main-tools") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-rail") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-outline-panel") != nullptr);
     REQUIRE(findNodeByKey(root, "designer-canvas") != nullptr);
     REQUIRE(findNodeByKey(root, "designer-properties-panel") != nullptr);
     REQUIRE(findNodeByKey(root, "designer-diagnostics") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-statusbar") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-document-tabs") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-canvas-controls") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-crumb-bar") != nullptr);
+    // B 默认 Toolbox（画布优先先给插入入口），切换后大纲可达。
+    REQUIRE(findNodeByKey(root, "designer-toolbox:Container") != nullptr);
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-outline-view") !=
+            nullptr);
 
     const auto semantics = app.shell().buildSemanticsSnapshot();
     bool hasButton = false;
@@ -224,14 +241,15 @@ TEST_CASE("designer app exposes the D2 shell and semantic controls",
 
 TEST_CASE("designer toolbar groups commands and fits the viewport",
           "[designer][d2][app]") {
-    // 工具栏重设计版本 A（design/designer-toolbar-redesign.html）：五组
-    // 命令 + 分隔线 + 弹性占位把缩放组推到右缘；1280 视口内不裁剪。
+    // B 画布优先主工具 48（design/designer-ide.html?variant=b）：保存/撤销/
+    // 重做 | 选择/插入/布局 | 提示 | 专注/调试/停止/运行；文件低频保留图标件；
+    // 画布工具（主题/密度/缩放/网格）下沉 canvas-controls；1280 内不裁剪。
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
-    // 可选取证：默认（Outline 视图）帧导出，与文末 Toolbox 视图导出
-    //（LUMEN_TOOLBAR_PNG）互补，供 design/ mockup 并排比对。
+    // 可选取证：默认（Toolbox 视图，B 画布优先）帧导出，与文末 Toolbox
+    // 视图导出（LUMEN_TOOLBAR_PNG）互补，供 design/ mockup 并排比对。
     if (const char* leftPath = std::getenv("LUMEN_LEFT_PNG")) {
         const auto& pixels = app.shell().pixels();
         std::printf("left png %s (%dx%d)\n", leftPath, pixels.width,
@@ -246,13 +264,16 @@ TEST_CASE("designer toolbar groups commands and fits the viewport",
     // 数据源；坐标为视口绝对值）。LAYOUT <key> x y w h。
     if (std::getenv("LUMEN_LAYOUT_DUMP") != nullptr) {
         const std::vector<std::string> wanted = {
-            "designer-toolbar",        "designer-toolbar-row",
+            "designer-titlebar",       "designer-main-tools",
+            "designer-toolbar-row",    "designer-rail",
             "designer-tab-outline",    "designer-tab-toolbox",
             "designer-outline-view",   "designer-project-status",
             "designer-project-new",    "designer-project-open",
             "designer-canvas",         "designer-preview-canvas",
-            "designer-center-tabs",    "designer-properties-panel",
-            "designer-diagnostics"};
+            "designer-document-tabs",  "designer-canvas-controls",
+            "designer-crumb-bar",      "designer-center-tabs",
+            "designer-properties-panel", "designer-diagnostics",
+            "designer-statusbar",      "designer-workspace"};
         for (const auto& key : wanted) {
             const auto* node = findNodeByKey(app.shell().root(), key);
             if (node == nullptr) continue;
@@ -290,7 +311,7 @@ TEST_CASE("designer toolbar groups commands and fits the viewport",
         boxes(app.shell().root(), 0.0F, 0.0F);
     }
 
-    // 左面板版本 C：默认 Outline 视图时工具箱不在树上；切到 Toolbox
+    // B 左栏 224 默认 Toolbox（画布优先先给插入入口）；切到 Toolbox
     // 视图后整行列表落在面板内容盒内（整行宽 = 内容宽，无长名截断）。
     // 坐标取面板相对（子 offset 链不含面板自身 offset）。
     {
@@ -322,10 +343,10 @@ TEST_CASE("designer toolbar groups commands and fits the viewport",
     }
 
     const auto* toolbar =
-        findNodeByKey(app.shell().root(), "designer-toolbar");
+        findNodeByKey(app.shell().root(), "designer-main-tools");
     REQUIRE(toolbar != nullptr);
     CHECK(toolbar->size.width == Catch::Approx(1280.0F));
-    CHECK(toolbar->size.height == Catch::Approx(56.0F));
+    CHECK(toolbar->size.height == Catch::Approx(48.0F));
 
     struct ToolRow {
         std::string key;
@@ -356,7 +377,8 @@ TEST_CASE("designer toolbar groups commands and fits the viewport",
                         ? button->common.background
                         : lumen::core::Color::transparent()});
             }
-            if (node.key == "designer-toolbar-separator") ++separators;
+            if (node.key.rfind("designer-main-tools-separator", 0) == 0)
+                ++separators;
             for (const auto& child : node.children) walk(child, x, y);
         };
     walk(*toolbar, 0.0F, 0.0F);
@@ -369,10 +391,10 @@ TEST_CASE("designer toolbar groups commands and fits the viewport",
                         << " font=" << row.fontSize);
         maxRight = std::max(maxRight, row.right);
     }
-    // 缩放组完整可见：右缘不越过内容盒（右 padding 16）。
+    // 运行组完整可见：右缘不越过内容盒（右 padding 16）。
     CHECK(maxRight <= Catch::Approx(contentRight).margin(0.5F));
-    // 编辑|运行|文件|环境 组间三条分隔线；缩放组经弹性占位贴右，不设线。
-    CHECK(separators == 3);
+    // B 主工具两条分隔线：文件|选择/插入/布局|提示（workspace-design §3）。
+    CHECK(separators == 2);
     // Run 是唯一 Filled（accent 底）；其余 chrome 件 rest 透明。
     const auto& theme = app.shell().theme();
     std::size_t filled = 0;
@@ -387,13 +409,13 @@ TEST_CASE("designer toolbar groups commands and fits the viewport",
         &runButton->style.component);
     REQUIRE(runStyle != nullptr);
     CHECK(runStyle->common.background == theme.colors.accent);
-    CHECK(runButton->text == "Run");
+    CHECK(runButton->text == "运行预览");
 
-    // M11 tooltip：22 枚 tip 常驻 Stack 并完成注册（图标钮/紧凑档的
-    // 文字事实来源）。
+    // M11 tooltip：主工具 tip 常驻 Stack 并完成注册（图标钮/紧凑档的
+    // 文字事实来源；画布工具 tip 在 canvas-controls 另测）。
     for (const auto* key : {"designer-tip:designer-run",
-                            "designer-tip:designer-move-up",
-                            "designer-tip:designer-zoom-in"}) {
+                            "designer-tip:designer-save",
+                            "designer-tip:designer-undo"}) {
         const auto* tip = findNodeByKey(app.shell().root(), key);
         INFO(key);
         REQUIRE(tip != nullptr);
@@ -419,20 +441,22 @@ TEST_CASE("designer toolbar groups commands and fits the viewport",
             for (const auto& child : node.children) reprobe(child, x);
         };
     if (const auto* bar =
-            findNodeByKey(app.shell().root(), "designer-toolbar")) {
+            findNodeByKey(app.shell().root(), "designer-main-tools")) {
         reprobe(*bar, 0.0F);
         CHECK(compactMaxRight <=
               Catch::Approx(bar->size.width - bar->padding.right).margin(
                   0.5F));
     }
 
-    // 工具箱行：尾随 Dots 拖拽把手（组语义由组头承担）。
+    // 工具箱行无尾随装饰：拖放按整行认领（onClick 前缀），组头不带
+    // 数量、条目不带拖拽点（§8.4 用户裁定移除）。
     if (const auto* toolRow = findNodeByKey(app.shell().root(),
                                             "designer-toolbox:Container")) {
-        CHECK(toolRow->icon == static_cast<std::uint8_t>(
-                                   lumen::core::IconId::Dots));
-        CHECK_FALSE(toolRow->iconLeading);
+        CHECK(toolRow->icon ==
+              static_cast<std::uint8_t>(lumen::core::IconId::None));
     }
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-toolbox-group-count:Layout") == nullptr);
 
     // 可选视觉取证：LUMEN_TOOLBAR_PNG=path.png 时导出当前帧，供与
     // design/ mockup 并排比对（不设则零开销，不参与断言）。
@@ -542,14 +566,21 @@ TEST_CASE("designer app selects preview nodes and keeps the last frame on errors
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
+    // 默认画板 1024×768 触发 fit-to-view：首帧建立画布节点、次帧完成
+    // 缩放收敛，之后的几何取点才与交互树一致。
+    (void)app.shell().renderFrame();
     (void)app.shell().renderFrame();
 
     const auto outline = app.workbench().outline();
     REQUIRE(outline.has_value());
     REQUIRE(!outline->children.empty());
-    const auto expected = outline->children.front().id;
     const auto* preview = findNodeByKey(app.shell().root(), "title");
     REQUIRE(preview != nullptr);
+    // 期望值取被点节点自身（默认样例 §8.1 换为画板结构后不再假设
+    // children.front() 即 title）。
+    REQUIRE(preview->onClick.rfind("designer:select:", 0) == 0);
+    const auto expected = static_cast<lumen::dsl::DesignNodeId>(
+        std::strtoull(preview->onClick.c_str() + 16, nullptr, 10));
     const auto origin = absoluteOffset(app.shell().root(), "title");
     const Offset center = origin +
                           Offset{preview->size.width * 0.5F,
@@ -586,29 +617,52 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     CHECK(app.shell().theme().metrics.density != beforeDensity);
 
     app.shell().focus().clearFocus();
-    // 工具栏版本 A 的焦点顺序：编辑 → 运行（Stop 停止态禁用跳过）→
-    // 文件 → 环境；缩放组 excludeFromFocus 不参与 Tab。
+    // B 焦点顺序（workspace-design §4.4）：标题栏 → 主工具（Stop 停止态禁用
+    // 跳过；缩放组 excludeFromFocus 不参与）→ 活动栏 → 左栏 → 中心 → 右栏。
+    // 此处按子序列断言（允许标题栏等新增停靠点穿插），保证命令可达而非
+    // 逐键硬编码。
     const std::vector<std::string> toolbarKeys = {
-        "designer-add-text",   "designer-duplicate", "designer-remove",
-        "designer-move-up",    "designer-move-down", "designer-run",
-        "designer-debug",      "designer-open",      "designer-save",
-        "designer-save-as",    "designer-new-project", "designer-theme",
-        "designer-density",    "designer-dpi",       "designer-font-scale",
-        "designer-contrast",   "designer-preview-state",
-        "designer-canvas-guides"};
-    for (const auto& key : toolbarKeys) {
-        app.shell().keyDown(Key::Tab);
-        CHECK(app.shell().focus().focusedKey() == key);
+        "designer-menu-file",  "designer-menu-edit",  "designer-menu-view",
+        "designer-save",       "designer-open",       "designer-save-as",
+        "designer-new-project", "designer-undo",      "designer-redo",
+        "designer-insert",     "designer-layout",     "designer-zen",
+        "designer-debug",      "designer-run"};
+    auto expectSubsequence = [&](const std::vector<std::string>& keys) {
+        for (const auto& key : keys) {
+            bool found = false;
+            for (int step = 0; step < 80; ++step) {
+                app.shell().keyDown(Key::Tab);
+                if (app.shell().focus().focusedKey() == key) {
+                    found = true;
+                    break;
+                }
+            }
+            INFO(key);
+            CHECK(found);
+        }
+    };
+    expectSubsequence(toolbarKeys);
+    // B 默认 Toolbox：主工具之后经活动栏到达左栏页签（控件/结构），
+    // 工具箱行在焦点环内；大纲行需切到结构页。
+    expectSubsequence({"designer-rail-toolbox", "designer-rail-outline",
+                       "designer-tab-toolbox", "designer-tab-outline"});
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
+    app.shell().focus().clearFocus();
+    expectSubsequence({"designer-tab-toolbox", "designer-tab-outline"});
+    // 结构页内大纲树可达。
+    {
+        bool found = false;
+        for (int step = 0; step < 120; ++step) {
+            app.shell().keyDown(Key::Tab);
+            if (app.shell().focus().focusedKey().starts_with(
+                    "designer-outline:item:")) {
+                found = true;
+                break;
+            }
+        }
+        CHECK(found);
     }
-    // 左面板版本 C：默认 Outline 视图——工具栏之后是左面板页签（2 枚）
-    // 与大纲树；Toolbox 行不在焦点环内（互斥视图）。
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey() == "designer-tab-outline");
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey() == "designer-tab-toolbox");
-    app.shell().keyDown(Key::Tab);
-    CHECK(app.shell().focus().focusedKey().starts_with(
-        "designer-outline:item:"));
 
     const auto outline = app.workbench().outline();
     REQUIRE(outline.has_value());
@@ -623,13 +677,11 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
     app.shell().handlers().at("designer:lefttab-toolbox")();
     (void)app.shell().renderFrame();
     app.shell().focus().clearFocus();
-    // clearFocus 后遍历从树首重新开始：先过工具栏 18 枚，再进左面板。
-    for (const auto& key : toolbarKeys) {
-        app.shell().keyDown(Key::Tab);
-        CHECK(app.shell().focus().focusedKey() == key);
-    }
+    // clearFocus 后遍历从树首重新开始：先过标题栏与主工具，再进左面板。
+    expectSubsequence(toolbarKeys);
     const std::vector<std::string> toolboxKeys = {
-        "designer-tab-outline",   "designer-tab-toolbox",
+        "designer-rail-toolbox",  "designer-rail-outline",
+        "designer-tab-toolbox",   "designer-tab-outline",
         "designer-toolbox:Container", "designer-toolbox:Row",
         "designer-toolbox:Column",    "designer-toolbox:Stack",
         "designer-toolbox:Grid",      "designer-toolbox:ScrollView",
@@ -650,11 +702,7 @@ TEST_CASE("designer app keeps keyboard and semantic activation on one path",
         "designer-toolbox:Form",      "designer-toolbox:FocusScope",
         "designer-toolbox:ThemeScope",
         "designer-project-new",       "designer-project-open"};
-    for (const auto& key : toolboxKeys) {
-        app.shell().keyDown(Key::Tab);
-        INFO(key);
-        CHECK(app.shell().focus().focusedKey() == key);
-    }
+    expectSubsequence(toolboxKeys);
 }
 
 TEST_CASE("designer app mirrors extended outline selection into the canvas",
@@ -662,6 +710,9 @@ TEST_CASE("designer app mirrors extended outline selection into the canvas",
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页（workspace-design §3）。
+    app.shell().handlers().at("designer:lefttab-outline")();
     (void)app.shell().renderFrame();
 
     const auto outline = app.workbench().outline();
@@ -738,9 +789,8 @@ TEST_CASE("designer app renders canvas alignment guides for the selection",
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
     // The first frame establishes the canvas geometry used to place the
-    // non-modal guide layer; enabling it forces the first geometry-aware
-    // rebuild.
-    app.shell().handlers().at("designer:canvas-guides")();
+    // non-modal guide layer; the default-on guides then render on the
+    // geometry-aware rebuild.
     (void)app.shell().renderFrame();
 
     REQUIRE(findNodeByKey(app.shell().root(), "designer-canvas-guides") !=
@@ -783,6 +833,16 @@ TEST_CASE("designer app frame-selects canvas siblings",
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
+    // 自加载极小源：默认样例（§8.1 画板）节点多，框选集合不再恰好两个；
+    // 本用例只验证橡皮筋与兄弟命中语义。
+    REQUIRE(app.loadSource(
+        "page frame { Stack(key: \"root\", width: 300, height: 200) {"
+        " Text(\"First\", key: \"first\", width: 80, height: 24, left: 8,"
+        " top: 8)"
+        " Text(\"Second\", key: \"second\", width: 80, height: 24, left: 8,"
+        " top: 96)"
+        " } }",
+        "frame-select.lumen"));
     (void)app.shell().renderFrame();
 
     const auto outline = app.workbench().outline();
@@ -790,10 +850,8 @@ TEST_CASE("designer app frame-selects canvas siblings",
     REQUIRE(outline->children.size() >= 2);
     const auto firstId = outline->children[0].id;
     const auto secondId = outline->children[1].id;
-    const auto* first = findNodeByKey(app.shell().root(), "title");
-    const auto* second = findNodeByKey(app.shell().root(), "save");
+    const auto* second = findNodeByKey(app.shell().root(), "second");
     const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
-    REQUIRE(first != nullptr);
     REQUIRE(second != nullptr);
     REQUIRE(canvas != nullptr);
     const auto canvasOrigin = absoluteOffset(app.shell().root(), canvas->key);
@@ -929,17 +987,27 @@ TEST_CASE("designer app resizes a selected node with one snapped transaction",
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
+    // 两帧完成默认画板的 fit 收敛，选中铬件再一帧跟上（缩放后选中框/
+    // 手柄按上一帧几何物化，与 zoom 命令同一收敛语义）。
+    (void)app.shell().renderFrame();
+    (void)app.shell().renderFrame();
     (void)app.shell().renderFrame();
 
     const auto outline = app.workbench().outline();
     REQUIRE(outline.has_value());
     REQUIRE(!outline->children.empty());
-    const auto titleId = outline->children.front().id;
+    // 拖真正未声明 width 的 title 文本（默认样例 §8.1 后 front() 是自带
+    // width 的容器）：撤销/取消后 width 属性消失的原语义才成立。
+    const auto* titlePreview = findNodeByKey(app.shell().root(), "title");
+    REQUIRE(titlePreview != nullptr);
+    REQUIRE(titlePreview->onClick.rfind("designer:select:", 0) == 0);
+    const auto titleId = static_cast<lumen::dsl::DesignNodeId>(
+        std::strtoull(titlePreview->onClick.c_str() + 16, nullptr, 10));
     const auto select = app.shell().handlers().find(
         "designer:select:" + std::to_string(titleId));
     REQUIRE(select != app.shell().handlers().end());
     select->second();
-    app.shell().handlers().at("designer:canvas-guides")();
+    // 参考线默认开（workspace §8.1）：手柄随选择直接可见。
     (void)app.shell().renderFrame();
 
     const auto* handle =
@@ -1015,7 +1083,7 @@ TEST_CASE("designer app resizes stack children with position in one transaction"
         "designer:select:" + std::to_string(nodeId));
     REQUIRE(select != app.shell().handlers().end());
     select->second();
-    app.shell().handlers().at("designer:canvas-guides")();
+    // 参考线默认开（§8.1）：手柄/选中框随选择直接可见。
     (void)app.shell().renderFrame();
 
     const auto* handle =
@@ -1109,13 +1177,14 @@ TEST_CASE("designer app previews theme density dpi and accessibility inputs",
     CHECK_FALSE(app.shell().accessibilitySettings().reduceAnimation);
 
     (void)app.shell().renderFrame();
-    // 工具栏重设计后环境组为图标钮：当前值进 semanticsLabel（无障碍同源）。
+    // B 画布工具为图标钮：当前值进 semanticsLabel（无障碍同源；中文标签
+    // 对齐 designer-ide.html variant-b）。
     CHECK(findNodeByKey(app.shell().root(), "designer-dpi")->semanticsLabel ==
           "DPI 125%");
     CHECK(findNodeByKey(app.shell().root(), "designer-font-scale")
-              ->semanticsLabel == "Font 125%");
+              ->semanticsLabel == "字号 125%");
     CHECK(findNodeByKey(app.shell().root(), "designer-contrast")
-              ->semanticsLabel == "Contrast on");
+              ->semanticsLabel == "对比开");
 }
 
 TEST_CASE("designer app runs and stops the current preview session",
@@ -1252,9 +1321,9 @@ TEST_CASE("designer app cycles keyed interaction state previews",
     const auto* initialPreview =
         findNodeByKey(app.shell().root(), "designer-preview-state");
     REQUIRE(initialPreview != nullptr);
-    CHECK(initialPreview->semanticsLabel == "Hover state");
+    CHECK(initialPreview->semanticsLabel == "悬停态");
     activatePreview();
-    checkState("Press state", "root",
+    checkState("按压态", "root",
                lumen::style::WidgetState{.hovered = true});
 
     const auto outline = app.workbench().outline();
@@ -1267,20 +1336,20 @@ TEST_CASE("designer app cycles keyed interaction state previews",
     REQUIRE(saveHandler != app.shell().handlers().end());
     saveHandler->second();
     (void)app.shell().renderFrame();
-    checkState("Press state", "save",
+    checkState("按压态", "save",
                lumen::style::WidgetState{.hovered = true});
 
     activatePreview();
-    checkState("Focus state", "save",
+    checkState("聚焦态", "save",
                lumen::style::WidgetState{.pressed = true});
     activatePreview();
-    checkState("Clear state", "save",
+    checkState("清除态", "save",
                lumen::style::WidgetState{.focused = true});
     const auto* focusedSave = findNodeByKey(app.shell().root(), "save");
     REQUIRE(focusedSave != nullptr);
     CHECK(focusedSave->commonStyle().focusWidth > 0.0F);
     activatePreview();
-    checkState("Hover state", "save", lumen::style::WidgetState{});
+    checkState("悬停态", "save", lumen::style::WidgetState{});
 }
 
 TEST_CASE("designer app previews interaction state for keyless nodes",
@@ -1392,6 +1461,12 @@ TEST_CASE("designer app edits declaration properties and routes undo redo",
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
+    // 自加载源：默认样例已换成 1024×768 画板（§8.1），本用例只关心声明
+    // 编辑的 undo/redo 路由，不与默认样例结构耦合。
+    REQUIRE(app.loadSource(
+        "page preview { Stack(key: \"root\") {"
+        " Text(\"Preview title\", key: \"title\") } }",
+        "declaration-edit.lumen"));
     (void)app.shell().renderFrame();
 
     const auto outline = app.workbench().outline();
@@ -1603,6 +1678,9 @@ TEST_CASE("designer app edits a shared multi-selection property in one transacti
         "Text(\"B\", key: \"b\") Button(\"C\", key: \"c\") } }",
         "multi-property.lumen"));
     (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页。
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
 
     REQUIRE(app.workbench().document().has_value());
     const auto& children = app.workbench().document()->root.children;
@@ -1763,7 +1841,13 @@ TEST_CASE("designer app copies and pastes a selected node as one transaction",
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
     REQUIRE(initial->children.size() >= 2);
-    const auto sourceId = initial->children.front().id;
+    // 选中文本节点（默认样例 §8.1 后 front() 是容器）：状态文案与
+    // "Copied/Pasted Text" 契约沿用。
+    const auto* titleNode = findNodeByKey(app.shell().root(), "title");
+    REQUIRE(titleNode != nullptr);
+    REQUIRE(titleNode->onClick.rfind("designer:select:", 0) == 0);
+    const auto sourceId = static_cast<lumen::dsl::DesignNodeId>(
+        std::strtoull(titleNode->onClick.c_str() + 16, nullptr, 10));
     const auto select = app.shell().handlers().find(
         "designer:select:" + std::to_string(sourceId));
     REQUIRE(select != app.shell().handlers().end());
@@ -1794,8 +1878,12 @@ TEST_CASE("designer app copies and pastes a selected node as one transaction",
     REQUIRE(app.workbench().selection().primary.has_value());
     const auto pastedId = *app.workbench().selection().primary;
     CHECK(pastedId != sourceId);
-    CHECK(afterPaste->children[1].id == pastedId);
-    CHECK(afterPaste->children[1].type == initial->children.front().type);
+    // 粘贴落在源节点之后（默认样例 §8.1 后源不在 index 0）。
+    const auto pasted = std::find_if(
+        afterPaste->children.begin(), afterPaste->children.end(),
+        [pastedId](const auto& child) { return child.id == pastedId; });
+    REQUIRE(pasted != afterPaste->children.end());
+    CHECK(pasted->type == "Text");
     CHECK(app.workbench().dirty());
 
     REQUIRE(app.undo());
@@ -1815,6 +1903,9 @@ TEST_CASE("designer app copies multi-selection across parents as one transaction
         "Column(key: \"target\") { Text(\"Existing\", key: \"existing\") } "
         "} }",
         "multi-copy.lumen"));
+    (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页。
+    app.shell().handlers().at("designer:lefttab-outline")();
     (void)app.shell().renderFrame();
 
     REQUIRE(app.workbench().document().has_value());
@@ -1926,6 +2017,9 @@ TEST_CASE("designer app duplicates multi-selection with unique keys",
         "Button(\"B\", key: \"b\") Text(\"C\", key: \"c\") } }",
         "multi-duplicate.lumen"));
     (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页。
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
 
     REQUIRE(app.workbench().document().has_value());
     const auto& children = app.workbench().document()->root.children;
@@ -2002,6 +2096,9 @@ TEST_CASE("designer app deletes multi-selection as one transaction",
         "Button(\"B\", key: \"b\") Text(\"C\", key: \"c\") } }",
         "multi-delete.lumen"));
     (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页。
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
 
     REQUIRE(app.workbench().document().has_value());
     const auto& children = app.workbench().document()->root.children;
@@ -2066,6 +2163,9 @@ TEST_CASE("designer app moves multi-selection as one transaction",
         "page preview { Column(key: \"root\") { Text(\"A\", key: \"a\") "
         "Button(\"B\", key: \"b\") Text(\"C\", key: \"c\") } }",
         "multi-move.lumen"));
+    (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页。
+    app.shell().handlers().at("designer:lefttab-outline")();
     (void)app.shell().renderFrame();
 
     REQUIRE(app.workbench().document().has_value());
@@ -2455,7 +2555,8 @@ TEST_CASE("designer app previews its first L3 DataGrid component",
 
     CHECK(app.undo());
     REQUIRE(app.workbench().outline().has_value());
-    CHECK(app.workbench().outline()->children.back().type == "Row");
+    // 默认样例（§8.1 画板）末子节点是 Text（status）。
+    CHECK(app.workbench().outline()->children.back().type == "Text");
     CHECK(app.redo());
     REQUIRE(app.workbench().outline().has_value());
     CHECK(app.workbench().outline()->children.back().type == "DataGrid");
@@ -2606,7 +2707,8 @@ TEST_CASE("designer app previews toolbar and statusbar components",
 
         CHECK(app.undo());
         REQUIRE(app.workbench().outline().has_value());
-        CHECK(app.workbench().outline()->children.back().type == "Row");
+        // 默认样例（§8.1 画板）末子节点是 Text（status）。
+        CHECK(app.workbench().outline()->children.back().type == "Text");
     }
 }
 
@@ -2650,7 +2752,8 @@ TEST_CASE("designer app previews input component adapters",
 
         CHECK(app.undo());
         REQUIRE(app.workbench().outline().has_value());
-        CHECK(app.workbench().outline()->children.back().type == "Row");
+        // 默认样例（§8.1 画板）末子节点是 Text（status）。
+        CHECK(app.workbench().outline()->children.back().type == "Text");
     }
 }
 
@@ -2735,7 +2838,8 @@ TEST_CASE("designer app previews menu navigator and form adapters",
 
         CHECK(app.undo());
         REQUIRE(app.workbench().outline().has_value());
-        CHECK(app.workbench().outline()->children.back().type == "Row");
+        // 默认样例（§8.1 画板）末子节点是 Text（status）。
+        CHECK(app.workbench().outline()->children.back().type == "Text");
     }
 }
 
@@ -2796,12 +2900,13 @@ TEST_CASE("designer app exposes named references in the center panel",
 
     REQUIRE(findNodeByKey(app.shell().root(), "designer-center-tabs") !=
             nullptr);
+    // B 中心视图：设计/分屏/快照（引用已下沉到底部）。
     const auto sourceTab =
-        findNodeByKey(app.shell().root(), "designer-tab-source");
+        findNodeByKey(app.shell().root(), "designer-view-source");
     REQUIRE(sourceTab != nullptr);
     CHECK(sourceTab->enabled);
 
-    app.shell().handlers().at("designer:tab-source")();
+    app.shell().handlers().at("designer:view-source")();
     (void)app.shell().renderFrame();
     REQUIRE(findNodeByKey(app.shell().root(), "designer-source-panel") !=
             nullptr);
@@ -2811,7 +2916,7 @@ TEST_CASE("designer app exposes named references in the center panel",
                         "designer-source-line-content:1")
               ->text.find("Button") != std::string::npos);
 
-    app.shell().handlers().at("designer:tab-references")();
+    app.shell().handlers().at("designer:bottom-references")();
     (void)app.shell().renderFrame();
     REQUIRE(findNodeByKey(app.shell().root(), "designer-references-panel") !=
             nullptr);
@@ -2884,7 +2989,12 @@ TEST_CASE("designer app clears preview state across structural edits",
     const auto initial = app.workbench().outline();
     REQUIRE(initial.has_value());
     REQUIRE(initial->children.size() >= 1);
-    const auto titleId = initial->children.front().id;
+    // 默认样例 §8.1 后 front() 是容器；本用例的预览态键契约为 "title"。
+    const auto* titleNode = findNodeByKey(app.shell().root(), "title");
+    REQUIRE(titleNode != nullptr);
+    REQUIRE(titleNode->onClick.rfind("designer:select:", 0) == 0);
+    const auto titleId = static_cast<lumen::dsl::DesignNodeId>(
+        std::strtoull(titleNode->onClick.c_str() + 16, nullptr, 10));
     const auto selectTitle = app.shell().handlers().find(
         "designer:select:" + std::to_string(titleId));
     REQUIRE(selectTitle != app.shell().handlers().end());
@@ -2917,6 +3027,9 @@ TEST_CASE("designer app reorders outline rows by pointer drag",
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页。
+    app.shell().handlers().at("designer:lefttab-outline")();
     (void)app.shell().renderFrame();
 
     const auto initial = app.workbench().outline();
@@ -3002,11 +3115,417 @@ TEST_CASE("designer app inserts toolbox nodes by pointer drag",
     CHECK(app.workbench().outline()->children.back().type == "Text");
 }
 
+TEST_CASE("designer app drags layout toolbox entries onto the canvas",
+          "[designer][d3][app][drag]") {
+    // 布局组条目与 Text 同一条拖放路径：按住工具箱行越阈值起会话，落
+    // 画布释放插入当前选中节点；Splitter 按 schema 补足 2 个 Container
+    // 子节点（原子插入）；落画布外释放既不插入也不触发点击插入。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    showLeftToolbox(app);
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    const auto rootId = initial->id;
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    REQUIRE(canvas != nullptr);
+    const auto canvasOrigin = absoluteOffset(app.shell().root(), canvas->key);
+    const Offset canvasPoint{
+        canvasOrigin.x + canvas->size.width * 0.5F,
+        canvasOrigin.y + canvas->size.height * 0.5F};
+
+    const auto rootChildCount = [&] {
+        return app.workbench().outline()->children.size();
+    };
+    const auto selectRoot = [&] {
+        app.shell().handlers().at("designer:select:" +
+                                  std::to_string(rootId))();
+        (void)app.shell().renderFrame();
+    };
+    const auto dragRowTo = [](lumen::app::AppShell& shell, const Offset& from,
+                              const Offset& to) {
+        shell.pointerDown(from);
+        shell.pointerMove(to);
+        (void)shell.renderFrame();
+        const bool dragging = shell.controller().dragSessionActive();
+        shell.pointerUp(to);
+        (void)shell.renderFrame();
+        return dragging;
+    };
+
+    // 布局组逐类拖入（含 ScrollView 自身与需补子的 Splitter）。
+    for (const auto* type : {"Column", "Grid", "ScrollView", "Splitter"}) {
+        selectRoot();
+        const auto before = rootChildCount();
+        const auto* row = findNodeByKey(app.shell().root(),
+                                        std::string{"designer-toolbox:"} + type);
+        REQUIRE(row != nullptr);
+        const auto rowOrigin = absoluteOffset(app.shell().root(), row->key);
+        const Offset rowPoint{rowOrigin.x + row->size.width * 0.5F,
+                              rowOrigin.y + row->size.height * 0.5F};
+        CHECK(dragRowTo(app.shell(), rowPoint, canvasPoint));
+        REQUIRE(rootChildCount() == before + 1);
+        REQUIRE(app.workbench().selection().primary.has_value());
+        CHECK(*app.workbench().selection().primary != rootId);
+        const auto* inserted = findDesignNodeById(
+            app.workbench().document()->root,
+            *app.workbench().selection().primary);
+        REQUIRE(inserted != nullptr);
+        CHECK(inserted->type == type);
+        if (std::string_view{type} == "Splitter") {
+            REQUIRE(inserted->children.size() == 2);
+            CHECK(inserted->children[0].type == "Container");
+            CHECK(inserted->children[1].type == "Container");
+        }
+    }
+
+    // 布局容器成为插入目标：拖入 Column 后选中它，再拖 Text 落画布
+    // → Text 插到 Column 内而非根层级。
+    selectRoot();
+    const auto rootBefore = rootChildCount();
+    const auto* columnRow =
+        findNodeByKey(app.shell().root(), "designer-toolbox:Column");
+    REQUIRE(columnRow != nullptr);
+    auto columnOrigin = absoluteOffset(app.shell().root(), columnRow->key);
+    Offset columnPoint{columnOrigin.x + columnRow->size.width * 0.5F,
+                       columnOrigin.y + columnRow->size.height * 0.5F};
+    CHECK(dragRowTo(app.shell(), columnPoint, canvasPoint));
+    REQUIRE(rootChildCount() == rootBefore + 1);
+    const auto columnId = *app.workbench().selection().primary;
+    const auto* textRow =
+        findNodeByKey(app.shell().root(), "designer-toolbox:Text");
+    REQUIRE(textRow != nullptr);
+    const auto textOrigin = absoluteOffset(app.shell().root(), textRow->key);
+    const Offset textPoint{textOrigin.x + textRow->size.width * 0.5F,
+                           textOrigin.y + textRow->size.height * 0.5F};
+    CHECK(dragRowTo(app.shell(), textPoint, canvasPoint));
+    CHECK(rootChildCount() == rootBefore + 1);
+    const auto* column =
+        findDesignNodeById(app.workbench().document()->root, columnId);
+    REQUIRE(column != nullptr);
+    REQUIRE(column->children.size() == 1);
+    CHECK(column->children.back().type == "Text");
+
+    // 落点在画布外（仍悬在左面板）释放：不插入、不点击。
+    selectRoot();
+    const auto outsideBefore = rootChildCount();
+    const auto* stackRow =
+        findNodeByKey(app.shell().root(), "designer-toolbox:Stack");
+    REQUIRE(stackRow != nullptr);
+    const auto stackOrigin = absoluteOffset(app.shell().root(), stackRow->key);
+    const Offset stackPoint{stackOrigin.x + stackRow->size.width * 0.5F,
+                            stackOrigin.y + stackRow->size.height * 0.5F};
+    CHECK(dragRowTo(app.shell(), stackPoint,
+                    stackPoint + Offset{0.0F, 40.0F}));
+    CHECK(rootChildCount() == outsideBefore);
+}
+
+TEST_CASE("designer toolbox drag keeps working after panel scrolling",
+          "[designer][d3][app][drag][scroll]") {
+    // 拖放认领先于视口滚动拖动（interaction §指针）：工具箱可滚后，从
+    // 滚动过的列表里拖布局条目仍然起会话插入，且拖动不改变面板偏移。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    showLeftToolbox(app);
+
+    const auto initial = app.workbench().outline();
+    REQUIRE(initial.has_value());
+    const auto* toolbox =
+        findNodeByKey(app.shell().root(), "designer-toolbox-scroll");
+    REQUIRE(toolbox != nullptr);
+    REQUIRE(toolbox->scrollExtent > 0.0F);
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    REQUIRE(canvas != nullptr);
+    const auto canvasOrigin = absoluteOffset(app.shell().root(), canvas->key);
+    const Offset canvasPoint{
+        canvasOrigin.x + canvas->size.width * 0.5F,
+        canvasOrigin.y + canvas->size.height * 0.5F};
+
+    // 先滚离顶部（幅度以 Layout 组仍在可视区为限）。
+    const auto toolboxOrigin =
+        absoluteOffset(app.shell().root(), "designer-toolbox-scroll");
+    CHECK(app.shell().wheel(
+        toolboxOrigin + Offset{toolbox->size.width * 0.5F,
+                               toolbox->size.height * 0.5F},
+        {0.0F, 40.0F}));
+    (void)app.shell().renderFrame();
+    const auto* scrolled =
+        findNodeByKey(app.shell().root(), "designer-toolbox-scroll");
+    REQUIRE(scrolled != nullptr);
+    REQUIRE(scrolled->scrollOffset == 40.0F);
+
+    const auto* columnRow =
+        findNodeByKey(app.shell().root(), "designer-toolbox:Column");
+    REQUIRE(columnRow != nullptr);
+    const auto columnOrigin = absoluteOffset(app.shell().root(), columnRow->key);
+    // 前置：目标行滚动后仍完整落在视口裁剪区内（滚出视口的行不可命中）。
+    REQUIRE(columnOrigin.y >= toolboxOrigin.y);
+    REQUIRE(columnOrigin.y + columnRow->size.height <=
+            toolboxOrigin.y + scrolled->size.height);
+    const Offset columnPoint{columnOrigin.x + columnRow->size.width * 0.5F,
+                             columnOrigin.y + columnRow->size.height * 0.5F};
+    app.shell().pointerDown(columnPoint);
+    app.shell().pointerMove(canvasPoint);
+    (void)app.shell().renderFrame();
+    CHECK(app.shell().controller().dragSessionActive());
+    app.shell().pointerUp(canvasPoint);
+    (void)app.shell().renderFrame();
+
+    REQUIRE(app.workbench().outline().has_value());
+    CHECK(app.workbench().outline()->children.size() ==
+          initial->children.size() + 1);
+    CHECK(app.workbench().outline()->children.back().type == "Column");
+    const auto* after =
+        findNodeByKey(app.shell().root(), "designer-toolbox-scroll");
+    REQUIRE(after != nullptr);
+    CHECK(after->scrollOffset == 40.0F);
+}
+
+TEST_CASE("designer app moves stack children by canvas drag",
+          "[designer][d3][app][drag]") {
+    // 画布拖动换位（Stack 子节点，left/top 归设计者）：按住节点本体拖
+    // 动即选中并跟手，吸附 + 钳制在父内容区内；释放一次事务写回
+    // left/top，undo 一步还原；Esc 取消不留事务。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Stack(key: \"root\", width: 300, height: 200) { "
+        "Container(key: \"node\", width: 60, height: 40, left: 24, top: 24) "
+        "} }",
+        "stack-move.lumen"));
+    (void)app.shell().renderFrame();
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(!outline->children.empty());
+    const auto nodeId = outline->children.front().id;
+
+    const auto property = [&](const char* name) -> double {
+        const auto properties = app.workbench().properties(nodeId);
+        const auto found = std::find_if(
+            properties.begin(), properties.end(),
+            [name](const auto& entry) { return entry.name == name; });
+        if (found == properties.end() || !found->value.has_value()) {
+            return -1.0;
+        }
+        const auto* number = std::get_if<double>(&found->value->value);
+        return number != nullptr ? *number : -1.0;
+    };
+
+    const auto* node = findNodeByKey(app.shell().root(), "node");
+    REQUIRE(node != nullptr);
+    const auto nodeOrigin = absoluteOffset(app.shell().root(), node->key);
+    const Offset start{nodeOrigin.x + 10.0F, nodeOrigin.y + 10.0F};
+    // 48/32 落在 8px 网格上，避免吸附候选歧义。
+    const Offset end{start + Offset{48.0F, 32.0F}};
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    CHECK(app.workbench().selection().primary == nodeId);
+    app.shell().pointerUp(end);
+    (void)app.shell().renderFrame();
+
+    CHECK(property("left") == 72.0);
+    CHECK(property("top") == 56.0);
+    CHECK(app.workbench().dirty());
+    REQUIRE(app.undo());
+    CHECK(property("left") == 24.0);
+    CHECK(property("top") == 24.0);
+
+    // Esc 取消：会话终止、字段不动、文档不脏。
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    app.shell().keyDown(Key::Escape);
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.shell().controller().dragSessionActive());
+    CHECK(property("left") == 24.0);
+    CHECK(property("top") == 24.0);
+}
+
+TEST_CASE("designer default sample is a draggable 540x400 artboard",
+          "[designer][d3][app][drag]") {
+    // 默认样例契约（workspace-design §8.2/8.3）：540×400 Stack 画板 + 全
+    // 定位子节点（卡片带文本内容）；参考线默认可见；1024×768 默认窗口
+    // 下 fit-to-view ≈0.66，正文 16px 缩后 ≈10px 可读；Save 按钮等元素
+    // 可直接拖动换位。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1024.0F, 768.0F});
+    (void)app.shell().renderFrame();
+    (void)app.shell().renderFrame();
+
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    CHECK(outline->type == "Stack");
+    const auto rootProperties = app.workbench().properties(outline->id);
+    const auto readNumber = [&](const char* name) -> double {
+        const auto found =
+            std::find_if(rootProperties.begin(), rootProperties.end(),
+                         [name](const auto& entry) {
+                             return entry.name == name &&
+                                    entry.value.has_value();
+                         });
+        REQUIRE(found != rootProperties.end());
+        return std::get<double>(found->value->value);
+    };
+    CHECK(readNumber("width") == 540.0);
+    CHECK(readNumber("height") == 400.0);
+
+    // 参考线（网格点 + 标尺）默认可见。
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-grid-dot:0:0") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-ruler-top") !=
+          nullptr);
+
+    // fit-to-view：1024×768 视口下画板缩小呈现（≈0.66，可读）。
+    const auto* previewRoot = findNodeByKey(app.shell().root(), "root");
+    REQUIRE(previewRoot != nullptr);
+    CHECK(previewRoot->size.width < 540.0F);
+    CHECK(previewRoot->size.width > 350.0F);
+    // 卡片文本内容完整呈现（缩放后仍有可测高度）。
+    const auto* cardLabel = findNodeByKey(app.shell().root(), "card-a-label");
+    REQUIRE(cardLabel != nullptr);
+    CHECK(cardLabel->size.height > 8.0F);
+
+    // Save 按钮是 Stack 子节点：拖动换位，undo 一步回原位。
+    const auto* save = findNodeByKey(app.shell().root(), "save");
+    REQUIRE(save != nullptr);
+    REQUIRE(save->onClick.rfind("designer:select:", 0) == 0);
+    const auto saveId = static_cast<lumen::dsl::DesignNodeId>(
+        std::strtoull(save->onClick.c_str() + std::strlen("designer:select:"),
+                      nullptr, 10));
+    const auto saveProperty = [&](const char* name) -> double {
+        const auto properties = app.workbench().properties(saveId);
+        const auto found =
+            std::find_if(properties.begin(), properties.end(),
+                         [name](const auto& entry) {
+                             return entry.name == name &&
+                                    entry.value.has_value();
+                         });
+        REQUIRE(found != properties.end());
+        return std::get<double>(found->value->value);
+    };
+    const auto saveOrigin = absoluteOffset(app.shell().root(), save->key);
+    const Offset start{saveOrigin.x + save->size.width * 0.5F,
+                       saveOrigin.y + save->size.height * 0.5F};
+    const Offset end{start + Offset{-80.0F, -60.0F}};
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    CHECK(app.workbench().selection().primary == saveId);
+    app.shell().pointerUp(end);
+    (void)app.shell().renderFrame();
+    CHECK(saveProperty("left") != 420.0);
+    CHECK(saveProperty("top") != 336.0);
+    REQUIRE(app.undo());
+    CHECK(saveProperty("left") == 420.0);
+    CHECK(saveProperty("top") == 336.0);
+}
+
+TEST_CASE("designer canvas drag snaps to sibling edges with dashed guides",
+          "[designer][d3][app][drag]") {
+    // §8.3 虚线对齐参考：拖动换位的吸附候选 = 父框 0/中/尾 + 兄弟节点
+    // 边/中线；命中阈值（6px/zoom）内吸附并画原位虚线框 + 全幅对齐虚
+    // 线；未命中回落 8px 网格。释放后装饰清理。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page guides { Stack(key: \"root\", width: 300, height: 200) {"
+        " Container(key: \"node\", width: 60, height: 40, left: 24, top: 24)"
+        " Container(key: \"peer\", width: 60, height: 40, left: 150, top: 96)"
+        " } }",
+        "drag-guides.lumen"));
+    (void)app.shell().renderFrame();
+
+    const auto* node = findNodeByKey(app.shell().root(), "node");
+    REQUIRE(node != nullptr);
+    REQUIRE(node->onClick.rfind("designer:select:", 0) == 0);
+    const auto nodeId = static_cast<lumen::dsl::DesignNodeId>(
+        std::strtoull(node->onClick.c_str() + 16, nullptr, 10));
+    const auto property = [&](const char* name) -> double {
+        const auto properties = app.workbench().properties(nodeId);
+        const auto found =
+            std::find_if(properties.begin(), properties.end(),
+                         [name](const auto& entry) {
+                             return entry.name == name &&
+                                    entry.value.has_value();
+                         });
+        REQUIRE(found != properties.end());
+        return std::get<double>(found->value->value);
+    };
+
+    // 拖 121px：原始 x = 145（网格回落 144），兄弟左缘 150 在阈值 6 内
+    // → 吸附 150（左对齐 peer 左缘）。
+    const auto nodeOrigin = absoluteOffset(app.shell().root(), node->key);
+    const Offset start{nodeOrigin.x + 10.0F, nodeOrigin.y + 10.0F};
+    const Offset end{start + Offset{121.0F, 0.0F}};
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    // 原位虚线框（0..3）与竖向对齐虚线（4）在场。
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-canvas-drag-dash:0:0") != nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-canvas-drag-dash:4:0") != nullptr);
+    app.shell().pointerUp(end);
+    (void)app.shell().renderFrame();
+
+    CHECK(property("left") == 150.0);
+    CHECK(property("top") == 24.0);
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-drag-dash:0:0") == nullptr);
+}
+
+TEST_CASE("designer canvas refuses to drag flow-layout children",
+          "[designer][d3][app][drag]") {
+    // Row/Column 子节点位置由布局拥有：按压拖动不起换位会话（也不误
+    // 起橡皮筋/滚动），释放仍走点击选中。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page preview { Column(key: \"root\", width: 300, height: 200) { "
+        "Text(\"Flow\", key: \"node\", width: 60, height: 40) } }",
+        "flow-move.lumen"));
+    (void)app.shell().renderFrame();
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(!outline->children.empty());
+    const auto nodeId = outline->children.front().id;
+    const auto initialSelection = app.workbench().selection().primary;
+    const auto* node = findNodeByKey(app.shell().root(), "node");
+    REQUIRE(node != nullptr);
+    const auto nodeOrigin = absoluteOffset(app.shell().root(), node->key);
+    const Offset start{nodeOrigin.x + 10.0F, nodeOrigin.y + 10.0F};
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(start + Offset{48.0F, 32.0F});
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.shell().controller().dragSessionActive());
+    app.shell().pointerUp(start + Offset{48.0F, 32.0F});
+    (void)app.shell().renderFrame();
+    // 越 slop 的释放不触发点击：选中保持原状（未选中被拖的节点）。
+    CHECK(app.workbench().selection().primary == initialSelection);
+    CHECK(app.workbench().selection().primary != nodeId);
+}
+
 TEST_CASE("designer app cancels outline drag with Escape",
           "[designer][d3][app][selection]") {
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲操作前切到结构页。
+    app.shell().handlers().at("designer:lefttab-outline")();
     (void)app.shell().renderFrame();
 
     const auto initial = app.workbench().outline();
@@ -3060,6 +3579,9 @@ TEST_CASE("designer app navigates actionable diagnostics to their node",
 
     REQUIRE(app.workbench().diagnostics().size() == 1);
     CHECK(app.workbench().diagnostics().front().nodeId == childId);
+    // B 底栏默认收起（36），诊断定位前先展开（workspace-design §3.1）。
+    app.shell().handlers().at("designer:toggle-bottom")();
+    (void)app.shell().renderFrame();
     const auto* diagnostic =
         findNodeByKey(app.shell().root(), "designer-diagnostic:0");
     REQUIRE(diagnostic != nullptr);
@@ -3778,6 +4300,9 @@ TEST_CASE("designer project diagnostics switch to the affected document",
     REQUIRE(app.projectDiagnostics().size() == 1);
     app.shell().setView(Size{1280.0F, 800.0F});
     (void)app.shell().renderFrame();
+    // B 底栏默认收起，诊断定位前先展开。
+    app.shell().handlers().at("designer:toggle-bottom")();
+    (void)app.shell().renderFrame();
     const auto diagnostic = findNodeByKey(app.shell().root(), "designer-diagnostic:0");
     REQUIRE(diagnostic != nullptr);
     REQUIRE(app.shell().handlers().contains("designer:diagnostic:0"));
@@ -3837,7 +4362,7 @@ TEST_CASE("designer app routes file dialog commands through one path",
                            "other.lumen"));
     (void)app.shell().renderFrame();
     CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
-          "Ready  /  other.lumen");
+          "就绪  /  other.lumen");
     app.shell().handlers().at("designer:open")();
     CHECK_FALSE(requestedForSave);
     app.handleFileDialogResult({path.string()});
@@ -4215,3 +4740,481 @@ TEST_CASE("designer file watcher reloads valid files and keeps the last frame on
     (void)app.shell().renderFrame();
     CHECK(app.workbench().frame().generation() > goodGeneration);
 }
+
+TEST_CASE("designer B canvas-first workspace matches the HTML geometry",
+          "[designer][b][workspace]") {
+    // B 一比一（designer-ide.html?variant=b，workspace-design §3.1）：
+    // 标题 44 + 主工具 48 + 工作区（48 rail + 224 left + 6 + center + 6 +
+    // 280 right）+ 状态 28；中心文档 40 + 画布工具 48 + 面包屑 32 +
+    // 底栏 36（收起）/144（展开）。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    // B 默认 Toolbox，先切回结构页以稳定大纲几何（工具箱行高不影响外壳）。
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
+
+    const auto* titlebar =
+        findNodeByKey(app.shell().root(), "designer-titlebar");
+    const auto* mainTools =
+        findNodeByKey(app.shell().root(), "designer-main-tools");
+    const auto* rail = findNodeByKey(app.shell().root(), "designer-rail");
+    const auto* left =
+        findNodeByKey(app.shell().root(), "designer-outline-panel");
+    const auto* centerTabs =
+        findNodeByKey(app.shell().root(), "designer-document-tabs");
+    const auto* canvasControls =
+        findNodeByKey(app.shell().root(), "designer-canvas-controls");
+    const auto* crumb = findNodeByKey(app.shell().root(), "designer-crumb-bar");
+    const auto* bottom =
+        findNodeByKey(app.shell().root(), "designer-diagnostics");
+    const auto* status =
+        findNodeByKey(app.shell().root(), "designer-statusbar");
+    const auto* right =
+        findNodeByKey(app.shell().root(), "designer-properties-panel");
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    REQUIRE(titlebar != nullptr);
+    REQUIRE(mainTools != nullptr);
+    REQUIRE(rail != nullptr);
+    REQUIRE(left != nullptr);
+    REQUIRE(centerTabs != nullptr);
+    REQUIRE(canvasControls != nullptr);
+    REQUIRE(crumb != nullptr);
+    REQUIRE(bottom != nullptr);
+    REQUIRE(status != nullptr);
+    REQUIRE(right != nullptr);
+    REQUIRE(canvas != nullptr);
+    CHECK(titlebar->size.height == Catch::Approx(44.0F));
+    CHECK(mainTools->size.height == Catch::Approx(48.0F));
+    CHECK(rail->size.width == Catch::Approx(48.0F));
+    CHECK(left->size.width == Catch::Approx(224.0F));
+    CHECK(right->size.width == Catch::Approx(280.0F));
+    CHECK(centerTabs->size.height == Catch::Approx(40.0F));
+    CHECK(canvasControls->size.height == Catch::Approx(48.0F));
+    CHECK(crumb->size.height == Catch::Approx(32.0F));
+    CHECK(bottom->size.height == Catch::Approx(36.0F));
+    CHECK(status->size.height == Catch::Approx(28.0F));
+    // 轨道 6：canvas 左缘 = rail 48 + left 224 + 6；右栏左缘 = canvas 右 + 6。
+    const float canvasLeft =
+        absoluteOffset(app.shell().root(), "designer-canvas").x;
+    const float railLeft =
+        absoluteOffset(app.shell().root(), "designer-rail").x;
+    CHECK(canvasLeft - (railLeft + 48.0F + 224.0F) ==
+          Catch::Approx(6.0F).margin(1.0F));
+    const float rightLeft =
+        absoluteOffset(app.shell().root(), "designer-properties-panel").x;
+    CHECK(rightLeft - (canvasLeft + canvas->size.width) ==
+          Catch::Approx(6.0F).margin(1.5F));
+    // 工作台 Compact，预览独立 Comfortable（visual-system §3.6）。
+    CHECK(app.shell().theme().metrics.density ==
+          lumen::style::ControlDensity::Compact);
+    // 底栏展开 144，收起回 36（不污染 dirty）。
+    const bool wasDirty = app.workbench().dirty();
+    app.shell().handlers().at("designer:toggle-bottom")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-diagnostics")
+              ->size.height == Catch::Approx(144.0F));
+    app.shell().handlers().at("designer:toggle-bottom")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-diagnostics")
+              ->size.height == Catch::Approx(36.0F));
+    CHECK(app.workbench().dirty() == wasDirty);
+}
+
+TEST_CASE("designer B splitters drag keyboard reset and zen collapse",
+          "[designer][b][workspace]") {
+    // 外壳分栏（splitter §7/§9）：拖动、Compact 12 步进、Home/End 到边、
+    // 双击复位；专注隐藏左右栏与底栏，Esc 退出；左折叠隐藏左栏。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
+
+    const auto dividerCenter = [&](const char* key) {
+        app.shell().rebuildIfDirty();
+        const auto* divider = findNodeByKey(app.shell().root(), key);
+        REQUIRE(divider != nullptr);
+        const auto origin = absoluteOffset(app.shell().root(), key);
+        return Offset{origin.x + divider->size.width * 0.5F,
+                      origin.y + divider->size.height * 0.5F};
+    };
+    // 左分栏拖动 +40。
+    const Offset leftCenter = dividerCenter("split:div:designer-left-splitter");
+    const auto* leftBefore =
+        findNodeByKey(app.shell().root(), "designer-outline-panel");
+    REQUIRE(leftBefore != nullptr);
+    const float leftWidthBefore = leftBefore->size.width;
+    app.shell().pointerDown(leftCenter);
+    app.shell().pointerMove(Offset{leftCenter.x + 40.0F, leftCenter.y});
+    app.shell().pointerUp(Offset{leftCenter.x + 40.0F, leftCenter.y});
+    (void)app.shell().renderFrame();
+    const auto* leftAfterNode =
+        findNodeByKey(app.shell().root(), "designer-outline-panel");
+    REQUIRE(leftAfterNode != nullptr);
+    const float leftWidthAfter = leftAfterNode->size.width;
+    CHECK(leftWidthAfter ==
+          Catch::Approx(leftWidthBefore + 40.0F).margin(2.0F));
+    // 键盘步进（Compact 12）：Tab 聚焦左分隔条后 Right +12。
+    app.shell().focus().clearFocus();
+    bool focused = false;
+    for (int i = 0; i < 40; ++i) {
+        app.shell().keyDown(Key::Tab);
+        if (app.shell().focus().focusedKey() ==
+            "split:div:designer-left-splitter") {
+            focused = true;
+            break;
+        }
+    }
+    REQUIRE(focused);
+    app.shell().keyDown(Key::Right);
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-outline-panel")
+              ->size.width ==
+          Catch::Approx(leftWidthAfter + 12.0F).margin(2.0F));
+    // 双击复位回 224。
+    app.shell().tick(1000);
+    app.shell().pointerDown(dividerCenter("split:div:designer-left-splitter"));
+    app.shell().pointerUp(dividerCenter("split:div:designer-left-splitter"));
+    app.shell().tick(1200);
+    app.shell().pointerDown(dividerCenter("split:div:designer-left-splitter"));
+    app.shell().pointerUp(dividerCenter("split:div:designer-left-splitter"));
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-outline-panel")
+              ->size.width == Catch::Approx(224.0F).margin(2.0F));
+    // 专注：左右栏与底栏隐藏，画布独占；Esc 退出。
+    app.shell().handlers().at("designer:zen")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-outline-panel") ==
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-properties-panel") ==
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas") != nullptr);
+    app.shell().keyDown(Key::Escape);
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-outline-panel") !=
+          nullptr);
+    // 左折叠：rail 保留，左栏隐藏。
+    app.shell().handlers().at("designer:toggle-left")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-rail") != nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-outline-panel") ==
+          nullptr);
+    app.shell().handlers().at("designer:toggle-left")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-outline-panel") !=
+          nullptr);
+}
+
+TEST_CASE("designer B rail views and center split keep one selection",
+          "[designer][b][workspace]") {
+    // Rail 切换控件/结构，中心设计/分屏/快照，面包屑回选容器，共用
+    // DocumentId 选择（workspace-design §4.1）。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    // Rail 默认 Toolbox，切换到结构再切回。
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-toolbox:Text") !=
+            nullptr);
+    app.shell().handlers().at("designer:rail-outline")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-outline-view") !=
+            nullptr);
+    app.shell().handlers().at("designer:rail-toolbox")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-toolbox:Text") !=
+            nullptr);
+    // 中心分屏：画布 + 只读快照同屏；快照只读定位。
+    app.shell().handlers().at("designer:view-split")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas") != nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-source-panel") !=
+          nullptr);
+    app.shell().handlers().at("designer:view-source")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-source-panel") !=
+          nullptr);
+    app.shell().handlers().at("designer:view-design")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas") != nullptr);
+    // 面包屑存在且可回选（至少一个 crumb 按钮）。
+    bool hasCrumb = false;
+    std::function<void(const lumen::core::RenderNode&)> walk =
+        [&](const lumen::core::RenderNode& node) {
+            if (node.key.rfind("designer-crumb:", 0) == 0) hasCrumb = true;
+            for (const auto& child : node.children) walk(child);
+        };
+    walk(app.shell().root());
+    CHECK(hasCrumb);
+}
+
+TEST_CASE("designer B title menus open popover and forward commands",
+          "[designer][b][workspace]") {
+    // B 标题栏文件/编辑/视图 popover（HTML .popover）：低频入口，激活后
+    // 关闭并转发原命令，不污染 dirty/undo（workspace-design §3/§4.4）。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-menu-popover") ==
+          nullptr);
+    app.shell().handlers().at("designer:menu-file")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-menu-popover") !=
+            nullptr);
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-menu-item:file:save") != nullptr);
+    // Esc 关闭。
+    app.shell().keyDown(Key::Escape);
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-menu-popover") ==
+          nullptr);
+    // 编辑菜单复制节点：选中叶节点后经菜单复制，文档变脏且菜单关闭。
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    REQUIRE(!outline->children.empty());
+    const auto target = outline->children.front().id;
+    // 选中首个叶节点（根为容器，首子为叶）。
+    app.shell().handlers().at("designer:select:" + std::to_string(target))();
+    (void)app.shell().renderFrame();
+    const std::size_t before = app.workbench().outline()->children.size();
+    app.shell().handlers().at("designer:menu-edit")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-menu-item:edit:duplicate") != nullptr);
+    app.shell().handlers().at("designer:menu:duplicate")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-menu-popover") ==
+          nullptr);
+    CHECK(app.workbench().outline()->children.size() == before + 1);
+    // 视图菜单专注：打开后激活专注，左右栏隐藏。
+    app.shell().handlers().at("designer:menu-view")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(),
+                          "designer-menu-item:view:zen") != nullptr);
+    app.shell().handlers().at("designer:menu:zen")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-outline-panel") ==
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-menu-popover") ==
+          nullptr);
+}
+
+TEST_CASE("designer B bool properties use checkboxes", "[designer][b][inspector]") {
+    // 属性 §4.2：布尔量用 Checkbox（HTML“默认选中”同口径），值通道保持
+    // designer-property-field 兼容键。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page check { Column(key: \"root\") { Checkbox(\"Agree\", key: \"agree\", "
+        "checked: true) } }",
+        "bool-check.lumen"));
+    (void)app.shell().renderFrame();
+    const auto outline = app.workbench().outline();
+    REQUIRE(outline.has_value());
+    // 选中 Checkbox 节点（首子）。
+    REQUIRE(!outline->children.empty());
+    const auto checkId = outline->children.front().id;
+    app.shell().handlers().at("designer:select:" + std::to_string(checkId))();
+    (void)app.shell().renderFrame();
+    const std::string fieldKey =
+        "designer-property-field:" + std::to_string(checkId) + ":checked";
+    const auto* field = findNodeByKey(app.shell().root(), fieldKey);
+    REQUIRE(field != nullptr);
+    CHECK(field->type == lumen::core::WidgetType::Checkbox);
+    CHECK(field->checked);
+}
+
+TEST_CASE("designer B right pane keeps preference on resize",
+          "[designer][b][workspace]") {
+    // 右栏偏好 280（232–400）：窗口 resize 时中心吃增量，右栏稳定；
+    // 拖动回填偏好，下次 resize 恢复偏好。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    const auto* rightBefore =
+        findNodeByKey(app.shell().root(), "designer-properties-panel");
+    REQUIRE(rightBefore != nullptr);
+    CHECK(rightBefore->size.width == Catch::Approx(280.0F).margin(2.0F));
+    app.shell().setView(Size{1440.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    const auto* rightAfter =
+        findNodeByKey(app.shell().root(), "designer-properties-panel");
+    REQUIRE(rightAfter != nullptr);
+    CHECK(rightAfter->size.width == Catch::Approx(280.0F).margin(3.0F));
+    const auto* canvasAfter = findNodeByKey(app.shell().root(), "designer-canvas");
+    REQUIRE(canvasAfter != nullptr);
+    const auto* leftAfterResize =
+        findNodeByKey(app.shell().root(), "designer-outline-panel");
+    REQUIRE(leftAfterResize != nullptr);
+    // 中心 716 → 876（+160），右栏稳定。
+    CHECK(canvasAfter->size.width == Catch::Approx(876.0F).margin(4.0F));
+}
+
+TEST_CASE("designer B run preview overlay appears on demand",
+          "[designer][b][preview]") {
+    // 运行预览按需出现：停止态无覆盖层，运行/调试打开模态，停止/Esc/
+    // 遮罩点击关闭；不再依赖第二个 OS 窗口。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-run-preview-overlay") ==
+          nullptr);
+
+    app.shell().handlers().at("designer:run")();
+    (void)app.shell().renderFrame();
+    const auto* overlay =
+        findNodeByKey(app.shell().root(), "designer-run-preview-overlay");
+    REQUIRE(overlay != nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-run-preview-title") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-run-preview-close") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-run-preview-content") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-run-preview-card")
+              ->semanticsRole == "dialog");
+
+    app.shell().handlers().at("designer:stop")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-run-preview-overlay") ==
+          nullptr);
+
+    // 调试会话同样打开，Esc 关闭并停止。
+    app.shell().handlers().at("designer:debug")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-run-preview-overlay") !=
+            nullptr);
+    app.shell().keyDown(Key::Escape);
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-run-preview-overlay") ==
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-status")->text ==
+          "Preview stopped");
+
+    // 遮罩点击关闭：卡片 880 居中，角落 (30,400) 落在遮罩上。
+    app.shell().handlers().at("designer:run")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-run-preview-overlay") !=
+            nullptr);
+    const Offset outside{30.0F, 400.0F};
+    app.shell().pointerDown(outside);
+    app.shell().pointerUp(outside);
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-run-preview-overlay") ==
+          nullptr);
+}
+
+TEST_CASE("designer B structural keys suspended behind run overlay",
+          "[designer][b][preview]") {
+    // 模态打开时 Delete/排序/大纲键盘 suspend，防止遮挡后文档被意外改动。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    app.shell().handlers().at("designer:lefttab-outline")();
+    (void)app.shell().renderFrame();
+    const auto before = app.workbench().documentRevision();
+    app.shell().handlers().at("designer:run")();
+    (void)app.shell().renderFrame();
+    REQUIRE(findNodeByKey(app.shell().root(), "designer-run-preview-overlay") !=
+            nullptr);
+    app.shell().keyDown(Key::Delete);
+    (void)app.shell().renderFrame();
+    CHECK(app.workbench().documentRevision() == before);
+    app.shell().handlers().at("designer:stop")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(), "designer-run-preview-overlay") ==
+          nullptr);
+}
+
+TEST_CASE("designer panel scrollviews answer wheel and scrollbar drags",
+          "[designer][scroll]") {
+    // 左面板工具箱是应用侧 ScrollView（lumen-scroll-design §3.4/§4）：滚轮
+    // 与滚动条轨道翻页经 onWheel sink 驱动应用持有的 ScrollController，拇
+    // 指拖动经 onScrollDrag；偏移随 build 写回 scrollOffset。此前 onWheel
+    // 只认画布平移，整个左/右面板列表无法滚动。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    showLeftToolbox(app);
+
+    const auto toolbox = [&app] {
+        const auto* node =
+            findNodeByKey(app.shell().root(), "designer-toolbox-scroll");
+        REQUIRE(node != nullptr);
+        return node;
+    };
+    // 7 组 37 行在 800 高窗口下超出左栏可视高度，视口处于可滚状态。
+    REQUIRE(toolbox()->scrollExtent > 0.0F);
+    const auto origin =
+        absoluteOffset(app.shell().root(), "designer-toolbox-scroll");
+    const Offset contentPoint{
+        origin.x + toolbox()->size.width * 0.5F,
+        origin.y + toolbox()->size.height * 0.5F};
+
+    // 滚轮向下两拍再回一拍：偏移精确写回（120px/拍，无宿主换算）。
+    CHECK(app.shell().wheel(contentPoint, {0.0F, 120.0F}));
+    (void)app.shell().renderFrame();
+    CHECK(toolbox()->scrollOffset == 120.0F);
+    CHECK(app.shell().wheel(contentPoint, {0.0F, 120.0F}));
+    (void)app.shell().renderFrame();
+    CHECK(toolbox()->scrollOffset == 240.0F);
+    CHECK(app.shell().wheel(contentPoint, {0.0F, -120.0F}));
+    (void)app.shell().renderFrame();
+    CHECK(toolbox()->scrollOffset == 120.0F);
+
+    // 越过大额滚动夹取到 maxScrollOffset（滚动条轨道翻页同路径）。
+    CHECK(app.shell().wheel(contentPoint, {0.0F, 100000.0F}));
+    (void)app.shell().renderFrame();
+    CHECK(toolbox()->scrollOffset ==
+          Catch::Approx(toolbox()->scrollExtent).margin(0.5F));
+
+    // 滚动条拇指拖动：从拇指中心按住推到轨道底端，偏移应到底。
+    const auto grabGeometry = scrollbarGeometry(*toolbox());
+    REQUIRE(grabGeometry.has_value());
+    const Offset grabPoint{
+        origin.x + grabGeometry->thumbHit.origin.x +
+            grabGeometry->thumbHit.size.width * 0.5F,
+        origin.y + grabGeometry->thumbHit.origin.y +
+            grabGeometry->thumbHit.size.height * 0.5F};
+    app.shell().pointerMove(grabPoint);
+    app.shell().pointerDown(grabPoint);
+    app.shell().pointerMove(
+        grabPoint + Offset{0.0F, grabGeometry->travel});
+    app.shell().pointerUp(grabPoint + Offset{0.0F, grabGeometry->travel});
+    (void)app.shell().renderFrame();
+    CHECK(toolbox()->scrollOffset ==
+          Catch::Approx(toolbox()->scrollExtent).margin(0.5F));
+
+    // 滚回顶部后点击轨道下段 = 向下翻页（0.9 视口高），不触发被覆盖的
+    // 工具箱行（不插入控件）。
+    (void)app.shell().wheel(contentPoint, {0.0F, -100000.0F});
+    (void)app.shell().renderFrame();
+    REQUIRE(toolbox()->scrollOffset == 0.0F);
+    const auto trackGeometry = scrollbarGeometry(*toolbox());
+    REQUIRE(trackGeometry.has_value());
+    const Offset trackPoint{
+        origin.x + trackGeometry->track.origin.x +
+            trackGeometry->track.size.width * 0.5F,
+        origin.y + trackGeometry->track.origin.y +
+            trackGeometry->track.size.height * 0.75F};
+    const auto revision = app.workbench().documentRevision();
+    app.shell().pointerDown(trackPoint);
+    app.shell().pointerUp(trackPoint);
+    (void)app.shell().renderFrame();
+    CHECK(toolbox()->scrollOffset ==
+          Catch::Approx(toolbox()->size.height * 0.9F).margin(0.5F));
+    CHECK(app.workbench().documentRevision() == revision);
+}
+
+

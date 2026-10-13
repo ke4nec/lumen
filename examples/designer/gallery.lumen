@@ -13,8 +13,10 @@ page gallery {
             Checkbox("Enabled", key: "enabled", checked: true)
             Switch("Dark", key: "dark", checked: true)
         }
-        Stack(key: "stack", alignment: center) {
-            Text("Overlay", key: "overlay", left: 4, top: 4)
+        Stack(key: "stack", alignment: center, height: 120) {
+            Container(key: "stack-card", width: 220, height: 84, left: 12,
+                      top: 18, color: #27272A)
+            Text("Overlay", key: "overlay", left: 96, top: 52)
         }
         ScrollView(key: "scroll") {
             ListView(key: "list") {

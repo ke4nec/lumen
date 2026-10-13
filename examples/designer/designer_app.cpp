@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -23,11 +24,24 @@
 namespace lumen::designer_app {
 namespace {
 
+// 默认样例（sample.lumen）：540×400 Stack 画板 + 全定位子节点——开箱
+// 即可拖动换位（Stack 子节点的 left/top 归设计者，画布拖动会话认领）。
+// 尺寸口径：1280×800 视口下 fit 判定 zoom=1（不位移）；1024×768 默认
+// 窗口下 fit ≈0.66，正文 16px 缩后 ≈10px 仍可读。加载后 fit-to-view
+// 自适应缩放居中（见 maybeFitCanvasView）。
 constexpr char kSampleSource[] =
-    "page preview { Column(key: \"root\") {"
-    " Text(\"Preview title\", key: \"title\")"
-    " Button(\"Save\", key: \"save\")"
-    " Row(key: \"status\") { Text(\"Ready\", key: \"message\") }"
+    "page preview { Stack(key: \"root\", width: 540, height: 400) {"
+    " Container(key: \"toolbar\", width: 492, height: 26, left: 24, top: 18,"
+    " color: #27272A)"
+    " Text(\"Lumen Designer\", key: \"title\", left: 24, top: 52)"
+    " Container(key: \"card-a\", width: 156, height: 96, left: 24, top: 88,"
+    " color: #27272A) { Text(\"Card A\", key: \"card-a-label\") }"
+    " Container(key: \"card-b\", width: 156, height: 96, left: 192, top: 88,"
+    " color: #27272A) { Text(\"Card B\", key: \"card-b-label\") }"
+    " Container(key: \"card-c\", width: 156, height: 96, left: 360, top: 88,"
+    " color: #27272A) { Text(\"Card C\", key: \"card-c-label\") }"
+    " Button(\"Save\", key: \"save\", left: 420, top: 336)"
+    " Text(\"Ready\", key: \"status\", left: 24, top: 348)"
     " } }";
 
 std::vector<const dsl::NodeSchema*> designerToolboxSchemas() {
@@ -78,6 +92,18 @@ const std::vector<ToolboxGroupSpec>& designerToolboxGroups() {
     };
     return groups;
 }
+
+// 应用侧滚动视口（左面板工具箱/工程、源码、属性、运行预览）：偏移由
+// DesignerApp 持有的 ScrollController 驱动（lumen-scroll-design §3.4），
+// 框架解析到这些视口的 wheel/scroll-drag 经 configFor 的 sink 进
+// handlePanelWheel/handlePanelScrollDrag。
+constexpr std::string_view kPanelScrollKeys[] = {
+    "designer-toolbox-scroll",
+    "designer-project-scroll",
+    "designer-source-scroll",
+    "designer-properties-scroll",
+    "designer-run-preview-scroll",
+};
 
 void prefixWidgetKeys(core::Widget& widget, std::string_view prefix) {
     if (!widget.key.empty()) widget.key = std::string{prefix} + widget.key;
@@ -462,8 +488,16 @@ std::optional<DesignNodeLocation> locateDesignNode(
     return std::nullopt;
 }
 
-const dsl::DesignPreviewOutlineNode* findOutlineNode(
-    const dsl::DesignPreviewOutlineNode& node, dsl::DesignNodeId id) {
+// 声明属性的数字读取（缺省 0）：拖动对齐候选按文档 left/top/width/
+// height 收集，不依赖渲染树（zoom 无关）。
+float designNumber(const dsl::DesignNode& node, const char* name) {
+    const auto found = node.properties.find(name);
+    if (found == node.properties.end()) return 0.0F;
+    const auto* number = std::get_if<double>(&found->second.value);
+    return number != nullptr ? static_cast<float>(*number) : 0.0F;
+}
+
+const dsl::DesignPreviewOutlineNode* findOutlineNode(    const dsl::DesignPreviewOutlineNode& node, dsl::DesignNodeId id) {
     if (node.id == id) return &node;
     for (const auto& child : node.children) {
         if (const auto* found = findOutlineNode(child, id); found != nullptr) {
@@ -783,6 +817,35 @@ core::Widget DesignerApp::OutlineModel::buildRow(const std::string& key,
 DesignerApp::DesignerApp()
     : runtimeContext_(this), outlineModel_(this), shell_(configFor(this)),
       previewShell_(previewConfigFor(this)) {
+    // B 外壳分栏初始值（workspace-design §3.1）：rail 48 外置，左 224，
+    // 右中心 716（1280-48-224-6-6-280），轨道 6，左下限 180/右下限 232，
+    // 上限 400（右上限经偏好钳制，见 buildWorkspace）。
+    leftSplitter_.setOffset(224.0F);
+    leftSplitter_.setResetOffset(224.0F);
+    leftSplitter_.setMinLeading(180.0F);
+    leftSplitter_.setMinTrailing(498.0F);
+    rightSplitter_.setOffset(716.0F);
+    rightSplitter_.setResetOffset(716.0F);
+    rightSplitter_.setMinLeading(260.0F);
+    rightSplitter_.setMinTrailing(232.0F);
+    // 右拖动回填偏好（resize/折叠时恢复偏好，中心吃增量）。
+    rightSplitter_.onOffsetChanged = [this](float offset) {
+        const float extent = rightSplitter_.extentPx();
+        if (extent > 0.0F) {
+            const float right =
+                extent - offset - core::kSplitterTrackThickness;
+            if (std::isfinite(right)) {
+                rightWidthPreference_ =
+                    std::clamp(right, 232.0F, 400.0F);
+            }
+        }
+    };
+    leftSplitter_.onOffsetChanged = [this](float offset) {
+        (void)offset;
+        // 左偏好即 offset 本身（180–400 钳制经控制器 min/布局钳制；
+        // 上限 400 在 buildWorkspace 显式钳制）。
+    };
+    applyEnvironmentTheme();
     resourcePolicy_.allowKind(dsl::DesignResourceKind::Image);
     resourceAuthorizer_ = dsl::DesignResourceAuthorizer{resourcePolicy_};
     shell_.setResourceManager(resourceManager_);
@@ -922,12 +985,18 @@ void DesignerApp::registerCommands() {
         ctrlSpec.id = id;
         ctrlSpec.binding = app::KeyBinding::plain(key, ctrl);
         ctrlSpec.invoke = [action](app::AppShell&) { action(); };
-        ctrlSpec.enabled = [this] { return !shell_.controller().wantsTextInput(); };
+        // 运行预览覆盖层打开时 suspend 结构键（Delete/大纲/排序同理，
+        // 见 configFor），避免模态后文档被意外改动。
+        ctrlSpec.enabled = [this] {
+            return !shell_.controller().wantsTextInput() && !runPreviewOpen_;
+        };
         shell_.commands().registerCommand(std::move(ctrlSpec));
         app::CommandSpec guiSpec;
         guiSpec.id = id + ".gui";
         guiSpec.binding = app::KeyBinding::plain(key, gui);
-        guiSpec.enabled = [this] { return !shell_.controller().wantsTextInput(); };
+        guiSpec.enabled = [this] {
+            return !shell_.controller().wantsTextInput() && !runPreviewOpen_;
+        };
         guiSpec.invoke = [action = std::move(action)](app::AppShell&) {
             action();
         };
@@ -1029,6 +1098,18 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
             shell.pointerCancel();
             return true;
         }
+        // B 菜单 popover：Esc 优先关闭（workspace-design §4.4）。
+        if (key == core::Key::Escape && self->openMenu_.has_value()) {
+            self->openMenu_.reset();
+            shell.markDirty();
+            return true;
+        }
+        // B 专注模式：Esc 退出（workspace-design §4.4，HTML Esc 契约）。
+        if (key == core::Key::Escape && self->zenMode_) {
+            self->zenMode_ = false;
+            shell.markDirty();
+            return true;
+        }
         if (key == core::Key::Escape &&
             self->navigatorPreviewController_.handleBack(false)) {
             self->statusMessage_ =
@@ -1037,20 +1118,36 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
             shell.markDirty();
             return true;
         }
+        // B 运行预览覆盖层：预览内路由/对话框都不消费 Esc 时关闭
+        // （等价停止会话），再交后续路由。
+        if (key == core::Key::Escape && self->runPreviewOpen_) {
+            self->stopPreview();
+            return true;
+        }
         if (!editingText && key == core::Key::Delete &&
-            (modifiers & core::kModifierAlt) == 0) {
+            (modifiers & core::kModifierAlt) == 0 && !self->runPreviewOpen_) {
             self->removeSelectedNode();
             return true;
         }
-        if ((focused == "designer-outline" ||
-             focused.starts_with("designer-outline:")) &&
-            self->outlineController_.handleKey(key, modifiers, keyChar)) {
+        if (!self->runPreviewOpen_ &&
+            ((focused == "designer-outline" ||
+              focused.starts_with("designer-outline:")) &&
+             self->outlineController_.handleKey(key, modifiers, keyChar))) {
             return true;
         }
         return false;
     };
-    config.onWheel = [self](const core::RenderNode&, const core::RenderNode*,
+    config.onWheel = [self](const core::RenderNode&, const core::RenderNode* viewport,
                             core::Offset position, core::Offset delta) {
+        if (self->spinPreviewController_.handleWheel(self->shell_, position,
+                                                     delta)) {
+            return true;
+        }
+        // 框架解析出的面板滚动视口先消费（滚轮/滚动条轨道翻页/键盘/
+        // 语义同 sink）；画布平移仅在无应用视口接管时兜底。
+        if (self->handlePanelWheel(viewport, delta)) {
+            return true;
+        }
         const auto* canvas =
             core::findNodeByKey(self->shell_.root(), "designer-canvas");
         if (canvas != nullptr) {
@@ -1061,11 +1158,19 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                 return true;
             }
         }
-        return self->spinPreviewController_.handleWheel(self->shell_, position,
-                                                        delta);
+        return false;
     };
+    // 滚动条拖动与触摸内容拖动（scrollbar/scroll-design）：面板 ScrollView
+    // 的偏移在应用侧，经 drag sink 驱动；释放起惯性由 onAnimate 推进。
+    config.onScrollDrag =
+        [self](const core::RenderNode*, const core::RenderNode* viewport,
+               core::Offset, core::Offset delta,
+               core::ScrollDragPhase phase, std::uint64_t nowMs) {
+            return self->handlePanelScrollDrag(viewport, delta, phase, nowMs);
+        };
     config.onAnimate = [self](app::AppShell& shell, std::uint64_t nowMs) {
-        return self->spinPreviewController_.step(shell, nowMs);
+        const bool spinActive = self->spinPreviewController_.step(shell, nowMs);
+        return self->advancePanelScrollFling(shell, nowMs) || spinActive;
     };
     config.onRebuilt = [self](app::AppShell& shell) {
         self->dialogPreviewController_.onRebuilt(shell);
@@ -1082,6 +1187,100 @@ app::ShellConfig DesignerApp::previewConfigFor(DesignerApp* self) {
     config.caretBlink = false;
     config.build = [self] { return self->buildPreviewWindow(); };
     return config;
+}
+
+core::ScrollController* DesignerApp::scrollControllerForKey(
+    std::string_view key) {
+    for (const auto known : kPanelScrollKeys) {
+        if (known == key) {
+            // 已知视口懒建控制器：跨重建保留偏移，首次命中即接管。
+            return &panelScrolls_[std::string{known}];
+        }
+    }
+    return nullptr;
+}
+
+core::ScrollController* DesignerApp::scrollControllerFor(
+    const core::RenderNode& viewport) {
+    return scrollControllerForKey(viewport.key);
+}
+
+float DesignerApp::panelScrollOffset(std::string_view key) const {
+    const auto found = panelScrolls_.find(std::string{key});
+    return found == panelScrolls_.end() ? 0.0F : found->second.offset();
+}
+
+bool DesignerApp::handlePanelWheel(const core::RenderNode* viewport,
+                                   core::Offset delta) {
+    if (viewport == nullptr) return false;
+    auto* scroll = scrollControllerFor(*viewport);
+    if (scroll == nullptr) return false;
+    scroll->updateExtents(viewport->size.height,
+                          viewport->size.height + viewport->scrollExtent);
+    // |delta| > 1e8 为 Home/End 端点哨兵（键盘/语义路径与 sink 约定一致）。
+    if (std::abs(delta.y) > 1e8F) {
+        scroll->scrollTo(delta.y > 0.0F ? scroll->maxScrollOffset() : 0.0F);
+        shell_.markDirty();
+        return true;
+    }
+    const bool changed = scroll->applyWheel(delta.y);
+    if (changed) shell_.markDirty();
+    return changed;
+}
+
+bool DesignerApp::handlePanelScrollDrag(const core::RenderNode* viewport,
+                                        core::Offset delta,
+                                        core::ScrollDragPhase phase,
+                                        std::uint64_t nowMs) {
+    auto* scroll =
+        viewport != nullptr ? scrollControllerFor(*viewport) : nullptr;
+    if (scroll == nullptr) {
+        // 窗口级取消无具体视口：冲洗全部采样，避免陈旧速度污染下次拖动。
+        if (phase == core::ScrollDragPhase::Cancel) {
+            for (auto& [key, controller] : panelScrolls_) {
+                controller.cancelDrag();
+            }
+        }
+        return false;
+    }
+    switch (phase) {
+        case core::ScrollDragPhase::Begin:
+            scroll->cancelDrag();
+            return true;
+        case core::ScrollDragPhase::Update:
+            scroll->updateExtents(viewport->size.height,
+                                  viewport->size.height +
+                                      viewport->scrollExtent);
+            scroll->noteDragSample(delta.y, nowMs);
+            if (scroll->applyDrag(delta.y)) {
+                shell_.markDirty();
+                return true;
+            }
+            return false;
+        case core::ScrollDragPhase::End:
+            if (scroll->endDrag(nowMs)) {
+                shell_.markDirty();
+                return true;
+            }
+            return false;
+        case core::ScrollDragPhase::Cancel:
+            scroll->cancelDrag();
+            return false;
+    }
+    return false;
+}
+
+bool DesignerApp::advancePanelScrollFling(app::AppShell& shell,
+                                          std::uint64_t nowMs) {
+    // 源视口惯性由框架 advanceSourceFling 推进；这里只管应用侧面板。
+    bool active = false;
+    for (auto& [key, scroll] : panelScrolls_) {
+        if (scroll.isFlinging()) {
+            shell.markDirty();
+            active = scroll.stepFling(nowMs) || active;
+        }
+    }
+    return active;
 }
 
 void DesignerApp::attach() {
@@ -1177,6 +1376,43 @@ void DesignerApp::attach() {
                 claim.identity = node->identity;
                 claim.touchAllowed = false;
                 return workbench_.document().has_value();
+            }
+            // 画布拖动换位：命中最深的 select 目标且其文档父节点为
+            // Stack（left/top 归设计者所有）才认领；流式父级（Row/
+            // Column 等）的位置由布局拥有，不可拖动。目标 id 编码进
+            // 伪手柄 drag:<id>，会话以拖动节点而非当前选中为目标。
+            constexpr std::string_view kSelectPrefix = "designer:select:";
+            for (const auto* node : chain) {
+                if (node == nullptr ||
+                    node->onClick.rfind(kSelectPrefix, 0) != 0) {
+                    continue;
+                }
+                if (workbench_.document().has_value()) {
+                    const std::string_view idText = node->onClick;
+                    std::uint64_t id = 0;
+                    const auto parsed =
+                        std::from_chars(idText.data() + kSelectPrefix.size(),
+                                        idText.data() + idText.size(), id);
+                    if (parsed.ec == std::errc{} &&
+                        parsed.ptr == idText.data() + idText.size()) {
+                        const auto location = locateDesignNode(
+                            workbench_.document()->root,
+                            static_cast<dsl::DesignNodeId>(id));
+                        if (location.has_value()) {
+                            const auto* parent = findDesignNode(
+                                workbench_.document()->root,
+                                location->parent);
+                            if (parent != nullptr && parent->type == "Stack") {
+                                claim.key = "designer-canvas-handle:drag:" +
+                                            std::to_string(id);
+                                claim.identity = node->identity;
+                                claim.touchAllowed = true;
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
             }
             bool overCanvas = false;
             for (const auto* node : chain) {
@@ -1275,15 +1511,164 @@ void DesignerApp::attach() {
     };
     shell_.handlers()["designer:tab-canvas"] = [this] {
         centerTab_ = CenterTab::Canvas;
+        centerView_ = CenterView::Design;
         shell_.markDirty();
     };
     shell_.handlers()["designer:tab-source"] = [this] {
         centerTab_ = CenterTab::Source;
+        centerView_ = CenterView::Source;
         shell_.markDirty();
     };
     shell_.handlers()["designer:tab-references"] = [this] {
         centerTab_ = CenterTab::References;
+        bottomTab_ = BottomTab::References;
+        bottomOpen_ = true;
+        centerView_ = CenterView::Design;
         shell_.markDirty();
+    };
+    // B 中心视图（设计/分屏/快照）与底部页签（问题/引用）。
+    shell_.handlers()["designer:view-design"] = [this] {
+        centerView_ = CenterView::Design;
+        centerTab_ = CenterTab::Canvas;
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:view-split"] = [this] {
+        centerView_ = CenterView::Split;
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:view-source"] = [this] {
+        centerView_ = CenterView::Source;
+        centerTab_ = CenterTab::Source;
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:bottom-diagnostics"] = [this] {
+        bottomTab_ = BottomTab::Diagnostics;
+        bottomOpen_ = true;
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:bottom-references"] = [this] {
+        bottomTab_ = BottomTab::References;
+        bottomOpen_ = true;
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:toggle-bottom"] = [this] { toggleBottom(); };
+    shell_.handlers()["designer:zen"] = [this] { toggleZen(); };
+    shell_.handlers()["designer:toggle-left"] = [this] {
+        toggleLeftCollapsed();
+    };
+    shell_.handlers()["designer:reset-layout"] = [this] { resetLayout(); };
+    shell_.handlers()["designer:show-toolbox"] = [this] { showToolbox(); };
+    shell_.handlers()["designer:layout-context"] = [this] {
+        focusLayoutContext();
+    };
+    shell_.handlers()["designer:rail-toolbox"] = [this] {
+        if (leftPanelTab_ == LeftPanelTab::Toolbox && !leftCollapsed_ &&
+            !zenMode_) {
+            leftCollapsed_ = true;
+        } else {
+            leftCollapsed_ = false;
+            zenMode_ = false;
+            leftPanelTab_ = LeftPanelTab::Toolbox;
+        }
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:rail-outline"] = [this] {
+        if (leftPanelTab_ == LeftPanelTab::Outline && !leftCollapsed_ &&
+            !zenMode_) {
+            leftCollapsed_ = true;
+        } else {
+            leftCollapsed_ = false;
+            zenMode_ = false;
+            leftPanelTab_ = LeftPanelTab::Outline;
+        }
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:undo"] = [this] { (void)undo(); };
+    shell_.handlers()["designer:redo"] = [this] { (void)redo(); };
+    // B 标题栏菜单（文件/编辑/视图 popover）。toggle 互斥，Esc 关闭（configFor），
+    // 菜单项关闭后转发原命令（不污染 dirty/undo，见 workspace-design §4.4）。
+    shell_.handlers()["designer:menu-file"] = [this] {
+        openMenu_ = (openMenu_ == "file" ? std::nullopt
+                                         : std::optional<std::string>{"file"});
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:menu-edit"] = [this] {
+        openMenu_ = (openMenu_ == "edit" ? std::nullopt
+                                         : std::optional<std::string>{"edit"});
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:menu-view"] = [this] {
+        openMenu_ = (openMenu_ == "view" ? std::nullopt
+                                         : std::optional<std::string>{"view"});
+        shell_.markDirty();
+    };
+    shell_.handlers()["designer:menu-close"] = [this] {
+        openMenu_.reset();
+        shell_.markDirty();
+    };
+    const auto menuForward = [this](const std::string& handler) {
+        openMenu_.reset();
+        const auto found = shell_.handlers().find(handler);
+        // 转发时避开自身（菜单包装器与原 handler 同名时直接执行动作）。
+        if (found != shell_.handlers().end() &&
+            found->first != "designer:menu-close") {
+            // 原 handler 内部会 markDirty；此处仅保证菜单关闭也触发重建。
+        }
+        shell_.markDirty();
+    };
+    (void)menuForward;
+    // 菜单项包装器：关闭 + 原动作（复用既有命令/方法，保证单路径）。
+    shell_.handlers()["designer:menu:save"] = [this] {
+        openMenu_.reset();
+        (void)shell_.invokeCommand("designer.save");
+    };
+    shell_.handlers()["designer:menu:save-as"] = [this] {
+        openMenu_.reset();
+        (void)shell_.invokeCommand("designer.save-as");
+    };
+    shell_.handlers()["designer:menu:open"] = [this] {
+        openMenu_.reset();
+        (void)shell_.invokeCommand("designer.open");
+    };
+    shell_.handlers()["designer:menu:new-project"] = [this] {
+        openMenu_.reset();
+        (void)shell_.invokeCommand("designer.new-project");
+    };
+    shell_.handlers()["designer:menu:undo"] = [this] {
+        openMenu_.reset();
+        (void)undo();
+    };
+    shell_.handlers()["designer:menu:redo"] = [this] {
+        openMenu_.reset();
+        (void)redo();
+    };
+    shell_.handlers()["designer:menu:duplicate"] = [this] {
+        openMenu_.reset();
+        (void)shell_.invokeCommand("designer.duplicate");
+    };
+    shell_.handlers()["designer:menu:remove"] = [this] {
+        openMenu_.reset();
+        (void)shell_.invokeCommand("designer.remove");
+    };
+    shell_.handlers()["designer:menu:toggle-left"] = [this] {
+        openMenu_.reset();
+        toggleLeftCollapsed();
+    };
+    shell_.handlers()["designer:menu:zen"] = [this] {
+        openMenu_.reset();
+        toggleZen();
+    };
+    shell_.handlers()["designer:menu:toggle-bottom"] = [this] {
+        openMenu_.reset();
+        toggleBottom();
+    };
+    shell_.handlers()["designer:menu:guides"] = [this] {
+        openMenu_.reset();
+        toggleCanvasGuides();
+    };
+    shell_.handlers()["designer:menu:reset-layout"] = [this] {
+        openMenu_.reset();
+        resetLayout();
     };
     for (const auto* schema : designerToolboxSchemas()) {
         shell_.handlers()["designer:toolbox:" + schema->type] =
@@ -1379,13 +1764,26 @@ bool DesignerApp::startPreview(bool debug) {
     previewShell_.setDebugBoundsOverlay(debug);
     statusMessage_ = debug ? "Debug preview running  /  current session"
                            : "Preview running  /  current session";
+    openMenu_.reset();
+    runPreviewOpen_ = true;
+    // 每次会话从头看起：滚回顶部并停掉上次会话残留的惯性（gallery 弹窗
+    // 打开即回顶，同形）。
+    if (auto* previewScroll =
+            scrollControllerForKey("designer-run-preview-scroll")) {
+        previewScroll->stopFling();
+        previewScroll->scrollTo(0.0F);
+    }
     shell_.markDirty();
     previewShell_.markDirty();
     return true;
 }
 
 void DesignerApp::stopPreview() {
-    if (previewSessionMode_ == PreviewSessionMode::Stopped) return;
+    runPreviewOpen_ = false;
+    if (previewSessionMode_ == PreviewSessionMode::Stopped) {
+        shell_.markDirty();
+        return;
+    }
     previewSessionMode_ = PreviewSessionMode::Stopped;
     shell_.setFrameStatsCapture(false);
     shell_.setDebugFrameStats(false);
@@ -1495,6 +1893,7 @@ bool DesignerApp::loadDesignFile(const std::string& filename) {
                               : std::string{};
         sourceFocusLine_ = 0;
         resetPreviewState();
+        canvasFitPending_ = true;
         refreshDocumentUi();
     }
     shell_.markDirty();
@@ -2107,6 +2506,7 @@ bool DesignerApp::loadSource(const std::string& source, std::string filename) {
         sourceSnapshot_ = source;
         sourceFocusLine_ = 0;
         resetPreviewState();
+        canvasFitPending_ = true;
         refreshDocumentUi();
     }
     shell_.markDirty();
@@ -2277,6 +2677,7 @@ void DesignerApp::activateDiagnostic(std::size_t index) {
     }
     if (diagnostic.sourceSpan.has_value()) {
         centerTab_ = CenterTab::Source;
+        centerView_ = CenterView::Source;
         sourceFocusLine_ = diagnostic.sourceSpan->begin.line;
         shell_.markDirty();
     }
@@ -2922,7 +3323,7 @@ core::Widget DesignerApp::buildCanvasSelectionOverlay() const {
 }
 
 float DesignerApp::snapCanvasCoordinate(float value, float maximum,
-                                         float threshold) {
+                                        float threshold) {
     if (!std::isfinite(value) || maximum <= 0.0F) return value;
     float best = value;
     float distance = threshold;
@@ -2939,6 +3340,29 @@ float DesignerApp::snapCanvasCoordinate(float value, float maximum,
     return best;
 }
 
+float DesignerApp::snapDragCoordinate(
+    float value, const std::vector<float>& snaps,
+    const std::vector<float>& guides, float gridMaximum, float threshold,
+    std::optional<float>& activeGuide) const {
+    activeGuide.reset();
+    float best = value;
+    float bestDistance = threshold;
+    for (std::size_t index = 0; index < snaps.size() && index < guides.size();
+         ++index) {
+        const float distance = std::abs(snaps[index] - value);
+        if (distance <= bestDistance) {
+            bestDistance = distance;
+            best = snaps[index];
+            activeGuide = guides[index];
+        }
+    }
+    if (!activeGuide.has_value()) {
+        // 未命中对齐候选：回落既有网格吸附（§8.3 之前的行为）。
+        return snapCanvasCoordinate(value, gridMaximum, threshold);
+    }
+    return best;
+}
+
 void DesignerApp::canvasResizeSession(core::DragPhase phase,
                                       core::Offset position,
                                       const std::string& sourceKey) {
@@ -2951,7 +3375,22 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
         return;
     }
     if (phase == core::DragPhase::Start) {
-        const auto selected = workbench_.selection().primary;
+        // drag:<id> = 拖动换位伪手柄（arm 自画布 select 目标认领）：目标
+        // 是被拖动的节点本身，而非当前选中。
+        std::optional<dsl::DesignNodeId> dragTarget;
+        if (handle.rfind("drag:", 0) == 0) {
+            const std::string_view text = handle;
+            std::uint64_t id = 0;
+            const auto parsed = std::from_chars(
+                text.data() + 5, text.data() + text.size(), id);
+            if (parsed.ec == std::errc{} &&
+                parsed.ptr == text.data() + text.size()) {
+                dragTarget = static_cast<dsl::DesignNodeId>(id);
+            }
+        }
+        const auto selected = dragTarget.has_value()
+                                  ? dragTarget
+                                  : workbench_.selection().primary;
         if (!selected.has_value() || !workbench_.document().has_value()) {
             return;
         }
@@ -2983,6 +3422,11 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
             : core::findNodeByKey(shell_.root(), parentKey);
         canvasResizePositionEditable_ =
             parent != nullptr && parent->type == "Stack" && parentRender != nullptr;
+        // 拖动换位只对拥有 left/top 的 Stack 子节点有效；流式父级的
+        // 位置归布局，起会话即放弃。
+        if (dragTarget.has_value() && !canvasResizePositionEditable_) {
+            return;
+        }
         canvasResizeZoom_ = canvasTransform_.zoom();
         // G-D14 §4.15: resize in the parent's design coordinates, then
         // convert the temporary guide back to canvas logical coordinates.
@@ -3030,14 +3474,74 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
             renderNode->size.width / canvasResizeZoom_,
             renderNode->size.height / canvasResizeZoom_};
         canvasResizePreview_ = canvasResizeStart_;
+        // 拖动换位的对齐候选（§8.3 虚线参考）：父框 0/中/尾 + 同父子节
+        // 点的边与中线（拖动节点的左/中/右分别对齐目标），按文档声明收
+        // 集，与渲染缩放无关。
+        canvasResizeSnapXs_.clear();
+        canvasResizeGuideXs_.clear();
+        canvasResizeSnapYs_.clear();
+        canvasResizeGuideYs_.clear();
+        canvasResizeActiveGuideX_.reset();
+        canvasResizeActiveGuideY_.reset();
+        if (dragTarget.has_value()) {
+            const float frameWidth = canvasResizeLimits_.width;
+            const float frameHeight = canvasResizeLimits_.height;
+            const float width = canvasResizeStart_.width;
+            const float height = canvasResizeStart_.height;
+            const auto addX = [this](float snap, float guide) {
+                canvasResizeSnapXs_.push_back(snap);
+                canvasResizeGuideXs_.push_back(guide);
+            };
+            const auto addY = [this](float snap, float guide) {
+                canvasResizeSnapYs_.push_back(snap);
+                canvasResizeGuideYs_.push_back(guide);
+            };
+            addX(0.0F, 0.0F);
+            addX((frameWidth - width) * 0.5F, frameWidth * 0.5F);
+            addX(frameWidth - width, frameWidth);
+            addY(0.0F, 0.0F);
+            addY((frameHeight - height) * 0.5F, frameHeight * 0.5F);
+            addY(frameHeight - height, frameHeight);
+            if (parent != nullptr) {
+                for (const auto& child : parent->children) {
+                    if (child.id == canvasResizeId_) continue;
+                    const float left = designNumber(child, "left");
+                    const float top = designNumber(child, "top");
+                    const float childWidth = designNumber(child, "width");
+                    const float childHeight = designNumber(child, "height");
+                    const float center = left + childWidth * 0.5F;
+                    const float middle = top + childHeight * 0.5F;
+                    addX(left, left);
+                    addX(center - width * 0.5F, center);
+                    addX(left + childWidth, left + childWidth);
+                    addX(left - width, left);
+                    addX(left + childWidth - width, left + childWidth);
+                    addY(top, top);
+                    addY(middle - height * 0.5F, middle);
+                    addY(top + childHeight, top + childHeight);
+                    addY(top - height, top);
+                    addY(top + childHeight - height, top + childHeight);
+                }
+            }
+        }
+        // 拖动换位顺带选中目标（点击本会选中；拖动抑制了点击，这里补
+        // 上，属性面板随拖动同步）。
+        if (dragTarget.has_value() &&
+            workbench_.selection().primary != canvasResizeId_) {
+            selectNode(canvasResizeId_);
+        }
         shell_.markDirty();
         return;
     }
     if (!canvasResizeActive_) return;
+    // 换位会话的目标由伪手柄锚定，不要求它同时是当前选中（选中只是
+    // 顺带效果）；手柄会话仍要求选中一致（手柄画在选中框上）。
+    const bool dragHandle = canvasResizeHandle_.rfind("drag:", 0) == 0;
     if (!workbench_.document().has_value() ||
         workbench_.document()->documentId != canvasResizeDocumentId_ ||
         workbench_.documentRevision() != canvasResizeRevision_ ||
-        workbench_.selection().primary != canvasResizeId_) {
+        (!dragHandle &&
+         workbench_.selection().primary != canvasResizeId_)) {
         endCanvasResizeSession();
         shell_.markDirty();
         return;
@@ -3058,7 +3562,25 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
         const bool moveBottom = canvasResizeHandle_.find('s') != std::string::npos;
         const float right = canvasResizeStart_.x + canvasResizeStart_.width;
         const float bottom = canvasResizeStart_.y + canvasResizeStart_.height;
-        if (!canvasResizePositionEditable_) {
+        if (dragHandle) {
+            // 拖动换位：尺寸不变、位置跟手；先对齐参考候选（父框 + 兄弟
+            // 边/中线，命中画全幅虚线），未命中回落 8px 网格；吸附后钳
+            // 制在父内容区内（G-D14 §4.15 同口径：设计坐标里运算）。
+            float x = canvasResizeStart_.x + delta.x;
+            float y = canvasResizeStart_.y + delta.y;
+            x = snapDragCoordinate(x, canvasResizeSnapXs_,
+                                   canvasResizeGuideXs_, canvasWidth,
+                                   threshold, canvasResizeActiveGuideX_);
+            y = snapDragCoordinate(y, canvasResizeSnapYs_,
+                                   canvasResizeGuideYs_, canvasHeight,
+                                   threshold, canvasResizeActiveGuideY_);
+            next.x = std::clamp(
+                x, 0.0F,
+                std::max(0.0F, canvasWidth - canvasResizeStart_.width));
+            next.y = std::clamp(
+                y, 0.0F,
+                std::max(0.0F, canvasHeight - canvasResizeStart_.height));
+        } else if (!canvasResizePositionEditable_) {
             if (moveLeft || moveRight) {
                 const float width = canvasResizeStart_.width +
                                     (moveLeft ? -delta.x : delta.x);
@@ -3136,6 +3658,14 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
         properties.emplace_back(
             "top", number(preview.y));
     }
+    if (positionEditable && handleName.rfind("drag:", 0) == 0) {
+        // 拖动换位：一次事务只写 left/top（与 resize 手柄的事务粒度
+        // 一致，undo 一步还原）。
+        properties.emplace_back(
+            "left", number(preview.x));
+        properties.emplace_back(
+            "top", number(preview.y));
+    }
     if (!properties.empty() &&
         workbench_.setProperties(preview.id, std::move(properties))) {
         refreshDocumentUi();
@@ -3156,6 +3686,12 @@ void DesignerApp::endCanvasResizeSession() {
     canvasResizeDocumentId_.clear();
     canvasResizeRevision_ = 0;
     canvasResizePositionEditable_ = false;
+    canvasResizeSnapXs_.clear();
+    canvasResizeGuideXs_.clear();
+    canvasResizeSnapYs_.clear();
+    canvasResizeGuideYs_.clear();
+    canvasResizeActiveGuideX_.reset();
+    canvasResizeActiveGuideY_.reset();
 }
 
 core::Widget DesignerApp::buildOutlineDragOverlay() const {
@@ -3333,10 +3869,14 @@ void DesignerApp::applyEnvironmentTheme() {
     shell_.setAccessibilityOverrides(overrides);
     previewShell_.setAccessibilityOverrides(overrides);
     const auto settings = shell_.accessibilitySettings();
+    // B：工作台 Compact，预览独立 Comfortable（visual-system §3.6，
+    // workspace-design §3.1）。两者正交，切换互不污染 dirty/undo。
     shell_.setTheme(
         style::Theme::fromSettings(settings, darkMode_, density_));
     previewShell_.setTheme(style::Theme::fromSettings(
-        previewShell_.accessibilitySettings(), darkMode_, density_));
+        previewShell_.accessibilitySettings(), darkMode_, previewDensity_));
+    previewScopeData_ = style::makeThemeScopeData(
+        style::Theme::fromSettings(settings, darkMode_, previewDensity_));
 }
 
 void DesignerApp::toggleTheme() {
@@ -3408,6 +3948,61 @@ void DesignerApp::resetCanvasView() {
     shell_.markDirty();
 }
 
+void DesignerApp::maybeFitCanvasView() {
+    if (!canvasFitPending_) return;
+    // 画布节点只有上一帧树里才有：首帧未就绪时保持 pending 并请求下一
+    // 帧，避免只渲染一帧的调用方停在未适配的缩放上。
+    const auto* canvasNode =
+        core::findNodeByKey(shell_.root(), "designer-canvas");
+    if (canvasNode == nullptr) {
+        shell_.requestRebuildAfterLayout();
+        return;
+    }
+    canvasFitPending_ = false;
+    if (!workbench_.document().has_value()) return;
+    // 用户已在消费前缩放/平移（如测试的 configureCanvas）：尊重手动视
+    // 图，放弃本次 fit。
+    if (canvasTransform_.zoom() != 1.0F ||
+        canvasTransform_.pan() != core::Offset{}) {
+        return;
+    }
+    // 仅当画板声明了显式 width/height（如默认 1024×768 样例）才适配；
+    // 自适应文档（流式根）保持 zoom 1。
+    const auto readNumber = [&root = workbench_.document()->root](
+                                const char* name) -> float {
+        const auto found = root.properties.find(name);
+        if (found == root.properties.end()) return -1.0F;
+        const auto* number = std::get_if<double>(&found->second.value);
+        return number != nullptr ? static_cast<float>(*number) : -1.0F;
+    };
+    const float designWidth = readNumber("width");
+    const float designHeight = readNumber("height");
+    const float contentWidth =
+        canvasNode->size.width - canvasNode->padding.horizontal();
+    const float contentHeight =
+        canvasNode->size.height - canvasNode->padding.vertical();
+    if (designWidth <= 0.0F || designHeight <= 0.0F ||
+        contentWidth <= 0.0F || contentHeight <= 0.0F) {
+        return;
+    }
+    // 缩小居中，不放大；留 8px 呼吸边。zoom=1（内容放得下）时保持原
+    // 位不平移——避免无谓的树位移让按帧几何计算的交互落空。build 内
+    // 消费：本帧随后的 buildCanvasStack 即按新 zoom/pan 缩放画板；回置
+    // 一帧让缩放百分比等派生 UI 收敛。
+    const float zoom = std::min({(contentWidth - 8.0F) / designWidth,
+                                 (contentHeight - 8.0F) / designHeight,
+                                 1.0F});
+    if (zoom >= 1.0F) return;
+    const core::Offset pan{
+        (contentWidth - designWidth * zoom) * 0.5F,
+        (contentHeight - designHeight * zoom) * 0.5F};
+    if (zoom != canvasTransform_.zoom() || pan != canvasTransform_.pan()) {
+        (void)canvasTransform_.setZoom(zoom);
+        (void)canvasTransform_.setPan(pan);
+        shell_.requestRebuildAfterLayout();
+    }
+}
+
 void DesignerApp::cycleFontScale() {
     constexpr float kScales[] = {1.0F, 1.25F, 1.5F};
     constexpr std::size_t kScaleCount = sizeof(kScales) / sizeof(kScales[0]);
@@ -3430,6 +4025,67 @@ void DesignerApp::toggleHighContrast() {
 void DesignerApp::toggleCanvasGuides() {
     canvasGuidesEnabled_ = !canvasGuidesEnabled_;
     shell_.markDirty();
+}
+
+void DesignerApp::toggleZen() {
+    // B 专注模式（workspace-design §3/§4.4）：释放完整画布，隐藏左右栏与
+    // 底栏；Esc 退出（configFor）。不触碰 dirty/undo。
+    zenMode_ = !zenMode_;
+    shell_.markDirty();
+}
+
+void DesignerApp::toggleLeftCollapsed() {
+    leftCollapsed_ = !leftCollapsed_;
+    shell_.markDirty();
+}
+
+void DesignerApp::toggleBottom() {
+    bottomOpen_ = !bottomOpen_;
+    shell_.markDirty();
+}
+
+void DesignerApp::resetLayout() {
+    leftSplitter_.resetToInitial();
+    rightSplitter_.resetToInitial();
+    rightWidthPreference_ = 280.0F;
+    openMenu_.reset();
+    zenMode_ = false;
+    leftCollapsed_ = false;
+    bottomOpen_ = false;
+    centerView_ = CenterView::Design;
+    centerTab_ = CenterTab::Canvas;
+    statusMessage_ = "已恢复画布优先默认工作区";
+    shell_.markDirty();
+}
+
+void DesignerApp::showToolbox() {
+    zenMode_ = false;
+    leftCollapsed_ = false;
+    leftPanelTab_ = LeftPanelTab::Toolbox;
+    shell_.markDirty();
+}
+
+void DesignerApp::focusLayoutContext() {
+    // B 布局按钮：选中布局容器，在右侧调整间距/主轴（HTML layout-context）。
+    if (!workbench_.document().has_value()) return;
+    const auto primary = workbench_.selection().primary;
+    if (!primary.has_value()) return;
+    const auto* node = findDesignNode(workbench_.document()->root, *primary);
+    if (node == nullptr) return;
+    // 若选中叶节点，回到父容器；容器则保持。
+    dsl::DesignNodeId target = *primary;
+    const auto* schema = dsl::findNodeSchema(node->type);
+    const bool isContainer = (node->type == "Column" || node->type == "Row" ||
+                              node->type == "Container" || node->type == "Stack");
+    (void)schema;
+    if (!isContainer) {
+        if (const auto location =
+                locateDesignNode(workbench_.document()->root, *primary);
+            location.has_value() && location->parent != 0) {
+            target = location->parent;
+        }
+    }
+    selectNode(target);
 }
 
 void DesignerApp::resetPreviewState() {
@@ -3672,42 +4328,267 @@ std::string DesignerApp::formatDiagnostic(
     return stream.str();
 }
 
-core::Widget DesignerApp::buildToolbar() {
-    // 工具栏重设计（design/designer-toolbar-redesign.html 版本 A，2026-10）：
-    // 按使用频率分五组——编辑 | 运行 | 文件 | 预览环境 | 缩放；高频命令带
-    // 文字，低频项图标 + semanticsLabel；Chrome 变体（rest 幽灵），Run 为
-    // 唯一 Filled 主行动点。命令 id 与快捷键（registerCommands）不变。
+core::Widget DesignerApp::buildTitleBar() {
+    // B 标题栏 44（designer-ide.html variant-b .ide-title）：品牌 + 文件/
+    // 编辑/视图菜单 + 居中工程名 + DESIGNER 角标 + 帮助。视觉值取 Theme
+    // token（visual-system §3.6），不复制 HTML 常量。
     const auto& theme = shell_.theme();
-    auto scaleLabel = [](const char* name, float scale) {
-        std::ostringstream stream;
-        stream << name << " " << static_cast<int>(scale * 100.0F + 0.5F)
-               << "%";
-        return stream.str();
+    const auto chrome = [&theme](std::string label, std::string key,
+                                 std::string handler) {
+        auto button = core::withVariant(
+            core::makeButton(std::move(label), theme.typography.caption, {},
+                             0.0F, std::move(key), std::nullopt, std::nullopt,
+                             std::move(handler)),
+            core::ButtonVariant::Chrome);
+        button.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
+        return button;
     };
-    auto percentLabel = [](float scale) {
-        std::ostringstream stream;
-        stream << static_cast<int>(scale * 100.0F + 0.5F) << "%";
-        return stream.str();
-    };
-    // 工具栏文本用 caption 档（12px）+ 收紧内距 8px：22 项全可见的前提
-    // 下对齐设计稿的紧凑度量（值经 token 与 StyleOverrides 表达，不新造
-    // 常量；对照 design/designer-toolbar-redesign.html 版本 A）。
-    // 字号放大（125/150%）时整行会超出内容盒——带文字命令退化为图标钮
-    // （tooltip 常驻名称/快捷键兜底），任何缩放档不裁剪。
-    const bool compact = fontScale_ > 1.0F;
-    const auto command = [&theme, compact](std::string label, core::IconId icon,
-                                           std::string key,
-                                           std::string handler) {
+    auto brand = core::makeText("Lumen / Designer", theme.typography.label, {},
+                                0.0F, "designer-brand");
+    auto fileMenu = chrome("文件", "designer-menu-file", "designer:menu-file");
+    auto editMenu = chrome("编辑", "designer-menu-edit", "designer:menu-edit");
+    auto viewMenu = chrome("视图", "designer-menu-view", "designer:menu-view");
+    auto spacerLeft = core::makeContainerLeaf(
+        std::nullopt, std::nullopt, {}, {}, core::Color::transparent(),
+        "designer-titlebar-spacer-left");
+    spacerLeft.flex = 1.0F;
+    spacerLeft.excludeFromFocus = true;
+    spacerLeft.excludeFromSemantics = true;
+    auto projectName = core::makeText("Workspace  /  settings.design",
+                                      theme.typography.caption, {}, 0.0F,
+                                      "designer-project-name");
+    auto spacerRight = core::makeContainerLeaf(
+        std::nullopt, std::nullopt, {}, {}, core::Color::transparent(),
+        "designer-titlebar-spacer-right");
+    spacerRight.flex = 1.0F;
+    spacerRight.excludeFromFocus = true;
+    spacerRight.excludeFromSemantics = true;
+    auto badge =
+        core::makeText("DESIGNER", theme.typography.caption, {}, 0.0F,
+                       "designer-badge");
+    auto help = core::withVariant(
+        core::withLeadingIcon(
+            core::makeButton({}, theme.typography.caption, {}, 0.0F,
+                             "designer-help", std::nullopt, std::nullopt,
+                             "designer:toggle-bottom"),
+            core::IconId::Info),
+        core::ButtonVariant::Chrome);
+    help.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
+    help.semanticsLabel = "Help";
+    auto row = core::makeRow(
+        {std::move(brand), std::move(fileMenu), std::move(editMenu),
+         std::move(viewMenu), std::move(spacerLeft), std::move(projectName),
+         std::move(spacerRight), std::move(badge), std::move(help)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 6.0F,
+        core::EdgeInsets::symmetric(12.0F, 0.0F), {}, "designer-titlebar-row");
+    auto bar = core::makeColumn({std::move(row)},
+                                core::MainAxisAlignment::Start,
+                                core::CrossAxisAlignment::Stretch, 0.0F, {}, {},
+                                "designer-titlebar", std::nullopt, 44.0F);
+    bar.color = theme.colors.surface;
+    return bar;
+}
+
+core::Widget DesignerApp::buildMenuPopover() {
+    // B 标题栏菜单 popover（HTML .popover/menu-item）：文件/编辑/视图低频
+    // 入口，主工具仅留常用（workspace-design §3）。定位取标题栏下固定偏移
+    //（headless 取存在性与命令可达，像素级锚定由宿主验证）。
+    if (!openMenu_.has_value()) return core::Widget{};
+    const auto& theme = shell_.theme();
+    const std::string kind = *openMenu_;
+    std::vector<std::pair<std::string, std::string>> items;
+    if (kind == "file") {
+        items = {{"designer:menu:save", "保存   Ctrl+S"},
+                 {"designer:menu:save-as", "另存为   Ctrl+Shift+S"},
+                 {"designer:menu:open", "打开   Ctrl+O"},
+                 {"designer:menu:new-project", "新建工程   Ctrl+Shift+N"}};
+    } else if (kind == "edit") {
+        items = {{"designer:menu:undo", "撤销   Ctrl+Z"},
+                 {"designer:menu:redo", "重做   Ctrl+Shift+Z"},
+                 {"designer:menu:duplicate", "复制节点   Ctrl+D"},
+                 {"designer:menu:remove", "删除节点   Delete"}};
+    } else {
+        items = {{"designer:menu:toggle-left", "显示/隐藏左栏"},
+                 {"designer:menu:zen", "专注模式   Esc 退出"},
+                 {"designer:menu:toggle-bottom", "显示/隐藏底栏"},
+                 {"designer:menu:guides", "显示网格"},
+                 {"designer:menu:reset-layout", "恢复默认布局"}};
+    }
+    std::vector<core::Widget> rows;
+    for (const auto& [handler, label] : items) {
+        // 菜单项 key 取 handler 后缀，保证 findNodeByKey 可达且唯一。
+        const auto pos = handler.rfind(':');
+        const std::string key =
+            "designer-menu-item:" + kind + ":" +
+            (pos == std::string::npos ? handler : handler.substr(pos + 1));
+        auto button = core::withVariant(
+            core::makeButton(label, theme.typography.caption, {}, 0.0F, key,
+                             224.0F, std::nullopt, handler),
+            core::ButtonVariant::Chrome);
+        button.alignContentStart = true;
+        button.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
+        rows.push_back(std::move(button));
+    }
+    auto menu = core::makeColumn(std::move(rows),
+                                 core::MainAxisAlignment::Start,
+                                 core::CrossAxisAlignment::Stretch, 2.0F,
+                                 core::EdgeInsets::all(6.0F), {},
+                                 "designer-menu-popover");
+    menu.color = theme.colors.surfaceElevated;
+    const float left = kind == "file" ? 120.0F : (kind == "edit" ? 190.0F : 260.0F);
+    return core::withStackPosition(std::move(menu),
+                                   core::Offset{left, 44.0F});
+}
+
+core::Widget DesignerApp::buildRunPreviewOverlay() {
+    // 运行预览模态覆盖层：scrim 全窗 + 居中卡片（标题 + live 内容 +
+    // 提示）。仅会话运行中构建；停止/Esc/遮罩点击即隐藏，对应 HTML 稿的
+    // 运行预览 modal（原生不再常驻第二个 OS 黑窗口）。
+    const auto& theme = shell_.theme();
+    const float viewWidth = shell_.view().width;
+    const float viewHeight = shell_.view().height;
+    const float cardWidth =
+        viewWidth > 0.0F ? std::min(viewWidth - 64.0F, 880.0F) : 720.0F;
+    const float cardHeight =
+        viewHeight > 0.0F ? std::max(240.0F, viewHeight - 96.0F) : 560.0F;
+
+    auto scrim = core::makeContainerLeaf(
+        viewWidth > 0.0F ? std::optional<float>{viewWidth} : std::nullopt,
+        viewHeight > 0.0F ? std::optional<float>{viewHeight} : std::nullopt,
+        {}, {}, theme.colors.scrim, "designer-run-preview-scrim");
+    scrim = core::withOnClick(std::move(scrim), "designer:stop");
+    scrim.excludeFromFocus = true;
+    scrim.excludeFromSemantics = true;
+
+    const std::string sessionLabel =
+        previewSessionMode_ == PreviewSessionMode::Debugging ? "调试中"
+                                                             : "运行中";
+    auto title = core::makeText("运行预览 · " + sessionLabel,
+                                theme.typography.label, {}, 0.0F,
+                                "designer-run-preview-title");
+    auto spacer = core::makeContainerLeaf(
+        std::nullopt, std::nullopt, {}, {}, core::Color::transparent(),
+        "designer-run-preview-spacer");
+    spacer.flex = 1.0F;
+    spacer.excludeFromFocus = true;
+    spacer.excludeFromSemantics = true;
+    auto close = core::withVariant(
+        core::withLeadingIcon(
+            core::makeButton({}, theme.typography.caption, {}, 0.0F,
+                             "designer-run-preview-close", std::nullopt,
+                             std::nullopt, "designer:stop"),
+            core::IconId::Close),
+        core::ButtonVariant::Chrome);
+    close.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
+    close.semanticsLabel = "关闭预览";
+    auto head = core::makeRow(
+        {std::move(title), std::move(spacer), std::move(close)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 8.0F,
+        {}, {}, "designer-run-preview-head");
+
+    core::Widget preview;
+    if (workbench_.frame().hasFrame()) {
+        preview = workbench_.frame().widget();
+        applyImageResources(preview);
+    } else {
+        preview = core::makeText("No valid preview frame",
+                                 theme.typography.body);
+    }
+    auto body = core::makeScrollView(
+        core::makeContainer(std::move(preview), std::nullopt, std::nullopt,
+                            core::EdgeInsets::all(16.0F), {},
+                            theme.colors.pageBackground,
+                            core::CornerRadius::all(theme.metrics.cardRadius),
+                            "designer-run-preview-content"),
+        "designer-run-preview-scroll");
+    body.scrollAxis = core::ScrollAxis::Vertical;
+    body.showScrollbar = true;
+    body.scrollOffset = panelScrollOffset("designer-run-preview-scroll");
+    body.flex = 1.0F;
+    auto hint = core::makeText("运行态修改不会写回设计文档；Esc 或关闭按钮结束预览。",
+                               theme.typography.caption, {}, 0.0F,
+                               "designer-run-preview-hint");
+    hint.styleOverrides.foreground = theme.colors.contentSecondary;
+    auto card = core::makeColumn(
+        {std::move(head), std::move(body), std::move(hint)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 8.0F,
+        core::EdgeInsets::all(16.0F), {}, "designer-run-preview-card",
+        cardWidth, cardHeight);
+    card.color = theme.colors.surface;
+    card.semanticsRole = "dialog";
+    card.semanticsLabel = "运行预览";
+
+    auto overlay = core::makeStack(
+        {std::move(scrim), std::move(card)}, core::StackAlignment::Center, {},
+        {}, "designer-run-preview-overlay",
+        viewWidth > 0.0F ? std::optional<float>{viewWidth} : std::nullopt,
+        viewHeight > 0.0F ? std::optional<float>{viewHeight} : std::nullopt);
+    return overlay;
+}
+
+core::Widget DesignerApp::buildRail() {
+    // B 活动栏 48（variant-b .rail）：控件/结构切换 + 复位。图标-only 36，
+    // surface 底（visual-system §3.6）。
+    const auto& theme = shell_.theme();
+    const auto railButton = [&theme](core::IconId icon, std::string key,
+                                     std::string semantics,
+                                     std::string handler, bool active) {
         auto button = core::withVariant(
             core::withLeadingIcon(
-                core::makeButton(compact ? std::string{} : std::move(label),
-                                 theme.typography.caption, {},
-                                 0.0F, std::move(key), std::nullopt,
-                                 std::nullopt, std::move(handler)),
+                core::makeButton({}, theme.typography.caption, {}, 0.0F,
+                                 std::move(key), 36.0F, 36.0F,
+                                 std::move(handler)),
+                icon),
+            core::ButtonVariant::Chrome);
+        button.semanticsLabel = std::move(semantics);
+        button.selected = active;
+        return button;
+    };
+    auto toolbox = railButton(core::IconId::Plus, "designer-rail-toolbox",
+                              "控件箱", "designer:rail-toolbox",
+                              leftPanelTab_ == LeftPanelTab::Toolbox &&
+                                  !leftCollapsed_ && !zenMode_);
+    auto outline = railButton(core::IconId::NavLists, "designer-rail-outline",
+                              "对象树", "designer:rail-outline",
+                              leftPanelTab_ == LeftPanelTab::Outline &&
+                                  !leftCollapsed_ && !zenMode_);
+    auto spacer = core::makeContainerLeaf(
+        std::nullopt, std::nullopt, {}, {}, core::Color::transparent(),
+        "designer-rail-spacer");
+    spacer.flex = 1.0F;
+    spacer.excludeFromFocus = true;
+    spacer.excludeFromSemantics = true;
+    auto reset = railButton(core::IconId::NavLayout, "designer-reset-layout",
+                            "恢复工作区布局", "designer:reset-layout", false);
+    auto rail = core::makeColumn(
+        {std::move(toolbox), std::move(outline), std::move(spacer),
+         std::move(reset)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 8.0F,
+        core::EdgeInsets::symmetric(8.0F, 8.0F), {}, "designer-rail", 48.0F);
+    rail.color = theme.colors.surface;
+    return rail;
+}
+
+core::Widget DesignerApp::buildMainTools() {
+    // B 主工具 48（variant-b .main-tools）：保存/撤销/重做 | 选择/插入/
+    // 布局 | 提示 | 专注/运行。文件/编辑/视图低频入口在标题栏菜单；画布
+    // 工具（缩放/网格/环境）下沉到 canvas-controls（workspace-design §3）。
+    // Run 唯一 Filled 主行动点（toolbar §6/§9）。
+    const auto& theme = shell_.theme();
+    const bool compactLabel = fontScale_ > 1.0F;
+    const auto command = [&theme, compactLabel](
+                             std::string label, core::IconId icon,
+                             std::string key, std::string handler) {
+        auto button = core::withVariant(
+            core::withLeadingIcon(
+                core::makeButton(compactLabel ? std::string{} : std::move(label),
+                                 theme.typography.caption, {}, 0.0F,
+                                 std::move(key), std::nullopt, std::nullopt,
+                                 std::move(handler)),
                 icon),
             core::ButtonVariant::Chrome);
         button.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
-        if (compact) button.semanticsLabel = std::move(label);
+        if (compactLabel) button.semanticsLabel = std::move(label);
         return button;
     };
     const auto iconCommand = [&theme](core::IconId icon, std::string key,
@@ -3724,170 +4605,95 @@ core::Widget DesignerApp::buildToolbar() {
         button.semanticsLabel = std::move(semantics);
         return button;
     };
-    const auto separator = [&theme] {
+    const auto separator = [&theme](std::string key) {
         auto divider = core::makeContainerLeaf(
-            1.0F, 22.0F, {}, {}, theme.colors.borderDefault,
-            "designer-toolbar-separator");
+            1.0F, 20.0F, {}, {}, theme.colors.borderDefault, std::move(key));
         divider.excludeFromFocus = true;
         divider.excludeFromSemantics = true;
         return divider;
     };
     auto spacer = core::makeContainerLeaf(
         std::nullopt, std::nullopt, {}, {}, core::Color::transparent(),
-        "designer-toolbar-spacer");
+        "designer-main-tools-spacer");
     spacer.flex = 1.0F;
     spacer.excludeFromFocus = true;
     spacer.excludeFromSemantics = true;
 
-    // ① 编辑（高频）：节点插入/复制/删除与排序。
-    auto editGroup = core::makeRow(
-        {command("Add Text", core::IconId::TextAdd, "designer-add-text",
-                 "designer:add-text"),
-         command("Duplicate", core::IconId::Duplicate, "designer-duplicate",
-                 "designer:duplicate"),
-         command("Delete", core::IconId::Trash, "designer-remove",
-                 "designer:remove"),
-         iconCommand(core::IconId::ArrowUp, "designer-move-up", "Move up",
-                     "designer:move-up"),
-         iconCommand(core::IconId::ArrowDown, "designer-move-down",
-                     "Move down", "designer:move-down")},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-        1.0F);
-    // ② 运行（高频）：Run 唯一 Filled；Debug/Stop 为 chrome 件。
-    auto runButton = core::withLeadingIcon(
-        core::makeButton(compact ? std::string{} : std::string{"Run"},
-                         theme.typography.caption, {}, 0.0F,
-                         "designer-run", std::nullopt, std::nullopt,
-                         "designer:run"),
+    auto save = command("保存", core::IconId::Save, "designer-save",
+                        "designer:save");
+    // 旧 Add Text 命令保留为图标件（L0 结构命令可达；B 插入入口为
+    // show-toolbox，Add Text 为快捷插入）。
+    auto addText = iconCommand(core::IconId::TextAdd, "designer-add-text",
+                               "插入文本", "designer:add-text");
+    auto undo = iconCommand(core::IconId::Undo, "designer-undo", "撤销 Ctrl+Z",
+                            "designer:undo");
+    auto redo = iconCommand(core::IconId::Redo, "designer-redo", "重做",
+                            "designer:redo");
+    // 运行组：Run 主行动点 + Debug/Stop 保留（原生预览会话必需；
+    // HTML 仅示 Run，生产保留 Debug/Stop 为次级 Chrome 件）。
+    auto debug = command("调试", core::IconId::Bug, "designer-debug",
+                         "designer:debug");
+    debug.selected = previewSessionMode_ == PreviewSessionMode::Debugging;
+    auto stop = iconCommand(core::IconId::Stop, "designer-stop", "停止",
+                            "designer:stop");
+    stop.enabled = previewSessionMode_ != PreviewSessionMode::Stopped;
+    // 文件组低频入口保留为图标件（B 标题栏菜单提供完整入口前，
+    // 主工具保留 Open/SaveAs/NewProject 以保命令可达）。
+    auto open = iconCommand(core::IconId::Folder, "designer-open", "打开 Ctrl+O",
+                            "designer:open");
+    auto saveAs = iconCommand(core::IconId::SaveAs, "designer-save-as",
+                              "另存为", "designer:save-as");
+    auto newProject = iconCommand(core::IconId::FolderPlus,
+                                  "designer-new-project", "新建工程",
+                                  "designer:new-project");
+    // 选择为常驻模式态（HTML span.btn.active），此处以选中态 Chrome 表达。
+    auto select = command("选择", core::IconId::Cursor, "designer-select-mode",
+                          "designer:layout-context");
+    select.selected = true;
+    auto insert = command("插入", core::IconId::Plus, "designer-insert",
+                          "designer:show-toolbox");
+    auto layout = command("布局", core::IconId::NavLayout, "designer-layout",
+                          "designer:layout-context");
+    auto hint = core::makeText("更少干扰，更大画布", theme.typography.caption,
+                               {}, 0.0F, "designer-main-tools-hint");
+    auto zen = command("专注", core::IconId::Fit, "designer-zen",
+                       "designer:zen");
+    zen.selected = zenMode_;
+    auto run = core::withLeadingIcon(
+        core::makeButton(compactLabel ? std::string{} : std::string{"运行预览"},
+                         theme.typography.caption, {}, 0.0F, "designer-run",
+                         std::nullopt, std::nullopt, "designer:run"),
         core::IconId::Play);
-    runButton.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
-    if (compact) runButton.semanticsLabel = "Run";
-    runButton.selected = previewSessionMode_ == PreviewSessionMode::Running;
-    auto debugButton = command("Debug", core::IconId::Bug, "designer-debug",
-                               "designer:debug");
-    debugButton.selected = previewSessionMode_ == PreviewSessionMode::Debugging;
-    auto stopButton = iconCommand(core::IconId::Stop, "designer-stop", "Stop",
-                                  "designer:stop");
-    stopButton.enabled = previewSessionMode_ != PreviewSessionMode::Stopped;
-    auto runGroup = core::makeRow(
-        {std::move(runButton), std::move(debugButton), std::move(stopButton)},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-        1.0F);
-    // ③ 文件（中频）：Open/Save 带文字，另存/新建工程图标化。
-    auto fileGroup = core::makeRow(
-        {command("Open", core::IconId::Folder, "designer-open",
-                 "designer:open"),
-         command("Save", core::IconId::Save, "designer-save",
-                 "designer:save"),
-         iconCommand(core::IconId::SaveAs, "designer-save-as", "Save as",
-                     "designer:save-as"),
-         iconCommand(core::IconId::FolderPlus, "designer-new-project",
-                     "New project", "designer:new-project")},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-        1.0F);
-    // ④ 预览环境（低频，全图标化；当前值进 semanticsLabel）。
-    auto themeButton = iconCommand(core::IconId::Moon, "designer-theme",
-                                   darkMode_ ? "Light" : "Dark",
-                                   "designer:theme");
-    auto densityButton = iconCommand(core::IconId::Density, "designer-density",
-                                     "Density", "designer:density");
-    auto dpiButton = iconCommand(core::IconId::DeviceScale, "designer-dpi",
-                                 scaleLabel("DPI", deviceScale_),
-                                 "designer:dpi");
-    auto fontButton =
-        iconCommand(core::IconId::Font, "designer-font-scale",
-                    scaleLabel("Font", fontScale_), "designer:font-scale");
-    auto contrastButton = iconCommand(
-        core::IconId::Contrast, "designer-contrast",
-        highContrast_ ? "Contrast on" : "Contrast off", "designer:contrast");
-    auto previewStateLabel = [&] {
-        switch (previewStateMode_) {
-            case PreviewStateMode::None:
-                return "Hover state";
-            case PreviewStateMode::Hovered:
-                return "Press state";
-            case PreviewStateMode::Pressed:
-                return "Focus state";
-            case PreviewStateMode::Focused:
-                return "Clear state";
-        }
-        return "Hover state";
-    }();
-    auto previewStateButton = iconCommand(
-        core::IconId::Cursor, "designer-preview-state", previewStateLabel,
-        "designer:preview-state");
-    auto guidesButton = iconCommand(
-        core::IconId::Grid, "designer-canvas-guides",
-        canvasGuidesEnabled_ ? "Guides on" : "Guides off",
-        "designer:canvas-guides");
-    // Chrome 变体的 checked 才有持久底（accentContainer）；selected 对普通
-    // 按钮仅语义无外观（resolver.cpp resolveButton）。
-    guidesButton.checked = canvasGuidesEnabled_;
-    auto envGroup = core::makeRow(
-        {std::move(themeButton), std::move(densityButton),
-         std::move(dpiButton), std::move(fontButton),
-         std::move(contrastButton), std::move(previewStateButton),
-         std::move(guidesButton)},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-        1.0F);
-    // ⑤ 缩放（贴右；维持 excludeFromFocus 的既有焦点策略）。
-    auto zoomOutButton = iconCommand(core::IconId::ZoomOut, "designer-zoom-out",
-                                     "Zoom -", "designer:zoom-out");
-    zoomOutButton.excludeFromFocus = true;
-    auto zoomInButton = iconCommand(core::IconId::ZoomIn, "designer-zoom-in",
-                                    "Zoom +", "designer:zoom-in");
-    zoomInButton.excludeFromFocus = true;
-    auto zoomResetButton = core::withVariant(
-        core::makeButton(percentLabel(canvasTransform_.zoom()),
-                         theme.typography.caption, {}, 0.0F,
-                         "designer-zoom-reset", std::nullopt, std::nullopt,
-                         "designer:zoom-reset"),
-        core::ButtonVariant::Chrome);  // 数字短，各档保留文字
-    zoomResetButton.styleOverrides.padding =
-        core::EdgeInsets::symmetric(8.0F, 6.0F);
-    zoomResetButton.semanticsLabel =
-        scaleLabel("Zoom", canvasTransform_.zoom());
-    zoomResetButton.excludeFromFocus = true;
-    auto zoomGroup = core::makeRow(
-        {std::move(zoomOutButton), std::move(zoomResetButton),
-         std::move(zoomInButton)},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-        1.0F);
+    run.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
+    if (compactLabel) run.semanticsLabel = "Run";
+    run.selected = previewSessionMode_ != PreviewSessionMode::Stopped;
 
     auto row = core::makeRow(
-        {std::move(editGroup), separator(), std::move(runGroup), separator(),
-         std::move(fileGroup), separator(), std::move(envGroup),
-         std::move(spacer), std::move(zoomGroup)},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
-        6.0F, core::EdgeInsets::symmetric(12.0F, 8.0F), {},
+        {std::move(save), std::move(open), std::move(saveAs),
+         std::move(newProject), std::move(addText), std::move(undo),
+         std::move(redo),
+         separator("designer-main-tools-separator:0"), std::move(select),
+         std::move(insert), std::move(layout),
+         separator("designer-main-tools-separator:1"), std::move(hint),
+         std::move(spacer), std::move(zen), std::move(debug), std::move(stop),
+         std::move(run)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 4.0F,
+        core::EdgeInsets::symmetric(12.0F, 0.0F), {},
         "designer-toolbar-row");
-
-    // Tooltip（M11 机制，ToolBar 控件同口径）：tip 常驻 Stack、由
-    // AppShell 负责延迟/定位/淡切；注册幂等。图标钮与紧凑档的文字事实
-    // 来源；带快捷键的命令在文案中一并展示。
     const std::vector<std::pair<const char*, const char*>> tooltipTexts = {
-        {"designer-add-text", "Add Text"},
-        {"designer-duplicate", "Duplicate"},
-        {"designer-remove", "Delete   Del"},
-        {"designer-move-up", "Move up   Up"},
-        {"designer-move-down", "Move down   Down"},
-        {"designer-run", "Run   Ctrl+R"},
-        {"designer-debug", "Debug   Ctrl+D"},
-        {"designer-stop", "Stop"},
-        {"designer-open", "Open   Ctrl+O"},
-        {"designer-save", "Save   Ctrl+S"},
-        {"designer-save-as", "Save as   Ctrl+Shift+S"},
-        {"designer-new-project", "New project   Ctrl+Shift+N"},
-        {"designer-theme", "Theme"},
-        {"designer-density", "Density"},
-        {"designer-dpi", "DPI"},
-        {"designer-font-scale", "Font scale"},
-        {"designer-contrast", "Contrast"},
-        {"designer-preview-state", "Preview state"},
-        {"designer-canvas-guides", "Canvas guides"},
-        {"designer-zoom-out", "Zoom out"},
-        {"designer-zoom-reset", "Zoom reset"},
-        {"designer-zoom-in", "Zoom in"},
+        {"designer-save", "保存   Ctrl+S"},
+        {"designer-add-text", "插入文本"},
+        {"designer-open", "打开   Ctrl+O"},
+        {"designer-save-as", "另存为   Ctrl+Shift+S"},
+        {"designer-new-project", "新建工程   Ctrl+Shift+N"},
+        {"designer-undo", "撤销   Ctrl+Z"},
+        {"designer-redo", "重做   Ctrl+Shift+Z"},
+        {"designer-insert", "插入控件   /"},
+        {"designer-layout", "布局上下文"},
+        {"designer-zen", "专注模式   Esc 退出"},
+        {"designer-debug", "调试   Ctrl+D"},
+        {"designer-stop", "停止"},
+        {"designer-run", "运行预览   Ctrl+R"},
     };
     std::vector<core::Widget> stackChildren;
     stackChildren.push_back(std::move(row));
@@ -3903,17 +4709,24 @@ core::Widget DesignerApp::buildToolbar() {
     auto toolbar = core::makeColumn({std::move(stack)},
                                     core::MainAxisAlignment::Start,
                                     core::CrossAxisAlignment::Stretch, 0.0F,
-                                    {}, {}, "designer-toolbar", std::nullopt,
-                                    56.0F);
+                                    {}, {}, "designer-main-tools", std::nullopt,
+                                    48.0F);
     toolbar.color = theme.colors.surface;
     return toolbar;
 }
 
+core::Widget DesignerApp::buildToolbar() {
+    // 兼容入口：旧五组工具栏已收敛为 B 主工具（workspace-design §6 第二阶段
+    // 预设）。直接转调，保持命令 id 与 Run Filled 契约。
+    auto tools = buildMainTools();
+    tools.key = "designer-toolbar";
+    return tools;
+}
 core::Widget DesignerApp::buildToolboxPanel() {
     // 左面板版本 C 的工具箱视图：7 组全展开的整行列表（组头 = 图标 +
-    // 名称 + 数量；行 = 组图标 + 类型名，Chrome 幽灵 + 左对齐）。整行宽
-    // 216px 无长名截断；点击/拖放仍走 designer:toolbox:type。行尾拖拽点
-    // 需 Button 之外的尾随图标槽，属本版已知偏差（交互不受影响）。
+    // 名称；行 = 类型名，Chrome 幽灵 + 左对齐，无尾随装饰——拖放认领
+    // 按 onClick 前缀，不依赖拖拽点示意）。整行宽 216px 无长名截断；
+    // 点击/拖放仍走 designer:toolbox:type。
     const auto& theme = shell_.theme();
     std::vector<core::Widget> rows;
     for (const auto& group : designerToolboxGroups()) {
@@ -3923,20 +4736,10 @@ core::Widget DesignerApp::buildToolboxPanel() {
                            14.0F, 14.0F);
         groupIcon.styleOverrides.foreground = theme.colors.contentSecondary;
         groupIcon.excludeFromFocus = true;
-        auto spacer = core::makeContainerLeaf(
-            std::nullopt, std::nullopt, {}, {}, core::Color::transparent(), {});
-        spacer.flex = 1.0F;
-        spacer.excludeFromFocus = true;
-        spacer.excludeFromSemantics = true;
         rows.push_back(core::makeRow(
             {std::move(groupIcon),
              core::makeText(group.label, theme.typography.caption, {}, 0.0F,
                             "designer-toolbox-group-label:" +
-                                std::string(group.label)),
-             std::move(spacer),
-             core::makeText(std::to_string(group.types.size()),
-                            theme.typography.caption, {}, 0.0F,
-                            "designer-toolbox-group-count:" +
                                 std::string(group.label))},
             core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
             6.0F, {}, {}, "designer-toolbox-group-row:" +
@@ -3948,10 +4751,6 @@ core::Widget DesignerApp::buildToolboxPanel() {
                     "designer-toolbox:" + std::string(type), std::nullopt,
                     std::nullopt, "designer:toolbox:" + std::string(type)),
                 core::ButtonVariant::Chrome);
-            // 尾随三横点 = 拖拽把手（Button 单图标槽：组语义由组头承担，
-            // 行内槽位让给拖拽示意）。
-            row.icon = core::IconId::Dots;
-            row.iconLeading = false;
             row.alignContentStart = true;
             row.styleOverrides.padding = core::EdgeInsets::symmetric(6.0F, 4.0F);
             rows.push_back(std::move(row));
@@ -3964,6 +4763,7 @@ core::Widget DesignerApp::buildToolboxPanel() {
                                        "designer-toolbox-scroll");
     scroll.scrollAxis = core::ScrollAxis::Vertical;
     scroll.showScrollbar = true;
+    scroll.scrollOffset = panelScrollOffset("designer-toolbox-scroll");
     return scroll;
 }
 
@@ -4059,6 +4859,9 @@ core::Widget DesignerApp::buildProjectPanel() {
                                            "designer-project-scroll",
                                            std::nullopt, 128.0F, {});
         scroll.scrollAxis = core::ScrollAxis::Vertical;
+        scroll.showScrollbar = true;
+        scroll.scrollOffset =
+            panelScrollOffset("designer-project-scroll");
         sections.push_back(std::move(scroll));
     }
     return core::makeColumn(std::move(sections),
@@ -4068,9 +4871,9 @@ core::Widget DesignerApp::buildProjectPanel() {
 }
 
 core::Widget DesignerApp::buildOutlinePanel() {
-    // 左面板版本 C（design/designer-leftpanel-redesign.html）：页签
-    // Outline ⇄ Toolbox 切换整栏视图；默认 Outline（文档结构是常驻上下
-    // 文）；Project 压缩为底部状态行。
+    // B 左栏 224（variant-b dock-tabs 控件/结构按需切换，默认控件；
+    // workspace-design §3）。大纲操作（上移/下移/复制/删除）下沉到底部
+    // outline-actions（HTML 同名），插入目标常驻 foot（§4.1）。
     const auto& theme = shell_.theme();
     shell_.handlers()["designer:lefttab-outline"] = [this] {
         leftPanelTab_ = LeftPanelTab::Outline;
@@ -4081,17 +4884,17 @@ core::Widget DesignerApp::buildOutlinePanel() {
         shell_.markDirty();
     };
     auto outlineTab = core::makeButton(
-        "Outline", theme.typography.label, {}, 0.0F, "designer-tab-outline",
-        std::nullopt, std::nullopt, "designer:lefttab-outline");
-    outlineTab.width = 106.0F;  // 均分内容宽（设计稿 flex:1 同义：2×106+gap4=216）
-    outlineTab.selected = leftPanelTab_ == LeftPanelTab::Outline;
-    auto toolboxTab = core::makeButton(
-        "Toolbox", theme.typography.label, {}, 0.0F, "designer-tab-toolbox",
+        "控件", theme.typography.caption, {}, 0.0F, "designer-tab-toolbox",
         std::nullopt, std::nullopt, "designer:lefttab-toolbox");
-    toolboxTab.width = 106.0F;
-    toolboxTab.selected = leftPanelTab_ == LeftPanelTab::Toolbox;
-    auto tabs = core::makeTabs({std::move(outlineTab), std::move(toolboxTab)},
-                               "designer-left-tabs");
+    outlineTab.flex = 1.0F;
+    outlineTab.selected = leftPanelTab_ == LeftPanelTab::Toolbox;
+    auto structureTab = core::makeButton(
+        "结构", theme.typography.caption, {}, 0.0F, "designer-tab-outline",
+        std::nullopt, std::nullopt, "designer:lefttab-outline");
+    structureTab.flex = 1.0F;
+    structureTab.selected = leftPanelTab_ == LeftPanelTab::Outline;
+    auto tabs = core::makeTabs(
+        {std::move(outlineTab), std::move(structureTab)}, "designer-left-tabs");
 
     core::Widget view;
     if (leftPanelTab_ == LeftPanelTab::Toolbox) {
@@ -4101,12 +4904,64 @@ core::Widget DesignerApp::buildOutlinePanel() {
                               std::nullopt, std::nullopt);
     }
     view.flex = 1.0F;
+    // 大纲操作条（HTML .outline-actions）：排序与复制/删除就近放置，
+    // 主工具不再重复（B 精简契约）。
+    const auto smallCommand = [&theme](core::IconId icon, std::string key,
+                                       std::string semantics,
+                                       std::string handler) {
+        auto button = core::withVariant(
+            core::withLeadingIcon(
+                core::makeButton({}, theme.typography.caption, {}, 0.0F,
+                                 std::move(key), std::nullopt, std::nullopt,
+                                 std::move(handler)),
+                icon),
+            core::ButtonVariant::Chrome);
+        button.styleOverrides.padding = core::EdgeInsets::symmetric(6.0F, 4.0F);
+        button.semanticsLabel = std::move(semantics);
+        return button;
+    };
+    auto outlineActions = core::makeRow(
+        {smallCommand(core::IconId::ArrowUp, "designer-move-up", "上移节点",
+                      "designer:move-up"),
+         smallCommand(core::IconId::ArrowDown, "designer-move-down", "下移节点",
+                      "designer:move-down"),
+         smallCommand(core::IconId::Duplicate, "designer-duplicate", "复制节点",
+                      "designer:duplicate"),
+         smallCommand(core::IconId::Trash, "designer-remove", "删除节点",
+                      "designer:remove")},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 4.0F,
+        {}, {}, "designer-outline-actions");
+    std::string targetName = "root";
+    if (workbench_.document().has_value()) {
+        const auto primary = workbench_.selection().primary;
+        if (primary.has_value()) {
+            if (const auto* node = findDesignNode(workbench_.document()->root,
+                                                  *primary);
+                node != nullptr) {
+                const auto keyIt = node->properties.find("key");
+                if (keyIt != node->properties.end()) {
+                    if (const auto* key =
+                            std::get_if<std::string>(&keyIt->second.value);
+                        key != nullptr && !key->empty()) {
+                        targetName = *key;
+                    } else {
+                        targetName = node->type;
+                    }
+                } else {
+                    targetName = node->type;
+                }
+            }
+        }
+    }
+    auto insertionTarget = core::makeText("插入到 " + targetName,
+                                          theme.typography.caption, {}, 0.0F,
+                                          "designer-insertion-target");
     auto panel = core::makeColumn(
-        {std::move(tabs), std::move(view), buildProjectPanel()},
-        core::MainAxisAlignment::Start,
-        core::CrossAxisAlignment::Stretch, 6.0F,
-        core::EdgeInsets::all(12.0F), {}, "designer-outline-panel", 240.0F);
-    panel.color = theme.colors.surfaceSunken;
+        {std::move(tabs), std::move(view), std::move(outlineActions),
+         std::move(insertionTarget), buildProjectPanel()},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 6.0F,
+        core::EdgeInsets::all(12.0F), {}, "designer-outline-panel", 224.0F);
+    panel.color = theme.colors.surface;
     return panel;
 }
 
@@ -4129,6 +4984,9 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
     const auto makeDecoration = [](core::Widget widget) {
         widget.excludeFromSemantics = true;
         widget.excludeFromFocus = true;
+        // 参考线/网格/标尺等装饰铬件对指针透明：事件穿透到下方内容
+        //（交互手柄单独恢复可命中）。
+        widget.ignorePointer = true;
         return widget;
     };
     const auto position = [](core::Widget widget, core::Offset offset) {
@@ -4300,8 +5158,12 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                         std::move(handle), "designer-canvas-handle:" + name);
                     handle.styleOverrides.border = tokens.handleBorder;
                     handle.styleOverrides.borderWidth = tokens.guideThickness;
+                    // 交互手柄不吃 makeDecoration 的指针透明：拖拽缩放/
+                    // 换位的抓点必须可命中。
+                    handle = makeDecoration(std::move(handle));
+                    handle.ignorePointer = false;
                     foregroundDecorations.push_back(
-                        position(makeDecoration(std::move(handle)), offset));
+                        position(std::move(handle), offset));
                 }
 
                 auto dimensions = core::makeText(
@@ -4320,6 +5182,69 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                     position(makeDecoration(std::move(dimensions)),
                              core::Offset{selectedX,
                                           selectedY + selectedHeight + 14.0F}));
+            }
+
+            // §8.3 拖动换位虚线参考：原位虚线框 + 命中对齐时的全幅虚线
+            //（4px 划/3px 隙的装饰条带，指针透明）。
+            if (canvasResizeActive_ &&
+                canvasResizeHandle_.rfind("drag:", 0) == 0 &&
+                contentWidth.has_value() && contentHeight.has_value()) {
+                const float zoom = canvasResizeZoom_;
+                const float originX = canvasResizeCoordinateOrigin_.x;
+                const float originY = canvasResizeCoordinateOrigin_.y;
+                int dashIndex = 0;
+                const auto dash = [&](float x, float y, float length,
+                                      bool horizontal) {
+                    constexpr float kDashLength = 4.0F;
+                    constexpr float kDashGap = 3.0F;
+                    const float step = kDashLength + kDashGap;
+                    const auto segments =
+                        static_cast<int>(std::max(0.0F, length) / step) + 1;
+                    for (int segment = 0; segment < segments; ++segment) {
+                        const float segLen =
+                            std::min(kDashLength, length - segment * step);
+                        if (segLen <= 0.0F) break;
+                        const std::string key =
+                            "designer-canvas-drag-dash:" +
+                            std::to_string(dashIndex) + ":" +
+                            std::to_string(segment);
+                        auto bar = horizontal
+                            ? makeBar(segLen, tokens.guideThickness,
+                                      tokens.guide, key)
+                            : makeBar(tokens.guideThickness, segLen,
+                                      tokens.guide, key);
+                        children.push_back(position(
+                            std::move(bar),
+                            horizontal
+                                ? core::Offset{x + segment * step, y}
+                                : core::Offset{x, y + segment * step}));
+                    }
+                    ++dashIndex;
+                };
+                // 原位虚线框（拖动起点的矩形轮廓，四边）。
+                const float startX =
+                    originX + canvasResizeStart_.x * zoom;
+                const float startY =
+                    originY + canvasResizeStart_.y * zoom;
+                const float startWidth =
+                    canvasResizeStart_.width * zoom;
+                const float startHeight =
+                    canvasResizeStart_.height * zoom;
+                dash(startX, startY, startWidth, true);
+                dash(startX, startY + startHeight - tokens.guideThickness,
+                     startWidth, true);
+                dash(startX, startY, startHeight, false);
+                dash(startX + startWidth - tokens.guideThickness, startY,
+                     startHeight, false);
+                // 对齐参考虚线：命中候选时全幅横/竖线。
+                if (canvasResizeActiveGuideX_.has_value()) {
+                    dash(originX + *canvasResizeActiveGuideX_ * zoom, 0.0F,
+                         *contentHeight, false);
+                }
+                if (canvasResizeActiveGuideY_.has_value()) {
+                    dash(0.0F, originY + *canvasResizeActiveGuideY_ * zoom,
+                         *contentWidth, true);
+                }
             }
         }
     }
@@ -4343,6 +5268,11 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
 }
 
 core::Widget DesignerApp::buildCanvasPanel() {
+    // B 最大画布（variant-b .canvas-content padding 48，可专注；
+    // workspace-design §3.1）。参考线（网格/标尺/选中框）默认开，菜单可
+    // 关闭（§8.1 追加）。预览独立 Comfortable：ThemeScope 包裹，不随工作
+    // 台 Compact 变化。
+    maybeFitCanvasView();
     const auto& theme = shell_.theme();
     core::Widget preview;
     if (workbench_.frame().hasFrame() && workbench_.document().has_value()) {
@@ -4351,23 +5281,25 @@ core::Widget DesignerApp::buildCanvasPanel() {
         preview = decoratePreview(
             std::move(previewFrame), workbench_.document()->root,
             workbench_.selection().ids);
+        if (previewScopeData_ != nullptr) {
+            preview = core::makeThemeScope(
+                std::move(preview), previewScopeData_.get());
+        }
     } else {
         preview = core::makeText("No valid preview frame",
                                  theme.typography.body);
     }
     auto canvas = core::makeContainer(
         buildCanvasStack(std::move(preview)), std::nullopt, std::nullopt,
-        core::EdgeInsets::all(24.0F), {}, theme.colors.pageBackground,
+        core::EdgeInsets::all(48.0F), {}, theme.colors.pageBackground,
         core::CornerRadius::all(theme.metrics.cardRadius), "designer-canvas");
     canvas.flex = 1.0F;
-    auto heading = core::makeText("Canvas", theme.typography.label, {}, 0.0F,
-                                  "designer-canvas-heading");
     auto panel = core::makeColumn(
-        {std::move(heading), std::move(canvas)}, core::MainAxisAlignment::Start,
-        core::CrossAxisAlignment::Stretch, 8.0F,
-        core::EdgeInsets::all(12.0F), {}, "designer-preview-canvas");
+        {std::move(canvas)}, core::MainAxisAlignment::Start,
+        core::CrossAxisAlignment::Stretch, 0.0F, {}, {},
+        "designer-preview-canvas");
     panel.flex = 1.0F;
-    panel.color = theme.colors.surface;
+    panel.color = theme.colors.pageBackground;
     return panel;
 }
 
@@ -4416,6 +5348,7 @@ core::Widget DesignerApp::buildSourcePanel() {
         std::nullopt, core::EdgeInsets::symmetric(12.0F, 8.0F));
     scroll.scrollAxis = core::ScrollAxis::Vertical;
     scroll.showScrollbar = true;
+    scroll.scrollOffset = panelScrollOffset("designer-source-scroll");
     scroll.flex = 1.0F;
     auto heading = core::makeRow(
         {core::makeText("Source", theme.typography.label, {}, 0.0F,
@@ -4459,48 +5392,620 @@ core::Widget DesignerApp::buildReferencesPanel() {
     return panel;
 }
 
-core::Widget DesignerApp::buildPreviewPanel() {
+core::Widget DesignerApp::buildDocumentTabs() {
+    // B 文档页签 40（variant-b .document-tabs）：单文档 settings.design +
+    // 右侧视图切换 设计/分屏/快照（HTML view-tabs）。引用已移至底部，
+    // 中心不再有 References 页（workspace-design §3）。
     const auto& theme = shell_.theme();
-    auto canvasTab = core::makeButton(
-        "Canvas", theme.typography.label, {}, 0.0F, "designer-tab-canvas",
-        96.0F, std::nullopt, "designer:tab-canvas");
-    canvasTab.selected = centerTab_ == CenterTab::Canvas;
+    const bool dirty = workbench_.dirty();
+    auto docTab = core::makeRow(
+        {core::makeText("settings.design", theme.typography.caption, {}, 0.0F,
+                        "designer-document-tab"),
+         core::makeText(dirty ? "●" : "", theme.typography.caption, {}, 0.0F,
+                        "designer-document-dirty")},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 8.0F,
+        {}, {}, "designer-document-tab-row");
+    auto designTab = core::makeButton(
+        "设计", theme.typography.caption, {}, 0.0F, "designer-view-design",
+        std::nullopt, std::nullopt, "designer:view-design");
+    designTab.selected = centerView_ == CenterView::Design;
+    auto splitTab = core::makeButton(
+        "分屏", theme.typography.caption, {}, 0.0F, "designer-view-split",
+        std::nullopt, std::nullopt, "designer:view-split");
+    splitTab.selected = centerView_ == CenterView::Split;
     auto sourceTab = core::makeButton(
-        "Source", theme.typography.label, {}, 0.0F, "designer-tab-source",
-        96.0F, std::nullopt, "designer:tab-source");
-    sourceTab.selected = centerTab_ == CenterTab::Source;
-    auto referencesTab = core::makeButton(
-        "References", theme.typography.label, {}, 0.0F,
-        "designer-tab-references", 112.0F, std::nullopt,
-        "designer:tab-references");
-    referencesTab.selected = centerTab_ == CenterTab::References;
-    auto tabs = core::makeTabs(
-        {std::move(canvasTab), std::move(sourceTab), std::move(referencesTab)},
-        "designer-center-tabs");
+        "快照", theme.typography.caption, {}, 0.0F, "designer-view-source",
+        std::nullopt, std::nullopt, "designer:view-source");
+    sourceTab.selected = centerView_ == CenterView::Source;
+    auto viewTabs = core::makeTabs({std::move(designTab), std::move(splitTab),
+                                    std::move(sourceTab)},
+                                   "designer-view-tabs");
+    // 兼容旧中心页签 key：designer-center-tabs 保留在视图切换上，
+    // designer-tab-* 保留为隐藏别名按钮（旧测试迁移期）？此处仅保留
+    // designer-center-tabs 作为 view-tabs 的别名 key 语义，旧三页签由
+    // designer:tab-* handler 映射到新视图（attach 已兼容）。
+    viewTabs.key = "designer-center-tabs";
+    auto spacer = core::makeContainerLeaf(
+        std::nullopt, std::nullopt, {}, {}, core::Color::transparent(),
+        "designer-document-spacer");
+    spacer.flex = 1.0F;
+    spacer.excludeFromFocus = true;
+    spacer.excludeFromSemantics = true;
+    auto bar = core::makeRow(
+        {std::move(docTab), std::move(spacer), std::move(viewTabs)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 8.0F,
+        core::EdgeInsets::symmetric(12.0F, 0.0F), {}, "designer-document-tabs",
+        std::nullopt, 40.0F);
+    bar.color = theme.colors.surface;
+    return bar;
+}
 
-    core::Widget content;
-    if (centerTab_ == CenterTab::References) {
-        content = buildReferencesPanel();
-    } else if (centerTab_ == CenterTab::Source) {
-        content = buildSourcePanel();
-    } else {
-        content = buildCanvasPanel();
+core::Widget DesignerApp::buildCanvasControls() {
+    // B 画布工具 48（variant-b .canvas-controls）：尺寸标签 + 网格/缩放/
+    // 适合/环境就近放置（workspace-design §3）。缩放/网格 handler 与旧工具
+    // 栏同 id，保证命令与快捷键不变。
+    const auto& theme = shell_.theme();
+    const auto iconCommand = [&theme](core::IconId icon, std::string key,
+                                      std::string semantics,
+                                      std::string handler) {
+        auto button = core::withVariant(
+            core::withLeadingIcon(
+                core::makeButton({}, theme.typography.caption, {}, 0.0F,
+                                 std::move(key), std::nullopt, std::nullopt,
+                                 std::move(handler)),
+                icon),
+            core::ButtonVariant::Chrome);
+        button.styleOverrides.padding = core::EdgeInsets::symmetric(6.0F, 4.0F);
+        button.semanticsLabel = std::move(semantics);
+        return button;
+    };
+    std::string docWidth = "520";
+    if (workbench_.document().has_value()) {
+        // 根宽取声明近似：预览帧未知时回退 520（HTML 示例 artboard 宽）。
+        docWidth = "520";
     }
-    content.flex = 1.0F;
+    auto sizeLabel =
+        core::makeText("桌面表单 · " + docWidth + " lp",
+                       theme.typography.caption, {}, 0.0F,
+                       "designer-canvas-size-label");
+    auto spacer = core::makeContainerLeaf(
+        std::nullopt, std::nullopt, {}, {}, core::Color::transparent(),
+        "designer-canvas-controls-spacer");
+    spacer.flex = 1.0F;
+    spacer.excludeFromFocus = true;
+    spacer.excludeFromSemantics = true;
+    auto grid = iconCommand(core::IconId::Grid, "designer-canvas-guides",
+                            canvasGuidesEnabled_ ? "隐藏网格" : "显示网格",
+                            "designer:canvas-guides");
+    grid.checked = canvasGuidesEnabled_;
+    auto zoomOut = iconCommand(core::IconId::ZoomOut, "designer-zoom-out",
+                               "缩小", "designer:zoom-out");
+    zoomOut.excludeFromFocus = true;
+    std::ostringstream zoomText;
+    zoomText << static_cast<int>(canvasTransform_.zoom() * 100.0F + 0.5F)
+             << "%";
+    auto zoomLabel = core::makeText(zoomText.str(), theme.typography.caption,
+                                    {}, 0.0F, "designer-zoom-label");
+    auto zoomIn = iconCommand(core::IconId::ZoomIn, "designer-zoom-in", "放大",
+                              "designer:zoom-in");
+    zoomIn.excludeFromFocus = true;
+    auto fit = iconCommand(core::IconId::Fit, "designer-zoom-reset", "适合视图",
+                           "designer:zoom-reset");
+    fit.excludeFromFocus = true;
+    // 预览环境低频组保留旧 handler（主题/密度/DPI/字号/对比/状态），
+    // 就近放入画布工具（B 画布工具就近放缩放契约；命令 id 不变）。
+    auto scaleLabel = [](const char* name, float scale) {
+        std::ostringstream stream;
+        stream << name << " " << static_cast<int>(scale * 100.0F + 0.5F)
+               << "%";
+        return stream.str();
+    };
+    auto themeButton = iconCommand(core::IconId::Moon, "designer-theme",
+                                   darkMode_ ? "浅色" : "深色",
+                                   "designer:theme");
+    auto densityButton = iconCommand(core::IconId::Density, "designer-density",
+                                     "密度", "designer:density");
+    auto dpiButton = iconCommand(core::IconId::DeviceScale, "designer-dpi",
+                                 scaleLabel("DPI", deviceScale_),
+                                 "designer:dpi");
+    auto fontButton =
+        iconCommand(core::IconId::Font, "designer-font-scale",
+                    scaleLabel("字号", fontScale_), "designer:font-scale");
+    auto contrastButton = iconCommand(
+        core::IconId::Contrast, "designer-contrast",
+        highContrast_ ? "对比开" : "对比关", "designer:contrast");
+    auto previewStateLabel = [&] {
+        switch (previewStateMode_) {
+            case PreviewStateMode::None:
+                return "悬停态";
+            case PreviewStateMode::Hovered:
+                return "按压态";
+            case PreviewStateMode::Pressed:
+                return "聚焦态";
+            case PreviewStateMode::Focused:
+                return "清除态";
+        }
+        return "悬停态";
+    }();
+    auto previewStateButton = iconCommand(
+        core::IconId::Cursor, "designer-preview-state", previewStateLabel,
+        "designer:preview-state");
+    auto env = iconCommand(core::IconId::Settings, "designer-environment",
+                           "预览环境", "designer:preview-state");
+    auto bar = core::makeRow(
+        {std::move(sizeLabel), std::move(spacer), std::move(themeButton),
+         std::move(densityButton), std::move(dpiButton), std::move(fontButton),
+         std::move(contrastButton), std::move(previewStateButton),
+         std::move(grid), std::move(zoomOut), std::move(zoomLabel),
+         std::move(zoomIn), std::move(fit), std::move(env)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 4.0F,
+        core::EdgeInsets::symmetric(12.0F, 0.0F), {},
+        "designer-canvas-controls", std::nullopt, 48.0F);
+    bar.color = theme.colors.surface;
+    return bar;
+}
+
+core::Widget DesignerApp::buildCrumbBar() {
+    // B 面包屑 32（variant-b .crumb-bar）：共用 DocumentId 选择，
+    // 点击返回容器（workspace-design §4.1）。
+    const auto& theme = shell_.theme();
+    std::vector<core::Widget> crumbs;
+    if (workbench_.document().has_value() &&
+        workbench_.selection().primary.has_value()) {
+        const auto primary = *workbench_.selection().primary;
+        // 祖先链：根→…→选中。
+        std::vector<dsl::DesignNodeId> chain;
+        dsl::DesignNodeId current = primary;
+        for (int guard = 0; guard < 64; ++guard) {
+            chain.push_back(current);
+            if (current == workbench_.document()->root.id) break;
+            const auto location =
+                locateDesignNode(workbench_.document()->root, current);
+            if (!location.has_value() || location->parent == 0) break;
+            current = location->parent;
+        }
+        std::reverse(chain.begin(), chain.end());
+        for (std::size_t i = 0; i < chain.size(); ++i) {
+            if (i > 0) {
+                crumbs.push_back(core::makeText(
+                    "›", theme.typography.caption, {}, 0.0F,
+                    "designer-crumb-separator:" + std::to_string(i)));
+            }
+            std::string label = std::to_string(chain[i]);
+            if (const auto* node = findDesignNode(workbench_.document()->root,
+                                                  chain[i]);
+                node != nullptr) {
+                const auto keyIt = node->properties.find("key");
+                if (keyIt != node->properties.end()) {
+                    if (const auto* key =
+                            std::get_if<std::string>(&keyIt->second.value);
+                        key != nullptr && !key->empty()) {
+                        label = *key;
+                    } else {
+                        label = node->type;
+                    }
+                } else {
+                    label = node->type;
+                }
+            }
+            auto crumb = core::withVariant(
+                core::makeButton(label, theme.typography.caption, {}, 0.0F,
+                                 "designer-crumb:" + std::to_string(chain[i]),
+                                 std::nullopt, std::nullopt,
+                                 "designer:select:" + std::to_string(chain[i])),
+                core::ButtonVariant::Chrome);
+            crumb.styleOverrides.padding =
+                core::EdgeInsets::symmetric(4.0F, 2.0F);
+            crumbs.push_back(std::move(crumb));
+        }
+    } else {
+        crumbs.push_back(core::makeText("选择一个控件，开始调整。",
+                                        theme.typography.caption, {}, 0.0F,
+                                        "designer-crumb-empty"));
+    }
+    auto bar = core::makeRow(
+        std::move(crumbs), core::MainAxisAlignment::Start,
+        core::CrossAxisAlignment::Center, 4.0F,
+        core::EdgeInsets::symmetric(12.0F, 0.0F), {}, "designer-crumb-bar",
+        std::nullopt, 32.0F);
+    bar.color = theme.colors.surface;
+    return bar;
+}
+
+core::Widget DesignerApp::buildBottomDock() {
+    // B 底栏（variant-b .bottom-dock）：默认收起 36 头标签，展开 36+108
+    //（workspace-design §3.1）。问题/引用共用选择，冲突反馈不被折叠隐藏
+    //（file-conflict §2）。
+    const auto& theme = shell_.theme();
+    for (auto it = shell_.handlers().begin(); it != shell_.handlers().end();) {
+        if (it->first.starts_with("designer:diagnostic:")) {
+            it = shell_.handlers().erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (std::size_t index = 0; index < diagnostics_.size(); ++index) {
+        if (diagnosticActionable(index)) {
+            const std::string handler =
+                "designer:diagnostic:" + std::to_string(index);
+            shell_.handlers()[handler] = [this, index] {
+                activateDiagnostic(index);
+            };
+        }
+    }
+    const auto count = diagnostics_.size();
+    if (diagnosticsController_.itemCount() != count) {
+        diagnosticsController_.setItemCount(count);
+    }
+    diagnosticsController_.setEstimatedExtent(
+        theme.metrics.minHeight[theme.metrics.baseIndex]);
+    std::size_t missingRefs = 0;
+    for (const auto& row : referenceRows_) {
+        if (row.status == "Missing") ++missingRefs;
+    }
+    auto diagTab = core::makeButton(
+        "问题 " + std::to_string(diagnostics_.size()),
+        theme.typography.caption, {}, 0.0F, "designer-bottom-diagnostics",
+        std::nullopt, std::nullopt, "designer:bottom-diagnostics");
+    diagTab.selected = bottomTab_ == BottomTab::Diagnostics;
+    auto refTab = core::makeButton(
+        "引用", theme.typography.caption, {}, 0.0F,
+        "designer-bottom-references", std::nullopt, std::nullopt,
+        "designer:bottom-references");
+    refTab.selected = bottomTab_ == BottomTab::References;
+    auto spacer = core::makeContainerLeaf(
+        std::nullopt, std::nullopt, {}, {}, core::Color::transparent(),
+        "designer-bottom-spacer");
+    spacer.flex = 1.0F;
+    spacer.excludeFromFocus = true;
+    spacer.excludeFromSemantics = true;
+    auto toggle = core::withVariant(
+        core::withLeadingIcon(
+            core::makeButton({}, theme.typography.caption, {}, 0.0F,
+                             "designer-toggle-bottom", std::nullopt,
+                             std::nullopt, "designer:toggle-bottom"),
+            bottomOpen_ ? core::IconId::ChevronDown : core::IconId::ChevronUp),
+        core::ButtonVariant::Chrome);
+    toggle.semanticsLabel = bottomOpen_ ? "收起底部面板" : "展开底部面板";
+    toggle.styleOverrides.padding = core::EdgeInsets::symmetric(6.0F, 4.0F);
+    auto head = core::makeRow(
+        {std::move(diagTab), std::move(refTab), std::move(spacer),
+         std::move(toggle)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 4.0F,
+        core::EdgeInsets::symmetric(8.0F, 0.0F), {}, "designer-bottom-head",
+        std::nullopt, 36.0F);
+    head.color = theme.colors.surface;
+    std::vector<core::Widget> columnChildren;
+    columnChildren.push_back(std::move(head));
+    float dockHeight = 36.0F;
+    if (bottomOpen_) {
+        core::Widget body;
+        if (bottomTab_ == BottomTab::References) {
+            auto grid = referencesController_.build();
+            grid.key = "designer-references";
+            grid.flex = 1.0F;
+            auto status = core::makeText(
+                std::to_string(referenceRows_.size()) + " refs  /  " +
+                    std::to_string(missingRefs) + " missing",
+                theme.typography.caption, {}, 0.0F,
+                "designer-references-status");
+            body = core::makeColumn({std::move(status), std::move(grid)},
+                                    core::MainAxisAlignment::Start,
+                                    core::CrossAxisAlignment::Stretch, 4.0F,
+                                    core::EdgeInsets::symmetric(12.0F, 8.0F),
+                                    {}, "designer-references-panel");
+            body.flex = 1.0F;
+        } else {
+            auto list = core::makeVirtualList(&diagnosticsController_,
+                                              "designer-diagnostic-list");
+            list.flex = 1.0F;
+            std::vector<core::Widget> rows;
+            if (saveConflict_.has_value()) {
+                rows.push_back(core::makeText(
+                    saveConflict_->project
+                        ? "Project changed. Reload discards local edits; "
+                          "overwrite replaces the manifest and every page."
+                        : "External file changed. Reload discards local edits; "
+                          "overwrite replaces external edits.",
+                    theme.typography.caption, {}, 0.0F,
+                    "designer-conflict-notice"));
+                // 冲突操作（file-conflict §2）：重载/另存/覆盖常驻底栏，
+                // 与折叠状态无关（收起时也在 head 下保留一行操作）。
+                auto reload = core::withFocusRing(core::makeButton(
+                    saveConflict_->project ? "Reload external project"
+                                           : "Reload external file",
+                    theme.typography.caption, {}, 0.0F,
+                    "designer-conflict-reload", {}, {},
+                    "designer:conflict-reload"));
+                auto saveAs = core::withFocusRing(core::makeButton(
+                    "Save as", theme.typography.caption, {}, 0.0F,
+                    "designer-conflict-save-as", {}, {}, "designer:save-as"));
+                auto overwrite = core::withFocusRing(core::withVariant(
+                    core::makeButton(
+                        saveConflict_->project ? "Overwrite external project"
+                                               : "Overwrite external file",
+                        theme.typography.caption, {}, 0.0F,
+                        "designer-conflict-overwrite", {}, {},
+                        "designer:conflict-overwrite"),
+                    core::ButtonVariant::Danger));
+                overwrite.enabled = saveConflict_->canOverwrite;
+                {
+                    const float gap = theme.metrics.controlGap[theme.metrics.baseIndex];
+                    const float available = std::max(0.0F, shell_.view().width -
+                        theme.metrics.controlPaddingX[theme.metrics.baseIndex] * 2.0F);
+                    const float minColumnWidth =
+                        theme.metrics.textFieldMinWidth[theme.metrics.baseIndex] * 2.0F;
+                    const int columns = std::clamp(
+                        static_cast<int>((available + gap) / (minColumnWidth + gap)), 1, 3);
+                    rows.push_back(core::makeGrid(
+                        {std::move(reload), std::move(saveAs),
+                         std::move(overwrite)},
+                        columns, minColumnWidth, gap, gap,
+                        "designer-conflict-actions"));
+                }
+            }
+            rows.push_back(std::move(list));
+            body = core::makeColumn(
+                std::move(rows), core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Stretch, 4.0F,
+                core::EdgeInsets::symmetric(12.0F, 8.0F), {},
+                "designer-bottom-body-inner");
+            body.flex = 1.0F;
+        }
+        body.color = theme.colors.surface;
+        columnChildren.push_back(std::move(body));
+        dockHeight = 144.0F;
+    } else if (saveConflict_.has_value()) {
+        // 冲突反馈不能被普通折叠隐藏（file-conflict 契约）：收起时仍保留
+        // 提示 + 三操作（重载/另存/覆盖），高度 60→96。
+        auto notice = core::makeText(
+            "文件冲突：展开底部面板处理重载/另存/覆盖。",
+            theme.typography.caption, {}, 0.0F, "designer-conflict-notice");
+        columnChildren.push_back(std::move(notice));
+        auto reload = core::withFocusRing(core::makeButton(
+            saveConflict_->project ? "Reload external project"
+                                   : "Reload external file",
+            theme.typography.caption, {}, 0.0F, "designer-conflict-reload", {},
+            {}, "designer:conflict-reload"));
+        auto saveAs = core::withFocusRing(core::makeButton(
+            "Save as", theme.typography.caption, {}, 0.0F,
+            "designer-conflict-save-as", {}, {}, "designer:save-as"));
+        auto overwrite = core::withFocusRing(core::withVariant(
+            core::makeButton(
+                saveConflict_->project ? "Overwrite external project"
+                                       : "Overwrite external file",
+                theme.typography.caption, {}, 0.0F,
+                "designer-conflict-overwrite", {}, {},
+                "designer:conflict-overwrite"),
+            core::ButtonVariant::Danger));
+        overwrite.enabled = saveConflict_->canOverwrite;
+        {
+            const float gap = theme.metrics.controlGap[theme.metrics.baseIndex];
+            const float available = std::max(0.0F, shell_.view().width -
+                theme.metrics.controlPaddingX[theme.metrics.baseIndex] * 2.0F);
+            const float minColumnWidth =
+                theme.metrics.textFieldMinWidth[theme.metrics.baseIndex] * 2.0F;
+            const int columns = std::clamp(
+                static_cast<int>((available + gap) / (minColumnWidth + gap)), 1, 3);
+            columnChildren.push_back(core::makeGrid(
+                {std::move(reload), std::move(saveAs), std::move(overwrite)},
+                columns, minColumnWidth, gap, gap, "designer-conflict-actions"));
+        }
+        dockHeight = 144.0F;
+    }
+    auto dock = core::makeColumn(std::move(columnChildren),
+                                 core::MainAxisAlignment::Start,
+                                 core::CrossAxisAlignment::Stretch, 0.0F, {},
+                                 {}, "designer-diagnostics", std::nullopt,
+                                 dockHeight);
+    dock.color = theme.colors.surface;
+    return dock;
+}
+
+core::Widget DesignerApp::buildStatusBar() {
+    // B 状态栏 28（variant-b .statusbar，statusbar-design §6/§9）：保存/
+    // 选择/反馈统一显示，不混入临时预览值（workspace-design §3）。
+    const auto& theme = shell_.theme();
+    const std::string saveState =
+        workbench_.dirty() ? "未保存修改" : "未修改";
+    const std::string nodeStat =
+        std::to_string(workbench_.document().has_value()
+                            ? workbench_.document()->root.children.size() + 1
+                            : 0) +
+        " 个节点";
+    const std::string message = statusMessage_.empty()
+                                  ? ("就绪  /  " + sourceFile_)
+                                  : statusMessage_;
+    auto ok = core::makeText("就绪", theme.typography.caption, {}, 0.0F,
+                             "designer-status-ok");
+    auto msg = core::makeText(message, theme.typography.caption, {}, 0.0F,
+                              "designer-status");
+    msg.flex = 1.0F;
+    auto nodes = core::makeText(nodeStat, theme.typography.caption, {}, 0.0F,
+                                "designer-node-stat");
+    auto saved = core::makeText(saveState, theme.typography.caption, {}, 0.0F,
+                                "designer-save-state");
+    auto utf8 = core::makeText("UTF-8", theme.typography.caption, {}, 0.0F,
+                               "designer-encoding");
+    auto densityLabel = core::makeText("Compact", theme.typography.caption, {},
+                                       0.0F, "designer-density-label");
+    auto bar = core::makeRow(
+        {std::move(ok), std::move(msg), std::move(nodes), std::move(saved),
+         std::move(utf8), std::move(densityLabel)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 12.0F,
+        core::EdgeInsets::symmetric(12.0F, 0.0F), {}, "designer-statusbar",
+        std::nullopt, 28.0F);
+    bar.color = theme.colors.surface;
+    return bar;
+}
+
+core::Widget DesignerApp::buildCenterPanel() {
+    // B 中心列（workspace-design §3）：文档页签 40 + 画布工具 48 +
+    // 编辑区（画布/分屏/快照）+ 面包屑 32 + 底栏（36/144）。
+    core::Widget editor;
+    if (centerView_ == CenterView::Source) {
+        editor = buildSourcePanel();
+        editor.flex = 1.0F;
+    } else if (centerView_ == CenterView::Split) {
+        auto canvas = buildCanvasPanel();
+        canvas.flex = 1.0F;
+        auto source = buildSourcePanel();
+        source.flex = 1.0F;
+        editor = core::makeRow({std::move(canvas), std::move(source)},
+                               core::MainAxisAlignment::Start,
+                               core::CrossAxisAlignment::Stretch, 0.0F, {}, {},
+                               "designer-editor-surface");
+        editor.flex = 1.0F;
+    } else {
+        editor = buildCanvasPanel();
+        editor.flex = 1.0F;
+    }
     auto panel = core::makeColumn(
-        {std::move(tabs), std::move(content)}, core::MainAxisAlignment::Start,
-        core::CrossAxisAlignment::Stretch, 0.0F, {}, {},
-        "designer-preview-panel");
+        {buildDocumentTabs(), buildCanvasControls(), std::move(editor),
+         buildCrumbBar(), buildBottomDock()},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 0.0F,
+        {}, {}, "designer-preview-panel");
     panel.flex = 1.0F;
-    panel.color = theme.colors.surface;
+    panel.color = shell_.theme().colors.pageBackground;
     return panel;
 }
 
+core::Widget DesignerApp::buildWorkspace() {
+    // B 工作区网格（workspace-design §3.1）：48 rail（固定外置）+ 224 left +
+    // 6 + center + 6 + 280 right；两个嵌套 Splitter（splitter §7/§9），左下限
+    // 180、右下限 232、上限 400，Compact 12 步进，双击复位。专注/折叠经 bool
+    // 条件构建（§4.4），不触碰 dirty/undo。Rail 置于分栏之外，拖动直接改变
+    // 左栏（tight 约束覆盖固定宽），避免 Row 内固定子吞掉增量。
+    if (zenMode_) {
+        auto center = buildCenterPanel();
+        auto workspace = core::makeRow({std::move(center)},
+                                       core::MainAxisAlignment::Start,
+                                       core::CrossAxisAlignment::Stretch, 0.0F,
+                                       {}, {}, "designer-workspace");
+        workspace.flex = 1.0F;
+        return workspace;
+    }
+    auto rail = buildRail();
+    // 右栏固定偏好、中心吃增量（B 画布优先）：按当前视口与左栏推导内部分栏
+    // 可用长，恢复右偏好宽（默认 280，拖动回填 232–400）。左上限 400 显式钳制。
+    const float viewWidth = shell_.view().width;
+    if (viewWidth > 0.0F) {
+        if (leftSplitter_.offset() > 400.0F) {
+            leftSplitter_.setOffset(400.0F);
+        } else if (leftSplitter_.offset() < 180.0F) {
+            leftSplitter_.setOffset(180.0F);
+        }
+        rightWidthPreference_ =
+            std::clamp(rightWidthPreference_, 232.0F, 400.0F);
+        constexpr float kRail = 48.0F;
+        constexpr float kTrack = 6.0F;
+        const float leftWidth =
+            leftCollapsed_ ? 0.0F
+                           : (leftSplitter_.seeded() ? leftSplitter_.offset()
+                                                     : 224.0F);
+        const float tracks = leftCollapsed_ ? kTrack : 2.0F * kTrack;
+        const float innerMainMax =
+            std::max(0.0F, viewWidth - kRail - leftWidth - tracks - kTrack);
+        // 内部分栏 mainMax = 内宽 - 轨道；期望中心 = mainMax - 右偏好。
+        const float innerWidth = leftCollapsed_
+                                     ? std::max(0.0F, viewWidth - kRail)
+                                     : std::max(
+                                           0.0F, viewWidth - kRail - leftWidth -
+                                                     kTrack);
+        const float mainMax = std::max(0.0F, innerWidth - kTrack);
+        (void)innerMainMax;
+        const float desiredCenter = mainMax - rightWidthPreference_;
+        if (std::isfinite(desiredCenter)) {
+            // 程序恢复偏好时屏蔽回填（extent 为旧值，回填会污染偏好；
+            // 用户拖动经交互通道回填，不受影响）。同时放宽 minTrailing
+            // 以容纳增长（setOffset 按旧 extent 钳制，resize 放大会被旧
+            // max 误杀；布局期再按新 extent 钳制回合法域）。
+            auto callback = std::move(rightSplitter_.onOffsetChanged);
+            rightSplitter_.onOffsetChanged = nullptr;
+            rightSplitter_.setMinTrailing(0.0F);
+            rightSplitter_.setOffset(desiredCenter);
+            rightSplitter_.setMinTrailing(232.0F);
+            rightSplitter_.onOffsetChanged = std::move(callback);
+        }
+    }
+    auto center = buildCenterPanel();
+    auto right = buildPropertiesPanel();
+    auto inner =
+        core::makeSplitter(&rightSplitter_, std::move(center), std::move(right),
+                           true, "designer-right-splitter");
+    inner.flex = 1.0F;
+    core::Widget main;
+    if (leftCollapsed_) {
+        main = std::move(inner);
+    } else {
+        auto leftdock = buildOutlinePanel();
+        main = core::makeSplitter(&leftSplitter_, std::move(leftdock),
+                                  std::move(inner), true,
+                                  "designer-left-splitter");
+        main.flex = 1.0F;
+    }
+    auto workspace = core::makeRow(
+        {std::move(rail), std::move(main)}, core::MainAxisAlignment::Start,
+        core::CrossAxisAlignment::Stretch, 0.0F, {}, {}, "designer-workspace");
+    workspace.flex = 1.0F;
+    return workspace;
+}
+
+core::Widget DesignerApp::buildPreviewPanel() {
+    // 兼容入口：旧 Canvas/Source/References 中心页已收敛为 B 中心
+    // （文档页签 + 视图 Design/Split/Source，引用下沉到底部）。
+    return buildCenterPanel();
+}
+
 core::Widget DesignerApp::buildPropertiesPanel() {
+    // B 右栏 280 检查器（variant-b .inspector）：属性头 + 选中摘要 +
+    // 基本/布局/外观分组（workspace-design §4.2）。类型化输入（Spin/
+    // ComboBox/Checkbox）为后续应用层接线项，此版先分组呈现，值通道保持
+    // TextField 兼容（designer-property-field key 不变）。
     const auto& theme = shell_.theme();
     std::vector<core::Widget> rows;
-    rows.push_back(core::makeText("Properties", theme.typography.label, {}, 0.0F,
-                                  "designer-properties-heading"));
+    auto head = core::makeRow(
+        {core::makeText("属性", theme.typography.label, {}, 0.0F,
+                        "designer-properties-heading"),
+         core::makeText("当前选择", theme.typography.caption, {}, 0.0F,
+                        "designer-properties-count")},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 8.0F,
+        {}, {}, "designer-properties-head");
+    rows.push_back(std::move(head));
+    if (workbench_.selection().primary.has_value() &&
+        workbench_.document().has_value()) {
+        const auto sel = *workbench_.selection().primary;
+        if (const auto* selNode =
+                findDesignNode(workbench_.document()->root, sel);
+            selNode != nullptr) {
+            std::string keyLabel = selNode->type;
+            if (const auto keyIt = selNode->properties.find("key");
+                keyIt != selNode->properties.end()) {
+                if (const auto* key =
+                        std::get_if<std::string>(&keyIt->second.value);
+                    key != nullptr && !key->empty()) {
+                    keyLabel = *key;
+                }
+            }
+            auto icon = core::makeIcon(core::IconId::NavControls,
+                                       "designer-selected-icon", 18.0F,
+                                       18.0F);
+            auto summary = core::makeRow(
+                {std::move(icon),
+                 core::makeColumn(
+                     {core::makeText(selNode->type, theme.typography.label, {},
+                                     0.0F, "designer-selected-type"),
+                      core::makeText(keyLabel + " · #" + std::to_string(sel),
+                                     theme.typography.caption, {}, 0.0F,
+                                     "designer-selected-key")},
+                     core::MainAxisAlignment::Start,
+                     core::CrossAxisAlignment::Start, 2.0F, {}, {},
+                     "designer-selected-text")},
+                core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+                12.0F, {}, {}, "designer-selected-summary");
+            rows.push_back(std::move(summary));
+        }
+    }
     const auto selected = workbench_.selection().primary;
     if (selected.has_value()) {
         auto properties = workbench_.properties(*selected);
@@ -4586,7 +6091,21 @@ core::Widget DesignerApp::buildPropertiesPanel() {
                     }),
                 properties.end());
         }
+        std::vector<core::Widget> basicRows;
+        std::vector<core::Widget> layoutRows;
+        std::vector<core::Widget> appearanceRows;
+        const auto isLayoutProp = [](std::string_view name) {
+            return name == "width" || name == "height" || name == "spacing" ||
+                   name == "padding" || name == "mainAxis" ||
+                   name == "crossAxis" || name == "alignment";
+        };
         for (const auto& property : properties) {
+            std::vector<core::Widget>* target = &basicRows;
+            if (property.reference.has_value()) {
+                target = &appearanceRows;
+            } else if (isLayoutProp(property.name)) {
+                target = &layoutRows;
+            }
             if (property.reference.has_value()) {
                 registerReferenceBinding(*selected, property);
                 const std::string bind =
@@ -4608,36 +6127,76 @@ core::Widget DesignerApp::buildPropertiesPanel() {
                     core::CrossAxisAlignment::Center, 8.0F, {}, {},
                     "designer-reference-row:" + std::to_string(*selected) +
                         ":" + property.name);
-                rows.push_back(std::move(row));
+                target->push_back(std::move(row));
             } else if (property.value.has_value() &&
                 isEditableProperty(*property.value)) {
                 registerPropertyBinding(*selected, property);
                 const std::string bind =
                     propertyBindingKey(*selected, property.name);
-                auto field = core::makeTextField(
-                    {}, "value", theme.typography.body, {}, 0.0F,
-                    "designer-property-field:" + std::to_string(*selected) +
-                        ":" + property.name,
-                    168.0F, std::nullopt, bind);
-                field.semanticsLabel = property.name;
-                field.flex = 1.0F;
-                auto row = core::makeRow(
-                    {core::makeText(property.name, theme.typography.caption,
-                                    {}, 0.0F,
-                                    "designer-property-label:" + property.name),
-                     std::move(field)},
-                    core::MainAxisAlignment::Start,
-                    core::CrossAxisAlignment::Center, 8.0F, {}, {},
-                    "designer-property-row:" + std::to_string(*selected) +
-                        ":" + property.name);
-                rows.push_back(std::move(row));
+                // 布尔量用 Checkbox 表达（workspace-design §4.2；HTML 基本组
+                // “默认选中”同口径），其余标量保持 TextField 兼容通道。
+                if (std::holds_alternative<bool>(property.value->value)) {
+                    const bool checked =
+                        std::get<bool>(property.value->value);
+                    auto box = core::makeCheckbox(
+                        property.name, bind,
+                        "designer-property-field:" +
+                            std::to_string(*selected) + ":" + property.name,
+                        checked);
+                    box.semanticsLabel = property.name;
+                    auto row = core::makeRow(
+                        {std::move(box)}, core::MainAxisAlignment::Start,
+                        core::CrossAxisAlignment::Center, 8.0F, {}, {},
+                        "designer-property-row:" + std::to_string(*selected) +
+                            ":" + property.name);
+                    target->push_back(std::move(row));
+                } else {
+                    auto field = core::makeTextField(
+                        {}, "value", theme.typography.body, {}, 0.0F,
+                        "designer-property-field:" +
+                            std::to_string(*selected) + ":" + property.name,
+                        168.0F, std::nullopt, bind);
+                    field.semanticsLabel = property.name;
+                    field.flex = 1.0F;
+                    auto row = core::makeRow(
+                        {core::makeText(property.name,
+                                        theme.typography.caption, {}, 0.0F,
+                                        "designer-property-label:" +
+                                            property.name),
+                         std::move(field)},
+                        core::MainAxisAlignment::Start,
+                        core::CrossAxisAlignment::Center, 8.0F, {}, {},
+                        "designer-property-row:" + std::to_string(*selected) +
+                            ":" + property.name);
+                    target->push_back(std::move(row));
+                }
             } else {
-                rows.push_back(core::makeText(
+                target->push_back(core::makeText(
                     property.name + "  " +
                         formatValue(property.value, property.reference),
                     theme.typography.body, {}, 0.0F,
                     "designer-property:" + property.name));
             }
+        }
+        const auto groupTitle = [&theme](std::string text, std::string key) {
+            return core::makeText(std::move(text), theme.typography.caption, {},
+                                  0.0F, std::move(key));
+        };
+        if (!basicRows.empty()) {
+            rows.push_back(groupTitle("基本", "designer-prop-group-basic"));
+            for (auto &r : basicRows) rows.push_back(std::move(r));
+        }
+        if (!layoutRows.empty()) {
+            rows.push_back(groupTitle("布局", "designer-prop-group-layout"));
+            for (auto &r : layoutRows) rows.push_back(std::move(r));
+        }
+        if (!appearanceRows.empty()) {
+            rows.push_back(
+                groupTitle("外观与引用", "designer-prop-group-appearance"));
+            for (auto &r : appearanceRows) rows.push_back(std::move(r));
+        }
+        if (basicRows.empty() && layoutRows.empty() && appearanceRows.empty()) {
+            rows.push_back(groupTitle("基本", "designer-prop-group-basic"));
         }
     } else {
         rows.push_back(core::makeText("Select a node", theme.typography.body));
@@ -4650,12 +6209,14 @@ core::Widget DesignerApp::buildPropertiesPanel() {
         std::nullopt, {});
     propertyScroll.scrollAxis = core::ScrollAxis::Vertical;
     propertyScroll.showScrollbar = true;
+    propertyScroll.scrollOffset =
+        panelScrollOffset("designer-properties-scroll");
     propertyScroll.flex = 1.0F;
     auto panel = core::makeColumn(
         {std::move(propertyScroll)}, core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Stretch, 8.0F,
         core::EdgeInsets::all(12.0F), {}, "designer-properties-panel", 280.0F);
-    panel.color = theme.colors.surfaceSunken;
+    panel.color = theme.colors.surface;
     return panel;
 }
 
@@ -4677,113 +6238,48 @@ core::Widget DesignerApp::buildDiagnosticRow(std::size_t index) {
 }
 
 core::Widget DesignerApp::buildDiagnosticsPanel() {
-    const auto& theme = shell_.theme();
-    const std::string statusText =
-        statusMessage_.empty()
-            ? (diagnostics_.empty()
-                   ? "Ready  /  " + sourceFile_
-                   : "Diagnostics  /  " + sourceFile_)
-            : statusMessage_;
-    auto status = core::makeText(statusText, theme.typography.caption, {},
-                                 0.0F, "designer-status");
-    for (auto it = shell_.handlers().begin(); it != shell_.handlers().end();) {
-        if (it->first.starts_with("designer:diagnostic:")) {
-            it = shell_.handlers().erase(it);
-        } else {
-            ++it;
-        }
-    }
-    for (std::size_t index = 0; index < diagnostics_.size();
-         ++index) {
-        if (diagnosticActionable(index)) {
-            const std::string handler =
-                "designer:diagnostic:" + std::to_string(index);
-            shell_.handlers()[handler] = [this, index] {
-                activateDiagnostic(index);
-            };
-        }
-    }
-    const auto count = diagnostics_.size();
-    if (diagnosticsController_.itemCount() != count) {
-        diagnosticsController_.setItemCount(count);
-    }
-    diagnosticsController_.setEstimatedExtent(
-        theme.metrics.minHeight[theme.metrics.baseIndex]);
-    auto list = core::makeVirtualList(&diagnosticsController_,
-                                      "designer-diagnostic-list");
-    list.flex = 1.0F;
-    std::vector<core::Widget> rows;
-    rows.push_back(std::move(status));
-    float panelHeight = 96.0F;
-    if (saveConflict_.has_value()) {
-        // Designer conflict design §2: text states both consequences, while
-        // ordinary Theme button variants and focus rings carry the actions.
-        const auto index = theme.metrics.baseIndex;
-        rows.push_back(core::makeText(
-            saveConflict_->project
-                ? "Project changed. Reload discards local edits; overwrite replaces the manifest and every page."
-                : "External file changed. Reload discards local edits; overwrite replaces external edits.",
-            theme.typography.caption, {}, 0.0F, "designer-conflict-notice"));
-        auto reload = core::withFocusRing(core::makeButton(
-            saveConflict_->project ? "Reload external project" : "Reload external file",
-            theme.typography.label, {}, 0.0F,
-            "designer-conflict-reload", {}, {}, "designer:conflict-reload"));
-        auto saveAs = core::withFocusRing(core::makeButton(
-            "Save as", theme.typography.label, {}, 0.0F,
-            "designer-conflict-save-as", {}, {}, "designer:save-as"));
-        auto overwrite = core::withFocusRing(core::withVariant(core::makeButton(
-            saveConflict_->project ? "Overwrite external project" : "Overwrite external file",
-            theme.typography.label, {}, 0.0F,
-            "designer-conflict-overwrite", {}, {}, "designer:conflict-overwrite"),
-            core::ButtonVariant::Danger));
-        overwrite.enabled = saveConflict_->canOverwrite;
-        const float gap = theme.metrics.controlGap[index];
-        const float available = std::max(0.0F, shell_.view().width -
-            theme.metrics.controlPaddingX[index] * 2.0F);
-        const float minColumnWidth = theme.metrics.textFieldMinWidth[index] * 2.0F;
-        const int columns = std::clamp(
-            static_cast<int>((available + gap) / (minColumnWidth + gap)), 1, 3);
-        rows.push_back(core::makeGrid(
-            {std::move(reload), std::move(saveAs), std::move(overwrite)},
-            columns, minColumnWidth, gap, gap, "designer-conflict-actions"));
-        const int actionRows = (3 + columns - 1) / columns;
-        panelHeight += theme.metrics.minHeight[index] * static_cast<float>(actionRows) +
-                       theme.typography.caption.fontSize * 2.0F +
-                       gap * static_cast<float>(actionRows + 1);
-    }
-    rows.push_back(std::move(list));
-    auto panel = core::makeColumn(
-        std::move(rows), core::MainAxisAlignment::Start,
-        core::CrossAxisAlignment::Stretch, 4.0F,
-        core::EdgeInsets::symmetric(12.0F, 8.0F), {}, "designer-diagnostics",
-        std::nullopt, panelHeight);
-    panel.color = theme.colors.surfaceSunken;
-    return panel;
+    // 兼容入口：旧全局诊断条已收敛为 B 中心底栏（36/144 可折叠）。
+    return buildBottomDock();
 }
 
 core::Widget DesignerApp::buildBody() {
-    auto body = core::makeRow(
-        {buildOutlinePanel(), buildPreviewPanel(), buildPropertiesPanel()},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 1.0F,
-        core::EdgeInsets::all(8.0F), {}, "designer-body");
-    body.flex = 1.0F;
-    auto content = core::makeColumn({std::move(body), buildDiagnosticsPanel()},
-                                    core::MainAxisAlignment::Start,
-                                    core::CrossAxisAlignment::Stretch, 0.0F,
-                                    {}, {}, "designer-content");
-    content.flex = 1.0F;
-    return content;
+    // B 工作区主体：Splitter 外壳（workspace-design §3.1）。
+    return buildWorkspace();
 }
 
 core::Widget DesignerApp::buildUi() {
     rebuildPreviewKeys();
     syncImageResources();
     syncSelectionFromOutline();
-    auto root = core::makeColumn({buildToolbar(), buildBody()},
-                                 core::MainAxisAlignment::Start,
-                                 core::CrossAxisAlignment::Stretch, 0.0F, {}, {},
-                                 "designer-root");
-    root.color = shell_.theme().colors.pageBackground;
+    // B 整壳（designer-ide.html variant-b）：标题 44 + 主工具 48 +
+    // 工作区 + 状态 28。视觉值取 Theme token（visual-system §3.6）。
+    // 菜单 popover / 运行预览以 Stack 覆盖层承载（HTML .popover/modal 同位，
+    // Esc 关闭；运行预览仅会话中出现）。进 Stack 时根列显式取视口尺寸，
+    // 避免松约束下收缩（Stack 子按内容测量）。
+    auto workspace = buildWorkspace();
+    auto rootColumn = core::makeColumn(
+        {buildTitleBar(), buildMainTools(), std::move(workspace),
+         buildStatusBar()},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 0.0F,
+        {}, {}, "designer-root-column");
+    rootColumn.color = shell_.theme().colors.pageBackground;
+    std::vector<core::Widget> overlays;
+    if (openMenu_.has_value()) overlays.push_back(buildMenuPopover());
+    if (runPreviewOpen_) overlays.push_back(buildRunPreviewOverlay());
+    if (overlays.empty()) {
+        rootColumn.key = "designer-root";
+        return rootColumn;
+    }
+    const float viewWidth = shell_.view().width;
+    const float viewHeight = shell_.view().height;
+    if (viewWidth > 0.0F) rootColumn.width = viewWidth;
+    if (viewHeight > 0.0F) rootColumn.height = viewHeight;
+    std::vector<core::Widget> stackKids;
+    stackKids.push_back(std::move(rootColumn));
+    for (auto& overlay : overlays) stackKids.push_back(std::move(overlay));
+    auto root = core::makeStack(std::move(stackKids),
+                                core::StackAlignment::TopLeft, {}, {},
+                                "designer-root");
     return root;
 }
 

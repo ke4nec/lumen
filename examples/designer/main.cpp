@@ -190,6 +190,13 @@ int runAcceptance(lumen::designer_app::DesignerApp& app,
     accessibility::RecordingAccessibilityBridge accessibilityBridge;
     app.shell().setAccessibilityBridge(&accessibilityBridge);
     (void)app.shell().renderFrame();
+    // B 默认 Toolbox，大纲验收前切到结构页（workspace-design §3）。
+    if (const auto outlineTab =
+            app.shell().handlers().find("designer:lefttab-outline");
+        outlineTab != app.shell().handlers().end()) {
+        outlineTab->second();
+        (void)app.shell().renderFrame();
+    }
     const auto initialRevision = app.workbench().documentRevision();
     const auto checkEnvironment = [&app, initialRevision] {
         (void)app.shell().renderFrame();
@@ -597,9 +604,12 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
         (void)app.shell().renderFrame();
         dumpDiagnostics(app);
     }
-    // A requested startup document is part of the window smoke contract. A
-    // later watch reload may still keep the last valid frame in the session.
-    if (!requestedFileLoaded && !designerOptions.watch) return 1;
+    // 未指定文件时以内置默认样例（1024×768 可拖画板）开箱运行；显式
+    // 指定但加载失败仍按窗口冒烟契约退出，watch 模式保留上一有效帧。
+    if (!designerOptions.filename.empty() && !requestedFileLoaded &&
+        !designerOptions.watch) {
+        return 1;
+    }
     lumen::platform::Sdl3ApplicationHost host;
     app.setFileDialogRequester([&host](bool forSave,
                                        const std::string& defaultName) {
@@ -620,8 +630,10 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
     });
     lumen::app::RunOptions runOptions;
     runOptions.windowDesc.title = "Lumen Designer";
-    runOptions.windowDesc.width = 1280;
-    runOptions.windowDesc.height = 800;
+    // 默认编辑器窗口 1024×768：常用桌面设计档；1024×768 画板经
+    // fit-to-view 缩放居中呈现（designer_app maybeFitCanvasView）。
+    runOptions.windowDesc.width = 1024;
+    runOptions.windowDesc.height = 768;
     runOptions.maxFrames = designerOptions.maxFrames;
     runOptions.resourceManager = app.resourceManager();
     // 桌面系统字体由 runApp 默认注入（systemFonts 能力；见
@@ -657,16 +669,11 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
             return true;
         };
     }
-    lumen::app::RunOptions previewOptions;
-    previewOptions.windowDesc.title = "Lumen Preview";
-    previewOptions.windowDesc.width = 960;
-    previewOptions.windowDesc.height = 640;
-    previewOptions.maxFrames = designerOptions.maxFrames;
-    previewOptions.resourceManager = app.resourceManager();
-    const int result = lumen::app::runApp(
-        {{&app.shell(), std::move(runOptions)},
-         {&app.previewShell(), std::move(previewOptions)}},
-        host);
+    // 运行预览不再常驻第二个 OS 窗口：startPreview 成功后在设计窗口内
+    // 以模态覆盖层呈现（按需出现，停止/Esc 即隐藏）；previewShell 保留
+    // 供 headless 测试与独立会话使用，不再创建 OS 窗口。
+    const int result =
+        lumen::app::runApp(app.shell(), host, std::move(runOptions));
     if (result == 0) std::printf("designer_window_smoke pass\n");
     return result;
 }

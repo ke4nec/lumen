@@ -1,0 +1,289 @@
+# Designer 工作区四方案设计
+
+> 2026-10-13 · 可交互提案；B 画布优先已接入 C++ 应用（本文件 §8）。
+> 只覆盖 Windows / Linux / macOS 桌面。
+> 入口：[方案总览](../design/designer-ide.html)；同一 HTML 内置 A–D 四套方案，每版均有 light / dark。
+> 本次按工作树中的实际实现审计；不把早期原型中的目标态当成已交付能力。
+
+## 1. 现状与设计依据
+
+### 1.1 当前实现（B 画布优先已落地）
+
+审计入口为 `examples/designer/designer_app.cpp` 的 `buildTitleBar`、
+`buildMainTools`、`buildRail`、`buildOutlinePanel`、`buildCenterPanel`
+（`buildDocumentTabs`/`buildCanvasControls`/`buildCrumbBar`/`buildBottomDock`）、
+`buildPropertiesPanel`、`buildWorkspace`、`buildStatusBar`、`buildBody`、
+`buildUi`。旧 `buildToolbar`/`buildPreviewPanel`/`buildDiagnosticsPanel`
+保留为兼容转调（分别转调主工具/中心/底栏）。
+
+| 区域 | 当前实现事实 | 对操作的影响 | 新提案 |
+| --- | --- | --- | --- |
+| 全局工具栏 | 编辑、运行、文件、环境、缩放五组；22 项；字号增大时标签退为图标 | 频率、操作对象与作用域混在同一层；环境图标的当前值不够显眼 | 文件/编辑/视图菜单提供低频入口；工具栏保留保存、撤销、插入、布局、运行；画布工具就近放缩放 |
+| 左栏 | 固定 240；Outline / Toolbox 两页互斥；Project 在底部；工具箱 7 组、37 类 | 插入与层级选择需要来回切换；长树与工程入口分享高度 | A 同时显示工具箱/大纲；B 按需切换；C、D 大纲独占高度 |
+| 画布 | Canvas / Source / References 为中心互斥页；已有选取、辅助线、zoom/pan 等 | 引用/源码核查会离开视觉上下文 | D 分屏只读快照，引用移至底部；其他版本也可切换分屏 |
+| 属性 | 固定 280；schema 可编辑值主要生成 TextField；引用也用 TextField | 数字、枚举、布尔没有充分表达类型；长属性列表不利于找到布局项 | 基本/布局/外观引用分组；类型映射到 Spin / ComboBox / Checkbox；Row/Column 展示主轴与间距 |
+| 主体布局 | Row 三栏；当前没有把 Splitter 用作外壳分栏 | 大纲与属性宽度无法随任务调整 | 两个嵌套 Splitter；有下限、拖动、键盘调节、双击复位 |
+| 诊断 | 默认高 96；冲突时加高；始终位于主体下方 | 无问题时仍消耗固定高度 | A/B 默认折叠到 36 高标签；C 默认布局工具；D 默认问题列表 |
+| 源码 | `buildSourcePanel` 生成带行号的只读文本 | 不应误设计为可编辑 IDE 源码页 | 使用“快照 / 只读”名称，保留定位；不提供编译编辑按钮 |
+
+现有 `design/designer-workbench.html` 已跟随五组工具栏与左栏 C 方案更新，
+是当前布局的参考。`designer-toolbar-redesign.html` 与
+`designer-leftpanel-redesign.html` 分别研究局部变化，本次扩展为整套工作区。
+`design/designer.html` 是较早目标态原型，其中 DP-9 待决策、部分图标缺失、
+源码编辑等表述不能用作当前能力结论；本次以源码与支持矩阵为准。
+
+### 1.2 参考软件与转译
+
+- [Qt Designer 工作区](https://doc.qt.io/qt-6/designer-to-know.html)：Widget Box、Object Inspector、Property Editor 围绕表单组织。本次借鉴“插入来源 / 对象身份 / 属性 / 结果”四类职责，A 将高频面板同时呈现。
+- [Qt Designer 布局](https://doc.qt.io/qt-6/designer-layouts.html)：布局对象可在对象检查器中查看，容器可嵌套。本次借鉴可见的布局结构，C 将 Row/Column 与间距放在显著位置。
+- [Visual Studio 窗口布局](https://learn.microsoft.com/en-us/visualstudio/ide/customizing-window-layouts-in-visual-studio)：工具窗口可分组、停靠、隐藏和恢复布局。本次借鉴文档区与工具区分工、按任务显示面板、恢复布局。**没有照搬任意停靠 / 浮动工具窗口系统**，现有 Splitter/Tabs 足以支撑固定预设。
+
+以上是设计推导，参考软件并不规定 Lumen 必须采用这些布局。
+
+## 2. 能力矩阵
+
+“框架有控件”“Designer 已接通”“新交互提案”是不同状态。
+
+| 设计部件 | 框架支持 | Designer 当前情况 / 本次新增 |
+| --- | --- | --- |
+| 对象树 | `widgets/tree.h`、TreeController、选择模型、键盘导航 | 已接通选择及重排；新稿改变面板位置 |
+| 左右分隔 | `widgets/splitter.h`、SplitterController、KeepRatio、collapse | 控件已有；Designer 外壳当前固定宽，新接入属于应用层工作 |
+| 菜单、命令栏 | MenuBarController / ContextMenuController、ToolBarController、CommandRegistry | 当前工具栏主要为组合 Row；改为语义化分组并接通 overflow 是后续实现项 |
+| 属性编辑 | TextField / Spin / ComboBox / Checkbox / ColorPicker / Form | 当前以文本框为主；类型化呈现、检索、分组需应用层接线 |
+| 文档 Tabs | `core::makeTabs` | 已有中心页签；本稿只显示当前一份文档，未虚构多文件编辑状态 |
+| 问题、引用 | VirtualList / DataGrid / Tabs | 当前诊断和引用数据已接通；折叠及合并底栏为新增工作区状态 |
+| 状态栏 | StatusBarController | 新稿统一显示保存、选择、反馈，不把临时预览值混入文档状态 |
+| 运行预览 | 独立 preview-session、DialogHost（另有 headless 冒烟用的独立 previewShell，不开 OS 窗口） | 运行会话在设计窗内以模态覆盖层呈现（运行/调试按需出现，停止/Esc/遮罩点击隐藏）；HTML 亦为 modal，不宣称模拟原生窗口生命周期 |
+| 撤销、插入、删除、复制 | DesignWorkbench、DesignDocumentHistory、文档事务 | 已有后端；原型独立模拟，后续 UI 应调用既有命令 |
+| 源码与引用定位 | SourceMap / CompileTrace、只读 Source、references | 已有基础；D 新增同屏呈现与选中同步 |
+| 工作区预设与专注 | Row/Column/Stack/Tabs/Splitter、Preferences 可组合 | 新应用逻辑；本次 HTML 不持久化文档/窗格 |
+| 任意 DockManager、浮动工具窗 | 本次未找到可直接消费的统一停靠管理器 | 不纳入落地前提；固定四种预设 |
+| 代码编辑器 | TextField / 文本布局不等于完整 IDE 编辑器 | 不承诺语法编辑、补全、调试断点或任意 C++ 双向生成 |
+
+源码工具箱覆盖 37 类：布局 7、内容 3、输入 10、集合 7、反馈 2、组合件 6、
+作用域 2。依据 `designerToolboxGroups()` 与 `designerToolboxSchemas()`，
+组合件由离线 RuntimeContext 适配器承载。HTML 只模拟 Text、Button、
+TextField、Checkbox、Column、Row、Container 七类常用控件的编辑路径。
+不能从这七类原型反推完整 37 类都已有同等交互。
+
+## 3. 四套工作区
+
+| 方案 | 左侧 | 中心 | 右侧 | 底部 | 主要适用 |
+| --- | --- | --- | --- | --- | --- |
+| [A 经典分区](../design/designer-ide.html?variant=a) | 工具箱 / 对象树上下共存 | 画布 + 面包屑 | 类型化属性 | 可折叠问题/引用 | 常规表单、快速插入；建议默认 |
+| [B 画布优先](../design/designer-ide.html?variant=b) | 48 活动栏 + 可隐藏控件/结构页 | 最大画布，隐藏标尺，可专注 | 属性 | 默认收起 | 视觉比例、检查整体效果 |
+| [C 布局工坊](../design/designer-ide.html?variant=c) | 工程标识 + 全高结构树 | 画布 + 容器上下文 | 属性上 / 工具箱下 | Row/Column 布局工具 | 嵌套容器、主轴与间距 |
+| [D 检查工作台](../design/designer-ide.html?variant=d) | 工程标识 + 对象树 | 画布 / 只读快照并排 | 预览环境 + 属性 | 问题/引用常驻 | 查引用、核对声明与预览 |
+
+四版保持同一份示例设置表单、同一套主题和命令，以便比较信息组织，而非用不同
+业务内容掩盖布局差异。主题与布局正交，`?variant=a&theme=light` / `?variant=a&theme=dark`
+等参数提供 8 个直接入口，均指向同一个 HTML。顶部方案导航切换会重新加载初始示例，**不跨方案保留编辑**。
+
+### 3.1 空间预算
+
+应用显式采用 Compact；表单预览默认 Comfortable，二者是不同作用域。
+
+| 尺度 | A | B | C | D |
+| --- | ---: | ---: | ---: | ---: |
+| 左面板初始宽度 | 232 | 224 + 48 活动栏 | 280 | 208 |
+| 右面板初始宽度 | 288 | 280 | 280 | 248 |
+| 分隔轨道 | 6 | 6 | 6 | 6 |
+| 底栏初始高度 | 36 | 36 | 144 | 144 |
+| 主要空间代价 | 左侧两区分享高度 | 隐藏面板需再次唤出 | 画布高度减少 | 分屏画布变窄 |
+
+在 1200 以下降低面板默认宽度；左右边界分别不低于 180/232。
+中央画布自身滚动，缩放使用逻辑坐标，标尺与网格同步缩放；默认 Fit 不裁掉整张示例表单。
+不足 960 宽的浏览器采用桌面最小工作区横向滚动，不宣称移动端适配。
+总览页可以窄屏阅读。高度不足时各面板内部滚动，不压缩 32 高操作行。
+
+全屏专注、恢复工作区与收起面板均可通过“视图”菜单找到；退出专注也可按 Esc。
+生产方案必须保存窗格偏好并钳制到当前窗口可用范围，这仍是后续应用工作。
+
+## 4. 操作契约
+
+### 4.1 选择与插入
+
+- 画布、对象树、面包屑、诊断、引用与源码行共用一个当前 DocumentId 选择。
+- 点击叶节点只选择最深节点；点击面包屑可返回容器。选中状态与键盘焦点独立；树自动滚动到当前选中项。
+- 控件箱搜索按类型英文名和中文描述过滤，无匹配时给出空态。
+- 点击控件插入到所选容器；所选是叶节点时插入到父容器。面板底部始终显示目标名称。
+- 拖放以最近的受支持容器为目标，显示虚线轮廓；不向叶节点非法添加孩子。Container 只允许一个子节点，已满时拒绝插入/复制，多个孩子应放入 Row/Column。
+- HTML 拖入追加到目标容器末尾，同级顺序通过上下移动改变；**未模拟精确落点插入或树间拖放**。
+- 删除容器同时删除其子树；根节点不允许删除或复制。插入、复制、删除、重排均可撤销。
+- HTML 实现单选；现有 Designer 的多选、框选、吸附等能力不因本研究被删除，但本稿不假装已完整模拟。
+
+### 4.2 属性与布局
+
+- 属性按“基本 / 布局 / 外观引用”呈现。TextField 编辑文字，Spin 编辑数字，ComboBox 编辑枚举，Checkbox 编辑布尔。
+- 在属性输入框变更提交（change / blur）时形成一条事务；非法值不改变画布或撤销栈，保留输入并显示错误。
+- 示例限制：宽 32–960、高 24–600、间距/内边距 0–64，均为原型编辑范围，不修改框架 schema 合法域。
+- Row/Column 的位置由布局计算；不显示自由坐标 X/Y，不提供会与布局冲突的吸附移动操作。
+- 主轴与 spacing 修改后同时更新画布、只读快照和容器底栏。
+- 恢复属性可撤销；新插入节点没有初始样本时提供明确反馈。
+- ColorPicker 框架已有，本稿外观区展示 Theme 引用，没有虚构颜色选择器实现。
+
+### 4.3 文件、引用与运行
+
+- 保存按钮下载 `settings-interaction-snapshot.json`。外层明确标记 `lumen-designer-html-study`，内部含类型化文档示意；**未经 C++ codec 编译/往返验证，不作为可交付 .design 文件**。
+- 初始 `saveWorkspace` 是故意缺失的示例引用。点击问题定位 saveButton；改成 `saveSettings` 后问题消失，引用显示离线替身。
+- 源码页显示当前示例文档快照，随属性变动更新，禁止编辑。行点击回选文档节点。
+- F5 打开隔离的运行预览；输入、复选框和按钮回调只改变预览会话。关闭后设计文档保持原值。
+- 原生应用已有文件冲突处理。本次只下载快照，不改写外部文件；后续生产 UI 应保持 `lumen-designer-file-conflict-design.md` 的重载/另存/覆盖契约，冲突反馈不能被普通折叠诊断隐藏。
+
+### 4.4 主题、环境和键盘
+
+- 评审条主题按钮改变工作台外壳；画布主题由“预览环境”独立设置。初次打开时二者同值。
+- 切换明暗、密度、缩放、网格、面板显隐都不触碰文档 dirty / undo。
+- 主色、表面、文本、边框、选中、焦点、状态色均映射 Theme；不是 CSS 反相滤镜。
+- Tab 访问操作，焦点环可见。对象树上下/Home/End 导航、左右展开/返回父级；分隔条左右键按 Compact 的 12 步进，Home/End 到边界，双击恢复默认宽度。
+- Ctrl/⌘ Z、Shift Z、D、S 对应撤销/重做/复制/下载；Delete 删除；F5 运行；`/` 搜索；Esc 退出临时模式。
+- 输入控件拥有编辑焦点时，文字撤销优先交给浏览器输入历史，不抢占文档级命令。
+
+## 5. 视觉契约
+
+视觉值对应 [`lumen-visual-system-design.md` §3.6](lumen-visual-system-design.md)，
+控件契约继续引用 collection-controls §6–10、splitter §7/9、toolbar §6/9、
+menu-controls 和 statusbar 设计。HTML 的 CSS 变量是主题角色映射；
+面板宽度、文档页签、审阅页排版是应用布局，不向控件 painter 填硬编码值。
+
+- 4/8 间距网格；工作台 12 caption、14 body、20 title；操作区至少 32 高。
+- 1px 边界区分表面；工作台不依赖毛玻璃、渐变或巨幅阴影。
+- 选中使用 accentContainer 背景 + 3px 标记；焦点使用 focusRing + 2px 环。
+- 深色不是纯黑填充；浅色使用白 surface 与浅灰 page 区分功能层。
+- 图标为线性 SVG 示意，对应现有 IconId 语义；落实 C++ 时复用目录。
+- 画布示例为浏览器近似，不是 CPU/Skia 像素级 golden；字号、控件继承、描边仍需原生 headless 验证。
+
+## 6. 实施建议（B 已落地，A/C/D 为后续预设）
+
+B 画布优先已按本稿 §3–§5 落为同一工作区模型的默认预设（`DesignerApp`
+`centerView_`/`bottomTab_`/`zenMode_`/`leftCollapsed_` + 嵌套 Splitter），
+复用既有 `DesignWorkbench` 命令与事务，编辑/预览/布局偏好分别存放。
+A（经典分区）与 C/D 实现为同一模型的后续预设，而不是复制四套编辑器逻辑。
+
+## 8. B 落地记录（2026-10-13）
+
+对照 `design/designer-ide.html?variant=b`（Canvas Studio）一比一实现，
+视觉值取 `Theme` token（visual-system §3.6），不复制 HTML 常量：
+
+- 标题 44（品牌 + 文件/编辑/视图 + 居中工程名 + DESIGNER + 帮助）+
+  主工具 48（保存/打开/另存/新建/文本/撤销/重做 | 选择/插入/布局 |
+  提示“更少干扰，更大画布” | 专注/调试/停止/运行，Run 唯一 Filled）+
+  工作区（48 rail + 224 left + 6 + center + 6 + 280 right）+ 状态 28。
+- Rail 切换控件/结构（默认控件），大纲操作（上移/下移/复制/删除）下沉
+  `designer-outline-actions`，插入目标常驻 foot；工程面板保留为底部状态行。
+- 中心：文档页签 40（settings.design + 设计/分屏/快照）+ 画布工具 48
+  （尺寸 + 主题/密度/DPI/字号/对比/状态/网格/缩放/适合/环境）+
+  编辑区（设计/分屏/快照）+ 面包屑 32 + 底栏（默认收起 36，展开 144；
+  问题/引用 + 冲突重载/另存/覆盖常驻，折叠不隐藏冲突）。
+- 右检查器 280：属性头 + 选中摘要 + 基本/布局/外观分组；布尔量用
+  Checkbox（HTML“默认选中”同口径），值通道保持
+  `designer-property-field`/`designer-reference-field` 兼容键；
+  Spin（数字）/ComboBox（枚举）保持 TextField 兼容 + 原子校验，为后续接线项。
+- 工作台 Compact，预览独立 Comfortable（ThemeScope 包裹画布）；标尺隐藏
+  （guides 默认关）；画布 padding 48；Splitter 左 180–400、右偏好 280
+  （232–400，拖动回填，resize/折叠恢复偏好、中心吃增量）、Compact 12 步进、
+  双击复位、Esc 先关菜单再退专注；切换均不污染 dirty/undo。
+- 标题栏文件/编辑/视图为 popover 菜单（`designer-menu-popover`，Esc 关闭，
+  激活后关闭并转发原命令，低频入口与主工具单路径）。
+- 运行预览为窗内模态覆盖层（`designer-run-preview-overlay` + scrim +
+  `dialog` 角色卡片）：运行/调试按需出现，停止/Esc/遮罩点击隐藏，不再常驻
+  第二个 OS 黑窗口；`previewShell` 保留供 headless 测试与独立会话使用。
+  覆盖层打开时 Delete/排序/大纲键盘 suspend，预览内 Navigator 返回优先于关闭。
+
+验证：`ctest --test-dir build-debug -C Debug -j4` 1185/1185 通过（含 8 例
+`[b]`：几何/分栏拖拽键盘复位专注折叠/rail分屏选择/标题菜单/布尔复选/右栏
+resize 偏好/运行预览按需浮层/浮层下结构键隔离）；
+`LUMEN_LAYOUT_DUMP=1` 导出 B 元素盒（titlebar 44、main-tools 48、rail 48、
+left 224、right 280、document-tabs 40、canvas-controls 48、crumb 32、
+bottom 36/144、statusbar 28、splitter 6 轨道）供与 HTML 并排比对。
+
+### 8.1 滚动与拖动补全（2026-10-13 追加）
+
+- 面板 ScrollView 接入应用侧滚动状态（lumen-scroll-design §3.4/§4）：
+  `onWheel`/`onScrollDrag`/`onAnimate` 驱动工具箱、工程、源码、属性与运行
+  预览五个视口的 `ScrollController`，偏移随 build 写回；滚轮、滚动条拇指
+  拖动、轨道翻页、触摸内容拖动与惯性可用，键盘/语义滚动同 sink。此前
+  `onWheel` 只认画布平移，全部面板列表不可滚。
+- 工具箱拖放补全布局组覆盖：Column/Grid/ScrollView/Splitter 逐类拖入、
+  Splitter 按 schema 补足 2 个 Container 子节点、布局容器作为后续插入目
+  标、落画布外释放不插入；滚动后面板仍可拖（拖放认领优先于视口滚动，
+  interaction §指针）。滚出视口裁剪区的行不可命中（预期语义）。
+- 画布拖动换位：Stack 子节点按住本体拖动换位（伪手柄 `drag:<id>` 复用
+  resize 会话管线——吸附、父内容区钳制、预览框跟手、一步事务写回
+  left/top、Esc 取消、拖动即选中）。Row/Column 等流式父级的子节点位置
+  由布局拥有，不认领拖动（§4.2 契约不变）；根节点不可拖。
+- `examples/designer/gallery.lumen` 与 `gallery.design` 的 Stack 补定位子
+  场景（stack-card + overlay），默认画布开箱即可演示拖动换位。
+
+验证：`ctest --test-dir build-debug -C Debug -j"$(nproc)"` 1190/1190 通过
+（新增 `[drag]`/`[scroll]` 用例：工具箱布局组拖入、滚动共存、Stack 子拖动
+换位一步事务、流式子节点拒绝）。
+
+### 8.2 默认样例与编辑器默认态（2026-10-13 追加）
+
+- 默认样例（`sample.lumen`，attach 时加载）换为 **540×400 Stack 画板**
+  + 全定位子节点（toolbar/title/三张带文本的卡片/Save/Ready）：开箱即
+  可拖动换位，Save 按钮不再是流式 Column 的不可拖子节点。尺寸口径：
+  1024×768 默认窗口下 fit ≈0.66（16px 正文缩后 ≈10px 可读）；1280×800
+  视口下 fit 判定 zoom=1 不位移（headless 单帧交互稳定）。最初的
+  1024×768 画板在默认窗口 fit ≈0.35，文本 ≈5px 不可读，已回退。
+- 编辑器默认窗口 1024×768（原 1280×800）；未指定 `--file` 时以默认样例
+  直接运行（显式指定但加载失败仍按窗口冒烟契约退出）。
+- **fit-to-view**：根节点声明 width/height 的文档（如默认画板）加载后
+  自适应缩小居中（不放大，留 8px 边；`maybeFitCanvasView`，两帧收敛，
+  用户先行缩放/平移则放弃）。自适应流式根保持 zoom 1。
+- **参考线默认开**（网格点 + 标尺 + 选中框/手柄；菜单/画布工具可关），
+  原"guides 默认关"的 B 落地决策被本条取代。
+- 配套框架能力 `Widget.ignorePointer`（布局复制到 RenderNode，
+  `hitTestChain` 跳过）：装饰性铬件（网格/标尺/十字对齐线/选中框/尺寸
+  标）对指针透明，事件穿透到下方内容；交互手柄不设此标志。此前选中
+  十字线整条压在预览上方，会挡住内容点击。
+- 字段清单同步：`widgetFieldInventory` +86（`ignorePointer`，Derived）。
+
+验证：`ctest --test-dir build-debug -C Debug` 1191/1191 通过（默认样例
+契约用例：1024×768、参考线可见、fit 缩放、Save 拖动 + undo；既有默认
+文档用例改为自加载源或动态定位，不再耦合默认样例结构）。
+
+生产接入之前新增对应 headless 验收：属性失败原子性、面板切换焦点恢复、分栏最小宽、
+按 DocumentId 的跨区域选择、预览环境不污染 dirty/undo。桌面现场再验 IME、DPI、
+键盘和屏幕阅读器。HTML 演示不能代替这些证据。
+
+## 7. 交付与检查
+
+- 单个 `design/designer-ide.html` 内置总览、A/B/C/D、CSS 与 JavaScript，无外部运行依赖；复制或改名该 HTML 后也可直接离线浏览和切换方案。
+- 8 种主题/布局组合可直接打开，操作说明内置于每版“设计说明”。
+- 浏览器检查目标：1440×1000 八组合、1280×800 与 1024×768 布局边界；总览窄屏。
+- 交互检查目标：选择联动、插入/删除/复制/排序、校验失败不提交、撤销/重做、分隔器、源码联动、引用修正、独立预览、主题与密度、快照下载。
+- 本次变更不修改 C++ 控件或 Designer 产品逻辑；C++ 既有测试结果仅作工作树验证，HTML 行为以浏览器检查为准。
+
+2026-10-13 合并前验证：Chrome headless 直接通过 `file://` 打开所有入口，
+160 项浏览器断言通过（153 项跨方案流程 + 7 项容器/选中可见性/主题边界），
+无 JavaScript 异常；完成 1440×1000 八组合、1280×800 八组合、
+1024×768 四布局和 390 宽总览检查。JavaScript 语法与本地依赖链接检查通过。`ctest --test-dir build-debug --output-on-failure
+-C Debug -j 4`：1177/1177 通过（现有 Debug 构建树）。
+
+同日合并为单 HTML 后，160 项浏览器断言复验通过；另外将文件复制并改名到
+仓库外，验证八组合入口、返回总览、方案切换、浏览器前进/后退和主题保留。
+没有外部运行资源请求或 JavaScript 异常。内嵌脚本语法检查通过，
+同一完整 Debug ctest 再次通过 1177/1177。
+
+### 8.3 拖动换位虚线对齐参考（2026-10-13 追加）
+
+- 拖动换位吸附候选扩展：父框 0/中/尾 + **同父子节点的边与中线**（拖动
+  节点的左/中/右、上/中/下分别对齐目标坐标；候选按文档声明收集，与渲
+  放缩放无关）。命中阈值（snapThreshold/zoom）内吸附；未命中回落既有
+  8px 网格。
+- 拖动期间的虚线参考（4px 划/3px 隙装饰条带，`ignorePointer` 指针透
+  明）：**原位虚线框**（拖动起点矩形四边）+ **对齐虚线**（命中候选时
+  全幅横/竖线，`designer-canvas-drag-dash:*`）。释放/取消即清理。
+
+验证：`ctest --test-dir build-debug -C Debug` 1192/1192 通过（虚线对齐
+用例：原始 145 → 吸附兄弟左缘 150 而非网格 144，原位框与对齐线在场，
+释放清理）。
+
+### 8.4 工具箱行尾装饰移除（2026-10-13 追加）
+
+- 用户裁定：组头的**数量徽标**与条目行尾的**拖拽点图标**（Dots）不再
+  显示——列表更干净，信息（分组归属、可拖性）不依赖装饰表达。拖放认
+  领按整行 `designer:toolbox:type` 前缀，行为不变；`design/designer-
+  leftpanel-redesign.html` C 版示意已同步（A/B 变体历史稿保留原样）。

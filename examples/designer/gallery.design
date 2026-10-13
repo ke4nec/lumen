@@ -12,7 +12,6 @@
     "children": [
       {"id": "2", "type": "Container", "properties": {"key": {"kind": "string", "value": "container"}}},
       {"id": "3", "type": "Row", "properties": {"key": {"kind": "string", "value": "row"}}},
-      {"id": "39", "type": "Stack", "properties": {"key": {"kind": "string", "value": "stack"}}},
       {"id": "4", "type": "Text", "properties": {"key": {"kind": "string", "value": "text"}, "text": {"kind": "string", "value": "Gallery"}}},
       {"id": "5", "type": "Button", "properties": {"key": {"kind": "string", "value": "button"}, "text": {"kind": "string", "value": "Action"}}},
       {"id": "6", "type": "TextField", "properties": {"key": {"kind": "string", "value": "text-field"}}},
@@ -48,7 +47,11 @@
       {"id": "35", "type": "DialogHost", "properties": {"key": {"kind": "string", "value": "dialog-host"}}},
       {"id": "36", "type": "Navigator", "properties": {"key": {"kind": "string", "value": "navigator"}}},
       {"id": "37", "type": "Form", "properties": {"key": {"kind": "string", "value": "form"}}},
-      {"id": "38", "type": "DataGrid", "properties": {"key": {"kind": "string", "value": "data-grid"}}}
+      {"id": "38", "type": "DataGrid", "properties": {"key": {"kind": "string", "value": "data-grid"}}},
+      {"id": "39", "type": "Stack", "properties": {"key": {"kind": "string", "value": "stack"}, "height": {"kind": "number", "value": 120}}, "children": [
+        {"id": "40", "type": "Container", "properties": {"key": {"kind": "string", "value": "stack-card"}, "width": {"kind": "number", "value": 220}, "height": {"kind": "number", "value": 84}, "left": {"kind": "number", "value": 12}, "top": {"kind": "number", "value": 18}}},
+        {"id": "41", "type": "Text", "properties": {"key": {"kind": "string", "value": "overlay"}, "text": {"kind": "string", "value": "Overlay"}, "left": {"kind": "number", "value": 96}, "top": {"kind": "number", "value": 52}}}
+      ]}
     ]
   }
 }

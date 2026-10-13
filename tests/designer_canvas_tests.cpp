@@ -89,7 +89,7 @@ TEST_CASE("designer canvas marquee and guides track nodes across dpi zoom and pa
                   std::set<lumen::dsl::DesignNodeId>{firstId});
             CHECK_FALSE(app.workbench().selection().ids.contains(secondId));
             CHECK(app.shell().overlayRoot() == nullptr);
-            app.shell().handlers().at("designer:canvas-guides")();
+            // 参考线默认开（workspace §8.1）：无需再显式打开。
             (void)app.shell().renderFrame();
             const auto guide = bounds(app, "designer-canvas-guide-frame");
             const auto selected = bounds(app, "first");
@@ -137,7 +137,7 @@ TEST_CASE("designer canvas resize preserves design coordinates across dpi zoom a
                 const auto id = node.id;
                 app.shell().handlers().at("designer:select:" + std::to_string(id))();
                 const auto selection = app.workbench().selection();
-                app.shell().handlers().at("designer:canvas-guides")();
+                // 参考线默认开（workspace §8.1）：无需再显式打开。
                 (void)app.shell().renderFrame();
                 const auto original = bounds(app, "node");
                 const auto handle = bounds(app, "designer-canvas-handle:nw");
@@ -220,7 +220,7 @@ TEST_CASE("designer canvas resize uses every handle in parent design units",
             const auto before = *app.workbench().document();
             const auto id = before.root.children[0].children[0].id;
             app.shell().handlers().at("designer:select:" + std::to_string(id))();
-            app.shell().handlers().at("designer:canvas-guides")();
+            // 参考线默认开（workspace §8.1）：无需再显式打开。
             (void)app.shell().renderFrame();
             const auto handle = bounds(app, "designer-canvas-handle:" + handleName);
             const Offset start = handle.origin +
@@ -270,7 +270,7 @@ TEST_CASE("designer canvas view changes cancel resize and stale revisions cannot
         configureCanvas(app, 1, 2);
         const auto id = app.workbench().document()->root.children[0].id;
         app.shell().handlers().at("designer:select:" + std::to_string(id))();
-        app.shell().handlers().at("designer:canvas-guides")();
+        // 参考线默认开（workspace §8.1）：无需再显式打开。
         (void)app.shell().renderFrame();
         const auto selection = app.workbench().selection();
         const auto handle = bounds(app, "designer-canvas-handle:se");
@@ -315,7 +315,7 @@ TEST_CASE("designer canvas root resize excludes view pan from design snapping",
             configureCanvas(app, dpi, zoomSteps);
             const auto before = *app.workbench().document();
             app.shell().handlers().at("designer:select:" + std::to_string(before.root.id))();
-            app.shell().handlers().at("designer:canvas-guides")();
+            // 参考线默认开（workspace §8.1）：无需再显式打开。
             (void)app.shell().renderFrame();
             const auto handle = bounds(app, "designer-canvas-handle:se");
             const Offset start = handle.origin + Offset{4.0F, 4.0F};
