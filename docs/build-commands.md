@@ -29,13 +29,13 @@
 | zlib | `v1.3.1` | 仅 Windows Skia 构建（补 plain zlib 符号） |
 | MinHook | `v1.3.4` / `c3fcafdc10146beb5919319d0683e44e3c30d537` | 仅 Windows x86/x64 `LUMEN_ENABLE_FRAME_ALLOCATOR=ON`；静态链接入独立 profiler DLL，BSD 许可证随可选包安装 |
 
-三桌面 CI 基线（`.github/workflows/`）：
+三桌面 CI 基线（`.github/workflows/`）。每次 push 必跑测试与预检；打包 job 与性能门禁步骤按变更路径触发（`tests/ci_changes.py`，比较基线不可用时保守全触发），基线同步义务由 `tests/ci_preflight.py` 在构建前秒级预检：
 
 | 平台 | runner | 编译器 | 备注 |
 | --- | --- | --- | --- |
-| Windows | `windows-2025` | MSVC（VS 2025 自带，`/utf-8 /W4`） | CPU Debug / Skia Release / GPU Release |
-| Linux | `ubuntu-24.04` | GCC（系统默认，`-Wall -Wextra -Wpedantic`） | CPU Debug + 基准/Xvfb / Skia Release / GPU Release（Mesa llvmpipe）/ package；另保留 mobile-core 实验检查 |
-| macOS | `macos-15` | AppleClang（Xcode CLT） | CPU Debug / GPU Release / package；另保留 mobile-core 实验检查 |
+| Windows | `windows-2025` | MSVC（VS 2025 自带，`/utf-8 /W4`） | CPU Debug / Skia Release / GPU Release；package* 按路径触发 |
+| Linux | `ubuntu-24.04` | GCC（系统默认，`-Wall -Wextra -Wpedantic`） | CPU Release + 基准/Xvfb / Skia Release / GPU Release（Mesa llvmpipe）/ package（基准与 package 按路径触发）；mobile-core 移至周度工作流 |
+| macOS | `macos-15` | AppleClang（Xcode CLT） | CPU Debug / GPU Release / package（按路径触发）；mobile-core 移至周度工作流 |
 
 ## 2. 桌面统一命令表
 
@@ -92,7 +92,8 @@ Gallery 固定样本参数：`--sample-route` 支持 `home/buttons/inputs/layout
 导出为原始 RGBA8，配套 `<输出文件>.txt` 保存实际像素宽高、逻辑视口、字体来源及样本参数。加 `--system-fonts` 使用本机字体，加载失败返回非零状态；省略时使用确定性测试字体。`--sample-route` 是一次性导出动作：渲染/写盘完成后进程即退出（`--headless` 可省），不再落入交互窗口模式。未传 `--sample-route` 的原有 `--headless` 继续执行全路由交互 smoke。原始帧和转换后的 PNG 应保存在忽略的构建目录。
 
 本节前两组 Gallery 命令属于桌面验证。`LUMEN_BUILD_MOBILE_CORE=ON` 仍存在，
-Linux/macOS 工作流中的历史 `mobile-core` job 可能继续执行；以下 mobile-core 命令
+历史 `mobile-core` job 已从 Linux/macOS push 工作流移入
+`.github/workflows/mobile-core.yml`（每周一巡检 + 手动触发）；以下 mobile-core 命令
 只验证通用库与 headless 测试，不是 Android NDK/iOS 工程构建，不代表模拟器、真机、
 移动文本输入或发布通过。M9 已冻结，mobile-core 不是移动实施清单，也不应作为每个
 桌面任务的附加验收；仅在维护相关兼容配置或用户明确要求时按需运行。

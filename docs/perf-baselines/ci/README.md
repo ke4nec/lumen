@@ -15,6 +15,13 @@ within the limit). Re-anchoring to a reviewed commit whose timing is verified
 within the limit is the sanctioned refresh path; refreshing to suppress genuine
 timing regressions is not.
 
+The linux workflow runs `tests/ci_preflight.py` (job `preflight`) before any
+build job: it repeats the same digest comparison of both anchors (scene and
+designer) against git history and verifies the `reference.json` pins match the
+`LUMEN_*_BASELINE_COMMIT` values in `linux.yml`, so a missed re-anchor fails
+within seconds and names the files to update instead of surfacing as an
+identity failure after a full build.
+
 The checked-in timing JSON files are **historical samples with incomplete
 provenance** (`commit: working-tree` and no machine identity). They are retained
 for inspection and are no longer accepted by the CI gate. Do not relabel them

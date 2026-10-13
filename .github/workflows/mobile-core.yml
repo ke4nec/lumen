@@ -1,0 +1,168 @@
+name: mobile-core
+
+# v0.3 阶段8E 的历史 SDL-free 兼容检查（Android/iOS host 使用的目标集
+# 必须可编译并通过全部 headless 测试，不依赖桌面会话）。移动端范围已
+# 冻结（AGENTS.md：M9 无排期），本检查不随每次 push 运行，改为每周巡检
+# + 手动触发，防止 SDL-free 目标集静默腐化；desktop 任务不受影响。
+
+on:
+  schedule:
+    # 周一 04:00 UTC（GitHub schedule 统一 UTC），错开工作时段的 push 高峰。
+    # schedule 只在默认分支上触发。
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (Catch2 only, SDL-free)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: linux-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            linux-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: linux-ccache-mobile-${{ github.sha }}
+          restore-keys: |
+            linux-ccache-mobile-
+            linux-ccache-
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+      - name: Configure (SDL-free mobile core)
+        run: >
+          cmake -S . -B build-mobile -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_MOBILE_CORE=ON
+      - name: Build
+        run: cmake --build build-mobile --config Debug
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
+      - name: Test (headless, no desktop session)
+        shell: bash
+        run: |
+          set +e
+          ctest --test-dir build-mobile --output-on-failure -C Debug 2>&1 | tee ctest-diag.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          import re
+          log = open('ctest-diag.log', errors='replace').read()
+          hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
+          sm = re.search(r'^\d+%.*$', log, re.M)
+          if sm:
+              print(f"::error::summary: {sm.group(0).strip()}")
+          if hit:
+              for line in hit.group(1).splitlines():
+                  m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
+                  if m:
+                      print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
+          for ln in tail:
+              print(f"::error::tail: {ln[:200]}")
+          for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
+              cond = ' '.join(m.group(1).split())
+              exp = ' '.join(m.group(2).split())[:220]
+              print(f"::error::expansion: {cond} => {exp}")
+          PY
+          fi
+          exit "$status"
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-mobile-test-logs
+          path: |
+            build-mobile/Testing/Temporary/LastTest.log
+            build-mobile/Testing/Temporary/LastTestsFailed.log
+          retention-days: 3
+          overwrite: true
+
+  # 移动核心门槛（与 linux job 相同）：iOS host 使用的 SDL-free 目标集
+  # 可编译且全部 headless 测试通过。
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache FetchContent deps (Catch2 only, SDL-free)
+        uses: actions/cache@v4
+        with:
+          path: .fetchcontent-cache
+          key: macos-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: |
+            macos-fetchcontent-
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: macos-ccache-mobile-${{ github.sha }}
+          restore-keys: |
+            macos-ccache-mobile-
+            macos-ccache-
+      - name: Install ccache + ninja
+        run: brew install ccache ninja || brew upgrade ccache ninja || true
+      - name: Configure (SDL-free mobile core)
+        run: >
+          cmake -S . -B build-mobile -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DLUMEN_BUILD_TESTS=ON
+          -DLUMEN_BUILD_MOBILE_CORE=ON
+      - name: Build (Debug)
+        run: cmake --build build-mobile --config Debug
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats || true
+      - name: Test (headless)
+        shell: bash
+        run: |
+          set +e
+          ctest --test-dir build-mobile --output-on-failure -C Debug --timeout 120 2>&1 | tee ctest-diag.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          import re
+          log = open('ctest-diag.log', errors='replace').read()
+          hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
+          sm = re.search(r'^\d+%.*$', log, re.M)
+          if sm:
+              print(f"::error::summary: {sm.group(0).strip()}")
+          if hit:
+              for line in hit.group(1).splitlines():
+                  m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
+                  if m:
+                      print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
+          tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
+          for ln in tail:
+              print(f"::error::tail: {ln[:200]}")
+          for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
+              cond = ' '.join(m.group(1).split())
+              exp = ' '.join(m.group(2).split())[:220]
+              print(f"::error::expansion: {cond} => {exp}")
+          PY
+          fi
+          exit "$status"
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-mobile-test-logs
+          path: |
+            build-mobile/Testing/Temporary/LastTest.log
+            build-mobile/Testing/Temporary/LastTestsFailed.log
+          retention-days: 3
+          overwrite: true

@@ -18,10 +18,35 @@ env:
   FETCHCONTENT_BASE_DIR: ${{ github.workspace }}/.fetchcontent-cache
 
 jobs:
+  # 路径检测：打包 job 按变更路径触发（与 linux.yml 同一脚本）；无法
+  # 确定比较基线时保守触发，不会静默跳过。只跑 git+python3，用 Linux
+  # runner 节省 Windows 分钟数。
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      packaging: ${{ steps.detect.outputs.packaging }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: detect
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then base="$PR_BASE"; else base="$BEFORE"; fi
+          python3 -B tests/ci_changes.py --base "$base" >> "$GITHUB_OUTPUT"
+
   # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
   package:
     runs-on: windows-2025
     timeout-minutes: 30
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.packaging == 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/zlib)
@@ -367,6 +392,8 @@ jobs:
   package-skia:
     runs-on: windows-2025
     timeout-minutes: 40
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.packaging == 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)
@@ -418,6 +445,8 @@ jobs:
   package-skia-gpu:
     runs-on: windows-2025
     timeout-minutes: 40
+    needs: changes
+    if: needs.changes.result == 'success' && needs.changes.outputs.packaging == 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia/zlib)

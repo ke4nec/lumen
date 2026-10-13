@@ -97,7 +97,9 @@ python3 -B benchmarks/run_designer_perf_gate.py \
 Changing `benchmarks/designer_bench.cpp` or `cmake/dependencies.cmake` changes
 the workload identity. Re-anchor both pins together to a reviewed, tested
 commit; do not refresh a baseline to hide a genuine regression. The existing
-scene benchmark has its own independent reference.
+scene benchmark has its own independent reference. The linux workflow's
+`preflight` job (`tests/ci_preflight.py`) checks this anchor's digests against
+git history before any build, so a missed re-anchor fails within seconds.
 
 The collector measures scoped C++ `new/delete` in headless CPU preview
 operations, including L2 VirtualList composition. It excludes desktop

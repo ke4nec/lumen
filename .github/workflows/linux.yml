@@ -36,10 +36,49 @@ env:
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
 jobs:
+  # 门禁预检：性能基线钉住提交与锚定源码（scene_bench/designer_bench/
+  # dependencies.cmake）的摘要一致性在构建前秒级失败——否则 identity
+  # 失配要等 30 分钟构建后才暴露（re-anchoring 规则见
+  # docs/perf-baselines/ci/README.md）。
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # 预检需要读取钉住提交的历史内容。
+          fetch-depth: 0
+      - name: Perf baseline preflight
+        run: python3 -B tests/ci_preflight.py
+
+  # 路径检测：打包 job 与性能门禁步骤按变更路径触发。无法确定比较
+  # 基线时保守触发全部门禁（tests/ci_changes.py），不会静默跳过。
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      packaging: ${{ steps.detect.outputs.packaging }}
+      perf: ${{ steps.detect.outputs.perf }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then base="$PR_BASE"; else base="$BEFORE"; fi
+          python3 -B tests/ci_changes.py --base "$base" >> "$GITHUB_OUTPUT"
+
   # M8（自用路线图）：便携包（install 规则 + CPack + 解包冒烟 + artifact）。
   package:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    needs: [preflight, changes]
+    if: needs.changes.result == 'success' && needs.changes.outputs.packaging == 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2)
@@ -153,6 +192,7 @@ jobs:
   cpu:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    needs: [preflight, changes]
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
@@ -237,11 +277,13 @@ jobs:
       # M7 性能门槛：固定场景逐项比较 p50/p95、分配量、命令数和
       # submit/GPU wait；同场景三次运行仍须保持 frame_hash 一致。
       - name: Checkout pinned performance reference
+        if: needs.changes.outputs.perf == 'true'
         uses: actions/checkout@v5
         with:
           ref: ${{ env.LUMEN_PERF_BASELINE_COMMIT }}
           path: .perf-reference
       - name: Build reference with the same toolchain
+        if: needs.changes.outputs.perf == 'true'
         run: |
           cmake -S .perf-reference -B perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
           cmake --build perf-reference-build --parallel --target lumen-scene-bench
@@ -250,6 +292,7 @@ jobs:
         # bit-identical binaries; retry once into a separate directory (both
         # attempts are archived, pass if either passes). Limit, tolerance and
         # reference are unchanged by a retry.
+        if: needs.changes.outputs.perf == 'true'
         run: |
           python3 -B benchmarks/run_perf_gate.py --backend cpu \
             --baseline-source .perf-reference --baseline-bin perf-reference-build/benchmarks/lumen-scene-bench \
@@ -258,7 +301,7 @@ jobs:
             --baseline-source .perf-reference --baseline-bin perf-reference-build/benchmarks/lumen-scene-bench \
             --current-bin build/benchmarks/lumen-scene-bench --output bench-results/cpu-retry
       - name: Upload benchmark report
-        if: always()
+        if: always() && needs.changes.outputs.perf == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: cpu-benchmark-report
@@ -270,18 +313,21 @@ jobs:
           compression-level: 9
           overwrite: true
       - name: Cleanup benchmark intermediates
-        if: always()
+        if: always() && needs.changes.outputs.perf == 'true'
         run: rm -f bench-cpu-*.json
       - name: Checkout pinned Designer performance reference
+        if: needs.changes.outputs.perf == 'true'
         uses: actions/checkout@v5
         with:
           ref: ${{ env.LUMEN_DESIGNER_PERF_BASELINE_COMMIT }}
           path: .designer-perf-reference
       - name: Build Designer reference with the same toolchain
+        if: needs.changes.outputs.perf == 'true'
         run: |
           cmake -S .designer-perf-reference -B designer-perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON -DLUMEN_ENABLE_ACCESSIBILITY_BRIDGE=ON
           cmake --build designer-perf-reference-build --parallel --target lumen-designer-bench
       - name: Benchmark (Designer regression gate)
+        if: needs.changes.outputs.perf == 'true'
         run: |
           python3 -B benchmarks/run_designer_perf_gate.py \
             --baseline-source .designer-perf-reference --baseline-bin designer-perf-reference-build/benchmarks/lumen-designer-bench \
@@ -290,7 +336,7 @@ jobs:
             --baseline-source .designer-perf-reference --baseline-bin designer-perf-reference-build/benchmarks/lumen-designer-bench \
             --current-bin build/benchmarks/lumen-designer-bench --output bench-results/designer-retry
       - name: Upload Designer benchmark report
-        if: always()
+        if: always() && needs.changes.outputs.perf == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: designer-benchmark-report
@@ -314,6 +360,7 @@ jobs:
   skia:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    needs: [preflight, changes]
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
@@ -381,16 +428,19 @@ jobs:
       - name: Windowed Skia smoke (Xvfb)
         run: bash tests/windowed_smoke.sh skia-counter ./build-skia/examples/counter/lumen-counter --renderer skia
       - name: Checkout pinned performance reference
+        if: needs.changes.outputs.perf == 'true'
         uses: actions/checkout@v5
         with:
           ref: ${{ env.LUMEN_PERF_BASELINE_COMMIT }}
           path: .perf-reference
       - name: Build reference with the same toolchain
+        if: needs.changes.outputs.perf == 'true'
         run: |
           cmake -S .perf-reference -B perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON -DLUMEN_ENABLE_SKIA=ON
           cmake --build perf-reference-build --parallel --target lumen-scene-bench
       - name: Benchmark (Skia regression gate)
         # Same transient-noise retry as the CPU gate (see above).
+        if: needs.changes.outputs.perf == 'true'
         run: |
           python3 -B benchmarks/run_perf_gate.py --backend skia \
             --baseline-source .perf-reference --baseline-bin perf-reference-build/benchmarks/lumen-scene-bench \
@@ -399,7 +449,7 @@ jobs:
             --baseline-source .perf-reference --baseline-bin perf-reference-build/benchmarks/lumen-scene-bench \
             --current-bin build-skia/benchmarks/lumen-scene-bench --output bench-results/skia-retry
       - name: Upload Skia benchmark report
-        if: always()
+        if: always() && needs.changes.outputs.perf == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: skia-benchmark-report
@@ -426,6 +476,7 @@ jobs:
   skia-gpu:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    needs: [preflight, changes]
     env:
       LIBGL_ALWAYS_SOFTWARE: "1"
     steps:
@@ -508,16 +559,19 @@ jobs:
           -DEXPECTED_BACKEND=skia-gpu
           -P tests/counter_gpu_smoke.cmake
       - name: Checkout pinned performance reference
+        if: needs.changes.outputs.perf == 'true'
         uses: actions/checkout@v5
         with:
           ref: ${{ env.LUMEN_PERF_BASELINE_COMMIT }}
           path: .perf-reference
       - name: Build reference with the same toolchain
+        if: needs.changes.outputs.perf == 'true'
         run: |
           cmake -S .perf-reference -B perf-reference-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=OFF -DLUMEN_BUILD_EXAMPLES=OFF -DLUMEN_BUILD_BENCHMARKS=ON -DLUMEN_ENABLE_SKIA=ON -DLUMEN_ENABLE_GPU=ON
           cmake --build perf-reference-build --parallel --target lumen-scene-bench
       - name: Benchmark (GPU regression gate, llvmpipe)
         # Same transient-noise retry as the CPU gate (see above).
+        if: needs.changes.outputs.perf == 'true'
         run: |
           xvfb-run -a python3 -B benchmarks/run_perf_gate.py --backend gpu \
             --baseline-source .perf-reference --baseline-bin perf-reference-build/benchmarks/lumen-scene-bench \
@@ -526,7 +580,7 @@ jobs:
             --baseline-source .perf-reference --baseline-bin perf-reference-build/benchmarks/lumen-scene-bench \
             --current-bin build-gpu/benchmarks/lumen-scene-bench --output bench-results/gpu-retry
       - name: Upload GPU benchmark report
-        if: always()
+        if: always() && needs.changes.outputs.perf == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gpu-benchmark-report
@@ -547,87 +601,12 @@ jobs:
           retention-days: 3
           overwrite: true
 
-  # v0.3 阶段8E：移动核心门槛 —— SDL-free 配置（Android/iOS host 使用的
-  # 目标集）必须可编译并通过全部 headless 测试，不依赖桌面会话。
-  mobile-core:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - name: Cache FetchContent deps (Catch2 only, SDL-free)
-        uses: actions/cache@v4
-        with:
-          path: .fetchcontent-cache
-          key: linux-fetchcontent-${{ hashFiles('cmake/dependencies.cmake', 'CMakeLists.txt') }}
-          restore-keys: |
-            linux-fetchcontent-
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: linux-ccache-mobile-${{ github.sha }}
-          restore-keys: |
-            linux-ccache-mobile-
-            linux-ccache-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ccache
-      - name: Configure (SDL-free mobile core)
-        run: >
-          cmake -S . -B build-mobile -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DLUMEN_BUILD_TESTS=ON
-          -DLUMEN_BUILD_MOBILE_CORE=ON
-      - name: Build
-        run: cmake --build build-mobile --config Debug
-      - name: ccache stats
-        if: always()
-        run: ccache --show-stats || true
-      - name: Test (headless, no desktop session)
-        shell: bash
-        run: |
-          set +e
-          ctest --test-dir build-mobile --output-on-failure -C Debug 2>&1 | tee ctest-diag.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            python3 - <<'PY'
-          import re
-          log = open('ctest-diag.log', errors='replace').read()
-          hit = re.search(r'The following tests FAILED:(.*?)(?:\n\n|\Z)', log, re.S)
-          sm = re.search(r'^\d+%.*$', log, re.M)
-          if sm:
-              print(f"::error::summary: {sm.group(0).strip()}")
-          if hit:
-              for line in hit.group(1).splitlines():
-                  m = re.match(r'\s*(\d+)\s*-\s*(\S+)\s*\(([^)]*)\)', line)
-                  if m:
-                      print(f"::error::ctest-failed: {m.group(2)} ({m.group(3)}) #{m.group(1)}")
-          tail = [ln.strip() for ln in log.strip().splitlines()[-6:] if ln.strip()]
-          for ln in tail:
-              print(f"::error::tail: {ln[:200]}")
-          for m in re.finditer(r'FAILED:\n(.*?)\nwith expansion:\n(.*?)(?:\n\n|\n[a-z]|\Z)', log, re.S):
-              cond = ' '.join(m.group(1).split())
-              exp = ' '.join(m.group(2).split())[:220]
-              print(f"::error::expansion: {cond} => {exp}")
-          PY
-          fi
-          exit "$status"
-      - name: Upload test logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-mobile-test-logs
-          path: |
-            build-mobile/Testing/Temporary/LastTest.log
-            build-mobile/Testing/Temporary/LastTestsFailed.log
-          retention-days: 3
-          overwrite: true
-
   # M12：Skia 光栅便携包（Release；解包冒烟同 CPU 变体）。
   package-skia:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    needs: [preflight, changes]
+    if: needs.changes.result == 'success' && needs.changes.outputs.packaging == 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
@@ -697,6 +676,8 @@ jobs:
   package-skia-gpu:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    needs: [preflight, changes]
+    if: needs.changes.result == 'success' && needs.changes.outputs.packaging == 'true'
     steps:
       - uses: actions/checkout@v5
       - name: Cache FetchContent deps (SDL3/Catch2/Skia)
