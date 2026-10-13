@@ -398,6 +398,10 @@ struct Widget {
     // 用于同一逻辑集合行的第二视图（冻结区行）——Tab 唯一入口在主视图
     // 行。默认 false。
     bool excludeFromFocus{false};
+    // 指针透明：装饰性铬件（画布参考线/网格/标尺/选中框/尺寸标）对命
+    // 中测试透明，指针事件穿透到下方内容。交互手柄等可拖目标不设此
+    // 标志。
+    bool ignorePointer{false};
 
     // Stage 3 semantics: `bind` names a StateStore key, `onClick` names a
     // handler in the app's HandlerRegistry. `bindPrefix` preserves the

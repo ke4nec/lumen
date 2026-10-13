@@ -89,6 +89,11 @@ const RenderNode* hitTestChain(const RenderNode& node, Offset position,
     if (node.type == WidgetType::Tooltip) {
         return nullptr;
     }
+    // 指针透明的装饰性铬件（画布参考线/网格/标尺等，Widget.ignorePointer
+    // 布局期复制）：整棵子树对命中测试透明，事件穿透到下方内容。
+    if (node.ignorePointer) {
+        return nullptr;
+    }
     if (!Rect{Offset{}, node.size}.contains(position)) {
         return nullptr;
     }

@@ -1016,6 +1016,7 @@ const WidgetFieldInventory& widgetFieldInventory() {
         {"clipRounded", "", WidgetFieldCategory::Declaration},
         {"excludeFromSemantics", "", WidgetFieldCategory::Declaration},
         {"excludeFromFocus", "", WidgetFieldCategory::Declaration},
+        {"ignorePointer", "", WidgetFieldCategory::Derived},
         {"bind", "bind", WidgetFieldCategory::RuntimeReference},
         {"bindPrefix", "", WidgetFieldCategory::Derived},
         {"onClick", "onClick", WidgetFieldCategory::RuntimeReference},

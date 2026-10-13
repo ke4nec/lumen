@@ -62,6 +62,9 @@ struct RenderNode {
     // 键盘焦点排除（Widget.excludeFromFocus 布局期复制；interaction 的
     // Tab 收集跳过——指针路径不受影响）。
     bool excludeFromFocus{false};
+    // 指针透明（Widget.ignorePointer 布局期复制）：装饰性铬件（画布参
+    // 考线/网格/标尺等）对命中测试透明，事件穿透到下方内容。
+    bool ignorePointer{false};
     // 虚拟化视口（VirtualList/List/Tree/TreeList）携带数据源：交互层
     // 滚轮/拖动滚动据此直接驱动源控制器的 ScrollController，应用无需
     // 按 key 接线（collection-controls-design §6.5）。
