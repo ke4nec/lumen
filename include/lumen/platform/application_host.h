@@ -226,6 +226,10 @@ struct PlatformCapabilities {
     bool clipboardFormats{false};
     bool clipboardImage{false};
     bool clipboardChange{false};
+    // 桌面系统字体可注入（runApp 默认字体门控）：true 时未显式提供
+    // RunOptions.fontFactory 的默认渲染路径由 runApp 注入系统字形；
+    // Fake/契约 host 保持 false（测试占位度量契约不变）。
+    bool systemFonts{false};
     // 至少一项 OS 偏好已查询成功；个别未暴露的字段保留安全默认值。
     bool systemAccessibilityPreferences{false};
 };

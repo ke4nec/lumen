@@ -466,23 +466,9 @@ int runWindowed(GalleryApp& app, const Options& options) {
             lumen::examples::renderGalleryIcon(size);
         return lumen::platform::WindowIcon{size, size, std::move(bitmap.rgba)};
     };
-    // 桌面系统字体：窗口路径注入真实字形（Windows 雅黑优先），CPU 光
-    // 栅经同一管理器排版+绘制；失败回退占位并诊断（headless 不注入，
-    // 保持帧哈希确定性）。
-    runOptions.fontFactory = []()
-        -> std::shared_ptr<lumen::text::FontManager> {
-        std::string fontDiagnostics;
-        auto fonts =
-            lumen::text::createSystemFontManager(&fontDiagnostics);
-        if (fonts != nullptr) {
-            std::printf("[diag] fonts: %s\n", fontDiagnostics.c_str());
-            return std::shared_ptr<lumen::text::FontManager>(
-                std::move(fonts));
-        }
-        std::printf("[diag] fonts: %s — keeping placeholder metrics\n",
-                    fontDiagnostics.c_str());
-        return {};
-    };
+    // 桌面系统字体：runApp 默认注入（systemFonts 能力 + 未显式提供
+    // fontFactory；见 RunOptions.fontFactory 注释），成功诊断行随
+    // --diagnostics 输出，失败回退占位并提示。
     // M12：系统主题切换 → 注入偏好（开启"跟随系统"时重派生主题）；
     // 自定义标题栏：WindowMaximized/WindowRestored → 最大化图标切换。
     // Restored 需查询实际最大化态（最小化恢复与最大化还原同事件，盲目

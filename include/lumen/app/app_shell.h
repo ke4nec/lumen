@@ -670,6 +670,9 @@ struct RunOptions {
                                                core::WindowId&)>
         onRendererFailure{};
     // 字体工厂（Skia 后端时返回 SkiaFontManager；返回空保持占位）。
+    // 未设置且宿主 systemFonts 能力为 true、无自定义 rendererFactory
+    // 时，runApp 默认注入系统字体管理器（缺字回退占位并诊断）——桌面
+    // CPU 应用零接线；显式设置始终优先。
     std::function<std::shared_ptr<text::FontManager>()> fontFactory{};
     // M14-C：字体异步生命周期。true 时 fontFactory 移到后台线程执行
     //（fontconfig/CoreText/GDI 枚举不阻塞首帧，首帧占位度量渲染），

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -18,6 +19,7 @@
 #include "lumen/platform/application_host.h"
 #include "lumen/platform/frame_allocator.h"
 #include "lumen/render/frame_scheduler.h"
+#include "lumen/text/system_font_manager.h"
 
 namespace lumen::app {
 namespace {
@@ -256,14 +258,41 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
             allocationSource = runtime.nativeFrameAllocator.get();
         }
         shell.setFrameAllocationSource(allocationSource);
-        if (runtime.app.options.fontFactory) {
+        // 桌面默认字体：未显式提供 fontFactory、宿主上报 systemFonts
+        // 能力且走默认渲染路径时注入系统字形——各应用不再复制同一段接
+        // 线。失败回退占位并诊断；Fake/契约 host（能力缺省 false）与
+        // 自定义渲染器的应用（Skia 度量选择属应用决策）保持占位度量。
+        std::function<std::shared_ptr<text::FontManager>()> fontFactory =
+            runtime.app.options.fontFactory;
+        if (!fontFactory && host.capabilities().systemFonts &&
+            !runtime.app.options.rendererFactory) {
+            fontFactory = [verbose = runtime.app.options.diagnostics]()
+                -> std::shared_ptr<text::FontManager> {
+                std::string fontDiagnostics;
+                auto fonts =
+                    text::createSystemFontManager(&fontDiagnostics);
+                if (fonts != nullptr) {
+                    if (verbose) {
+                        std::printf("[diag] fonts: %s\n",
+                                    fontDiagnostics.c_str());
+                    }
+                    return std::shared_ptr<text::FontManager>(
+                        std::move(fonts));
+                }
+                std::printf(
+                    "[diag] fonts: %s — keeping placeholder metrics\n",
+                    fontDiagnostics.c_str());
+                return {};
+            };
+        }
+        if (fontFactory) {
             // M14-C：asyncFonts 时工厂移到后台线程（首帧占位度量），
             // 完成后在主循环热替换；同步路径保持原语义。
             if (runtime.app.options.asyncFonts) {
                 // RunOptions 工厂无诊断出参：成功取 manager->diagnostic()，
                 // 失败由工厂闭包自行输出细节，此处给框架级摘要。
                 runtime.fontLoader = std::make_unique<FontLoader>(
-                    [factory = runtime.app.options.fontFactory](
+                    [factory = std::move(fontFactory)](
                         std::string* diagnostics)
                         -> std::shared_ptr<text::FontManager> {
                         auto fonts = factory();
@@ -276,7 +305,7 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                         }
                         return fonts;
                     });
-            } else if (auto fonts = runtime.app.options.fontFactory()) {
+            } else if (auto fonts = fontFactory()) {
                 shell.setFontManager(std::move(fonts));
             }
         }

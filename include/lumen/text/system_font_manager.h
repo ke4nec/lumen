@@ -13,8 +13,10 @@
 // 另向 CpuRenderer 提供字形覆盖位图（灰度 coverage）。
 //
 // 线程：只读并发安全（位图缓存内部加锁）；UI 线程独占创建。无可用字
-// 体文件时工厂返回 nullptr（调用方回退占位并诊断），窗口以外路径
-// （headless/测试）默认仍走占位，保证帧哈希确定性。
+// 体文件时工厂返回 nullptr（调用方回退占位并诊断）。注入：窗口路径经
+// RunOptions.fontFactory；未显式提供且宿主上报 systemFonts 能力、走默
+// 认渲染路径时 runApp 自动注入（本文件即该默认的工厂）。headless/测试
+// （Fake/契约 host 能力缺省 false）保持占位，保证帧哈希确定性。
 
 #include <cstdint>
 #include <memory>

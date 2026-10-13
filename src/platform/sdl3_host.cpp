@@ -440,6 +440,9 @@ bool Sdl3ApplicationHost::initialize() {
 #else
     capabilities_.clipboardImage = false;
 #endif
+    // 桌面系统字体目录三平台可达（Win/macOS/Linux 字体扫描见
+    // text/system_font_manager.h；缺字时工厂回退占位并诊断）。
+    capabilities_.systemFonts = true;
     // M12：系统主题查询（SDL_GetSystemTheme，3.2.0 起可用；此前
     // "SDL 3.2 无查询"注释有误）。UNKNOWN 保持安全默认 false。
     capabilities_.prefersDarkMode =

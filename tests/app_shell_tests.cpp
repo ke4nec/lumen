@@ -31,6 +31,7 @@
 #include "lumen/render/painter.h"
 #include "lumen/render/renderer.h"
 #include "lumen/text/font_manager.h"
+#include "system_font_fixture.h"
 
 using lumen::app::AppShell;
 using lumen::app::AppWindow;
@@ -1285,6 +1286,114 @@ TEST_CASE("run_app_async_fonts_failure_keeps_placeholder", "[app]") {
     host.createWindow({});
     REQUIRE(lumen::app::runApp(shell, host, options) == 0);
     CHECK(factoryCalls.load() == 1);
+    CHECK(shell.fontManager() == nullptr);
+}
+
+TEST_CASE("run_app_default_fonts_inject_when_host_capable",
+          "[app][system-fonts-slow]") {
+    // 桌面默认字体：宿主上报 systemFonts 能力且未显式提供 fontFactory
+    // 时，runApp 注入系统字形（装配期同步替换，首帧即正式度量）。缺字
+    // 环境与系统字体重负载用例同口径降级 SKIP；[system-fonts-slow] 领
+    // 600s 冷扫描预算（探针与 runApp 内建工厂各扫一次默认目录）。
+    if (lumen::test::sharedSystemFonts() == nullptr) {
+        SKIP("no system fonts: "
+             << lumen::test::sharedSystemFontsDiagnostic());
+    }
+    FakeApplicationHost host;
+    lumen::platform::PlatformCapabilities caps;
+    caps.systemFonts = true;
+    host.setCapabilities(caps);
+
+    ShellConfig config;
+    config.initialView = Size{200, 100};
+    config.build = [] {
+        return lumen::core::withKey(lumen::core::makeText("default fonts"),
+                                    "default-fonts-text");
+    };
+    AppShell shell{config};
+
+    RunOptions options;
+    options.idleWaitMs = 5;
+    int polls = 0;
+    options.poll = [&](AppShell&, std::uint64_t) {
+        if (++polls >= 2) {
+            host.pushQuit();
+        }
+        return false;
+    };
+
+    REQUIRE(host.initialize());
+    host.createWindow({});
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    REQUIRE(shell.fontManager() != nullptr);
+    CHECK_FALSE(shell.fontManager()->availableFamilies().empty());
+}
+
+TEST_CASE("run_app_default_fonts_keep_placeholder_when_host_uncapable",
+          "[app]") {
+    // 能力缺省（Fake host systemFonts=false）且未给 fontFactory：保持
+    // 占位度量——headless/测试的帧哈希契约不受桌面默认注入影响。
+    FakeApplicationHost host;
+
+    ShellConfig config;
+    config.initialView = Size{200, 100};
+    config.build = [] {
+        return lumen::core::withKey(lumen::core::makeText("no capability"),
+                                    "default-fonts-uncapable");
+    };
+    AppShell shell{config};
+
+    RunOptions options;
+    options.idleWaitMs = 5;
+    int polls = 0;
+    options.poll = [&](AppShell&, std::uint64_t) {
+        if (++polls >= 2) {
+            host.pushQuit();
+        }
+        return false;
+    };
+
+    REQUIRE(host.initialize());
+    host.createWindow({});
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
+    CHECK(shell.fontManager() == nullptr);
+}
+
+TEST_CASE("run_app_default_fonts_defer_to_custom_renderer", "[app]") {
+    // 自定义 rendererFactory 的应用（Skia 度量选择属应用决策）即便宿主
+    // systemFonts 能力为 true 也不默认注入——占位或显式工厂由应用自定。
+    FakeApplicationHost host;
+    lumen::platform::PlatformCapabilities caps;
+    caps.systemFonts = true;
+    host.setCapabilities(caps);
+
+    ShellConfig config;
+    config.initialView = Size{200, 100};
+    config.build = [] {
+        return lumen::core::withKey(lumen::core::makeText("custom renderer"),
+                                    "default-fonts-custom-renderer");
+    };
+    AppShell shell{config};
+
+    RunOptions options;
+    options.idleWaitMs = 5;
+    options.rendererFactory =
+        [&](lumen::platform::ApplicationHost&, lumen::core::WindowId&) {
+            RendererSetup setup;
+            setup.present = [] { return true; };
+            return setup;
+        };
+    int polls = 0;
+    options.poll = [&](AppShell&, std::uint64_t) {
+        if (++polls >= 2) {
+            host.pushQuit();
+        }
+        return false;
+    };
+
+    REQUIRE(host.initialize());
+    host.createWindow({});
+    REQUIRE(lumen::app::runApp(shell, host, options) == 0);
     CHECK(shell.fontManager() == nullptr);
 }
 

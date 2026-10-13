@@ -16,7 +16,6 @@
 #include "lumen/accessibility/bridge.h"
 #include "lumen/platform/sdl3_host.h"
 #include "lumen/style/theme.h"
-#include "lumen/text/system_font_manager.h"
 
 namespace {
 
@@ -625,25 +624,9 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
     runOptions.windowDesc.height = 800;
     runOptions.maxFrames = designerOptions.maxFrames;
     runOptions.resourceManager = app.resourceManager();
-    // 桌面系统字体：与 gallery（d57625c）同口径——窗口路径注入真实字形，
-    // 失败回退占位并诊断；headless/acceptance 不经过 runApp，保持占位
-    // 度量与帧哈希确定性。
-    const auto fontFactory =
-        []() -> std::shared_ptr<lumen::text::FontManager> {
-            std::string fontDiagnostics;
-            auto fonts =
-                lumen::text::createSystemFontManager(&fontDiagnostics);
-            if (fonts != nullptr) {
-                std::printf("[diag] fonts: %s\n",
-                            fontDiagnostics.c_str());
-                return std::shared_ptr<lumen::text::FontManager>(
-                    std::move(fonts));
-            }
-            std::printf("[diag] fonts: %s — keeping placeholder metrics\n",
-                        fontDiagnostics.c_str());
-            return {};
-        };
-    runOptions.fontFactory = fontFactory;
+    // 桌面系统字体由 runApp 默认注入（systemFonts 能力；见
+    // RunOptions.fontFactory 注释）；headless/acceptance 不经过 runApp，
+    // 保持占位度量与帧哈希确定性。
     runOptions.onEvent = [&app](lumen::app::AppShell&,
                                 const lumen::core::HostEvent& event) {
         if (event.type == lumen::core::HostEventType::FileDialogCompleted) {
@@ -680,7 +663,6 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
     previewOptions.windowDesc.height = 640;
     previewOptions.maxFrames = designerOptions.maxFrames;
     previewOptions.resourceManager = app.resourceManager();
-    previewOptions.fontFactory = fontFactory;
     const int result = lumen::app::runApp(
         {{&app.shell(), std::move(runOptions)},
          {&app.previewShell(), std::move(previewOptions)}},
