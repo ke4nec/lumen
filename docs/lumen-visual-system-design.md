@@ -288,6 +288,28 @@ ghost 文本沿用 contentPrimary。原型见 `design/drag-drop.html`。
 原型见 `design/designer.html`（v2：可交互拖动演示）。CPU / Skia / GPU 三端走同一
 RenderCommand 契约。
 
+### 3.6 Designer 工作区组合稿（2026-10-13 提案）
+
+配套 [四方案交互稿](../design/designer-ide.html) 与
+[工作区设计规格](lumen-designer-workspace-design.md)。本提案重组应用工作区，
+不新增控件类型或独立调色板；尚未接入 C++ Designer。
+
+| HTML 角色 | Theme 来源 / 值 |
+| --- | --- |
+| page / surface / elevated / sunken | `colors.pageBackground / surface / surfaceElevated / surfaceSunken`；CoreDark 深色 `#18181b / #27272e / #34343f / #2e2e36`，浅色 `#f4f4f5 / #fff / #fff / #f4f4f5` |
+| text / secondary | `colors.contentPrimary / contentSecondary`；深色 `#f1f1f4 / #a1a1aa`，浅色 `#18181b / #52525b` |
+| border / strong | `colors.borderDefault / borderStrong`；深色 `#3b3b45 / #8c8c98`，浅色 `#d4d4d8 / #71717a` |
+| accent / accent-text / selected / focus | `colors.accent / accentContent / accentContainer / focusRing`；深色 `#568cf0 / #a8c5fa / #2e3c60 / #96b9fa`，浅色 `#3460be / #234a91 / #e0eaff / #234a91` |
+| 状态与画布 | error/success/warning 取 CoreDark 对应状态 token；网格、选框沿用 §3.5 `designerCanvas` |
+| 工作台尺度 | 应用显式 Compact：`minHeight=32`、`controlRadius=4`、padding 4/8、间距 4/8；标题/正文/辅助文字为 typography 20/14/12 |
+| 预览尺度 | 独立 Comfortable 默认；可切 32/40/48，预览密度不改变工作台密度 |
+| 树行与分隔器 | `tree` 20 缩进、3px 选中条；`splitter` 6px 轨道、Compact 12px 命中/键盘步进；两侧透明命中扩展至 12px |
+| 层级 | 卡片 8、对话框 12 圆角；预览 L1、菜单 L2、模态 L3 阴影；不引入玻璃效果 |
+
+布局宽度、文档标签高度和审阅页面大标题属于应用布局参数，详见工作区规格 §3.1，
+不增设 `Theme.designerWorkspace` token。后续原生实现从上述 token 读取视觉值，
+不能直接把 HTML 常量复制进 painter。浏览器的字形与阴影只是近似，不构成渲染 golden。
+
 ## 4. Theme 模型
 
 Theme 是可复制、不可变使用的值对象，由应用或窗口根节点拥有，不使用全局可变单例。
