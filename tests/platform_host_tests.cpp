@@ -84,6 +84,23 @@ TEST_CASE("sdl_wheel_axes_and_flipped_events_preserve_framework_direction", "[pl
     }
 }
 
+TEST_CASE("sdl_host_disables_libdecor_so_wayland_windows_keep_pointer_input",
+          "[platform]") {
+    // 回归（2026-10 GNOME/mutter + libdecor-gtk 0.2.5 + SDL 3.2.10）：装饰
+    // 窗输入区域与可见内容不匹配，窗口收不到任何指针事件。宿主初始化必
+    // 须禁用 libdecor（合成器改走服务端装饰）；hint 在窗口创建前生效。
+#ifdef _WIN32
+    _putenv("SDL_VIDEODRIVER=dummy");
+#else
+    ::setenv("SDL_VIDEODRIVER", "dummy", 1);
+#endif
+    platform::Sdl3ApplicationHost host;
+    REQUIRE(host.initialize());
+    const char* value = SDL_GetHint(SDL_HINT_VIDEO_WAYLAND_ALLOW_LIBDECOR);
+    REQUIRE(value != nullptr);
+    CHECK(std::string_view(value) == "0");
+}
+
 namespace {
 
 core::HostEvent drainOne(FakeApplicationHost& host) {

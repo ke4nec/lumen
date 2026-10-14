@@ -471,6 +471,9 @@ std::unique_ptr<PlatformWindow> createSdl3Window(const Sdl3WindowDesc& desc) {
     // We translate the primary finger ourselves. Disable SDL's synthetic
     // mouse events so one touch cannot produce duplicate pointer events.
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    // Wayland：libdecor 装饰窗输入区域与内容不匹配会使窗口收不到任何
+    // 指针事件（详见 Sdl3ApplicationHost::initialize 的复现矩阵注释）。
+    SDL_SetHint(SDL_HINT_VIDEO_WAYLAND_ALLOW_LIBDECOR, "0");
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return nullptr;

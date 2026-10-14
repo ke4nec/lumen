@@ -381,6 +381,15 @@ bool Sdl3ApplicationHost::initialize() {
     if (initialized_) {
         return true;
     }
+    // Wayland 装饰：禁用 libdecor（2026-10 复现矩阵：SDL 3.2.10 +
+    // libdecor-gtk 0.2.5 + GNOME/mutter，窗口渲染与键盘焦点正常，但装饰
+    // 窗的 wl_surface 输入区域与可见内容不匹配——指针事件一个也到不了，
+    // 点击/悬停全部失效；全屏态无装饰帧则正常）。合成器改走
+    // xdg-decoration 服务端装饰（mutter/KWin 支持；无 SSD 的合成器退化为
+    // 无边框窗口），输入区域由合成器管理，指针事件恢复。hint 必须在首个
+    // SDL_Init(SDL_INIT_VIDEO) 前设置——Wayland VideoInit 一次性加载
+    // libdecor，此后修改无效；createSdl3Window 处同步设置兜底。
+    SDL_SetHint(SDL_HINT_VIDEO_WAYLAND_ALLOW_LIBDECOR, "0");
     // 与既有 createSdl3Window 的 SDL_Init 共存（SDL_Init 幂等计数）。
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());

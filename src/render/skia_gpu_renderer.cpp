@@ -851,6 +851,11 @@ std::unique_ptr<Renderer> createSkiaGpuRenderer(const SkiaGpuRendererDesc& desc,
 }
 
 bool probeSkiaGpuAvailable(std::string* diagnostics) {
+    // Wayland 装饰 hint 必须先于首个 SDL_Init(SDL_INIT_VIDEO)：本探测可能
+    // 比宿主 initialize() 更早初始化视频，而在无 xdg-decoration 的合成器
+    // 上 VideoInit 会立即加载 libdecor（输入区域缺陷与复现矩阵见
+    // Sdl3ApplicationHost::initialize 注释）。
+    SDL_SetHint(SDL_HINT_VIDEO_WAYLAND_ALLOW_LIBDECOR, "0");
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         if (diagnostics != nullptr) {
             *diagnostics = std::string("SDL_Init: ") + SDL_GetError();
