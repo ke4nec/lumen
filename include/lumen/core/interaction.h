@@ -163,7 +163,8 @@ class InteractionController {
     // 视口（聚焦节点所在视口或默认视口）。
     using WheelSink = std::function<bool(const RenderNode& root,
                                          const RenderNode* hit,
-                                         Offset position, Offset delta)>;
+                                         Offset position, Offset delta,
+                                         KeyModifiers modifiers)>;
     void setWheelSink(WheelSink sink);
     // 返回 sink 的消费状态（M5 收口：语义滚动回执不再恒成功）。
     // modifiers 参与 Shift+纵轮 → 水平视口横向分量的投影

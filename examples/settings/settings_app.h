@@ -804,7 +804,8 @@ class SettingsApp {
         // 步进（指针在控件上每档 ±step，spin-design §6.3）。
         config.onWheel =
             [self](const core::RenderNode& root, const core::RenderNode* hit,
-                   core::Offset position, core::Offset delta) {
+                   core::Offset position, core::Offset delta,
+                   core::KeyModifiers) {
                 if (self->spinOpacity_.handleWheel(self->shell_, position,
                                                    delta)) {
                     return true;

@@ -367,7 +367,7 @@ void ContextMenuController::openAnchored(app::AppShell& shell,
         },
         [scrollOrClose](const core::RenderNode& root,
                         const core::RenderNode* hit, core::Offset,
-                        core::Offset delta) {
+                        core::Offset delta, core::KeyModifiers) {
             return scrollOrClose(root, hit, delta.y);
         },
         [this, &shell, scrollOrClose](const core::RenderNode* root, const core::RenderNode* viewport,

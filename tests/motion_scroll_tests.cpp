@@ -654,7 +654,7 @@ struct ScrollApp {
         };
         config.onWheel =
             [this](const RenderNode&, const RenderNode* hit, core::Offset,
-                   core::Offset delta) {
+                   core::Offset delta, core::KeyModifiers) {
             if (hit == nullptr ||
                 !lumen::core::isScrollableWidget(hit->type)) {
                 return false;

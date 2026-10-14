@@ -107,7 +107,7 @@ void DropdownController::open(app::AppShell& shell,
         if (!explicitTheme_) overlayTheme_ = shell.effectiveThemeForKey(dropdownKey_);
         return buildOverlay(overlayTheme_ ? *overlayTheme_ : shell.theme(), shell.view());
     }, [scroll](const core::RenderNode& root, const core::RenderNode* hit,
-                core::Offset, core::Offset delta) {
+                core::Offset, core::Offset delta, core::KeyModifiers) {
         return scroll(root, hit, delta.y);
     }, [scroll](const core::RenderNode* root, const core::RenderNode* viewport,
                 core::Offset, core::Offset delta, core::ScrollDragPhase phase,

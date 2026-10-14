@@ -1460,7 +1460,7 @@ TEST_CASE("run_app_preserves_scroll_and_focus_across_minimize_restore",
     config.onWheel =
         [&](const lumen::core::RenderNode& root,
             const lumen::core::RenderNode* hit, lumen::core::Offset position,
-            lumen::core::Offset delta) {
+            lumen::core::Offset delta, lumen::core::KeyModifiers) {
             (void)hit;
             (void)position;
             const auto* viewport =

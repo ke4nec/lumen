@@ -87,7 +87,7 @@ struct ScrollFixture {
             }
             return makeStack(std::move(children));
         };
-        config.onWheel = [this](const RenderNode&, const RenderNode* node, Offset, Offset delta) {
+        config.onWheel = [this](const RenderNode&, const RenderNode* node, Offset, Offset delta, KeyModifiers) {
             if (!node) return false;
             updateExtents(*node);
             const bool moved = scroll.applyWheel(axis == ScrollAxis::Horizontal ? delta.x : delta.y);
@@ -288,7 +288,7 @@ TEST_CASE("scrollbar_dropdown_and_long_menu_drag_without_selecting_or_scrolling_
         app::ShellConfig config;
         config.initialView = {320, 240};
         config.build = [] { return makeStack({withStackPosition(makeDropdown("0", "open", "pick", 180.0F), {20, 20})}); };
-        config.onWheel = [&](const RenderNode&, const RenderNode*, Offset, Offset) { ++background; return true; };
+        config.onWheel = [&](const RenderNode&, const RenderNode*, Offset, Offset, KeyModifiers) { ++background; return true; };
         config.onScrollDrag = [&](const RenderNode*, const RenderNode*, Offset, Offset, ScrollDragPhase, std::uint64_t) {
             ++background; return true;
         };
@@ -426,7 +426,7 @@ TEST_CASE("keyboard_scroll_targets_nearest_viewport_from_child_focus", "[scrollb
     app::ShellConfig config;
     config.initialView = {240, 240};
     config.build = [&] { return makeVirtualList(&outer, "outer", 240, 240); };
-    config.onWheel = [&](const RenderNode&, const RenderNode* node, Offset, Offset delta) {
+    config.onWheel = [&](const RenderNode&, const RenderNode* node, Offset, Offset delta, KeyModifiers) {
         REQUIRE(node);
         CHECK(node->key == "inner");
         CHECK(delta.y == 0);
@@ -464,7 +464,7 @@ TEST_CASE("horizontal_viewport_preserves_editor_and_slider_keyboard_priority", "
             return withScrollAxis(makeScrollView(std::move(child), "viewport", 240, 120),
                                   ScrollAxis::Horizontal);
         };
-        config.onWheel = [&](const RenderNode&, const RenderNode*, Offset, Offset) {
+        config.onWheel = [&](const RenderNode&, const RenderNode*, Offset, Offset, KeyModifiers) {
             ++scrollCalls;
             return true;
         };

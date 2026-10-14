@@ -493,7 +493,7 @@ TEST_CASE("visual_dropdown_wheel_resize_and_theme_stay_in_sync", "[visual][regre
     int backgroundScroll = 0;
     config.onScrollDrag = [&](const RenderNode*, const RenderNode*, Offset, Offset,
                               ScrollDragPhase, std::uint64_t) { ++backgroundScroll; return true; };
-    config.onWheel = [&](const RenderNode&, const RenderNode*, Offset, Offset) { ++backgroundScroll; return true; };
+    config.onWheel = [&](const RenderNode&, const RenderNode*, Offset, Offset, KeyModifiers) { ++backgroundScroll; return true; };
     app::AppShell shell(config);
     std::vector<widgets::DropdownController::Option> options;
     for (int i = 0; i < 30; ++i) options.push_back({std::to_string(i), "Option " + std::to_string(i)});

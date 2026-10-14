@@ -680,7 +680,7 @@ class VirtualListApp {
         config.build = [self] { return self->buildUi(); };
         config.onWheel =
             [self](const RenderNode& root, const RenderNode* hit,
-                   Offset /*position*/, Offset delta) {
+                   Offset /*position*/, Offset delta, KeyModifiers) {
                 const RenderNode* viewport = hit;
                 if (viewport == nullptr) {
                     viewport = findNodeByKey(root, "big-list");

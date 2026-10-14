@@ -658,6 +658,8 @@ int runApp(std::vector<AppWindow> windows, platform::ApplicationHost& host) {
                     notify(*runtime, event, render::FrameReason::Input);
                     break;
                 case HostEventType::KeyUp:
+                    shell.keyUp(event.keyCode, event.modifiers,
+                               event.keyChar);
                     notify(*runtime, event, render::FrameReason::Input);
                     break;
                 case HostEventType::SurfaceDetached:

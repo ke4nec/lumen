@@ -439,7 +439,10 @@ void InteractionController::pointerDown(const RenderNode& root,
                 if (target->virtualSource && target->virtualSource->scrollController()) {
                     (void)scrollSourceViewport(*target->virtualSource->scrollController(), amount);
                 } else if (wheelSink_) {
-                    wheelSink_(root, target, position, horizontal ? Offset{amount, 0} : Offset{0, amount});
+                    wheelSink_(root, target, position,
+                                horizontal ? Offset{amount, 0}
+                                           : Offset{0, amount},
+                                modifiers);
                 }
             }
             return;
@@ -1892,8 +1895,15 @@ bool InteractionController::wheel(const RenderNode& root, Offset position,
     // Scroll design §4: walk from the hit node to its ancestors. A viewport
     // whose content fits cannot consume wheel input, regardless of whether
     // scrollbar decoration is enabled. Stay within this event tree (modal).
+    bool sawScrollableViewport = false;
     for (const RenderNode* viewport : chain) {
-        if (!isScrollableWidget(viewport->type) || !viewport->enabled || !(viewport->scrollExtent > 0.0F)) {
+        if (!isScrollableWidget(viewport->type)) {
+            continue;
+        }
+        // 禁用/内容放得下的视口：保持"不消费"边界策略（scroll §4），
+        // 也不进入应用兜底。
+        sawScrollableViewport = true;
+        if (!viewport->enabled || !(viewport->scrollExtent > 0.0F)) {
             continue;
         }
         // Recompute from the original event for every ancestor: projecting
@@ -1915,11 +1925,18 @@ bool InteractionController::wheel(const RenderNode& root, Offset position,
                 return scrollSourceViewport(*scroller, amount);
             }
         }
-        if (wheelSink_ != nullptr && wheelSink_(root, viewport, position, effective)) {
+        if (wheelSink_ != nullptr &&
+            wheelSink_(root, viewport, position, effective, modifiers)) {
             ++scrollActivityGeneration_;  // M17。
             return true;
         }
         return false;
+    }
+    // 非滚动命中的应用兜底（designer-canvas §8.8）：链上没有出现任何
+    // 滚动视口时给应用一次机会（画布平移 / Ctrl 缩放等）；出现过的
+    //（含禁用/放得下）维持既有边界语义，不重入。
+    if (!sawScrollableViewport && hit != nullptr && wheelSink_ != nullptr) {
+        return wheelSink_(root, hit, position, delta, modifiers);
     }
     return false;
 }
@@ -2002,9 +2019,11 @@ bool InteractionController::scrollKey(const RenderNode& root, Key key) {
         return false;
     }
     // 水平视口的键盘滚动以 X 分量表达（sink 按轴消费）。
-    if (wheelSink_(root, targetViewport != nullptr ? targetViewport : focused, Offset{},
-                      horizontal ? Offset{amount, 0.0F}
-                                 : Offset{0.0F, amount})) {
+    if (wheelSink_(root, targetViewport != nullptr ? targetViewport : focused,
+                    Offset{},
+                    horizontal ? Offset{amount, 0.0F}
+                               : Offset{0.0F, amount},
+                    kModifierNone)) {
         ++scrollActivityGeneration_;  // M17。
         return true;
     }

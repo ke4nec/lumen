@@ -471,7 +471,8 @@ class GalleryApp {
         };
         config.onWheel =
             [self](const core::RenderNode& root, const core::RenderNode* hit,
-                   core::Offset position, core::Offset delta) {
+                   core::Offset position, core::Offset delta,
+                   core::KeyModifiers) {
                 // Spin 滚轮步进（指针在控件上每档 ±step；design §6.3）。
                 if (self->controlsOpacity_.handleWheel(self->shell_, position,
                                                        delta)) {

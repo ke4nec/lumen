@@ -127,17 +127,21 @@ AppShell::AppShell(ShellConfig config) : config_(std::move(config)) {
     // 构造期求值 config_.build 会重入尚未构造完成的应用对象（如
     // SettingsApp 的 buildUi 读自身后声明成员），属 UB；dirty_ 初始为
     // true 保证首帧前必重建，行为与 eager 落地一致。
-    controller_.setWheelSink([this](const core::RenderNode& root,
-                                    const core::RenderNode* hit,
-                                    core::Offset position, core::Offset delta) {
-        if (overlayRoot_) {
-            overlayWheelForwarded_ = true;
-            return overlayWheel_ ? overlayWheel_(root, hit, position, delta)
-                                 : false;
-        }
-        return config_.onWheel ? config_.onWheel(root, hit, position, delta)
-                               : false;
-    });
+    controller_.setWheelSink(
+        [this](const core::RenderNode& root, const core::RenderNode* hit,
+               core::Offset position, core::Offset delta,
+               core::KeyModifiers modifiers) {
+            if (overlayRoot_) {
+                overlayWheelForwarded_ = true;
+                return overlayWheel_
+                           ? overlayWheel_(root, hit, position, delta,
+                                           modifiers)
+                           : false;
+            }
+            return config_.onWheel
+                       ? config_.onWheel(root, hit, position, delta, modifiers)
+                       : false;
+        });
     controller_.setScrollDragSink(
         [this](const core::RenderNode* root, const core::RenderNode* viewport,
                core::Offset position, core::Offset delta,
@@ -259,7 +263,8 @@ accessibility::SemanticsActionStatus AppShell::performAccessibilityAction(
             origin + core::Offset{viewport->size.width * 0.5F,
                                   viewport->size.height * 0.5F};
         return config_.onWheel(eventTree(), viewport, center,
-                               core::Offset{deltaX, deltaY});
+                               core::Offset{deltaX, deltaY},
+                               core::kModifierNone);
     };
     const auto status = accessibility::performSemanticsAction(
         *lastSemantics_, context, nodeId, action, value, scrollDeltaY);
@@ -577,7 +582,8 @@ bool AppShell::wheel(core::Offset position, core::Offset delta,
     // 不再二次直调。
     if (!handled && !overlayWheelForwarded_ && overlayRoot_.has_value() &&
         overlayWheel_) {
-        return overlayWheel_(*overlayRoot_, nullptr, position, delta);
+        return overlayWheel_(*overlayRoot_, nullptr, position, delta,
+                             core::kModifierNone);
     }
     return handled;
 }
@@ -620,6 +626,13 @@ void AppShell::textEditing(const std::string& preedit) {
 }
 
 void AppShell::cancelComposition() { controller_.cancelComposition(); }
+
+void AppShell::keyUp(core::Key key, core::KeyModifiers modifiers,
+                     char keyChar) {
+    if (config_.onKeyUp) {
+        config_.onKeyUp(*this, key, modifiers, keyChar);
+    }
+}
 
 void AppShell::keyDown(core::Key key, core::KeyModifiers modifiers,
                        char keyChar) {

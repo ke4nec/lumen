@@ -71,7 +71,7 @@ struct NestedScrollApp {
             auto content = makeColumn({std::move(inner), makeContainerLeaf(200, 600)});
             return withScrollOffset(makeListView(std::move(content), "outer", 200, 200), outerScroll.offset());
         };
-        config.onWheel = [this](const RenderNode&, const RenderNode* target, Offset, Offset delta) {
+        config.onWheel = [this](const RenderNode&, const RenderNode* target, Offset, Offset delta, KeyModifiers) {
             REQUIRE(target != nullptr);
             sinkTargets.push_back(target->key);
             auto& controller = target->key == "inner" ? innerScroll : outerScroll;
@@ -177,7 +177,7 @@ TEST_CASE("wheel_bubbling_stays_inside_modal_event_tree", "[scroll][wheel-routin
     int overlayCalls = 0;
     app.shell.setOverlayBuilder([]() -> std::optional<Widget> {
         return makeScrollView(makeContainerLeaf(200, 30), "overlay", 200, 100);
-    }, [&](const RenderNode&, const RenderNode*, Offset, Offset) {
+    }, [&](const RenderNode&, const RenderNode*, Offset, Offset, KeyModifiers) {
         ++overlayCalls;
         return false;
     });

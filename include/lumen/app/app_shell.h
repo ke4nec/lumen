@@ -63,7 +63,8 @@ namespace lumen::app {
 // 由交互层解析；返回 true 表示已消费。
 using WheelSink = std::function<bool(
     const core::RenderNode& root, const core::RenderNode* hit,
-    core::Offset position, core::Offset delta)>;
+    core::Offset position, core::Offset delta,
+    core::KeyModifiers modifiers)>;
 
 // M10：视口拖动滚动 sink（与 core::InteractionController::ScrollDragSink
 // 同形；Cancel 时 root/viewport 为空）。应用把 Update/End 汇入
@@ -87,6 +88,9 @@ struct ShellConfig {
     // 不再进入 InteractionController。
     std::function<bool(class AppShell&, core::Key, core::KeyModifiers, char)>
         onKey{};
+    // 键释放回调（按住态跟踪，如 Space 平移）；可选。
+    std::function<void(class AppShell&, core::Key, core::KeyModifiers, char)>
+        onKeyUp{};
     // 滚轮 sink（列表滚动）；为空时滚轮事件被忽略。
     WheelSink onWheel{};
     // M10：视口拖动滚动 sink（触摸/指针拖动 → ScrollController 拖动与
@@ -315,6 +319,11 @@ class AppShell {
     void keyDown(core::Key key,
                  core::KeyModifiers modifiers = core::kModifierNone,
                  char keyChar = 0);
+    // 键释放（Space 平移等按住态跟踪；runApp 转发宿主 KeyUp。空格等
+    // 可打印键归一为 keyChar，keyCode 为 None）。
+    void keyUp(core::Key key,
+               core::KeyModifiers modifiers = core::kModifierNone,
+               char keyChar = 0);
 
     // --- 帧管线（plan §5.2：events -> state -> reconcile -> layout ->
     // paint；damage/绘制缓存同 counter 迁移前行为） ---
