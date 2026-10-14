@@ -215,6 +215,27 @@ int runWindowed(CounterApp& app, const Options& options) {
     runOptions.windowDesc.height = 600;
     runOptions.maxFrames = options.maxFrames;
     runOptions.diagnostics = options.diagnostics;
+    // 自定义标题栏：无边框窗口 + 拖拽/resize 谓词（runApp 自动接线）。
+    // GNOME Wayland 不提供服务端装饰，系统标题栏不可用。
+    runOptions.windowDesc.customTitleBar = true;
+    // 最大化态回显（标题栏最大/还原钮图标切换；titlebar-design §4.3）。
+    runOptions.onEvent = [&app, &host](lumen::app::AppShell&,
+                                       const lumen::core::HostEvent& event) {
+        if (event.type == lumen::core::HostEventType::WindowMaximized) {
+            app.noteWindowMaximized(true);
+        } else if (event.type == lumen::core::HostEventType::WindowRestored) {
+            const auto metrics = host.windowMetrics(event.window);
+            app.noteWindowMaximized(metrics.has_value() &&
+                                    metrics->maximized);
+        }
+    };
+    // 窗口钮命令经宿主（空 WindowId = SDL 单窗口便捷路径；titlebar-design
+    // §4.4；headless 路径不注入，close 回退 shell.requestClose()）。
+    CounterApp::WindowCommands windowCommands;
+    windowCommands.minimize = [&host] { host.minimizeWindow({}); };
+    windowCommands.toggleMaximize = [&host] { host.toggleMaximizeWindow({}); };
+    windowCommands.requestClose = [&host] { host.requestWindowClose({}); };
+    app.setWindowCommands(std::move(windowCommands));
 
     // Skia 度量激活标志（GPU 探测/初始化成功或 skia 后端）。
 #if defined(LUMEN_HAVE_SKIA) || defined(LUMEN_HAVE_GPU)
