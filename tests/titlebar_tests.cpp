@@ -1,6 +1,6 @@
 // 自定义标题栏专项测试（docs/lumen-titlebar-design.md §6）：
-// Widget.windowDrag 物化 → AppShell::isWindowDragPoint 判定 → Gallery
-// 标题栏结构/窗口命令/最大化图标 → Fake host 平台契约 → runApp 注册。
+// Widget.windowDrag 物化 → AppShell::isWindowDragPoint 判定 → Gallery /
+// Designer 标题栏结构/窗口命令/最大化图标 → Fake host 平台契约 → runApp 注册。
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 
+#include "designer_app.h"
 #include "gallery_app.h"
 #include "lumen/app/app_shell.h"
 #include "lumen/core/icon_id.h"
@@ -684,6 +685,179 @@ TEST_CASE("titlebar_window_four_corners_stay_transparent",
     CHECK(cornerAlpha(w - 2, 1) != 0);
     CHECK(cornerAlpha(1, h - 2) != 0);
     CHECK(cornerAlpha(w - 2, h - 2) != 0);
+}
+
+// --- designer 集成：标题栏窗口控制（workspace-design §8） ---
+//
+// key/handler 刻意沿用 Gallery 裸名（window-minimize/maximize/close）以共享
+// 宿主接线心智，语义标签用中文，keys 保持英文稳定标识。
+
+TEST_CASE("titlebar_designer_structure_geometry_and_labels",
+          "[titlebar][designer]") {
+    designer_app::DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    const auto& root = app.shell().root();
+
+    REQUIRE(findNodeByKey(root, "designer-titlebar") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-titlebar-row") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-titlebar-content") != nullptr);
+    REQUIRE(findNodeByKey(root, "designer-window-actions") != nullptr);
+    const RenderNode* min = findNodeByKey(root, "window-minimize");
+    const RenderNode* max = findNodeByKey(root, "window-maximize");
+    const RenderNode* close = findNodeByKey(root, "window-close");
+    REQUIRE(min != nullptr);
+    REQUIRE(max != nullptr);
+    REQUIRE(close != nullptr);
+
+    // 整行 windowDrag（自绘 caption），标题栏总高 44 不变。
+    const RenderNode* row = findNodeByKey(root, "designer-titlebar-row");
+    REQUIRE(row != nullptr);
+    CHECK(row->windowDrag);
+    const RenderNode* titlebar = findNodeByKey(root, "designer-titlebar");
+    REQUIRE(titlebar != nullptr);
+    CHECK(titlebar->size.height == Catch::Approx(44.0F).margin(0.01F));
+    CHECK(row->size.height == Catch::Approx(44.0F).margin(0.01F));
+
+    // 窗口控制 44 宽、通高（titlebar-design §5，Designer 非 transparent，
+    // 无自绘圆角外框，故全零圆角；图标盒 14）。
+    CHECK(min->size.width == Catch::Approx(44.0F).margin(0.01F));
+    CHECK(max->size.width == Catch::Approx(44.0F).margin(0.01F));
+    CHECK(close->size.width == Catch::Approx(44.0F).margin(0.01F));
+    CHECK(min->size.height == Catch::Approx(44.0F).margin(0.01F));
+    CHECK(max->size.height == Catch::Approx(44.0F).margin(0.01F));
+    CHECK(close->size.height == Catch::Approx(44.0F).margin(0.01F));
+    CHECK(min->commonStyle().radius == CornerRadius::zero());
+    CHECK(max->commonStyle().radius == CornerRadius::zero());
+    CHECK(close->commonStyle().radius == CornerRadius::zero());
+
+    // 中文语义标签（与设计稿 aria-label 一致），右缘贴合视口。
+    CHECK(min->semanticsLabel == "最小化窗口");
+    CHECK(max->semanticsLabel == "最大化窗口");
+    CHECK(close->semanticsLabel == "关闭窗口");
+    const Offset closeAbs = absoluteOffset(root, "window-close");
+    CHECK(closeAbs.x + close->size.width ==
+          Catch::Approx(1280.0F).margin(1.0F));
+}
+
+TEST_CASE("titlebar_designer_drag_points_exclude_interactive_controls",
+          "[titlebar][designer]") {
+    designer_app::DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    const auto& root = app.shell().root();
+
+    // 弹性空白（spacer 中心高度取标题栏行中线，spacer 叶高为 0）→ 可拖。
+    const RenderNode* spacer =
+        findNodeByKey(root, "designer-titlebar-spacer-left");
+    REQUIRE(spacer != nullptr);
+    const Offset spacerAbs =
+        absoluteOffset(root, "designer-titlebar-spacer-left");
+    const Offset titleAbs = absoluteOffset(root, "designer-titlebar-row");
+    const Offset blank{spacerAbs.x + spacer->size.width * 0.5F,
+                       titleAbs.y + 22.0F};
+    CHECK(app.shell().isWindowDragPoint(blank));
+
+    // 菜单项 / 帮助 / 窗口按钮（onClick 目标，命中链更深）→ 不可拖。
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(root, "designer-menu-file")));
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(root, "designer-help")));
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(root, "window-minimize")));
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(root, "window-maximize")));
+    CHECK_FALSE(app.shell().isWindowDragPoint(
+        centerOf(root, "window-close")));
+}
+
+TEST_CASE("titlebar_designer_window_commands_record_and_forward",
+          "[titlebar][designer]") {
+    designer_app::DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    int minimizeCalls = 0;
+    int maximizeCalls = 0;
+    int closeCalls = 0;
+    designer_app::DesignerApp::WindowCommands commands;
+    commands.minimize = [&] { ++minimizeCalls; };
+    commands.toggleMaximize = [&] { ++maximizeCalls; };
+    commands.requestClose = [&] { ++closeCalls; };
+    app.setWindowCommands(std::move(commands));
+
+    const auto click = [&app](const std::string& key) {
+        const Offset point = centerOf(app.shell().root(), key);
+        app.shell().pointerDown(point);
+        app.shell().pointerUp(point);
+        (void)app.shell().renderFrame();
+    };
+    click("window-minimize");
+    CHECK(app.lastWindowCommand() == "window-minimize");
+    CHECK(minimizeCalls == 1);
+    click("window-maximize");
+    CHECK(app.lastWindowCommand() == "window-maximize");
+    CHECK(maximizeCalls == 1);
+    click("window-close");
+    CHECK(app.lastWindowCommand() == "window-close");
+    CHECK(closeCalls == 1);
+}
+
+TEST_CASE("titlebar_designer_window_commands_safe_without_host",
+          "[titlebar][designer]") {
+    designer_app::DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    // headless 路径不注入平台回调：handler 仍执行并记录，不崩溃；
+    // close 回退 shell.requestClose() 统一关闭规则。
+    app.shell().handlers().at("window-minimize")();
+    (void)app.shell().renderFrame();
+    CHECK(app.lastWindowCommand() == "window-minimize");
+    app.shell().handlers().at("window-maximize")();
+    (void)app.shell().renderFrame();
+    CHECK(app.lastWindowCommand() == "window-maximize");
+    app.shell().handlers().at("window-close")();
+    (void)app.shell().renderFrame();
+    CHECK(app.lastWindowCommand() == "window-close");
+}
+
+TEST_CASE("titlebar_designer_maximized_state_switches_icon_and_label",
+          "[titlebar][designer]") {
+    designer_app::DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+
+    const auto maximizeNode = [&app] {
+        const RenderNode* node =
+            findNodeByKey(app.shell().root(), "window-maximize");
+        REQUIRE(node != nullptr);
+        return node;
+    };
+    CHECK(static_cast<IconId>(maximizeNode()->icon) == IconId::Maximize);
+    CHECK(maximizeNode()->semanticsLabel == "最大化窗口");
+    CHECK_FALSE(app.windowMaximized());
+
+    app.noteWindowMaximized(true);
+    (void)app.shell().renderFrame();
+    CHECK(app.windowMaximized());
+    CHECK(static_cast<IconId>(maximizeNode()->icon) == IconId::Restore);
+    CHECK(maximizeNode()->semanticsLabel == "还原窗口");
+
+    // 同值重复注入不重复 markDirty 语义（行为不变）。
+    app.noteWindowMaximized(true);
+    (void)app.shell().renderFrame();
+    CHECK(static_cast<IconId>(maximizeNode()->icon) == IconId::Restore);
+
+    app.noteWindowMaximized(false);
+    (void)app.shell().renderFrame();
+    CHECK_FALSE(app.windowMaximized());
+    CHECK(static_cast<IconId>(maximizeNode()->icon) == IconId::Maximize);
+    CHECK(maximizeNode()->semanticsLabel == "最大化窗口");
 }
 
 // 临时诊断（随后移除）：底角像素来源。

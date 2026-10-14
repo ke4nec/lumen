@@ -95,6 +95,31 @@ class DesignerApp {
     void handleFileDialogResult(const std::vector<std::string>& paths,
                                 const std::string& error = {});
 
+    // 自定义标题栏（lumen-titlebar-design §4.4）：平台窗口命令（main.cpp
+    // 窗口装配注入；headless 路径为空——handler 仍执行并记录命令，
+    // close 回退 shell.requestClose() 保持统一关闭语义可测）。
+    struct WindowCommands {
+        std::function<void()> minimize{};
+        std::function<void()> toggleMaximize{};
+        std::function<void()> requestClose{};
+    };
+    void setWindowCommands(WindowCommands commands) {
+        windowCommands_ = std::move(commands);
+    }
+    // 窗口命令回显（测试断言用）：最近一次 window-minimize/
+    // window-maximize/window-close。
+    [[nodiscard]] const std::string& lastWindowCommand() const {
+        return lastWindowCommand_;
+    }
+    // 最大化状态（WindowMaximized/WindowRestored 经 onEvent 注入）：
+    // 切换窗口控制 Maximize/Restore 图标。
+    void noteWindowMaximized(bool maximized) {
+        if (windowMaximized_ == maximized) return;
+        windowMaximized_ = maximized;
+        shell_.markDirty();
+    }
+    [[nodiscard]] bool windowMaximized() const { return windowMaximized_; }
+
   private:
     struct SaveConflict {
         std::string filename{};
@@ -543,6 +568,9 @@ class DesignerApp {
     std::vector<dsl::DesignError> projectDiagnostics_{};
     std::vector<std::string> projectDiagnosticDocumentIds_{};
     std::string activeProjectDocumentId_{};
+    WindowCommands windowCommands_{};
+    std::string lastWindowCommand_{};
+    bool windowMaximized_{false};
     app::AppShell shell_;
     app::AppShell previewShell_;
 };

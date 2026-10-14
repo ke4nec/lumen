@@ -1572,6 +1572,25 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:stop"] = [this] {
         (void)shell_.invokeCommand("designer.stop");
     };
+    // 自定义标题栏：窗口命令（lumen-titlebar-design §4.4）——命令
+    // 始终记录（headless 断言）；平台回调由 main.cpp 注入，close 无
+    // 宿主时回退统一关闭规则（modal 优先消费）。
+    shell_.handlers()["window-minimize"] = [this] {
+        lastWindowCommand_ = "window-minimize";
+        if (windowCommands_.minimize) windowCommands_.minimize();
+    };
+    shell_.handlers()["window-maximize"] = [this] {
+        lastWindowCommand_ = "window-maximize";
+        if (windowCommands_.toggleMaximize) windowCommands_.toggleMaximize();
+    };
+    shell_.handlers()["window-close"] = [this] {
+        lastWindowCommand_ = "window-close";
+        if (windowCommands_.requestClose) {
+            windowCommands_.requestClose();
+            return;
+        }
+        (void)shell_.requestClose();
+    };
     shell_.handlers()["designer:tab-canvas"] = [this] {
         centerTab_ = CenterTab::Canvas;
         centerView_ = CenterView::Design;
@@ -4482,8 +4501,11 @@ std::string DesignerApp::formatDiagnostic(
 
 core::Widget DesignerApp::buildTitleBar() {
     // B 标题栏 44（designer-ide.html variant-b .ide-title）：品牌 + 文件/
-    // 编辑/视图菜单 + 居中工程名 + DESIGNER 角标 + 帮助。视觉值取 Theme
+    // 编辑/视图菜单 + 居中工程名 + DESIGNER 角标 + 帮助 + 右上窗口控制
+    // （最小化/最大化-还原/关闭，titlebar-design §5）。视觉值取 Theme
     // token（visual-system §3.6），不复制 HTML 常量。
+    // 自绘 caption：整行 windowDrag，空白可拖动移窗、双击最大化由平台
+    // hit-test 原生提供；菜单项/帮助/窗口按钮命中链更深，自然排除拖拽。
     const auto& theme = shell_.theme();
     const auto chrome = [&theme](std::string label, std::string key,
                                  std::string handler) {
@@ -4494,6 +4516,26 @@ core::Widget DesignerApp::buildTitleBar() {
             core::ButtonVariant::Chrome);
         button.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
         return button;
+    };
+    const auto windowButton = [&theme](core::IconId icon,
+                                       const std::string& id,
+                                       std::string semanticsLabel,
+                                       core::ButtonVariant variant =
+                                           core::ButtonVariant::Ghost) {
+        // Gallery 同口径（titlebar-design §5）：44 宽、通高、右缘贴合、
+        // 直角无圆角；图标盒 14；close = WindowClose（hover 实心红）。
+        // key/handler 沿用 Gallery 裸名（window-minimize/maximize/close，
+        // 见 §4.4 与本文档 §8，便于两端共享宿主接线心智），语义标签用
+        // 中文（与设计稿 aria-label 一致，keys 保持英文稳定标识）。
+        const float scale = theme.typography.body.fontSize / 14.0F;
+        core::Widget button = core::makeButton(
+            "", core::TextStyle{}, core::EdgeInsets{}, 0.0F, id,
+            44.0F * scale, std::nullopt, id);
+        button.buttonVariant = variant;
+        button.styleOverrides.radius = core::CornerRadius{0.0F, 0.0F, 0.0F, 0.0F};
+        button.styleOverrides.iconSize = 14.0F * scale;
+        button.semanticsLabel = std::move(semanticsLabel);
+        return core::withIcon(std::move(button), icon);
     };
     auto brand = core::makeText("Lumen / Designer", theme.typography.label, {},
                                 0.0F, "designer-brand");
@@ -4527,12 +4569,32 @@ core::Widget DesignerApp::buildTitleBar() {
         core::ButtonVariant::Chrome);
     help.styleOverrides.padding = core::EdgeInsets::symmetric(8.0F, 6.0F);
     help.semanticsLabel = "Help";
-    auto row = core::makeRow(
+    auto content = core::makeRow(
         {std::move(brand), std::move(fileMenu), std::move(editMenu),
          std::move(viewMenu), std::move(spacerLeft), std::move(projectName),
          std::move(spacerRight), std::move(badge), std::move(help)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 6.0F,
-        core::EdgeInsets::symmetric(12.0F, 0.0F), {}, "designer-titlebar-row");
+        core::EdgeInsets::only(12.0F, 0.0F, 0.0F, 0.0F), {},
+        "designer-titlebar-content");
+    content.flex = 1.0F;
+    auto actions = core::makeRow(
+        {windowButton(core::IconId::Minus, "window-minimize", "最小化窗口"),
+         windowButton(windowMaximized_ ? core::IconId::Restore
+                                       : core::IconId::Maximize,
+                      "window-maximize",
+                      windowMaximized_ ? "还原窗口" : "最大化窗口"),
+         windowButton(core::IconId::Close, "window-close", "关闭窗口",
+                      core::ButtonVariant::WindowClose)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 0.0F);
+    actions.key = "designer-window-actions";
+    auto row = core::makeRow(
+        {std::move(content), std::move(actions)},
+        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 0.0F,
+        {}, {}, "designer-titlebar-row");
+    // 通高 44（titlebar-design §5）：行高定死，窗口控制随 Stretch 贴合
+    // 右上通高；内容行内部垂直居中，空白仍可拖。
+    row.height = 44.0F;
+    row = core::withWindowDrag(std::move(row));
     auto bar = core::makeColumn({std::move(row)},
                                 core::MainAxisAlignment::Start,
                                 core::CrossAxisAlignment::Stretch, 0.0F, {}, {},

@@ -634,17 +634,35 @@ int runWindowed(lumen::designer_app::DesignerApp& app,
     // fit-to-view 缩放居中呈现（designer_app maybeFitCanvasView）。
     runOptions.windowDesc.width = 1024;
     runOptions.windowDesc.height = 768;
+    // 自定义标题栏（lumen-titlebar-design）：无边框窗口 + 自绘 caption
+    //（拖拽/resize 边由平台 hit-test 提供；runApp 注册拖拽区谓词）。
+    runOptions.windowDesc.customTitleBar = true;
     runOptions.maxFrames = designerOptions.maxFrames;
     runOptions.resourceManager = app.resourceManager();
     // 桌面系统字体由 runApp 默认注入（systemFonts 能力；见
     // RunOptions.fontFactory 注释）；headless/acceptance 不经过 runApp，
     // 保持占位度量与帧哈希确定性。
-    runOptions.onEvent = [&app](lumen::app::AppShell&,
-                                const lumen::core::HostEvent& event) {
+    runOptions.onEvent = [&app, &host](lumen::app::AppShell&,
+                                       const lumen::core::HostEvent& event) {
         if (event.type == lumen::core::HostEventType::FileDialogCompleted) {
             app.handleFileDialogResult(event.filePaths, event.text);
+        } else if (event.type == lumen::core::HostEventType::WindowMaximized) {
+            app.noteWindowMaximized(true);
+        } else if (event.type == lumen::core::HostEventType::WindowRestored) {
+            const auto metrics = host.windowMetrics(event.window);
+            app.noteWindowMaximized(metrics.has_value() &&
+                                    metrics->maximized);
         }
     };
+    // 自定义标题栏：窗口命令经宿主（无效 WindowId 走 SDL host 单窗口
+    // 便捷路径）；close 走 WindowCloseRequested 统一拦截规则。
+    lumen::designer_app::DesignerApp::WindowCommands windowCommands;
+    windowCommands.minimize = [&host] { host.minimizeWindow({}); };
+    windowCommands.toggleMaximize = [&host] {
+        host.toggleMaximizeWindow({});
+    };
+    windowCommands.requestClose = [&host] { host.requestWindowClose({}); };
+    app.setWindowCommands(std::move(windowCommands));
     std::optional<lumen::designer_app::FileWatcher> watcher;
     if (designerOptions.watch && !designerOptions.filename.empty()) {
         watcher.emplace(designerOptions.filename);

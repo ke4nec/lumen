@@ -165,7 +165,15 @@ A（经典分区）与 C/D 实现为同一模型的后续预设，而不是复�
 对照 `design/designer-ide.html?variant=b`（Canvas Studio）一比一实现，
 视觉值取 `Theme` token（visual-system §3.6），不复制 HTML 常量：
 
-- 标题 44（品牌 + 文件/编辑/视图 + 居中工程名 + DESIGNER + 帮助）+
+- 标题 44（品牌 + 文件/编辑/视图 + 居中工程名 + DESIGNER + 帮助 +
+  右上窗口控制：最小化/最大化-还原/关闭，`designer-window-actions`；
+  自绘 caption：整行 `windowDrag`，空白可拖、按钮/菜单项命中排除，
+  `customTitleBar` 无边框窗口 + 宿主 `minimize/toggleMaximize/requestClose`，
+  最大化态切换 Maximize/Restore 图标；对照 `design/designer-ide.html`
+  `.win-controls/.caption-btn`，口径与 Gallery `titlebar-design §5` 一致：
+  44 宽、通高、右缘贴合、直角无圆角，close = `WindowClose` hover 实心红；
+  key/handler 刻意沿用 Gallery 裸名（`window-minimize/maximize/close`）以
+  共享宿主接线心智，语义标签用中文，keys 保持英文稳定标识）+
   主工具 48（保存/打开/另存/新建/文本/撤销/重做 | 选择/插入/布局 |
   提示“更少干扰，更大画布” | 专注/调试/停止/运行，Run 唯一 Filled）+
   工作区（48 rail + 224 left + 6 + center + 6 + 280 right）+ 状态 28。
