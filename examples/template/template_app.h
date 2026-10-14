@@ -180,9 +180,13 @@ class TemplateApp {
         drag.key = "template-drag";
         drag.flex = 1.0F;
         const auto windowButton = [&](core::IconId icon, std::string key) {
+            // key 同时是 onClick handler 名（gallery windowButton 模式）：
+            // Widget.onClick 非空是拖拽区排除（isWindowDragPoint）与命令
+            // 分发的共同依据——缺省时点击被窗口拖动吞掉（hit-test
+            // DRAGGABLE 在 X11/Wayland 同样先于分发吞事件）。
             core::Widget button = core::makeButton(
                 "", theme.typography.label, core::EdgeInsets{}, 0.0F, key,
-                44.0F, 32.0F);
+                44.0F, 32.0F, key);
             button.icon = icon;
             return core::withVariant(core::withKey(std::move(button), key),
                                      core::ButtonVariant::Ghost);
