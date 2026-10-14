@@ -93,6 +93,11 @@ const std::vector<ToolboxGroupSpec>& designerToolboxGroups() {
     return groups;
 }
 
+// §8.8/§8.9 舞台内缩：内容原点让出内嵌标尺（20px）+ 页面边界外扩
+// （8px）与 caption（32px 上方）的裕量，复位/初始视图画板完整落在标
+// 尺之外（designer-canvas.html 的 stage 与标尺分格等价）。
+constexpr float kCanvasStageInset = 32.0F;
+
 // 应用侧滚动视口（左面板工具箱/工程、源码、属性、运行预览）：偏移由
 // DesignerApp 持有的 ScrollController 驱动（lumen-scroll-design §3.4），
 // 框架解析到这些视口的 wheel/scroll-drag 经 configFor 的 sink 进
@@ -1091,6 +1096,12 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                                                    keyChar)) {
             return true;
         }
+        // §8.8：Space 按住进入平移预备（输入框内除外；消费避免触发
+        // 焦点控件激活），释放经 onKeyUp 复位。
+        if (keyChar == ' ' && !editingText) {
+            self->spacePanPressed_ = true;
+            return true;
+        }
         if (key == core::Key::Escape &&
             (self->outlineDragActive_ || self->toolboxDragActive_ ||
              self->canvasResizeActive_ ||
@@ -1137,14 +1148,16 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
         }
         return false;
     };
-    config.onWheel = [self](const core::RenderNode&, const core::RenderNode* viewport,
-                            core::Offset position, core::Offset delta) {
+    config.onWheel = [self](const core::RenderNode&,
+                            const core::RenderNode* viewport,
+                            core::Offset position, core::Offset delta,
+                            core::KeyModifiers modifiers) {
         if (self->spinPreviewController_.handleWheel(self->shell_, position,
                                                      delta)) {
             return true;
         }
         // 框架解析出的面板滚动视口先消费（滚轮/滚动条轨道翻页/键盘/
-        // 语义同 sink）；画布平移仅在无应用视口接管时兜底。
+        // 语义同 sink）；画布仅在无应用视口接管时处理。
         if (self->handlePanelWheel(viewport, delta)) {
             return true;
         }
@@ -1154,7 +1167,14 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
             const auto origin =
                 core::absoluteOffset(self->shell_.root(), canvas->key);
             if (core::Rect{origin, canvas->size}.contains(position)) {
-                self->panCanvas(delta);
+                // §8.8（designer-canvas.html）：Ctrl+滚轮 = 以指针为锚
+                // 的档位缩放；普通滚轮 = 平移画布。
+                if ((modifiers & core::kModifierCtrl) != 0U) {
+                    self->adjustCanvasZoom(delta.y < 0.0F ? 1.0F : -1.0F,
+                                           position);
+                } else {
+                    self->panCanvas(delta);
+                }
                 return true;
             }
         }
@@ -1168,6 +1188,13 @@ app::ShellConfig DesignerApp::configFor(DesignerApp* self) {
                core::ScrollDragPhase phase, std::uint64_t nowMs) {
             return self->handlePanelScrollDrag(viewport, delta, phase, nowMs);
         };
+    config.onKeyUp = [self](app::AppShell&, core::Key key,
+                            core::KeyModifiers, char keyChar) {
+        if (keyChar == ' ' && self->spacePanPressed_) {
+            self->spacePanPressed_ = false;
+            self->shell_.markDirty();
+        }
+    };
     config.onAnimate = [self](app::AppShell& shell, std::uint64_t nowMs) {
         const bool spinActive = self->spinPreviewController_.step(shell, nowMs);
         return self->advancePanelScrollFling(shell, nowMs) || spinActive;
@@ -1336,6 +1363,18 @@ void DesignerApp::attach() {
     shell_.controller().addDragArmSink(
         [this](const std::vector<const core::RenderNode*>& chain,
                core::PointerDevice, core::DragSourceClaim& claim) {
+            // §8.8 Space+拖动 = 平移画布：按住期最优先认领（画布区域），
+            // 拖放/换位/橡皮筋全部让位。
+            if (spacePanPressed_) {
+                for (const auto* node : chain) {
+                    if (node != nullptr && node->key == "designer-canvas") {
+                        claim.key = "designer:space-pan";
+                        claim.identity = "designer:space-pan";
+                        claim.touchAllowed = false;
+                        return true;
+                    }
+                }
+            }
             constexpr std::string_view kHandlePrefix =
                 "designer-canvas-handle:";
             for (const auto* node : chain) {
@@ -1434,6 +1473,19 @@ void DesignerApp::attach() {
         [this](core::DragPhase phase, core::Offset position,
                const std::vector<const core::RenderNode*>&,
                const std::string& sourceKey, const std::string&) {
+            if (sourceKey == "designer:space-pan") {
+                // §8.8 平移会话：跟手写 pan，Drop/Cancel 即止。
+                if (phase == core::DragPhase::Start) {
+                    spacePanAnchor_ = position;
+                    spacePanStart_ = canvasTransform_.pan();
+                    shell_.markDirty();
+                } else if (phase == core::DragPhase::Move) {
+                    (void)canvasTransform_.setPan(
+                        spacePanStart_ + (position - spacePanAnchor_));
+                    shell_.markDirty();
+                }
+                return;
+            }
             canvasResizeSession(phase, position, sourceKey);
             outlineDragSession(phase, position, sourceKey);
             canvasSelectionSession(phase, position, sourceKey);
@@ -1443,9 +1495,9 @@ void DesignerApp::attach() {
     shell_.handlers()["designer:density"] = [this] { cycleDensity(); };
     shell_.handlers()["designer:dpi"] = [this] { cycleDpi(); };
     shell_.handlers()["designer:zoom-in"] =
-        [this] { adjustCanvasZoom(1.1F); };
+        [this] { adjustCanvasZoom(1.0F); };
     shell_.handlers()["designer:zoom-out"] =
-        [this] { adjustCanvasZoom(1.0F / 1.1F); };
+        [this] { adjustCanvasZoom(-1.0F); };
     shell_.handlers()["designer:zoom-reset"] =
         [this] { resetCanvasView(); };
     shell_.handlers()["designer:pan-left"] =
@@ -1466,6 +1518,11 @@ void DesignerApp::attach() {
         shell_.markDirty();
     };
     shell_.handlers()["designer:zoom-fit"] = [this] { fitCanvasView(); };
+    shell_.handlers()["designer:canvas-align"] = [this] {
+        // §8.8 对齐参考线（十字线 + 坐标徽标）独立开关。
+        canvasAlignEnabled_ = !canvasAlignEnabled_;
+        shell_.markDirty();
+    };
     shell_.handlers()["designer:preview-state"] =
         [this] { cyclePreviewState(); };
     shell_.handlers()["designer:add-text"] = [this] {
@@ -3968,13 +4025,14 @@ void DesignerApp::cycleDpi() {
     previewShell_.markDirty();
 }
 
-void DesignerApp::adjustCanvasZoom(float factor) {
+void DesignerApp::adjustCanvasZoom(
+    float factor, std::optional<core::Offset> anchor) {
     // 离散档位（§8.6 用户契约）：默认 100%；≤200% 区间步进 25%，
     // >200% 步进 50%；钳制在 10%–500%。factor 仅取方向（≥1 放大）。
     constexpr float kLevels[] = {0.10F, 0.25F, 0.50F, 0.75F, 1.00F,
                                  1.25F, 1.50F, 1.75F, 2.00F,
                                  2.50F, 3.00F, 3.50F, 4.00F, 4.50F, 5.00F};
-    if (!std::isfinite(factor) || factor <= 0.0F) return;
+    if (!std::isfinite(factor) || factor == 0.0F) return;
     const float current = canvasTransform_.zoom();
     std::size_t nearest = 0;
     for (std::size_t index = 1; index < std::size(kLevels); ++index) {
@@ -3988,8 +4046,41 @@ void DesignerApp::adjustCanvasZoom(float factor) {
             ? std::min(nearest + 1, std::size(kLevels) - 1)
             : (nearest > 0 ? nearest - 1 : std::size_t{0});
     if (kLevels[next] == current) return;
+    // 锚定缩放（§8.8）：保持锚点（窗口坐标，默认画布内容中心）下方
+    // 的设计坐标不动——pan 随新缩放重解。画布节点未就绪（如首帧前的
+    // 程序化调用）时不锚定，仅改缩放。
+    std::optional<core::Offset> anchorLocal;
+    const auto* canvasNode =
+        core::findNodeByKey(shell_.root(), "designer-canvas");
+    if (canvasNode != nullptr) {
+        const auto origin =
+            core::absoluteOffset(shell_.root(), "designer-canvas");
+        const core::Offset padding{canvasNode->padding.left,
+                                   canvasNode->padding.top};
+        if (anchor.has_value()) {
+            anchorLocal = *anchor - origin - padding;
+        } else {
+            anchorLocal =
+                origin + padding +
+                core::Offset{
+                    (canvasNode->size.width -
+                     canvasNode->padding.horizontal()) * 0.5F,
+                    (canvasNode->size.height -
+                     canvasNode->padding.vertical()) * 0.5F} -
+                origin - padding;
+        }
+    }
+    const float newZoom = kLevels[next];
     shell_.pointerCancel();
-    (void)canvasTransform_.setZoom(kLevels[next]);
+    (void)canvasTransform_.setZoom(newZoom);
+    if (anchorLocal.has_value()) {
+        const core::Offset world{
+            (anchorLocal->x - canvasTransform_.pan().x) / current,
+            (anchorLocal->y - canvasTransform_.pan().y) / current};
+        (void)canvasTransform_.setPan(
+            core::Offset{anchorLocal->x - world.x * newZoom,
+                         anchorLocal->y - world.y * newZoom});
+    }
     refreshDocumentUi();
     shell_.markDirty();
 }
@@ -4039,13 +4130,15 @@ void DesignerApp::fitCanvasView() {
         contentWidth <= 0.0F || contentHeight <= 0.0F) {
         return;
     }
-    constexpr float kMargin = 8.0F;
-    const float zoom = std::min({(contentWidth - kMargin) / designWidth,
-                                 (contentHeight - kMargin) / designHeight,
-                                 1.0F});
+    // §8.8（designer-canvas.html fit()）：水平留 120（左右各 60 的呼吸
+    // 与角标）、垂直留 100（上方 caption 32 + 下方裕量），允许放大到
+    // 1.15 铺满；垂直中心向下让 8px 给页面 caption。
+    const float zoom = std::min({(contentWidth - 120.0F) / designWidth,
+                                 (contentHeight - 100.0F) / designHeight,
+                                 1.15F});
     const core::Offset pan{
         (contentWidth - designWidth * zoom) * 0.5F,
-        (contentHeight - designHeight * zoom) * 0.5F};
+        (contentHeight - designHeight * zoom) * 0.5F + 8.0F};
     if (zoom == canvasTransform_.zoom() && pan == canvasTransform_.pan()) {
         return;
     }
@@ -4317,9 +4410,15 @@ core::Widget DesignerApp::decoratePreview(
     const std::set<dsl::DesignNodeId>& selected) const {
     widget.key = previewKeyForNodeId(node.id);
     widget.onClick = "designer:select:" + std::to_string(node.id);
-    if (selected.contains(node.id)) {
+    // §8.8 review：文档根不渲染选中装饰——根恒选中（默认选择），整板
+    // selectionBackground 冲刷会盖住标尺/网格且与选中铬件语义重复。
+    const bool isDocumentRoot =
+        workbench_.document().has_value() &&
+        node.id == workbench_.document()->root.id;
+    if (!isDocumentRoot && selected.contains(node.id)) {
         widget.selected = true;
-        widget.styleOverrides.background = shell_.theme().colors.selectionBackground;
+        widget.styleOverrides.background =
+            shell_.theme().colors.selectionBackground;
         widget.styleOverrides.border = shell_.theme().colors.accent;
         widget.styleOverrides.borderWidth = 2.0F;
     }
@@ -5104,14 +5203,55 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
         const auto localOf = [&](const std::string& key) {
             return core::absoluteOffset(shell_.root(), key) - contentOrigin;
         };
-        // 页面（文档根）虚线边界。
+        // 页面（文档根）虚线边界（外扩 8px，designer-canvas.html
+        // .page-boundary inset:-8px）+ 页面 caption（页名 + 预览环境）。
         const std::string rootKey =
             previewKeyForNodeId(workbench_.document()->root.id);
         if (const auto* rootRender =
                 core::findNodeByKey(shell_.root(), rootKey)) {
             const auto origin = localOf(rootKey);
-            dashRect(origin.x, origin.y, rootRender->size.width,
-                     rootRender->size.height, "designer-canvas-page-dash");
+            constexpr float kOutset = 8.0F;
+            dashRect(origin.x - kOutset, origin.y - kOutset,
+                     rootRender->size.width + kOutset * 2.0F,
+                     rootRender->size.height + kOutset * 2.0F,
+                     "designer-canvas-page-dash");
+            const std::string pageName =
+                workbench_.document()->pageName.empty()
+                    ? std::string{"preview"}
+                    : workbench_.document()->pageName;
+            const std::string environment =
+                std::string{darkMode_ ? "CoreDark" : "CoreLight"} + " · " +
+                (previewDensity_ == style::ControlDensity::Compact
+                     ? "Compact"
+                     : previewDensity_ == style::ControlDensity::Touch
+                           ? "Dense"
+                           : "Comfortable");
+            auto spacer = core::makeContainerLeaf(
+                std::nullopt, std::nullopt, {}, {},
+                core::Color::transparent(), {});
+            spacer.flex = 1.0F;
+            spacer.excludeFromFocus = true;
+            spacer.excludeFromSemantics = true;
+            auto captionLeft = core::makeText(
+                pageName, theme.typography.caption, {}, 0.0F,
+                "designer-canvas-page-caption-name");
+            captionLeft.styleOverrides.foreground =
+                theme.colors.accentContent;
+            auto captionRight = core::makeText(
+                environment, theme.typography.caption, {}, 0.0F,
+                "designer-canvas-page-caption-env");
+            captionRight.styleOverrides.foreground =
+                theme.colors.contentSecondary;
+            auto caption = core::makeRow(
+                {std::move(captionLeft), std::move(spacer),
+                 std::move(captionRight)},
+                core::MainAxisAlignment::Start,
+                core::CrossAxisAlignment::Center, 12.0F, {}, {},
+                "designer-canvas-page-caption");
+            caption.width = rootRender->size.width;
+            children.push_back(position(makeDecoration(std::move(caption)),
+                                        core::Offset{origin.x,
+                                                     origin.y - 30.0F}));
         }
         // 所选的父容器轮廓 + 标注（父为文档根时页面边界已覆盖，跳过）。
         const auto primary = workbench_.selection().primary;
@@ -5132,8 +5272,10 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                         : core::findNodeByKey(shell_.root(), parentKey);
                 if (parentRender != nullptr) {
                     const auto origin = localOf(parentKey);
-                    dashRect(origin.x, origin.y, parentRender->size.width,
-                             parentRender->size.height,
+                    constexpr float kOutset = 6.0F;
+                    dashRect(origin.x - kOutset, origin.y - kOutset,
+                             parentRender->size.width + kOutset * 2.0F,
+                             parentRender->size.height + kOutset * 2.0F,
                              "designer-canvas-bounds-dash");
                     std::string label = parent->type;
                     if (const auto keyIt = parent->properties.find("key");
@@ -5160,232 +5302,382 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
         }
     }
 
-    if (canvasGuidesEnabled_ && canvasNode != nullptr) {
-        const float width = contentWidth.value_or(0.0F);
-        const float height = contentHeight.value_or(0.0F);
-        if (width > 0.0F && height > 0.0F) {
-            // Keep the point field sparse enough for a retained widget tree;
-            // the 40px sampling still communicates the designer grid while
-            // leaving the frozen 8px snap threshold to the future engine.
-            for (float y = 0.0F; y <= height; y += 40.0F) {
-                for (float x = 0.0F; x <= width; x += 40.0F) {
-                    children.push_back(position(
-                        makeBar(2.0F, 2.0F, tokens.gridDot,
-                                "designer-canvas-grid-dot:" +
-                                    std::to_string(static_cast<int>(x)) +
-                                    ":" + std::to_string(static_cast<int>(y))),
-                        core::Offset{x, y}));
-                }
-            }
-            // Rulers are intentionally ordinary render widgets. They stay
-            // outside the semantic/focus tree and the preview remains the
-            // last child so selection and drag hit testing keep their order.
-            children.push_back(position(
-                makeBar(width, 20.0F, tokens.rulerSurface,
-                        "designer-canvas-ruler-top"),
-                core::Offset{0.0F, 0.0F}));
-            children.push_back(position(
-                makeBar(20.0F, height, tokens.rulerSurface,
-                        "designer-canvas-ruler-left"),
-                core::Offset{0.0F, 0.0F}));
-            for (float x = 0.0F; x <= width; x += 40.0F) {
-                children.push_back(position(
-                    makeBar(tokens.guideThickness, 8.0F, tokens.rulerTick,
-                            "designer-canvas-ruler-tick-x:" +
-                                std::to_string(static_cast<int>(x))),
-                    core::Offset{x, 12.0F}));
-            }
-            for (float y = 0.0F; y <= height; y += 40.0F) {
-                children.push_back(position(
-                    makeBar(8.0F, tokens.guideThickness, tokens.rulerTick,
-                            "designer-canvas-ruler-tick-y:" +
-                                std::to_string(static_cast<int>(y))),
-                    core::Offset{12.0F, y}));
-            }
-            for (float x = 0.0F; x <= width; x += 80.0F) {
-                auto label = core::makeText(
-                    std::to_string(static_cast<int>(x)),
-                    theme.typography.caption, {}, 0.0F,
-                    "designer-canvas-ruler-label-x:" +
-                        std::to_string(static_cast<int>(x)));
-                label.styleOverrides.foreground = tokens.rulerTick;
-                children.push_back(position(makeDecoration(std::move(label)),
-                                            core::Offset{x + 2.0F, 1.0F}));
-            }
-            for (float y = 40.0F; y <= height; y += 80.0F) {
-                auto label = core::makeText(
-                    std::to_string(static_cast<int>(y)),
-                    theme.typography.caption, {}, 0.0F,
-                    "designer-canvas-ruler-label-y:" +
-                        std::to_string(static_cast<int>(y)));
-                label.styleOverrides.foreground = tokens.rulerTick;
-                children.push_back(position(makeDecoration(std::move(label)),
-                                            core::Offset{1.0F, y + 2.0F}));
-            }
-        }
-
-        std::string selectedKey;
-        if (const auto primary = workbench_.selection().primary;
-            primary.has_value()) {
-            if (const auto outline = workbench_.outline(); outline.has_value()) {
-                if (const auto* selected =
-                        findOutlineNode(*outline, *primary);
-                    selected != nullptr) {
-                    selectedKey = previewKeyForNodeId(*primary);
-                }
-            }
-        }
-        const auto selectedId = workbench_.selection().primary;
-        const auto* selectedNode = selectedKey.empty()
-                                       ? nullptr
-                                       : core::findNodeByKey(shell_.root(),
-                                                             selectedKey);
-        if (selectedNode != nullptr && canvasNode != nullptr &&
-            contentWidth.has_value() && contentHeight.has_value()) {
-            const core::Offset canvasOrigin =
-                core::absoluteOffset(shell_.root(), "designer-canvas");
-            const core::Offset contentOrigin =
-                canvasOrigin +
-                core::Offset{canvasNode->padding.left,
-                             canvasNode->padding.top};
-            const core::Offset selectedOrigin =
-                core::absoluteOffset(shell_.root(), selectedKey);
-            const core::Offset local{selectedOrigin.x - contentOrigin.x,
-                                     selectedOrigin.y - contentOrigin.y};
-            float selectedX = local.x;
-            float selectedY = local.y;
-            float selectedWidth = selectedNode->size.width;
-            float selectedHeight = selectedNode->size.height;
-            if (canvasResizeActive_ && selectedId.has_value() &&
-                canvasResizePreview_.id == *selectedId) {
-                selectedX = canvasResizeCoordinateOrigin_.x +
-                            canvasResizePreview_.x * canvasResizeZoom_;
-                selectedY = canvasResizeCoordinateOrigin_.y +
-                            canvasResizePreview_.y * canvasResizeZoom_;
-                selectedWidth = canvasResizePreview_.width * canvasResizeZoom_;
-                selectedHeight = canvasResizePreview_.height * canvasResizeZoom_;
-            }
-            if (selectedWidth > 0.0F && selectedHeight > 0.0F) {
-                auto vertical = makeBar(tokens.guideThickness, *contentHeight,
-                                        tokens.guide, "designer-canvas-guide-v");
-                children.push_back(position(
-                    std::move(vertical),
-                    core::Offset{selectedX + selectedWidth * 0.5F -
-                                     tokens.guideThickness * 0.5F,
-                                 0.0F}));
-                auto horizontal = makeBar(*contentWidth, tokens.guideThickness,
-                                          tokens.guide,
-                                          "designer-canvas-guide-h");
-                children.push_back(position(
-                    std::move(horizontal),
-                    core::Offset{0.0F,
-                                 selectedY + selectedHeight * 0.5F -
-                                     tokens.guideThickness * 0.5F}));
-
-                auto frame = core::makeContainerLeaf(
-                    selectedWidth + 12.0F, selectedHeight + 12.0F, {}, {},
-                    core::Color::transparent(),
-                    "designer-canvas-guide-frame");
-                frame.styleOverrides.border = tokens.guide;
-                frame.styleOverrides.borderWidth = tokens.guideThickness;
-                frame = makeDecoration(std::move(frame));
-                children.push_back(position(
-                    std::move(frame),
-                    core::Offset{selectedX - 6.0F, selectedY - 6.0F}));
-
-                const float handleSize = 8.0F;
-                const std::vector<std::pair<std::string, core::Offset>> handles = {
-                    {"nw", {selectedX - 10.0F, selectedY - 10.0F}},
-                    {"n", {selectedX + selectedWidth * 0.5F - 4.0F,
-                            selectedY - 10.0F}},
-                    {"ne", {selectedX + selectedWidth + 2.0F,
-                             selectedY - 10.0F}},
-                    {"e", {selectedX + selectedWidth + 2.0F,
-                            selectedY + selectedHeight * 0.5F - 4.0F}},
-                    {"se", {selectedX + selectedWidth + 2.0F,
-                             selectedY + selectedHeight + 2.0F}},
-                    {"s", {selectedX + selectedWidth * 0.5F - 4.0F,
-                            selectedY + selectedHeight + 2.0F}},
-                    {"sw", {selectedX - 10.0F, selectedY + selectedHeight + 2.0F}},
-                    {"w", {selectedX - 10.0F,
-                            selectedY + selectedHeight * 0.5F - 4.0F}},
-                };
-                for (const auto& [name, offset] : handles) {
-                    auto handle = core::makeContainerLeaf(
-                        handleSize, handleSize, {}, {}, tokens.handleFill,
-                        "designer-canvas-handle:" + name);
-                    handle = core::withOnClick(
-                        std::move(handle), "designer-canvas-handle:" + name);
-                    handle.styleOverrides.border = tokens.handleBorder;
-                    handle.styleOverrides.borderWidth = tokens.guideThickness;
-                    // 交互手柄不吃 makeDecoration 的指针透明：拖拽缩放/
-                    // 换位的抓点必须可命中。
-                    handle = makeDecoration(std::move(handle));
-                    handle.ignorePointer = false;
-                    foregroundDecorations.push_back(
-                        position(std::move(handle), offset));
-                }
-
-                auto dimensions = core::makeText(
-                    "X " + std::to_string(static_cast<int>(local.x)) +
-                        "  Y " + std::to_string(static_cast<int>(local.y)) +
-                        "  W " +
-                        std::to_string(static_cast<int>(selectedWidth)) +
-                        "  H " +
-                        std::to_string(static_cast<int>(selectedHeight)),
-                    theme.typography.caption, {}, 0.0F,
-                    "designer-canvas-dimensions", std::nullopt, std::nullopt,
-                    core::EdgeInsets::symmetric(6.0F, 3.0F));
-                dimensions.styleOverrides.background = tokens.guide;
-                dimensions.styleOverrides.foreground = tokens.onGuide;
-                foregroundDecorations.push_back(
-                    position(makeDecoration(std::move(dimensions)),
-                             core::Offset{selectedX,
-                                          selectedY + selectedHeight + 14.0F}));
-            }
-
-            // §8.3 拖动换位虚线参考：原位虚线框 + 命中对齐时的全幅虚线
-            //（4px 划/3px 隙的装饰条带，指针透明）。
-            if (canvasResizeActive_ &&
-                canvasResizeHandle_.rfind("drag:", 0) == 0 &&
-                contentWidth.has_value() && contentHeight.has_value()) {
-                const float zoom = canvasResizeZoom_;
-                const float originX = canvasResizeCoordinateOrigin_.x;
-                const float originY = canvasResizeCoordinateOrigin_.y;
-                // 原位虚线框（拖动起点的矩形轮廓，四边）。
-                const float startX =
-                    originX + canvasResizeStart_.x * zoom;
-                const float startY =
-                    originY + canvasResizeStart_.y * zoom;
-                const float startWidth =
-                    canvasResizeStart_.width * zoom;
-                const float startHeight =
-                    canvasResizeStart_.height * zoom;
-                dashRect(startX, startY, startWidth, startHeight,
-                         "designer-canvas-drag-dash");
-                // 对齐参考虚线：命中候选时全幅横/竖线。
-                if (canvasResizeActiveGuideX_.has_value()) {
-                    dash(originX + *canvasResizeActiveGuideX_ * zoom, 0.0F,
-                         *contentHeight, false, "designer-canvas-drag-dash", 4);
-                }
-                if (canvasResizeActiveGuideY_.has_value()) {
-                    dash(0.0F, originY + *canvasResizeActiveGuideY_ * zoom,
-                         *contentWidth, true, "designer-canvas-drag-dash", 5);
-                }
+    // —— §8.8 选中解析（铬件/标尺标线共用）——
+    std::string selectedKey;
+    if (const auto primary = workbench_.selection().primary;
+        primary.has_value()) {
+        if (const auto outline = workbench_.outline(); outline.has_value()) {
+            if (findOutlineNode(*outline, *primary) != nullptr) {
+                selectedKey = previewKeyForNodeId(*primary);
             }
         }
     }
+    const auto* selectedNode =
+        selectedKey.empty()
+            ? nullptr
+            : core::findNodeByKey(shell_.root(), selectedKey);
+    std::optional<core::Rect> selectedRect;
+    if (selectedNode != nullptr && canvasNode != nullptr &&
+        contentWidth.has_value() && contentHeight.has_value()) {
+        const core::Offset canvasOrigin =
+            core::absoluteOffset(shell_.root(), "designer-canvas");
+        const core::Offset contentOrigin =
+            canvasOrigin +
+            core::Offset{canvasNode->padding.left, canvasNode->padding.top};
+        const core::Offset selectedOrigin =
+            core::absoluteOffset(shell_.root(), selectedKey);
+        selectedRect = core::Rect{
+            selectedOrigin - contentOrigin,
+            core::Size{selectedNode->size.width, selectedNode->size.height}};
+    }
+
+    // §8.8 网格点阵（独立开关）+ 图例/提示：预览之下（点阵是舞台背
+    // 景，稿中 artboard 覆盖其上；图例/提示在其后单独压预览之上）。
+    if (canvasNode != nullptr && contentWidth.has_value() &&
+        contentHeight.has_value()) {
+        const float width = *contentWidth;
+        const float height = *contentHeight;
+        if (canvasGuidesEnabled_) {
+            const float zoom = canvasTransform_.zoom();
+            const core::Offset pan = canvasTransform_.pan();
+            auto designStep = 8.0F;
+            while (designStep * zoom < 8.0F) designStep *= 2.0F;
+            auto dotStep = designStep;
+            while (dotStep * zoom < 16.0F) dotStep *= 2.0F;
+            const float step = dotStep * zoom;
+            const float gridOriginY = pan.y + kCanvasStageInset;
+            const float firstY =
+                std::ceil(-gridOriginY / step) * step + gridOriginY;
+            int row = 0;
+            for (float y = firstY; y <= height; y += step, ++row) {
+                const float gridOriginX = pan.x + kCanvasStageInset;
+                const float firstX =
+                    std::ceil(-gridOriginX / step) * step + gridOriginX;
+                int column = 0;
+                for (float x = firstX; x <= width; x += step, ++column) {
+                    children.push_back(position(
+                        makeBar(2.0F, 2.0F, tokens.gridDot,
+                                "designer-canvas-grid-dot:" +
+                                    std::to_string(column) + ":" +
+                                    std::to_string(row)),
+                        core::Offset{x, y}));
+                }
+            }
+        }
+
+        // §8.8 图例（左下）与操作提示（右下）。
+        auto legend = core::makeRow(
+            {core::makeText("页面 / 容器", theme.typography.caption, {}, 0.0F,
+                            "designer-canvas-legend-bounds"),
+             core::makeText("选中", theme.typography.caption, {}, 0.0F,
+                            "designer-canvas-legend-selection"),
+             core::makeText("对齐", theme.typography.caption, {}, 0.0F,
+                            "designer-canvas-legend-align")},
+            core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center,
+            14.0F, core::EdgeInsets::symmetric(9.0F, 7.0F), {},
+            "designer-canvas-legend");
+        legend.styleOverrides.background = theme.colors.surfaceElevated;
+        legend.styleOverrides.border = theme.colors.borderDefault;
+        legend.styleOverrides.borderWidth = tokens.guideThickness;
+        children.push_back(position(makeDecoration(std::move(legend)),
+                                    core::Offset{14.0F, height - 34.0F}));
+        auto hint = core::makeText(
+            "Space + 拖动平移 · Ctrl + 滚轮缩放",
+            theme.typography.caption, {}, 0.0F, "designer-canvas-hint");
+        hint.styleOverrides.foreground = theme.colors.contentSecondary;
+        children.push_back(position(makeDecoration(std::move(hint)),
+                                    core::Offset{width - 210.0F,
+                                                 height - 26.0F}));
+    }
+
 
     // Apply the view transform at the canvas boundary. The model remains in
     // design units; only the materialized preview geometry moves and scales.
     scaleCanvasWidget(preview, canvasTransform_.zoom());
-    preview = core::withStackPosition(std::move(preview),
-                                      canvasTransform_.pan());
+    preview = core::withStackPosition(
+        std::move(preview),
+        canvasTransform_.pan() +
+            core::Offset{kCanvasStageInset, kCanvasStageInset});
 
     // The preview stays above passive guides so the canvas keeps normal hit
     // testing. Handles and the dimensions chip are the intentional interactive
     // chrome, so they are appended after the preview and can claim a drag.
     children.push_back(std::move(preview));
+    // —— §8.8 标尺（常显）：刻度/标签按设计坐标随缩放与平移重建；
+    // 步距 8 设计 px 起，屏幕间距不足 8px 时逐级翻倍（major/读数同步放
+    // 大）；选中中心的 accent 标线跟随（ruler-mark）。——
+    if (canvasNode != nullptr && contentWidth.has_value() &&
+        contentHeight.has_value()) {
+        const float width = *contentWidth;
+        const float height = *contentHeight;
+        const float zoom = canvasTransform_.zoom();
+        const core::Offset pan = canvasTransform_.pan();
+        auto designStep = 8.0F;
+        while (designStep * zoom < 8.0F) designStep *= 2.0F;
+        // Rulers are intentionally ordinary render widgets. They stay
+        // outside the semantic/focus tree and the preview remains the
+        // last child so selection and drag hit testing keep their order.
+        children.push_back(position(
+            makeBar(width, 20.0F, tokens.rulerSurface,
+                    "designer-canvas-ruler-top"),
+            core::Offset{0.0F, 0.0F}));
+        children.push_back(position(
+            makeBar(20.0F, height, tokens.rulerSurface,
+                    "designer-canvas-ruler-left"),
+            core::Offset{0.0F, 0.0F}));
+        children.push_back(position(
+            makeBar(20.0F, 20.0F, tokens.rulerSurface,
+                    "designer-canvas-ruler-corner"),
+            core::Offset{0.0F, 0.0F}));
+        // 角标十字（⌖ 近似：两根短刻线）。
+        children.push_back(position(
+            makeBar(8.0F, tokens.guideThickness,
+                    theme.colors.borderStrong,
+                    "designer-canvas-ruler-corner-h"),
+            core::Offset{6.0F, 9.5F}));
+        children.push_back(position(
+            makeBar(tokens.guideThickness, 8.0F,
+                    theme.colors.borderStrong,
+                    "designer-canvas-ruler-corner-v"),
+            core::Offset{9.5F, 6.0F}));
+        int tickIndex = 0;
+        const float originX = pan.x + kCanvasStageInset;
+        const float startX =
+            std::floor(-originX / zoom / designStep) * designStep;
+        const float endX =
+            std::ceil((width - originX) / zoom / designStep) * designStep;
+        for (float value = startX; value <= endX;
+             value += designStep, ++tickIndex) {
+            const float screen = originX + value * zoom;
+            if (screen < -2.0F || screen > width + 2.0F) continue;
+            const bool major =
+                std::fmod(std::abs(value), designStep * 5.0F) < 0.01F;
+            children.push_back(position(
+                makeBar(tokens.guideThickness, major ? 8.0F : 4.0F,
+                        major ? theme.colors.borderStrong : tokens.rulerTick,
+                        "designer-canvas-ruler-tick-x:" +
+                            std::to_string(tickIndex)),
+                core::Offset{screen, 20.0F - (major ? 8.0F : 4.0F)}));
+            if (std::fmod(std::abs(value), designStep * 10.0F) < 0.01F) {
+                auto label = core::makeText(
+                    std::to_string(static_cast<int>(value)),
+                    theme.typography.caption, {}, 0.0F,
+                    "designer-canvas-ruler-label-x:" +
+                        std::to_string(tickIndex));
+                label.styleOverrides.foreground = tokens.rulerTick;
+                children.push_back(position(makeDecoration(std::move(label)),
+                                            core::Offset{screen + 2.0F, 1.0F}));
+            }
+        }
+        tickIndex = 0;
+        const float originY = pan.y + kCanvasStageInset;
+        const float startY =
+            std::floor(-originY / zoom / designStep) * designStep;
+        const float endY =
+            std::ceil((height - originY) / zoom / designStep) * designStep;
+        for (float value = startY; value <= endY;
+             value += designStep, ++tickIndex) {
+            const float screen = originY + value * zoom;
+            if (screen < -2.0F || screen > height + 2.0F) continue;
+            const bool major =
+                std::fmod(std::abs(value), designStep * 5.0F) < 0.01F;
+            children.push_back(position(
+                makeBar(major ? 8.0F : 4.0F, tokens.guideThickness,
+                        major ? theme.colors.borderStrong : tokens.rulerTick,
+                        "designer-canvas-ruler-tick-y:" +
+                            std::to_string(tickIndex)),
+                core::Offset{20.0F - (major ? 8.0F : 4.0F), screen}));
+            if (std::fmod(std::abs(value), designStep * 10.0F) < 0.01F) {
+                auto label = core::makeText(
+                    std::to_string(static_cast<int>(value)),
+                    theme.typography.caption, {}, 0.0F,
+                    "designer-canvas-ruler-label-y:" +
+                        std::to_string(tickIndex));
+                label.styleOverrides.foreground = tokens.rulerTick;
+                children.push_back(position(makeDecoration(std::move(label)),
+                                            core::Offset{1.0F, screen + 2.0F}));
+            }
+        }
+        // 选中中心的标尺标线（accent，跨标尺全高/全宽）。
+        if (selectedRect.has_value()) {
+            const float markX =
+                selectedRect->origin.x + selectedRect->size.width * 0.5F;
+            const float markY =
+                selectedRect->origin.y + selectedRect->size.height * 0.5F;
+            children.push_back(position(
+                makeBar(2.0F, 20.0F, tokens.handleBorder,
+                        "designer-canvas-ruler-mark-x"),
+                core::Offset{markX - 1.0F, 0.0F}));
+            children.push_back(position(
+                makeBar(20.0F, 2.0F, tokens.handleBorder,
+                        "designer-canvas-ruler-mark-y"),
+                core::Offset{0.0F, markY - 1.0F}));
+        }
+    }
+
+    // —— §8.8 选中铬件（常显，不受开关控制）：中心十字（对齐开关）+
+    // 选框 + 手柄 + 名字徽标 + 尺寸徽标 + 坐标徽标 ——
+    if (selectedRect.has_value()) {
+        float selectedX = selectedRect->origin.x;
+        float selectedY = selectedRect->origin.y;
+        float selectedWidth = selectedRect->size.width;
+        float selectedHeight = selectedRect->size.height;
+        if (canvasResizeActive_ &&
+            canvasResizePreview_.id ==
+                workbench_.selection().primary.value_or(0)) {
+            selectedX = canvasResizeCoordinateOrigin_.x +
+                        canvasResizePreview_.x * canvasResizeZoom_;
+            selectedY = canvasResizeCoordinateOrigin_.y +
+                        canvasResizePreview_.y * canvasResizeZoom_;
+            selectedWidth = canvasResizePreview_.width * canvasResizeZoom_;
+            selectedHeight = canvasResizePreview_.height * canvasResizeZoom_;
+        }
+        if (canvasAlignEnabled_) {
+            auto vertical = makeBar(tokens.guideThickness, *contentHeight,
+                                    tokens.guide, "designer-canvas-guide-v");
+            children.push_back(position(
+                std::move(vertical),
+                core::Offset{selectedX + selectedWidth * 0.5F -
+                                 tokens.guideThickness * 0.5F,
+                             0.0F}));
+            auto horizontal = makeBar(*contentWidth, tokens.guideThickness,
+                                      tokens.guide, "designer-canvas-guide-h");
+            children.push_back(position(
+                std::move(horizontal),
+                core::Offset{0.0F,
+                             selectedY + selectedHeight * 0.5F -
+                                 tokens.guideThickness * 0.5F}));
+        }
+        auto frame = core::makeContainerLeaf(
+            selectedWidth + 12.0F, selectedHeight + 12.0F, {}, {},
+            core::Color::transparent(), "designer-canvas-guide-frame");
+        frame.styleOverrides.border = tokens.handleBorder;
+        frame.styleOverrides.borderWidth = 2.0F;
+        frame = makeDecoration(std::move(frame));
+        children.push_back(position(
+            std::move(frame), core::Offset{selectedX - 6.0F, selectedY - 6.0F}));
+
+        const float handleSize = 8.0F;
+        const std::vector<std::pair<std::string, core::Offset>> handles = {
+            {"nw", {selectedX - 10.0F, selectedY - 10.0F}},
+            {"n", {selectedX + selectedWidth * 0.5F - 4.0F,
+                   selectedY - 10.0F}},
+            {"ne", {selectedX + selectedWidth + 2.0F, selectedY - 10.0F}},
+            {"e", {selectedX + selectedWidth + 2.0F,
+                   selectedY + selectedHeight * 0.5F - 4.0F}},
+            {"se", {selectedX + selectedWidth + 2.0F,
+                    selectedY + selectedHeight + 2.0F}},
+            {"s", {selectedX + selectedWidth * 0.5F - 4.0F,
+                   selectedY + selectedHeight + 2.0F}},
+            {"sw", {selectedX - 10.0F, selectedY + selectedHeight + 2.0F}},
+            {"w", {selectedX - 10.0F,
+                   selectedY + selectedHeight * 0.5F - 4.0F}},
+        };
+        for (const auto& [name, offset] : handles) {
+            auto handle = core::makeContainerLeaf(
+                handleSize, handleSize, {}, {}, tokens.handleFill,
+                "designer-canvas-handle:" + name);
+            handle = core::withOnClick(std::move(handle),
+                                       "designer-canvas-handle:" + name);
+            handle.styleOverrides.border = tokens.handleBorder;
+            handle.styleOverrides.borderWidth = tokens.guideThickness;
+            handle.radius = core::CornerRadius::all(2.0F);
+            // 交互手柄不吃 makeDecoration 的指针透明：拖拽缩放/
+            // 换位的抓点必须可命中。
+            handle = makeDecoration(std::move(handle));
+            handle.ignorePointer = false;
+            foregroundDecorations.push_back(
+                position(std::move(handle), offset));
+        }
+
+        // 名字徽标（accent 底"类型 · key"，选框上方）。
+        std::string selectionLabel = "节点";
+        if (workbench_.document().has_value()) {
+            const auto primary = workbench_.selection().primary;
+            if (primary.has_value()) {
+                if (const auto* node = findDesignNode(
+                        workbench_.document()->root, *primary);
+                    node != nullptr) {
+                    selectionLabel = node->type;
+                    if (const auto keyIt = node->properties.find("key");
+                        keyIt != node->properties.end()) {
+                        if (const auto* keyName =
+                                std::get_if<std::string>(
+                                    &keyIt->second.value);
+                            keyName != nullptr && !keyName->empty()) {
+                            selectionLabel += " · " + *keyName;
+                        }
+                    }
+                }
+            }
+        }
+        auto nameChip = core::makeText(
+            selectionLabel, theme.typography.caption, {}, 0.0F,
+            "designer-canvas-selection-name", std::nullopt, std::nullopt,
+            core::EdgeInsets::symmetric(6.0F, 3.0F));
+        nameChip.styleOverrides.background = tokens.handleBorder;
+        nameChip.styleOverrides.foreground = theme.colors.accentContent;
+        foregroundDecorations.push_back(position(
+            makeDecoration(std::move(nameChip)),
+            core::Offset{selectedX - 2.0F, selectedY - 24.0F}));
+
+        // 尺寸徽标（W × H，选框右下外侧）。
+        auto dimensions = core::makeText(
+            std::to_string(static_cast<int>(selectedWidth)) + " × " +
+                std::to_string(static_cast<int>(selectedHeight)),
+            theme.typography.caption, {}, 0.0F, "designer-canvas-dimensions",
+            std::nullopt, std::nullopt,
+            core::EdgeInsets::symmetric(6.0F, 3.0F));
+        dimensions.styleOverrides.background = theme.colors.surfaceElevated;
+        dimensions.styleOverrides.border = tokens.handleBorder;
+        dimensions.styleOverrides.borderWidth = tokens.guideThickness;
+        dimensions.styleOverrides.foreground = theme.colors.accentContent;
+        foregroundDecorations.push_back(position(
+            makeDecoration(std::move(dimensions)),
+            core::Offset{selectedX + selectedWidth + 8.0F,
+                         selectedY + selectedHeight + 7.0F}));
+
+        // 坐标徽标（X · Y，十字交点右下；对齐开关）。
+        if (canvasAlignEnabled_) {
+            auto guideChip = core::makeText(
+                "X " + std::to_string(static_cast<int>(selectedX)) + " · Y " +
+                    std::to_string(static_cast<int>(selectedY)),
+                theme.typography.caption, {}, 0.0F,
+                "designer-canvas-guide-chip", std::nullopt, std::nullopt,
+                core::EdgeInsets::symmetric(6.0F, 3.0F));
+            guideChip.styleOverrides.background = tokens.guide;
+            guideChip.styleOverrides.foreground = tokens.onGuide;
+            foregroundDecorations.push_back(position(
+                makeDecoration(std::move(guideChip)),
+                core::Offset{selectedX + selectedWidth * 0.5F + 8.0F,
+                             selectedY + selectedHeight * 0.5F + 9.0F}));
+        }
+
+        // §8.3 拖动换位虚线参考：原位虚线框 + 命中对齐时的全幅虚线
+        //（4px 划/3px 隙的装饰条带，指针透明）。
+        if (canvasResizeActive_ &&
+            canvasResizeHandle_.rfind("drag:", 0) == 0) {
+            const float zoom = canvasResizeZoom_;
+            const float originX = canvasResizeCoordinateOrigin_.x;
+            const float originY = canvasResizeCoordinateOrigin_.y;
+            // 原位虚线框（拖动起点的矩形轮廓，四边）。
+            const float startX = originX + canvasResizeStart_.x * zoom;
+            const float startY = originY + canvasResizeStart_.y * zoom;
+            const float startWidth = canvasResizeStart_.width * zoom;
+            const float startHeight = canvasResizeStart_.height * zoom;
+            dashRect(startX, startY, startWidth, startHeight,
+                     "designer-canvas-drag-dash");
+            // 对齐参考虚线：命中候选时全幅横/竖线。
+            if (canvasResizeActiveGuideX_.has_value()) {
+                dash(originX + *canvasResizeActiveGuideX_ * zoom, 0.0F,
+                     *contentHeight, false, "designer-canvas-drag-dash", 4);
+            }
+            if (canvasResizeActiveGuideY_.has_value()) {
+                dash(0.0F, originY + *canvasResizeActiveGuideY_ * zoom,
+                     *contentWidth, true, "designer-canvas-drag-dash", 5);
+            }
+        }
+    }
     for (auto& decoration : foregroundDecorations) {
         children.push_back(std::move(decoration));
     }
@@ -5588,13 +5880,26 @@ core::Widget DesignerApp::buildCanvasControls() {
         button.semanticsLabel = std::move(semantics);
         return button;
     };
-    std::string docWidth = "520";
+    // §8.8：画板名义尺寸（文档根声明 width/height；缺省回退 720×500
+    // 示例口径），单位 lp（逻辑设计像素）。
+    std::string docSize = "720 × 500";
     if (workbench_.document().has_value()) {
-        // 根宽取声明近似：预览帧未知时回退 520（HTML 示例 artboard 宽）。
-        docWidth = "520";
+        const auto readNumber = [&root = workbench_.document()->root](
+                                    const char* name) -> float {
+            const auto found = root.properties.find(name);
+            if (found == root.properties.end()) return -1.0F;
+            const auto* number = std::get_if<double>(&found->second.value);
+            return number != nullptr ? static_cast<float>(*number) : -1.0F;
+        };
+        const float w = readNumber("width");
+        const float h = readNumber("height");
+        if (w > 0.0F && h > 0.0F) {
+            docSize = std::to_string(static_cast<int>(w)) + " × " +
+                      std::to_string(static_cast<int>(h));
+        }
     }
     auto sizeLabel =
-        core::makeText("桌面表单 · " + docWidth + " lp",
+        core::makeText("桌面表单 · " + docSize + " lp",
                        theme.typography.caption, {}, 0.0F,
                        "designer-canvas-size-label");
     auto spacer = core::makeContainerLeaf(
@@ -5612,6 +5917,10 @@ core::Widget DesignerApp::buildCanvasControls() {
         canvasBoundsEnabled_ ? "隐藏边界" : "显示边界",
         "designer:canvas-bounds");
     bounds.checked = canvasBoundsEnabled_;
+    auto align = iconCommand(
+        core::IconId::Search, "designer-canvas-align",
+        canvasAlignEnabled_ ? "隐藏对齐" : "显示对齐", "designer:canvas-align");
+    align.checked = canvasAlignEnabled_;
     auto zoomOut = iconCommand(core::IconId::ZoomOut, "designer-zoom-out",
                                "缩小", "designer:zoom-out");
     zoomOut.excludeFromFocus = true;
@@ -5673,7 +5982,8 @@ core::Widget DesignerApp::buildCanvasControls() {
         {std::move(sizeLabel), std::move(spacer), std::move(themeButton),
          std::move(densityButton), std::move(dpiButton), std::move(fontButton),
          std::move(contrastButton), std::move(previewStateButton),
-         std::move(grid), std::move(bounds), std::move(zoomOut),
+         std::move(grid), std::move(bounds), std::move(align),
+         std::move(zoomOut),
          std::move(zoomLabel), std::move(zoomIn), std::move(fit),
          std::move(reset), std::move(env)},
         core::MainAxisAlignment::Start, core::CrossAxisAlignment::Center, 4.0F,

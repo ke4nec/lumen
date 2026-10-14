@@ -818,14 +818,25 @@ TEST_CASE("designer app renders canvas alignment guides for the selection",
     }
     CHECK_FALSE(guideInSemantics);
 
+    // §8.8 分开关：网格开关只收点阵（选中框常显）；对齐开关收十字线。
     app.shell().handlers().at("designer:canvas-guides")();
     (void)app.shell().renderFrame();
     CHECK(findNodeByKey(app.shell().root(),
-                        "designer-canvas-guide-frame") == nullptr);
-    app.shell().handlers().at("designer:canvas-guides")();
-    (void)app.shell().renderFrame();
+                        "designer-canvas-grid-dot:0:0") == nullptr);
     CHECK(findNodeByKey(app.shell().root(),
                         "designer-canvas-guide-frame") != nullptr);
+    app.shell().handlers().at("designer:canvas-guides")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-grid-dot:0:0") != nullptr);
+    app.shell().handlers().at("designer:canvas-align")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-guide-v") == nullptr);
+    app.shell().handlers().at("designer:canvas-align")();
+    (void)app.shell().renderFrame();
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-guide-v") != nullptr);
 }
 
 TEST_CASE("designer app frame-selects canvas siblings",
@@ -915,7 +926,8 @@ TEST_CASE("designer app transforms canvas preview without editing the document",
     app.shell().handlers().at("designer:pan-right")();
     (void)app.shell().renderFrame();
     const auto pannedOrigin = absoluteOffset(app.shell().root(), nodeKey);
-    CHECK(pannedOrigin.x > beforeOrigin.x);
+    // §8.8 锚定缩放后节点可能已随中心锚点左移，只断言平移改变位置。
+    CHECK(pannedOrigin.x != beforeOrigin.x);
     CHECK(app.workbench().documentRevision() == revision);
     CHECK_FALSE(app.workbench().dirty());
     CHECK(app.workbench().frame().generation() == zoomGeneration);
@@ -3483,6 +3495,140 @@ TEST_CASE("designer zoom control uses discrete steps with clamped range",
 }
 
 
+
+TEST_CASE("designer canvas wheel zooms with ctrl and pans without",
+          "[designer][d3][app][zoom]") {
+    // §8.8（designer-canvas.html）：Ctrl+滚轮 = 锚定档位缩放；普通滚
+    // 轮 = 平移画布。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    (void)app.shell().renderFrame();
+
+    const auto zoomText = [&app] {
+        return findNodeByKey(app.shell().root(), "designer-zoom-label")->text;
+    };
+    const auto rootOrigin = [&app] {
+        return absoluteOffset(app.shell().root(), "root");
+    };
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    REQUIRE(canvas != nullptr);
+    const auto canvasOrigin = absoluteOffset(app.shell().root(), "designer-canvas");
+    const Offset overCanvas{canvasOrigin.x + 60.0F, canvasOrigin.y + 60.0F};
+
+    CHECK(zoomText() == "100%");
+    // Ctrl+滚轮（下滚 = 缩小方向？上滚 delta.y<0 = 放大）。
+    CHECK(app.shell().wheel(overCanvas, {0.0F, -53.0F},
+                            lumen::core::kModifierCtrl));
+    (void)app.shell().renderFrame();
+    CHECK(zoomText() == "125%");
+    CHECK(app.shell().wheel(overCanvas, {0.0F, 53.0F},
+                            lumen::core::kModifierCtrl));
+    (void)app.shell().renderFrame();
+    CHECK(zoomText() == "100%");
+    // 普通滚轮 = 平移（缩放不变，画板右移）。
+    const auto before = rootOrigin();
+    CHECK(app.shell().wheel(overCanvas, {40.0F, 0.0F},
+                            lumen::core::kModifierNone));
+    (void)app.shell().renderFrame();
+    CHECK(zoomText() == "100%");
+    CHECK(rootOrigin().x > before.x);
+}
+
+TEST_CASE("designer canvas space drag pans the view",
+          "[designer][d3][app][zoom]") {
+    // §8.8：按住 Space 拖动 = 平移画布；释放 Space 后拖动恢复常规语义。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    (void)app.shell().renderFrame();
+
+    const auto rootOrigin = [&app] {
+        return absoluteOffset(app.shell().root(), "root");
+    };
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    const auto canvasOrigin =
+        absoluteOffset(app.shell().root(), "designer-canvas");
+    const Offset start{canvasOrigin.x + 200.0F, canvasOrigin.y + 200.0F};
+    const Offset end{start + Offset{60.0F, 40.0F}};
+
+    // 按住 Space：拖动画布中心 → 平移（不选中、不改文档）。
+    const auto before = rootOrigin();
+    const auto revision = app.workbench().documentRevision();
+    app.shell().keyDown(lumen::core::Key::None, lumen::core::kModifierNone,
+                        ' ');
+    app.shell().pointerDown(start);
+    // 越阈启动（Start/Move 同位）后再走增量位移，平移量 = 后续增量。
+    app.shell().pointerMove(start + Offset{16.0F, 12.0F});
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    app.shell().pointerUp(end);
+    (void)app.shell().renderFrame();
+    CHECK(rootOrigin() != before);
+    CHECK(app.workbench().documentRevision() == revision);
+
+    // 释放 Space 后：普通拖动不再平移（恢复换位/橡皮筋语义）。
+    app.shell().keyUp(lumen::core::Key::None, lumen::core::kModifierNone,
+                      ' ');
+    (void)app.shell().renderFrame();
+    const auto afterSpace = rootOrigin();
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(start + Offset{16.0F, 12.0F});
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    app.shell().pointerUp(end);
+    (void)app.shell().renderFrame();
+    CHECK(rootOrigin() == afterSpace);
+}
+
+TEST_CASE("designer canvas selection chrome matches the mockup chips",
+          "[designer][d3][app]") {
+    // §8.8 一比一铬件：名字徽标（类型 · key）、尺寸徽标（W × H）、坐
+    // 标徽标（X · Y）、标尺指针标线与页面 caption。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    (void)app.shell().renderFrame();
+
+    const auto* save = findNodeByKey(app.shell().root(), "save");
+    REQUIRE(save != nullptr);
+    app.shell().handlers().at(
+        "designer:select:" +
+        std::to_string(static_cast<lumen::dsl::DesignNodeId>(std::strtoull(
+            save->onClick.c_str() + 16, nullptr, 10))))();
+    (void)app.shell().renderFrame();
+
+    const auto* nameChip =
+        findNodeByKey(app.shell().root(), "designer-canvas-selection-name");
+    REQUIRE(nameChip != nullptr);
+    CHECK(nameChip->text == "Button · save");
+    const auto* sizeChip =
+        findNodeByKey(app.shell().root(), "designer-canvas-dimensions");
+    REQUIRE(sizeChip != nullptr);
+    CHECK(sizeChip->text.find("×") != std::string::npos);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-guide-chip") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-ruler-mark-x") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-ruler-mark-y") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-page-caption-name") != nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-legend") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-hint") !=
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-ruler-corner") !=
+          nullptr);
+    // 尺寸读数（画板名义尺寸）。
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-size-label")
+              ->text == "桌面表单 · 352 × 264 lp");
+}
+
 TEST_CASE("designer canvas bounds show page and parent outlines",
           "[designer][d3][app]") {
     // §8.7 容器边界（designer-canvas.html）：页面虚线边界默认可见；选
@@ -3551,8 +3697,9 @@ TEST_CASE("designer fit view scales the artboard into the canvas",
     CHECK(fittedText != "100%");
     const auto* fitted = findNodeByKey(app.shell().root(), "root");
     REQUIRE(fitted != nullptr);
+    // §8.8 fit 边距 120/100（HTML fit() 同口径）：1024 视口 ≈244。
     CHECK(fitted->size.width < 800.0F);
-    CHECK(fitted->size.width > 300.0F);
+    CHECK(fitted->size.width > 200.0F);
     app.shell().handlers().at("designer:zoom-reset")();
     (void)app.shell().renderFrame();
     CHECK(findNodeByKey(app.shell().root(), "designer-zoom-label")->text ==
@@ -5491,3 +5638,53 @@ TEST_CASE("designer panel scrollviews answer wheel and scrollbar drags",
 
 
 
+
+
+TEST_CASE("designer canvas rulers and dashes paint over the board",
+          "[designer][d3][app][paint]") {
+    // §8.8/§8.9 绘制契约（review 像素实证固化）：标尺条绘于预览之上
+    //（strip = surfaceSunken，不再被画板选中态冲刷覆盖）；页面虚线边界
+    // 按 rose 4on/3off 落点；舞台内缩 20px 后画板顶边不再贴标尺条。
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    (void)app.shell().renderFrame();
+    const auto* canvas = findNodeByKey(app.shell().root(), "designer-canvas");
+    REQUIRE(canvas != nullptr);
+    const auto origin = absoluteOffset(app.shell().root(), "designer-canvas");
+    const auto& p = app.shell().pixels();
+    REQUIRE(p.width > 0);
+    const auto at = [&](int x, int y) {
+        const std::size_t i = (static_cast<std::size_t>(y) * p.width + x) * 4;
+        return std::make_tuple(p.rgba[i], p.rgba[i + 1], p.rgba[i + 2]);
+    };
+    const int cx = static_cast<int>(origin.x + canvas->padding.left);
+    const int cy = static_cast<int>(origin.y + canvas->padding.top);
+    // 标尺条：surfaceSunken（暗/亮主题都非纯背景色）。
+    auto [rr, rg, rb] = at(cx + 10, cy + 5);
+    const auto& sunken = app.shell().theme().colors.surfaceSunken;
+    CHECK(std::abs(rr - sunken.r) <= 2);
+    CHECK(std::abs(rg - sunken.g) <= 2);
+    CHECK(std::abs(rb - sunken.b) <= 2);
+    const auto* root = findNodeByKey(app.shell().root(), "root");
+    REQUIRE(root != nullptr);
+    const auto rootOrigin = absoluteOffset(app.shell().root(), "root");
+    // 舞台内缩：画板顶边在标尺条（20px）之下。
+    CHECK(rootOrigin.y >= cy + 20.0F);
+    // 页面边界上边虚线：rose 段 + 间隙交替。
+    const int dashY = static_cast<int>(rootOrigin.y) - 8;
+    int rose = 0;
+    int background = 0;
+    for (int x = 0; x < 70; ++x) {
+        auto [r, g, b] = at(static_cast<int>(rootOrigin.x) - 8 + x, dashY);
+        if (r > 200 && g >= 60 && g <= 130 && b >= 90 && b <= 160) {
+            ++rose;
+        } else if (r < 45 && g < 45 && b < 50) {
+            ++background;
+        }
+    }
+    CHECK(rose >= 30);
+    CHECK(background >= 20);
+    CHECK(rose + background >= 62);
+}

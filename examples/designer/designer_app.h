@@ -253,7 +253,8 @@ class DesignerApp {
     void canvasResizeSession(core::DragPhase phase, core::Offset position,
                              const std::string& sourceKey);
     void endCanvasResizeSession();
-    void adjustCanvasZoom(float factor);
+    void adjustCanvasZoom(float factor,
+                          std::optional<core::Offset> anchor = std::nullopt);
     void panCanvas(core::Offset delta);
     void resetCanvasView();
     // 适合视图（design/designer-canvas.html）：画板按画布内容区缩小
@@ -461,6 +462,12 @@ class DesignerApp {
     // 容器边界（designer-canvas.html，§8.7）：页面虚线边界 + 所选父容
     // 器虚线轮廓与类型标注，独立开关，默认开。
     bool canvasBoundsEnabled_{true};
+    // 对齐参考线（十字线 + 坐标徽标，§8.8 独立开关，默认开）。
+    bool canvasAlignEnabled_{true};
+    // Space 按住态（§8.8：Space + 拖动 = 平移画布；onKeyUp 复位）。
+    bool spacePanPressed_{false};
+    core::Offset spacePanAnchor_{};
+    core::Offset spacePanStart_{};
     PreviewStateMode previewStateMode_{PreviewStateMode::None};
     std::string previewStateKey_{};
     std::map<dsl::DesignNodeId, std::string> previewKeys_{};

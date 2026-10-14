@@ -95,8 +95,10 @@ void checkImagePixel(lumen::app::AppShell& shell, const std::string& key) {
     const auto* node = lumen::core::findNodeByKey(shell.root(), key);
     REQUIRE(node != nullptr);
     const auto origin = lumen::core::absoluteOffset(shell.root(), key);
-    const int x = static_cast<int>(origin.x + node->size.width * 0.5F);
-    const int y = static_cast<int>(origin.y + node->size.height * 0.5F);
+    // §8.8：采样取 70%/70%——节点中心是选中十字线（root 选中时竖臂
+    // 穿过子节点中心列），顶部 20px 在标尺条之下。
+    const int x = static_cast<int>(origin.x + node->size.width * 0.7F);
+    const int y = static_cast<int>(origin.y + node->size.height * 0.7F);
     const auto& pixels = shell.pixels();
     REQUIRE(x >= 0);
     REQUIRE(y >= 0);
@@ -141,6 +143,7 @@ TEST_CASE("designer image aliases inside an authorized root render in both previ
     pumpUntil(app, 1);
     CHECK(imageId(app, "alias") != 0);
     CHECK(imageId(app, "alias") == imageId(app, "real"));
+    render(app);
     checkImagePixel(app.shell(), "alias");
     checkImagePixel(app.shell(), "real");
     CHECK(app.diagnostics().empty());
