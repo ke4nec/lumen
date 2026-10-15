@@ -15,7 +15,7 @@
     --accent:#3460be; --on-accent:#fff; --accent-text:#234a91; --selected:#e0eaff;
     --focus:#234a91; --success:#256746; --warning:#8a5700; --error:#aa343a;
     --grid:rgba(212,212,216,.706); --guide:#cf2e5f; --scrim:rgba(0,0,0,.52);
-    --control:32px; --radius:4px; --gap:8px; --left:232px; --right:288px;
+    --control:32px; --radius:4px; --gap:8px; --left:232px; --right:304px;
     --caption:12px; --body:14px; --title:20px;
     font-family:Inter,"Segoe UI","Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif;
     font-size:14px; line-height:1.43;
@@ -133,8 +133,11 @@ svg.icon {width:16px; height:16px; flex:none; fill:none; stroke:currentColor; st
 .canvas-controls .btn {padding:4px 6px}
 .editor-surface {min-height:0; flex:1; display:flex; position:relative; overflow:hidden}
 .canvas-column {min-width:0; min-height:0; flex:1; display:flex; flex-direction:column}
-.ruler {height:18px; position:relative; flex:none; padding:2px 16px; color:var(--secondary); border-bottom:1px solid var(--border); background:var(--sunken); font:9px/16px monospace; word-spacing:34px; white-space:nowrap; overflow:hidden}
-.canvas-scroll {overflow:auto; flex:1; min-height:0; position:relative; background-color:var(--page); background-image:radial-gradient(var(--grid) .75px,transparent .75px); background-size:8px 8px; scrollbar-width:thin; scrollbar-color:var(--border) transparent}
+.ruler {height:24px; position:relative; flex:none; color:var(--secondary); border-bottom:1px solid var(--border); background:var(--sunken); font:10px/12px monospace; white-space:nowrap; overflow:hidden; pointer-events:none}
+.ruler-tick {position:absolute; bottom:0; height:4px; border-left:1px solid var(--border)}
+.ruler-tick.major {height:8px}
+.ruler-label {position:absolute; top:0; padding-left:4px}
+.canvas-scroll {overflow:auto; flex:1; min-height:0; position:relative; background-color:var(--page); background-image:radial-gradient(var(--grid) .75px,transparent .75px); background-size:16px 16px; scrollbar-width:thin; scrollbar-color:var(--border) transparent}
 .canvas-scroll.no-grid {background-image:none}
 .canvas-content {min-width:100%; min-height:100%; width:max-content; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px; gap:12px}
 .frame-caption {width:100%; display:flex; justify-content:space-between; color:var(--secondary); font-size:11px; letter-spacing:.02em; white-space:nowrap}
@@ -142,9 +145,8 @@ svg.icon {width:16px; height:16px; flex:none; fill:none; stroke:currentColor; st
 .artboard {transform-origin:top left; width:520px; background:var(--surface); color:var(--text); box-shadow:0 2px 6px #00000020; border:1px solid var(--border); border-radius:8px; position:relative; padding:32px; display:flex; flex-direction:column; gap:16px}
 .preview-node {position:relative; min-width:0; flex-shrink:0}
 .preview-node.hoverable:hover {outline:1px solid var(--accent)}
-.preview-node.selected {outline:2px solid var(--accent); outline-offset:2px}
-.preview-node.selected::before {content:attr(data-label); position:absolute; left:-4px; top:-26px; color:var(--on-accent); background:var(--accent); border-radius:3px 3px 0 0; font:11px/20px Consolas,monospace; padding:0 6px; white-space:nowrap; z-index:2; pointer-events:none}
-.preview-node.selected::after {content:""; width:8px; height:8px; position:absolute; right:-7px; bottom:-7px; background:var(--surface); border:1px solid var(--accent); pointer-events:none}
+.preview-node.selected {outline:1px solid var(--accent); outline-offset:2px}
+.preview-node.selected::before {content:attr(data-label); position:absolute; left:-3px; top:-24px; color:var(--accent-text); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); font:12px/16px Consolas,monospace; padding:0 4px; white-space:nowrap; z-index:2; pointer-events:none}
 .preview-text {font-size:14px; line-height:20px; padding:0; margin:0; white-space:pre-wrap; overflow-wrap:anywhere}
 .preview-title {font-size:20px; font-weight:600; line-height:28px}
 .preview-caption {color:var(--secondary); font-size:12px; line-height:18px}
@@ -164,28 +166,32 @@ svg.icon {width:16px; height:16px; flex:none; fill:none; stroke:currentColor; st
 .crumb-bar button {font-size:11px; color:var(--secondary); white-space:nowrap; height:28px; padding:0 4px}
 .crumb-bar button:last-child {color:var(--accent-text)}
 .crumb-bar .icon {width:12px; color:var(--secondary)}
-.inspector {flex:1; min-height:0; display:flex; flex-direction:column}
-.selected-summary {padding:16px 14px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px}
-.selected-icon {width:36px; height:36px; border:1px solid var(--border); border-radius:6px; display:grid; place-items:center; background:var(--page); color:var(--accent-text)}
-.selected-summary h3 {font-size:14px; margin:0 0 2px; font-weight:600}
-.selected-summary p {margin:0; font-size:11px; color:var(--secondary)}
-.property-scroll {flex:1; padding:0 14px 20px}
-.prop-group {border-bottom:1px solid var(--border); padding:12px 0 16px}
+.inspector {flex:1; min-height:0; display:flex; flex-direction:column; font-size:12px}
+.selected-summary {padding:12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; flex:none; min-width:0}
+.selected-icon {width:32px; height:32px; flex:none; border:1px solid var(--border); border-radius:var(--radius); display:grid; place-items:center; background:var(--page); color:var(--accent-text)}
+.selected-identity {flex:1; min-width:0}
+.selected-summary h3 {font-size:12px; margin:0 0 4px; font-weight:600}
+.selected-summary p {margin:0; font-size:12px; color:var(--secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.inspector-tabs {min-height:32px}
+.inspector-tabs button {min-height:32px; padding:4px 8px}
+.inspector-forms {flex:1; min-height:0; display:flex; flex-direction:column}
+.property-scroll {flex:1; padding:0 12px 16px; margin:0}
+.prop-group {border-bottom:1px solid var(--border); padding:16px 0}
 .prop-group:last-child {border:0}
-.prop-group summary {font-size:12px; font-weight:600; cursor:pointer; padding:0 0 12px; user-select:none}
-.prop-group summary::marker {color:var(--secondary)}
+.prop-group h4 {font-size:12px; font-weight:600; margin:0 0 12px}
 .prop-row {display:grid; grid-template-columns:72px minmax(0,1fr); align-items:center; gap:8px; margin-bottom:8px; min-height:32px; font-size:12px}
 .prop-row>span {color:var(--secondary)}
-.prop-row .field {width:100%}
-.dimension-fields {display:flex; gap:8px}
-.dimension-field {display:flex; align-items:center; padding-left:8px; background:var(--sunken); border:1px solid var(--border); border-radius:var(--radius); flex:1; min-width:0; color:var(--secondary); font:11px monospace}
-.dimension-field input {border:0; background:none; width:100%; min-width:0; height:30px; font-size:12px; padding-left:8px}
-.prop-tip {color:var(--secondary); font-size:11px; line-height:1.7; margin:8px 0 0}
-.prop-error {font-size:11px; color:var(--error); margin:6px 0; min-height:16px}
+.prop-row .field {width:100%; height:var(--control)}
+.inspector .prop-row {grid-template-columns:minmax(0,1fr); gap:4px}
+.inspector .prop-row:last-child {margin-bottom:0}
+.prop-tip {color:var(--secondary); font-size:12px; line-height:1.5; margin:8px 0 0; overflow-wrap:anywhere}
+.inspector-alert {flex:none; padding:8px 12px; border-bottom:1px solid var(--border); max-height:96px; overflow:auto}
+.prop-error {font-size:12px; color:var(--error); margin:0; overflow-wrap:anywhere}
+.prop-error + .prop-error {margin-top:4px}
+.event-feedback.missing {color:var(--warning)}
+.inspector .panel-foot {font-size:12px; padding:8px 12px}
 .check-label {display:flex; align-items:center; gap:8px; font-size:12px; min-height:32px}
 input[type="checkbox"] {accent-color:var(--accent); width:16px; height:16px}
-.swatch-row {display:flex; align-items:center; gap:8px; padding:8px; background:var(--sunken); border:1px solid var(--border); border-radius:var(--radius); font-size:11px}
-.swatch {width:16px; height:16px; background:var(--accent); border-radius:3px}
 .bottom-dock {flex:none; background:var(--surface); border-top:1px solid var(--border)}
 .bottom-head {display:flex; align-items:center; padding:0 8px; gap:12px; height:36px}
 .bottom-head .bottom-tab {height:36px; padding:0 4px; font-size:11px; border-bottom:2px solid transparent; color:var(--secondary)}
@@ -221,26 +227,25 @@ button.diagnostic-row:hover {background:var(--selected)}
 .rail .btn {width:36px; height:36px; flex:none}
 .variant-a .leftdock .toolbox {flex:1.05}
 .variant-a .leftdock .outline-panel {flex:1; border-top:1px solid var(--border)}
-.variant-b {--left:224px; --right:280px}
+.variant-b {--left:224px}
 .variant-b .workspace {grid-template-columns:48px var(--left) 6px minmax(260px,1fr) 6px var(--right)}
 .variant-b .rail {display:flex}
 .variant-b .canvas-controls {height:48px}
 .variant-b .artboard {box-shadow:0 4px 12px #00000040}
 .variant-b .canvas-content {padding:48px}
-.variant-b .ruler {display:none}
-.variant-c {--left:280px; --right:280px}
+.variant-c {--left:280px}
 .variant-c .leftdock .outline-panel {flex:1}
 .variant-c .rightdock .toolbox {flex:1}
 .variant-c .rightdock .inspector {flex:1.3; border-bottom:1px solid var(--border)}
 .variant-c .canvas-content {padding:32px}
-.variant-d {--left:208px; --right:248px}
+.variant-d {--left:208px}
 .variant-d .canvas-controls .size-label {font-size:10px}
 .variant-d .canvas-content {padding:32px}
-.variant-d .prop-row {grid-template-columns:56px minmax(0,1fr)}
-.variant-d .preview-environment {border-bottom:1px solid var(--border); padding:12px 14px}
-.preview-environment>p {font-size:11px; color:var(--secondary); line-height:1.6; margin:4px 0 12px}
-.preview-environment h3 {font-size:12px; margin:0 0 8px}
-.variant-d .inspector .selected-summary {padding:12px 14px}
+.variant-d .rightdock>.preview-environment {border-bottom:1px solid var(--border); padding:8px 12px; flex:none}
+.preview-environment>p {font-size:12px; color:var(--secondary); line-height:1.5; margin:4px 0 8px}
+.preview-environment h3 {font-size:12px; margin:0 0 4px}
+.preview-environment-fields {display:flex; gap:8px}
+.preview-environment-fields .prop-row {flex:1; min-width:0; grid-template-columns:minmax(0,1fr); gap:4px; margin:0}
 .left-collapsed .workspace {grid-template-columns:0 0 minmax(260px,1fr) 6px var(--right)}
 .variant-b.left-collapsed .workspace {grid-template-columns:48px 0 0 minmax(260px,1fr) 6px var(--right)}
 .left-collapsed .leftdock,.left-collapsed .splitter[data-side="left"] {visibility:hidden}
@@ -335,8 +340,8 @@ dialog::backdrop {background:var(--scrim)}
     .review-strip {gap:8px}
     .version-nav a {padding:6px 8px}
     .prototype-label {display:none}
-    .variant-a,.variant-b,.variant-c {--left:208px; --right:256px}
-    .variant-d {--left:180px; --right:232px}
+    .variant-a,.variant-b,.variant-c {--left:208px; --right:280px}
+    .variant-d {--left:180px; --right:280px}
     .main-tools .hint {display:none}
     .btn .optional {display:none}
     .canvas-controls {padding:0 8px}
@@ -462,6 +467,9 @@ let nodes=createNodes(), selected=variant==='c'?11:13, serial=14;
 let undoStack=[], redoStack=[], saved=JSON.stringify(nodes), currentView=variant==='d'?'split':'design';
 let leftTab=variant==='b'?'toolbox':'outline', bottomTab=variant==='c'?'layout':'diagnostics', bottomOpen=variant==='c'||variant==='d';
 let zoom=variant==='d'?.72:.9, fitMode=true, previewTheme=theme, previewDensity='comfortable';
+let inspectorTab='properties';
+const inspectorTabs=[['properties','属性'],['layout','布局'],['events','事件']];
+const inspectorErrors=new Map();
 const closedNodes=new Set();
 const nodeById=id=>nodes.find(n=>n.id===Number(id));
 const children=id=>nodes.filter(n=>n.parent===id);
@@ -479,7 +487,7 @@ function checkpoint(label) {undoStack.push({nodes:structuredClone(nodes),selecte
 function restoreHistory(direction) {
     const from=direction==='undo'?undoStack:redoStack, to=direction==='undo'?redoStack:undoStack;
     if(!from.length)return;
-    const old=from.pop(); to.push({nodes:structuredClone(nodes),selected,label:old.label}); nodes=old.nodes;selected=old.selected; renderAll();notify(`${direction==='undo'?'已撤销':'已重做'}：${old.label}`);
+    const old=from.pop(); to.push({nodes:structuredClone(nodes),selected,label:old.label}); nodes=old.nodes;selected=old.selected;inspectorErrors.clear();renderAll();notify(`${direction==='undo'?'已撤销':'已重做'}：${old.label}`);
 }
 function selectNode(id, focusTree=false) {
     if(!nodeById(id))return;selected=Number(id);
@@ -515,13 +523,22 @@ function sizeCanvas() {
     art.style.transform=`scale(${zoom})`;wrap.style.width=`${art.offsetWidth*zoom}px`;wrap.style.height=`${art.offsetHeight*zoom}px`;
     $('.frame-caption').style.maxWidth=`${art.offsetWidth*zoom}px`;
     $('.zoom-label').textContent=`${Math.round(zoom*100)}%`;
-    const a=art.getBoundingClientRect(),c=$('.canvas-column').getBoundingClientRect(),origin=a.left-c.left;
-    const step=zoom<.5?160:80;const ticks=[];
-    for(let value=-Math.ceil(origin/(step*zoom))*step;origin+value*zoom<c.width;value+=step)ticks.push(`<span style="position:absolute;left:${origin+value*zoom}px;border-left:1px solid var(--border);padding-left:4px">${value}</span>`);
-    $('.ruler').innerHTML=ticks.join('');
-    scroll.style.backgroundSize=`${8*zoom}px ${8*zoom}px`;
-    scroll.style.backgroundPosition=`${a.left-scroll.getBoundingClientRect().left+scroll.scrollLeft}px ${a.top-scroll.getBoundingClientRect().top+scroll.scrollTop}px`;
-
+    const a=art.getBoundingClientRect(),s=scroll.getBoundingClientRect(),ruler=$('.ruler'),r=ruler.getBoundingClientRect();
+    const contentX=a.left-s.left+scroll.scrollLeft,contentY=a.top-s.top+scroll.scrollTop;
+    const origin=contentX-scroll.scrollLeft+s.left-r.left;
+    let minor=8,grid=8;
+    while(minor*zoom<10)minor*=2;
+    while(grid*zoom<16)grid*=2;
+    const major=5*minor,labels=10*minor,ticks=[];
+    for(let value=Math.ceil(-origin/(minor*zoom))*minor;origin+value*zoom<r.width;value+=minor){
+        const x=origin+value*zoom;
+        ticks.push(`<span class="ruler-tick ${value%major===0?'major':''}" style="left:${x}px"></span>`);
+        if(value%labels===0)ticks.push(`<span class="ruler-label" style="left:${x}px">${value}</span>`);
+    }
+    ruler.innerHTML=ticks.join('');
+    const gridStep=grid*zoom;
+    scroll.style.backgroundSize=`${gridStep}px ${gridStep}px`;
+    scroll.style.backgroundPosition=`${contentX-scroll.scrollLeft-gridStep/2}px ${contentY-scroll.scrollTop-gridStep/2}px`;
 }
 function renderTree() {
     const tree=$('.tree');if(!tree)return;
@@ -535,10 +552,58 @@ function renderBreadcrumb() {
 const property = (label,content)=>`<label class="prop-row"><span>${label}</span>${content}</label>`;
 const input = (key,value,type='text',extra='')=>`<input class="field" data-prop="${key}" type="${type}" value="${esc(value??'')}" ${extra}>`;
 const select = (key,value,options)=>`<select class="field" data-prop="${key}">${options.map(o=>`<option value="${o[0]}" ${value===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select>`;
+function setInspectorTab(tab,focus=false) {
+    if(!inspectorTabs.some(([key])=>key===tab))return;
+    inspectorTab=tab;
+    $$('[data-inspector-tab]').forEach(b=>{const active=b.dataset.inspectorTab===tab;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});
+    $$('[data-inspector-panel]').forEach(p=>p.hidden=p.dataset.inspectorPanel!==tab);
+    if(focus)$(`[data-inspector-tab="${tab}"]`)?.focus();
+}
+function renderInspectorErrors() {
+    const alert=$('.inspector-alert');if(!alert)return;
+    const messages=[];
+    for(const [id,error] of inspectorErrors){
+        const n=nodeById(error.target);
+        if(!n){inspectorErrors.delete(id);continue;}
+        messages.push(`<p class="prop-error">${esc(n.key)} · ${esc(error.key)}：${esc(error.message)}</p>`);
+    }
+    const html=messages.join('');
+    if(alert.innerHTML!==html)alert.innerHTML=html;
+    alert.hidden=!messages.length;
+}
 function renderInspector() {
-    const n=nodeById(selected);if(!n)return;
-    const axis=[['start','起点 · start'],['center','居中 · center'],['end','终点 · end'],['spaceBetween','两端 · between']];
-    $('.inspector').innerHTML=`<div class="panel-head"><h2>属性</h2><span class="count">当前选择</span>${button('reset-property','undo','','title="恢复选中控件的初始属性" aria-label="恢复初始属性"')}</div><div class="selected-summary"><div class="selected-icon">${icon(typeIcon(n.type))}</div><div><h3>${n.type}</h3><p class="mono">${esc(n.key)} · #${n.id}</p></div></div><div class="property-scroll scroll"><details class="prop-group" open><summary>基本</summary>${property('对象名称',input('key',n.key))}${n.text!==undefined?property('显示文字',input('text',n.text)):''}${n.type==='Button'?property('按钮样式',select('variant',n.variant,[['filled','填充 · Filled'],['outline','描边 · Outline'],['tonal','柔和 · Tonal'],['ghost','轻量 · Ghost'],['danger','危险 · Danger']])):''}${n.type==='Checkbox'?`<label class="check-label"><input type="checkbox" data-prop="checked" ${n.checked?'checked':''}>默认选中</label>`:''}</details><details class="prop-group" open><summary>布局</summary>${property('尺寸',`<div class="dimension-fields"><label class="dimension-field">W<input aria-label="宽度" type="number" data-prop="width" placeholder="自动" min="32" max="960" value="${n.width||''}"></label>${n.id===1?'':`<label class="dimension-field">H<input aria-label="高度" type="number" data-prop="height" placeholder="自动" min="24" max="600" value="${n.height||''}"></label>`}</div>`)}${isContainer(n)?property('内边距',input('padding',n.padding??0,'number','min="0" max="64"')):''}${isFlex(n)?property('子项间距',input('spacing',n.spacing??8,'number','min="0" max="64"'))+property('主轴',select('mainAxis',n.mainAxis||'start',axis)):''}<p class="prop-tip">${n.type==='Container'?'Container 仅容纳一个子节点；需要多项排列时先插入 Row / Column。':isFlex(n)?`${n.type} 管理子项排列，间距随布局计算。`:`位置由父容器 ${esc(nodeById(n.parent)?.type||'Column')} 决定。留空尺寸以使用自然大小。`}</p><div class="prop-error" role="alert"></div></details><details class="prop-group" ${n.type==='Button'?'open':''}><summary>外观与引用</summary><div class="swatch-row"><span class="swatch"></span><span>Theme.colors.accent</span><span class="spacer"></span><span>主题</span></div>${n.type==='Button'?`<div style="margin-top:12px">${property('点击事件',input('handler',n.handler||'', 'text','placeholder="处理器名称"'))}</div><p class="prop-tip">${n.handler&&n.handler!=='saveSettings'?`未找到 ${esc(n.handler)}。可改为示例中已注册的 saveSettings。`:'命名引用绑定到应用处理器；运行预览使用离线替身。'}</p>`:'<p class="prop-tip">颜色和控件尺度继承 Theme。选中标记独立于键盘焦点。</p>'}</details></div><div class="panel-foot">修改即时预览 · <span class="mono">Ctrl Z</span> 撤销</div>`;
+    const n=nodeById(selected),inspector=$('.inspector');if(!n||!inspector)return;
+    if(!$('.inspector-tabs',inspector))inspector.innerHTML=`<div class="selected-summary"><div class="selected-icon"></div><div class="selected-identity"><h3></h3><p class="mono"></p></div>${button('reset-property','undo','','title="恢复选中控件的初始属性" aria-label="恢复初始属性"')}</div><div class="small-tabs inspector-tabs" role="tablist" aria-label="检查器"><button type="button" role="tab" id="inspector-tab-properties" data-inspector-tab="properties" aria-controls="inspector-panel-properties">属性</button><button type="button" role="tab" id="inspector-tab-layout" data-inspector-tab="layout" aria-controls="inspector-panel-layout">布局</button><button type="button" role="tab" id="inspector-tab-events" data-inspector-tab="events" aria-controls="inspector-panel-events">事件</button></div><div class="inspector-alert" id="inspector-errors" role="alert" aria-atomic="true" hidden></div><div class="inspector-forms"></div><div class="panel-foot">修改即时预览 · <span class="mono">Ctrl Z</span> 撤销</div>`;
+    $('.selected-icon',inspector).innerHTML=icon(typeIcon(n.type));
+    $('.selected-summary h3',inspector).textContent=n.type;
+    const identity=$('.selected-summary p',inspector);identity.textContent=`${n.key} · #${n.id}`;identity.title=identity.textContent;
+    const forms=$('.inspector-forms',inspector),schema=`${n.id}:${n.type}:${n.text!==undefined}`;
+    if(forms.dataset.schema!==schema){
+        const axis=[['start','起点 · start'],['center','居中 · center'],['end','终点 · end'],['spaceBetween','两端 · between']];
+        const cross=[['start','起点 · start'],['center','居中 · center'],['end','终点 · end'],['stretch','拉伸 · stretch']];
+        const group=(id,title,content)=>`<section class="prop-group" aria-labelledby="${id}"><h4 id="${id}">${title}</h4>${content}</section>`;
+        const properties=group('inspector-basic','基本属性',property('对象名称 · key',input('key',n.key))+ (n.text!==undefined?property('显示文字 · text',input('text',n.text)):'')+(n.type==='Button'?property('按钮样式 · variant',select('variant',n.variant||'filled',[['filled','填充 · Filled'],['outline','描边 · Outline'],['tonal','柔和 · Tonal'],['ghost','轻量 · Ghost'],['danger','危险 · Danger']])):'')+(n.type==='Checkbox'?`<label class="check-label"><input type="checkbox" data-prop="checked" ${n.checked?'checked':''}>默认选中 · checked</label>`:''))+group('inspector-theme','Theme 继承','<p class="prop-tip">颜色、字体、圆角和控件尺度继承 Theme；按钮外观由 variant 选择，不单独覆盖颜色。</p><p class="prop-tip">预览环境独立于文档，工作台保持 Compact 密度。</p>');
+        const size=property('宽 · width（lp）',input('width',n.width,'number',`min="32" max="960" step="1" aria-describedby="inspector-size-help" ${n.id===1?'required':'placeholder="自动"'}`))+(n.id===1?'':property('高 · height（lp）',input('height',n.height,'number','min="24" max="600" step="1" placeholder="自动" aria-describedby="inspector-size-help"')))+`<p class="prop-tip" id="inspector-size-help">${n.id===1?'根画板宽度必填；高度随内容计算。':'留空表示自动：由内容和父布局约束共同决定；填写数值声明逻辑尺寸。'}</p>`;
+        const layout=group('inspector-size','尺寸',size)+(isContainer(n)?group('inspector-container','容器布局',property('内边距 · padding',input('padding',n.padding??0,'number','min="0" max="64"'))+(isFlex(n)?property('子项间距 · spacing',input('spacing',n.spacing??8,'number','min="0" max="64"'))+property('主轴 · mainAxis',select('mainAxis',n.mainAxis||'start',axis))+property('交叉轴 · crossAxis',select('crossAxis',n.crossAxis||(n.type==='Row'?'center':'stretch'),cross)):'')+`<p class="prop-tip">${isFlex(n)?`${n.type} 管理子项排列；位置由布局计算。`:'Container 仅容纳一个子节点；多项排列请使用 Row / Column。'}</p>`):`<p class="prop-tip">位置由父容器 ${esc(nodeById(n.parent)?.type||'Column')} 布局计算，不提供自由 X/Y。</p>`);
+        const events=group('inspector-events','事件处理器',n.type==='Button'?property('点击事件 · onClick',input('handler',n.handler||'','text','placeholder="处理器名称（可留空）" aria-describedby="inspector-event-help"'))+'<p class="prop-tip" id="inspector-event-help">命名引用绑定应用处理器；本稿仅提供 saveSettings 离线替身。</p><p class="prop-tip event-feedback" role="status"></p>':'<p class="prop-tip">此节点没有可编辑的事件处理器。选择 Button 可设置点击事件引用。</p>');
+        const pages={properties,layout,events};
+        forms.innerHTML=inspectorTabs.map(([key])=>`<form class="property-scroll scroll" role="tabpanel" id="inspector-panel-${key}" data-inspector-panel="${key}" aria-labelledby="inspector-tab-${key}" tabindex="0" novalidate>${pages[key]}</form>`).join('');
+        forms.dataset.schema=schema;
+    }
+    const defaults={padding:0,spacing:8,variant:'filled',mainAxis:'start',crossAxis:n.type==='Row'?'center':'stretch'};
+    $$('[data-prop]',forms).forEach(field=>{
+        const key=field.dataset.prop,error=inspectorErrors.get(`${n.id}:${key}`),value=error?error.value:n[key]??defaults[key]??'';
+        if(field.type==='checkbox')field.checked=Boolean(value);else if(field.value!==String(value))field.value=value;
+        field.removeAttribute('aria-invalid');
+        field.removeAttribute('aria-errormessage');
+        if(error){field.setAttribute('aria-invalid','true');field.setAttribute('aria-errormessage','inspector-errors');}
+    });
+    const feedback=$('.event-feedback',forms);
+    if(feedback){
+        feedback.textContent=!n.handler?'尚未绑定点击事件。留空表示不调用处理器。':n.handler==='saveSettings'?'已绑定 saveSettings；运行预览使用离线替身。':`未找到处理器 ${n.handler}。可改为示例中已注册的 saveSettings。`;
+        feedback.classList.toggle('missing',Boolean(n.handler&&n.handler!=='saveSettings'));
+    }
+    renderInspectorErrors();setInspectorTab(inspectorTab);
 }
 function serializeDocument() {
     const convert=n=>{
@@ -591,14 +656,14 @@ function renderLeft() {
     else panel.innerHTML=project+renderOutline();
     renderTree();syncStatus();
 }
-function environment() {return `<section class="preview-environment"><h3>预览环境</h3><p>仅改变预览，不写入文档</p>${property('明暗',`<select class="field" data-env="theme"><option value="light" ${previewTheme==='light'?'selected':''}>明亮</option><option value="dark" ${previewTheme==='dark'?'selected':''}>黑暗</option></select>`)}${property('密度',`<select class="field" data-env="density"><option value="comfortable">标准 · 40</option><option value="compact">紧凑 · 32</option><option value="touch">触屏 · 48</option></select>`)}</section>`;}
+function environment() {return `<section class="preview-environment"><h3>预览环境</h3><p>仅改变预览，不写入文档</p><div class="preview-environment-fields">${property('明暗',`<select class="field" data-env="theme"><option value="light" ${previewTheme==='light'?'selected':''}>明亮</option><option value="dark" ${previewTheme==='dark'?'selected':''}>黑暗</option></select>`)}${property('密度',`<select class="field" data-env="density"><option value="comfortable">标准 · 40</option><option value="compact">紧凑 · 32</option><option value="touch">触屏 · 48</option></select>`)}</div></section>`;}
 function renderWorkbench() {
     const m=variants[variant];document.body.classList.add('workbench-page',`variant-${variant}`);
-    document.body.innerHTML=`<header class="review-strip"><a class="back" href="?theme=${theme}">${icon('left')}方案总览</a><nav class="version-nav" aria-label="工作区方案">${Object.entries(variants).map(([v,m])=>`<a data-variant-link="${v}" class="${v===variant?'current':''}" ${v===variant?'aria-current="page"':''}><b>${v.toUpperCase()}</b>${m.name}</a>`).join('')}</nav><span class="prototype-label">交互设计稿 · 非生产界面</span>${button('notes','info','设计说明')}${button('theme',theme==='dark'?'sun':'moon',theme==='dark'?'明亮':'黑暗')}</header><main class="ide"><div class="ide-title" title="拖动空白移动窗口 · 双击最大化或还原"><div class="brand"><span class="brand-mark">L</span>Lumen</div>${['文件','编辑','视图'].map((name,i)=>`<button class="btn" data-menu="${['file','edit','view'][i]}" aria-haspopup="menu" aria-expanded="false">${name}</button>`).join('')}<span class="project-name"><b>Workspace</b> &nbsp; / &nbsp; settings.design</span><span class="spacer"></span><span class="badge">DESIGNER</span>${button('help','info','','aria-label="操作快捷键" title="操作快捷键"')}<span class="win-controls" role="group" aria-label="窗口控制"><button type="button" class="caption-btn" data-win="minimize" aria-label="最小化窗口" title="最小化窗口">${icon('minus')}</button><button type="button" class="caption-btn" data-win="maximize" aria-label="最大化或还原窗口" title="最大化或还原窗口">${icon('maximize')}</button><button type="button" class="caption-btn close" data-win="close" aria-label="关闭窗口" title="关闭窗口">${icon('close')}</button></span></div><div class="main-tools">${button('save','save','保存')}${button('undo','undo','','aria-label="撤销" title="撤销 · Ctrl Z"')}${button('redo','redo','','aria-label="重做" title="重做 · Ctrl Shift Z"')}<span class="divider"></span><span class="btn active">${icon('cursor')}选择</span>${button('show-toolbox','plus','插入')}${button('layout-context','layout','布局')}<span class="divider"></span><span class="hint">${variant==='a'?'控件 → 结构 → 属性':variant==='b'?'更少干扰，更大画布':variant==='c'?'先理清结构，再调整间距':'声明与结果，同屏核查'}</span><span class="spacer"></span>${button('zen','fit','专注','aria-pressed="false"')}${button('run','play','运行预览','class="btn primary" title="运行预览 · F5"')}</div><div class="workspace"><nav class="rail" aria-label="工作区面板">${button('rail-toolbox','plus','','aria-label="控件箱" title="控件箱"')}${button('rail-outline','tree','','aria-label="对象树" title="对象树"')}<span class="spacer"></span>${button('reset-layout','layout','','aria-label="恢复工作区布局" title="恢复工作区布局"')}</nav><aside class="leftdock" aria-label="结构与控件"></aside><div class="splitter" role="separator" aria-label="调整左侧面板宽度" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="400" aria-valuenow="232" tabindex="0" data-side="left"></div><section class="center" aria-label="设计区"><div class="document-tabs"><div class="document-tab">${icon('file')}settings.design<span class="dirty" title="尚未保存"></span></div><div class="view-tabs">${['design','split','source'].map(v=>`<button class="btn ${currentView===v?'active':''}" data-view="${v}" aria-pressed="${currentView===v}">${{design:'设计',split:'分屏',source:'快照'}[v]}</button>`).join('')}</div></div><div class="canvas-controls"><span class="size-label">${icon('box')}桌面表单 · <span class="canvas-width">520</span> lp</span><span class="spacer"></span>${button('grid','grid','','aria-label="显示网格" title="显示网格" aria-pressed="true"')}<span class="divider"></span>${button('zoom-out','minus','','aria-label="缩小" title="缩小"')}<span class="mono zoom-label">90%</span>${button('zoom-in','plus','','aria-label="放大" title="放大"')}${button('fit','fit','','aria-label="适合视图" title="适合视图"')}${variant!=='d'?button('environment','settings','','aria-label="预览环境" title="预览环境"'):''}</div><div class="editor-surface"><div class="canvas-column"><div class="ruler" aria-hidden="true">0 80 160 240 320 400 480 560 640 720 800</div><div class="canvas-scroll"><div class="canvas-content"><div class="frame-caption"><span>SETTINGS / 桌面窗口</span><span class="frame-environment">${theme==='dark'?'Dark':'Light'} · Comfortable</span></div><div class="artboard-wrap"></div></div></div></div><aside class="source-panel" aria-label="只读文档快照"><div class="source-head">${icon('code')}settings.design<span class="spacer"></span><span class="badge">只读</span></div><div class="source-lines"></div></aside></div><div class="crumb-bar" aria-label="选中节点路径"></div><section class="bottom-dock" aria-label="诊断与布局"></section></section><div class="splitter" role="separator" aria-label="调整右侧面板宽度" aria-orientation="vertical" aria-valuemin="232" aria-valuemax="400" aria-valuenow="288" tabindex="0" data-side="right"></div><aside class="rightdock" aria-label="属性检查器">${variant==='d'?environment():''}<section class="inspector"></section>${variant==='c'?renderToolbox():''}</aside></div><footer class="statusbar"><span class="status-ok">${icon('check')}就绪</span><span class="status-message" role="status">选择一个控件，开始调整。</span><span class="spacer"></span><span class="node-stat"></span><span class="save-state">未修改</span><span class="mono">UTF-8</span><span>CoreDark · Compact</span></footer></main><div class="popover" role="menu" hidden></div><dialog id="dialog"><div class="dialog-head"><h2></h2>${button('close-dialog','close','','aria-label="关闭对话框" title="关闭"')}</div><div class="dialog-body"></div></dialog><div class="toast" role="status" hidden></div>`;
+    document.body.innerHTML=`<header class="review-strip"><a class="back" href="?theme=${theme}">${icon('left')}方案总览</a><nav class="version-nav" aria-label="工作区方案">${Object.entries(variants).map(([v,m])=>`<a data-variant-link="${v}" class="${v===variant?'current':''}" ${v===variant?'aria-current="page"':''}><b>${v.toUpperCase()}</b>${m.name}</a>`).join('')}</nav><span class="prototype-label">交互设计稿 · 非生产界面</span>${button('notes','info','设计说明')}${button('theme',theme==='dark'?'sun':'moon',theme==='dark'?'明亮':'黑暗')}</header><main class="ide"><div class="ide-title" title="拖动空白移动窗口 · 双击最大化或还原"><div class="brand"><span class="brand-mark">L</span>Lumen</div>${['文件','编辑','视图'].map((name,i)=>`<button class="btn" data-menu="${['file','edit','view'][i]}" aria-haspopup="menu" aria-expanded="false">${name}</button>`).join('')}<span class="project-name"><b>Workspace</b> &nbsp; / &nbsp; settings.design</span><span class="spacer"></span><span class="badge">DESIGNER</span>${button('help','info','','aria-label="操作快捷键" title="操作快捷键"')}<span class="win-controls" role="group" aria-label="窗口控制"><button type="button" class="caption-btn" data-win="minimize" aria-label="最小化窗口" title="最小化窗口">${icon('minus')}</button><button type="button" class="caption-btn" data-win="maximize" aria-label="最大化或还原窗口" title="最大化或还原窗口">${icon('maximize')}</button><button type="button" class="caption-btn close" data-win="close" aria-label="关闭窗口" title="关闭窗口">${icon('close')}</button></span></div><div class="main-tools">${button('save','save','保存')}${button('undo','undo','','aria-label="撤销" title="撤销 · Ctrl Z"')}${button('redo','redo','','aria-label="重做" title="重做 · Ctrl Shift Z"')}<span class="divider"></span><span class="btn active">${icon('cursor')}选择</span>${button('show-toolbox','plus','插入')}${button('layout-context','layout','布局')}<span class="divider"></span><span class="hint">${variant==='a'?'控件 → 结构 → 属性':variant==='b'?'更少干扰，更大画布':variant==='c'?'先理清结构，再调整间距':'声明与结果，同屏核查'}</span><span class="spacer"></span>${button('zen','fit','专注','aria-pressed="false"')}${button('run','play','运行预览','class="btn primary" title="运行预览 · F5"')}</div><div class="workspace"><nav class="rail" aria-label="工作区面板">${button('rail-toolbox','plus','','aria-label="控件箱" title="控件箱"')}${button('rail-outline','tree','','aria-label="对象树" title="对象树"')}<span class="spacer"></span>${button('reset-layout','layout','','aria-label="恢复工作区布局" title="恢复工作区布局"')}</nav><aside class="leftdock" aria-label="结构与控件"></aside><div class="splitter" role="separator" aria-label="调整左侧面板宽度" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="400" aria-valuenow="232" tabindex="0" data-side="left"></div><section class="center" aria-label="设计区"><div class="document-tabs"><div class="document-tab">${icon('file')}settings.design<span class="dirty" title="尚未保存"></span></div><div class="view-tabs">${['design','split','source'].map(v=>`<button class="btn ${currentView===v?'active':''}" data-view="${v}" aria-pressed="${currentView===v}">${{design:'设计',split:'分屏',source:'快照'}[v]}</button>`).join('')}</div></div><div class="canvas-controls"><span class="size-label">${icon('box')}桌面表单 · <span class="canvas-width">520</span> lp</span><span class="spacer"></span>${button('grid','grid','','aria-label="显示网格" title="显示网格" aria-pressed="false"')}<span class="divider"></span>${button('zoom-out','minus','','aria-label="缩小" title="缩小"')}<span class="mono zoom-label">90%</span>${button('zoom-in','plus','','aria-label="放大" title="放大"')}${button('fit','fit','','aria-label="适合视图" title="适合视图"')}${variant!=='d'?button('environment','settings','','aria-label="预览环境" title="预览环境"'):''}</div><div class="editor-surface"><div class="canvas-column"><div class="ruler" aria-hidden="true"></div><div class="canvas-scroll no-grid"><div class="canvas-content"><div class="frame-caption"><span>SETTINGS / 桌面窗口</span><span class="frame-environment">${theme==='dark'?'Dark':'Light'} · Comfortable</span></div><div class="artboard-wrap"></div></div></div></div><aside class="source-panel" aria-label="只读文档快照"><div class="source-head">${icon('code')}settings.design<span class="spacer"></span><span class="badge">只读</span></div><div class="source-lines"></div></aside></div><div class="crumb-bar" aria-label="选中节点路径"></div><section class="bottom-dock" aria-label="诊断与布局"></section></section><div class="splitter" role="separator" aria-label="调整右侧面板宽度" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="400" aria-valuenow="304" tabindex="0" data-side="right"></div><aside class="rightdock" aria-label="属性检查器">${variant==='d'?environment():''}<section class="inspector"></section>${variant==='c'?renderToolbox():''}</aside></div><footer class="statusbar"><span class="status-ok">${icon('check')}就绪</span><span class="status-message" role="status">选择一个控件，开始调整。</span><span class="spacer"></span><span class="node-stat"></span><span class="save-state">未修改</span><span class="mono">UTF-8</span><span>CoreDark · Compact</span></footer></main><div class="popover" role="menu" hidden></div><dialog id="dialog"><div class="dialog-head"><h2></h2>${button('close-dialog','close','','aria-label="关闭对话框" title="关闭"')}</div><div class="dialog-body"></div></dialog><div class="toast" role="status" hidden></div>`;
     // Keep helper-generated button classes deterministic.
     $('[data-action="run"]').classList.add('primary');
     themeLinks();renderLeft();renderAll();setView(currentView);
-    const observer=new ResizeObserver(()=>requestAnimationFrame(sizeCanvas));observer.observe($('.editor-surface'));
+    const observer=new ResizeObserver(()=>{syncSplitterValues();requestAnimationFrame(sizeCanvas);});observer.observe($('.editor-surface'));
     wireEvents();
 }
 function renderAll() {renderTree();renderInspector();renderCanvas();renderBreadcrumb();renderSource();renderBottom();syncStatus();}
@@ -620,16 +685,23 @@ function setView(view) {
     renderSource();requestAnimationFrame(sizeCanvas);
 }
 function editProperty(key,value,target=selected,field) {
-    const n=nodeById(target);let error='';
+    const n=nodeById(target);if(!n)return false;
+    const draft=value,errorId=`${n.id}:${key}`;let error='';
     if(['width','height','spacing','padding'].includes(key)) {
         if(value==='')value=undefined;
         else {value=Number(value);const min=key==='width'?32:key==='height'?24:0,max=key==='width'?960:key==='height'?600:64;
             if(!Number.isFinite(value)||value<min||value>max)error=`请输入 ${min}–${max} 之间的数值。`;}
         if(n.id===1&&value===undefined)error='根容器的宽度、内边距和间距不能留空。';
+        if(field?.validity.badInput)error='请输入有效数值。';
     }
-    if(key==='key'&&(!String(value).trim()||nodes.some(o=>o.id!==target&&o.key===value)))error='对象名称不能为空，且应在示例文档中唯一。';
-    if(error){field?.setAttribute('aria-invalid','true');$('.prop-error').textContent=error;notify('属性未提交：'+error);return false;}
-    field?.removeAttribute('aria-invalid');if(n[key]===value)return true;
+    if(key==='key'&&(!String(value).trim()||nodes.some(o=>o.id!==n.id&&o.key===value)))error='对象名称不能为空，且应在示例文档中唯一。';
+    if(error){
+        inspectorErrors.set(errorId,{target:n.id,key,value:draft,message:error});
+        field?.setAttribute('aria-invalid','true');field?.setAttribute('aria-errormessage','inspector-errors');
+        renderInspectorErrors();notify('属性未提交：'+error);return false;
+    }
+    inspectorErrors.delete(errorId);renderInspectorErrors();
+    field?.removeAttribute('aria-invalid');field?.removeAttribute('aria-errormessage');if(n[key]===value)return true;
     checkpoint(`修改 ${n.key}.${key}`); if(value===undefined)delete n[key];else n[key]=value;
     renderAll();notify(`已修改 ${n.key} 的 ${key}`);return true;
 }
@@ -680,7 +752,8 @@ function showMenu(kind,anchor) {
 }
 function closeMenu() {const p=$('.popover');if(!p)return;p.hidden=true;$$('[data-menu]').forEach(b=>b.setAttribute('aria-expanded','false'));}
 function toggleZen() {document.body.classList.toggle('zen');$('[data-action="zen"]').setAttribute('aria-pressed',document.body.classList.contains('zen'));requestAnimationFrame(sizeCanvas);}
-function resetLayout() {document.body.style.removeProperty('--left');document.body.style.removeProperty('--right');document.body.classList.remove('zen','left-collapsed');$('[data-action="zen"]').setAttribute('aria-pressed','false');bottomOpen=variant==='c'||variant==='d';renderBottom();fitMode=true;setView(variant==='d'?'split':'design');notify('已恢复本方案的默认工作区。');}
+function syncSplitterValues() {$$('.splitter').forEach(s=>s.setAttribute('aria-valuenow',parseFloat(getComputedStyle(document.body).getPropertyValue('--'+s.dataset.side))));}
+function resetLayout() {document.body.style.removeProperty('--left');document.body.style.removeProperty('--right');syncSplitterValues();document.body.classList.remove('zen','left-collapsed');$('[data-action="zen"]').setAttribute('aria-pressed','false');bottomOpen=variant==='c'||variant==='d';renderBottom();fitMode=true;setView(variant==='d'?'split':'design');notify('已恢复本方案的默认工作区。');}
 function handleAction(action) {
     closeMenu();
     const actions={theme:toggleTheme,notes,catalog,undo:()=>restoreHistory('undo'),redo:()=>restoreHistory('redo'),save:saveSnapshot,delete:deleteNode,duplicate:duplicateNode,'move-up':()=>moveNode(-1),'move-down':()=>moveNode(1),run:runPreview,
@@ -692,9 +765,9 @@ function handleAction(action) {
         'show-toolbox':()=>{document.body.classList.remove('left-collapsed','zen');$('[data-action="zen"]').setAttribute('aria-pressed','false');leftTab='toolbox';renderLeft();$('#tool-search')?.focus();},
         'rail-toolbox':()=>{if(leftTab==='toolbox'&&!document.body.classList.contains('left-collapsed'))document.body.classList.add('left-collapsed');else{document.body.classList.remove('left-collapsed');leftTab='toolbox';renderLeft();}},
         'rail-outline':()=>{if(variant==='b'&&leftTab==='outline'&&!document.body.classList.contains('left-collapsed'))document.body.classList.add('left-collapsed');else{document.body.classList.remove('left-collapsed');leftTab='outline';renderLeft();}},
-        'layout-context':()=>{selectNode(insertionParent().id);if(variant==='c'){bottomTab='layout';bottomOpen=true;renderBottom();}else notify('已选中布局容器；在右侧调整间距、内边距和主轴。');},
-        'reset-property':()=>{const original=createNodes().find(n=>n.id===selected);if(!original){notify('新插入的节点没有初始属性。');return;}checkpoint('恢复初始属性');nodes[nodes.findIndex(n=>n.id===selected)]={...original,parent:nodeById(selected).parent};renderAll();notify('已恢复初始属性，可撤销。');},
-        'reset-document':()=>{checkpoint('重置示例文档');nodes=createNodes();selected=variant==='c'?11:13;renderAll();notify('示例已重置，可撤销恢复。');},
+        'layout-context':()=>{selectNode(insertionParent().id);setInspectorTab('layout');if(variant==='c'){bottomTab='layout';bottomOpen=true;renderBottom();}else notify('已选中布局容器；在右侧调整间距、内边距和主轴。');},
+        'reset-property':()=>{const original=createNodes().find(n=>n.id===selected);if(!original){notify('新插入的节点没有初始属性。');return;}checkpoint('恢复初始属性');nodes[nodes.findIndex(n=>n.id===selected)]={...original,parent:nodeById(selected).parent};for(const [key,error] of inspectorErrors)if(error.target===selected)inspectorErrors.delete(key);renderAll();notify('已恢复初始属性，可撤销。');},
+        'reset-document':()=>{checkpoint('重置示例文档');nodes=createNodes();selected=variant==='c'?11:13;inspectorErrors.clear();renderAll();notify('示例已重置，可撤销恢复。');},
         help:()=>showDialog('操作快捷键',`<table>${[['Ctrl / ⌘ S','下载交互快照'],['Ctrl / ⌘ Z','撤销'],['Ctrl / ⌘ Shift Z','重做'],['Ctrl / ⌘ D','复制节点'],['Delete','删除选中节点'],['F5','运行预览'],['/','搜索控件'],['Esc','关闭菜单、预览或专注模式'],['方向键','对象树导航；分隔条上调节宽度'],['分隔条双击','恢复默认宽度']].map(([a,b])=>`<tr><td><kbd>${a}</kbd></td><td>${b}</td></tr>`).join('')}</table><p>属性输入期间，快捷键优先交给原生输入编辑；文档命令在提交后生效。</p>`),
     };actions[action]?.();
 }
@@ -708,9 +781,10 @@ function wireEvents() {
         const insert=e.target.closest('[data-insert]');if(insert){insertNode(insert.dataset.insert);return;}
         const view=e.target.closest('[data-view]');if(view){setView(view.dataset.view);return;}
         const tab=e.target.closest('[data-left-tab]');if(tab){leftTab=tab.dataset.leftTab;renderLeft();return;}
+        const inspectorTabButton=e.target.closest('[data-inspector-tab]');if(inspectorTabButton){setInspectorTab(inspectorTabButton.dataset.inspectorTab,true);return;}
         const bottom=e.target.closest('[data-bottom]');if(bottom){bottomTab=bottom.dataset.bottom;bottomOpen=true;renderBottom();return;}
         const toggle=e.target.closest('[data-toggle-node]');if(toggle){const id=Number(toggle.dataset.toggleNode);closedNodes.has(id)?closedNodes.delete(id):closedNodes.add(id);renderTree();return;}
-        const n=e.target.closest('[data-select],[data-source-node],.tree-row,.canvas-column [data-node]');if(n){selectNode(n.dataset.select||n.dataset.sourceNode||n.dataset.node);}
+        const n=e.target.closest('[data-select],[data-source-node],.tree-row,.canvas-column [data-node]');if(n){selectNode(n.dataset.select||n.dataset.sourceNode||n.dataset.node);if(n.classList.contains('diagnostic-row'))setInspectorTab('events');}
     });
     document.addEventListener('change',e=>{
         const field=e.target;if(field.dataset.prop){editProperty(field.dataset.prop,field.type==='checkbox'?field.checked:field.value,selected,field);return;}
@@ -724,6 +798,12 @@ function wireEvents() {
         if(e.key==='Escape'){if($('#dialog').open)return;if(!$('.popover').hidden){const a=$('.popover').anchor;closeMenu();a?.focus();return;}if(document.body.classList.contains('zen'))toggleZen();return;}
         if($('#dialog').open)return;
         if(e.target.closest('.popover')&&['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();const list=$$('button:not(:disabled)',$('.popover')),i=list.indexOf(document.activeElement);list[e.key==='Home'?0:e.key==='End'?list.length-1:(i+(e.key==='ArrowDown'?1:-1)+list.length)%list.length]?.focus();return;}
+        const inspectorTabButton=e.target.closest('[data-inspector-tab]');
+        if(inspectorTabButton&&['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
+            e.preventDefault();const keys=inspectorTabs.map(([key])=>key),index=keys.indexOf(inspectorTabButton.dataset.inspectorTab);
+            const next=e.key==='Home'?0:e.key==='End'?keys.length-1:(index+(e.key==='ArrowRight'?1:-1)+keys.length)%keys.length;
+            setInspectorTab(keys[next],true);return;
+        }
         const editing=['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName);
         if(editing){if(e.key==='Enter'&&e.target.matches('[data-prop]'))e.target.blur();return;}
         const mod=e.ctrlKey||e.metaKey;
@@ -738,6 +818,7 @@ function wireEvents() {
             else {const next=e.key==='Home'?rows[0]:e.key==='End'?rows.at(-1):rows[Math.max(0,Math.min(rows.length-1,i+(e.key==='ArrowDown'?1:-1)))];selectNode(next.dataset.node,true);}return;
         }
     });
+    $('.inspector').addEventListener('submit',e=>e.preventDefault());
     $('.canvas-scroll').addEventListener('scroll',()=>requestAnimationFrame(sizeCanvas));
     $('.ide-title').addEventListener('dblclick',e=>{if(e.target.closest('[data-win],button'))return;$('[data-win="maximize"]')?.click();});
     let draggedType=null;
@@ -746,7 +827,7 @@ function wireEvents() {
     $('.canvas-scroll').addEventListener('drop',e=>{if(!draggedType)return;e.preventDefault();let n=nodeById(e.target.closest('[data-node]')?.dataset.node);while(n&&!isContainer(n))n=nodeById(n.parent);insertNode(draggedType,n?.id||1);draggedType=null;});
     document.addEventListener('dragend',()=>{draggedType=null;$$('.drop-target').forEach(n=>n.classList.remove('drop-target'));});
     $$('.splitter').forEach(s=>{
-        const side=s.dataset.side,min=side==='left'?180:232,max=400;
+        const side=s.dataset.side,min=side==='left'?180:280,max=400;
         const set=w=>{w=Math.round(Math.max(min,Math.min(max,w)));document.body.style.setProperty('--'+side,w+'px');s.setAttribute('aria-valuenow',w);};
         s.setAttribute('aria-valuenow',parseFloat(getComputedStyle(document.body).getPropertyValue('--'+side)));
         s.addEventListener('pointerdown',e=>{const start=e.clientX,initial=parseFloat(getComputedStyle(document.body).getPropertyValue('--'+side));s.setPointerCapture(e.pointerId);const move=m=>set(initial+(m.clientX-start)*(side==='left'?1:-1));const end=()=>{s.removeEventListener('pointermove',move);s.removeEventListener('pointerup',end);};s.addEventListener('pointermove',move);s.addEventListener('pointerup',end);});

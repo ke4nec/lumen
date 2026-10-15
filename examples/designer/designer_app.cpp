@@ -5,12 +5,14 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -1519,7 +1521,6 @@ void DesignerApp::attach() {
     };
     shell_.handlers()["designer:zoom-fit"] = [this] { fitCanvasView(); };
     shell_.handlers()["designer:canvas-align"] = [this] {
-        // §8.8 对齐参考线（十字线 + 坐标徽标）独立开关。
         canvasAlignEnabled_ = !canvasAlignEnabled_;
         shell_.markDirty();
     };
@@ -3682,6 +3683,8 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
         const core::Offset delta{logicalDelta.x / canvasResizeZoom_,
                                  logicalDelta.y / canvasResizeZoom_};
         CanvasResizePreview next = canvasResizeStart_;
+        canvasResizeActiveGuideX_.reset();
+        canvasResizeActiveGuideY_.reset();
         const bool moveLeft = canvasResizeHandle_.find('w') != std::string::npos;
         const bool moveRight = canvasResizeHandle_.find('e') != std::string::npos;
         const bool moveTop = canvasResizeHandle_.find('n') != std::string::npos;
@@ -3706,6 +3709,8 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
             next.y = std::clamp(
                 y, 0.0F,
                 std::max(0.0F, canvasHeight - canvasResizeStart_.height));
+            if (next.x != x) canvasResizeActiveGuideX_.reset();
+            if (next.y != y) canvasResizeActiveGuideY_.reset();
         } else if (!canvasResizePositionEditable_) {
             if (moveLeft || moveRight) {
                 const float width = canvasResizeStart_.width +
@@ -3751,6 +3756,28 @@ void DesignerApp::canvasResizeSession(core::DragPhase phase,
                 edge = std::clamp(edge, next.y + 4.0F,
                                   std::max(next.y + 4.0F, canvasHeight));
                 next.height = std::max(4.0F, edge - next.y);
+            }
+            // Size-only grid snaps in flow layouts are not position alignment.
+            const auto matchingGuide = [threshold](float edge, float requested,
+                                                    float maximum)
+                -> std::optional<float> {
+                if (std::abs(edge - requested) <= threshold &&
+                    (edge == 0.0F || edge == maximum * 0.5F || edge == maximum)) {
+                    return edge;
+                }
+                return std::nullopt;
+            };
+            if (moveLeft || moveRight) {
+                canvasResizeActiveGuideX_ = matchingGuide(
+                    moveLeft ? next.x : next.x + next.width,
+                    (moveLeft ? canvasResizeStart_.x : right) + delta.x,
+                    canvasWidth);
+            }
+            if (moveTop || moveBottom) {
+                canvasResizeActiveGuideY_ = matchingGuide(
+                    moveTop ? next.y : next.y + next.height,
+                    (moveTop ? canvasResizeStart_.y : bottom) + delta.y,
+                    canvasHeight);
             }
         }
         canvasResizePreview_ = next;
@@ -5246,6 +5273,14 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
     const auto dashRect = [&](float x, float y, float width, float height,
                               const std::string& keyPrefix) {
         const float thickness = tokens.guideThickness;
+        // 每边段数 = 长度/7px 步距 + 1：虚线框常达上百段，同上预留。
+        constexpr float kDashStep = 7.0F;
+        const std::size_t dashSegments =
+            static_cast<std::size_t>(std::max(0.0F, width) / kDashStep) + 1 +
+            static_cast<std::size_t>(std::max(0.0F, width) / kDashStep) + 1 +
+            static_cast<std::size_t>(std::max(0.0F, height) / kDashStep) + 1 +
+            static_cast<std::size_t>(std::max(0.0F, height) / kDashStep) + 1;
+        children.reserve(children.size() + dashSegments);
         dash(x, y, width, true, keyPrefix, 0);
         dash(x, y + height - thickness, width, true, keyPrefix, 1);
         dash(x, y, height, false, keyPrefix, 2);
@@ -5410,18 +5445,113 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
             const float gridOriginY = pan.y + kCanvasStageInset;
             const float firstY =
                 std::ceil(-gridOriginY / step) * step + gridOriginY;
+            // 点阵可达上千子件（Widget 856B）：按行列数预留，避免逐帧
+            // vector 指数重分配 + 大结构体搬运。
+            const std::size_t dotRows = firstY > height
+                                            ? 0
+                                            : static_cast<std::size_t>(
+                                                  (height - firstY) / step) +
+                                                  1;
+            const float gridOriginX = pan.x + kCanvasStageInset;
+            const float firstX =
+                std::ceil(-gridOriginX / step) * step + gridOriginX;
+            const std::size_t dotColumns = firstX > width
+                                               ? 0
+                                               : static_cast<std::size_t>(
+                                                     (width - firstX) / step) +
+                                                     1;
+            children.reserve(children.size() + dotRows * dotColumns);
+            // 遮挡剔除（零视觉变化）：点阵在预览之下，预览不透明子矩形
+            // 与标尺条（上/左各 20px，后绘制覆盖）盖住的整点不可见，跳过
+            // 物化（build/reconcile/layout/damage/paint 全链路按节点计费，
+            // 点阵占画布节点约六成）。仅整点落入才剔除（半覆盖保留）；半
+            // 径角按最大圆角内缩（内缩矩形严格落在圆角形状内）；上一帧几
+            // 何（与既有选中铬件/标尺标线同一滞后口径，变换手势中至多一帧
+            // 收敛差，2px 点不可察）。
+            std::vector<core::Rect> dotOccluders;
+            dotOccluders.reserve(32);
+            const auto* stackNode =
+                core::findNodeByKey(shell_.root(), "designer-canvas-stack");
+            const core::Offset stackAbs =
+                core::absoluteOffset(shell_.root(), "designer-canvas-stack");
+            // 标尺条（上/左各 20px，栈原点处解析几何）：与点阵同帧物化，
+            // 上一帧树尚无其节点，故不查树而按构造几何直接落矩形；仅当其
+            // 主题填充不透明时才可遮挡（运行时复核 token 防后续改透明）。
+            if (tokens.rulerSurface.a == 255) {
+                dotOccluders.push_back(core::Rect{core::Offset{0.0F, 0.0F},
+                                                  core::Size{width, 20.0F}});
+                dotOccluders.push_back(core::Rect{core::Offset{0.0F, 0.0F},
+                                                  core::Size{20.0F, height}});
+            }
+            if (stackNode != nullptr && workbench_.document().has_value()) {
+                const std::string previewRootKey =
+                    previewKeyForNodeId(workbench_.document()->root.id);
+                if (const auto* previewRoot =
+                        core::findNodeByKey(shell_.root(), previewRootKey)) {
+                    const core::Offset previewAbs =
+                        core::absoluteOffset(shell_.root(), previewRootKey);
+                    // 有效透明度沿祖先链累乘（半透明祖先下的不透明子仍透光）。
+                    std::vector<std::tuple<const core::RenderNode*,
+                                           core::Offset, float>>
+                        occluderWalk{
+                            {previewRoot, previewAbs - stackAbs, 1.0F}};
+                    while (!occluderWalk.empty()) {
+                        const auto [node, origin, inheritedAlpha] =
+                            occluderWalk.back();
+                        occluderWalk.pop_back();
+                        const float alpha =
+                            inheritedAlpha * node->transitionAlpha;
+                        if (node->commonStyle().background.a == 255 &&
+                            alpha >= 0.999F && node->size.width > 0.0F &&
+                            node->size.height > 0.0F) {
+                            const auto& radius =
+                                node->commonStyle().radius;
+                            const float inset = std::max(
+                                std::max(radius.topLeft, radius.topRight),
+                                std::max(radius.bottomLeft,
+                                         radius.bottomRight));
+                            if (node->size.width > inset * 2.0F &&
+                                node->size.height > inset * 2.0F) {
+                                dotOccluders.push_back(core::Rect{
+                                    origin + core::Offset{inset, inset},
+                                    core::Size{node->size.width - inset * 2.0F,
+                                               node->size.height -
+                                                   inset * 2.0F}});
+                            }
+                        }
+                        for (const auto& child : node->children) {
+                            occluderWalk.push_back(
+                                {&child, origin + child.offset, alpha});
+                        }
+                    }
+                }
+            }
+            const auto dotOccluded = [&dotOccluders](float x, float y) {
+                constexpr float kDotSize = 2.0F;
+                for (const auto& occluder : dotOccluders) {
+                    if (x >= occluder.origin.x && y >= occluder.origin.y &&
+                        x + kDotSize <=
+                            occluder.origin.x + occluder.size.width &&
+                        y + kDotSize <=
+                            occluder.origin.y + occluder.size.height) {
+                        return true;
+                    }
+                }
+                return false;
+            };
             int row = 0;
             for (float y = firstY; y <= height; y += step, ++row) {
-                const float gridOriginX = pan.x + kCanvasStageInset;
-                const float firstX =
-                    std::ceil(-gridOriginX / step) * step + gridOriginX;
                 int column = 0;
                 for (float x = firstX; x <= width; x += step, ++column) {
+                    if (dotOccluded(x, y)) continue;
+                    // key 单次分配（snprintf 一次成形；三段 concat 原为
+                    // 三次分配）。
+                    char dotKey[64];
+                    std::snprintf(dotKey, sizeof(dotKey),
+                                  "designer-canvas-grid-dot:%d:%d", column,
+                                  row);
                     children.push_back(position(
-                        makeBar(2.0F, 2.0F, tokens.gridDot,
-                                "designer-canvas-grid-dot:" +
-                                    std::to_string(column) + ":" +
-                                    std::to_string(row)),
+                        makeBar(2.0F, 2.0F, tokens.gridDot, dotKey),
                         core::Offset{x, y}));
                 }
             }
@@ -5508,6 +5638,21 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
             std::floor(-originX / zoom / designStep) * designStep;
         const float endX =
             std::ceil((width - originX) / zoom / designStep) * designStep;
+        // 刻度 + 读数标签同上预留（标签约为刻度的 1/10；Y 轴起止
+        // 在此一次算出供下方复用）。
+        const float originY = pan.y + kCanvasStageInset;
+        const float startY =
+            std::floor(-originY / zoom / designStep) * designStep;
+        const float endY =
+            std::ceil((height - originY) / zoom / designStep) * designStep;
+        const std::size_t tickEstimate =
+            (endX >= startX
+                 ? static_cast<std::size_t>((endX - startX) / designStep) + 1
+                 : 0) +
+            (endY >= startY
+                 ? static_cast<std::size_t>((endY - startY) / designStep) + 1
+                 : 0);
+        children.reserve(children.size() + tickEstimate * 2);
         for (float value = startX; value <= endX;
              value += designStep, ++tickIndex) {
             const float screen = originX + value * zoom;
@@ -5532,11 +5677,6 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
             }
         }
         tickIndex = 0;
-        const float originY = pan.y + kCanvasStageInset;
-        const float startY =
-            std::floor(-originY / zoom / designStep) * designStep;
-        const float endY =
-            std::ceil((height - originY) / zoom / designStep) * designStep;
         for (float value = startY; value <= endY;
              value += designStep, ++tickIndex) {
             const float screen = originY + value * zoom;
@@ -5577,8 +5717,6 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
         }
     }
 
-    // —— §8.8 选中铬件（常显，不受开关控制）：中心十字（对齐开关）+
-    // 选框 + 手柄 + 名字徽标 + 尺寸徽标 + 坐标徽标 ——
     if (selectedRect.has_value()) {
         float selectedX = selectedRect->origin.x;
         float selectedY = selectedRect->origin.y;
@@ -5593,22 +5731,6 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
                         canvasResizePreview_.y * canvasResizeZoom_;
             selectedWidth = canvasResizePreview_.width * canvasResizeZoom_;
             selectedHeight = canvasResizePreview_.height * canvasResizeZoom_;
-        }
-        if (canvasAlignEnabled_) {
-            auto vertical = makeBar(tokens.guideThickness, *contentHeight,
-                                    tokens.guide, "designer-canvas-guide-v");
-            children.push_back(position(
-                std::move(vertical),
-                core::Offset{selectedX + selectedWidth * 0.5F -
-                                 tokens.guideThickness * 0.5F,
-                             0.0F}));
-            auto horizontal = makeBar(*contentWidth, tokens.guideThickness,
-                                      tokens.guide, "designer-canvas-guide-h");
-            children.push_back(position(
-                std::move(horizontal),
-                core::Offset{0.0F,
-                             selectedY + selectedHeight * 0.5F -
-                                 tokens.guideThickness * 0.5F}));
         }
         auto frame = core::makeContainerLeaf(
             selectedWidth + 12.0F, selectedHeight + 12.0F, {}, {},
@@ -5699,42 +5821,23 @@ core::Widget DesignerApp::buildCanvasStack(core::Widget preview) const {
             core::Offset{selectedX + selectedWidth + 8.0F,
                          selectedY + selectedHeight + 7.0F}));
 
-        // 坐标徽标（X · Y，十字交点右下；对齐开关）。
-        if (canvasAlignEnabled_) {
-            auto guideChip = core::makeText(
-                "X " + std::to_string(static_cast<int>(selectedX)) + " · Y " +
-                    std::to_string(static_cast<int>(selectedY)),
-                theme.typography.caption, {}, 0.0F,
-                "designer-canvas-guide-chip", std::nullopt, std::nullopt,
-                core::EdgeInsets::symmetric(6.0F, 3.0F));
-            guideChip.styleOverrides.background = tokens.guide;
-            guideChip.styleOverrides.foreground = tokens.onGuide;
-            foregroundDecorations.push_back(position(
-                makeDecoration(std::move(guideChip)),
-                core::Offset{selectedX + selectedWidth * 0.5F + 8.0F,
-                             selectedY + selectedHeight * 0.5F + 9.0F}));
-        }
-
-        // §8.3 拖动换位虚线参考：原位虚线框 + 命中对齐时的全幅虚线
-        //（4px 划/3px 隙的装饰条带，指针透明）。
-        if (canvasResizeActive_ &&
-            canvasResizeHandle_.rfind("drag:", 0) == 0) {
+        if (canvasResizeActive_) {
             const float zoom = canvasResizeZoom_;
             const float originX = canvasResizeCoordinateOrigin_.x;
             const float originY = canvasResizeCoordinateOrigin_.y;
-            // 原位虚线框（拖动起点的矩形轮廓，四边）。
-            const float startX = originX + canvasResizeStart_.x * zoom;
-            const float startY = originY + canvasResizeStart_.y * zoom;
-            const float startWidth = canvasResizeStart_.width * zoom;
-            const float startHeight = canvasResizeStart_.height * zoom;
-            dashRect(startX, startY, startWidth, startHeight,
-                     "designer-canvas-drag-dash");
-            // 对齐参考虚线：命中候选时全幅横/竖线。
-            if (canvasResizeActiveGuideX_.has_value()) {
+            if (canvasResizeHandle_.rfind("drag:", 0) == 0) {
+                const float startX = originX + canvasResizeStart_.x * zoom;
+                const float startY = originY + canvasResizeStart_.y * zoom;
+                const float startWidth = canvasResizeStart_.width * zoom;
+                const float startHeight = canvasResizeStart_.height * zoom;
+                dashRect(startX, startY, startWidth, startHeight,
+                         "designer-canvas-drag-dash");
+            }
+            if (canvasAlignEnabled_ && canvasResizeActiveGuideX_.has_value()) {
                 dash(originX + *canvasResizeActiveGuideX_ * zoom, 0.0F,
                      *contentHeight, false, "designer-canvas-drag-dash", 4);
             }
-            if (canvasResizeActiveGuideY_.has_value()) {
+            if (canvasAlignEnabled_ && canvasResizeActiveGuideY_.has_value()) {
                 dash(0.0F, originY + *canvasResizeActiveGuideY_ * zoom,
                      *contentWidth, true, "designer-canvas-drag-dash", 5);
             }
@@ -5778,9 +5881,10 @@ core::Widget DesignerApp::buildCanvasPanel() {
     canvas.clipContent = true;
     canvas.flex = 1.0F;
     auto panel = core::makeColumn(
-        {std::move(canvas)}, core::MainAxisAlignment::Start,
+        {}, core::MainAxisAlignment::Start,
         core::CrossAxisAlignment::Stretch, 0.0F, {}, {},
         "designer-preview-canvas");
+    panel.children.push_back(std::move(canvas));
     panel.flex = 1.0F;
     panel.color = theme.colors.pageBackground;
     return panel;
@@ -6361,20 +6465,26 @@ core::Widget DesignerApp::buildCenterPanel() {
         canvas.flex = 1.0F;
         auto source = buildSourcePanel();
         source.flex = 1.0F;
-        editor = core::makeRow({std::move(canvas), std::move(source)},
-                               core::MainAxisAlignment::Start,
+        editor = core::makeRow({}, core::MainAxisAlignment::Start,
                                core::CrossAxisAlignment::Stretch, 0.0F, {}, {},
                                "designer-editor-surface");
+        editor.children.reserve(2);
+        editor.children.push_back(std::move(canvas));
+        editor.children.push_back(std::move(source));
         editor.flex = 1.0F;
     } else {
         editor = buildCanvasPanel();
         editor.flex = 1.0F;
     }
     auto panel = core::makeColumn(
-        {buildDocumentTabs(), buildCanvasControls(), std::move(editor),
-         buildCrumbBar(), buildBottomDock()},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 0.0F,
-        {}, {}, "designer-preview-panel");
+        {}, core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+        0.0F, {}, {}, "designer-preview-panel");
+    panel.children.reserve(5);
+    panel.children.push_back(buildDocumentTabs());
+    panel.children.push_back(buildCanvasControls());
+    panel.children.push_back(std::move(editor));
+    panel.children.push_back(buildCrumbBar());
+    panel.children.push_back(buildBottomDock());
     panel.flex = 1.0F;
     panel.color = shell_.theme().colors.pageBackground;
     return panel;
@@ -6388,10 +6498,10 @@ core::Widget DesignerApp::buildWorkspace() {
     // 左栏（tight 约束覆盖固定宽），避免 Row 内固定子吞掉增量。
     if (zenMode_) {
         auto center = buildCenterPanel();
-        auto workspace = core::makeRow({std::move(center)},
-                                       core::MainAxisAlignment::Start,
+        auto workspace = core::makeRow({}, core::MainAxisAlignment::Start,
                                        core::CrossAxisAlignment::Stretch, 0.0F,
                                        {}, {}, "designer-workspace");
+        workspace.children.push_back(std::move(center));
         workspace.flex = 1.0F;
         return workspace;
     }
@@ -6455,8 +6565,11 @@ core::Widget DesignerApp::buildWorkspace() {
         main.flex = 1.0F;
     }
     auto workspace = core::makeRow(
-        {std::move(rail), std::move(main)}, core::MainAxisAlignment::Start,
-        core::CrossAxisAlignment::Stretch, 0.0F, {}, {}, "designer-workspace");
+        {}, core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+        0.0F, {}, {}, "designer-workspace");
+    workspace.children.reserve(2);
+    workspace.children.push_back(std::move(rail));
+    workspace.children.push_back(std::move(main));
     workspace.flex = 1.0F;
     return workspace;
 }
@@ -6723,9 +6836,9 @@ core::Widget DesignerApp::buildPropertiesPanel() {
         panelScrollOffset("designer-properties-scroll");
     propertyScroll.flex = 1.0F;
     auto panel = core::makeColumn(
-        {std::move(propertyScroll)}, core::MainAxisAlignment::Start,
-        core::CrossAxisAlignment::Stretch, 8.0F,
-        core::EdgeInsets::all(12.0F), {}, "designer-properties-panel", 280.0F);
+        {}, core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+        8.0F, core::EdgeInsets::all(12.0F), {}, "designer-properties-panel", 280.0F);
+    panel.children.push_back(std::move(propertyScroll));
     panel.color = theme.colors.surface;
     return panel;
 }
@@ -6768,10 +6881,14 @@ core::Widget DesignerApp::buildUi() {
     // 避免松约束下收缩（Stack 子按内容测量）。
     auto workspace = buildWorkspace();
     auto rootColumn = core::makeColumn(
-        {buildTitleBar(), buildMainTools(), std::move(workspace),
-         buildStatusBar()},
-        core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch, 0.0F,
-        {}, {}, "designer-root-column");
+        {}, core::MainAxisAlignment::Start, core::CrossAxisAlignment::Stretch,
+        0.0F, {}, {}, "designer-root-column");
+    // initializer_list elements are const, so even std::move copies subtrees.
+    rootColumn.children.reserve(4);
+    rootColumn.children.push_back(buildTitleBar());
+    rootColumn.children.push_back(buildMainTools());
+    rootColumn.children.push_back(std::move(workspace));
+    rootColumn.children.push_back(buildStatusBar());
     rootColumn.color = shell_.theme().colors.pageBackground;
     std::vector<core::Widget> overlays;
     if (openMenu_.has_value()) overlays.push_back(buildMenuPopover());

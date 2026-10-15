@@ -63,6 +63,18 @@ void showLeftToolbox(lumen::designer_app::DesignerApp& app) {
     (void)app.shell().renderFrame();
 }
 
+// 网格点阵存在性探针：点 key 为 col:row 网格坐标，(0,0) 点恒落在标尺
+// 条下（遮挡剔除后不再物化），故不断言固定 key，只确认可见区有点。
+bool hasCanvasGridDot(lumen::designer_app::DesignerApp& app) {
+    const auto* stack = findNodeByKey(app.shell().root(),
+                                      "designer-canvas-stack");
+    if (stack == nullptr) return false;
+    for (const auto& child : stack->children) {
+        if (child.key.rfind("designer-canvas-grid-dot:", 0) == 0) return true;
+    }
+    return false;
+}
+
 const lumen::dsl::DesignNode* findDesignNodeById(
     const lumen::dsl::DesignNode& node, lumen::dsl::DesignNodeId id) {
     if (node.id == id) return &node;
@@ -782,8 +794,8 @@ TEST_CASE("designer app mirrors extended outline selection into the canvas",
                     ->selected);
 }
 
-TEST_CASE("designer app renders canvas alignment guides for the selection",
-          "[designer][d2][app]") {
+TEST_CASE("designer app keeps selection chrome without idle alignment guides",
+          "[designer][d2][app][canvas-alignment]") {
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
@@ -797,14 +809,20 @@ TEST_CASE("designer app renders canvas alignment guides for the selection",
             nullptr);
     REQUIRE(findNodeByKey(app.shell().root(),
                           "designer-canvas-ruler-top") != nullptr);
-    REQUIRE(findNodeByKey(app.shell().root(),
-                          "designer-canvas-grid-dot:0:0") != nullptr);
+    // 点阵存在即可：(0,0) 点在标尺条下，遮挡剔除后不再物化。
+    REQUIRE(hasCanvasGridDot(app));
     REQUIRE(findNodeByKey(app.shell().root(),
                           "designer-canvas-guide-frame") != nullptr);
     REQUIRE(findNodeByKey(app.shell().root(),
                           "designer-canvas-handle:nw") != nullptr);
     REQUIRE(findNodeByKey(app.shell().root(),
                           "designer-canvas-dimensions") != nullptr);
+    for (const auto* key : {"designer-canvas-guide-v", "designer-canvas-guide-h",
+                            "designer-canvas-guide-chip",
+                            "designer-canvas-drag-dash:4:0",
+                            "designer-canvas-drag-dash:5:0"}) {
+        CHECK(findNodeByKey(app.shell().root(), key) == nullptr);
+    }
     bool guideInSemantics = false;
     for (const auto& [id, node] : app.shell().buildSemanticsSnapshot().nodes) {
         (void)node;
@@ -818,7 +836,7 @@ TEST_CASE("designer app renders canvas alignment guides for the selection",
     }
     CHECK_FALSE(guideInSemantics);
 
-    // §8.8 分开关：网格开关只收点阵（选中框常显）；对齐开关收十字线。
+    // Workspace §8.10: alignment visibility is independent of selection chrome.
     app.shell().handlers().at("designer:canvas-guides")();
     (void)app.shell().renderFrame();
     CHECK(findNodeByKey(app.shell().root(),
@@ -827,8 +845,7 @@ TEST_CASE("designer app renders canvas alignment guides for the selection",
                         "designer-canvas-guide-frame") != nullptr);
     app.shell().handlers().at("designer:canvas-guides")();
     (void)app.shell().renderFrame();
-    CHECK(findNodeByKey(app.shell().root(),
-                        "designer-canvas-grid-dot:0:0") != nullptr);
+    CHECK(hasCanvasGridDot(app));
     app.shell().handlers().at("designer:canvas-align")();
     (void)app.shell().renderFrame();
     CHECK(findNodeByKey(app.shell().root(),
@@ -836,7 +853,12 @@ TEST_CASE("designer app renders canvas alignment guides for the selection",
     app.shell().handlers().at("designer:canvas-align")();
     (void)app.shell().renderFrame();
     CHECK(findNodeByKey(app.shell().root(),
-                        "designer-canvas-guide-v") != nullptr);
+                        "designer-canvas-guide-v") == nullptr);
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-guide-frame") != nullptr);
+    CHECK(findNodeByKey(app.shell().root(),
+                        "designer-canvas-ruler-top") != nullptr);
+    CHECK(hasCanvasGridDot(app));
 }
 
 TEST_CASE("designer app frame-selects canvas siblings",
@@ -3389,9 +3411,8 @@ TEST_CASE("designer default sample opens at 100 percent with guides",
     CHECK(readNumber("width") == 352.0);
     CHECK(readNumber("height") == 264.0);
 
-    // 参考线（网格点 + 标尺）默认可见。
-    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-grid-dot:0:0") !=
-          nullptr);
+    // 参考线（网格点 + 标尺）默认可见（存在性不断言被剔除的原点）。
+    CHECK(hasCanvasGridDot(app));
     CHECK(findNodeByKey(app.shell().root(), "designer-canvas-ruler-top") !=
           nullptr);
 
@@ -3586,8 +3607,6 @@ TEST_CASE("designer canvas space drag pans the view",
 
 TEST_CASE("designer canvas selection chrome matches the mockup chips",
           "[designer][d3][app]") {
-    // §8.8 一比一铬件：名字徽标（类型 · key）、尺寸徽标（W × H）、坐
-    // 标徽标（X · Y）、标尺指针标线与页面 caption。
     DesignerApp app;
     app.attach();
     app.shell().setView(Size{1280.0F, 800.0F});
@@ -3610,7 +3629,11 @@ TEST_CASE("designer canvas selection chrome matches the mockup chips",
         findNodeByKey(app.shell().root(), "designer-canvas-dimensions");
     REQUIRE(sizeChip != nullptr);
     CHECK(sizeChip->text.find("×") != std::string::npos);
-    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-guide-chip") !=
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-guide-chip") ==
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-guide-v") ==
+          nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-guide-h") ==
           nullptr);
     CHECK(findNodeByKey(app.shell().root(), "designer-canvas-ruler-mark-x") !=
           nullptr);
@@ -3669,10 +3692,8 @@ TEST_CASE("designer canvas bounds show page and parent outlines",
           nullptr);
     CHECK(findNodeByKey(app.shell().root(),
                         "designer-canvas-bounds-dash:0:0") == nullptr);
-    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-grid-dot:0:0") !=
-          nullptr);
+    CHECK(hasCanvasGridDot(app));
 }
-
 TEST_CASE("designer fit view scales the artboard into the canvas",
           "[designer][d3][app]") {
     // §8.6/§8.7："适合"命令按画布内容区缩小居中画板（不放大），复位

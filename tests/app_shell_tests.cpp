@@ -617,6 +617,83 @@ TEST_CASE("app_shell_merges_multiple_state_changes_into_one_paint", "[app]") {
     CHECK(second != first);
 }
 
+TEST_CASE("app_shell_input_rebuild_consumes_current_interaction_once",
+          "[app][input-rebuild]") {
+    int builds = 0;
+    ShellConfig config = counterConfig();
+    const auto build = config.build;
+    config.build = [&] {
+        ++builds;
+        return build();
+    };
+    AppShell shell{std::move(config)};
+    wireCounter(shell);
+    shell.paintFrame();
+    const auto button = centerOf(shell, "go-button");
+    const auto restingStyle =
+        lumen::core::findNodeByKey(shell.root(), "go-button")->style;
+
+    SECTION("hover followed by native hit query") {
+        shell.pointerMove(button);
+    }
+    SECTION("press followed by native hit query") {
+        shell.pointerDown(button);
+    }
+    SECTION("release followed by native hit query") {
+        shell.pointerDown(button);
+        shell.paintFrame();
+        shell.pointerUp(button);
+    }
+    shell.markDirty();
+    const int before = builds;
+    CHECK_FALSE(shell.isWindowDragPoint(button));
+    REQUIRE(builds == before + 1);
+    const auto* node = lumen::core::findNodeByKey(shell.root(), "go-button");
+    REQUIRE(node != nullptr);
+    CHECK(node->style != restingStyle);
+    const auto inputStyle = node->style;
+    shell.paintFrame();
+    CHECK(builds == before + 1);
+    CHECK(lumen::core::findNodeByKey(shell.root(), "go-button")->style == inputStyle);
+    const auto frame = shell.renderFrame();
+    CHECK(shell.renderFrame(true) == frame);
+    CHECK(builds == before + 1);
+}
+
+TEST_CASE("app_shell_input_rebuild_keeps_same_frame_focus_convergence",
+          "[app][input-rebuild]") {
+    int builds = 0;
+    bool focusOnRebuild = false;
+    ShellConfig config = counterConfig();
+    const auto build = config.build;
+    config.build = [&] {
+        ++builds;
+        return build();
+    };
+    config.onRebuilt = [&](AppShell& shell) {
+        if (focusOnRebuild && shell.focus().focusedIdentity().empty()) {
+            const auto* node = lumen::core::findNodeByKey(shell.root(), "go-button");
+            REQUIRE(node != nullptr);
+            shell.controller().focusNode(*node);
+        }
+    };
+    AppShell shell{std::move(config)};
+    wireCounter(shell);
+    shell.paintFrame();
+    focusOnRebuild = true;
+    shell.markDirty();
+    const int before = builds;
+    CHECK_FALSE(shell.isWindowDragPoint(centerOf(shell, "go-button")));
+    CHECK(builds == before + 1);
+    shell.paintFrame();
+    CHECK(builds == before + 2);
+    const auto* node = lumen::core::findNodeByKey(shell.root(), "go-button");
+    REQUIRE(node != nullptr);
+    CHECK(node->commonStyle().focusWidth > 0.0F);
+    shell.paintFrame();
+    CHECK(builds == before + 2);
+}
+
 TEST_CASE("app_shell_paints_focus_assigned_by_rebuild_hook_in_the_same_frame", "[app]") {
     ShellConfig config = counterConfig();
     config.onRebuilt = [](AppShell& shell) {

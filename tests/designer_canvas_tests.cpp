@@ -37,6 +37,254 @@ lumen::core::Rect bounds(DesignerApp& app, const std::string& key) {
 
 }  // namespace
 
+// 网格点阵遮挡剔除：预览不透明子矩形与标尺条盖住的整点跳过物化
+//（build/reconcile/layout/damage/paint 全链路按节点计费，点阵占画布
+// 节点约六成）。断言以渲染树实测几何为准，不复刻网格公式。
+TEST_CASE("designer canvas grid culls dots hidden under opaque preview and rulers",
+          "[designer][canvas][performance]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    (void)app.shell().renderFrame();
+    // 参考线需上一帧几何：首帧无画布节点，第二帧起物化。
+    (void)app.shell().renderFrame();
+    const auto& root = app.shell().root();
+
+    const auto* stack = findNodeByKey(root, "designer-canvas-stack");
+    REQUIRE(stack != nullptr);
+    const Offset stackAbs = absoluteOffset(root, "designer-canvas-stack");
+
+    // 工具栏容器不透明是本测试的前提（若主题改为半透明，此断言先响）。
+    const auto* toolbar = findNodeByKey(root, "toolbar");
+    REQUIRE(toolbar != nullptr);
+    REQUIRE(toolbar->commonStyle().background.a == 255);
+    const Offset toolbarAbs = absoluteOffset(root, "toolbar");
+    const Offset toolbarStack = toolbarAbs - stackAbs;
+    const Size toolbarSize = toolbar->size;
+
+    // 预览画板右缘（板外187px 可见舞台必须仍有 supply）。
+    const auto* board = findNodeByKey(root, "root");
+    REQUIRE(board != nullptr);
+    const float boardRight =
+        (absoluteOffset(root, "root") - stackAbs).x + board->size.width;
+
+    constexpr float kDot = 2.0F;
+    constexpr float kRuler = 20.0F;
+    const auto inside = [](Offset origin, float x, float y, Size size) {
+        return x >= origin.x && y >= origin.y &&
+               x + kDot <= origin.x + size.width &&
+               y + kDot <= origin.y + size.height;
+    };
+    int dots = 0;
+    bool dotRightOfBoard = false;
+    for (const auto& child : stack->children) {
+        if (child.key.rfind("designer-canvas-grid-dot:", 0) != 0) continue;
+        ++dots;
+        const Offset dotAbs = absoluteOffset(root, child.key);
+        const float x = dotAbs.x - stackAbs.x;
+        const float y = dotAbs.y - stackAbs.y;
+        // 整点落入不透明工具栏 → 不可见，必须被剔除。
+        CHECK_FALSE(inside(toolbarStack, x, y, toolbarSize));
+        // 整点落入标尺条（后绘制覆盖）→ 不可见，必须被剔除。
+        CHECK_FALSE((x + kDot <= kRuler || y + kDot <= kRuler));
+        if (x >= boardRight) dotRightOfBoard = true;
+    }
+    // 非空：剔除不能把可见舞台的点阵清空（板右可见区仍有 supply）。
+    CHECK(dots > 100);
+    CHECK(dotRightOfBoard);
+}
+
+// Workspace §8.10: only live, matching alignment candidates produce guides.
+TEST_CASE("designer canvas move alignment guides follow candidates and gesture lifetime",
+          "[designer][app][canvas-alignment]") {
+    for (int dpi : {0, 2}) {
+        for (int zoomSteps : {0, 2}) {
+            for (bool cancel : {false, true}) {
+                INFO("dpi " << dpi << " zoom steps " << zoomSteps << " cancel " << cancel);
+                DesignerApp app;
+                app.attach();
+                app.shell().setView(Size{1280.0F, 800.0F});
+                REQUIRE(app.loadSource(
+                    "page guides { Stack(key: \"root\", width: 300, height: 200) {"
+                    " Container(key: \"node\", width: 60, height: 40, left: 24, top: 24)"
+                    " Container(key: \"peer\", width: 60, height: 40, left: 150, top: 96)"
+                    " } }", "move-guides.lumen"));
+                configureCanvas(app, dpi, zoomSteps);
+                const auto before = *app.workbench().document();
+                const auto id = before.root.children[0].id;
+                app.shell().handlers().at("designer:select:" + std::to_string(id))();
+                (void)app.shell().renderFrame();
+                const auto has = [&](const char* key) {
+                    return findNodeByKey(app.shell().root(), key) != nullptr;
+                };
+                CHECK_FALSE(has("designer-canvas-guide-v"));
+                CHECK_FALSE(has("designer-canvas-guide-h"));
+                CHECK_FALSE(has("designer-canvas-guide-chip"));
+                CHECK_FALSE(has("designer-canvas-drag-dash:4:0"));
+                CHECK_FALSE(has("designer-canvas-drag-dash:5:0"));
+                const float zoom = zoomSteps == 0 ? 1.0F : 1.5F;
+                const auto peer = bounds(app, "peer");
+                const Offset start = bounds(app, "node").origin + Offset{10.0F, 10.0F};
+                const Offset aligned = start + Offset{123.0F * zoom, 69.0F * zoom};
+                app.shell().pointerDown(start);
+                app.shell().pointerMove(start + Offset{123.0F * zoom, 0.0F});
+                (void)app.shell().renderFrame();
+                REQUIRE(app.shell().controller().dragSessionActive());
+                CHECK(bounds(app, "designer-canvas-drag-dash:4:0").origin.x ==
+                      Catch::Approx(peer.origin.x + peer.size.width));
+                CHECK_FALSE(has("designer-canvas-drag-dash:5:0"));
+                app.shell().pointerMove(aligned);
+                (void)app.shell().renderFrame();
+                CHECK(bounds(app, "designer-canvas-drag-dash:5:0").origin.y ==
+                      Catch::Approx(peer.origin.y + peer.size.height));
+                CHECK_FALSE(has("designer-canvas-guide-v"));
+                CHECK_FALSE(has("designer-canvas-guide-h"));
+                CHECK_FALSE(has("designer-canvas-guide-chip"));
+                for (const auto& [key, node] : app.shell().buildSemanticsSnapshot().nodes) {
+                    (void)node;
+                    CHECK(key.find("designer-canvas-drag-dash:") == std::string::npos);
+                }
+                app.shell().handlers().at("designer:canvas-align")();
+                (void)app.shell().renderFrame();
+                CHECK_FALSE(has("designer-canvas-drag-dash:4:0"));
+                CHECK_FALSE(has("designer-canvas-drag-dash:5:0"));
+                CHECK(has("designer-canvas-guide-frame"));
+                CHECK(has("designer-canvas-handle:se"));
+                CHECK(has("designer-canvas-ruler-top"));
+                app.shell().handlers().at("designer:canvas-align")();
+                (void)app.shell().renderFrame();
+                CHECK(has("designer-canvas-drag-dash:4:0"));
+                CHECK(has("designer-canvas-drag-dash:5:0"));
+                app.shell().pointerMove(start + Offset{40.0F * zoom, 16.0F * zoom});
+                (void)app.shell().renderFrame();
+                CHECK_FALSE(has("designer-canvas-drag-dash:4:0"));
+                CHECK_FALSE(has("designer-canvas-drag-dash:5:0"));
+                CHECK(app.workbench().document() == before);
+                app.shell().pointerMove(aligned);
+                (void)app.shell().renderFrame();
+                REQUIRE(has("designer-canvas-drag-dash:4:0"));
+                if (cancel) {
+                    app.shell().keyDown(lumen::core::Key::Escape);
+                } else {
+                    app.shell().handlers().at("designer:canvas-align")();
+                    app.shell().pointerUp(aligned);
+                }
+                (void)app.shell().renderFrame();
+                CHECK_FALSE(app.shell().controller().dragSessionActive());
+                CHECK_FALSE(has("designer-canvas-drag-dash:0:0"));
+                CHECK_FALSE(has("designer-canvas-drag-dash:4:0"));
+                CHECK_FALSE(has("designer-canvas-drag-dash:5:0"));
+                if (!cancel) {
+                    const auto& edited = app.workbench().document()->root.children[0];
+                    CHECK(std::get<double>(edited.properties.at("left").value) == 150.0);
+                    CHECK(std::get<double>(edited.properties.at("top").value) == 96.0);
+                    REQUIRE(app.undo());
+                }
+                CHECK(app.workbench().document() == before);
+                CHECK_FALSE(app.workbench().canUndo());
+            }
+        }
+    }
+}
+
+TEST_CASE("designer canvas resize alignment guides only mark matching parent anchors",
+          "[designer][app][canvas-alignment]") {
+    for (const std::string handleName : {"nw", "se"}) {
+        for (const std::string ending : {"drop", "escape", "zoom-in"}) {
+            INFO("handle " << handleName << " ending " << ending);
+            DesignerApp app;
+            app.attach();
+            app.shell().setView(Size{1280.0F, 800.0F});
+            REQUIRE(app.loadSource(
+                "page guides { Container(padding: 8) {"
+                " Stack(key: \"parent\", width: 300, height: 200, padding: 8) {"
+                " Container(key: \"node\", width: 60, height: 40, left: 32, top: 32)"
+                " } } }", "resize-guides.lumen"));
+            configureCanvas(app, 2, 2);
+            const auto before = *app.workbench().document();
+            const auto id = before.root.children[0].children[0].id;
+            app.shell().handlers().at("designer:select:" + std::to_string(id))();
+            (void)app.shell().renderFrame();
+            const auto has = [&](const char* key) {
+                return findNodeByKey(app.shell().root(), key) != nullptr;
+            };
+            const Offset start = bounds(app, "designer-canvas-handle:" + handleName).origin +
+                                 Offset{4.0F, 4.0F};
+            const auto parent = bounds(app, "parent");
+            const float zoom = 1.5F;
+            const bool northwest = handleName == "nw";
+            const Offset delta = northwest ? Offset{-30.0F, -30.0F} : Offset{49.0F, 19.0F};
+            const Offset aligned = start + Offset{delta.x * zoom, delta.y * zoom};
+            app.shell().pointerDown(start);
+            app.shell().pointerMove(aligned);
+            (void)app.shell().renderFrame();
+            REQUIRE(app.shell().controller().dragSessionActive());
+            CHECK(bounds(app, "designer-canvas-drag-dash:4:0").origin.x ==
+                  Catch::Approx(parent.origin.x + (northwest ? 8.0F : 150.0F) * zoom));
+            CHECK(bounds(app, "designer-canvas-drag-dash:5:0").origin.y ==
+                  Catch::Approx(parent.origin.y + (northwest ? 8.0F : 100.0F) * zoom));
+            CHECK_FALSE(has("designer-canvas-drag-dash:0:0"));
+            CHECK_FALSE(has("designer-canvas-guide-v"));
+            CHECK_FALSE(has("designer-canvas-guide-h"));
+            app.shell().pointerMove(start + Offset{8.0F * zoom, 8.0F * zoom});
+            (void)app.shell().renderFrame();
+            CHECK_FALSE(has("designer-canvas-drag-dash:4:0"));
+            CHECK_FALSE(has("designer-canvas-drag-dash:5:0"));
+            app.shell().pointerMove(aligned);
+            (void)app.shell().renderFrame();
+            REQUIRE(has("designer-canvas-drag-dash:4:0"));
+            app.shell().handlers().at("designer:canvas-align")();
+            (void)app.shell().renderFrame();
+            CHECK_FALSE(has("designer-canvas-drag-dash:4:0"));
+            CHECK_FALSE(has("designer-canvas-drag-dash:5:0"));
+            app.shell().handlers().at("designer:canvas-align")();
+            (void)app.shell().renderFrame();
+            REQUIRE(has("designer-canvas-drag-dash:4:0"));
+            CHECK(app.workbench().document() == before);
+            if (ending == "drop") {
+                app.shell().pointerUp(aligned);
+                REQUIRE(app.workbench().canUndo());
+                REQUIRE(app.undo());
+            } else if (ending == "escape") {
+                app.shell().keyDown(lumen::core::Key::Escape);
+            } else {
+                app.shell().handlers().at("designer:zoom-in")();
+            }
+            (void)app.shell().renderFrame();
+            CHECK_FALSE(app.shell().controller().dragSessionActive());
+            CHECK_FALSE(has("designer-canvas-drag-dash:4:0"));
+            CHECK_FALSE(has("designer-canvas-drag-dash:5:0"));
+            CHECK(app.workbench().document() == before);
+            CHECK_FALSE(app.workbench().canUndo());
+        }
+    }
+}
+
+TEST_CASE("designer canvas clamping clears unmatched drag alignment guides",
+          "[designer][app][canvas-alignment]") {
+    DesignerApp app;
+    app.attach();
+    app.shell().setView(Size{1280.0F, 800.0F});
+    REQUIRE(app.loadSource(
+        "page guides { Stack(key: \"root\", width: 300, height: 200) {"
+        " Container(key: \"node\", width: 60, height: 40, left: 24, top: 24)"
+        " Container(key: \"peer\", width: 60, height: 40, left: 260, top: 180)"
+        " } }", "clamped-guides.lumen"));
+    (void)app.shell().renderFrame();
+    const Offset start = bounds(app, "node").origin + Offset{10.0F, 10.0F};
+    const Offset end = start + Offset{231.0F, 151.0F};
+    app.shell().pointerDown(start);
+    app.shell().pointerMove(end);
+    (void)app.shell().renderFrame();
+    REQUIRE(app.shell().controller().dragSessionActive());
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-drag-dash:4:0") == nullptr);
+    CHECK(findNodeByKey(app.shell().root(), "designer-canvas-drag-dash:5:0") == nullptr);
+    app.shell().pointerUp(end);
+    const auto& edited = app.workbench().document()->root.children[0];
+    CHECK(std::get<double>(edited.properties.at("left").value) == 240.0);
+    CHECK(std::get<double>(edited.properties.at("top").value) == 160.0);
+}
+
 // G-D14 / prerequisites §4.15: AppShell receives host logical coordinates.
 TEST_CASE("designer canvas marquee and guides track nodes across dpi zoom and pan",
           "[designer][d3][app][designer-transform][canvas-coordinates]") {

@@ -757,6 +757,8 @@ void AppShell::rebuildIfDirty() {
     if (!dirty_) {
         return;
     }
+    syncInteractionSnapshot();
+    lastInteraction_ = interactionSnapshot_;
     core::Widget next = swapTemplate_.has_value() ? *swapTemplate_
                                                   : (config_.build
                                                          ? config_.build()

@@ -288,6 +288,33 @@ ghost 文本沿用 contentPrimary。原型见 `design/drag-drop.html`。
 原型见 `design/designer.html`（v2：可交互拖动演示）。CPU / Skia / GPU 三端走同一
 RenderCommand 契约。
 
+#### 3.5.1 低干扰画布修订（2026-10-15，HTML 提案）
+
+`design/designer-canvas.html` 与 `design/designer-ide.html` 采用以下新基线；
+上表的已实现 token 保持不变。原生仅修正对齐线的显示时机（工作区设计 §8.10），
+下列其余视觉与交互变化不能当成 C++ 已接入。
+
+| 部件 | 修订后的视觉角色与几何 |
+| --- | --- |
+| 页面 | `colors.surface` + 1px `borderDefault`，L1 轻阴影；移除外扩虚线框 |
+| 当前父容器 | 默认关闭，开启后仅画一层 1px `borderDefault` 实线及中性文字；不绘制全树边界 |
+| 选中 | 1px `colors.accent` 实线；名称使用 surface 底、borderDefault 边、accentContent 字，不用实心蓝色徽标 |
+| 选择角点 | 画布稿为 6px 角点，stroke 1px、surface 填充；只表达选择，不伪装成已接线的 resize 手柄 |
+| 标尺 | 拟将 rulerSurface 映射为 surface、带宽改为 24；minor/major 刻度长 3/6、宽 1，均取 borderDefault；数字为 contentSecondary、10px 等宽 |
+| 标尺密度 | minor 从 8lp 倍增直到屏幕间距 ≥10px；major = minor×5，读数 = minor×10；零点与画板平移共用坐标链 |
+| 标尺选择范围 | 画布稿使用 2px accentContainer 区段，不使用贯穿刻度带的高亮中心线 |
+| 点阵 | 默认关闭；开启后从 8lp 倍增直到屏幕间距 ≥16px，色取 gridDot，避免缩小时形成密集噪点 |
+| 测量 | 沿用 guide 玫红色，1px 有限长度实线、端帽与数值；标签 surface 底，guide 色文字，不使用红色实心坐标牌 |
+
+测距只在显式开启或按住 Alt 时出现，释放 Alt、Esc 或窗口失焦清除临时状态。
+它表达所选对象到父内容区或 Row 前一相邻节点的实际间距，不是固定中心十字线，
+不暗示吸附已经发生。真正的智能对齐线只应在拖动/缩放会话命中候选时出现，
+释放或取消即消失；本次流式 HTML 示例不模拟自由拖动与吸附。
+
+完整工作区稿保留单轴标尺研究，画布稿提供双轴标尺和测距；二者均不新增
+原生控件类型。上述几何变化是后续 DesignerCanvas token 修订的依据，原生接入时
+须同步 token、绘制/命中和 headless 测试，不能直接复制 CSS 常量。
+
 ### 3.6 Designer 工作区组合稿（2026-10-13 提案）
 
 配套 [四方案交互稿](../design/designer-ide.html) 与
@@ -300,7 +327,7 @@ RenderCommand 契约。
 | text / secondary | `colors.contentPrimary / contentSecondary`；深色 `#f1f1f4 / #a1a1aa`，浅色 `#18181b / #52525b` |
 | border / strong | `colors.borderDefault / borderStrong`；深色 `#3b3b45 / #8c8c98`，浅色 `#d4d4d8 / #71717a` |
 | accent / accent-text / selected / focus | `colors.accent / accentContent / accentContainer / focusRing`；深色 `#568cf0 / #a8c5fa / #2e3c60 / #96b9fa`，浅色 `#3460be / #234a91 / #e0eaff / #234a91` |
-| 状态与画布 | error/success/warning 取 CoreDark 对应状态 token；网格、选框沿用 §3.5 `designerCanvas` |
+| 状态与画布 | error/success/warning 取 CoreDark 对应状态 token；网格、选框采用 §3.5.1 低干扰修订提案，原生 token 暂不改动 |
 | 工作台尺度 | 应用显式 Compact：`minHeight=32`、`controlRadius=4`、padding 4/8、间距 4/8；标题/正文/辅助文字为 typography 20/14/12 |
 | 预览尺度 | 独立 Comfortable 默认；可切 32/40/48，预览密度不改变工作台密度 |
 | 树行与分隔器 | `tree` 20 缩进、3px 选中条；`splitter` 6px 轨道、Compact 12px 命中/键盘步进；两侧透明命中扩展至 12px |

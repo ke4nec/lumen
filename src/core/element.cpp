@@ -1,8 +1,29 @@
 #include "lumen/core/element.h"
 
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace lumen::core {
+namespace {
+
+// Keyed sibling 查找键（type + key；canReuse 的等价口径）。
+struct KeyedSiblingKey {
+    WidgetType type{WidgetType::Container};
+    std::string key{};
+    bool operator==(const KeyedSiblingKey& other) const {
+        return type == other.type && key == other.key;
+    }
+};
+struct KeyedSiblingKeyHash {
+    std::size_t operator()(const KeyedSiblingKey& lookup) const noexcept {
+        std::size_t hash = std::hash<std::string>{}(lookup.key);
+        return hash * 31u +
+               static_cast<std::size_t>(static_cast<int>(lookup.type));
+    }
+};
+}  // namespace
 
 Element::Element(Widget widget, Element* parent)
     : parent_(parent) {
@@ -72,9 +93,45 @@ void Element::inflateFrom(std::vector<Widget>&& nextChildren) {
 }
 
 void Element::reconcileChildren(std::vector<Widget>&& nextChildren) {
+    bool sameOrder = children_.size() == nextChildren.size();
+    for (std::size_t i = 0; sameOrder && i < children_.size(); ++i) {
+        sameOrder = canReuse(children_[i]->widget(), nextChildren[i]);
+    }
+    if (sameOrder) {
+        for (std::size_t i = 0; i < children_.size(); ++i) {
+            children_[i]->update(std::move(nextChildren[i]));
+        }
+        return;
+    }
+
     std::vector<std::unique_ptr<Element>> merged;
     merged.reserve(nextChildren.size());
     std::vector<bool> used(children_.size(), false);
+
+    // Keyed sibling 索引：线性搜索是 O(n²)，大 keyed 同级列表（如设计器
+    // 画布参考线每帧物化 1000+ keyed 装饰节点）每帧可烧掉数十毫秒。n 超
+    // 阈值时建 (type,key)→旧下标队列，把搜索降到 O(n)；小列表保持扫描
+    //（局部性更好，无哈希开销）。队列按下标升序消费，与扫描"取最低未用
+    // 下标"逐项等价（含重复 key 的状态归属不变）；无 key 节点仍走位置口径。
+    constexpr std::size_t kKeyedIndexThreshold = 32;
+    struct KeyedQueue {
+        std::vector<std::size_t> indices;
+        std::size_t head{0};
+    };
+    std::unordered_map<KeyedSiblingKey, KeyedQueue, KeyedSiblingKeyHash>
+        keyedIndex;
+    const bool useKeyedIndex =
+        children_.size() > kKeyedIndexThreshold ||
+        nextChildren.size() > kKeyedIndexThreshold;
+    if (useKeyedIndex) {
+        keyedIndex.reserve(children_.size() * 2 + 1);
+        for (std::size_t i = 0; i < children_.size(); ++i) {
+            const Widget& old = children_[i]->widget();
+            if (old.key.empty()) continue;
+            KeyedSiblingKey lookup{old.type, old.key};
+            keyedIndex[std::move(lookup)].indices.push_back(i);
+        }
+    }
 
     for (std::size_t nextIndex = 0; nextIndex < nextChildren.size();
          ++nextIndex) {
@@ -88,6 +145,21 @@ void Element::reconcileChildren(std::vector<Widget>&& nextChildren) {
                 canReuse(children_[nextIndex]->widget(), next)) {
                 reused = children_[nextIndex].get();
                 reusedIndex = nextIndex;
+            }
+        } else if (useKeyedIndex) {
+            // 与线性扫描等价：取该 (type,key) 下最低未用旧下标。
+            KeyedSiblingKey lookup{next.type, next.key};
+            const auto found = keyedIndex.find(lookup);
+            if (found != keyedIndex.end()) {
+                KeyedQueue& queue = found->second;
+                while (queue.head < queue.indices.size() &&
+                       used[queue.indices[queue.head]]) {
+                    ++queue.head;
+                }
+                if (queue.head < queue.indices.size()) {
+                    reusedIndex = queue.indices[queue.head++];
+                    reused = children_[reusedIndex].get();
+                }
             }
         } else {
             // Keyed widgets may move, so search all unmatched old siblings.
